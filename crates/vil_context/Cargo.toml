@@ -1,0 +1,25 @@
+[package]
+name = "vil_context"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "VIL Context — SHM-backed context engine with semantic chunking and attention routing"
+
+[dependencies]
+vil_rag = { workspace = true }
+
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+anyhow = { workspace = true }
+memmap2 = { workspace = true }
+bytes = { workspace = true }
+walkdir = "2.5"
+uuid = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3.14"

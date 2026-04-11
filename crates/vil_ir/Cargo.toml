@@ -1,0 +1,22 @@
+[package]
+name = "vil_ir"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "VIL IR Pipeline — Rust AST parsing, type resolution, borrow analysis, lifetime inference"
+
+[dependencies]
+syn = { workspace = true }
+proc-macro2 = { workspace = true }
+quote = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+anyhow = { workspace = true }
+walkdir = "2.5"
+
+[dev-dependencies]
+tempfile = "3.14"

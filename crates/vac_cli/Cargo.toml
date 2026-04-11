@@ -1,0 +1,30 @@
+[package]
+name = "vac_cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "VAC CLI — Terminal interface, TUI, REPL, and command handlers"
+
+[[bin]]
+name = "vac"
+path = "src/main.rs"
+
+[dependencies]
+vac_core = { workspace = true }
+vil_swarm = { workspace = true }
+
+clap = { workspace = true }
+ratatui = { workspace = true }
+crossterm = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow = { workspace = true }
+chrono = { workspace = true }
+
+[dev-dependencies]
+assert_cmd = "2.0"

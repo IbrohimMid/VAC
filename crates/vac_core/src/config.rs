@@ -1,0 +1,259 @@
+//! Global configuration for VAC engine.
+
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+
+/// Top-level VAC configuration, loaded from `~/.config/vac/config.toml`
+/// or `<project>/.vac/config.toml`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VacConfig {
+    /// LLM provider settings
+    pub llm: LlmConfig,
+    /// Tool permission settings
+    pub tools: ToolConfig,
+    /// Memory persistence settings
+    pub memory: MemoryConfig,
+    /// Context engine settings
+    pub context: ContextConfig,
+    /// Swarm orchestrator settings
+    pub swarm: SwarmConfig,
+    /// Trace/audit settings
+    pub trace: TraceConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LlmConfig {
+    /// Default LLM provider name
+    pub default_provider: String,
+    /// Named provider configurations
+    pub providers: HashMap<String, LlmProviderConfig>,
+    /// Fallback chain: try providers in order
+    #[serde(default)]
+    pub fallback_chain: Vec<String>,
+    /// Global token budget per task (0 = unlimited)
+    #[serde(default)]
+    pub max_tokens_per_task: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LlmProviderConfig {
+    /// Environment variable name for API key
+    pub api_key_env: String,
+    /// Model identifier
+    pub model: String,
+    /// Optional base URL override
+    pub base_url: Option<String>,
+    /// Max tokens per request
+    #[serde(default = "default_max_tokens")]
+    pub max_tokens: u32,
+    /// Temperature (0.0 - 2.0)
+    #[serde(default = "default_temperature")]
+    pub temperature: f32,
+}
+
+fn default_max_tokens() -> u32 {
+    8192
+}
+fn default_temperature() -> f32 {
+    0.0
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolConfig {
+    /// Default policy: "deny" or "allow"
+    #[serde(default = "default_policy")]
+    pub default_policy: String,
+    /// Explicitly allowed tools
+    #[serde(default)]
+    pub allow: HashMap<String, bool>,
+    /// Explicitly denied tools
+    #[serde(default)]
+    pub deny: HashMap<String, bool>,
+}
+
+fn default_policy() -> String {
+    "deny".into()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MemoryConfig {
+    /// Path for persistent memory storage
+    #[serde(default = "default_memory_path")]
+    pub persist_path: PathBuf,
+    /// Enable episodic memory
+    #[serde(default = "bool_true")]
+    pub enable_episodic: bool,
+    /// Enable semantic memory
+    #[serde(default = "bool_true")]
+    pub enable_semantic: bool,
+    /// Max episodic entries before consolidation
+    #[serde(default = "default_max_episodic")]
+    pub max_episodic_entries: usize,
+}
+
+fn default_memory_path() -> PathBuf {
+    PathBuf::from(".vac/memory")
+}
+fn bool_true() -> bool {
+    true
+}
+fn default_max_episodic() -> usize {
+    1000
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ContextConfig {
+    /// Enable SHM-based context
+    #[serde(default = "bool_true")]
+    pub enable_shm: bool,
+    /// Max SHM pool size in MB
+    #[serde(default = "default_shm_size")]
+    pub shm_pool_size_mb: usize,
+    /// Enable semantic chunking
+    #[serde(default = "bool_true")]
+    pub enable_semantic_chunking: bool,
+    /// Enable attention routing
+    #[serde(default = "bool_true")]
+    pub enable_attention_routing: bool,
+}
+
+fn default_shm_size() -> usize {
+    512
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SwarmConfig {
+    /// Max concurrent agents
+    #[serde(default = "default_max_agents")]
+    pub max_concurrent_agents: usize,
+    /// Agent checkpoint interval in seconds
+    #[serde(default = "default_checkpoint_interval")]
+    pub checkpoint_interval_secs: u64,
+    /// Enable parallel agent execution
+    #[serde(default = "bool_true")]
+    pub enable_parallel: bool,
+}
+
+fn default_max_agents() -> usize {
+    8
+}
+fn default_checkpoint_interval() -> u64 {
+    30
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TraceConfig {
+    /// Enable VAC trace recording
+    #[serde(default = "bool_true")]
+    pub enable: bool,
+    /// Output directory for trace files
+    #[serde(default = "default_trace_path")]
+    pub output_path: PathBuf,
+    /// Enable COSE signing
+    #[serde(default)]
+    pub enable_signing: bool,
+    /// Redaction policy
+    #[serde(default = "default_redaction")]
+    pub redaction: RedactionPolicy,
+}
+
+fn default_trace_path() -> PathBuf {
+    PathBuf::from(".vac/traces")
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct RedactionPolicy {
+    /// Strip file paths
+    #[serde(default)]
+    pub strip_paths: bool,
+    /// Strip API keys/tokens
+    #[serde(default = "bool_true")]
+    pub strip_secrets: bool,
+    /// Custom patterns to redact
+    #[serde(default)]
+    pub custom_patterns: Vec<String>,
+}
+
+fn default_redaction() -> RedactionPolicy {
+    RedactionPolicy {
+        strip_paths: false,
+        strip_secrets: true,
+        custom_patterns: vec![],
+    }
+}
+
+fn get_default_config_dir() -> Option<PathBuf> {
+    std::env::var("HOME")
+        .ok()
+        .map(|h| PathBuf::from(h).join(".config"))
+}
+
+impl VacConfig {
+    /// Load config from file path.
+    pub fn load(path: &Path) -> crate::error::VacResult<Self> {
+        let content = std::fs::read_to_string(path)
+            .map_err(|e| crate::VacError::Config(format!("Failed to read config: {e}")))?;
+        let config: Self = toml::from_str(&content)
+            .map_err(|e| crate::VacError::Config(format!("Failed to parse config: {e}")))?;
+        Ok(config)
+    }
+
+    /// Load config with fallback: project → global → defaults.
+    pub fn load_with_fallback(project_root: &Path) -> crate::error::VacResult<Self> {
+        let project_config = project_root.join(".vac/config.toml");
+        if project_config.exists() {
+            return Self::load(&project_config);
+        }
+
+        if let Some(config_dir) = get_default_config_dir() {
+            let global_config = config_dir.join("vac/config.toml");
+            if global_config.exists() {
+                return Self::load(&global_config);
+            }
+        }
+
+        Ok(Self::default())
+    }
+}
+
+impl Default for VacConfig {
+    fn default() -> Self {
+        Self {
+            llm: LlmConfig {
+                default_provider: "anthropic".into(),
+                providers: HashMap::new(),
+                fallback_chain: vec![],
+                max_tokens_per_task: 0,
+            },
+            tools: ToolConfig {
+                default_policy: default_policy(),
+                allow: HashMap::new(),
+                deny: HashMap::new(),
+            },
+            memory: MemoryConfig {
+                persist_path: default_memory_path(),
+                enable_episodic: true,
+                enable_semantic: true,
+                max_episodic_entries: default_max_episodic(),
+            },
+            context: ContextConfig {
+                enable_shm: true,
+                shm_pool_size_mb: default_shm_size(),
+                enable_semantic_chunking: true,
+                enable_attention_routing: true,
+            },
+            swarm: SwarmConfig {
+                max_concurrent_agents: default_max_agents(),
+                checkpoint_interval_secs: default_checkpoint_interval(),
+                enable_parallel: true,
+            },
+            trace: TraceConfig {
+                enable: true,
+                output_path: default_trace_path(),
+                enable_signing: false,
+                redaction: default_redaction(),
+            },
+        }
+    }
+}

@@ -1,0 +1,13 @@
+//! VIL LLM — Cloud LLM provider abstraction with streaming, fallback, and token tracking.
+
+pub mod error;
+pub mod provider;
+pub mod providers;
+pub mod router;
+pub mod streaming;
+pub mod token_budget;
+
+pub use error::LlmError;
+pub use provider::{LlmProvider, LlmRequest, LlmResponse, Message, Role};
+pub use router::LlmRouter;
+pub use token_budget::TokenBudget;
