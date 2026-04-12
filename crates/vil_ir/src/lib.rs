@@ -5,6 +5,7 @@ pub mod error;
 pub mod parser;
 pub mod pipeline;
 pub mod refactor;
+pub mod semantic;
 pub mod types;
 
 pub use error::IrError;

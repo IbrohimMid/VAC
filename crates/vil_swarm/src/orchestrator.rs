@@ -109,29 +109,26 @@ impl SwarmOrchestrator {
         Ok(orchestrator)
     }
 
-    fn architect_system_prompt() -> String {
-        "You are the Architect agent. Your role is to break down complex tasks into subtasks and determine execution order.
+    fn semantic_planner_prompt() -> String {
+        "You are the VIL Semantic Planner. Your task is to analyze the user's request and produce a Semantic Plan before any code is written.
 
-Analyze the user's task and create a detailed plan. For each subtask:
-- description: What needs to be done
-- assigned_role: Which agent should execute it (Architect, Coder, Tester, Security, Deploy, Monitor, Optimizer, Documenter)
-- dependencies: Which subtask indices must complete first
+IMPORTANT: For tasks related to VIL (Vastar Intelligence Layer), you MUST use the `vil_knowledge` tool first to find relevant patterns.
 
-Respond with a JSON plan in this format:
+Once you have consulted the knowledge base (if needed) and analyzed the task, you MUST produce a JSON plan in exactly this format and wrap it in ```json ... ```:
+```json
 {
-  \"subtasks\": [
-    {\"description\": \"...\", \"assigned_role\": \"Coder\", \"dependencies\": []}
-  ],
-  \"execution_order\": [0, 1, ...],
-  \"can_parallelize\": [[1, 2], ...]
+  \"kind\": \"VxApp\" | \"SdkPipeline\" | \"Plugin\" | \"Sidecar\" | \"Wasm\" | \"Connector\" | \"SemanticMessageLayer\" | \"GenericRust\" | \"Unknown\",
+  \"semantic_roles\": [\"vil_state\", \"vil_event\", \"vil_fault\", \"vil_decision\", \"generic\"],
+  \"lanes\": [\"Trigger\", \"Data\", \"Control\"],
+  \"zero_copy_expected\": true,
+  \"generated_plumbing_expected\": true,
+  \"forbidden_constructs\": [\"Json<T>\", \"Extension<T>\"],
+  \"required_patterns\": [\"vx_app_handler\"],
+  \"rationale\": \"Why this architecture was chosen\"
 }
-
-Rules:
-- Dependencies must form a valid DAG (no cycles)
-- Independent tasks can be parallelized
-- Coder should come before Tester
-- Security review before Deploy
-- Documenter last for documentation tasks".to_string()
+```
+Only use `GenericRust` or `Unknown` if the task is completely unrelated to VIL concepts.
+Always validate your choices against VIL's Tri-Lane and zero-copy semantics.".to_string()
     }
 
     fn coder_system_prompt() -> String {
@@ -140,14 +137,16 @@ Rules:
 When given a subtask:
 1. Understand what needs to be built
 2. Use read/search tools like file_read, glob, grep, and search to inspect the codebase
-3. Write or modify code using file_write or file_edit
-4. Track progress with todo_write when a task has multiple steps
-5. If compilation is needed, use bash, cargo, or git tools as appropriate
-6. Report success or any errors encountered
+3. IMPORTANT: For tasks related to VIL (Vastar Intelligence Layer), you MUST use the `vil_knowledge` tool FIRST to query VIL-specific patterns, code templates, and best practices.
+4. Write or modify code using file_write or file_edit
+5. Track progress with todo_write when a task has multiple steps
+6. If compilation is needed, use bash, cargo, or git tools as appropriate
+7. Report success or any errors encountered
 
 You have access to tools for:
 - Reading files: file_read
 - Searching files: glob, grep, search
+- Querying VIL Knowledge: vil_knowledge
 - Writing files: file_write, file_edit
 - Running commands: bash, cargo, git
 - Task tracking: todo_write, task_done
@@ -163,44 +162,18 @@ When you encounter errors:
         self.agent_loop_with_events(task_description, None).await
     }
 
-    pub async fn agent_loop_with_events(
-        &mut self,
-        task_description: &str,
+    async fn execute_agent_loop(
+        &self,
+        mut messages: Vec<Message>,
+        tool_defs: Vec<ToolDefinition>,
         updates: Option<mpsc::UnboundedSender<AgentLoopEvent>>,
-    ) -> SwarmResult<ExecutionResult> {
-        info!(task = %task_description, "Starting Claude Code compatible agent loop");
-
-        let llm_router = self
-            .llm_router
-            .as_ref()
-            .ok_or_else(|| SwarmError::Orchestration("LLM router not initialized".into()))?;
-        let tool_router = self
-            .tool_router
-            .as_ref()
-            .ok_or_else(|| SwarmError::Orchestration("Tool router not initialized".into()))?;
-
-        let mut total_tokens = 0u64;
-        let mut modified_files = Vec::new();
-        let mut created_files = Vec::new();
-        let context = ToolContext::new(std::path::PathBuf::from("."));
-
-        let mut messages = vec![
-            Message::system(Self::coder_system_prompt()),
-            Message::user(task_description.to_string()),
-        ];
-
-        let tool_defs: Vec<ToolDefinition> = tool_router
-            .registry()
-            .list()
-            .await
-            .into_iter()
-            .map(|tool| ToolDefinition {
-                name: tool.name,
-                description: tool.description,
-                input_schema: tool.input_schema,
-            })
-            .collect();
-
+        total_tokens: &mut u64,
+        modified_files: &mut Vec<String>,
+        created_files: &mut Vec<String>,
+        context: &ToolContext,
+        llm_router: &Arc<vil_llm::LlmRouter>,
+        tool_router: &Arc<vac_tools::router::ToolRouter>,
+    ) -> SwarmResult<String> {
         loop {
             let request = LlmRequest::new(messages.clone())
                 .with_max_tokens(4000)
@@ -220,7 +193,7 @@ When you encounter errors:
                 .await
                 .map_err(|e| SwarmError::Orchestration(format!("LLM error: {}", e)))?;
 
-            total_tokens += response.usage.total_tokens;
+            *total_tokens += response.usage.total_tokens;
 
             if let Some(tx) = &updates {
                 let _ = tx.send(AgentLoopEvent::ModelResponse {
@@ -244,7 +217,7 @@ When you encounter errors:
                             tx.send(AgentLoopEvent::Status("Preparing final answer".to_string()));
                     }
                     info!("Agent loop completed successfully (Stop reason)");
-                    break;
+                    return Ok(response.content);
                 }
                 vil_llm::provider::FinishReason::ToolUse => {
                     info!(count = response.tool_calls.len(), "Received tool calls");
@@ -266,7 +239,9 @@ When you encounter errors:
                             });
                         }
                         match call.name.as_str() {
-                            "file_read" | "glob" | "grep" | "search" => parallel_reads.push(call),
+                            "file_read" | "glob" | "grep" | "search" | "vil_knowledge" => {
+                                parallel_reads.push(call)
+                            }
                             _ => serial_writes.push(call),
                         }
                     }
@@ -284,7 +259,7 @@ When you encounter errors:
                         );
                         let futures = parallel_reads.into_iter().map(|call| async {
                             let res = tool_router
-                                .route(&call.name, call.arguments.clone(), &context)
+                                .route(&call.name, call.arguments.clone(), context)
                                 .await;
                             (call, res)
                         });
@@ -334,7 +309,7 @@ When you encounter errors:
                         info!(tool = %call.name, "Executing serial write tool");
 
                         match tool_router
-                            .route(&call.name, call.arguments.clone(), &context)
+                            .route(&call.name, call.arguments.clone(), context)
                             .await
                         {
                             Ok(result) => {
@@ -418,19 +393,114 @@ When you encounter errors:
                 }
                 _ => {
                     warn!(reason = ?response.finish_reason, "Unknown finish reason, terminating loop");
-                    break;
+                    return Ok(response.content);
                 }
             }
         }
+    }
+
+    pub async fn agent_loop_with_events(
+        &mut self,
+        task_description: &str,
+        updates: Option<mpsc::UnboundedSender<AgentLoopEvent>>,
+    ) -> SwarmResult<ExecutionResult> {
+        info!(task = %task_description, "Starting Semantic VIL-native agent loop");
+
+        let llm_router = self
+            .llm_router
+            .as_ref()
+            .ok_or_else(|| SwarmError::Orchestration("LLM router not initialized".into()))?;
+        let tool_router = self
+            .tool_router
+            .as_ref()
+            .ok_or_else(|| SwarmError::Orchestration("Tool router not initialized".into()))?;
+
+        let mut total_tokens = 0u64;
+        let mut modified_files = Vec::new();
+        let mut created_files = Vec::new();
+        let context = ToolContext::new(std::path::PathBuf::from("."));
+
+        let tool_defs: Vec<ToolDefinition> = tool_router
+            .registry()
+            .list()
+            .await
+            .into_iter()
+            .map(|tool| ToolDefinition {
+                name: tool.name,
+                description: tool.description,
+                input_schema: tool.input_schema,
+            })
+            .collect();
+
+        // STAGE 1: SEMANTIC PLANNER
+        let planner_messages = vec![
+            Message::system(Self::semantic_planner_prompt()),
+            Message::user(task_description.to_string()),
+        ];
+
+        let plan_output = self
+            .execute_agent_loop(
+                planner_messages,
+                tool_defs.clone(), // Planner needs access to vil_knowledge
+                updates.clone(),
+                &mut total_tokens,
+                &mut modified_files,
+                &mut created_files,
+                &context,
+                llm_router,
+                tool_router,
+            )
+            .await?;
+
+        // Parse SemanticPlan from plan_output
+        let semantic_plan = if let Some(start) = plan_output.find("```json") {
+            let json_start = start + 7;
+            if let Some(end) = plan_output[json_start..].find("```") {
+                let json_str = &plan_output[json_start..json_start + end];
+                serde_json::from_str::<crate::semantic::SemanticPlan>(json_str).ok()
+            } else {
+                None
+            }
+        } else {
+            serde_json::from_str::<crate::semantic::SemanticPlan>(&plan_output).ok()
+        };
+
+        let plan_context = if let Some(plan) = semantic_plan {
+            info!("Parsed SemanticPlan: {:?}", plan.kind);
+            plan.to_markdown()
+        } else {
+            warn!("Failed to parse SemanticPlan from planner output");
+            format!("### Planner Output\n{}", plan_output)
+        };
+
+        // STAGE 2: CODER
+        let coder_messages = vec![
+            Message::system(Self::coder_system_prompt()),
+            Message::user(format!("Task: {}\n\n{}", task_description, plan_context)),
+        ];
+
+        let final_output = self
+            .execute_agent_loop(
+                coder_messages,
+                tool_defs,
+                updates,
+                &mut total_tokens,
+                &mut modified_files,
+                &mut created_files,
+                &context,
+                llm_router,
+                tool_router,
+            )
+            .await?;
 
         Ok(ExecutionResult {
-            summary: "Task executed via single-agent loop".to_string(),
+            summary: final_output,
             modified_files,
             created_files,
             total_tokens_used: total_tokens,
             agent_contributions: vec![AgentContribution {
-                agent_id: "unified-agent".to_string(),
-                agent_role: "Unified".to_string(),
+                agent_id: "vil-native-agent".to_string(),
+                agent_role: "SemanticEngineer".to_string(),
                 actions: Vec::new(),
                 tokens_used: total_tokens,
             }],

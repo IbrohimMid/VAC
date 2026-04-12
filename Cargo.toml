@@ -9,6 +9,8 @@ members = [
     "crates/vil_context",
     "crates/vil_memory",
     "crates/vil_swarm",
+    "crates/vil_llm",
+    "crates/vil_metrics",
     "crates/vac_core",
     "crates/vac_tools",
     "crates/vac_trace",
@@ -99,6 +101,7 @@ vil_trust = { path = "crates/vil_trust" }
 vil_llm = { path = "crates/vil_llm" }
 vil_inference = { path = "crates/vil_inference" }
 vil_rag = { path = "crates/vil_rag" }
+vil_metrics = { path = "crates/vil_metrics" }
 vil_validate = { path = "crates/vil_validate" }
 
 [profile.release]

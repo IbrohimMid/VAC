@@ -1,0 +1,87 @@
+[
+  {
+    "id": "86ceea90-42a5-4ce1-a5d3-1475069f70ed",
+    "timestamp": "2026-04-12T03:20:24.483199316Z",
+    "record_type": "TaskStart",
+    "agent_id": null,
+    "content": {
+      "description": "List the files in the current directory using bash",
+      "task_id": "33e1e005-a170-4d1a-9fd6-64a6eab2822e"
+    }
+  },
+  {
+    "id": "2d51146e-451e-4392-b470-1e66523b929a",
+    "timestamp": "2026-04-12T03:20:24.485294584Z",
+    "record_type": "LlmRequest",
+    "agent_id": null,
+    "content": {
+      "message_count": 2,
+      "model": "default",
+      "provider": "kilo"
+    }
+  },
+  {
+    "id": "94be0b7b-a192-4e83-bc83-f32faf60e820",
+    "timestamp": "2026-04-12T03:20:28.417735912Z",
+    "record_type": "LlmResponse",
+    "agent_id": null,
+    "content": {
+      "model": "minimax/minimax-m2.5:free",
+      "provider": "kilo"
+    }
+  },
+  {
+    "id": "3b2f215b-f026-42bd-855d-d6495e35235b",
+    "timestamp": "2026-04-12T03:20:28.419529945Z",
+    "record_type": "ToolCall",
+    "agent_id": null,
+    "content": {
+      "arguments": {
+        "command": "ls -la"
+      },
+      "tool": "bash"
+    }
+  },
+  {
+    "id": "b369f520-c6e2-42e8-8418-a3e303b8bd8d",
+    "timestamp": "2026-04-12T03:20:28.433135311Z",
+    "record_type": "ToolResult",
+    "agent_id": null,
+    "content": {
+      "content": "{\"exit_code\":0,\"stderr\":\"\",\"stdout\":\"total 120\\ndrwxrwxr-x  6 emp emp  4096 Apr 11 21:54 .\\ndrwxrwxr-x 11 emp emp  4096 Apr 12 08:55 ..\\n-rw-rw-r--  1 emp emp 81607 Apr 12 09:47 Cargo.lock\\n-rw-rw-r--  1 emp emp  2823 Apr 12 10:18 Cargo.toml\\ndrwxrwxr-x 16 emp emp  4096 Apr 11 16:16 crates\\ndrwxrwxr-x  8 emp emp  4096 Apr 12 10:20 .git\\n-rw-rw-r--  1 emp emp     8 Apr 11 20:06 .gitignore\\n-rw-rw-r--  1 emp emp  1067 Apr 11 16:17 LICENSE\\n-rw-rw-r--  1 emp emp   284 Apr 11 16:17 README.md\\ndrwxrwxr-x  6 emp emp  4096 Apr 12 09:32 target\\ndrwxrwxr-x  5 emp emp  4096 Apr 11 21:55 .vac\\n\",\"success\":true}",
+      "success": true,
+      "tool": "bash"
+    }
+  },
+  {
+    "id": "99867eee-c674-45c9-b544-dafcd840980b",
+    "timestamp": "2026-04-12T03:20:28.435631365Z",
+    "record_type": "LlmRequest",
+    "agent_id": null,
+    "content": {
+      "message_count": 4,
+      "model": "default",
+      "provider": "kilo"
+    }
+  },
+  {
+    "id": "f1e32bc7-4431-4221-bb4b-e82fcd5170b3",
+    "timestamp": "2026-04-12T03:20:31.428780363Z",
+    "record_type": "LlmResponse",
+    "agent_id": null,
+    "content": {
+      "model": "minimax/minimax-m2.5:free",
+      "provider": "kilo"
+    }
+  },
+  {
+    "id": "95d3c2cd-d90f-4ebe-97e6-d8839a85c302",
+    "timestamp": "2026-04-12T03:20:31.456474189Z",
+    "record_type": "TaskComplete",
+    "agent_id": null,
+    "content": {
+      "summary": "Task executed via single-agent loop",
+      "task_id": "33e1e005-a170-4d1a-9fd6-64a6eab2822e"
+    }
+  }
+]

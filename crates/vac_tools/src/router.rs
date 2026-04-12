@@ -88,17 +88,33 @@ use vil_trust::zones::RiskLevel;
 /// Adapter that bridges vac_tools::PolicyEngine trait to vil_trust::PolicyEngine
 pub struct VilTrustPolicyAdapter {
     engine: vil_trust::PolicyEngine,
+    registry: Option<Arc<ToolRegistry>>,
+    config: Option<Arc<ToolConfigStub>>,
 }
 
 impl VilTrustPolicyAdapter {
     pub fn new() -> Self {
         Self {
             engine: vil_trust::PolicyEngine::default(), // Uses 3 default rules
+            registry: None,
+            config: None,
+        }
+    }
+
+    pub fn with_registry_and_config(registry: Arc<ToolRegistry>, config: ToolConfigStub) -> Self {
+        Self {
+            engine: vil_trust::PolicyEngine::default(),
+            registry: Some(registry),
+            config: Some(Arc::new(config)),
         }
     }
 
     pub fn with_engine(engine: vil_trust::PolicyEngine) -> Self {
-        Self { engine }
+        Self {
+            engine,
+            registry: None,
+            config: None,
+        }
     }
 
     /// Parse risk_level string from VilTool trait into vil_trust::RiskLevel
@@ -121,10 +137,33 @@ impl PolicyEngine for VilTrustPolicyAdapter {
         args: &serde_json::Value,
         context: &ToolContext,
     ) -> PolicyDecision {
-        // Get tool definition to find risk_level
-        // We need to look up the tool's risk level — use the tool_name to infer
-        // Since we don't have access to the registry here, we use a classification function
-        let risk_level = classify_tool_risk(tool_name);
+        if let Some(config) = &self.config {
+            if let Some(&allowed) = config.allow.get(tool_name) {
+                if allowed {
+                    debug!("Tool {} explicitly allowed by config", tool_name);
+                    return PolicyDecision::Allow;
+                }
+            }
+            if let Some(&denied) = config.deny.get(tool_name) {
+                if denied {
+                    warn!("Tool {} explicitly denied by config", tool_name);
+                    return PolicyDecision::Deny(format!(
+                        "Tool {} is explicitly denied",
+                        tool_name
+                    ));
+                }
+            }
+        }
+
+        let risk_level = if let Some(registry) = &self.registry {
+            if let Some(tool) = registry.get(tool_name).await {
+                Self::parse_risk_level(tool.risk_level())
+            } else {
+                classify_tool_risk(tool_name)
+            }
+        } else {
+            classify_tool_risk(tool_name)
+        };
 
         let request = vil_trust::PolicyRequest {
             tool_name: tool_name.to_string(),
@@ -156,7 +195,7 @@ impl PolicyEngine for VilTrustPolicyAdapter {
 fn classify_tool_risk(tool_name: &str) -> RiskLevel {
     match tool_name {
         // Safe: read-only operations
-        "file_read" | "glob" | "grep" | "search" | "todo" | "task_done" | "vil_knowledge" => {
+        "file_read" | "glob" | "grep" | "search" | "todo_write" | "task_done" | "vil_knowledge" => {
             RiskLevel::Safe
         }
         // NeedsApproval: write operations
@@ -201,9 +240,11 @@ impl ToolRouter {
             }
             PolicyDecision::NeedsApproval(reason) => {
                 // TODO(phase4): Add interactive user approval prompt here
-                info!(%tool_name, %reason, "Tool requires approval — auto-allowing in current phase");
-                // For now, auto-allow NeedsApproval tools (interactive approval comes in Phase 4)
-                self.registry.execute(tool_name, args, context).await
+                warn!(%tool_name, %reason, "Tool requires approval — returning permission denied in non-interactive mode");
+                Err(ToolError::PermissionDenied(format!(
+                    "Approval required (interactive mode disabled): {}",
+                    reason
+                )))
             }
             PolicyDecision::Allow => {
                 debug!("Tool {} allowed by policy", tool_name);

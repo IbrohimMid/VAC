@@ -1,129 +1,129 @@
-//! Validation passes — building toward 10-pass IR validation.
+//! VIL Semantic Validation passes.
 
-use vil_ir::types::IrModule;
+use vil_ir::types::{IrModule, TypeRef};
 
-/// Run all validation passes on a module. Returns score 0.0 - 1.0.
-pub fn run_all_passes(module: &IrModule) -> f64 {
-    let passes: Vec<(&str, f64)> = vec![
-        ("syntax_valid", pass_syntax_valid(module)),
-        ("has_doc_comments", pass_doc_comments(module)),
-        ("error_handling", pass_error_handling(module)),
-        ("naming_conventions", pass_naming_conventions(module)),
-        ("visibility_hygiene", pass_visibility(module)),
+pub struct ValidationReport {
+    pub score: f64,
+    pub issues: Vec<String>,
+}
+
+/// Run all VIL semantic validation passes on a module.
+pub fn run_all_passes(module: &IrModule) -> ValidationReport {
+    let mut issues = Vec::new();
+
+    let scores = vec![
+        pass_vil_way_compliance(module, &mut issues),
+        pass_zero_copy_legality(module, &mut issues),
+        pass_observability(module, &mut issues),
     ];
 
-    let total: f64 = passes.iter().map(|(_, s)| s).sum();
-    total / passes.len() as f64
+    let total: f64 = scores.iter().sum();
+    let score = if scores.is_empty() {
+        1.0
+    } else {
+        total / scores.len() as f64
+    };
+
+    ValidationReport { score, issues }
 }
 
-/// Pass 1: Syntax validity (always 1.0 if we parsed it).
-fn pass_syntax_valid(_module: &IrModule) -> f64 {
-    1.0
-}
+/// Pass 1: VIL Way compliance
+/// Flags forbidden usage of generic Axum patterns in VIL handlers.
+fn pass_vil_way_compliance(module: &IrModule, issues: &mut Vec<String>) -> f64 {
+    let mut score = 1.0;
 
-/// Pass 2: Documentation coverage.
-fn pass_doc_comments(module: &IrModule) -> f64 {
-    let total_public = module
-        .functions
-        .iter()
-        .filter(|f| matches!(f.visibility, vil_ir::types::Visibility::Public))
-        .count()
-        + module
-            .structs
-            .iter()
-            .filter(|s| matches!(s.visibility, vil_ir::types::Visibility::Public))
-            .count();
+    for func in &module.functions {
+        // Only inspect likely handlers (public async functions)
+        if !func.is_async || !matches!(func.visibility, vil_ir::types::Visibility::Public) {
+            continue;
+        }
 
-    if total_public == 0 {
-        return 1.0;
+        let mut has_json = false;
+        let mut has_extension = false;
+
+        for param in &func.params {
+            if has_type_name(&param.ty, "Json") {
+                has_json = true;
+            }
+            if has_type_name(&param.ty, "Extension") {
+                has_extension = true;
+            }
+        }
+
+        if has_json {
+            issues.push(format!(
+                "Function '{}' uses Json<T> which is forbidden in VIL. Use ShmSlice instead.",
+                func.name
+            ));
+            score *= 0.8;
+        }
+
+        if has_extension {
+            issues.push(format!("Function '{}' uses Extension<T> which is forbidden in VIL. Use ServiceCtx instead.", func.name));
+            score *= 0.8;
+        }
+
+        if let Some(ret) = &func.return_type {
+            if has_type_name(ret, "Json") {
+                issues.push(format!(
+                    "Function '{}' returns Json<T>. Use VilResponse instead.",
+                    func.name
+                ));
+                score *= 0.8;
+            }
+        }
     }
 
-    let documented = module
-        .functions
-        .iter()
-        .filter(|f| {
-            matches!(f.visibility, vil_ir::types::Visibility::Public) && f.doc_comment.is_some()
-        })
-        .count()
-        + module
-            .structs
-            .iter()
-            .filter(|s| {
-                matches!(s.visibility, vil_ir::types::Visibility::Public) && s.doc_comment.is_some()
-            })
-            .count();
-
-    documented as f64 / total_public as f64
+    score
 }
 
-/// Pass 3: Error handling — functions returning Result.
-fn pass_error_handling(module: &IrModule) -> f64 {
-    let fns_with_errors = module
-        .functions
-        .iter()
-        .filter(|f| f.return_type.as_ref().is_some_and(|rt| rt.is_result))
-        .count();
+/// Pass 2: Zero-copy legality
+/// Flags likely illegal heap usage on zero-copy paths.
+fn pass_zero_copy_legality(module: &IrModule, issues: &mut Vec<String>) -> f64 {
+    let mut score = 1.0;
+    for func in &module.functions {
+        for param in &func.params {
+            // Simplified check: String or Vec on a public async path might copy, though not strictly forbidden.
+            // If it's a VIL handler, they should prefer ShmSlice.
+            if func.is_async && matches!(func.visibility, vil_ir::types::Visibility::Public) {
+                if param.ty.name == "String" || param.ty.name == "Vec" {
+                    // Just an advisory warning
+                    issues.push(format!("Advisory: Function '{}' takes '{}'. Consider zero-copy types like ShmSlice or Bytes if this is a data lane.", func.name, param.ty.name));
+                    score *= 0.95;
+                }
+            }
+        }
+    }
+    score
+}
 
-    let total_fns = module.functions.len();
-    if total_fns == 0 {
-        return 1.0;
+/// Pass 3: Observability
+/// Advises on adding #[tracing::instrument] or using RequestId.
+fn pass_observability(module: &IrModule, issues: &mut Vec<String>) -> f64 {
+    let mut score = 1.0;
+
+    // In actual implementation, we'd check attributes, but vil_ir might not parse all attrs yet.
+    // For now, we just give a small penalty if there are no tracing macros or RequestId usages in the module.
+    let uses_tracing = module.uses.iter().any(|u| u.path.contains("tracing"));
+    if !uses_tracing && !module.functions.is_empty() {
+        issues.push(format!(
+            "Module '{}' has no tracing imports. VIL requires observability completeness.",
+            module.name
+        ));
+        score *= 0.9;
     }
 
-    // Score higher if more functions use Result for error handling
-    let ratio = fns_with_errors as f64 / total_fns as f64;
-    // At least 50% should use Result
-    if ratio >= 0.5 { 1.0 } else { ratio * 2.0 }
+    score
 }
 
-/// Pass 4: Naming conventions (snake_case for functions, CamelCase for types).
-fn pass_naming_conventions(module: &IrModule) -> f64 {
-    let fn_names: Vec<&str> = module.functions.iter().map(|f| f.name.as_str()).collect();
-    let type_names: Vec<&str> = module
-        .structs
-        .iter()
-        .map(|s| s.name.as_str())
-        .chain(module.enums.iter().map(|e| e.name.as_str()))
-        .collect();
-
-    let fns_ok = fn_names.iter().filter(|n| is_snake_case(n)).count();
-    let types_ok = type_names.iter().filter(|n| is_camel_case(n)).count();
-
-    let total = fn_names.len() + type_names.len();
-    if total == 0 {
-        return 1.0;
+fn has_type_name(ty: &TypeRef, target: &str) -> bool {
+    if ty.name.contains(target) {
+        return true;
     }
-
-    (fns_ok + types_ok) as f64 / total as f64
-}
-
-/// Pass 5: Visibility hygiene — prefer private by default.
-fn pass_visibility(module: &IrModule) -> f64 {
-    let total = module.functions.len() + module.structs.len();
-    if total == 0 {
-        return 1.0;
+    for generic in &ty.generics {
+        if has_type_name(generic, target) {
+            return true;
+        }
     }
-
-    let private_count = module
-        .functions
-        .iter()
-        .filter(|f| matches!(f.visibility, vil_ir::types::Visibility::Private))
-        .count()
-        + module
-            .structs
-            .iter()
-            .filter(|s| matches!(s.visibility, vil_ir::types::Visibility::Private))
-            .count();
-
-    // More private = better hygiene, aim for at least 40%
-    let ratio = private_count as f64 / total as f64;
-    (ratio * 2.5).min(1.0)
-}
-
-fn is_snake_case(s: &str) -> bool {
-    s.chars()
-        .all(|c| c.is_lowercase() || c == '_' || c.is_numeric())
-}
-
-fn is_camel_case(s: &str) -> bool {
-    s.starts_with(|c: char| c.is_uppercase()) && !s.contains('_')
+    false
 }

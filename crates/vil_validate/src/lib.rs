@@ -1,31 +1,58 @@
-//! VIL Validate — 10-pass IR validation for VIL Way compliance.
+//! VIL Validate — Semantic IR validation for VIL Way compliance.
 
 pub mod passes;
 pub mod report;
 
-use tracing::info;
+use tracing::{info, warn};
 use vil_ir::IrPipeline;
 
-pub fn validate_changes(ir: &IrPipeline, modified_files: &[String]) -> anyhow::Result<f64> {
+pub struct FinalValidationReport {
+    pub score: f64,
+    pub issues: Vec<String>,
+}
+
+pub fn validate_changes(
+    ir: &IrPipeline,
+    modified_files: &[String],
+) -> anyhow::Result<FinalValidationReport> {
     if modified_files.is_empty() {
-        return Ok(1.0);
+        return Ok(FinalValidationReport {
+            score: 1.0,
+            issues: vec![],
+        });
     }
 
     let mut total_score = 0.0;
     let mut file_count = 0;
+    let mut all_issues = Vec::new();
 
     for file in modified_files {
         if let Some(module) = ir.get_module(file) {
-            let score = passes::run_all_passes(module);
-            total_score += score;
+            let report = passes::run_all_passes(module);
+            total_score += report.score;
             file_count += 1;
-            info!(file = file, score = score, "Validated file");
+            all_issues.extend(report.issues.clone());
+            info!(
+                file = file,
+                score = report.score,
+                issues_count = report.issues.len(),
+                "Validated file"
+            );
+            for issue in report.issues {
+                warn!("Validation issue in {}: {}", file, issue);
+            }
         }
     }
 
     if file_count == 0 {
-        return Ok(1.0);
+        return Ok(FinalValidationReport {
+            score: 1.0,
+            issues: vec![],
+        });
     }
 
-    Ok(total_score / file_count as f64)
+    Ok(FinalValidationReport {
+        score: total_score / file_count as f64,
+        issues: all_issues,
+    })
 }
