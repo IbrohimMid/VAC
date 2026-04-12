@@ -88,6 +88,10 @@ pub struct SwarmOrchestrator {
     pub project_profile: Option<vac_core_types::VilProjectProfile>,
     /// Loaded knowledge base — injected into planner/coder prompts
     pub knowledge: Option<Arc<vil_knowledge::KnowledgeBase>>,
+    /// Rulebook overlay — team/repo constraints appended after VIL knowledge (never before)
+    pub rulebook: Option<String>,
+    /// Sandbox registry for subagent lifecycle management
+    sandbox_registry: Arc<crate::sandbox::SandboxRegistry>,
 }
 
 /// Minimal re-export types needed from vac_core to avoid circular deps.
@@ -144,6 +148,8 @@ impl SwarmOrchestrator {
             tool_router,
             project_profile: None,
             knowledge: None,
+            rulebook: None,
+            sandbox_registry: Arc::new(crate::sandbox::SandboxRegistry::new()),
         };
 
         let roles = [
@@ -176,6 +182,11 @@ impl SwarmOrchestrator {
         self.knowledge = Some(Arc::new(kb));
     }
 
+    /// Set rulebook overlay (formatted prompt string). Appended after VIL knowledge, never before.
+    pub fn set_rulebook(&mut self, overlay: String) {
+        self.rulebook = Some(overlay);
+    }
+
     pub async fn spawn_subtask(
         &self,
         role: AgentRole,
@@ -188,6 +199,13 @@ impl SwarmOrchestrator {
             .ok_or_else(|| SwarmError::Orchestration("LLM router not initialized".into()))?;
         let tool_router = self.tool_router.as_ref()
             .ok_or_else(|| SwarmError::Orchestration("Tool router not initialized".into()))?;
+
+        // Spawn ephemeral sandbox for subtask isolation
+        let sandbox_id = self.sandbox_registry.spawn(
+            crate::sandbox::SandboxMode::Ephemeral,
+            std::path::PathBuf::from("."),
+            task_description,
+        ).await;
 
         let role_prompt = role.system_prompt();
         let messages = vec![
@@ -225,24 +243,30 @@ impl SwarmOrchestrator {
         ).await;
 
         match result {
-            Ok(summary) => Ok(SubtaskResult {
-                role,
-                summary,
-                modified_files,
-                created_files,
-                tokens_used: total_tokens,
-                success: true,
-                error: None,
-            }),
-            Err(e) => Ok(SubtaskResult {
-                role,
-                summary: String::new(),
-                modified_files,
-                created_files,
-                tokens_used: total_tokens,
-                success: false,
-                error: Some(e.to_string()),
-            }),
+            Ok(summary) => {
+                self.sandbox_registry.complete(sandbox_id).await;
+                Ok(SubtaskResult {
+                    role,
+                    summary,
+                    modified_files,
+                    created_files,
+                    tokens_used: total_tokens,
+                    success: true,
+                    error: None,
+                })
+            }
+            Err(e) => {
+                self.sandbox_registry.fail(sandbox_id, e.to_string()).await;
+                Ok(SubtaskResult {
+                    role,
+                    summary: String::new(),
+                    modified_files,
+                    created_files,
+                    tokens_used: total_tokens,
+                    success: false,
+                    error: Some(e.to_string()),
+                })
+            }
         }
     }
 
@@ -690,7 +714,12 @@ Rules:
 
         // STAGE 2: CODER — use archetype-aware prompt if profile is available
         let coder_prompt = if let Some(ref profile) = self.project_profile {
-            Self::build_vil_coder_prompt(profile, self.knowledge.as_deref())
+            let mut prompt = Self::build_vil_coder_prompt(profile, self.knowledge.as_deref());
+            // Rulebook overlay appended AFTER VIL knowledge — never overrides VIL semantics
+            if let Some(ref rb) = self.rulebook {
+                prompt.push_str(rb);
+            }
+            prompt
         } else {
             Self::coder_system_prompt()
         };

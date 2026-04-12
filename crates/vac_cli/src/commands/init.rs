@@ -152,6 +152,36 @@ enable_signing = false
         println!("   📝 Created default config: .vac/config.toml");
     }
 
+    // Create empty rulebook template if not exists
+    let rules_path = vac_dir.join("rules.toml");
+    if !rules_path.exists() {
+        let rules_template = r#"# VAC Rulebook — team/repo constraints (overlay only)
+# VIL semantic contracts from llm_knowledge/ always take precedence over these rules.
+
+name = "Project Rules"
+
+# Example conventions:
+# [[conventions]]
+# id = "no-unwrap"
+# description = "Do not use .unwrap() in production code, use ? or proper error handling"
+# severity = "warn"
+
+# Example acceptance gates:
+# [[acceptance_gates]]
+# id = "tests-required"
+# description = "New public functions must have at least one test"
+# severity = "block"
+
+# Example policies:
+# [[policies]]
+# id = "no-secrets"
+# description = "Never commit API keys or secrets to source control"
+# severity = "block"
+"#;
+        std::fs::write(&rules_path, rules_template)?;
+        println!("   📋 Created rulebook template: .vac/rules.toml");
+    }
+
     // Add .vac to .gitignore if not already there
     let gitignore_path = project_root.join(".gitignore");
     if gitignore_path.exists() {

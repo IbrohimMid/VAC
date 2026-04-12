@@ -183,7 +183,6 @@ impl VacEngine {
         if profile.is_vil_project {
             info!(archetype = %profile.archetype, "VIL project detected");
             let kb = vil_knowledge::KnowledgeBase::load(&self.project_root);
-            // Convert to swarm's local VilProjectProfile type
             let swarm_profile = vil_swarm::VilProjectProfile {
                 archetype: convert_archetype(&profile.archetype),
                 vil_deps: profile.vil_deps.clone(),
@@ -192,6 +191,12 @@ impl VacEngine {
             };
             swarm.set_project_profile(swarm_profile);
             swarm.set_knowledge(kb);
+        }
+
+        // P2.3: load rulebook overlay (appended after VIL knowledge, never overrides it)
+        let rulebook = crate::rulebook::Rulebook::load(&self.project_root);
+        if let Some(overlay) = rulebook.to_prompt_overlay() {
+            swarm.set_rulebook(overlay);
         }
 
         self.swarm = Some(Arc::new(RwLock::new(swarm)));
