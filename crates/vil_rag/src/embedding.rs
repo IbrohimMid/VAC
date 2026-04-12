@@ -11,7 +11,7 @@ impl EmbeddingModel {
         let model = fastembed::TextEmbedding::try_new(fastembed::InitOptions::new(
             fastembed::EmbeddingModel::AllMiniLML6V2,
         ))
-        .map_err(|e| RagError::EmbeddingError(e.to_string()))?;
+        .map_err(|e| RagError::Embedding(e.to_string()))?;
 
         tracing::info!("Embedding model initialized: AllMiniLML6V2 (384 dimensions)");
         Ok(Self { model })

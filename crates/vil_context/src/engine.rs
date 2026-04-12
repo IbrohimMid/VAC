@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ContextEntry {
@@ -84,7 +84,13 @@ impl ContextEngine {
 
         let mut entries = Vec::new();
         for (i, chunk) in chunks.iter().enumerate() {
-            let alloc = self.shm.allocate_and_write(chunk.as_bytes()).await.ok();
+            let alloc = match self.shm.allocate_and_write(chunk.as_bytes()).await {
+                Ok(a) => Some(a),
+                Err(e) => {
+                    warn!("SHM allocation failed, falling back to heap: {}", e);
+                    None
+                }
+            };
             
             let entry = ContextEntry {
                 id: uuid::Uuid::new_v4().to_string(),

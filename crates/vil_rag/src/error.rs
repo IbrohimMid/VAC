@@ -5,7 +5,7 @@ pub enum RagError {
     #[error("Indexing error: {0}")]
     Indexing(String),
     #[error("Embedding error: {0}")]
-    EmbeddingError(String),
+    Embedding(String),
     #[error("Search error: {0}")]
     Search(String),
     #[error("Database error: {0}")]
