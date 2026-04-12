@@ -100,6 +100,9 @@ fn render_body(frame: &mut Frame, area: Rect, app: &mut TuiApp) {
 // ── Transcript ────────────────────────────────────────────────────────────────
 
 fn render_transcript(frame: &mut Frame, area: Rect, app: &mut TuiApp) {
+    // Store geometry for click detection
+    app.scroll.transcript.area = area;
+
     let max_width = area.width.saturating_sub(4) as usize;
     let visible_h = area.height.saturating_sub(2) as usize;
 
@@ -107,12 +110,7 @@ fn render_transcript(frame: &mut Frame, area: Rect, app: &mut TuiApp) {
     let total = all_lines.len();
 
     // Clamp scroll (writeback pattern from Stakpak view.rs)
-    let scroll = if app.scroll.transcript == usize::MAX {
-        total.saturating_sub(visible_h)
-    } else {
-        app.scroll.transcript.min(total.saturating_sub(visible_h))
-    };
-    app.scroll.transcript = scroll; // writeback
+    let scroll = app.scroll.transcript.clamp(total, visible_h);
 
     let visible: Vec<Line> = all_lines.into_iter().skip(scroll).take(visible_h).collect();
 
@@ -129,7 +127,10 @@ fn render_transcript(frame: &mut Frame, area: Rect, app: &mut TuiApp) {
 
 // ── Detail panel (bottom-left, contextual) ────────────────────────────────────
 
-fn render_detail_panel(frame: &mut Frame, area: Rect, app: &TuiApp) {
+fn render_detail_panel(frame: &mut Frame, area: Rect, app: &mut TuiApp) {
+    // Store geometry for click detection
+    app.scroll.detail.area = area;
+
     match &app.detail_panel {
         DetailPanel::LiveChanges => {
             let content = if app.live_diff_files.is_empty() {
@@ -214,6 +215,9 @@ fn render_inspector(frame: &mut Frame, area: Rect, app: &TuiApp) {
 // ── History ───────────────────────────────────────────────────────────────────
 
 fn render_history(frame: &mut Frame, area: Rect, app: &mut TuiApp) {
+    // Store geometry for click detection
+    app.scroll.history.area = area;
+
     let items: Vec<ListItem> = app.session().history.iter()
         .take(area.height.saturating_sub(2) as usize)
         .map(|e| {

@@ -77,14 +77,9 @@ impl SessionTab {
     }
 }
 
-// ── Scroll state ──────────────────────────────────────────────────────────────
+// ── Scroll state (re-export from services) ────────────────────────────────────
 
-#[derive(Default)]
-pub struct ScrollState {
-    /// usize::MAX = pinned to bottom
-    pub transcript: usize,
-    pub detail: usize,
-}
+pub use super::services::scroll::ScrollManager;
 
 // ── Main app state ────────────────────────────────────────────────────────────
 
@@ -97,7 +92,7 @@ pub struct TuiApp {
     pub focus: FocusPane,
     pub history_state: ListState,
     pub detail_panel: DetailPanel,
-    pub scroll: ScrollState,
+    pub scroll: ScrollManager,
     pub live_diff_files: Vec<String>,
     pub show_help: bool,
     pub active_provider: String,
@@ -133,7 +128,7 @@ impl TuiApp {
             focus: FocusPane::Composer,
             history_state: ListState::default(),
             detail_panel: DetailPanel::None,
-            scroll: ScrollState::default(),
+            scroll: ScrollManager::default(),
             live_diff_files: vec![],
             show_help: true,
             active_provider: "kilo".to_string(),
@@ -178,7 +173,7 @@ impl TuiApp {
         self.history_state = ListState::default();
         self.detail_panel = DetailPanel::None;
         self.streaming_assistant = None;
-        self.scroll.transcript = 0;
+        self.scroll.transcript.offset = 0;
         self.focus = FocusPane::Composer;
     }
 
@@ -203,9 +198,9 @@ impl TuiApp {
 
     pub fn scroll_up(&mut self) {
         match self.focus {
-            FocusPane::Transcript => { self.scroll.transcript = self.scroll.transcript.saturating_sub(3); }
+            FocusPane::Transcript => { self.scroll.transcript.scroll_up(3); }
             FocusPane::History => self.history_up(),
-            FocusPane::Detail => { self.scroll.detail = self.scroll.detail.saturating_sub(3); }
+            FocusPane::Detail => { self.scroll.detail.scroll_up(3); }
             _ => {}
         }
     }
@@ -213,12 +208,15 @@ impl TuiApp {
     pub fn scroll_down(&mut self) {
         match self.focus {
             FocusPane::Transcript => {
-                if self.scroll.transcript != usize::MAX {
-                    self.scroll.transcript += 3;
-                }
+                let total = self.session().transcript.len();
+                let height = self.scroll.transcript.area.height as usize;
+                self.scroll.transcript.scroll_down(3, total, height);
             }
             FocusPane::History => self.history_down(),
-            FocusPane::Detail => { self.scroll.detail += 3; }
+            FocusPane::Detail => {
+                let height = self.scroll.detail.area.height as usize;
+                self.scroll.detail.scroll_down(3, 20, height);
+            }
             _ => {}
         }
     }

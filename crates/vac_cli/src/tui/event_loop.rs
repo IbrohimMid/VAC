@@ -97,7 +97,7 @@ fn handle_task_event(app: &mut TuiApp, ev: TaskEvent) {
             app.show_help = false;
             app.live_diff_files.clear();
             app.detail_panel = DetailPanel::None;
-            app.scroll.transcript = usize::MAX;
+            app.scroll.transcript.pin_to_bottom();
             app.focus = FocusPane::Transcript;
         }
         TaskEvent::Update(update) => {
