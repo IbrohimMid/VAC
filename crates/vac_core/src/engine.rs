@@ -28,6 +28,7 @@ pub struct VacEngine {
     tool_router: Option<vac_tools::ToolRouter>,
     llm_router: Option<std::sync::Arc<vil_llm::LlmRouter>>,
     trace_recorder: Option<std::sync::Arc<std::sync::Mutex<vac_trace::TraceRecorder>>>,
+    vil_lsp: Option<Arc<crate::lsp::service::VilLspService>>,
 }
 
 impl VacEngine {
@@ -50,6 +51,7 @@ impl VacEngine {
             tool_router: None,
             llm_router: None,
             trace_recorder: None,
+            vil_lsp: None,
         })
     }
 
@@ -201,6 +203,35 @@ impl VacEngine {
 
         self.swarm = Some(Arc::new(RwLock::new(swarm)));
 
+        // Phase 6: start vil-lsp service for VIL projects
+        if profile.is_vil_project && self.config.vil_lsp.enable {
+            let lsp_config = &self.config.vil_lsp;
+            match tokio::time::timeout(
+                std::time::Duration::from_millis(lsp_config.startup_timeout_ms),
+                crate::lsp::service::VilLspService::new(lsp_config, self.project_root.clone()),
+            ).await {
+                Ok(Ok(svc)) => {
+                    if lsp_config.analyze_on_init {
+                        let _ = svc.analyze_workspace().await;
+                    }
+                    info!("vil-lsp service started");
+                    self.vil_lsp = Some(Arc::new(svc));
+                }
+                Ok(Err(e)) => {
+                    if lsp_config.fail_on_unavailable {
+                        return Err(VacError::Other(anyhow::anyhow!("vil-lsp unavailable: {e}")));
+                    }
+                    warn!(error = %e, "vil-lsp unavailable; continuing without editor diagnostics");
+                }
+                Err(_) => {
+                    if lsp_config.fail_on_unavailable {
+                        return Err(VacError::Other(anyhow::anyhow!("vil-lsp startup timed out")));
+                    }
+                    warn!("vil-lsp startup timed out; continuing without editor diagnostics");
+                }
+            }
+        }
+
         if let Some(ref swarm_arc) = self.swarm {
             let spawn_tool = SpawnSubtaskTool::new(swarm_arc.clone());
             registry.register(spawn_tool).await
@@ -326,6 +357,18 @@ impl VacEngine {
         let (swarm_tx, mut swarm_rx) = mpsc::unbounded_channel::<vil_swarm::AgentLoopEvent>();
         let session_id = self.session.read().await.id;
         let project_root = self.project_root.clone();
+
+        // Phase 6: inject LSP diagnostic context into swarm before execution
+        if let Some(ref lsp) = self.vil_lsp {
+            let ctx = lsp.prompt_context(self.config.vil_lsp.max_prompt_items).await;
+            if !ctx.is_empty() {
+                swarm.set_lsp_prompt_context(vil_swarm::ExternalDiagnosticContext {
+                    total_errors: ctx.total_errors,
+                    total_warnings: ctx.total_warnings,
+                    top_findings: ctx.top_findings,
+                });
+            }
+        }
         tokio::spawn(async move {
             while let Some(event) = swarm_rx.recv().await {
                 if let Some(ref recorder) = trace_handle {
@@ -423,6 +466,34 @@ impl VacEngine {
         } else {
             None
         };
+
+        // Phase 6: post-edit LSP recheck
+        if let Some(ref lsp) = self.vil_lsp {
+            if !execution.modified_files.is_empty() && self.config.vil_lsp.analyze_after_edit {
+                let _ = lsp.analyze_files(&execution.modified_files).await;
+                let snapshot = lsp.snapshot().await;
+                if let Some(ref tx) = updates {
+                    let _ = tx.send(RuntimeUpdate::LspDiagnostics(snapshot.clone()));
+                }
+                // strict-vil: block if LSP still reports errors on modified files
+                let profile = crate::profile::ProfileOverride::resolve(
+                    &crate::profile::ProfileName::from_str(
+                        &std::env::var("VAC_PROFILE").unwrap_or_default()
+                    )
+                );
+                if profile.validator_blocks && snapshot.total_errors > 0 {
+                    let post_errors = lsp.diagnostics_for_files(&execution.modified_files).await
+                        .into_iter()
+                        .filter(|d| d.severity == crate::lsp::types::LspSeverity::Error)
+                        .count();
+                    if post_errors > 0 {
+                        return Err(VacError::Task(format!(
+                            "vil-lsp reports {post_errors} remaining semantic error(s) on modified files (strict-vil gate)"
+                        )));
+                    }
+                }
+            }
+        }
 
         if let Some(ref recorder) = self.trace_recorder {
             if let Ok(mut rec) = recorder.lock() {
@@ -567,6 +638,11 @@ pub enum RuntimeUpdate {
         score: f64,
         issues: Vec<String>,
     },
+    LspStatus {
+        available: bool,
+        binary_path: String,
+    },
+    LspDiagnostics(crate::lsp::types::LspWorkspaceSnapshot),
     Completed(TaskResult),
     Failed(String),
 }

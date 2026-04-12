@@ -6,6 +6,7 @@ pub mod config;
 pub mod detector;
 pub mod engine;
 pub mod error;
+pub mod lsp;
 pub mod prelude;
 pub mod profile;
 pub mod rulebook;

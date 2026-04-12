@@ -34,6 +34,22 @@ pub async fn execute(project_root: PathBuf, force: bool) -> anyhow::Result<()> {
 # See https://vastar.id/docs/vac/config for full reference
 
 # =============================================================================
+# vil-lsp Integration (Phase 6)
+# =============================================================================
+# VAC integrates with vil-lsp for editor-grade semantic diagnostics.
+# Requires vil-lsp binary in PATH or set binary_path below.
+
+[vil_lsp]
+enable = true
+binary_path = "vil-lsp"
+arguments = []
+startup_timeout_ms = 3000
+max_prompt_items = 8
+fail_on_unavailable = false
+analyze_on_init = true
+analyze_after_edit = true
+
+# =============================================================================
 # VIL Knowledge Source of Truth
 # =============================================================================
 # Set this to the path of your VIL llm_knowledge corpus.

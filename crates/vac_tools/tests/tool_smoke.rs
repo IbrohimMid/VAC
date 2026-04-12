@@ -38,6 +38,7 @@ async fn registers_all_builtin_tools() {
             "sequential_think",
             "task_done",
             "todo_write",
+            "vil_diagnostics",
             "vil_knowledge",
             "vil_status",
         ]

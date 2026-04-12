@@ -20,6 +20,9 @@ pub struct VacConfig {
     pub swarm: SwarmConfig,
     /// Trace/audit settings
     pub trace: TraceConfig,
+    /// vil-lsp integration settings
+    #[serde(default)]
+    pub vil_lsp: VilLspConfig,
     /// MCP server configurations
     #[serde(default)]
     pub mcp_servers: Option<Vec<vac_tools::mcp::McpServerConfig>>,
@@ -288,7 +291,57 @@ impl Default for VacConfig {
                 enable_signing: false,
                 redaction: default_redaction(),
             },
+            vil_lsp: VilLspConfig::default(),
             mcp_servers: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VilLspConfig {
+    /// Enable vil-lsp integration
+    #[serde(default = "bool_true")]
+    pub enable: bool,
+    /// Path to vil-lsp binary (default: "vil-lsp" from PATH)
+    #[serde(default = "default_vil_lsp_binary")]
+    pub binary_path: std::path::PathBuf,
+    /// Extra arguments to pass to vil-lsp
+    #[serde(default)]
+    pub arguments: Vec<String>,
+    /// Startup timeout in milliseconds
+    #[serde(default = "default_lsp_timeout_ms")]
+    pub startup_timeout_ms: u64,
+    /// Max diagnostic items to inject into prompt
+    #[serde(default = "default_max_prompt_items")]
+    pub max_prompt_items: usize,
+    /// Fail engine init if vil-lsp is unavailable (default: false = soft fail)
+    #[serde(default)]
+    pub fail_on_unavailable: bool,
+    /// Analyze workspace on init
+    #[serde(default = "bool_true")]
+    pub analyze_on_init: bool,
+    /// Re-analyze modified files after task execution
+    #[serde(default = "bool_true")]
+    pub analyze_after_edit: bool,
+}
+
+fn default_vil_lsp_binary() -> std::path::PathBuf {
+    std::path::PathBuf::from("vil-lsp")
+}
+fn default_lsp_timeout_ms() -> u64 { 3000 }
+fn default_max_prompt_items() -> usize { 8 }
+
+impl Default for VilLspConfig {
+    fn default() -> Self {
+        Self {
+            enable: true,
+            binary_path: default_vil_lsp_binary(),
+            arguments: vec![],
+            startup_timeout_ms: default_lsp_timeout_ms(),
+            max_prompt_items: default_max_prompt_items(),
+            fail_on_unavailable: false,
+            analyze_on_init: true,
+            analyze_after_edit: true,
         }
     }
 }

@@ -36,6 +36,9 @@ pub enum RecordType {
     ContextRetrieval,
     ValidationResult,
     PolicyDecision,
+    LspStarted,
+    LspDiagnosticsSnapshot,
+    LspPostEditRecheck,
     Error,
 }
 

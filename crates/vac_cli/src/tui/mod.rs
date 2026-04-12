@@ -316,6 +316,23 @@ pub async fn run(project_root: PathBuf, _resume: bool) -> anyhow::Result<()> {
                         TuiApp::push_lane(&mut app.control_lane_log, format!("Failed: {reason}"));
                         app.set_activity("Failed", reason);
                     }
+                    RuntimeUpdate::LspStatus { available, binary_path } => {
+                        let msg = if available {
+                            format!("vil-lsp active: {binary_path}")
+                        } else {
+                            format!("vil-lsp unavailable: {binary_path}")
+                        };
+                        TuiApp::push_lane(&mut app.control_lane_log, msg.clone());
+                        app.set_activity("LSP", msg);
+                    }
+                    RuntimeUpdate::LspDiagnostics(snapshot) => {
+                        let msg = format!(
+                            "vil-lsp: {} errors, {} warnings",
+                            snapshot.total_errors, snapshot.total_warnings
+                        );
+                        TuiApp::push_lane(&mut app.control_lane_log, msg.clone());
+                        app.set_activity("LSP diagnostics", msg);
+                    }
                 },
                 TaskEvent::Finished {
                     prompt,

@@ -92,6 +92,22 @@ pub struct SwarmOrchestrator {
     pub rulebook: Option<String>,
     /// Sandbox registry for subagent lifecycle management
     sandbox_registry: Arc<crate::sandbox::SandboxRegistry>,
+    /// External LSP diagnostic context injected before agent loop
+    lsp_context: Option<ExternalDiagnosticContext>,
+}
+
+/// Lightweight diagnostic context from vil-lsp, decoupled from vac_core types.
+#[derive(Debug, Clone, Default)]
+pub struct ExternalDiagnosticContext {
+    pub total_errors: usize,
+    pub total_warnings: usize,
+    pub top_findings: Vec<String>,
+}
+
+impl ExternalDiagnosticContext {
+    pub fn is_empty(&self) -> bool {
+        self.total_errors == 0 && self.total_warnings == 0
+    }
 }
 
 /// Minimal re-export types needed from vac_core to avoid circular deps.
@@ -150,6 +166,7 @@ impl SwarmOrchestrator {
             knowledge: None,
             rulebook: None,
             sandbox_registry: Arc::new(crate::sandbox::SandboxRegistry::new()),
+            lsp_context: None,
         };
 
         let roles = [
@@ -185,6 +202,11 @@ impl SwarmOrchestrator {
     /// Set rulebook overlay (formatted prompt string). Appended after VIL knowledge, never before.
     pub fn set_rulebook(&mut self, overlay: String) {
         self.rulebook = Some(overlay);
+    }
+
+    /// Set LSP diagnostic context to inject into agent prompts.
+    pub fn set_lsp_prompt_context(&mut self, ctx: ExternalDiagnosticContext) {
+        self.lsp_context = Some(ctx);
     }
 
     pub async fn spawn_subtask(
@@ -452,7 +474,7 @@ Rules:
                             });
                         }
                         match call.name.as_str() {
-                            "file_read" | "glob" | "grep" | "search" | "vil_knowledge" => {
+                            "file_read" | "glob" | "grep" | "search" | "vil_knowledge" | "vil_diagnostics" => {
                                 parallel_reads.push(call)
                             }
                             _ => serial_writes.push(call),
@@ -715,6 +737,17 @@ Rules:
         // STAGE 2: CODER — use archetype-aware prompt if profile is available
         let coder_prompt = if let Some(ref profile) = self.project_profile {
             let mut prompt = Self::build_vil_coder_prompt(profile, self.knowledge.as_deref());
+            // LSP diagnostics injected AFTER VIL knowledge, BEFORE rulebook
+            if let Some(ref lsp) = self.lsp_context {
+                if !lsp.is_empty() {
+                    prompt.push_str(&format!(
+                        "\n\n---\n**vil-lsp diagnostics** ({} errors, {} warnings):\n{}\nFix these before writing new code.",
+                        lsp.total_errors,
+                        lsp.total_warnings,
+                        lsp.top_findings.iter().map(|f| format!("- {f}")).collect::<Vec<_>>().join("\n")
+                    ));
+                }
+            }
             // Rulebook overlay appended AFTER VIL knowledge — never overrides VIL semantics
             if let Some(ref rb) = self.rulebook {
                 prompt.push_str(rb);

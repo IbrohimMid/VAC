@@ -313,6 +313,9 @@ impl ToolRouter {
                 | "read_mcp_resource"
                 | "task_output"
                 | "config"
+                | "vil_diagnostics"
+                | "vil_knowledge"
+                | "vil_status"
         )
     }
 }

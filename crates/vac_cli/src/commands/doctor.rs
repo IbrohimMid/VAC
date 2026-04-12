@@ -13,6 +13,7 @@ pub async fn execute(project_root: PathBuf) -> anyhow::Result<()> {
     all_ok &= check_mcp_config(&project_root);
     all_ok &= check_skills(&project_root);
     all_ok &= check_config_contract(&project_root);
+    all_ok &= check_vil_lsp(&project_root);
 
     println!();
     if all_ok {
@@ -150,4 +151,47 @@ fn read_toml_bool(path: &Path, keys: &[&str]) -> Option<bool> {
     let mut current = &toml::Value::Table(table);
     for key in keys { current = current.get(key)?; }
     current.as_bool()
+}
+
+fn check_vil_lsp(root: &Path) -> bool {
+    // Resolve binary path from config or default "vil-lsp"
+    let config_path = root.join(".vac/config.toml");
+    let binary = read_toml_str(&config_path, &["vil_lsp", "binary_path"])
+        .unwrap_or_else(|| "vil-lsp".to_string());
+
+    let found = which_binary(&binary);
+    let cache_exists = root.join(".vac/cache/vil_lsp_diagnostics.json").exists();
+
+    if found {
+        if cache_exists {
+            println!("✓ vil-lsp binary found: {binary}, diagnostics cache present");
+        } else {
+            println!("✓ vil-lsp binary found: {binary} (no diagnostics cache yet — run a task first)");
+        }
+        true
+    } else {
+        let fail_on_unavailable = read_toml_bool(&config_path, &["vil_lsp", "fail_on_unavailable"])
+            .unwrap_or(false);
+        if fail_on_unavailable {
+            println!("✗ vil-lsp binary not found: {binary} (fail_on_unavailable = true)");
+            false
+        } else {
+            println!("⚠ vil-lsp binary not found: {binary} (continuing without editor diagnostics)");
+            println!("  Fix: install vil-lsp or set [vil_lsp] binary_path in .vac/config.toml");
+            true // soft fail
+        }
+    }
+}
+
+fn which_binary(name: &str) -> bool {
+    // Check if it's an absolute path that exists
+    let p = std::path::Path::new(name);
+    if p.is_absolute() {
+        return p.exists();
+    }
+    // Check PATH
+    std::env::var("PATH")
+        .unwrap_or_default()
+        .split(':')
+        .any(|dir| std::path::Path::new(dir).join(name).exists())
 }

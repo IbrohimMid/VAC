@@ -101,6 +101,9 @@ pub fn export_summary(
             RecordType::ContextRetrieval => "ContextRetrieval",
             RecordType::ValidationResult => "Validation",
             RecordType::PolicyDecision => "Policy",
+            RecordType::LspStarted => "LspStarted",
+            RecordType::LspDiagnosticsSnapshot => "LspDiagnostics",
+            RecordType::LspPostEditRecheck => "LspRecheck",
             RecordType::Error => "Error",
         };
 
