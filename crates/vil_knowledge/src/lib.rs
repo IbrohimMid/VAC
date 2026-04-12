@@ -5,6 +5,8 @@
 //!   2. `.vac/config.toml` → `[knowledge] root`
 //!   3. Hardcoded bootstrap (fallback only, not authoritative)
 
+pub mod canonical;
+
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};

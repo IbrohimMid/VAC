@@ -46,6 +46,20 @@ impl SemanticPlan {
         }
     }
 
+    /// Check that the plan's string fields don't contain legacy VIL aliases.
+    /// Returns (passed, warnings) — does not affect knowledge_gate_passed().
+    pub fn canonical_terms_gate(&self) -> (bool, Vec<String>) {
+        use vil_knowledge::canonical::{ValidationMode, check_terms};
+        let content = format!(
+            "{:?} {} {}",
+            self.kind,
+            self.required_patterns.join(" "),
+            self.rationale
+        );
+        let result = check_terms(&content, ValidationMode::Strict);
+        (result.passed, result.errors)
+    }
+
     pub fn to_markdown(&self) -> String {
         format!(
             "### VIL Semantic Plan\n\
