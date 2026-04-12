@@ -129,6 +129,8 @@ enum RuntimeAction {
     Status,
     /// List queued jobs
     Jobs,
+    /// Start the background scheduler (attaches live engine)
+    Start,
 }
 
 #[tokio::main]
@@ -174,6 +176,7 @@ async fn main() -> anyhow::Result<()> {
         Commands::Runtime { action } => match action {
             RuntimeAction::Status => commands::runtime::execute_status(project_root).await?,
             RuntimeAction::Jobs => commands::runtime::execute_jobs(project_root).await?,
+            RuntimeAction::Start => commands::runtime::execute_start(project_root).await?,
         },
     }
 

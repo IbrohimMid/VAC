@@ -135,6 +135,95 @@ impl SandboxRegistry {
         tracing::debug!(%id, "Sandbox completed");
     }
 
+    /// Build a patch result by diffing overlay files against the working_dir originals.
+    pub async fn build_patch(&self, id: Uuid) -> Option<SandboxPatchResult> {
+        let sandboxes = self.sandboxes.read().await;
+        let h = sandboxes.get(&id)?;
+
+        let mut created = Vec::new();
+        let mut modified = Vec::new();
+        let mut diff_lines = Vec::new();
+
+        let Ok(entries) = std::fs::read_dir(&h.overlay_dir) else { return None };
+
+        for entry in entries.flatten() {
+            let overlay_path = entry.path();
+            let file_name = overlay_path.file_name()?.to_string_lossy().to_string();
+            // Reverse the __ → / encoding used in journal
+            let rel_path = file_name.replace("__", "/");
+            let original_path = h.working_dir.join(&rel_path);
+
+            let overlay_content = std::fs::read_to_string(&overlay_path).unwrap_or_default();
+
+            if original_path.exists() {
+                let original_content = std::fs::read_to_string(&original_path).unwrap_or_default();
+                if original_content != overlay_content {
+                    modified.push(rel_path.clone());
+                    diff_lines.push(format!("--- a/{rel_path}"));
+                    diff_lines.push(format!("+++ b/{rel_path}"));
+                    // Simple line-level diff
+                    for (i, (orig, new)) in original_content.lines()
+                        .zip(overlay_content.lines())
+                        .enumerate()
+                    {
+                        if orig != new {
+                            diff_lines.push(format!("@@ line {} @@", i + 1));
+                            diff_lines.push(format!("-{orig}"));
+                            diff_lines.push(format!("+{new}"));
+                        }
+                    }
+                }
+            } else {
+                created.push(rel_path.clone());
+                diff_lines.push(format!("--- /dev/null"));
+                diff_lines.push(format!("+++ b/{rel_path}"));
+                for line in overlay_content.lines() {
+                    diff_lines.push(format!("+{line}"));
+                }
+            }
+        }
+
+        Some(SandboxPatchResult {
+            created_files: created,
+            modified_files: modified,
+            patch_summary: diff_lines.join("\n"),
+        })
+    }
+
+    /// Apply a sandbox patch to the real working directory.
+    pub async fn merge_patch(&self, id: Uuid) -> Result<(), String> {
+        let patch = self.build_patch(id).await
+            .ok_or_else(|| format!("No patch available for sandbox {id}"))?;
+
+        let sandboxes = self.sandboxes.read().await;
+        let h = sandboxes.get(&id)
+            .ok_or_else(|| format!("Sandbox {id} not found"))?;
+
+        // Apply: copy overlay files to working_dir
+        let Ok(entries) = std::fs::read_dir(&h.overlay_dir) else {
+            return Err(format!("Cannot read overlay dir: {}", h.overlay_dir.display()));
+        };
+
+        for entry in entries.flatten() {
+            let overlay_path = entry.path();
+            let file_name = overlay_path.file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("")
+                .to_string();
+            let rel_path = file_name.replace("__", "/");
+            let dest = h.working_dir.join(&rel_path);
+
+            if let Some(parent) = dest.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            std::fs::copy(&overlay_path, &dest)
+                .map_err(|e| format!("Failed to apply patch for {rel_path}: {e}"))?;
+        }
+
+        tracing::info!(%id, created = patch.created_files.len(), modified = patch.modified_files.len(), "Sandbox patch merged");
+        Ok(())
+    }
+
     pub async fn fail(&self, id: Uuid, reason: String) {
         let mut sandboxes = self.sandboxes.write().await;
         if let Some(h) = sandboxes.get_mut(&id) {

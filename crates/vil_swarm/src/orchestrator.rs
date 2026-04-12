@@ -255,15 +255,17 @@ impl SwarmOrchestrator {
 
         match result {
             Ok(summary) => {
-                let patch = if !modified_files.is_empty() || !created_files.is_empty() {
-                    Some(crate::sandbox::SandboxPatchResult {
-                        created_files: created_files.clone(),
-                        modified_files: modified_files.clone(),
-                        patch_summary: format!("{} created, {} modified", created_files.len(), modified_files.len()),
-                    })
-                } else { None };
-                self.sandbox_registry.complete(sandbox_id, patch).await;
-                Ok(SubtaskResult { role, summary, modified_files, created_files, tokens_used: total_tokens, success: true, error: None })
+                let patch = self.sandbox_registry.build_patch(sandbox_id).await;
+                self.sandbox_registry.complete(sandbox_id, patch.clone()).await;
+                Ok(SubtaskResult {
+                    role,
+                    summary,
+                    modified_files: patch.as_ref().map(|p| p.modified_files.clone()).unwrap_or(modified_files),
+                    created_files: patch.as_ref().map(|p| p.created_files.clone()).unwrap_or(created_files),
+                    tokens_used: total_tokens,
+                    success: true,
+                    error: None,
+                })
             }
             Err(e) => {
                 self.sandbox_registry.fail(sandbox_id, e.to_string()).await;

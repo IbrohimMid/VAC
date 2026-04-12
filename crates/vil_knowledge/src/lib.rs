@@ -166,12 +166,84 @@ impl KnowledgeBase {
     /// Load from corpus if available, else bootstrap. Use this as the primary constructor.
     pub fn load(project_root: &Path) -> Self {
         match Self::resolve_corpus_root(project_root) {
-            Some(root) => Self::load_from_corpus(&root),
+            Some(root) => {
+                // Check digest cache before full scan
+                let cache_path = project_root.join(".vac/cache/knowledge_cache.json");
+                if let Some(cached) = Self::load_from_cache(&root, &cache_path) {
+                    return cached;
+                }
+                let kb = Self::load_from_corpus(&root);
+                // Persist cache if authoritative
+                if kb.is_authoritative {
+                    let _ = Self::save_cache(&kb, &root, &cache_path);
+                }
+                kb
+            }
             None => {
                 tracing::debug!("No corpus root configured, using bootstrap knowledge");
                 Self::bootstrap()
             }
         }
+    }
+
+    /// Load from digest cache if corpus hasn't changed.
+    fn load_from_cache(corpus_root: &Path, cache_path: &Path) -> Option<Self> {
+        if !cache_path.exists() { return None; }
+        let cache_content = std::fs::read_to_string(cache_path).ok()?;
+        let cached: serde_json::Value = serde_json::from_str(&cache_content).ok()?;
+
+        // Verify digest matches current corpus
+        let cached_digest = cached["corpus_digest"].as_str()?;
+        let current_digest = Self::corpus_digest(corpus_root)?;
+        if cached_digest != current_digest {
+            tracing::debug!("Corpus digest changed, invalidating knowledge cache");
+            return None;
+        }
+
+        // Deserialize cached KB
+        let kb: Self = serde_json::from_value(cached["knowledge"].clone()).ok()?;
+        tracing::info!(digest = %current_digest, "Knowledge loaded from cache");
+        Some(kb)
+    }
+
+    fn save_cache(kb: &Self, corpus_root: &Path, cache_path: &Path) -> std::io::Result<()> {
+        let digest = Self::corpus_digest(corpus_root).unwrap_or_default();
+        let cache = serde_json::json!({
+            "corpus_digest": digest,
+            "knowledge": kb
+        });
+        if let Some(parent) = cache_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(cache_path, serde_json::to_string(&cache).unwrap_or_default())
+    }
+
+    /// Compute a simple digest of all .md files in the corpus root.
+    fn corpus_digest(root: &Path) -> Option<String> {
+        use std::collections::BTreeMap;
+        let mut files: BTreeMap<String, u64> = BTreeMap::new();
+
+        let walker = walkdir::WalkDir::new(root)
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path().extension().is_some_and(|x| x == "md"));
+
+        for entry in walker {
+            let path = entry.path();
+            let rel = path.strip_prefix(root).ok()?.display().to_string();
+            let meta = std::fs::metadata(path).ok()?;
+            // Use file size + mtime as cheap digest
+            let mtime = meta.modified().ok()?
+                .duration_since(std::time::UNIX_EPOCH).ok()?
+                .as_secs();
+            files.insert(rel, meta.len() ^ (mtime << 32));
+        }
+
+        if files.is_empty() { return None; }
+
+        // Simple hash: XOR all values, concatenate sorted keys
+        let hash: u64 = files.values().fold(0u64, |acc, &v| acc.wrapping_add(v));
+        Some(format!("{hash:016x}"))
     }
 
     pub fn bootstrap() -> Self {

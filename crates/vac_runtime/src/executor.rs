@@ -1,4 +1,6 @@
 use std::path::PathBuf;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 use crate::jobs::{Job, JobKind};
 
@@ -20,12 +22,10 @@ impl OperatingMode {
         }
     }
 
-    /// Whether this mode allows writing files without explicit approval.
     pub fn allows_auto_write(&self) -> bool {
         matches!(self, Self::AutoFixLowRisk)
     }
 
-    /// Whether this mode produces patch proposals.
     pub fn produces_patches(&self) -> bool {
         matches!(self, Self::PatchProposal | Self::AutoFixLowRisk)
     }
@@ -34,22 +34,45 @@ impl OperatingMode {
 pub struct TaskExecutor {
     pub project_root: PathBuf,
     pub operating_mode: OperatingMode,
+    /// Live engine handle — None until attach_engine() is called.
+    engine: Option<Arc<Mutex<vac_core::VacEngine>>>,
 }
 
 impl TaskExecutor {
     pub fn new(project_root: PathBuf, mode: OperatingMode) -> Self {
-        Self { project_root, operating_mode: mode }
+        Self { project_root, operating_mode: mode, engine: None }
+    }
+
+    /// Attach a live VacEngine. Must be called before executing RunTask jobs.
+    pub fn attach_engine(&mut self, engine: Arc<Mutex<vac_core::VacEngine>>) {
+        self.engine = Some(engine);
     }
 
     pub async fn execute(&self, job: &Job) -> anyhow::Result<String> {
         match &job.kind {
             JobKind::RunTask { description } => {
-                // In production: delegate to VacEngine
-                // For now: return mode-aware summary
-                if self.operating_mode == OperatingMode::MonitorOnly {
-                    Ok(format!("Monitor-only: would run task '{description}'"))
-                } else {
-                    Ok(format!("Task queued for execution: '{description}'"))
+                match self.operating_mode {
+                    OperatingMode::MonitorOnly => {
+                        Ok(format!("Monitor-only: would run '{description}' (engine not invoked)"))
+                    }
+                    OperatingMode::SuggestOnly => {
+                        Ok(format!("Suggest-only: task '{description}' noted but not executed"))
+                    }
+                    OperatingMode::PatchProposal | OperatingMode::AutoFixLowRisk => {
+                        // Delegate to real engine
+                        let engine = self.engine.as_ref()
+                            .ok_or_else(|| anyhow::anyhow!(
+                                "TaskExecutor has no engine attached — call attach_engine() first"
+                            ))?;
+                        let result = engine.lock().await.run_task(description).await
+                            .map_err(|e| anyhow::anyhow!("Engine error: {e}"))?;
+                        Ok(format!(
+                            "Task completed: {} | modified: {} | tokens: {}",
+                            result.summary,
+                            result.modified_files.len(),
+                            result.total_tokens_used
+                        ))
+                    }
                 }
             }
             JobKind::DiagnosticSweep => {
@@ -61,18 +84,36 @@ impl TaskExecutor {
                     let warnings = snap["total_warnings"].as_u64().unwrap_or(0);
                     Ok(format!("Diagnostic sweep: {errors} errors, {warnings} warnings"))
                 } else {
-                    Ok("Diagnostic sweep: no cache found".to_string())
+                    Ok("Diagnostic sweep: no cache found (vil-lsp not running)".to_string())
                 }
             }
             JobKind::RulebookComplianceCheck => {
-                Ok("Rulebook compliance check completed".to_string())
+                let books = vac_core::rulebook::RulebookLoader::load_all(&self.project_root, &[]);
+                let result = vac_core::rulebook::validate_rulebooks(&books);
+                if result.is_valid() {
+                    Ok(format!("Rulebook compliance: {} book(s) valid", books.len()))
+                } else {
+                    Ok(format!(
+                        "Rulebook compliance: {} error(s) — {}",
+                        result.errors.len(),
+                        result.errors.join("; ")
+                    ))
+                }
             }
             JobKind::PatchProposal { files } => {
-                if self.operating_mode.produces_patches() {
-                    Ok(format!("Patch proposal for {} file(s)", files.len()))
-                } else {
-                    Ok(format!("Patch proposal skipped (mode: {:?})", self.operating_mode))
+                if !self.operating_mode.produces_patches() {
+                    return Ok(format!("Patch proposal skipped (mode: {:?})", self.operating_mode));
                 }
+                let engine = self.engine.as_ref()
+                    .ok_or_else(|| anyhow::anyhow!("No engine attached for patch proposal"))?;
+                let task = format!("Review and propose patches for: {}", files.join(", "));
+                let result = engine.lock().await.run_task(&task).await
+                    .map_err(|e| anyhow::anyhow!("Engine error: {e}"))?;
+                Ok(format!(
+                    "Patch proposal: {} file(s) modified — {}",
+                    result.modified_files.len(),
+                    result.summary
+                ))
             }
         }
     }
@@ -83,6 +124,6 @@ pub fn is_low_risk_tool(tool_name: &str) -> bool {
     matches!(
         tool_name,
         "file_read" | "glob" | "grep" | "search"
-            | "vil_knowledge" | "vil_diagnostics" | "vil_status"
+            | "vil_knowledge" | "vil_diagnostics" | "vil_status" | "vil_lsp_query"
     )
 }
