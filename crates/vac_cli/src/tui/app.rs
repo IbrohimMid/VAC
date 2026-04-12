@@ -218,6 +218,8 @@ impl TuiApp {
         self.history.select_prev(&history);
         if let Some(i) = self.history.selected() {
             self.detail = DetailMode::TaskDetail(i);
+            // Sync scroll to keep selected item visible
+            self.scroll.history.offset = i * 2;
         }
     }
 
@@ -226,6 +228,8 @@ impl TuiApp {
         self.history.select_next(&history);
         if let Some(i) = self.history.selected() {
             self.detail = DetailMode::TaskDetail(i);
+            // Sync scroll to keep selected item visible
+            self.scroll.history.offset = i * 2;
         }
     }
 

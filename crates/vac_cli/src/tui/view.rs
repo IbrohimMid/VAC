@@ -210,23 +210,35 @@ fn render_history(frame: &mut Frame, area: Rect, app: &mut TuiApp) {
 
     let visible_h = area.height.saturating_sub(2) as usize;
     let total_items = app.session().history.len();
-    let total_rows = total_items * 2; // Each item is 2 visual rows
+    let total_rows = total_items * 2;
     
     // Clamp scroll
     let scroll_offset = app.scroll.history.clamp(total_rows, visible_h);
     let skip_items = scroll_offset / 2;
     
-    // Render items with scroll offset
-    let items = render_history_items(
-        &app.session().history.iter().skip(skip_items).cloned().collect::<Vec<_>>(),
-        visible_h,
-    );
+    // Get visible slice
+    let visible_history: Vec<_> = app.session().history.iter()
+        .skip(skip_items)
+        .take(visible_h / 2 + 1)
+        .cloned()
+        .collect();
+    let items = render_history_items(&visible_history, visible_h);
+
+    // Rebase selection to local window
+    let mut state = app.history.list.clone();
+    if let Some(global_idx) = app.history.selected() {
+        let local_idx = global_idx.saturating_sub(skip_items);
+        if local_idx < visible_history.len() {
+            state.select(Some(local_idx));
+        } else {
+            state.select(None);
+        }
+    }
 
     let focused = app.focus == FocusPane::History;
     let border_style = if focused { Style::default().fg(Color::Yellow) } else { Style::default().fg(Color::Blue) };
     let title = if focused { "History [↑↓ Enter R D]" } else { "History [Tab to focus]" };
 
-    let mut state = app.history.list.clone();
     frame.render_stateful_widget(
         ratatui::widgets::List::new(items)
             .block(Block::default().title(title).borders(Borders::ALL).border_style(border_style))
