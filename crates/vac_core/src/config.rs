@@ -23,6 +23,12 @@ pub struct VacConfig {
     /// vil-lsp integration settings
     #[serde(default)]
     pub vil_lsp: VilLspConfig,
+    /// Rulebook governance settings
+    #[serde(default)]
+    pub rulebook: RulebookConfig,
+    /// Background runtime settings
+    #[serde(default)]
+    pub runtime: RuntimeConfig,
     /// MCP server configurations
     #[serde(default)]
     pub mcp_servers: Option<Vec<vac_tools::mcp::McpServerConfig>>,
@@ -292,6 +298,8 @@ impl Default for VacConfig {
                 redaction: default_redaction(),
             },
             vil_lsp: VilLspConfig::default(),
+            rulebook: RulebookConfig::default(),
+            runtime: RuntimeConfig::default(),
             mcp_servers: None,
         }
     }
@@ -342,6 +350,49 @@ impl Default for VilLspConfig {
             fail_on_unavailable: false,
             analyze_on_init: true,
             analyze_after_edit: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RulebookConfig {
+    #[serde(default = "bool_true")]
+    pub enable: bool,
+    /// Additional rulebook search paths (beyond .vac/rules.toml and .vac/rulebooks/)
+    #[serde(default)]
+    pub paths: Vec<PathBuf>,
+    /// Fail engine init if any rulebook has validation errors
+    #[serde(default)]
+    pub fail_on_invalid: bool,
+}
+
+impl Default for RulebookConfig {
+    fn default() -> Self {
+        Self { enable: true, paths: vec![], fail_on_invalid: false }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RuntimeConfig {
+    /// Enable background task runtime
+    #[serde(default)]
+    pub enable: bool,
+    /// "monitor-only" | "suggest-only" | "patch-proposal" | "auto-fix-low-risk"
+    #[serde(default = "default_operating_mode")]
+    pub operating_mode: String,
+    #[serde(default = "default_max_concurrent_jobs")]
+    pub max_concurrent_jobs: usize,
+}
+
+fn default_operating_mode() -> String { "monitor-only".to_string() }
+fn default_max_concurrent_jobs() -> usize { 2 }
+
+impl Default for RuntimeConfig {
+    fn default() -> Self {
+        Self {
+            enable: false,
+            operating_mode: default_operating_mode(),
+            max_concurrent_jobs: default_max_concurrent_jobs(),
         }
     }
 }

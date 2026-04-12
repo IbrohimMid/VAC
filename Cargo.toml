@@ -15,6 +15,7 @@ members = [
     "crates/vac_tools",
     "crates/vac_trace",
     "crates/vac_cli",
+    "crates/vac_runtime",
 ]
 resolver = "2"
 
@@ -104,6 +105,7 @@ vil_inference = { path = "crates/vil_inference" }
 vil_rag = { path = "crates/vil_rag" }
 vil_metrics = { path = "crates/vil_metrics" }
 vil_validate = { path = "crates/vil_validate" }
+vac_runtime = { path = "crates/vac_runtime" }
 
 [profile.release]
 lto = "thin"

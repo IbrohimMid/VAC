@@ -3966,6 +3966,7 @@ dependencies = [
  "tracing-subscriber",
  "uuid",
  "vac_core",
+ "vac_runtime",
  "vac_tools",
  "vil_swarm",
 ]
@@ -3997,6 +3998,23 @@ dependencies = [
  "vil_trust",
  "vil_validate",
  "walkdir",
+]
+
+[[package]]
+name = "vac_runtime"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "uuid",
+ "vac_core",
+ "vac_tools",
+ "vac_trace",
 ]
 
 [[package]]

@@ -1,23 +1,60 @@
-//! Sandboxed subagent lifecycle — ephemeral and persistent execution modes.
+//! Sandboxed subagent runtime — production-grade lifecycle management.
 //!
-//! Ephemeral: isolated context, cleaned up after task completes.
-//! Persistent: shared context, survives across tasks (e.g. long-running analysis).
+//! Ephemeral: isolated overlay dir, auto-cleaned on complete/fail.
+//! Persistent: overlay survives across tasks in .vac/sandboxes/<id>/.
 //!
-//! All subagents remain subject to VIL semantic planner and authoritative knowledge.
-//! Sandbox = execution isolation, NOT semantic independence.
+//! Subagents write to overlay, not directly to repo.
+//! Parent agent reviews SandboxPatchResult before merging.
 
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SandboxMode {
-    /// Isolated context, cleaned up after task. Use for: analysis, experiments, compile checks.
     Ephemeral,
-    /// Shared context, survives across tasks. Use for: long-running multi-step work.
     Persistent,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SandboxSpec {
+    pub mode: SandboxMode,
+    pub working_dir: PathBuf,
+    pub mount_project_readonly: bool,
+    pub allow_shell: bool,
+    pub max_runtime_secs: u64,
+    /// Tools explicitly allowed (empty = use default policy)
+    #[serde(default)]
+    pub allowed_tools: Vec<String>,
+    /// Tools explicitly denied
+    #[serde(default)]
+    pub denied_tools: Vec<String>,
+}
+
+impl Default for SandboxSpec {
+    fn default() -> Self {
+        Self {
+            mode: SandboxMode::Ephemeral,
+            working_dir: PathBuf::from("."),
+            mount_project_readonly: true,
+            allow_shell: false,
+            max_runtime_secs: 300,
+            allowed_tools: vec![],
+            denied_tools: vec![],
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SandboxPatchResult {
+    pub created_files: Vec<String>,
+    pub modified_files: Vec<String>,
+    /// Unified diff of all changes
+    pub patch_summary: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -33,75 +70,81 @@ pub struct SandboxHandle {
     pub id: Uuid,
     pub mode: SandboxMode,
     pub status: SandboxStatus,
-    pub working_dir: std::path::PathBuf,
-    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub working_dir: PathBuf,
+    pub overlay_dir: PathBuf,
+    pub created_at: DateTime<Utc>,
     pub task_description: String,
+    pub patch_result: Option<SandboxPatchResult>,
 }
 
-/// Registry of active sandboxes.
 pub struct SandboxRegistry {
     sandboxes: RwLock<HashMap<Uuid, SandboxHandle>>,
-}
-
-impl Default for SandboxRegistry {
-    fn default() -> Self {
-        Self { sandboxes: RwLock::new(HashMap::new()) }
-    }
+    base_dir: PathBuf,
 }
 
 impl SandboxRegistry {
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new(base_dir: PathBuf) -> Self {
+        Self { sandboxes: RwLock::new(HashMap::new()), base_dir }
     }
 
-    /// Spawn a new sandbox. Returns the handle ID.
-    pub async fn spawn(
-        &self,
-        mode: SandboxMode,
-        working_dir: std::path::PathBuf,
-        task_description: &str,
-    ) -> Uuid {
+    pub fn with_project_root(project_root: &Path) -> Self {
+        Self::new(project_root.join(".vac/sandboxes"))
+    }
+
+    /// Spawn a sandbox with the given spec. Returns the handle.
+    pub async fn spawn(&self, spec: &SandboxSpec, task_description: &str) -> SandboxHandle {
         let id = Uuid::new_v4();
+
+        let overlay_dir = match spec.mode {
+            SandboxMode::Ephemeral => {
+                // Use system temp dir for ephemeral
+                std::env::temp_dir().join(format!("vac-sandbox-{id}"))
+            }
+            SandboxMode::Persistent => {
+                self.base_dir.join(id.to_string())
+            }
+        };
+        let _ = std::fs::create_dir_all(&overlay_dir);
+
         let handle = SandboxHandle {
             id,
-            mode,
+            mode: spec.mode.clone(),
             status: SandboxStatus::Active,
-            working_dir,
-            created_at: chrono::Utc::now(),
+            working_dir: spec.working_dir.clone(),
+            overlay_dir,
+            created_at: Utc::now(),
             task_description: task_description.to_string(),
+            patch_result: None,
         };
-        self.sandboxes.write().await.insert(id, handle);
-        tracing::info!(%id, "Sandbox spawned");
-        id
+
+        self.sandboxes.write().await.insert(id, handle.clone());
+        tracing::info!(%id, mode = ?spec.mode, "Sandbox spawned");
+        handle
     }
 
-    pub async fn complete(&self, id: Uuid) {
-        if let Some(h) = self.sandboxes.write().await.get_mut(&id) {
+    pub async fn complete(&self, id: Uuid, patch: Option<SandboxPatchResult>) {
+        let mut sandboxes = self.sandboxes.write().await;
+        if let Some(h) = sandboxes.get_mut(&id) {
             h.status = SandboxStatus::Completed;
+            h.patch_result = patch;
+            if h.mode == SandboxMode::Ephemeral {
+                let _ = std::fs::remove_dir_all(&h.overlay_dir);
+                h.status = SandboxStatus::Cleaned;
+            }
         }
-        // Ephemeral sandboxes are cleaned immediately on completion
-        self.cleanup_ephemeral(id).await;
+        tracing::debug!(%id, "Sandbox completed");
     }
 
     pub async fn fail(&self, id: Uuid, reason: String) {
-        if let Some(h) = self.sandboxes.write().await.get_mut(&id) {
-            h.status = SandboxStatus::Failed(reason);
-        }
-        self.cleanup_ephemeral(id).await;
-    }
-
-    async fn cleanup_ephemeral(&self, id: Uuid) {
-        let is_ephemeral = self.sandboxes.read().await
-            .get(&id)
-            .map(|h| h.mode == SandboxMode::Ephemeral)
-            .unwrap_or(false);
-
-        if is_ephemeral {
-            if let Some(h) = self.sandboxes.write().await.get_mut(&id) {
+        let mut sandboxes = self.sandboxes.write().await;
+        if let Some(h) = sandboxes.get_mut(&id) {
+            h.status = SandboxStatus::Failed(reason.clone());
+            if h.mode == SandboxMode::Ephemeral {
+                let _ = std::fs::remove_dir_all(&h.overlay_dir);
                 h.status = SandboxStatus::Cleaned;
             }
-            tracing::debug!(%id, "Ephemeral sandbox cleaned");
         }
+        tracing::warn!(%id, %reason, "Sandbox failed");
     }
 
     pub async fn get(&self, id: Uuid) -> Option<SandboxHandle> {
@@ -109,21 +152,18 @@ impl SandboxRegistry {
     }
 
     pub async fn list_active(&self) -> Vec<SandboxHandle> {
-        self.sandboxes.read().await
-            .values()
+        self.sandboxes.read().await.values()
             .filter(|h| h.status == SandboxStatus::Active)
             .cloned()
             .collect()
     }
 
-    /// Teardown all persistent sandboxes (e.g. on engine shutdown).
     pub async fn teardown_all(&self) {
-        let ids: Vec<Uuid> = self.sandboxes.read().await.keys().cloned().collect();
-        for id in ids {
-            if let Some(h) = self.sandboxes.write().await.get_mut(&id) {
-                if h.status == SandboxStatus::Active {
-                    h.status = SandboxStatus::Cleaned;
-                }
+        let mut sandboxes = self.sandboxes.write().await;
+        for h in sandboxes.values_mut() {
+            if h.status == SandboxStatus::Active {
+                let _ = std::fs::remove_dir_all(&h.overlay_dir);
+                h.status = SandboxStatus::Cleaned;
             }
         }
         tracing::info!("All sandboxes torn down");

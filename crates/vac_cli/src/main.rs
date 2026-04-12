@@ -16,101 +16,84 @@ use tracing_subscriber::{EnvFilter, fmt};
     long_about = None,
 )]
 struct Cli {
-    /// Path to project root (defaults to current directory)
     #[arg(short = 'C', long, global = true)]
     project: Option<PathBuf>,
-
-    /// Verbosity level (-v, -vv, -vvv)
     #[arg(short, long, action = clap::ArgAction::Count, global = true)]
     verbose: u8,
-
-    /// Output format: "text", "json"
     #[arg(long, default_value = "text", global = true)]
     format: String,
-
     #[command(subcommand)]
     command: Commands,
 }
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Check VAC subsystem readiness (knowledge, SHM, trace, MCP, skills, config)
+    /// Check VAC subsystem readiness
     Doctor,
-
-    /// Initialize VIL project context, scan codebase, build IR index
+    /// Initialize VIL project context
     Init {
-        /// Force re-initialization even if already initialized
         #[arg(short, long)]
         force: bool,
     },
-
     /// Execute a single task via agent swarm
     Run {
-        /// Task description
         task: String,
-
-        /// Priority: low, normal, high, critical
         #[arg(short, long, default_value = "normal")]
         priority: String,
-
-        /// Execution profile: default, strict-vil, migration, exploration, spec-hardening
         #[arg(long, default_value = "default")]
         profile: String,
-
-        /// Require approval before applying changes
         #[arg(long)]
         approve: bool,
-
-        /// Restrict to specific files/directories
         #[arg(short, long)]
         target: Vec<String>,
     },
-
-    /// Interactive REPL mode with streaming output
+    /// Interactive REPL mode
     Interactive {
-        /// Resume previous session
         #[arg(long)]
         resume: bool,
     },
-
-    /// Show active agents, memory usage, task progress
+    /// Show engine status
     Status,
-
     /// Manage configuration
     Config {
         #[command(subcommand)]
         action: ConfigAction,
     },
-
-    /// Manage VAC authentication for Kilo Gateway
+    /// Manage authentication
     Auth {
         #[command(subcommand)]
         action: AuthAction,
     },
-
-    /// Export session as VAC artifact
+    /// Export session artifact
     Export {
-        /// Output path
         #[arg(short, long)]
         output: Option<PathBuf>,
-
-        /// Export format: vac-cbor, opencode-json, claude-jsonl
         #[arg(short, long, default_value = "vac-cbor")]
         format: String,
-
-        /// Enable COSE signing
         #[arg(long)]
         sign: bool,
+    },
+    /// Manage rulebooks
+    Rulebook {
+        #[command(subcommand)]
+        action: RulebookAction,
+    },
+    /// Start ACP editor-facing agent server
+    Acp {
+        #[arg(long, default_value = "4123")]
+        port: u16,
+    },
+    /// Background runtime management
+    Runtime {
+        #[command(subcommand)]
+        action: RuntimeAction,
     },
 }
 
 #[derive(Subcommand)]
 enum ConfigAction {
-    /// Show current configuration
     Show,
-    /// Set a configuration value
     Set { key: String, value: String },
-    /// Add an LLM provider
     AddProvider {
         name: String,
         #[arg(long)]
@@ -124,16 +107,28 @@ enum ConfigAction {
 
 #[derive(Subcommand)]
 enum AuthAction {
-    /// Save a Kilo Gateway token for future VAC sessions
     Login {
-        /// Token value to save. If omitted, VAC will prompt on stdin.
         #[arg(long)]
         token: Option<String>,
     },
-    /// Show whether VAC can authenticate
     Status,
-    /// Remove saved VAC authentication
     Logout,
+}
+
+#[derive(Subcommand)]
+enum RulebookAction {
+    /// List all loaded rulebooks
+    List,
+    /// Validate all rulebooks
+    Validate,
+}
+
+#[derive(Subcommand)]
+enum RuntimeAction {
+    /// Show runtime status
+    Status,
+    /// List queued jobs
+    Jobs,
 }
 
 #[tokio::main]
@@ -141,7 +136,6 @@ async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     let interactive_mode = matches!(&cli.command, Commands::Interactive { .. });
 
-    // Keep alternate-screen TUI clean by disabling terminal log output in interactive mode.
     if !interactive_mode {
         let filter = match cli.verbose {
             0 => "warn,vac=info",
@@ -160,40 +154,27 @@ async fn main() -> anyhow::Result<()> {
         .unwrap_or_else(|| std::env::current_dir().expect("Failed to get current directory"));
 
     match cli.command {
-        Commands::Doctor => {
-            commands::doctor::execute(project_root).await?;
-        }
-        Commands::Init { force } => {
-            commands::init::execute(project_root, force).await?;
-        }
-        Commands::Run {
-            task,
-            priority,
-            profile,
-            approve,
-            target,
-        } => {
+        Commands::Doctor => commands::doctor::execute(project_root).await?,
+        Commands::Init { force } => commands::init::execute(project_root, force).await?,
+        Commands::Run { task, priority, profile, approve, target } => {
             commands::run::execute(project_root, task, priority, profile, approve, target).await?;
         }
-        Commands::Interactive { resume } => {
-            commands::interactive::execute(project_root, resume).await?;
-        }
-        Commands::Status => {
-            commands::status::execute(project_root).await?;
-        }
-        Commands::Config { action } => {
-            commands::config::execute(project_root, action).await?;
-        }
-        Commands::Auth { action } => {
-            commands::auth::execute(action).await?;
-        }
-        Commands::Export {
-            output,
-            format,
-            sign,
-        } => {
+        Commands::Interactive { resume } => commands::interactive::execute(project_root, resume).await?,
+        Commands::Status => commands::status::execute(project_root).await?,
+        Commands::Config { action } => commands::config::execute(project_root, action).await?,
+        Commands::Auth { action } => commands::auth::execute(action).await?,
+        Commands::Export { output, format, sign } => {
             commands::export::execute(project_root, output, format, sign).await?;
         }
+        Commands::Rulebook { action } => match action {
+            RulebookAction::List => commands::rulebook::execute_list(project_root).await?,
+            RulebookAction::Validate => commands::rulebook::execute_validate(project_root).await?,
+        },
+        Commands::Acp { port } => commands::acp::execute(project_root, port).await?,
+        Commands::Runtime { action } => match action {
+            RuntimeAction::Status => commands::runtime::execute_status(project_root).await?,
+            RuntimeAction::Jobs => commands::runtime::execute_jobs(project_root).await?,
+        },
     }
 
     Ok(())

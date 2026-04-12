@@ -1,0 +1,12 @@
+{
+  "name": "VAC Agent",
+  "description": "VIL-native autonomous coding agent",
+  "protocol": "acp/1.0",
+  "endpoint": "tcp://127.0.0.1:4123",
+  "capabilities": ["run_task", "session/create", "session/resume", "get_status", "get_diagnostics"],
+  "lsp": {
+    "name": "vil-lsp",
+    "binary": "vil-lsp",
+    "languages": ["rust"]
+  }
+}

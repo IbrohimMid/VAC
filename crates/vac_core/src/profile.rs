@@ -1,10 +1,4 @@
 //! Per-run execution profiles for VAC.
-//!
-//! Profiles overlay behavior on top of base config:
-//!   strict-vil    — planner gate hard, validator blocks, SHM required, no fallback
-//!   migration     — planner required, validator warns, SHM optional
-//!   exploration   — planner recommended, validator warns, fallback allowed
-//!   spec-hardening — same as strict-vil but with extra validator strictness
 
 use serde::{Deserialize, Serialize};
 
@@ -49,16 +43,14 @@ impl ProfileName {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProfileOverride {
     pub name: ProfileName,
-    /// Whether planner gate is enforced (fail-closed on parse/knowledge failure)
     pub planner_gate: bool,
-    /// Whether validator blocks on semantic failures (vs warn-only)
     pub validator_blocks: bool,
-    /// Whether SHM is required for tool execution
     pub require_shm: bool,
-    /// Whether knowledge corpus must be authoritative (fail if bootstrap)
     pub require_authoritative_knowledge: bool,
-    /// Whether planner fallback (raw output) is allowed when parse fails
     pub allow_fallback_plan: bool,
+    pub subagents_enabled: bool,
+    /// "ephemeral" | "persistent"
+    pub sandbox_mode: String,
 }
 
 impl ProfileOverride {
@@ -71,6 +63,8 @@ impl ProfileOverride {
                 require_shm: true,
                 require_authoritative_knowledge: true,
                 allow_fallback_plan: false,
+                subagents_enabled: true,
+                sandbox_mode: "ephemeral".to_string(),
             },
             ProfileName::Migration => Self {
                 name: name.clone(),
@@ -79,6 +73,8 @@ impl ProfileOverride {
                 require_shm: false,
                 require_authoritative_knowledge: false,
                 allow_fallback_plan: true,
+                subagents_enabled: true,
+                sandbox_mode: "ephemeral".to_string(),
             },
             ProfileName::Exploration => Self {
                 name: name.clone(),
@@ -87,6 +83,8 @@ impl ProfileOverride {
                 require_shm: false,
                 require_authoritative_knowledge: false,
                 allow_fallback_plan: true,
+                subagents_enabled: true,
+                sandbox_mode: "persistent".to_string(),
             },
             ProfileName::Default | ProfileName::Custom(_) => Self {
                 name: name.clone(),
@@ -95,6 +93,8 @@ impl ProfileOverride {
                 require_shm: false,
                 require_authoritative_knowledge: false,
                 allow_fallback_plan: true,
+                subagents_enabled: false,
+                sandbox_mode: "ephemeral".to_string(),
             },
         }
     }

@@ -104,6 +104,11 @@ pub fn export_summary(
             RecordType::LspStarted => "LspStarted",
             RecordType::LspDiagnosticsSnapshot => "LspDiagnostics",
             RecordType::LspPostEditRecheck => "LspRecheck",
+            RecordType::SubagentSpawned => "SubagentSpawned",
+            RecordType::SandboxCreated => "SandboxCreated",
+            RecordType::SandboxDestroyed => "SandboxDestroyed",
+            RecordType::PatchProposed => "PatchProposed",
+            RecordType::PatchMerged => "PatchMerged",
             RecordType::Error => "Error",
         };
 

@@ -1,0 +1,9 @@
+# VAC Agent — Helix integration config
+[vac]
+endpoint = "tcp://127.0.0.1:4123"
+protocol = "acp/1.0"
+auto_start = false
+
+[vac.lsp]
+binary = "vil-lsp"
+languages = ["rust"]

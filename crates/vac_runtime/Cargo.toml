@@ -1,0 +1,22 @@
+[package]
+name = "vac_runtime"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "VAC Runtime — background task queue, scheduler, and autonomous operating layer"
+
+[dependencies]
+vac_core = { workspace = true }
+vac_tools = { workspace = true }
+vac_trace = { workspace = true }
+
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }

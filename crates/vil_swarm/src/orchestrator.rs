@@ -165,7 +165,7 @@ impl SwarmOrchestrator {
             project_profile: None,
             knowledge: None,
             rulebook: None,
-            sandbox_registry: Arc::new(crate::sandbox::SandboxRegistry::new()),
+            sandbox_registry: Arc::new(crate::sandbox::SandboxRegistry::with_project_root(std::path::Path::new("."))),
             lsp_context: None,
         };
 
@@ -223,11 +223,13 @@ impl SwarmOrchestrator {
             .ok_or_else(|| SwarmError::Orchestration("Tool router not initialized".into()))?;
 
         // Spawn ephemeral sandbox for subtask isolation
-        let sandbox_id = self.sandbox_registry.spawn(
-            crate::sandbox::SandboxMode::Ephemeral,
-            std::path::PathBuf::from("."),
-            task_description,
-        ).await;
+        let spec = crate::sandbox::SandboxSpec {
+            mode: crate::sandbox::SandboxMode::Ephemeral,
+            working_dir: std::path::PathBuf::from("."),
+            ..Default::default()
+        };
+        let sandbox = self.sandbox_registry.spawn(&spec, task_description).await;
+        let sandbox_id = sandbox.id;
 
         let role_prompt = role.system_prompt();
         let messages = vec![
@@ -266,7 +268,7 @@ impl SwarmOrchestrator {
 
         match result {
             Ok(summary) => {
-                self.sandbox_registry.complete(sandbox_id).await;
+                self.sandbox_registry.complete(sandbox_id, None).await;
                 Ok(SubtaskResult {
                     role,
                     summary,

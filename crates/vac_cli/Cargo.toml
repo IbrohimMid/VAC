@@ -15,6 +15,7 @@ path = "src/main.rs"
 vac_core = { workspace = true }
 vil_swarm = { workspace = true }
 vac_tools = { workspace = true }
+vac_runtime = { workspace = true }
 
 clap = { workspace = true }
 ratatui = { workspace = true }

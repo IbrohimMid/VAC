@@ -195,10 +195,35 @@ impl VacEngine {
             swarm.set_knowledge(kb);
         }
 
-        // P2.3: load rulebook overlay (appended after VIL knowledge, never overrides it)
-        let rulebook = crate::rulebook::Rulebook::load(&self.project_root);
-        if let Some(overlay) = rulebook.to_prompt_overlay() {
-            swarm.set_rulebook(overlay);
+        // P2.3/Phase 7: load rulebooks via multi-rulebook engine
+        if self.config.rulebook.enable {
+            let books = crate::rulebook::RulebookLoader::load_all(
+                &self.project_root,
+                &self.config.rulebook.paths,
+            );
+            let validation = crate::rulebook::validate_rulebooks(&books);
+            if !validation.is_valid() {
+                for err in &validation.errors {
+                    tracing::error!(error = %err, "Rulebook validation error");
+                }
+                if self.config.rulebook.fail_on_invalid {
+                    return Err(VacError::Other(anyhow::anyhow!(
+                        "Rulebook validation failed: {}",
+                        validation.errors.join("; ")
+                    )));
+                }
+            }
+            for warn in &validation.warnings {
+                tracing::warn!(warning = %warn, "Rulebook warning");
+            }
+            let archetype_str = profile.archetype.to_string();
+            let ctx = crate::rulebook::ResolvedRuleContext::build(
+                books,
+                if profile.is_vil_project { Some(&archetype_str) } else { None },
+            );
+            if let Some(overlay) = ctx.to_prompt_overlay() {
+                swarm.set_rulebook(overlay);
+            }
         }
 
         self.swarm = Some(Arc::new(RwLock::new(swarm)));

@@ -33,12 +33,23 @@ pub trait VilTool: Send + Sync {
     ) -> Result<serde_json::Value, ToolError>;
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AgentZone {
+    ParentAgent,
+    SandboxedSubagent,
+}
+
+impl Default for AgentZone {
+    fn default() -> Self { Self::ParentAgent }
+}
+
 #[derive(Clone)]
 pub struct ToolContext {
     pub working_dir: std::path::PathBuf,
     pub env_vars: HashMap<String, String>,
     pub session_id: uuid::Uuid,
     pub shm: Option<Arc<ShmArena>>,
+    pub agent_zone: AgentZone,
 }
 
 impl std::fmt::Debug for ToolContext {
@@ -46,6 +57,7 @@ impl std::fmt::Debug for ToolContext {
         f.debug_struct("ToolContext")
             .field("working_dir", &self.working_dir)
             .field("session_id", &self.session_id)
+            .field("agent_zone", &self.agent_zone)
             .finish()
     }
 }
@@ -57,6 +69,7 @@ impl ToolContext {
             env_vars: std::env::vars().collect(),
             session_id: uuid::Uuid::new_v4(),
             shm: None,
+            agent_zone: AgentZone::ParentAgent,
         }
     }
 
@@ -67,6 +80,11 @@ impl ToolContext {
 
     pub fn with_shm(mut self, shm: Arc<ShmArena>) -> Self {
         self.shm = Some(shm);
+        self
+    }
+
+    pub fn with_zone(mut self, zone: AgentZone) -> Self {
+        self.agent_zone = zone;
         self
     }
 }

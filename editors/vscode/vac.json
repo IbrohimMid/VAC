@@ -1,0 +1,7 @@
+{
+  "vac.endpoint": "tcp://127.0.0.1:4123",
+  "vac.protocol": "acp/1.0",
+  "vac.autoStart": false,
+  "vac.lsp.binary": "vil-lsp",
+  "vac.capabilities": ["run_task", "session/create", "session/resume", "get_status"]
+}

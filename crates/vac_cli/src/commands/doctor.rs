@@ -14,6 +14,7 @@ pub async fn execute(project_root: PathBuf) -> anyhow::Result<()> {
     all_ok &= check_skills(&project_root);
     all_ok &= check_config_contract(&project_root);
     all_ok &= check_vil_lsp(&project_root);
+    check_rulebooks(&project_root); // non-blocking
 
     println!();
     if all_ok {
@@ -194,4 +195,20 @@ fn which_binary(name: &str) -> bool {
         .unwrap_or_default()
         .split(':')
         .any(|dir| std::path::Path::new(dir).join(name).exists())
+}
+
+fn check_rulebooks(root: &Path) {
+    let books = vac_core::rulebook::RulebookLoader::load_all(root, &[]);
+    if books.is_empty() {
+        println!("✓ no rulebooks configured (optional)");
+        return;
+    }
+    let result = vac_core::rulebook::validate_rulebooks(&books);
+    if result.is_valid() {
+        println!("✓ {} rulebook(s) valid", books.len());
+    } else {
+        for err in &result.errors {
+            println!("⚠ rulebook: {err}");
+        }
+    }
 }
