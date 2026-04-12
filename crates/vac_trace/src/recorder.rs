@@ -35,6 +35,7 @@ pub enum RecordType {
     AgentMessage,
     ContextRetrieval,
     ValidationResult,
+    PolicyDecision,
     Error,
 }
 
@@ -146,6 +147,19 @@ impl TraceRecorder {
             serde_json::json!({
                 "task_id": task_id,
                 "error": error,
+            }),
+        );
+    }
+
+    /// Record a policy decision
+    pub fn record_policy_decision(&mut self, tool_name: &str, decision: &str, reason: &str) {
+        self.record(
+            RecordType::PolicyDecision,
+            None,
+            serde_json::json!({
+                "tool": tool_name,
+                "decision": decision,
+                "reason": reason,
             }),
         );
     }

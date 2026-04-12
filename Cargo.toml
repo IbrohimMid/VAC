@@ -69,6 +69,7 @@ fastembed = "4.4"
 coset = "0.3"
 sha2 = "0.10"
 rand = "0.8"
+ed25519-dalek = { version = "2.0", features = ["rand_core"] }
 
 # Logging & tracing
 tracing = "0.1"
