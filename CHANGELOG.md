@@ -6,7 +6,7 @@ Versioning: [Semantic Versioning](https://semver.org/)
 
 ---
 
-## [0.1.0-rc.1] — 2026-04-12
+## [0.1.0] — 2026-04-12
 
 First release candidate. Architecture-complete, feature-complete, hardening-complete.
 
@@ -83,6 +83,6 @@ First release candidate. Architecture-complete, feature-complete, hardening-comp
 
 ## Roadmap
 
-- `v0.2.0`: golden task suite, regression benchmarks, success-rate tracking
-- `v0.3.0`: operator docs, editor setup guides, team onboarding
-- `v1.0.0`: stable release after canary validation
+- `v0.1.x`: patch releases — bug fixes, UX improvements, canary findings
+- `v0.2.0`: golden task suite validation, regression benchmarks
+- `v1.0.0`: stable release after extended canary
