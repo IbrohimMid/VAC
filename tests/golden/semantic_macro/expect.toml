@@ -1,0 +1,6 @@
+modified_files = ["src/messages.rs"]
+must_contain = ["#[vil_state]", "#[vil_event]", "#[vil_fault]", "#[vil_decision]"]
+must_not_contain = []
+min_validation_score = 0.9
+required_knowledge_refs = []
+require_zero_lsp_errors = false

@@ -1,0 +1,1 @@
+Add the correct VIL semantic role macros to these structs. OrderState should be #[vil_state], OrderCreated should be #[vil_event], PaymentFault should be #[vil_fault], and RouteDecision should be #[vil_decision].

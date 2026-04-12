@@ -1,0 +1,6 @@
+modified_files = ["src/handler.rs"]
+must_contain = ["ShmSlice", "ServiceCtx", "VilResponse"]
+must_not_contain = ["Json<CreateOrder>", "Extension<DbPool>", "Json(order)"]
+min_validation_score = 0.85
+required_knowledge_refs = ["vx_app_handler"]
+require_zero_lsp_errors = false

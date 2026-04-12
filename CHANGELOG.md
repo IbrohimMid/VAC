@@ -23,7 +23,7 @@ First release candidate. Architecture-complete, feature-complete, hardening-comp
 
 ### Tool Surface (Phase 1–2)
 
-- 17 builtin tools: file_read/write/edit, glob, grep, search, bash, cargo, git, task_done, todo_write, sequential_think, run_skill, vil_knowledge, vil_status, vil_diagnostics, vil_lsp_query, vil_status
+- 17 builtin tools: file_read/write/edit, glob, grep, search, bash, cargo, git, task_done, todo_write, sequential_think, run_skill, vil_knowledge, vil_status, vil_diagnostics, vil_lsp_query
 - Hierarchical shell approvals: `bash::rm::-rf` → deny, `bash::cargo::check` → allow
 - Reversible file operations: snapshot before write/edit, restore from `.vac/backups/<session>/`
 - `vil_lsp_query`: definition/references/hover/document_symbols/diagnostics
@@ -70,7 +70,7 @@ First release candidate. Architecture-complete, feature-complete, hardening-comp
 ### Platform
 
 - Per-run profiles: `strict-vil`, `migration`, `exploration`, `spec-hardening`
-- `vac doctor`: 7 subsystem checks (knowledge, SHM, trace, MCP, skills, config, vil-lsp, rulebooks)
+- `vac doctor`: 8 subsystem checks (knowledge, SHM, trace, MCP, skills, config, vil-lsp, rulebooks)
 - `vac init`: generates `.vac/config.toml`, `.vac/rules.toml`, `.vac/rulebooks/`
 - MCP server: real TCP lifecycle, JSON-RPC, `initialize`/`tools/list`/`tools/call`
 - `RuntimeUpdate`: Status, ModelInfo, AssistantChunk, ToolCall, ToolResult, ValidationResult, LspStatus, LspDiagnostics, Completed, Failed

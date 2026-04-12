@@ -1,0 +1,1 @@
+Complete the VilPlugin registration. The plugin struct exists but register() is not implemented. Add state registration and endpoint registration using PluginContext.

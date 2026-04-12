@@ -1,0 +1,6 @@
+modified_files = ["src/plugin.rs"]
+must_contain = ["ctx.state", "ctx.endpoint"]
+must_not_contain = ["// TODO"]
+min_validation_score = 0.8
+required_knowledge_refs = ["vil_plugin"]
+require_zero_lsp_errors = false

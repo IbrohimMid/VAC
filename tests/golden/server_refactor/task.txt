@@ -1,0 +1,1 @@
+Convert this handler to use VIL-native patterns. Replace Json<T> with ShmSlice, Extension<T> with ServiceCtx, and Json(data) responses with VilResponse.

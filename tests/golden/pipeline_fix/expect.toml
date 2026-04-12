@@ -1,0 +1,6 @@
+modified_files = ["src/pipeline.rs"]
+must_contain = ["sink.out -> source.in"]
+must_not_contain = ["source.out -> sink.in"]
+min_validation_score = 0.8
+required_knowledge_refs = ["sdk_pipeline"]
+require_zero_lsp_errors = false

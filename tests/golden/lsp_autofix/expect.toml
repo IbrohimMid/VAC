@@ -1,0 +1,6 @@
+modified_files = ["src/user_handler.rs"]
+must_contain = ["ShmSlice", "VilResponse"]
+must_not_contain = ["Json<UpdateUser>", "Json(User"]
+min_validation_score = 0.85
+required_knowledge_refs = ["vx_app_handler"]
+require_zero_lsp_errors = true

@@ -1,0 +1,1 @@
+Fix the VIL semantic violations reported by vil-lsp. The handler uses Json<T> instead of ShmSlice and returns Json(data) instead of VilResponse.
