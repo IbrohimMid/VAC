@@ -47,7 +47,21 @@ pub fn handle_mouse(event: MouseEvent, app: &mut TuiApp) -> bool {
             if let Some(pane) = app.scroll.pane_at(event.column, event.row) {
                 app.focus = match pane {
                     ScrollablePane::Transcript => FocusPane::Transcript,
-                    ScrollablePane::History => FocusPane::History,
+                    ScrollablePane::History => {
+                        // Compute which history item was clicked
+                        let area = app.scroll.history.area;
+                        let inner_y = event.row.saturating_sub(area.y + 1) as usize;
+                        let offset = app.scroll.history.offset;
+                        let skip_items = offset / 2;
+                        let global_idx = skip_items + inner_y / 2;
+                        let history = app.session().history.clone();
+                        if global_idx < history.len() {
+                            app.history.list.select(Some(global_idx));
+                            app.detail = super::detail::DetailMode::TaskDetail(global_idx);
+                            app.keep_history_visible(global_idx);
+                        }
+                        FocusPane::History
+                    }
                     ScrollablePane::Detail => FocusPane::Detail,
                 };
             }

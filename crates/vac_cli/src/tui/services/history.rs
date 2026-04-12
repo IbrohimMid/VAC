@@ -9,13 +9,11 @@ use vac_core::TaskStatus;
 #[derive(Default)]
 pub struct HistoryState {
     pub list: ListState,
-    /// Visual rows per item (2 lines: description + tokens).
-    pub rows_per_item: usize,
 }
 
 impl HistoryState {
     pub fn new() -> Self {
-        Self { list: ListState::default(), rows_per_item: 2 }
+        Self { list: ListState::default() }
     }
 
     /// Select previous item (up).
@@ -49,9 +47,9 @@ impl HistoryState {
         self.list.select(None);
     }
 
-    /// Total visual rows for scroll calculation.
+    /// Total visual rows for scroll calculation (2 lines per item: description + tokens).
     pub fn total_visual_rows(&self, entries: &[TaskHistoryEntry]) -> usize {
-        entries.len() * self.rows_per_item
+        entries.len() * 2
     }
 }
 

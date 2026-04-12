@@ -4,6 +4,8 @@ use std::path::Path;
 use tokio::sync::oneshot;
 use vac_core::engine::{EngineStatus, TaskHistoryEntry};
 use vac_core::TaskResult;
+use vac_runtime::jobs::Job;
+use vac_runtime::executor::OperatingMode;
 
 use super::services::detail::DetailMode;
 use super::services::history::HistoryState;
@@ -92,6 +94,9 @@ pub struct TuiApp {
     pub spinner_tick: usize,
     pub pending_approval: Option<PendingApproval>,
     pub streaming_assistant: Option<usize>,
+    // Runtime integration (optional — None when no scheduler attached)
+    pub runtime_jobs: Vec<Job>,
+    pub operating_mode: Option<OperatingMode>,
 }
 
 impl TuiApp {
@@ -128,6 +133,8 @@ impl TuiApp {
             spinner_tick: 0,
             pending_approval: None,
             streaming_assistant: None,
+            runtime_jobs: vec![],
+            operating_mode: None,
         }
     }
 
@@ -218,8 +225,7 @@ impl TuiApp {
         self.history.select_prev(&history);
         if let Some(i) = self.history.selected() {
             self.detail = DetailMode::TaskDetail(i);
-            // Sync scroll to keep selected item visible
-            self.scroll.history.offset = i * 2;
+            self.keep_history_visible(i);
         }
     }
 
@@ -228,8 +234,20 @@ impl TuiApp {
         self.history.select_next(&history);
         if let Some(i) = self.history.selected() {
             self.detail = DetailMode::TaskDetail(i);
-            // Sync scroll to keep selected item visible
-            self.scroll.history.offset = i * 2;
+            self.keep_history_visible(i);
+        }
+    }
+
+    /// Scroll history viewport only if item `i` is outside the visible window.
+    pub fn keep_history_visible(&mut self, i: usize) {
+        let item_top = i * 2;
+        let item_bot = item_top + 1;
+        let visible_h = self.scroll.history.area.height.saturating_sub(2) as usize;
+        let offset = self.scroll.history.offset;
+        if item_top < offset {
+            self.scroll.history.offset = item_top;
+        } else if item_bot >= offset + visible_h && visible_h > 0 {
+            self.scroll.history.offset = item_bot + 1 - visible_h;
         }
     }
 
