@@ -281,7 +281,6 @@ impl LlmProvider for AnthropicProvider {
             use futures::StreamExt;
             let mut stream = response.bytes_stream();
             let mut buf = String::new();
-            let mut tool_args: std::collections::HashMap<String, String> = std::collections::HashMap::new();
             let mut usage = OpenAiUsage::default();
 
             while let Some(chunk) = stream.next().await {
@@ -334,7 +333,6 @@ impl LlmProvider for AnthropicProvider {
                                 let _ = tx.send(StreamChunk::ToolCallStart { id: id.clone(), name }).await;
                             }
                             if !args_delta.is_empty() {
-                                tool_args.entry(id.clone()).or_default().push_str(&args_delta);
                                 let _ = tx.send(StreamChunk::ToolCallDelta { id, arguments_delta: args_delta }).await;
                             }
                         }

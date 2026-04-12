@@ -61,9 +61,7 @@ pub fn deserialize_checkpoint(payload: &[u8]) -> Result<CheckpointEnvelope, Chec
         return Err(CheckpointError::UnsupportedVersion(version));
     }
 
-    let envelope: CheckpointEnvelope = serde_json::from_value(
-        serde_json::from_slice(payload)?
-    )?;
+    let envelope: CheckpointEnvelope = serde_json::from_value(value)?;
 
     if envelope.format != CHECKPOINT_FORMAT_V1 {
         return Err(CheckpointError::UnsupportedFormat(envelope.format));

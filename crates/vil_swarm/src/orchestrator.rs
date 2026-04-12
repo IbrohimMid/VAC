@@ -228,20 +228,9 @@ impl SwarmOrchestrator {
         let sandbox = self.sandbox_registry.spawn(&spec, task_description).await;
         let sandbox_id = sandbox.id;
 
-        let role_prompt = role.system_prompt();
-        let messages = vec![
-            Message::system(role_prompt.to_string()),
-            Message::user(task_description.to_string()),
-        ];
-
-        let tool_defs: Vec<ToolDefinition> = tool_router.registry().list().await
-            .into_iter()
-            .map(|t| ToolDefinition { name: t.name, description: t.description, input_schema: t.input_schema })
-            .collect();
-
-        // Sandboxed context: writes go to overlay, policy is stricter
-        let context = ToolContext::new(sandbox.overlay_dir.clone())
-            .with_zone(vac_tools::registry::AgentZone::SandboxedSubagent);
+        let messages = crate::subagent::build_subagent_messages(&role, task_description);
+        let tool_defs = crate::subagent::build_tool_defs(tool_router.registry()).await;
+        let context = crate::subagent::build_sandbox_context(sandbox.overlay_dir.clone());
 
         let mut total_tokens = 0u64;
         let mut modified_files = Vec::new();
@@ -296,25 +285,9 @@ impl SwarmOrchestrator {
         let sandbox = self.sandbox_registry.spawn(&spec, task_description).await;
         let sandbox_id = sandbox.id;
 
-        let role_prompt = role.system_prompt();
-        let messages = vec![
-            Message::system(role_prompt.to_string()),
-            Message::user(task_description.to_string()),
-        ];
-
-        let tool_defs: Vec<ToolDefinition> = tool_router
-            .registry()
-            .list()
-            .await
-            .into_iter()
-            .map(|tool| ToolDefinition {
-                name: tool.name,
-                description: tool.description,
-                input_schema: tool.input_schema,
-            })
-            .collect();
-
-        let context = ToolContext::new(std::path::PathBuf::from("."));
+        let messages = crate::subagent::build_subagent_messages(&role, task_description);
+        let tool_defs = crate::subagent::build_tool_defs(tool_router.registry()).await;
+        let context = crate::subagent::build_parent_context(std::path::PathBuf::from("."));
         let mut total_tokens = 0u64;
         let mut modified_files = Vec::new();
         let mut created_files = Vec::new();
