@@ -24,7 +24,7 @@ edition = "2024"
 rust-version = "1.85"
 authors = ["Vastar Team <team@vastar.id>"]
 license = "MIT"
-repository = "https://github.com/vastar-id/vastar-agentic-cli"
+repository = "https://github.com/IbrohimMid/VAC"
 homepage = "https://vastar.id/products/vac"
 description = "VAC — Vastar Agentic CLI: Autonomous development CLI built on VIL Engine"
 

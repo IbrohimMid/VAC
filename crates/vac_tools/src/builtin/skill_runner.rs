@@ -95,7 +95,7 @@ impl VilTool for SkillRunnerTool {
     }
 
     fn trust_requirement(&self) -> &str { "trusted" }
-    fn risk_level(&self) -> &str { "needs_approval" }
+    fn risk_level(&self) -> &str { "medium" }
 
     async fn execute(
         &self,

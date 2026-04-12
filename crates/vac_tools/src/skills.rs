@@ -232,7 +232,7 @@ impl SkillLoader {
                         tool: "file_write".to_string(),
                         arguments: serde_json::json!({
                             "path": "src/plugin.rs",
-                            "content": "use vil_server::plugin::{VilPlugin, PluginContext, PluginError};\nuse axum::routing::get;\nuse axum::http::Method;\n\npub struct {{plugin_name}} {\n    // Add plugin config fields here\n}\n\nimpl VilPlugin for {{plugin_name}} {\n    fn id(&self) -> &str { \"{{plugin_id}}\" }\n    fn name(&self) -> &str { \"{{plugin_name}}\" }\n\n    fn register(&self, ctx: &mut PluginContext) -> Result<(), PluginError> {\n        // Register state, endpoints, middleware\n        ctx.endpoint(Method::GET, \"/status\", get(status_handler));\n        Ok(())\n    }\n}\n\nasync fn status_handler() -> &'static str {\n    \"Plugin active\"\n}"
+                            "content": "use vil_server::prelude::*;\n\n#[derive(Debug, Clone)]\npub struct {{plugin_name}};\n\nimpl VilPlugin for {{plugin_name}} {\n    fn id(&self) -> &str { \"{{plugin_id}}\" }\n    fn name(&self) -> &str { \"{{plugin_name}}\" }\n\n    fn register(&self, ctx: &mut PluginContext) -> Result<(), PluginError> {\n        ctx.endpoint(Method::GET, \"/status\", status_handler);\n        Ok(())\n    }\n}\n\n#[vil_handler]\nasync fn status_handler(ctx: ServiceCtx) -> VilResponse<String> {\n    VilResponse::ok(\"Plugin active\".to_string())\n}"
                         }),
                         description: "Create plugin implementation file".to_string(),
                     },

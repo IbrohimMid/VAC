@@ -137,15 +137,15 @@ impl McpClient {
         let prefix = &self.config.name;
 
         for tool_def in tools {
+            let prefixed_name = format!("{}_{}", prefix, tool_def.name);
             let proxy = McpProxyTool {
-                server_name: prefix.clone(),
+                prefixed_name: prefixed_name.clone(),
                 tool_name: tool_def.name.clone(),
                 tool_description: tool_def.description.unwrap_or_default(),
                 tool_schema: tool_def.input_schema.unwrap_or(serde_json::json!({"type": "object"})),
                 client_connection: self.connection.clone(),
                 request_id: self.request_id.clone(),
             };
-            let prefixed_name = format!("{}_{}", prefix, tool_def.name);
             info!(name = %prefixed_name, "Registering MCP proxy tool");
             self.registry.register(proxy).await?;
         }
@@ -239,7 +239,7 @@ impl McpClient {
 }
 
 struct McpProxyTool {
-    server_name: String,
+    prefixed_name: String,
     tool_name: String,
     tool_description: String,
     tool_schema: serde_json::Value,
@@ -250,12 +250,12 @@ struct McpProxyTool {
 #[async_trait]
 impl VilTool for McpProxyTool {
     fn name(&self) -> &str {
-        &self.tool_name
+        &self.prefixed_name
     }
     fn description(&self) -> &str { &self.tool_description }
     fn input_schema(&self) -> serde_json::Value { self.tool_schema.clone() }
     fn trust_requirement(&self) -> &str { "trusted" }
-    fn risk_level(&self) -> &str { "needs_approval" }
+    fn risk_level(&self) -> &str { "medium" }
 
     async fn execute(&self, args: serde_json::Value, _context: &ToolContext) -> Result<serde_json::Value, ToolError> {
         let mut id_lock = self.request_id.lock().await;

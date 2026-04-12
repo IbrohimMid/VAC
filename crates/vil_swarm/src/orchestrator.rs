@@ -112,7 +112,7 @@ impl SwarmOrchestrator {
     fn semantic_planner_prompt() -> String {
         "You are the VIL Semantic Planner. Your task is to analyze the user's request and produce a Semantic Plan before any code is written.
 
-IMPORTANT: For tasks related to VIL (Vastar Intelligence Layer), you MUST use the `vil_knowledge` tool first to find relevant patterns.
+IMPORTANT: For tasks related to VIL (Vastar Intermediate Language), you MUST use the `vil_knowledge` tool first to find relevant patterns.
 
 Once you have consulted the knowledge base (if needed) and analyzed the task, you MUST produce a JSON plan in exactly this format and wrap it in ```json ... ```:
 ```json
@@ -137,7 +137,7 @@ Always validate your choices against VIL's Tri-Lane and zero-copy semantics.".to
 When given a subtask:
 1. Understand what needs to be built
 2. Use read/search tools like file_read, glob, grep, and search to inspect the codebase
-3. IMPORTANT: For tasks related to VIL (Vastar Intelligence Layer), you MUST use the `vil_knowledge` tool FIRST to query VIL-specific patterns, code templates, and best practices.
+3. IMPORTANT: For tasks related to VIL (Vastar Intermediate Language), you MUST use the `vil_knowledge` tool FIRST to query VIL-specific patterns, code templates, and best practices.
 4. Write or modify code using file_write or file_edit
 5. Track progress with todo_write when a task has multiple steps
 6. If compilation is needed, use bash, cargo, or git tools as appropriate
