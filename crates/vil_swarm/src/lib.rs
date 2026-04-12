@@ -6,6 +6,12 @@
 pub mod agent;
 pub mod context_budget;
 pub mod error;
+pub mod events;
+pub mod hooks;
+pub mod loop_control;
+pub mod policy_bridge;
+pub mod subagent;
+pub mod tool_execution;
 pub mod lanes;
 pub mod orchestrator;
 pub mod patterns;

@@ -482,13 +482,10 @@ Rules:
     ) -> SwarmResult<String> {
         let mut trim_boundary: usize = 0;
         let mut iterations: usize = 0;
-        const MAX_ITERATIONS: usize = 30;
         loop {
-            if iterations >= MAX_ITERATIONS {
+            if let Err(e) = crate::loop_control::check_iteration_cap(iterations) {
                 warn!(iterations, "Max iterations reached, terminating agent loop");
-                return Err(SwarmError::Orchestration(format!(
-                    "Agent loop exceeded {} iterations without completing", MAX_ITERATIONS
-                )));
+                return Err(e);
             }
             iterations += 1;
             let reduced = crate::context_budget::reduce_messages(messages.clone(), &mut trim_boundary);
@@ -586,22 +583,16 @@ Rules:
                     ));
 
                     // Classify tools: Data Lane (parallel reads) / Control Lane (serial writes)
-                    let mut parallel_reads = Vec::new();
-                    let mut serial_writes = Vec::new();
+                    let (parallel_reads, serial_writes) = crate::tool_execution::partition_calls(response.tool_calls);
 
-                    for call in response.tool_calls {
-                        if let Some(tx) = &updates {
+                    // Emit ToolCall events for all calls
+                    if let Some(tx) = &updates {
+                        for call in parallel_reads.iter().chain(serial_writes.iter()) {
                             let _ = tx.send(AgentLoopEvent::ToolCall {
                                 id: call.id.clone(),
                                 name: call.name.clone(),
                                 arguments: call.arguments.clone(),
                             });
-                        }
-                        match call.name.as_str() {
-                            "file_read" | "glob" | "grep" | "search" | "vil_knowledge" | "vil_diagnostics" | "vil_lsp_query" => {
-                                parallel_reads.push(call)
-                            }
-                            _ => serial_writes.push(call),
                         }
                     }
 
@@ -741,8 +732,7 @@ Rules:
                 }
                 vil_llm::provider::FinishReason::MaxTokens => {
                     warn!("Context window limit reached, applying emergency context reduction");
-                    // Force trim_boundary forward to trigger Level B reduction next turn.
-                    trim_boundary = messages.len() / 2;
+                    trim_boundary = crate::loop_control::emergency_trim_boundary(messages.len(), trim_boundary);
                     info!(trim_boundary, "Context budget emergency: trim_boundary advanced");
                 }
                 _ => {
@@ -930,14 +920,5 @@ Rules:
 }
 
 fn status_for_tool(tool_name: &str) -> String {
-    match tool_name {
-        "bash" => "Running shell command".to_string(),
-        "cargo" => "Running cargo task".to_string(),
-        "git" => "Running git command".to_string(),
-        "file_edit" => "Editing files".to_string(),
-        "file_write" => "Writing files".to_string(),
-        "todo_write" => "Updating task list".to_string(),
-        "task_done" => "Marking task complete".to_string(),
-        other => format!("Using {}", other),
-    }
+    crate::tool_execution::status_for_tool(tool_name)
 }
