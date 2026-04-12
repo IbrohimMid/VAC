@@ -9,6 +9,8 @@ use tokio::sync::{Mutex, mpsc, oneshot};
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
 use vac_core::engine::RuntimeUpdate;
 use vac_core::{TaskResult, VacEngine};
+use vac_runtime::executor::{OperatingMode, TaskExecutor};
+use vac_runtime::queue::TaskQueue;
 use vac_tools::registry::ToolContext;
 use vac_tools::router::{PolicyDecision, PolicyEngine};
 
@@ -41,6 +43,11 @@ pub enum TaskEvent {
         args_preview: String,
         responder: oneshot::Sender<bool>,
     },
+    /// Periodic snapshot of the runtime job queue (optional integration).
+    RuntimeJobsUpdate {
+        jobs: Vec<vac_runtime::jobs::Job>,
+        mode: vac_runtime::executor::OperatingMode,
+    },
 }
 
 // ── Main loop ─────────────────────────────────────────────────────────────────
@@ -61,6 +68,9 @@ pub async fn run(project_root: PathBuf, _resume: bool) -> anyhow::Result<()> {
     let engine = Arc::new(Mutex::new(engine));
     let mut app = TuiApp::new(status, history, auth_hint);
     let mut tg = TerminalGuard::new(true)?;
+
+    // Optional runtime bridge — spawn background poller if runtime is available
+    spawn_runtime_bridge(tx.clone(), project_root.clone());
 
     while app.running {
         app.spinner_tick = app.spinner_tick.wrapping_add(1);
@@ -137,10 +147,12 @@ fn handle_task_event(app: &mut TuiApp, ev: TaskEvent) {
             app.push_commands(format!("Approval needed: {}", &summary[..summary.len().min(46)]));
             app.set_activity("Awaiting approval", summary);
         }
+        TaskEvent::RuntimeJobsUpdate { jobs, mode } => {
+            app.runtime_jobs = jobs;
+            app.operating_mode = Some(mode);
+        }
     }
 }
-
-// ── Key handler ───────────────────────────────────────────────────────────────
 
 fn handle_key(
     key: KeyEvent,
@@ -313,6 +325,28 @@ fn fallback_status(project_root: PathBuf) -> vac_core::engine::EngineStatus {
         total_tokens_used: 0,
         subsystems_initialized: true,
     }
+}
+
+// ── Runtime bridge ────────────────────────────────────────────────────────────
+
+/// Spawn a background task that polls the runtime job queue every 2s and
+/// forwards snapshots to the TUI event loop. Non-fatal — errors are silently
+/// ignored so the existing `vac interactive` flow is never broken.
+fn spawn_runtime_bridge(tx: mpsc::UnboundedSender<TaskEvent>, project_root: PathBuf) {
+    let mode_str = std::env::var("VAC_OPERATING_MODE").unwrap_or_default();
+    let mode = OperatingMode::from_str(&mode_str);
+    let queue = Arc::new(TaskQueue::new());
+    let _executor = Arc::new(TaskExecutor::new(project_root, mode.clone()));
+
+    tokio::spawn(async move {
+        loop {
+            let jobs = queue.list().await;
+            if tx.send(TaskEvent::RuntimeJobsUpdate { jobs, mode: mode.clone() }).is_err() {
+                break; // TUI has exited
+            }
+            tokio::time::sleep(Duration::from_secs(2)).await;
+        }
+    });
 }
 
 // ── Auth helpers ──────────────────────────────────────────────────────────────
