@@ -64,6 +64,17 @@ pub struct SubTask {
     pub dependencies: Vec<usize>,
 }
 
+#[derive(Debug, Clone)]
+pub struct SubtaskResult {
+    pub role: AgentRole,
+    pub summary: String,
+    pub modified_files: Vec<String>,
+    pub created_files: Vec<String>,
+    pub tokens_used: u64,
+    pub success: bool,
+    pub error: Option<String>,
+}
+
 pub struct SwarmOrchestrator {
     agents: HashMap<AgentId, AgentDefinition>,
     #[allow(dead_code)]
@@ -107,6 +118,76 @@ impl SwarmOrchestrator {
         }
 
         Ok(orchestrator)
+    }
+
+    pub async fn spawn_subtask(
+        &self,
+        role: AgentRole,
+        task_description: &str,
+        _wait_for_completion: bool,
+    ) -> SwarmResult<SubtaskResult> {
+        info!(role = ?role, "Spawning subtask");
+
+        let llm_router = self.llm_router.as_ref()
+            .ok_or_else(|| SwarmError::Orchestration("LLM router not initialized".into()))?;
+        let tool_router = self.tool_router.as_ref()
+            .ok_or_else(|| SwarmError::Orchestration("Tool router not initialized".into()))?;
+
+        let role_prompt = role.system_prompt();
+        let messages = vec![
+            Message::system(role_prompt.to_string()),
+            Message::user(task_description.to_string()),
+        ];
+
+        let tool_defs: Vec<ToolDefinition> = tool_router
+            .registry()
+            .list()
+            .await
+            .into_iter()
+            .map(|tool| ToolDefinition {
+                name: tool.name,
+                description: tool.description,
+                input_schema: tool.input_schema,
+            })
+            .collect();
+
+        let context = ToolContext::new(std::path::PathBuf::from("."));
+        let mut total_tokens = 0u64;
+        let mut modified_files = Vec::new();
+        let mut created_files = Vec::new();
+
+        let result = self.execute_agent_loop(
+            messages,
+            tool_defs,
+            None,
+            &mut total_tokens,
+            &mut modified_files,
+            &mut created_files,
+            &context,
+            llm_router,
+            tool_router,
+        ).await;
+
+        match result {
+            Ok(summary) => Ok(SubtaskResult {
+                role,
+                summary,
+                modified_files,
+                created_files,
+                tokens_used: total_tokens,
+                success: true,
+                error: None,
+            }),
+            Err(e) => Ok(SubtaskResult {
+                role,
+                summary: String::new(),
+                modified_files,
+                created_files,
+                tokens_used: total_tokens,
+                success: false,
+                error: Some(e.to_string()),
+            }),
+        }
     }
 
     fn semantic_planner_prompt() -> String {
