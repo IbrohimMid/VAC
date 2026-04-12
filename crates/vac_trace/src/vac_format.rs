@@ -2,20 +2,20 @@
 
 use crate::error::{TraceError, TraceResult};
 use crate::recorder::TraceRecord;
-use ed25519_dalek::{Signer, SigningKey};
+use ed25519_dalek::Signer;
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 /// Signing key pair for Ed25519
 pub struct SigningKeyPair {
-    key: SigningKey,
+    key: ed25519_dalek::SigningKey,
 }
 
 impl SigningKeyPair {
     /// Generate a new Ed25519 key pair
     pub fn generate() -> Self {
-        let key = SigningKey::generate(&mut OsRng);
+        let key = ed25519_dalek::SigningKey::generate(&mut OsRng);
         Self { key }
     }
 
@@ -57,33 +57,37 @@ impl VacEnvelope {
     }
 
     /// Sign the envelope with COSE_Sign1 using Ed25519.
-    /// Creates a simple COSE_Sign1 structure: [protected headers, unprotected headers, payload, signature]
+    /// Creates proper COSE_Sign1 structure: [protected, unprotected, payload, signature]
     pub fn sign(&self, keypair: &SigningKeyPair) -> TraceResult<Vec<u8>> {
         let payload = self.to_cbor()?;
 
-        let mut protected = Vec::new();
-        protected.push(0x01);
+        // Build protected header: map with algorithm (-8 = EdDSA)
+        let protected_map: Vec<(i64, Vec<u8>)> = vec![
+            (1, vec![0x26]), // Algorithm: -8 (EdDSA) as CBOR tag
+        ];
+        let protected_bytes = serde_cbor::to_vec(&protected_map)
+            .map_err(|e| TraceError::Export(format!("Protected header encoding: {e}")))?;
 
-        let mut header_map = Vec::new();
-        header_map.push((1, vec![0x26]));
-        header_map.push((4, self.session_id.as_bytes().to_vec()));
+        // Build unprotected header: map with kid
+        let kid_bytes = self.session_id.as_bytes();
+        let unprotected_map: Vec<(String, Vec<u8>)> = vec![("kid".to_string(), kid_bytes.to_vec())];
+        let unprotected_bytes = serde_cbor::to_vec(&unprotected_map)
+            .map_err(|e| TraceError::Export(format!("Unprotected header encoding: {e}")))?;
 
-        let protected_encoded = serde_cbor::to_vec(&header_map)
-            .map_err(|e| TraceError::Export(format!("Header encoding failed: {e}")))?;
+        // Create signature payload: sign(protected || payload)
+        let mut sig_payload = protected_bytes.clone();
+        sig_payload.extend_from_slice(&payload);
+        let signature = keypair.key.sign(&sig_payload);
+        let sig_bytes = signature.to_bytes().to_vec();
 
-        let mut message = protected_encoded.clone();
-        message.extend_from_slice(&payload);
-
-        let signature = keypair.key.sign(&message);
-
+        // Build COSE_Sign1: tag(18) || protected || unprotected || payload || signature
         let mut cose_sign1 = Vec::new();
-        cose_sign1.push(0xD8);
-        cose_sign1.push(0x18);
-        cose_sign1.push(0x2F);
-        cose_sign1.extend_from_slice(&protected_encoded);
-        cose_sign1.push(0xA0);
-        cose_sign1.extend_from_slice(&payload);
-        cose_sign1.extend_from_slice(signature.to_bytes().as_slice());
+        cose_sign1.push(0xd8); // tag
+        cose_sign1.push(0x12); // tag 18 (COSE_Sign1)
+        cose_sign1.extend_from_slice(&protected_bytes); // protected headers
+        cose_sign1.extend_from_slice(&unprotected_bytes); // unprotected headers
+        cose_sign1.extend_from_slice(&payload); // payload
+        cose_sign1.extend_from_slice(&sig_bytes); // signature
 
         tracing::info!(
             session_id = %self.session_id,

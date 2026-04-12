@@ -15,12 +15,12 @@ pub fn export_vac(
     let envelope = VacEnvelope::new(session_id, records);
 
     let bytes = if sign {
-        match keypair {
-            Some(kp) => envelope.sign(kp)?,
-            None => {
-                tracing::warn!("Signing requested but no keypair provided, exporting unsigned");
-                envelope.to_cbor()?
-            }
+        if let Some(kp) = keypair {
+            envelope.sign(kp)?
+        } else {
+            tracing::info!("No keypair provided, generating one for signing");
+            let kp = SigningKeyPair::generate();
+            envelope.sign(&kp)?
         }
     } else {
         envelope.to_cbor()?
