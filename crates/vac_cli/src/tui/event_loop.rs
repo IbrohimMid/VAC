@@ -101,7 +101,7 @@ fn handle_task_event(app: &mut TuiApp, ev: TaskEvent) {
             app.set_activity("Thinking", format!("Task: {}", &prompt[..prompt.len().min(56)]));
             app.show_help = false;
             app.live_diff_files.clear();
-            app.detail_panel = DetailPanel::None;
+            app.detail = DetailMode::None;
             app.scroll.transcript.pin_to_bottom();
             app.focus = FocusPane::Transcript;
         }
@@ -188,7 +188,7 @@ fn handle_key(
     if app.focus == FocusPane::Detail {
         match key.code {
             KeyCode::Char('r') | KeyCode::Char('R') => {
-                if let DetailMode::TaskDetail(idx) = app.detail {
+                if let DetailMode::TaskDetail(idx) = app.detail.clone() {
                     app.detail = DetailMode::RevertConfirm(idx);
                 }
                 return Ok(false);

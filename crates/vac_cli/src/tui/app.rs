@@ -1,7 +1,6 @@
 //! TuiApp state — sessions, focus, panels, scroll.
 
 use std::path::Path;
-use ratatui::widgets::ListState;
 use tokio::sync::oneshot;
 use vac_core::engine::{EngineStatus, TaskHistoryEntry};
 use vac_core::TaskResult;
@@ -215,14 +214,16 @@ impl TuiApp {
     // ── History navigation ────────────────────────────────────────────────────
 
     pub fn history_up(&mut self) {
-        self.history.select_prev(&self.session().history);
+        let history = self.session().history.clone();
+        self.history.select_prev(&history);
         if let Some(i) = self.history.selected() {
             self.detail = DetailMode::TaskDetail(i);
         }
     }
 
     pub fn history_down(&mut self) {
-        self.history.select_next(&self.session().history);
+        let history = self.session().history.clone();
+        self.history.select_next(&history);
         if let Some(i) = self.history.selected() {
             self.detail = DetailMode::TaskDetail(i);
         }
@@ -292,7 +293,7 @@ impl TuiApp {
     // ── Revert ────────────────────────────────────────────────────────────────
 
     pub fn revert_selected(&mut self, project_root: &Path) {
-        let Some(idx) = self.history_state.selected() else { return };
+        let Some(idx) = self.history.selected() else { return };
         let Some(entry) = self.session().history.get(idx) else { return };
         let task_id = entry.task_id.to_string();
         let backup_dir = project_root.join(".vac/backups").join(&task_id);
@@ -314,7 +315,7 @@ impl TuiApp {
         }
         let msg = format!("Reverted {} file(s) to before task {}", restored, &task_id[..8]);
         self.push_transcript("Revert", msg, ratatui::style::Color::Magenta);
-        self.detail_panel = DetailPanel::None;
+        self.detail = DetailMode::None;
         self.focus = FocusPane::Transcript;
     }
 }

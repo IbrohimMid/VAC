@@ -208,8 +208,19 @@ fn render_history(frame: &mut Frame, area: Rect, app: &mut TuiApp) {
     // Store geometry for click detection
     app.scroll.history.area = area;
 
-    let max_rows = area.height.saturating_sub(2) as usize;
-    let items = render_history_items(&app.session().history, max_rows);
+    let visible_h = area.height.saturating_sub(2) as usize;
+    let total_items = app.session().history.len();
+    let total_rows = total_items * 2; // Each item is 2 visual rows
+    
+    // Clamp scroll
+    let scroll_offset = app.scroll.history.clamp(total_rows, visible_h);
+    let skip_items = scroll_offset / 2;
+    
+    // Render items with scroll offset
+    let items = render_history_items(
+        &app.session().history.iter().skip(skip_items).cloned().collect::<Vec<_>>(),
+        visible_h,
+    );
 
     let focused = app.focus == FocusPane::History;
     let border_style = if focused { Style::default().fg(Color::Yellow) } else { Style::default().fg(Color::Blue) };
