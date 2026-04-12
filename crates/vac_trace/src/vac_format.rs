@@ -56,45 +56,38 @@ impl VacEnvelope {
             .map_err(|e| TraceError::Export(format!("CBOR serialization failed: {e}")))
     }
 
-    /// Sign the envelope with COSE_Sign1 using Ed25519.
-    /// Creates proper COSE_Sign1 structure: [protected, unprotected, payload, signature]
+    /// Sign the envelope with COSE_Sign1 using Ed25519 via coset library.
+    /// Uses proper coset builder pattern for correct COSE structure.
     pub fn sign(&self, keypair: &SigningKeyPair) -> TraceResult<Vec<u8>> {
+        use coset::{iana, CborSerializable, CoseSign1Builder, HeaderBuilder};
+
         let payload = self.to_cbor()?;
 
-        // Build protected header: map with algorithm (-8 = EdDSA)
-        let protected_map: Vec<(i64, Vec<u8>)> = vec![
-            (1, vec![0x26]), // Algorithm: -8 (EdDSA) as CBOR tag
-        ];
-        let protected_bytes = serde_cbor::to_vec(&protected_map)
-            .map_err(|e| TraceError::Export(format!("Protected header encoding: {e}")))?;
+        // Build protected header with EdDSA algorithm (-8)
+        let protected = HeaderBuilder::new()
+            .algorithm(iana::Algorithm::EdDSA)
+            .key_id(self.session_id.as_bytes().to_vec())
+            .build();
 
-        // Build unprotected header: map with kid
-        let kid_bytes = self.session_id.as_bytes();
-        let unprotected_map: Vec<(String, Vec<u8>)> = vec![("kid".to_string(), kid_bytes.to_vec())];
-        let unprotected_bytes = serde_cbor::to_vec(&unprotected_map)
-            .map_err(|e| TraceError::Export(format!("Unprotected header encoding: {e}")))?;
+        // Create COSE_Sign1 using builder pattern
+        let signature = keypair.key.sign(&payload);
+        let sign1 = CoseSign1Builder::new()
+            .protected(protected)
+            .payload(payload.clone())
+            .signature(signature.to_bytes().to_vec())
+            .build();
 
-        // Create signature payload: sign(protected || payload)
-        let mut sig_payload = protected_bytes.clone();
-        sig_payload.extend_from_slice(&payload);
-        let signature = keypair.key.sign(&sig_payload);
-        let sig_bytes = signature.to_bytes().to_vec();
-
-        // Build COSE_Sign1: tag(18) || protected || unprotected || payload || signature
-        let mut cose_sign1 = Vec::new();
-        cose_sign1.push(0xd8); // tag
-        cose_sign1.push(0x12); // tag 18 (COSE_Sign1)
-        cose_sign1.extend_from_slice(&protected_bytes); // protected headers
-        cose_sign1.extend_from_slice(&unprotected_bytes); // unprotected headers
-        cose_sign1.extend_from_slice(&payload); // payload
-        cose_sign1.extend_from_slice(&sig_bytes); // signature
+        // Serialize to CBOR
+        let cbor_bytes = sign1
+            .to_vec()
+            .map_err(|e| TraceError::Export(format!("COSE encoding failed: {e}")))?;
 
         tracing::info!(
             session_id = %self.session_id,
-            size = cose_sign1.len(),
-            "Envelope signed with Ed25519 COSE_Sign1"
+            size = cbor_bytes.len(),
+            "Envelope signed with Ed25519 COSE_Sign1 (coset builder)"
         );
 
-        Ok(cose_sign1)
+        Ok(cbor_bytes)
     }
 }
