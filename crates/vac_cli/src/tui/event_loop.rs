@@ -13,6 +13,7 @@ use vac_tools::registry::ToolContext;
 use vac_tools::router::{PolicyDecision, PolicyEngine};
 
 use super::app::{DetailPanel, FocusPane, PendingApproval, TuiApp};
+use super::services::mouse::handle_mouse;
 use super::services::telemetry::route_update;
 use super::terminal::TerminalGuard;
 use super::view::render;
@@ -76,6 +77,9 @@ pub async fn run(project_root: PathBuf, _resume: bool) -> anyhow::Result<()> {
                     if handle_key(key, &mut app, engine.clone(), tx.clone(), project_root.clone())? {
                         break;
                     }
+                }
+                Event::Mouse(mouse) => {
+                    handle_mouse(mouse, &mut app, &mut app.scroll);
                 }
                 Event::Resize(_, _) => {}
                 _ => {}
