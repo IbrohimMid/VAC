@@ -388,6 +388,9 @@ impl TuiPolicyEngine {
 #[async_trait]
 impl PolicyEngine for TuiPolicyEngine {
     async fn decide(&self, tool_name: &str, args: &serde_json::Value, context: &ToolContext) -> PolicyDecision {
+        // TODO: Read registry metadata for risk_level override if available
+        // For now, delegate to tool_policy classification
+        
         if tool_policy::needs_approval(tool_name, context.agent_zone) {
             // Sandbox denies write/exec entirely
             use vac_tools::registry::AgentZone;
