@@ -12,6 +12,7 @@ use crate::registry::{ToolContext, ToolRegistry};
 pub struct McpServer {
     registry: Arc<ToolRegistry>,
     state: Arc<RwLock<ServerState>>,
+    project_root: std::path::PathBuf,
 }
 
 #[derive(Default)]
@@ -26,7 +27,13 @@ impl McpServer {
         Self {
             registry,
             state: Arc::new(RwLock::new(ServerState::default())),
+            project_root: std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")),
         }
+    }
+
+    pub fn with_project_root(mut self, root: std::path::PathBuf) -> Self {
+        self.project_root = root;
+        self
     }
 
     /// Start the MCP server on the given port.
@@ -46,6 +53,7 @@ impl McpServer {
 
         let registry = self.registry.clone();
         let state = self.state.clone();
+        let project_root = self.project_root.clone();
 
         tokio::spawn(async move {
             loop {
@@ -59,8 +67,9 @@ impl McpServer {
                         state.write().await.connections += 1;
                         let reg = registry.clone();
                         let st = state.clone();
+                        let root = project_root.clone();
                         tokio::spawn(async move {
-                            if let Err(e) = handle_connection(stream, reg).await {
+                            if let Err(e) = handle_connection(stream, reg, root).await {
                                 warn!(error = %e, "MCP connection error");
                             }
                             st.write().await.connections -= 1;
@@ -101,11 +110,11 @@ impl McpServer {
         method: &str,
         params: serde_json::Value,
     ) -> Result<serde_json::Value, ToolError> {
-        dispatch(method, params, &self.registry).await
+        dispatch(method, params, &self.registry, &self.project_root).await
     }
 }
 
-async fn handle_connection(stream: TcpStream, registry: Arc<ToolRegistry>) -> Result<(), ToolError> {
+async fn handle_connection(stream: TcpStream, registry: Arc<ToolRegistry>, project_root: std::path::PathBuf) -> Result<(), ToolError> {
     let (reader, mut writer) = stream.into_split();
     let mut lines = BufReader::new(reader).lines();
 
@@ -126,7 +135,7 @@ async fn handle_connection(stream: TcpStream, registry: Arc<ToolRegistry>) -> Re
         let method = req.get("method").and_then(|m| m.as_str()).unwrap_or("");
         let params = req.get("params").cloned().unwrap_or(serde_json::json!({}));
 
-        let result = dispatch(method, params, &registry).await;
+        let result = dispatch(method, params, &registry, &project_root).await;
         let response = match result {
             Ok(v) => serde_json::json!({ "jsonrpc": "2.0", "id": id, "result": v }),
             Err(e) => jsonrpc_error(id.as_ref(), -32000, &e.to_string()),
@@ -142,6 +151,7 @@ async fn dispatch(
     method: &str,
     params: serde_json::Value,
     registry: &Arc<ToolRegistry>,
+    project_root: &std::path::Path,
 ) -> Result<serde_json::Value, ToolError> {
     match method {
         "initialize" => Ok(serde_json::json!({
@@ -159,7 +169,8 @@ async fn dispatch(
                 .and_then(|n| n.as_str())
                 .ok_or_else(|| ToolError::McpError("Missing tool name".to_string()))?;
             let args = params.get("arguments").cloned().unwrap_or(serde_json::json!({}));
-            let context = ToolContext::new(std::path::PathBuf::from("."));
+            // Use project_root so MCP-invoked tools have the same working context as engine path
+            let context = ToolContext::new(project_root.to_path_buf());
             registry.execute(name, args, &context).await
         }
         _ => Err(ToolError::McpError(format!("Unknown method: {method}"))),

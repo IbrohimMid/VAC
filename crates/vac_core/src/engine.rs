@@ -242,6 +242,10 @@ impl VacEngine {
                         let _ = rec.flush();
                     }
                 }
+                // Emit Failed event so UI/runtime flow sees the error
+                if let Some(ref tx) = updates {
+                    let _ = tx.send(RuntimeUpdate::Failed(e.to_string()));
+                }
                 TaskResult {
                     task_id,
                     status: TaskStatus::Failed(e.to_string()),
