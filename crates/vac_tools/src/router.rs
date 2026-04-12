@@ -122,6 +122,7 @@ impl VilTrustPolicyAdapter {
     fn parse_risk_level(level: &str) -> RiskLevel {
         match level.to_lowercase().as_str() {
             "safe" => RiskLevel::Safe,
+            "medium" => RiskLevel::NeedsApproval, // Medium requires approval but not dangerous
             "needs_approval" | "needsapproval" => RiskLevel::NeedsApproval,
             "dangerous" => RiskLevel::Dangerous,
             _ => RiskLevel::NeedsApproval, // Default to cautious
