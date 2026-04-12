@@ -252,30 +252,101 @@ impl LlmProvider for AnthropicProvider {
     }
 
     async fn stream(&self, request: &LlmRequest) -> LlmResult<mpsc::Receiver<StreamChunk>> {
-        let (tx, rx) = mpsc::channel(100);
-        let response = self.complete(request).await?;
+        let (tx, rx) = mpsc::channel(256);
+
+        let mut stream_request = self.build_request(request);
+        stream_request.stream = true;
+
+        let body = serde_json::to_string(&stream_request)
+            .map_err(|e| LlmError::Other(anyhow::anyhow!("Serialize: {}", e)))?;
+        let endpoint = format!("{}{}", self.base_url.trim_end_matches('/'), API_ENDPOINT_PATH);
+        let response = self
+            .http_client
+            .post(&endpoint)
+            .headers(self.build_headers()?)
+            .body(body)
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            return Err(LlmError::Provider {
+                provider: "anthropic".to_string(),
+                message: format!("API error {}: {}", status, body),
+            });
+        }
 
         tokio::spawn(async move {
-            if !response.content.is_empty() {
-                let _ = tx.send(StreamChunk::Text(response.content.clone())).await;
+            use futures::StreamExt;
+            let mut stream = response.bytes_stream();
+            let mut buf = String::new();
+            let mut tool_args: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+            let mut usage = OpenAiUsage::default();
+
+            while let Some(chunk) = stream.next().await {
+                let bytes = match chunk {
+                    Ok(b) => b,
+                    Err(e) => {
+                        let _ = tx.send(StreamChunk::Error(e.to_string())).await;
+                        return;
+                    }
+                };
+                buf.push_str(&String::from_utf8_lossy(&bytes));
+
+                // Process complete SSE lines
+                while let Some(pos) = buf.find('\n') {
+                    let line = buf[..pos].trim().to_string();
+                    buf = buf[pos + 1..].to_string();
+
+                    if line.is_empty() || line == "data: [DONE]" {
+                        continue;
+                    }
+                    let data = line.strip_prefix("data: ").unwrap_or(&line);
+                    let Ok(val) = serde_json::from_str::<serde_json::Value>(data) else { continue };
+
+                    // Accumulate usage if present
+                    if let Some(u) = val.get("usage") {
+                        usage.prompt_tokens = u.get("prompt_tokens").and_then(|v| v.as_u64()).unwrap_or(usage.prompt_tokens);
+                        usage.completion_tokens = u.get("completion_tokens").and_then(|v| v.as_u64()).unwrap_or(usage.completion_tokens);
+                        usage.total_tokens = u.get("total_tokens").and_then(|v| v.as_u64()).unwrap_or(usage.total_tokens);
+                    }
+
+                    let Some(choices) = val.get("choices").and_then(|c| c.as_array()) else { continue };
+                    let Some(choice) = choices.first() else { continue };
+                    let delta = match choice.get("delta") { Some(d) => d, None => continue };
+
+                    // Text delta
+                    if let Some(text) = delta.get("content").and_then(|c| c.as_str()) {
+                        if !text.is_empty() {
+                            let _ = tx.send(StreamChunk::Text(text.to_string())).await;
+                        }
+                    }
+
+                    // Tool call deltas
+                    if let Some(tcs) = delta.get("tool_calls").and_then(|t| t.as_array()) {
+                        for tc in tcs {
+                            let id = tc.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                            let name = tc.get("function").and_then(|f| f.get("name")).and_then(|v| v.as_str()).unwrap_or("").to_string();
+                            let args_delta = tc.get("function").and_then(|f| f.get("arguments")).and_then(|v| v.as_str()).unwrap_or("").to_string();
+
+                            if !name.is_empty() {
+                                let _ = tx.send(StreamChunk::ToolCallStart { id: id.clone(), name }).await;
+                            }
+                            if !args_delta.is_empty() {
+                                tool_args.entry(id.clone()).or_default().push_str(&args_delta);
+                                let _ = tx.send(StreamChunk::ToolCallDelta { id, arguments_delta: args_delta }).await;
+                            }
+                        }
+                    }
+                }
             }
 
-            for call in &response.tool_calls {
-                let _ = tx
-                    .send(StreamChunk::ToolCallStart {
-                        id: call.id.clone(),
-                        name: call.name.clone(),
-                    })
-                    .await;
-                let _ = tx
-                    .send(StreamChunk::ToolCallDelta {
-                        id: call.id.clone(),
-                        arguments_delta: call.arguments.to_string(),
-                    })
-                    .await;
-            }
-
-            let _ = tx.send(StreamChunk::Done(response.usage)).await;
+            let _ = tx.send(StreamChunk::Done(TokenUsage {
+                prompt_tokens: usage.prompt_tokens,
+                completion_tokens: usage.completion_tokens,
+                total_tokens: usage.total_tokens,
+            })).await;
         });
 
         Ok(rx)

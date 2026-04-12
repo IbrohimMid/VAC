@@ -477,7 +477,16 @@ Rules:
         tool_router: &Arc<vac_tools::router::ToolRouter>,
     ) -> SwarmResult<String> {
         let mut trim_boundary: usize = 0;
+        let mut iterations: usize = 0;
+        const MAX_ITERATIONS: usize = 30;
         loop {
+            if iterations >= MAX_ITERATIONS {
+                warn!(iterations, "Max iterations reached, terminating agent loop");
+                return Err(SwarmError::Orchestration(format!(
+                    "Agent loop exceeded {} iterations without completing", MAX_ITERATIONS
+                )));
+            }
+            iterations += 1;
             let reduced = crate::context_budget::reduce_messages(messages.clone(), &mut trim_boundary);
             let request = LlmRequest::new(reduced.clone())
                 .with_max_tokens(4000)
@@ -492,26 +501,68 @@ Rules:
                 });
             }
 
-            let response = llm_router
-                .complete(&request)
+            // Use streaming for real-time AssistantChunk delivery.
+            let mut rx = llm_router
+                .stream(&request)
                 .await
                 .map_err(|e| SwarmError::Orchestration(format!("LLM error: {}", e)))?;
 
-            *total_tokens += response.usage.total_tokens;
+            let mut full_content = String::new();
+            let mut stream_tool_calls: Vec<vil_llm::provider::ToolCall> = Vec::new();
+            let mut tool_args_buf: std::collections::HashMap<String, (String, String)> = std::collections::HashMap::new();
+            let mut stream_usage = vil_llm::provider::TokenUsage::default();
+            let mut stream_finish = vil_llm::provider::FinishReason::Stop;
+
+            while let Some(chunk) = rx.recv().await {
+                match chunk {
+                    vil_llm::provider::StreamChunk::Text(text) => {
+                        full_content.push_str(&text);
+                        if let Some(tx) = &updates {
+                            let _ = tx.send(AgentLoopEvent::AssistantChunk(text));
+                        }
+                    }
+                    vil_llm::provider::StreamChunk::ToolCallStart { id, name } => {
+                        tool_args_buf.insert(id, (name, String::new()));
+                    }
+                    vil_llm::provider::StreamChunk::ToolCallDelta { id, arguments_delta } => {
+                        if let Some((_, args)) = tool_args_buf.get_mut(&id) {
+                            args.push_str(&arguments_delta);
+                        }
+                    }
+                    vil_llm::provider::StreamChunk::Done(usage) => {
+                        stream_usage = usage;
+                    }
+                    vil_llm::provider::StreamChunk::Error(e) => {
+                        return Err(SwarmError::Orchestration(format!("LLM stream error: {}", e)));
+                    }
+                }
+            }
+
+            for (id, (name, args_str)) in tool_args_buf {
+                let arguments = serde_json::from_str(&args_str)
+                    .unwrap_or_else(|_| serde_json::json!({"raw": args_str}));
+                stream_tool_calls.push(vil_llm::provider::ToolCall { id, name, arguments });
+                stream_finish = vil_llm::provider::FinishReason::ToolUse;
+            }
+            if stream_tool_calls.is_empty() {
+                stream_finish = vil_llm::provider::FinishReason::Stop;
+            }
+
+            let response = vil_llm::provider::LlmResponse {
+                content: full_content,
+                model: std::env::var("KILO_MODEL").unwrap_or_else(|_| "kilo-auto/free".to_string()),
+                finish_reason: stream_finish,
+                usage: stream_usage.clone(),
+                tool_calls: stream_tool_calls,
+            };
+
+            *total_tokens += stream_usage.total_tokens;
 
             if let Some(tx) = &updates {
                 let _ = tx.send(AgentLoopEvent::ModelResponse {
                     provider: "kilo".to_string(),
                     model: response.model.clone(),
                 });
-            }
-
-            if !response.content.is_empty() {
-                if let Some(tx) = &updates {
-                    for ch in response.content.chars() {
-                        let _ = tx.send(AgentLoopEvent::AssistantChunk(ch.to_string()));
-                    }
-                }
             }
 
             match response.finish_reason {
