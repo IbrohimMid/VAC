@@ -6,6 +6,8 @@ use ratatui::layout::{Constraint, Direction, Flex, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap};
+use vac_runtime::executor::OperatingMode;
+use vac_runtime::jobs::JobStatus;
 
 use super::app::{FocusPane, TuiApp};
 use super::services::detail::{DetailMode, render_detail_content};
@@ -16,7 +18,7 @@ pub fn render(frame: &mut Frame, app: &mut TuiApp) {
     let area = frame.area();
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(4), Constraint::Min(10), Constraint::Length(4)])
+        .constraints([Constraint::Length(6), Constraint::Min(10), Constraint::Length(4)])
         .split(area);
 
     render_header(frame, chunks[0], app);
@@ -52,6 +54,9 @@ fn render_header(frame: &mut Frame, area: Rect, app: &TuiApp) {
         Line::from(format!("{} | {} | Phase: {}", app.active_provider, app.active_model, app.current_phase)),
         Line::from(format!("{session_info} | Tasks {} done {} failed {} | Tab:focus={:?}",
             app.status.total_tasks, app.status.completed_tasks, app.status.failed_tasks, app.focus)),
+        Line::from(format!("Mode: {} | Jobs: {}",
+            mode_label(app.operating_mode.as_ref()),
+            app.runtime_jobs.len())),
     ];
 
     frame.render_widget(
@@ -252,14 +257,23 @@ fn render_history(frame: &mut Frame, area: Rect, app: &mut TuiApp) {
 // ── Lanes ─────────────────────────────────────────────────────────────────────
 
 fn render_lanes(frame: &mut Frame, area: Rect, app: &TuiApp) {
+    let has_jobs = !app.runtime_jobs.is_empty() || app.operating_mode.is_some();
+    let constraints = if has_jobs {
+        vec![Constraint::Percentage(25), Constraint::Percentage(25), Constraint::Percentage(25), Constraint::Percentage(25)]
+    } else {
+        vec![Constraint::Percentage(33), Constraint::Percentage(34), Constraint::Percentage(33)]
+    };
     let rows = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Percentage(33), Constraint::Percentage(34), Constraint::Percentage(33)])
+        .constraints(constraints)
         .split(area);
 
     render_lane(frame, rows[0], "Thinking / Plan", &app.session().thinking_log, Color::LightYellow);
     render_lane(frame, rows[1], "Reading / Search", &app.session().reading_log, Color::Cyan);
     render_lane(frame, rows[2], "Commands / Writes", &app.session().commands_log, Color::LightGreen);
+    if has_jobs {
+        render_runtime_jobs(frame, rows[3], app);
+    }
 }
 
 fn render_lane(frame: &mut Frame, area: Rect, title: &str, items: &[String], color: Color) {
@@ -325,6 +339,54 @@ fn render_approval_modal(frame: &mut Frame, area: Rect, app: &TuiApp) {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+fn render_runtime_jobs(frame: &mut Frame, area: Rect, app: &TuiApp) {
+    let visible = area.height.saturating_sub(2) as usize;
+    let items: Vec<ListItem> = app.runtime_jobs.iter().rev().take(visible.max(1))
+        .collect::<Vec<_>>().into_iter().rev()
+        .map(|job| {
+            let (status_str, color) = job_status_display(&job.status);
+            let kind_str = match &job.kind {
+                vac_runtime::jobs::JobKind::RunTask { description } => trunc(description, 28),
+                vac_runtime::jobs::JobKind::DiagnosticSweep => "DiagSweep".to_string(),
+                vac_runtime::jobs::JobKind::RulebookComplianceCheck => "RulebookCheck".to_string(),
+                vac_runtime::jobs::JobKind::PatchProposal { .. } => "PatchProposal".to_string(),
+            };
+            ListItem::new(Line::from(vec![
+                Span::styled(format!("{status_str} "), Style::default().fg(color)),
+                Span::raw(kind_str),
+            ]))
+        })
+        .collect();
+
+    let title = format!("Runtime Jobs [{}]", mode_label(app.operating_mode.as_ref()));
+    frame.render_widget(
+        List::new(items).block(Block::default()
+            .title(Span::styled(title, Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)))
+            .borders(Borders::ALL).border_style(Style::default().fg(Color::Magenta))),
+        area,
+    );
+}
+
+fn job_status_display(status: &JobStatus) -> (&'static str, Color) {
+    match status {
+        JobStatus::Queued    => ("⏳", Color::DarkGray),
+        JobStatus::Running   => ("⚙", Color::Yellow),
+        JobStatus::Completed => ("✓", Color::Green),
+        JobStatus::Failed(_) => ("✗", Color::Red),
+        JobStatus::Cancelled => ("–", Color::Gray),
+    }
+}
+
+fn mode_label(mode: Option<&OperatingMode>) -> &'static str {
+    match mode {
+        None                              => "—",
+        Some(OperatingMode::MonitorOnly)  => "MonitorOnly",
+        Some(OperatingMode::SuggestOnly)  => "SuggestOnly",
+        Some(OperatingMode::PatchProposal)=> "PatchProposal",
+        Some(OperatingMode::AutoFixLowRisk) => "AutoFixLowRisk",
+    }
+}
 
 fn trunc(s: &str, n: usize) -> String {
     let mut out: String = s.chars().take(n).collect();
