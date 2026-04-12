@@ -24,48 +24,118 @@ pub async fn execute(project_root: PathBuf, force: bool) -> anyhow::Result<()> {
     std::fs::create_dir_all(vac_dir.join("memory"))?;
     std::fs::create_dir_all(vac_dir.join("traces"))?;
     std::fs::create_dir_all(vac_dir.join("cache"))?;
+    std::fs::create_dir_all(vac_dir.join("skills"))?;
 
     // Create default config if not exists
     let config_path = vac_dir.join("config.toml");
     if !config_path.exists() {
         let default_config = r#"# VAC Configuration
+# VIL-Native Autonomous Development Agent
 # See https://vastar.id/docs/vac/config for full reference
+
+# =============================================================================
+# LLM Configuration
+# =============================================================================
 
 [llm]
 default_provider = "anthropic"
 
 [llm.providers.anthropic]
+# Kilo Gateway: https://kilo.ai
 api_key_env = "KILO_API_KEY"
-model = "kilo-auto/free"
+model = "kilo/free"
+max_tokens = 4000
+
+# =============================================================================
+# Tool Trust Policy
+# =============================================================================
+# Risk levels: safe, medium, needs_approval, dangerous
+# - safe: auto-allowed in all modes
+# - medium: needs approval in interactive mode
+# - needs_approval: always requires approval
+# - dangerous: denied unless explicitly allowed
 
 [tools]
-default_policy = "deny"
+default_policy = "medium"
 
+# Builtin tools - VIL-native development tools
 [tools.allow]
-bash = true
+# File operations
+file_read = true
 file_write = true
 file_edit = true
+
+# Search tools
 glob = true
 grep = true
-file_read = true
+search = true
+
+# Development tools
 cargo = true
 git = true
-search = true
+bash = true
+
+# Agent tools
+vil_status = true
+vil_knowledge = true
 task_done = true
 todo_write = true
+
+# Advanced tools (require approval)
+# spawn_subtask = "needs_approval"
+# run_skill = "needs_approval"
+
+# =============================================================================
+# Memory & Context
+# =============================================================================
 
 [memory]
 persist_path = ".vac/memory"
 enable_episodic = true
 enable_semantic = true
 
+# =============================================================================
+# Context Engine - Zero-Copy SHM
+# =============================================================================
+
 [context]
 enable_shm = true
 shm_pool_size_mb = 512
+chunk_size = 512
+chunk_overlap = 50
+max_context_tokens = 8192
+
+# =============================================================================
+# Swarm Configuration
+# =============================================================================
+
+[swarm]
+max_concurrent_agents = 4
+enable_parallel = true
+
+# =============================================================================
+# Trace & Audit
+# =============================================================================
 
 [trace]
 enable = true
 output_path = ".vac/traces"
+enable_signing = false
+
+# =============================================================================
+# MCP Servers (Optional)
+# =============================================================================
+# Example MCP server configurations:
+# [[mcp_servers]]
+# name = "filesystem"
+# transport.type = "stdio"
+# transport.command = "npx"
+# transport.args = ["-y", "@modelcontextprotocol/server-filesystem", "/"]
+
+# =============================================================================
+# Skills Directory
+# =============================================================================
+# Custom skills are loaded from .vac/skills/*.toml
 "#;
         std::fs::write(&config_path, default_config)?;
         println!("   📝 Created default config: .vac/config.toml");

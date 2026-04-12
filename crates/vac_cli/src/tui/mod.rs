@@ -553,19 +553,24 @@ fn render(frame: &mut Frame, app: &TuiApp) {
 fn render_header(frame: &mut Frame, area: Rect, app: &TuiApp) {
     let status_line = if let Some(task) = &app.active_task {
         format!(
-            "{} {}",
+            "{} {} | {}",
             spinner_frame(app.spinner_tick),
-            truncate(task, 64)
+            truncate(task, 48),
+            app.last_activity
         )
     } else {
-        "Idle".to_string()
+        "🟢 Ready - Enter a task to begin".to_string()
     };
 
     let lines = vec![
         Line::from(vec![
             Span::styled(
-                "VAC TUI",
+                "VAC",
                 Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                " TUI",
+                Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
             ),
             Span::raw("  "),
             Span::styled(status_line, Style::default().fg(Color::Yellow)),
@@ -843,8 +848,17 @@ fn spinner_frame(tick: usize) -> &'static str {
 
 fn humanize_status(message: &str) -> String {
     match message {
-        "Thinking" => "Thinking about the next step".to_string(),
-        other => other.to_string(),
+        "Thinking" => "🤔 Thinking about the next step".to_string(),
+        "Searching" | "searching" => "🔍 Searching codebase".to_string(),
+        "Reading" | "reading" => "📖 Reading files".to_string(),
+        "Planning" | "planning" => "📋 Creating execution plan".to_string(),
+        "Validating" | "validating" => "✓ Validating changes".to_string(),
+        "Writing" | "writing" => "✏️ Writing code".to_string(),
+        "Running" | "running" => "⚙️ Running commands".to_string(),
+        "Waiting" | "waiting" => "⏳ Waiting for approval".to_string(),
+        "Complete" | "complete" => "✅ Task complete".to_string(),
+        "Failed" | "failed" => "❌ Task failed".to_string(),
+        other => format!("→ {}", other),
     }
 }
 
