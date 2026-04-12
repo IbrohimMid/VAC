@@ -18,7 +18,7 @@ use crossterm::terminal::{
 use ratatui::layout::{Constraint, Direction, Flex, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap};
+use ratatui::widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap};
 use ratatui::{Frame, Terminal};
 use tokio::sync::{Mutex, mpsc, oneshot};
 
@@ -34,6 +34,46 @@ pub struct TranscriptEntry {
     pub color: Color,
 }
 
+/// One session tab — each Ctrl-N creates a new one.
+#[derive(Clone)]
+pub struct SessionTab {
+    pub session_label: String,
+    pub transcript: Vec<TranscriptEntry>,
+    pub history: Vec<TaskHistoryEntry>,
+    pub last_result: Option<TaskResult>,
+    pub active_task: Option<String>,
+    pub trigger_lane_log: Vec<String>,
+    pub data_lane_log: Vec<String>,
+    pub control_lane_log: Vec<String>,
+}
+
+impl SessionTab {
+    fn new(idx: usize) -> Self {
+        Self {
+            session_label: format!("Session {}", idx + 1),
+            transcript: vec![TranscriptEntry {
+                label: "VAC".to_string(),
+                body: "New session. Type a task and press Enter.".to_string(),
+                color: Color::Cyan,
+            }],
+            history: vec![],
+            last_result: None,
+            active_task: None,
+            trigger_lane_log: vec!["Ready".to_string()],
+            data_lane_log: vec!["No reads yet".to_string()],
+            control_lane_log: vec!["Waiting for task".to_string()],
+        }
+    }
+}
+
+#[derive(Clone, PartialEq)]
+enum DetailPanel {
+    None,
+    TaskDetail(usize), // index into current session history
+    ErrorDetail(String),
+    DiffLive,          // shown while agent is writing
+}
+
 struct PendingApproval {
     tool_name: String,
     summary: String,
@@ -45,14 +85,15 @@ pub struct TuiApp {
     pub running: bool,
     pub input: String,
     pub status: EngineStatus,
-    pub history: Vec<TaskHistoryEntry>,
-    pub trigger_lane_log: Vec<String>,
-    pub data_lane_log: Vec<String>,
-    pub control_lane_log: Vec<String>,
-    pub transcript: Vec<TranscriptEntry>,
-    pub active_task: Option<String>,
-    pub last_result: Option<TaskResult>,
-    pub diff_preview: String,
+    // Multi-session
+    pub sessions: Vec<SessionTab>,
+    pub active_session: usize,
+    // History navigation
+    pub history_state: ListState,
+    // Detail panel
+    detail_panel: DetailPanel,
+    // Live diff (shown only while agent is writing)
+    live_diff_files: Vec<String>,
     pub show_help: bool,
     pub active_provider: String,
     pub active_model: String,
@@ -65,43 +106,48 @@ pub struct TuiApp {
     streaming_assistant: Option<usize>,
 }
 
+// Convenience accessors for the active session
+impl TuiApp {
+    fn session(&self) -> &SessionTab { &self.sessions[self.active_session] }
+    fn session_mut(&mut self) -> &mut SessionTab { &mut self.sessions[self.active_session] }
+
+    pub fn transcript(&self) -> &[TranscriptEntry] { &self.session().transcript }
+    pub fn history(&self) -> &[TaskHistoryEntry] { &self.session().history }
+    pub fn last_result(&self) -> Option<&TaskResult> { self.session().last_result.as_ref() }
+    pub fn active_task(&self) -> Option<&str> { self.session().active_task.as_deref() }
+    pub fn trigger_lane_log(&self) -> &[String] { &self.session().trigger_lane_log }
+    pub fn data_lane_log(&self) -> &[String] { &self.session().data_lane_log }
+    pub fn control_lane_log(&self) -> &[String] { &self.session().control_lane_log }
+}
+
 impl TuiApp {
     pub fn new(status: EngineStatus, history: Vec<TaskHistoryEntry>) -> Self {
-        let mut transcript = Vec::new();
-        transcript.push(TranscriptEntry {
-            label: "VAC".to_string(),
-            body: "OpenCode-style TUI ready. Type a task, press Enter, and approve write tools with y/n."
-                .to_string(),
-            color: Color::Cyan,
-        });
         let auth_hint = missing_api_key_hint();
         let auth_ready = auth_hint.is_none();
-        let mut control_lane_log = vec!["Waiting for task".to_string()];
+
+        let mut first_session = SessionTab::new(0);
+        first_session.history = history;
         if let Some(hint) = &auth_hint {
-            transcript.push(TranscriptEntry {
+            first_session.transcript.push(TranscriptEntry {
                 label: "Auth".to_string(),
                 body: hint.clone(),
                 color: Color::Yellow,
             });
-            control_lane_log.push("Run `vac auth login` before running tasks".to_string());
+            first_session.control_lane_log.push("Run `vac auth login` before running tasks".to_string());
         }
 
         Self {
             running: true,
             input: String::new(),
             status,
-            history,
-            trigger_lane_log: vec!["TUI booted".to_string()],
-            data_lane_log: vec!["No reads yet".to_string()],
-            control_lane_log,
-            transcript,
-            active_task: None,
-            last_result: None,
-            diff_preview: "No file changes yet.".to_string(),
+            sessions: vec![first_session],
+            active_session: 0,
+            history_state: ListState::default(),
+            detail_panel: DetailPanel::None,
+            live_diff_files: vec![],
             show_help: true,
             active_provider: "kilo".to_string(),
-            active_model: std::env::var("KILO_MODEL")
-                .unwrap_or_else(|_| "kilo-auto/free".to_string()),
+            active_model: std::env::var("KILO_MODEL").unwrap_or_else(|_| "kilo-auto/free".to_string()),
             current_phase: "Idle".to_string(),
             last_activity: "Waiting for task".to_string(),
             auth_ready,
@@ -112,24 +158,100 @@ impl TuiApp {
         }
     }
 
+    fn new_session(&mut self) {
+        let idx = self.sessions.len();
+        self.sessions.push(SessionTab::new(idx));
+        self.active_session = idx;
+        self.history_state = ListState::default();
+        self.detail_panel = DetailPanel::None;
+        self.streaming_assistant = None;
+    }
+
+    fn next_session(&mut self) {
+        if self.sessions.len() > 1 {
+            self.active_session = (self.active_session + 1) % self.sessions.len();
+            self.history_state = ListState::default();
+            self.detail_panel = DetailPanel::None;
+            self.streaming_assistant = None;
+        }
+    }
+
+    fn prev_session(&mut self) {
+        if self.sessions.len() > 1 {
+            self.active_session = self.active_session.checked_sub(1).unwrap_or(self.sessions.len() - 1);
+            self.history_state = ListState::default();
+            self.detail_panel = DetailPanel::None;
+            self.streaming_assistant = None;
+        }
+    }
+
+    fn history_up(&mut self) {
+        let len = self.session().history.len();
+        if len == 0 { return; }
+        let i = match self.history_state.selected() {
+            None => len - 1,
+            Some(0) => 0,
+            Some(i) => i - 1,
+        };
+        self.history_state.select(Some(i));
+        self.detail_panel = DetailPanel::TaskDetail(i);
+    }
+
+    fn history_down(&mut self) {
+        let len = self.session().history.len();
+        if len == 0 { return; }
+        let i = match self.history_state.selected() {
+            None => 0,
+            Some(i) => (i + 1).min(len - 1),
+        };
+        self.history_state.select(Some(i));
+        self.detail_panel = DetailPanel::TaskDetail(i);
+    }
+
+    fn revert_selected(&mut self, project_root: &Path) {
+        let Some(idx) = self.history_state.selected() else { return };
+        let Some(entry) = self.session().history.get(idx) else { return };
+        let task_id = entry.task_id.to_string();
+        // Restore from journal snapshots for this task
+        let backup_dir = project_root.join(".vac/backups").join(&task_id);
+        if backup_dir.exists() {
+            let mut restored = 0usize;
+            if let Ok(entries) = std::fs::read_dir(&backup_dir) {
+                for e in entries.flatten() {
+                    let bak = e.path();
+                    if bak.extension().map(|x| x == "bak").unwrap_or(false) {
+                        let rel = bak.file_stem()
+                            .and_then(|s| s.to_str())
+                            .unwrap_or("")
+                            .replace("__", "/");
+                        let dest = project_root.join(&rel);
+                        if let Some(parent) = dest.parent() { let _ = std::fs::create_dir_all(parent); }
+                        if std::fs::copy(&bak, &dest).is_ok() { restored += 1; }
+                    }
+                }
+            }
+            let msg = format!("Reverted {} file(s) to state before task {}", restored, &task_id[..8]);
+            self.push_transcript("Revert", msg.clone(), Color::Magenta);
+            self.set_activity("Reverted", msg);
+        } else {
+            self.push_transcript("Revert", format!("No snapshot found for task {}", &task_id[..8]), Color::Red);
+        }
+    }
+
     fn push_transcript(&mut self, label: impl Into<String>, body: impl Into<String>, color: Color) {
         self.streaming_assistant = None;
-        self.transcript.push(TranscriptEntry {
-            label: label.into(),
-            body: body.into(),
-            color,
-        });
+        self.session_mut().transcript.push(TranscriptEntry { label: label.into(), body: body.into(), color });
         self.trim_transcript();
     }
 
     fn ensure_streaming_assistant(&mut self) {
         if self.streaming_assistant.is_none() {
-            self.transcript.push(TranscriptEntry {
+            self.session_mut().transcript.push(TranscriptEntry {
                 label: "Assistant".to_string(),
                 body: String::new(),
                 color: Color::Green,
             });
-            self.streaming_assistant = Some(self.transcript.len() - 1);
+            self.streaming_assistant = Some(self.session().transcript.len() - 1);
             self.trim_transcript();
         }
     }
@@ -137,20 +259,19 @@ impl TuiApp {
     fn append_assistant_chunk(&mut self, chunk: &str) {
         self.ensure_streaming_assistant();
         if let Some(index) = self.streaming_assistant {
-            if let Some(entry) = self.transcript.get_mut(index) {
+            if let Some(entry) = self.session_mut().transcript.get_mut(index) {
                 entry.body.push_str(chunk);
             }
         }
     }
 
-    fn finish_streaming(&mut self) {
-        self.streaming_assistant = None;
-    }
+    fn finish_streaming(&mut self) { self.streaming_assistant = None; }
 
     fn trim_transcript(&mut self) {
-        if self.transcript.len() > 240 {
-            let overflow = self.transcript.len() - 240;
-            self.transcript.drain(0..overflow);
+        let t = &mut self.session_mut().transcript;
+        if t.len() > 240 {
+            let overflow = t.len() - 240;
+            t.drain(0..overflow);
             if let Some(index) = self.streaming_assistant {
                 self.streaming_assistant = index.checked_sub(overflow);
             }
@@ -159,10 +280,7 @@ impl TuiApp {
 
     fn push_lane(log: &mut Vec<String>, message: impl Into<String>) {
         log.push(message.into());
-        if log.len() > 24 {
-            let overflow = log.len() - 24;
-            log.drain(0..overflow);
-        }
+        if log.len() > 24 { let overflow = log.len() - 24; log.drain(0..overflow); }
     }
 
     fn set_activity(&mut self, phase: impl Into<String>, detail: impl Into<String>) {
@@ -238,26 +356,25 @@ pub async fn run(project_root: PathBuf, _resume: bool) -> anyhow::Result<()> {
         while let Ok(event) = rx.try_recv() {
             match event {
                 TaskEvent::Started { prompt } => {
-                    app.active_task = Some(prompt.clone());
+                    app.session_mut().active_task = Some(prompt.clone());
                     app.push_transcript("You", prompt.clone(), Color::Yellow);
-                    TuiApp::push_lane(&mut app.trigger_lane_log, format!("Queued: {}", truncate(&prompt, 56)));
-                    TuiApp::push_lane(&mut app.control_lane_log, "Waiting for model response");
+                    TuiApp::push_lane(&mut app.sessions[app.active_session].trigger_lane_log, format!("Queued: {}", truncate(&prompt, 56)));
+                    TuiApp::push_lane(&mut app.sessions[app.active_session].control_lane_log, "Waiting for model response");
                     app.set_activity("Queued", format!("Task queued: {}", truncate(&prompt, 60)));
                     app.show_help = false;
+                    app.live_diff_files.clear();
+                    app.detail_panel = DetailPanel::None;
                 }
                 TaskEvent::Update(update) => match update {
                     RuntimeUpdate::Status(message) => {
                         let human = humanize_status(&message);
-                        TuiApp::push_lane(&mut app.trigger_lane_log, human.clone());
+                        TuiApp::push_lane(&mut app.sessions[app.active_session].trigger_lane_log, human.clone());
                         app.set_activity(human.clone(), human);
                     }
                     RuntimeUpdate::ModelInfo { provider, model } => {
                         app.active_provider = provider;
                         app.active_model = model.clone();
-                        TuiApp::push_lane(
-                            &mut app.trigger_lane_log,
-                            format!("Model: {}", truncate(&model, 28)),
-                        );
+                        TuiApp::push_lane(&mut app.sessions[app.active_session].trigger_lane_log, format!("Model: {}", truncate(&model, 28)));
                         app.set_activity("Model ready", format!("Connected to {}", truncate(&model, 32)));
                     }
                     RuntimeUpdate::AssistantChunk(chunk) => {
@@ -267,136 +384,105 @@ pub async fn run(project_root: PathBuf, _resume: bool) -> anyhow::Result<()> {
                         app.finish_streaming();
                         let action = describe_tool_call(&name, &arguments);
                         let (label, color) = transcript_style_for_tool(&name);
-                        app.push_transcript(
-                            label,
-                            action.clone(),
-                            color,
-                        );
-                        if is_read_tool(&name) {
-                            TuiApp::push_lane(&mut app.data_lane_log, action.clone());
+                        app.push_transcript(label, action.clone(), color);
+                        // Show live diff panel when agent is writing
+                        if matches!(name.as_str(), "file_write" | "file_edit") {
+                            let file = arguments.get("path").or_else(|| arguments.get("file_path"))
+                                .and_then(|v| v.as_str()).unwrap_or("?").to_string();
+                            if !app.live_diff_files.contains(&file) {
+                                app.live_diff_files.push(file);
+                            }
+                            app.detail_panel = DetailPanel::DiffLive;
+                            TuiApp::push_lane(&mut app.sessions[app.active_session].control_lane_log, action.clone());
+                            app.set_activity(activity_phase_for_tool(&name), action);
+                        } else if is_read_tool(&name) {
+                            TuiApp::push_lane(&mut app.sessions[app.active_session].data_lane_log, action.clone());
                             app.set_activity("Reading", action);
                         } else {
-                            TuiApp::push_lane(&mut app.control_lane_log, action.clone());
+                            TuiApp::push_lane(&mut app.sessions[app.active_session].control_lane_log, action.clone());
                             app.set_activity(activity_phase_for_tool(&name), action);
                         }
                     }
-                    RuntimeUpdate::ToolResult {
-                        name,
-                        content,
-                        success,
-                        ..
-                    } => {
+                    RuntimeUpdate::ToolResult { name, content, success, .. } => {
                         app.finish_streaming();
                         let summary = summarize_tool_result(&name, &content, success);
                         let color = if success { Color::Blue } else { Color::Red };
-                        app.push_transcript(
-                            "Result",
-                            summary.clone(),
-                            color,
-                        );
+                        app.push_transcript("Result", summary.clone(), color);
                         if is_read_tool(&name) {
-                            TuiApp::push_lane(&mut app.data_lane_log, summary.clone());
+                            TuiApp::push_lane(&mut app.sessions[app.active_session].data_lane_log, summary.clone());
                         } else {
-                            TuiApp::push_lane(&mut app.control_lane_log, summary.clone());
+                            TuiApp::push_lane(&mut app.sessions[app.active_session].control_lane_log, summary.clone());
                         }
-                        let phase = if success { "Reviewing result" } else { "Tool failed" };
-                        app.set_activity(phase, summary);
+                        app.set_activity(if success { "Reviewing result" } else { "Tool failed" }, summary);
                     }
                     RuntimeUpdate::Completed(result) => {
-                        app.last_result = Some(result);
+                        app.session_mut().last_result = Some(result);
                         app.finish_streaming();
                     }
                     RuntimeUpdate::ValidationResult { score, issues } => {
                         let msg = format!("Validation: {:.0}% ({} issues)", score * 100.0, issues.len());
-                        TuiApp::push_lane(&mut app.control_lane_log, msg.clone());
+                        TuiApp::push_lane(&mut app.sessions[app.active_session].control_lane_log, msg.clone());
                         app.set_activity("Validated", msg);
                     }
                     RuntimeUpdate::Failed(reason) => {
                         app.finish_streaming();
-                        TuiApp::push_lane(&mut app.control_lane_log, format!("Failed: {reason}"));
-                        app.set_activity("Failed", reason);
+                        app.detail_panel = DetailPanel::ErrorDetail(reason.clone());
+                        app.live_diff_files.clear();
+                        TuiApp::push_lane(&mut app.sessions[app.active_session].control_lane_log, format!("Failed: {reason}"));
+                        app.set_activity("Failed", reason.clone());
+                        // Full error card in transcript
+                        app.push_transcript("❌ Error", format!("{}\n\nCheck Inspector for details. Press Esc to dismiss.", reason), Color::Red);
                     }
                     RuntimeUpdate::LspStatus { available, binary_path } => {
-                        let msg = if available {
-                            format!("vil-lsp active: {binary_path}")
-                        } else {
-                            format!("vil-lsp unavailable: {binary_path}")
-                        };
-                        TuiApp::push_lane(&mut app.control_lane_log, msg.clone());
+                        let msg = if available { format!("vil-lsp active: {binary_path}") } else { format!("vil-lsp unavailable: {binary_path}") };
+                        TuiApp::push_lane(&mut app.sessions[app.active_session].control_lane_log, msg.clone());
                         app.set_activity("LSP", msg);
                     }
                     RuntimeUpdate::LspDiagnostics(snapshot) => {
-                        let msg = format!(
-                            "vil-lsp: {} errors, {} warnings",
-                            snapshot.total_errors, snapshot.total_warnings
-                        );
-                        TuiApp::push_lane(&mut app.control_lane_log, msg.clone());
+                        let msg = format!("vil-lsp: {} errors, {} warnings", snapshot.total_errors, snapshot.total_warnings);
+                        TuiApp::push_lane(&mut app.sessions[app.active_session].control_lane_log, msg.clone());
                         app.set_activity("LSP diagnostics", msg);
                     }
                 },
-                TaskEvent::Finished {
-                    prompt,
-                    result,
-                    status,
-                    history,
-                    diff_preview,
-                } => {
+                TaskEvent::Finished { prompt, result, status, history, diff_preview: _ } => {
                     app.status = status;
-                    app.history = history;
-                    app.active_task = None;
-                    app.last_result = Some(result.clone());
-                    app.diff_preview = diff_preview;
+                    app.session_mut().history = history;
+                    app.session_mut().active_task = None;
+                    app.session_mut().last_result = Some(result.clone());
+                    app.live_diff_files.clear();
+                    app.detail_panel = DetailPanel::None;
                     app.finish_streaming();
                     app.push_transcript("Summary", result.summary.clone(), Color::LightGreen);
                     app.set_activity("Idle", "Task finished");
-                    TuiApp::push_lane(
-                        &mut app.trigger_lane_log,
-                        format!("Completed: {}", truncate(&prompt, 56)),
-                    );
-                    TuiApp::push_lane(
-                        &mut app.data_lane_log,
-                        format!("Tokens: {}", result.total_tokens_used),
-                    );
-                    TuiApp::push_lane(
-                        &mut app.control_lane_log,
-                        format!("Final status: {:?}", result.status),
-                    );
+                    TuiApp::push_lane(&mut app.sessions[app.active_session].trigger_lane_log, format!("Completed: {}", truncate(&prompt, 56)));
+                    TuiApp::push_lane(&mut app.sessions[app.active_session].data_lane_log, format!("Tokens: {}", result.total_tokens_used));
+                    TuiApp::push_lane(&mut app.sessions[app.active_session].control_lane_log, format!("Final status: {:?}", result.status));
                 }
-                TaskEvent::Failed {
-                    prompt,
-                    error,
-                    status,
-                    history,
-                } => {
+                TaskEvent::Failed { prompt, error, status, history } => {
                     app.status = status;
-                    app.history = history;
-                    app.active_task = None;
+                    app.session_mut().history = history;
+                    app.session_mut().active_task = None;
+                    app.live_diff_files.clear();
                     app.finish_streaming();
-                    app.push_transcript("Error", error.clone(), Color::Red);
+                    // Full error card
+                    let error_card = format!(
+                        "Task failed: {}\n\nPhase: {}\nLast activity: {}\n\nTip: check auth (`vac auth status`), then retry.",
+                        error, app.current_phase, app.last_activity
+                    );
+                    app.push_transcript("❌ Failed", error_card.clone(), Color::Red);
+                    app.detail_panel = DetailPanel::ErrorDetail(error.clone());
                     app.set_activity("Failed", truncate(&error, 80));
                     if let Some(hint) = auth_hint_for_error(&error) {
                         app.push_transcript("Hint", hint.clone(), Color::Yellow);
-                        TuiApp::push_lane(&mut app.control_lane_log, truncate(&hint, 48));
+                        TuiApp::push_lane(&mut app.sessions[app.active_session].control_lane_log, truncate(&hint, 48));
                     }
-                    TuiApp::push_lane(
-                        &mut app.trigger_lane_log,
-                        format!("Failed: {}", truncate(&prompt, 56)),
-                    );
-                    TuiApp::push_lane(&mut app.control_lane_log, truncate(&error, 48));
+                    TuiApp::push_lane(&mut app.sessions[app.active_session].trigger_lane_log, format!("Failed: {}", truncate(&prompt, 56)));
+                    TuiApp::push_lane(&mut app.sessions[app.active_session].control_lane_log, truncate(&error, 48));
                 }
-                TaskEvent::ApprovalRequest {
-                    tool_name,
-                    args_preview,
-                    responder,
-                } => {
+                TaskEvent::ApprovalRequest { tool_name, args_preview, responder } => {
                     let summary = describe_tool_call_from_preview(&tool_name, &args_preview);
-                    app.pending_approval = Some(PendingApproval {
-                        tool_name,
-                        summary: summary.clone(),
-                        args_preview,
-                        responder,
-                    });
-                    TuiApp::push_lane(&mut app.control_lane_log, format!("Approval needed: {}", truncate(&summary, 46)));
+                    app.pending_approval = Some(PendingApproval { tool_name, summary: summary.clone(), args_preview, responder });
+                    TuiApp::push_lane(&mut app.sessions[app.active_session].control_lane_log, format!("Approval needed: {}", truncate(&summary, 46)));
                     app.set_activity("Awaiting approval", summary);
                 }
             }
@@ -431,51 +517,57 @@ fn handle_key(
         match key.code {
             KeyCode::Char('y') | KeyCode::Char('Y') => {
                 let _ = pending.responder.send(true);
-                TuiApp::push_lane(&mut app.control_lane_log, format!("Approved {}", pending.tool_name));
-                app.push_transcript(
-                    "Approval",
-                    format!("Allowed {}", pending.summary),
-                    Color::Green,
-                );
+                TuiApp::push_lane(&mut app.sessions[app.active_session].control_lane_log, format!("Approved {}", pending.tool_name));
+                app.push_transcript("Approval", format!("Allowed {}", pending.summary), Color::Green);
                 app.set_activity("Approved", format!("Allowed {}", pending.summary));
             }
             KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
                 let _ = pending.responder.send(false);
-                TuiApp::push_lane(&mut app.control_lane_log, format!("Denied {}", pending.tool_name));
-                app.push_transcript(
-                    "Approval",
-                    format!("Denied {}", pending.summary),
-                    Color::Red,
-                );
+                TuiApp::push_lane(&mut app.sessions[app.active_session].control_lane_log, format!("Denied {}", pending.tool_name));
+                app.push_transcript("Approval", format!("Denied {}", pending.summary), Color::Red);
                 app.set_activity("Denied", format!("Denied {}", pending.summary));
             }
-            _ => {
-                app.pending_approval = Some(pending);
-            }
+            _ => { app.pending_approval = Some(pending); }
         }
         return Ok(false);
     }
 
-    if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
-        app.running = false;
-        return Ok(true);
+    // Ctrl combos
+    if key.modifiers.contains(KeyModifiers::CONTROL) {
+        match key.code {
+            KeyCode::Char('c') => { app.running = false; return Ok(true); }
+            KeyCode::Char('n') => { app.new_session(); return Ok(false); }
+            KeyCode::Char(']') => { app.next_session(); return Ok(false); }
+            KeyCode::Char('[') => { app.prev_session(); return Ok(false); }
+            _ => {}
+        }
     }
 
     match key.code {
-        KeyCode::Char('q') if app.input.is_empty() && app.active_task.is_none() => {
+        KeyCode::Char('q') if app.input.is_empty() && app.active_task().is_none() => {
             app.running = false;
             Ok(true)
         }
         KeyCode::Esc => {
             app.input.clear();
+            app.detail_panel = DetailPanel::None;
             Ok(false)
         }
-        KeyCode::Backspace => {
-            app.input.pop();
+        KeyCode::Backspace => { app.input.pop(); Ok(false) }
+        KeyCode::Up => { app.history_up(); Ok(false) }
+        KeyCode::Down => { app.history_down(); Ok(false) }
+        KeyCode::Char('r') | KeyCode::Char('R') if app.input.is_empty() => {
+            app.revert_selected(&project_root);
+            Ok(false)
+        }
+        KeyCode::Char('d') | KeyCode::Char('D') if app.input.is_empty() => {
+            if let Some(idx) = app.history_state.selected() {
+                app.detail_panel = DetailPanel::TaskDetail(idx);
+            }
             Ok(false)
         }
         KeyCode::Enter => {
-            if app.active_task.is_none() {
+            if app.active_task().is_none() {
                 let prompt = app.input.trim().to_string();
                 if !prompt.is_empty() {
                     app.input.clear();
@@ -484,14 +576,8 @@ fn handle_key(
             }
             Ok(false)
         }
-        KeyCode::Tab => {
-            app.show_help = !app.show_help;
-            Ok(false)
-        }
-        KeyCode::Char(ch) => {
-            app.input.push(ch);
-            Ok(false)
-        }
+        KeyCode::Tab => { app.show_help = !app.show_help; Ok(false) }
+        KeyCode::Char(ch) => { app.input.push(ch); Ok(false) }
         _ => Ok(false),
     }
 }
@@ -561,11 +647,7 @@ fn render(frame: &mut Frame, app: &TuiApp) {
     let area = frame.area();
     let vertical = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(5),
-            Constraint::Min(12),
-            Constraint::Length(5),
-        ])
+        .constraints([Constraint::Length(5), Constraint::Min(12), Constraint::Length(5)])
         .split(area);
 
     render_header(frame, vertical[0], app);
@@ -578,54 +660,39 @@ fn render(frame: &mut Frame, app: &TuiApp) {
 }
 
 fn render_header(frame: &mut Frame, area: Rect, app: &TuiApp) {
-    let status_line = if let Some(task) = &app.active_task {
-        format!(
-            "{} {} | {}",
-            spinner_frame(app.spinner_tick),
-            truncate(task, 48),
-            app.last_activity
-        )
+    let session_label = &app.sessions[app.active_session].session_label;
+    let session_info = if app.sessions.len() > 1 {
+        format!("{} ({}/{})", session_label, app.active_session + 1, app.sessions.len())
     } else {
-        "🟢 Ready - Enter a task to begin".to_string()
+        session_label.clone()
+    };
+
+    let status_line = if let Some(task) = app.active_task() {
+        format!("{} {} | {}", spinner_frame(app.spinner_tick), truncate(task, 48), app.last_activity)
+    } else {
+        "🟢 Ready — type a task and press Enter".to_string()
     };
 
     let lines = vec![
         Line::from(vec![
-            Span::styled(
-                "VAC",
-                Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(
-                " TUI",
-                Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
-            ),
+            Span::styled("VAC", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
             Span::raw("  "),
             Span::styled(status_line, Style::default().fg(Color::Yellow)),
         ]),
+        Line::from(format!("Provider {} | Model {} | {}", app.active_provider, app.active_model, session_info)),
+        Line::from(format!("Phase {} | {}", truncate(&app.current_phase, 22), truncate(&app.last_activity, 54))),
         Line::from(format!(
-            "Provider {} | Model {} | Session {}",
-            app.active_provider,
-            app.active_model,
-            app.status.session_id
-        )),
-        Line::from(format!(
-            "Phase {} | Last {}",
-            truncate(&app.current_phase, 22),
-            truncate(&app.last_activity, 54)
-        )),
-        Line::from(format!(
-            "Tasks {} | Done {} | Failed {} | Tokens {}",
-            app.status.total_tasks,
-            app.status.completed_tasks,
-            app.status.failed_tasks,
-            app.status.total_tokens_used
+            "Tasks {} | Done {} | Failed {} | Tokens {}  [Ctrl-N new session | Ctrl-]/[ switch | ↑↓ history | R revert | D diff | Tab help]",
+            app.status.total_tasks, app.status.completed_tasks, app.status.failed_tasks, app.status.total_tokens_used
         )),
     ];
 
-    let header = Paragraph::new(lines)
-        .block(Block::default().title("Status Bar").borders(Borders::ALL))
-        .wrap(Wrap { trim: true });
-    frame.render_widget(header, area);
+    frame.render_widget(
+        Paragraph::new(lines)
+            .block(Block::default().title("Status").borders(Borders::ALL))
+            .wrap(Wrap { trim: true }),
+        area,
+    );
 }
 
 fn render_body(frame: &mut Frame, area: Rect, app: &TuiApp) {
@@ -634,14 +701,28 @@ fn render_body(frame: &mut Frame, area: Rect, app: &TuiApp) {
         .constraints([Constraint::Percentage(64), Constraint::Percentage(36)])
         .split(area);
 
-    let left = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Min(10), Constraint::Length(12)])
-        .split(horizontal[0]);
+    // Left: transcript + conditional diff/detail panel
+    let show_bottom_panel = !matches!(app.detail_panel, DetailPanel::None)
+        || !app.live_diff_files.is_empty();
+
+    let left = if show_bottom_panel {
+        Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Min(8), Constraint::Length(10)])
+            .split(horizontal[0])
+    } else {
+        Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Min(8), Constraint::Length(0)])
+            .split(horizontal[0])
+    };
 
     render_transcript(frame, left[0], app);
-    render_diff_panel(frame, left[1], app);
+    if show_bottom_panel {
+        render_detail_panel(frame, left[1], app);
+    }
 
+    // Right: inspector + history + lanes
     let right = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Length(9), Constraint::Length(10), Constraint::Min(9)])
@@ -653,149 +734,156 @@ fn render_body(frame: &mut Frame, area: Rect, app: &TuiApp) {
 }
 
 fn render_transcript(frame: &mut Frame, area: Rect, app: &TuiApp) {
-    let items: Vec<ListItem> = app
-        .transcript
-        .iter()
-        .rev()
+    let items: Vec<ListItem> = app.transcript()
+        .iter().rev()
         .take((area.height.saturating_sub(2) as usize).saturating_mul(2))
-        .collect::<Vec<_>>()
-        .into_iter()
-        .rev()
-        .map(|entry| {
-            ListItem::new(vec![
-                Line::from(Span::styled(
-                    entry.label.clone(),
-                    Style::default()
-                        .fg(entry.color)
-                        .add_modifier(Modifier::BOLD),
-                )),
-                Line::from(entry.body.clone()),
-            ])
-        })
+        .collect::<Vec<_>>().into_iter().rev()
+        .map(|entry| ListItem::new(vec![
+            Line::from(Span::styled(entry.label.clone(), Style::default().fg(entry.color).add_modifier(Modifier::BOLD))),
+            Line::from(entry.body.clone()),
+        ]))
         .collect();
 
-    let transcript = List::new(items).block(
-        Block::default()
-            .title("Transcript")
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Gray)),
+    frame.render_widget(
+        List::new(items).block(Block::default().title("Transcript").borders(Borders::ALL).border_style(Style::default().fg(Color::Gray))),
+        area,
     );
-    frame.render_widget(transcript, area);
 }
 
-fn render_diff_panel(frame: &mut Frame, area: Rect, app: &TuiApp) {
-    let panel = Paragraph::new(app.diff_preview.clone())
-        .block(Block::default().title("Diff / Modified Files").borders(Borders::ALL))
-        .wrap(Wrap { trim: true });
-    frame.render_widget(panel, area);
+/// Contextual bottom panel: live diff while writing, task detail, or error detail.
+fn render_detail_panel(frame: &mut Frame, area: Rect, app: &TuiApp) {
+    match &app.detail_panel {
+        DetailPanel::DiffLive => {
+            let content = if app.live_diff_files.is_empty() {
+                "Waiting for file changes...".to_string()
+            } else {
+                format!("✏️  Writing:\n{}", app.live_diff_files.join("\n"))
+            };
+            frame.render_widget(
+                Paragraph::new(content)
+                    .block(Block::default().title("Live Changes").borders(Borders::ALL).border_style(Style::default().fg(Color::Yellow)))
+                    .wrap(Wrap { trim: true }),
+                area,
+            );
+        }
+        DetailPanel::ErrorDetail(reason) => {
+            let content = format!(
+                "❌ Error\n\n{}\n\nPhase: {}\nPress Esc to dismiss.",
+                reason, app.current_phase
+            );
+            frame.render_widget(
+                Paragraph::new(content)
+                    .block(Block::default().title("Error Detail").borders(Borders::ALL).border_style(Style::default().fg(Color::Red)))
+                    .wrap(Wrap { trim: true }),
+                area,
+            );
+        }
+        DetailPanel::TaskDetail(idx) => {
+            let content = if let Some(entry) = app.history().get(*idx) {
+                let status = match &entry.status {
+                    vac_core::TaskStatus::Completed => "✓ Completed".to_string(),
+                    vac_core::TaskStatus::Failed(r) => format!("✗ Failed: {r}"),
+                    other => format!("{other:?}"),
+                };
+                format!(
+                    "{}\n\n{}\nTokens: {}\n\n[R] Revert to this state  [Esc] Close",
+                    entry.description, status, entry.total_tokens_used
+                )
+            } else {
+                "No task selected".to_string()
+            };
+            frame.render_widget(
+                Paragraph::new(content)
+                    .block(Block::default().title("Task Detail").borders(Borders::ALL).border_style(Style::default().fg(Color::Blue)))
+                    .wrap(Wrap { trim: true }),
+                area,
+            );
+        }
+        DetailPanel::None => {}
+    }
 }
 
 fn render_status_panel(frame: &mut Frame, area: Rect, app: &TuiApp) {
     let mut lines = vec![
-        Line::from(format!("Project: {}", app.status.project_root.display())),
-        Line::from(format!(
-            "Auth: {}",
-            if app.auth_ready {
-                "ready"
-            } else {
-                "missing login"
-            }
-        )),
-        Line::from(format!(
-            "Subsystems: {}",
-            if app.status.subsystems_initialized {
-                "ready"
-            } else {
-                "booting"
-            }
-        )),
-        Line::from(format!(
-            "Busy: {}",
-            app.active_task
-                .as_ref()
-                .map(|task| truncate(task, 34))
-                .unwrap_or_else(|| "no".to_string())
-        )),
+        Line::from(format!("Project: {}", truncate(&app.status.project_root.display().to_string(), 38))),
+        Line::from(format!("Auth: {}", if app.auth_ready { "✓ ready" } else { "✗ missing" })),
+        Line::from(format!("Subsystems: {}", if app.status.subsystems_initialized { "ready" } else { "booting" })),
+        Line::from(format!("Busy: {}", app.active_task().map(|t| truncate(t, 34)).unwrap_or_else(|| "no".to_string()))),
         Line::from(format!("Phase: {}", truncate(&app.current_phase, 38))),
-        Line::from(format!("Last: {}", truncate(&app.last_activity, 39))),
     ];
 
     if app.show_help {
         lines.push(Line::from(""));
-        lines.push(Line::from("Enter run task"));
-        lines.push(Line::from("y / n approve write tool"));
-        lines.push(Line::from("Tab toggle help"));
-        lines.push(Line::from("q quit"));
-        if let Some(hint) = &app.auth_hint {
-            lines.push(Line::from(""));
-            lines.push(Line::from(truncate(hint, 54)));
-        }
+        lines.push(Line::from("Enter  run task"));
+        lines.push(Line::from("↑↓     select history"));
+        lines.push(Line::from("R      revert to task"));
+        lines.push(Line::from("D      task detail"));
+        lines.push(Line::from("Ctrl-N new session"));
+        lines.push(Line::from("Ctrl-]/[ switch session"));
+        lines.push(Line::from("Tab    toggle help  q quit"));
     }
 
-    let panel = Paragraph::new(lines)
-        .block(Block::default().title("Inspector").borders(Borders::ALL))
-        .wrap(Wrap { trim: true });
-    frame.render_widget(panel, area);
+    frame.render_widget(
+        Paragraph::new(lines)
+            .block(Block::default().title("Inspector").borders(Borders::ALL))
+            .wrap(Wrap { trim: true }),
+        area,
+    );
 }
 
 fn render_history_panel(frame: &mut Frame, area: Rect, app: &TuiApp) {
-    let items: Vec<ListItem> = app
-        .history
+    let items: Vec<ListItem> = app.history()
         .iter()
         .take(area.height.saturating_sub(2) as usize)
         .map(|entry| {
-            let status = match &entry.status {
-                vac_core::TaskStatus::Completed => "done".to_string(),
-                vac_core::TaskStatus::Failed(reason) => truncate(reason, 16),
-                other => format!("{:?}", other),
+            let status_color = match &entry.status {
+                vac_core::TaskStatus::Completed => Color::Green,
+                vac_core::TaskStatus::Failed(_) => Color::Red,
+                _ => Color::Gray,
+            };
+            let status_str = match &entry.status {
+                vac_core::TaskStatus::Completed => "✓".to_string(),
+                vac_core::TaskStatus::Failed(_) => "✗".to_string(),
+                other => format!("{other:?}"),
             };
             ListItem::new(vec![
-                Line::from(Span::styled(
-                    truncate(&entry.description, 44),
-                    Style::default().fg(Color::White),
-                )),
-                Line::from(format!("{} | {} tok", status, entry.total_tokens_used)),
+                Line::from(vec![
+                    Span::styled(format!("{status_str} "), Style::default().fg(status_color)),
+                    Span::raw(truncate(&entry.description, 40)),
+                ]),
+                Line::from(Span::styled(format!("  {} tok", entry.total_tokens_used), Style::default().fg(Color::DarkGray))),
             ])
         })
         .collect();
 
-    let history = List::new(items).block(
-        Block::default()
-            .title("Task History")
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Blue)),
+    let mut state = app.history_state.clone();
+    frame.render_stateful_widget(
+        List::new(items)
+            .block(Block::default().title("Task History  [↑↓ select | R revert | D detail]").borders(Borders::ALL).border_style(Style::default().fg(Color::Blue)))
+            .highlight_style(Style::default().fg(Color::Black).bg(Color::Blue).add_modifier(Modifier::BOLD))
+            .highlight_symbol("▶ "),
+        area,
+        &mut state,
     );
-    frame.render_widget(history, area);
 }
 
 fn render_input(frame: &mut Frame, area: Rect, app: &TuiApp) {
+    let busy = app.active_task().is_some();
     let block = Block::default()
-        .title(if app.active_task.is_some() {
-            "Composer (busy)"
-        } else {
-            "Composer"
-        })
+        .title(if busy { "Composer (busy — task running)" } else { "Composer" })
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(if app.active_task.is_some() {
-            Color::Yellow
-        } else {
-            Color::Cyan
-        }));
+        .border_style(Style::default().fg(if busy { Color::Yellow } else { Color::Cyan }));
 
     let text = if app.input.is_empty() {
-        vec![Line::from(Span::styled(
-            "Describe the coding task you want VAC to run...",
-            Style::default().fg(Color::DarkGray),
-        ))]
+        vec![Line::from(Span::styled("Describe the coding task...", Style::default().fg(Color::DarkGray)))]
     } else {
         vec![Line::from(app.input.clone())]
     };
 
-    let input = Paragraph::new(text).block(block).wrap(Wrap { trim: false });
     frame.render_widget(Clear, area);
-    frame.render_widget(input, area);
+    frame.render_widget(Paragraph::new(text).block(block).wrap(Wrap { trim: false }), area);
 
-    if app.active_task.is_none() && app.pending_approval.is_none() {
+    if !busy && app.pending_approval.is_none() {
         let cursor_x = area.x + app.input.chars().count() as u16 + 1;
         let cursor_y = area.y + 1;
         frame.set_cursor_position((cursor_x, cursor_y));

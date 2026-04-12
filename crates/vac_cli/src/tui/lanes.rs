@@ -19,27 +19,9 @@ pub fn render_lanes(f: &mut Frame, area: Rect, app: &TuiApp) {
         ])
         .split(area);
 
-    render_lane(
-        f,
-        rows[0],
-        "Thinking / Plan",
-        &app.trigger_lane_log,
-        Color::LightYellow,
-    );
-    render_lane(
-        f,
-        rows[1],
-        "Reading / Search",
-        &app.data_lane_log,
-        Color::Cyan,
-    );
-    render_lane(
-        f,
-        rows[2],
-        "Commands / Writes",
-        &app.control_lane_log,
-        Color::LightGreen,
-    );
+    render_lane(f, rows[0], "Thinking / Plan", app.trigger_lane_log(), Color::LightYellow);
+    render_lane(f, rows[1], "Reading / Search", app.data_lane_log(), Color::Cyan);
+    render_lane(f, rows[2], "Commands / Writes", app.control_lane_log(), Color::LightGreen);
 }
 
 fn render_lane(
