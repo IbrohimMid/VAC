@@ -29,6 +29,11 @@ impl VilStatusTool {
     pub fn new(registry: Arc<ToolRegistry>) -> Self {
         Self { registry }
     }
+
+    fn get_knowledge_stats() -> (usize, usize, usize) {
+        let kb = vil_knowledge::KnowledgeBase::bootstrap();
+        (kb.patterns.len(), kb.best_practices.len(), kb.blueprints.len())
+    }
 }
 
 #[async_trait]
@@ -68,11 +73,13 @@ impl VilTool for VilStatusTool {
         let skills_dir = PathBuf::from(".vac/skills");
         let skills_count = if skills_dir.exists() {
             std::fs::read_dir(&skills_dir)
-                .map(|d| d.flatten().count())
-                .unwrap_or(5) 
+                .map(|d| d.flatten().filter(|e| e.path().extension().map(|ext| ext == "toml").unwrap_or(false)).count())
+                .unwrap_or(0)
         } else {
-            5
+            0
         };
+
+        let (patterns, best_practices, blueprints) = Self::get_knowledge_stats();
 
         let output = VilStatusOutput {
             project_root: context.working_dir.to_string_lossy().to_string(),
@@ -81,9 +88,9 @@ impl VilTool for VilStatusTool {
             builtin_tools: builtin_count,
             mcp_servers: vec![],
             skills_available: skills_count,
-            knowledge_patterns: 0,
-            knowledge_best_practices: 0,
-            knowledge_blueprints: 0,
+            knowledge_patterns: patterns,
+            knowledge_best_practices: best_practices,
+            knowledge_blueprints: blueprints,
         };
 
         serde_json::to_value(output).map_err(|e| ToolError::ExecutionFailed(e.to_string()))
