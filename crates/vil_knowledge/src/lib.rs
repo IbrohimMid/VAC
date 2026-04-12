@@ -695,7 +695,7 @@ let (_ir, handles) = vil_workflow! {
         });
 
         // === BEST PRACTICES (from VIL design principles) ===
-        let best_practices = vec![
+        let mut best_practices = vec![
             BestPractice {
                 rule: "Use ShmSlice instead of Json<T> for request bodies".to_string(),
                 rationale: "Zero-copy extraction from ExchangeHeap. SIMD JSON parsing via sonic-rs (2-5x faster than serde_json).".to_string(),
@@ -782,6 +782,18 @@ let (_ir, handles) = vil_workflow! {
                         .to_string(),
             },
         ];
+
+        // === CANONICAL TERM GUIDANCE (not a pattern — guidance only) ===
+        best_practices.push(BestPractice {
+            rule: "Use canonical VIL terms: `vil-expr` and `Rule`".to_string(),
+            rationale: "VIL commit d9abef8 (2026-04-12) establishes `vil-expr` and `Rule` as canonical. \
+                Legacy aliases `v-cel` and `VRule` are VFlow-era branding and must not appear in new artifacts. \
+                Use `language: vil-expr` for expression fields and `activity_type: Rule` for rule activities.".to_string(),
+            examples: vec![
+                "language: vil-expr  # correct (not v-cel)".to_string(),
+                "activity_type: Rule  # correct (not VRule)".to_string(),
+            ],
+        });
 
         Self {
             patterns,

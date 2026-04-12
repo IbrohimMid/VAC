@@ -305,6 +305,36 @@ impl SkillLoader {
                     },
                 ],
             },
+            Skill {
+                name: "create-rule".to_string(),
+                description: "Scaffold a VIL Rule activity with canonical vil-expr expression language".to_string(),
+                category: "rule".to_string(),
+                source_pattern: None,
+                parameters: vec![
+                    SkillParam {
+                        name: "rule_name".to_string(),
+                        description: "Rule name (snake_case)".to_string(),
+                        param_type: "string".to_string(),
+                        default: Some("my_rule".to_string()),
+                        required: true,
+                    },
+                ],
+                steps: vec![
+                    SkillStep {
+                        tool: "vil_knowledge".to_string(),
+                        arguments: serde_json::json!({"query": "vil-expr Rule activity canonical"}),
+                        description: "Look up canonical Rule pattern from VIL knowledge base".to_string(),
+                    },
+                    SkillStep {
+                        tool: "file_write".to_string(),
+                        arguments: serde_json::json!({
+                            "path": "rules/{{rule_name}}.yaml",
+                            "content": "name: {{rule_name}}\nactivity_type: Rule\nlanguage: vil-expr\nexpression: |\n  # vil-expr expression here\n  true\n"
+                        }),
+                        description: "Create Rule scaffold with canonical vil-expr language".to_string(),
+                    },
+                ],
+            },
         ]
     }
 }
