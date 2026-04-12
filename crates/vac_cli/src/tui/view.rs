@@ -143,6 +143,7 @@ fn render_detail_panel(frame: &mut Frame, area: Rect, app: &mut TuiApp) {
         &app.detail,
         &app.session().history,
         &app.live_diff_files,
+        &app.status.project_root,
         max_w.max(20),
     );
 

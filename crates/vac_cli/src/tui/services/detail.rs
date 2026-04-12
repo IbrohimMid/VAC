@@ -31,6 +31,7 @@ pub fn render_detail_content(
     mode: &DetailMode,
     history: &[TaskHistoryEntry],
     live_files: &[String],
+    project_root: &std::path::Path,
     max_width: usize,
 ) -> (Vec<Line<'static>>, usize) {
     match mode {
@@ -74,8 +75,29 @@ pub fn render_detail_content(
         }
         DetailMode::RevertConfirm(idx) => {
             let desc = history.get(*idx).map(|e| e.description.as_str()).unwrap_or("?");
+            let task_id = history.get(*idx).map(|e| e.task_id.to_string()).unwrap_or_default();
+            
+            // Load snapshot manifest for preview
+            let manifest_path = project_root.join(".vac/snapshots").join(format!("{}.manifest.json", task_id));
+            let preview = if manifest_path.exists() {
+                match vac_core::snapshot::SnapshotManifest::load(&manifest_path) {
+                    Ok(manifest) => {
+                        let file_count = manifest.files.len();
+                        let file_list: Vec<String> = manifest.files.iter()
+                            .take(5)
+                            .map(|f| format!("  • {}", f.original_path.display()))
+                            .collect();
+                        let more = if file_count > 5 { format!("\n  ... and {} more", file_count - 5) } else { String::new() };
+                        format!("\nFiles to restore ({}):\n{}{}", file_count, file_list.join("\n"), more)
+                    }
+                    Err(_) => "\n⚠ Manifest not found".to_string(),
+                }
+            } else {
+                "\n⚠ No snapshot available".to_string()
+            };
+            
             let truncated: String = desc.chars().take(60).collect();
-            let content = format!("Revert to before:\n\"{}\"\n\n[y] Confirm  [n/Esc] Cancel", truncated);
+            let content = format!("Revert to before:\n\"{}\"{}\n\n[y] Confirm  [n/Esc] Cancel", truncated, preview);
             let lines: Vec<Line> = content.lines()
                 .map(|l| wrap_line(l, max_width))
                 .flatten()
