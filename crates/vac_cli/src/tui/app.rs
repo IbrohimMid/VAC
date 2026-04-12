@@ -6,6 +6,10 @@ use tokio::sync::oneshot;
 use vac_core::engine::{EngineStatus, TaskHistoryEntry};
 use vac_core::TaskResult;
 
+use super::services::detail::DetailMode;
+use super::services::history::HistoryState;
+use super::services::scroll::ScrollManager;
+
 // ── Focus ─────────────────────────────────────────────────────────────────────
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -14,17 +18,6 @@ pub enum FocusPane {
     Transcript,
     History,
     Detail,
-}
-
-// ── Detail panel ──────────────────────────────────────────────────────────────
-
-#[derive(Clone, PartialEq)]
-pub enum DetailPanel {
-    None,
-    TaskDetail(usize),
-    ErrorDetail(String),
-    RevertConfirm(usize),
-    LiveChanges,
 }
 
 // ── Approval ──────────────────────────────────────────────────────────────────
@@ -77,10 +70,6 @@ impl SessionTab {
     }
 }
 
-// ── Scroll state (re-export from services) ────────────────────────────────────
-
-pub use super::services::scroll::ScrollManager;
-
 // ── Main app state ────────────────────────────────────────────────────────────
 
 pub struct TuiApp {
@@ -90,8 +79,8 @@ pub struct TuiApp {
     pub sessions: Vec<SessionTab>,
     pub active_session: usize,
     pub focus: FocusPane,
-    pub history_state: ListState,
-    pub detail_panel: DetailPanel,
+    pub history: HistoryState,
+    pub detail: DetailMode,
     pub scroll: ScrollManager,
     pub live_diff_files: Vec<String>,
     pub show_help: bool,
@@ -126,8 +115,8 @@ impl TuiApp {
             sessions: vec![first],
             active_session: 0,
             focus: FocusPane::Composer,
-            history_state: ListState::default(),
-            detail_panel: DetailPanel::None,
+            history: HistoryState::new(),
+            detail: DetailMode::None,
             scroll: ScrollManager::default(),
             live_diff_files: vec![],
             show_help: true,
@@ -170,8 +159,8 @@ impl TuiApp {
     }
 
     fn reset_pane_state(&mut self) {
-        self.history_state = ListState::default();
-        self.detail_panel = DetailPanel::None;
+        self.history.clear();
+        self.detail = DetailMode::None;
         self.streaming_assistant = None;
         self.scroll.transcript.offset = 0;
         self.focus = FocusPane::Composer;
@@ -184,7 +173,7 @@ impl TuiApp {
             FocusPane::Composer => FocusPane::Transcript,
             FocusPane::Transcript => FocusPane::History,
             FocusPane::History => {
-                if !matches!(self.detail_panel, DetailPanel::None) {
+                if self.detail.is_some() {
                     FocusPane::Detail
                 } else {
                     FocusPane::Composer
@@ -226,26 +215,17 @@ impl TuiApp {
     // ── History navigation ────────────────────────────────────────────────────
 
     pub fn history_up(&mut self) {
-        let len = self.session().history.len();
-        if len == 0 { return; }
-        let i = match self.history_state.selected() {
-            None => len - 1,
-            Some(0) => 0,
-            Some(i) => i - 1,
-        };
-        self.history_state.select(Some(i));
-        self.detail_panel = DetailPanel::TaskDetail(i);
+        self.history.select_prev(&self.session().history);
+        if let Some(i) = self.history.selected() {
+            self.detail = DetailMode::TaskDetail(i);
+        }
     }
 
     pub fn history_down(&mut self) {
-        let len = self.session().history.len();
-        if len == 0 { return; }
-        let i = match self.history_state.selected() {
-            None => 0,
-            Some(i) => (i + 1).min(len - 1),
-        };
-        self.history_state.select(Some(i));
-        self.detail_panel = DetailPanel::TaskDetail(i);
+        self.history.select_next(&self.session().history);
+        if let Some(i) = self.history.selected() {
+            self.detail = DetailMode::TaskDetail(i);
+        }
     }
 
     // ── Transcript helpers ────────────────────────────────────────────────────

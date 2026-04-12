@@ -1,7 +1,8 @@
 //! Tool telemetry routing — maps RuntimeUpdate to lane logs, NOT transcript.
 
 use vac_core::engine::RuntimeUpdate;
-use crate::tui::app::{TuiApp, DetailPanel, FocusPane};
+use crate::tui::app::{FocusPane, TuiApp};
+use super::detail::DetailMode;
 
 /// Returns true if the tool is a read-only tool (goes to reading lane).
 pub fn is_read_tool(name: &str) -> bool {
@@ -128,7 +129,7 @@ pub fn route_update(app: &mut TuiApp, update: RuntimeUpdate) {
                 if !app.live_diff_files.contains(&file) {
                     app.live_diff_files.push(file);
                 }
-                app.detail_panel = DetailPanel::LiveChanges;
+                app.detail = DetailMode::LiveChanges;
                 app.push_commands(summary.clone());
                 app.set_activity("Writing", summary);
             } else if is_read_tool(&name) {
@@ -156,7 +157,7 @@ pub fn route_update(app: &mut TuiApp, update: RuntimeUpdate) {
             app.set_activity("Idle", format!("Completed in {}ms", result.elapsed_ms));
             app.focus = FocusPane::Composer;
             app.live_diff_files.clear();
-            app.detail_panel = DetailPanel::None;
+            app.detail = DetailMode::None;
         }
         ValidationResult { score, issues } => {
             app.push_commands(format!("Validation: {:.0}% ({} issues)", score * 100.0, issues.len()));
@@ -164,7 +165,7 @@ pub fn route_update(app: &mut TuiApp, update: RuntimeUpdate) {
         Failed(reason) => {
             app.finish_streaming();
             app.live_diff_files.clear();
-            app.detail_panel = DetailPanel::ErrorDetail(reason.clone());
+            app.detail = DetailMode::ErrorDetail(reason.clone());
             app.push_commands(format!("Failed: {}", &reason[..reason.len().min(48)]));
             app.set_activity("Failed", reason[..reason.len().min(60)].to_string());
             app.push_transcript("❌ Error", format!("{}\n\nPress Esc to dismiss.", reason), ratatui::style::Color::Red);

@@ -12,7 +12,8 @@ use vac_core::{TaskResult, VacEngine};
 use vac_tools::registry::ToolContext;
 use vac_tools::router::{PolicyDecision, PolicyEngine};
 
-use super::app::{DetailPanel, FocusPane, PendingApproval, TuiApp};
+use super::app::{FocusPane, PendingApproval, TuiApp};
+use super::services::detail::DetailMode;
 use super::services::mouse::handle_mouse;
 use super::services::telemetry::route_update;
 use super::terminal::TerminalGuard;
@@ -167,13 +168,13 @@ fn handle_key(
     }
 
     // Revert confirm modal
-    if let DetailPanel::RevertConfirm(idx) = app.detail_panel.clone() {
+    if let DetailMode::RevertConfirm(idx) = app.detail.clone() {
         match key.code {
             KeyCode::Char('y') | KeyCode::Char('Y') => {
-                app.history_state.select(Some(idx));
+                app.history.list.select(Some(idx));
                 app.revert_selected(&project_root);
             }
-            _ => { app.detail_panel = DetailPanel::None; }
+            _ => { app.detail = DetailMode::None; }
         }
         return Ok(false);
     }
@@ -196,7 +197,7 @@ fn handle_key(
         }
         KeyCode::Esc => {
             app.input.clear();
-            app.detail_panel = DetailPanel::None;
+            app.detail = DetailMode::None;
             app.focus = FocusPane::Composer;
         }
         KeyCode::Tab => {
@@ -211,20 +212,20 @@ fn handle_key(
         KeyCode::PageUp => { for _ in 0..5 { app.scroll_up(); } }
         KeyCode::PageDown => { for _ in 0..5 { app.scroll_down(); } }
         KeyCode::Char('r') | KeyCode::Char('R') if app.input.is_empty() && app.focus == FocusPane::History => {
-            if let Some(idx) = app.history_state.selected() {
-                app.detail_panel = DetailPanel::RevertConfirm(idx);
+            if let Some(idx) = app.history.selected() {
+                app.detail = DetailMode::RevertConfirm(idx);
             }
         }
         KeyCode::Char('d') | KeyCode::Char('D') if app.input.is_empty() && app.focus == FocusPane::History => {
-            if let Some(idx) = app.history_state.selected() {
-                app.detail_panel = DetailPanel::TaskDetail(idx);
+            if let Some(idx) = app.history.selected() {
+                app.detail = DetailMode::TaskDetail(idx);
                 app.focus = FocusPane::Detail;
             }
         }
         KeyCode::Enter => {
             if app.focus == FocusPane::History {
-                if let Some(idx) = app.history_state.selected() {
-                    app.detail_panel = DetailPanel::TaskDetail(idx);
+                if let Some(idx) = app.history.selected() {
+                    app.detail = DetailMode::TaskDetail(idx);
                     app.focus = FocusPane::Detail;
                 }
                 return Ok(false);

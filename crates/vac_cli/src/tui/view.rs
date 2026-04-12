@@ -7,7 +7,9 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap};
 
-use super::app::{DetailPanel, FocusPane, TuiApp};
+use super::app::{FocusPane, TuiApp};
+use super::services::detail::{DetailMode, render_detail_content};
+use super::services::history::render_history_items;
 use super::services::transcript::render_transcript_lines;
 
 pub fn render(frame: &mut Frame, app: &mut TuiApp) {
@@ -61,7 +63,7 @@ fn render_header(frame: &mut Frame, area: Rect, app: &TuiApp) {
 // ── Body ──────────────────────────────────────────────────────────────────────
 
 fn render_body(frame: &mut Frame, area: Rect, app: &mut TuiApp) {
-    let show_bottom = !matches!(app.detail_panel, DetailPanel::None) || !app.live_diff_files.is_empty();
+    let show_bottom = app.detail.is_some() || !app.live_diff_files.is_empty();
 
     // Left: transcript + optional bottom panel
     let left_right = Layout::default()
@@ -131,58 +133,40 @@ fn render_detail_panel(frame: &mut Frame, area: Rect, app: &mut TuiApp) {
     // Store geometry for click detection
     app.scroll.detail.area = area;
 
-    match &app.detail_panel {
-        DetailPanel::LiveChanges => {
-            let content = if app.live_diff_files.is_empty() {
-                "Waiting for writes...".to_string()
-            } else {
-                format!("✏️  Writing:\n{}", app.live_diff_files.join("\n"))
-            };
-            frame.render_widget(
-                Paragraph::new(content)
-                    .block(Block::default().title("Live Changes").borders(Borders::ALL).border_style(Style::default().fg(Color::Yellow)))
-                    .wrap(Wrap { trim: true }),
-                area,
-            );
-        }
-        DetailPanel::ErrorDetail(reason) => {
-            frame.render_widget(
-                Paragraph::new(format!("❌ {}\n\nPress Esc to dismiss.", reason))
-                    .block(Block::default().title("Error").borders(Borders::ALL).border_style(Style::default().fg(Color::Red)))
-                    .wrap(Wrap { trim: true }),
-                area,
-            );
-        }
-        DetailPanel::TaskDetail(idx) => {
-            let content = if let Some(e) = app.session().history.get(*idx) {
-                let status = match &e.status {
-                    vac_core::TaskStatus::Completed => "✓ Completed".to_string(),
-                    vac_core::TaskStatus::Failed(r) => format!("✗ {r}"),
-                    other => format!("{other:?}"),
-                };
-                format!("{}\n\n{}\nTokens: {}\n\n[R] Revert  [Esc] Close", e.description, status, e.total_tokens_used)
-            } else { "No task selected".to_string() };
+    let max_w = area.width.saturating_sub(4) as usize;
+    let (lines, total_rows) = render_detail_content(
+        &app.detail,
+        &app.session().history,
+        &app.live_diff_files,
+        max_w.max(20),
+    );
 
-            let focused = app.focus == FocusPane::Detail;
-            frame.render_widget(
-                Paragraph::new(content)
-                    .block(Block::default().title("Task Detail").borders(Borders::ALL)
-                        .border_style(if focused { Style::default().fg(Color::Blue) } else { Style::default().fg(Color::DarkGray) }))
-                    .wrap(Wrap { trim: true }),
-                area,
-            );
-        }
-        DetailPanel::RevertConfirm(idx) => {
-            let desc = app.session().history.get(*idx).map(|e| e.description.as_str()).unwrap_or("?");
-            frame.render_widget(
-                Paragraph::new(format!("Revert to before:\n\"{}\"\n\n[y] Confirm  [n/Esc] Cancel", trunc(desc, 60)))
-                    .block(Block::default().title("Confirm Revert").borders(Borders::ALL).border_style(Style::default().fg(Color::Magenta)))
-                    .wrap(Wrap { trim: true }),
-                area,
-            );
-        }
-        DetailPanel::None => {}
-    }
+    // Update scroll with correct total
+    let visible_h = area.height.saturating_sub(2) as usize;
+    app.scroll.detail.clamp(total_rows, visible_h);
+
+    let title = match &app.detail {
+        DetailMode::LiveChanges => "Live Changes",
+        DetailMode::ErrorDetail(_) => "Error",
+        DetailMode::TaskDetail(_) => "Task Detail",
+        DetailMode::RevertConfirm(_) => "Confirm Revert",
+        DetailMode::None => "Detail",
+    };
+    let border_color = match &app.detail {
+        DetailMode::LiveChanges => Color::Yellow,
+        DetailMode::ErrorDetail(_) => Color::Red,
+        DetailMode::RevertConfirm(_) => Color::Magenta,
+        _ => Color::DarkGray,
+    };
+    let focused = app.focus == FocusPane::Detail;
+    let border_style = if focused { Style::default().fg(Color::Blue) } else { Style::default().fg(border_color) };
+
+    frame.render_widget(
+        Paragraph::new(lines)
+            .block(Block::default().title(title).borders(Borders::ALL).border_style(border_style))
+            .wrap(Wrap { trim: true }),
+        area,
+    );
 }
 
 // ── Inspector ─────────────────────────────────────────────────────────────────
@@ -218,29 +202,14 @@ fn render_history(frame: &mut Frame, area: Rect, app: &mut TuiApp) {
     // Store geometry for click detection
     app.scroll.history.area = area;
 
-    let items: Vec<ListItem> = app.session().history.iter()
-        .take(area.height.saturating_sub(2) as usize)
-        .map(|e| {
-            let (sym, col) = match &e.status {
-                vac_core::TaskStatus::Completed => ("✓", Color::Green),
-                vac_core::TaskStatus::Failed(_) => ("✗", Color::Red),
-                _ => ("·", Color::Gray),
-            };
-            ListItem::new(vec![
-                Line::from(vec![
-                    Span::styled(format!("{sym} "), Style::default().fg(col)),
-                    Span::raw(trunc(&e.description, 38)),
-                ]),
-                Line::from(Span::styled(format!("  {}tok", e.total_tokens_used), Style::default().fg(Color::DarkGray))),
-            ])
-        })
-        .collect();
+    let max_rows = area.height.saturating_sub(2) as usize;
+    let items = render_history_items(&app.session().history, max_rows);
 
     let focused = app.focus == FocusPane::History;
     let border_style = if focused { Style::default().fg(Color::Yellow) } else { Style::default().fg(Color::Blue) };
     let title = if focused { "History [↑↓ Enter R D]" } else { "History [Tab to focus]" };
 
-    let mut state = app.history_state.clone();
+    let mut state = app.history.list.clone();
     frame.render_stateful_widget(
         ratatui::widgets::List::new(items)
             .block(Block::default().title(title).borders(Borders::ALL).border_style(border_style))
