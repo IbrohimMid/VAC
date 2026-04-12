@@ -144,7 +144,7 @@ fn read_secret() -> anyhow::Result<String> {
 #[cfg(unix)]
 fn read_hidden() -> anyhow::Result<String> {
     // Disable echo via termios, read, re-enable
-    use std::io::Read;
+    
     let stdin_fd = {
         use std::os::unix::io::AsRawFd;
         io::stdin().as_raw_fd()
@@ -208,8 +208,8 @@ unsafe extern "C" {
 }
 
 #[cfg(unix)]
-unsafe fn libc_tcgetattr(fd: i32, t: *mut libc_termios) -> i32 { tcgetattr(fd, t) }
+unsafe fn libc_tcgetattr(fd: i32, t: *mut libc_termios) -> i32 { unsafe { tcgetattr(fd, t) }}
 #[cfg(unix)]
-unsafe fn libc_tcsetattr(fd: i32, a: i32, t: *const libc_termios) -> i32 { tcsetattr(fd, a, t) }
+unsafe fn libc_tcsetattr(fd: i32, a: i32, t: *const libc_termios) -> i32 { unsafe { tcsetattr(fd, a, t) }}
 #[cfg(unix)]
-unsafe fn libc_isatty(fd: i32) -> bool { isatty(fd) != 0 }
+unsafe fn libc_isatty(fd: i32) -> bool { unsafe { isatty(fd) != 0 }}

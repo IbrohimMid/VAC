@@ -100,6 +100,7 @@ pub struct TuiApp {
     pub current_phase: String,
     pub last_activity: String,
     pub auth_ready: bool,
+    #[allow(dead_code)]
     pub auth_hint: Option<String>,
     spinner_tick: usize,
     pending_approval: Option<PendingApproval>,
@@ -113,6 +114,7 @@ impl TuiApp {
 
     pub fn transcript(&self) -> &[TranscriptEntry] { &self.session().transcript }
     pub fn history(&self) -> &[TaskHistoryEntry] { &self.session().history }
+    #[allow(dead_code)]
     pub fn last_result(&self) -> Option<&TaskResult> { self.session().last_result.as_ref() }
     pub fn active_task(&self) -> Option<&str> { self.session().active_task.as_deref() }
     pub fn trigger_lane_log(&self) -> &[String] { &self.session().trigger_lane_log }
@@ -297,6 +299,7 @@ enum TaskEvent {
         result: TaskResult,
         status: EngineStatus,
         history: Vec<TaskHistoryEntry>,
+        #[allow(dead_code)]
         diff_preview: String,
     },
     Failed {

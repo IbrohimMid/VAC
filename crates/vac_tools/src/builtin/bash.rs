@@ -8,7 +8,7 @@ use std::sync::Arc;
 use tokio::process::{Child, Command};
 use tracing::{debug, info, warn};
 
-use crate::approvals::{ShellApprovalPolicy, ScopePolicy, default_policy};
+use crate::approvals::{ShellApprovalPolicy, default_policy};
 use crate::error::ToolError;
 use crate::registry::{ToolContext, VilTool};
 

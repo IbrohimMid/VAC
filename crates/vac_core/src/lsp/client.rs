@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStdin, Command};
 use tokio::sync::{Mutex, mpsc};
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 use super::protocol::*;
 use super::types::{LspDiagnostic, LspRange, LspSeverity};
