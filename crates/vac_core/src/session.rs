@@ -25,6 +25,10 @@ pub struct SessionMetadata {
     pub total_tasks_completed: usize,
     pub total_tasks_failed: usize,
     pub total_files_modified: usize,
+    // TUI state persistence
+    pub active_tab_idx: Option<usize>,
+    pub history_selection: Option<usize>,
+    pub last_focus: Option<String>,
 }
 
 impl Session {

@@ -9,6 +9,7 @@ use vac_core::TaskStatus;
 #[derive(Default)]
 pub struct HistoryState {
     pub list: ListState,
+    // TODO Task 8.2: Add filter: Option<String> for search
 }
 
 impl HistoryState {

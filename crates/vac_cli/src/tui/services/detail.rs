@@ -7,6 +7,17 @@ use vac_core::TaskStatus;
 
 /// Detail panel mode.
 #[derive(Clone, PartialEq)]
+/// Detail panel mode — state machine for right panel content.
+/// 
+/// State transitions:
+/// - None → TaskDetail (Enter on history)
+/// - None → RevertConfirm (R on history)
+/// - TaskDetail → RevertConfirm (R in detail)
+/// - TaskDetail → None (Esc)
+/// - RevertConfirm → None (Esc or n)
+/// - RevertConfirm → None (y, after revert)
+/// - Any → LiveChanges (on write tool call)
+/// - LiveChanges → None (Esc)
 pub enum DetailMode {
     None,
     TaskDetail(usize),

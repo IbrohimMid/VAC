@@ -174,6 +174,8 @@ impl TuiApp {
 
     // ── Focus cycling ─────────────────────────────────────────────────────────
 
+    /// Cycle focus: Composer → Transcript → History → Detail (if open) → Composer.
+    /// Modal (approval/revert confirm) locks focus — Tab ignored in event_loop.
     pub fn cycle_focus(&mut self) {
         self.focus = match self.focus {
             FocusPane::Composer => FocusPane::Transcript,
@@ -352,6 +354,15 @@ impl TuiApp {
         
         self.detail = DetailMode::None;
         self.focus = FocusPane::Transcript;
+    }
+
+    /// Save TUI state to session metadata (for future restore).
+    /// TODO: Wire to session save on exit.
+    pub fn save_tui_state(&self) -> (Option<usize>, Option<usize>, Option<String>) {
+        let active_tab = Some(self.active_session);
+        let history_sel = self.history.selected();
+        let last_focus = Some(format!("{:?}", self.focus));
+        (active_tab, history_sel, last_focus)
     }
 }
 
