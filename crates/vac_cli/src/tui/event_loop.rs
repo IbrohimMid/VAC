@@ -67,7 +67,9 @@ pub async fn run(project_root: PathBuf, _resume: bool) -> anyhow::Result<()> {
 
     let engine = Arc::new(Mutex::new(engine));
     let mut app = TuiApp::new(status, history, auth_hint);
-    let mut tg = TerminalGuard::new(true)?;
+    let mut tg = TerminalGuard::new(true).map_err(|e| {
+        anyhow::anyhow!("Failed to initialize terminal (TTY required): {}", e)
+    })?;
 
     // Optional runtime bridge — spawn background poller if runtime is available
     spawn_runtime_bridge(tx.clone(), project_root.clone());
