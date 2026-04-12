@@ -137,7 +137,7 @@ pub enum VilArchetype {
 impl std::fmt::Display for VilArchetype {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Server => write!(f, "Server (VX_APP)"),
+            Self::Server => write!(f, "VilServer"),
             Self::Pipeline => write!(f, "Pipeline (SDK)"),
             Self::Plugin => write!(f, "Plugin"),
             Self::Hybrid(parts) => {
@@ -367,7 +367,7 @@ IMPORTANT: For tasks related to VIL (Vastar Intermediate Language), you MUST use
 Once you have consulted the knowledge base (if needed) and analyzed the task, you MUST produce a JSON plan in exactly this format and wrap it in ```json ... ```:
 ```json
 {
-  \"kind\": \"VxApp\" | \"SdkPipeline\" | \"Plugin\" | \"Sidecar\" | \"Wasm\" | \"Connector\" | \"SemanticMessageLayer\" | \"GenericRust\" | \"Unknown\",
+  \"kind\": \"VilServer\" | \"SdkPipeline\" | \"Plugin\" | \"Sidecar\" | \"Wasm\" | \"Connector\" | \"SemanticMessageLayer\" | \"GenericRust\" | \"Unknown\",
   \"semantic_roles\": [\"vil_state\", \"vil_event\", \"vil_fault\", \"vil_decision\", \"generic\"],
   \"lanes\": [\"Trigger\", \"Data\", \"Control\"],
   \"zero_copy_expected\": true,
@@ -389,7 +389,9 @@ Rules:
         "You are a VIL-native Coder agent. You do NOT write generic Rust/Axum code on VIL paths.\n\
         IMPORTANT: Call `vil_knowledge` FIRST for any VIL-related task to get the correct pattern.\n\
         Forbidden on VIL paths: Json<T>, Extension<T>, Json(data) responses.\n\
-        Use instead: ShmSlice, ServiceCtx, VilResponse::ok(data).".to_string()
+        Use instead: ShmSlice, ServiceCtx, VilResponse::ok(data).\n\
+        Canonical VIL terms: use `vil-expr` (not `v-cel`), `Rule` (not `VRule`), `VilServer` (not `VxApp`).\n\
+        Legacy aliases (`v-cel`, `VRule`, `VxApp`) are accepted as input only. Never emit them in new artifacts.".to_string()
     }
 
     /// Build a VIL-native coder system prompt enriched with archetype context and knowledge patterns.
@@ -407,7 +409,7 @@ Rules:
     ) -> String {
         let archetype_context = match &profile.archetype {
             VilArchetype::Server =>
-                "This is a **VX_APP / Server** project.\n\
+                "This is a **VilServer** project.\n\
                 - Handlers: `#[vil_handler(shm)] async fn h(ctx: ServiceCtx, slice: ShmSlice) -> VilResponse<T>`\n\
                 - State: `ctx.state::<T>()` NOT `Extension<T>`\n\
                 - Body: `ShmSlice` + `vil_json::from_slice()` NOT `Json<T>`\n\
@@ -456,6 +458,8 @@ Rules:
             "You are a VIL-native Coder agent. You do NOT write generic Rust/Axum code on VIL paths.\n\n\
             {archetype_context}{pattern_context}\n\n\
             **Forbidden on VIL paths:** `Json<T>`, `Extension<T>`, `Json(data)`, manual queue/metrics plumbing\n\n\
+            **Canonical VIL terms:** use `vil-expr` (not `v-cel`), `Rule` (not `VRule`), `VilServer` (not `VxApp`). \
+            Legacy aliases are accepted as input only — never emit them in new artifacts.\n\n\
             **Workflow:** call `vil_knowledge` FIRST → read codebase → implement VIL-native → verify → report"
         )
     }

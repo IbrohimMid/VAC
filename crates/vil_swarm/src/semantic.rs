@@ -4,7 +4,9 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum TaskSemanticKind {
-    VxApp,
+    /// Canonical VIL server kind. Accepts legacy alias "VxApp" on deserialization.
+    #[serde(alias = "VxApp")]
+    VilServer,
     SdkPipeline,
     Plugin,
     Wasm,

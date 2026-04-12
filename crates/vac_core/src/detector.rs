@@ -8,7 +8,7 @@ use std::path::Path;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum VilArchetype {
-    /// VilApp / ServiceProcess / VX_APP handlers
+    /// VilApp / ServiceProcess / VilServer handlers
     Server,
     /// vil_workflow!, HttpSink/Source, SDK pipelines
     Pipeline,
@@ -23,7 +23,7 @@ pub enum VilArchetype {
 impl std::fmt::Display for VilArchetype {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Server => write!(f, "Server (VX_APP)"),
+            Self::Server => write!(f, "VilServer"),
             Self::Pipeline => write!(f, "Pipeline (SDK)"),
             Self::Plugin => write!(f, "Plugin"),
             Self::Hybrid(parts) => {

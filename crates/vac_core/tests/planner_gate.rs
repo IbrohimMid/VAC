@@ -20,7 +20,8 @@ fn passed_plan_with_knowledge_refs() {
 
     match evaluate_planner_output(output) {
         PlannerGateResult::Passed(plan) => {
-            assert_eq!(plan.kind, TaskSemanticKind::VxApp);
+            // "VxApp" in JSON deserializes to VilServer via serde alias
+            assert_eq!(plan.kind, TaskSemanticKind::VilServer);
             assert!(!plan.knowledge_refs.is_empty());
         }
         other => panic!("Expected Passed, got {:?}", std::mem::discriminant(&other)),
@@ -45,7 +46,7 @@ fn knowledge_gate_fails_for_vil_task_without_refs() {
 
     match evaluate_planner_output(output) {
         PlannerGateResult::KnowledgeGateFailed(plan) => {
-            assert_eq!(plan.kind, TaskSemanticKind::VxApp);
+            assert_eq!(plan.kind, TaskSemanticKind::VilServer);
             assert!(plan.knowledge_refs.is_empty());
         }
         other => panic!("Expected KnowledgeGateFailed, got {:?}", std::mem::discriminant(&other)),
