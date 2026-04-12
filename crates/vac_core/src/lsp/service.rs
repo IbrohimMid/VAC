@@ -13,6 +13,7 @@ pub struct VilLspService {
     client: Arc<VilLspClient>,
     snapshot: Arc<RwLock<LspWorkspaceSnapshot>>,
     project_root: PathBuf,
+    #[allow(dead_code)] // path is used in background task via clone
     cache_path: PathBuf,
 }
 

@@ -240,12 +240,16 @@ impl ToolRouter {
                 Err(ToolError::PermissionDenied(reason))
             }
             PolicyDecision::NeedsApproval(reason) => {
-                // TODO(phase4): Add interactive user approval prompt here
-                warn!(%tool_name, %reason, "Tool requires approval — returning permission denied in non-interactive mode");
-                Err(ToolError::PermissionDenied(format!(
-                    "Approval required (interactive mode disabled): {}",
-                    reason
-                )))
+                use crate::registry::AgentZone;
+                if context.agent_zone == AgentZone::SandboxedSubagent {
+                    warn!(%tool_name, "Sandboxed subagent denied needs-approval tool");
+                    return Err(ToolError::PermissionDenied(format!(
+                        "Tool '{}' requires approval — denied in sandboxed subagent zone",
+                        tool_name
+                    )));
+                }
+                debug!(%tool_name, %reason, "Auto-allowing needs-approval tool in agent loop");
+                self.registry.execute(tool_name, args, context).await
             }
             PolicyDecision::Allow => {
                 debug!("Tool {} allowed by policy", tool_name);

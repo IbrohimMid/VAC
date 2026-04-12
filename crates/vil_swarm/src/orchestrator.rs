@@ -209,6 +209,69 @@ impl SwarmOrchestrator {
         self.lsp_context = Some(ctx);
     }
 
+    /// Spawn a subtask in a sandboxed environment.
+    /// The subagent's ToolContext will have agent_zone = SandboxedSubagent,
+    /// restricting it to read-only tools and denying needs-approval tools.
+    pub async fn spawn_subtask_sandboxed(
+        &self,
+        role: AgentRole,
+        task_description: &str,
+        spec: crate::sandbox::SandboxSpec,
+    ) -> SwarmResult<SubtaskResult> {
+        info!(role = ?role, mode = ?spec.mode, "Spawning sandboxed subtask");
+
+        let llm_router = self.llm_router.as_ref()
+            .ok_or_else(|| SwarmError::Orchestration("LLM router not initialized".into()))?;
+        let tool_router = self.tool_router.as_ref()
+            .ok_or_else(|| SwarmError::Orchestration("Tool router not initialized".into()))?;
+
+        let sandbox = self.sandbox_registry.spawn(&spec, task_description).await;
+        let sandbox_id = sandbox.id;
+
+        let role_prompt = role.system_prompt();
+        let messages = vec![
+            Message::system(role_prompt.to_string()),
+            Message::user(task_description.to_string()),
+        ];
+
+        let tool_defs: Vec<ToolDefinition> = tool_router.registry().list().await
+            .into_iter()
+            .map(|t| ToolDefinition { name: t.name, description: t.description, input_schema: t.input_schema })
+            .collect();
+
+        // Sandboxed context: writes go to overlay, policy is stricter
+        let context = ToolContext::new(sandbox.overlay_dir.clone())
+            .with_zone(vac_tools::registry::AgentZone::SandboxedSubagent);
+
+        let mut total_tokens = 0u64;
+        let mut modified_files = Vec::new();
+        let mut created_files = Vec::new();
+
+        let result = self.execute_agent_loop(
+            messages, tool_defs, None,
+            &mut total_tokens, &mut modified_files, &mut created_files,
+            &context, llm_router, tool_router,
+        ).await;
+
+        match result {
+            Ok(summary) => {
+                let patch = if !modified_files.is_empty() || !created_files.is_empty() {
+                    Some(crate::sandbox::SandboxPatchResult {
+                        created_files: created_files.clone(),
+                        modified_files: modified_files.clone(),
+                        patch_summary: format!("{} created, {} modified", created_files.len(), modified_files.len()),
+                    })
+                } else { None };
+                self.sandbox_registry.complete(sandbox_id, patch).await;
+                Ok(SubtaskResult { role, summary, modified_files, created_files, tokens_used: total_tokens, success: true, error: None })
+            }
+            Err(e) => {
+                self.sandbox_registry.fail(sandbox_id, e.to_string()).await;
+                Ok(SubtaskResult { role, summary: String::new(), modified_files, created_files, tokens_used: total_tokens, success: false, error: Some(e.to_string()) })
+            }
+        }
+    }
+
     pub async fn spawn_subtask(
         &self,
         role: AgentRole,

@@ -368,7 +368,15 @@ pub struct RulebookConfig {
 
 impl Default for RulebookConfig {
     fn default() -> Self {
-        Self { enable: true, paths: vec![], fail_on_invalid: false }
+        // Include global config dir by default
+        let global_path = std::env::var("HOME")
+            .map(|h| std::path::PathBuf::from(h).join(".config/vac/rulebooks"))
+            .unwrap_or_default();
+        Self {
+            enable: true,
+            paths: if global_path.as_os_str().is_empty() { vec![] } else { vec![global_path] },
+            fail_on_invalid: false,
+        }
     }
 }
 
