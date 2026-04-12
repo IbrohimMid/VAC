@@ -15,6 +15,6 @@ pub use agent::{AgentDefinition, AgentId, AgentRole};
 pub use error::SwarmError;
 pub use error::SwarmResult;
 pub use lanes::{ControlLane, DataLane, TriggerLane};
-pub use orchestrator::{AgentLoopEvent, SubtaskResult, SwarmOrchestrator};
+pub use orchestrator::{AgentLoopEvent, SubtaskResult, SwarmOrchestrator, VilProjectProfile, VilArchetype};
 pub use protocol::{ControlPayload, DataPayload, TriggerPayload, VapMessage};
 pub use semantic::{SemanticPlan, TaskSemanticKind};

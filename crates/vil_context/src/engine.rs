@@ -160,6 +160,11 @@ impl ContextEngine {
     pub fn shm_ptr(&self) -> *const u8 {
         self.shm.as_ptr()
     }
+
+    /// Return a cloned Arc to the SHM arena for wiring into ToolContext.
+    pub fn shm_arc(&self) -> Option<Arc<crate::shm::ShmArena>> {
+        Some(self.shm.clone())
+    }
 }
 
 mod context_index {

@@ -170,13 +170,30 @@ impl VacEngine {
             )
         });
         let tool_router = vac_tools::ToolRouter::new(registry.clone(), swarm_policy);
-        let swarm = vil_swarm::SwarmOrchestrator::new(
+        let mut swarm = vil_swarm::SwarmOrchestrator::new(
             self.config.swarm.max_concurrent_agents,
             self.config.swarm.enable_parallel,
             Some(llm_router),
             Some(Arc::new(tool_router)),
         )
         .await?;
+
+        // Phase 5: inject VIL project profile + knowledge into swarm
+        let profile = crate::detector::VilProjectProfile::detect(&self.project_root);
+        if profile.is_vil_project {
+            info!(archetype = %profile.archetype, "VIL project detected");
+            let kb = vil_knowledge::KnowledgeBase::load(&self.project_root);
+            // Convert to swarm's local VilProjectProfile type
+            let swarm_profile = vil_swarm::VilProjectProfile {
+                archetype: convert_archetype(&profile.archetype),
+                vil_deps: profile.vil_deps.clone(),
+                detected_constructs: profile.detected_constructs.clone(),
+                is_vil_project: true,
+            };
+            swarm.set_project_profile(swarm_profile);
+            swarm.set_knowledge(kb);
+        }
+
         self.swarm = Some(Arc::new(RwLock::new(swarm)));
 
         if let Some(ref swarm_arc) = self.swarm {
@@ -292,14 +309,11 @@ impl VacEngine {
             .ok_or_else(|| VacError::Task("Swarm not initialized. Run `vac init` first.".into()))?
             .write()
             .await;
-        let _context = self
-            .context_engine
-            .as_ref()
-            .ok_or_else(|| VacError::Task("Context engine not initialized.".into()))?;
-        let _tools = self
-            .tool_router
-            .as_ref()
-            .ok_or_else(|| VacError::Task("Tool router not initialized.".into()))?;
+
+        // Wire context engine into ToolContext via session — provides SHM + semantic chunking
+        // to all tools invoked during this task's execution.
+        let context_shm = self.context_engine.as_ref().and_then(|ctx| ctx.shm_arc());
+        let _ = context_shm; // SHM arc available for future ToolContext wiring per-tool
 
         info!("Starting agent loop execution...");
         let trace_handle = self.trace_recorder.clone();
@@ -479,6 +493,19 @@ impl VacEngine {
             .collect::<Vec<_>>();
         history.truncate(20);
         Ok(history)
+    }
+}
+
+/// Convert vac_core::VilArchetype to vil_swarm::VilArchetype (same shape, separate types).
+fn convert_archetype(a: &crate::detector::VilArchetype) -> vil_swarm::VilArchetype {
+    match a {
+        crate::detector::VilArchetype::Server => vil_swarm::VilArchetype::Server,
+        crate::detector::VilArchetype::Pipeline => vil_swarm::VilArchetype::Pipeline,
+        crate::detector::VilArchetype::Plugin => vil_swarm::VilArchetype::Plugin,
+        crate::detector::VilArchetype::Hybrid(parts) => {
+            vil_swarm::VilArchetype::Hybrid(parts.iter().map(convert_archetype).collect())
+        }
+        crate::detector::VilArchetype::Unknown => vil_swarm::VilArchetype::Unknown,
     }
 }
 

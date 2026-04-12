@@ -3980,6 +3980,7 @@ dependencies = [
  "dirs-next",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror 2.0.18",
  "tokio",
  "toml",
@@ -3989,11 +3990,13 @@ dependencies = [
  "vac_trace",
  "vil_context",
  "vil_ir",
+ "vil_knowledge",
  "vil_llm",
  "vil_memory",
  "vil_swarm",
  "vil_trust",
  "vil_validate",
+ "walkdir",
 ]
 
 [[package]]
@@ -4208,6 +4211,7 @@ dependencies = [
  "vac_tools",
  "vil_context",
  "vil_inference",
+ "vil_knowledge",
  "vil_llm",
  "vil_trust",
 ]

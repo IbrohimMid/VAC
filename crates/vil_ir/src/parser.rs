@@ -174,6 +174,42 @@ impl IrCollector {
         }
     }
 
+    /// Extract VIL-specific attributes from an attribute list.
+    /// Returns a list of attribute names like ["vil_handler", "vil_state", "tracing::instrument"].
+    fn extract_vil_attrs(attrs: &[syn::Attribute]) -> Vec<String> {
+        const VIL_ATTRS: &[&str] = &[
+            "vil_handler",
+            "vil_endpoint",
+            "vil_state",
+            "vil_event",
+            "vil_fault",
+            "vil_decision",
+            "process",
+            "vil_app",
+            "vil_service",
+            "connector_fault",
+            "connector_event",
+            "connector_state",
+        ];
+        attrs
+            .iter()
+            .filter_map(|attr| {
+                let name = attr
+                    .path()
+                    .segments
+                    .iter()
+                    .map(|s| s.ident.to_string())
+                    .collect::<Vec<_>>()
+                    .join("::");
+                if VIL_ATTRS.iter().any(|v| name == *v || name.starts_with(&format!("{v}::"))) {
+                    Some(name)
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
     fn extract_derives(attrs: &[syn::Attribute]) -> Vec<String> {
         attrs
             .iter()
@@ -252,6 +288,7 @@ impl<'ast> Visit<'ast> for IrCollector {
             body_summary: None,
             doc_comment: Self::extract_doc_comment(&node.attrs),
             line_span: (0, 0),
+            vil_attrs: Self::extract_vil_attrs(&node.attrs),
         };
         self.functions.push(func);
         syn::visit::visit_item_fn(self, node);
@@ -275,6 +312,7 @@ impl<'ast> Visit<'ast> for IrCollector {
             derives: Self::extract_derives(&node.attrs),
             doc_comment: Self::extract_doc_comment(&node.attrs),
             line_span: (0, 0),
+            vil_attrs: Self::extract_vil_attrs(&node.attrs),
         };
         self.structs.push(s);
         syn::visit::visit_item_struct(self, node);

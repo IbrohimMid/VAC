@@ -84,6 +84,49 @@ pub struct SwarmOrchestrator {
     enable_parallel: bool,
     llm_router: Option<Arc<LlmRouter>>,
     tool_router: Option<Arc<ToolRouter>>,
+    /// VIL project profile — drives archetype-aware system prompts
+    pub project_profile: Option<vac_core_types::VilProjectProfile>,
+    /// Loaded knowledge base — injected into planner/coder prompts
+    pub knowledge: Option<Arc<vil_knowledge::KnowledgeBase>>,
+}
+
+/// Minimal re-export types needed from vac_core to avoid circular deps.
+/// SwarmOrchestrator only needs VilProjectProfile + VilArchetype.
+pub mod vac_core_types {
+    pub use super::VilProjectProfile;
+    pub use super::VilArchetype;
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct VilProjectProfile {
+    pub archetype: VilArchetype,
+    pub vil_deps: Vec<String>,
+    pub detected_constructs: Vec<String>,
+    pub is_vil_project: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum VilArchetype {
+    Server,
+    Pipeline,
+    Plugin,
+    Hybrid(Vec<VilArchetype>),
+    Unknown,
+}
+
+impl std::fmt::Display for VilArchetype {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Server => write!(f, "Server (VX_APP)"),
+            Self::Pipeline => write!(f, "Pipeline (SDK)"),
+            Self::Plugin => write!(f, "Plugin"),
+            Self::Hybrid(parts) => {
+                let names: Vec<_> = parts.iter().map(|p| format!("{p}")).collect();
+                write!(f, "Hybrid({})", names.join("+"))
+            }
+            Self::Unknown => write!(f, "Unknown"),
+        }
+    }
 }
 
 impl SwarmOrchestrator {
@@ -99,6 +142,8 @@ impl SwarmOrchestrator {
             enable_parallel,
             llm_router,
             tool_router,
+            project_profile: None,
+            knowledge: None,
         };
 
         let roles = [
@@ -119,6 +164,16 @@ impl SwarmOrchestrator {
         }
 
         Ok(orchestrator)
+    }
+
+    /// Set the VIL project profile for archetype-aware prompt injection.
+    pub fn set_project_profile(&mut self, profile: VilProjectProfile) {
+        self.project_profile = Some(profile);
+    }
+
+    /// Set the knowledge base for pattern injection into prompts.
+    pub fn set_knowledge(&mut self, kb: vil_knowledge::KnowledgeBase) {
+        self.knowledge = Some(Arc::new(kb));
     }
 
     pub async fn spawn_subtask(
@@ -217,30 +272,79 @@ Rules:
     }
 
     fn coder_system_prompt() -> String {
-        "You are the Coder agent. Your role is to implement features and fixes based on subtask descriptions.
+        // Fallback when no project profile is available
+        "You are a VIL-native Coder agent. You do NOT write generic Rust/Axum code on VIL paths.\n\
+        IMPORTANT: Call `vil_knowledge` FIRST for any VIL-related task to get the correct pattern.\n\
+        Forbidden on VIL paths: Json<T>, Extension<T>, Json(data) responses.\n\
+        Use instead: ShmSlice, ServiceCtx, VilResponse::ok(data).".to_string()
+    }
 
-When given a subtask:
-1. Understand what needs to be built
-2. Use read/search tools like file_read, glob, grep, and search to inspect the codebase
-3. IMPORTANT: For tasks related to VIL (Vastar Intermediate Language), you MUST use the `vil_knowledge` tool FIRST to query VIL-specific patterns, code templates, and best practices.
-4. Write or modify code using file_write or file_edit
-5. Track progress with todo_write when a task has multiple steps
-6. If compilation is needed, use bash, cargo, or git tools as appropriate
-7. Report success or any errors encountered
+    /// Build a VIL-native coder system prompt enriched with archetype context and knowledge patterns.
+    pub fn build_vil_coder_prompt_pub(
+        profile: &VilProjectProfile,
+        knowledge: Option<&vil_knowledge::KnowledgeBase>,
+    ) -> String {
+        Self::build_vil_coder_prompt(profile, knowledge)
+    }
 
-You have access to tools for:
-- Reading files: file_read
-- Searching files: glob, grep, search
-- Querying VIL Knowledge: vil_knowledge
-- Writing files: file_write, file_edit
-- Running commands: bash, cargo, git
-- Task tracking: todo_write, task_done
+    /// Build a VIL-native coder system prompt enriched with archetype context and knowledge patterns.
+    fn build_vil_coder_prompt(
+        profile: &VilProjectProfile,
+        knowledge: Option<&vil_knowledge::KnowledgeBase>,
+    ) -> String {
+        let archetype_context = match &profile.archetype {
+            VilArchetype::Server =>
+                "This is a **VX_APP / Server** project.\n\
+                - Handlers: `#[vil_handler(shm)] async fn h(ctx: ServiceCtx, slice: ShmSlice) -> VilResponse<T>`\n\
+                - State: `ctx.state::<T>()` NOT `Extension<T>`\n\
+                - Body: `ShmSlice` + `vil_json::from_slice()` NOT `Json<T>`\n\
+                - Response: `VilResponse::ok(data)` NOT `Json(data)`\n\
+                - Semantic types: `#[vil_state]`, `#[vil_event]`, `#[vil_fault]`, `#[vil_decision]`",
+            VilArchetype::Pipeline =>
+                "This is a **SDK_PIPELINE** project.\n\
+                - Macro: `vil_workflow! { name, token: ShmToken, instances: [...], routes: [...] }`\n\
+                - Sources: `HttpSourceBuilder::new().url().format(HttpFormat::SSE).dialect(...)`\n\
+                - Token: `ShmToken` for high-throughput, `GenericToken` for simple cases\n\
+                - Routes: `sink.out -> source.in (LoanWrite)`",
+            VilArchetype::Plugin =>
+                "This is a **VilPlugin** project.\n\
+                - Trait: `impl VilPlugin for T { fn register(&self, ctx: &mut PluginContext) }`\n\
+                - Registration: `ctx.state(...)`, `ctx.endpoint(...)`, `ctx.middleware(...)`",
+            VilArchetype::Hybrid(_) =>
+                "This is a **Hybrid VIL** project. Apply the correct pattern per component:\n\
+                - Server: ShmSlice + ServiceCtx + VilResponse\n\
+                - Pipeline: vil_workflow! + ShmToken\n\
+                - Plugin: VilPlugin + PluginContext",
+            VilArchetype::Unknown =>
+                "VIL project type not detected. Use vil_knowledge to identify the correct pattern.",
+        };
 
-When you encounter errors:
-1. Read the error message carefully
-2. Fix the issue in the code
-3. Re-run to verify the fix
-4. Repeat until successful or report failure".to_string()
+        let pattern_context = if let Some(kb) = knowledge {
+            let categories: &[&str] = match &profile.archetype {
+                VilArchetype::Server => &["server", "patterns"],
+                VilArchetype::Pipeline => &["pipeline", "patterns"],
+                VilArchetype::Plugin => &["plugin"],
+                VilArchetype::Hybrid(_) => &["server", "pipeline", "plugin"],
+                VilArchetype::Unknown => &[],
+            };
+            let patterns: Vec<String> = categories
+                .iter()
+                .flat_map(|cat| kb.patterns_by_category(cat))
+                .take(3)
+                .map(|p| format!("- **{}**: {}", p.name, p.description))
+                .collect();
+            if patterns.is_empty() { String::new() }
+            else { format!("\n\n**Pre-loaded VIL patterns:**\n{}", patterns.join("\n")) }
+        } else {
+            String::new()
+        };
+
+        format!(
+            "You are a VIL-native Coder agent. You do NOT write generic Rust/Axum code on VIL paths.\n\n\
+            {archetype_context}{pattern_context}\n\n\
+            **Forbidden on VIL paths:** `Json<T>`, `Extension<T>`, `Json(data)`, manual queue/metrics plumbing\n\n\
+            **Workflow:** call `vil_knowledge` FIRST → read codebase → implement VIL-native → verify → report"
+        )
     }
 
     pub async fn agent_loop(&mut self, task_description: &str) -> SwarmResult<ExecutionResult> {
@@ -584,9 +688,15 @@ When you encounter errors:
             }
         };
 
-        // STAGE 2: CODER
+        // STAGE 2: CODER — use archetype-aware prompt if profile is available
+        let coder_prompt = if let Some(ref profile) = self.project_profile {
+            Self::build_vil_coder_prompt(profile, self.knowledge.as_deref())
+        } else {
+            Self::coder_system_prompt()
+        };
+
         let coder_messages = vec![
-            Message::system(Self::coder_system_prompt()),
+            Message::system(coder_prompt),
             Message::user(format!("Task: {}\n\n{}", task_description, plan_context)),
         ];
 

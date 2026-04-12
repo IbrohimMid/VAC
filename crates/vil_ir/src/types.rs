@@ -32,6 +32,9 @@ pub struct IrFunction {
     pub body_summary: Option<String>,
     pub doc_comment: Option<String>,
     pub line_span: (usize, usize),
+    /// VIL-specific attributes detected on this function (e.g. ["vil_handler", "vil_handler::shm"])
+    #[serde(default)]
+    pub vil_attrs: Vec<String>,
 }
 
 /// A parsed struct.
@@ -44,6 +47,9 @@ pub struct IrStruct {
     pub derives: Vec<String>,
     pub doc_comment: Option<String>,
     pub line_span: (usize, usize),
+    /// VIL semantic role macros detected (e.g. ["vil_state"], ["vil_event"])
+    #[serde(default)]
+    pub vil_attrs: Vec<String>,
 }
 
 /// A parsed enum.

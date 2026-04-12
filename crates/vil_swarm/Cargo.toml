@@ -12,6 +12,7 @@ vil_trust = { workspace = true }
 vil_context = { workspace = true }
 vil_llm = { workspace = true }
 vil_inference = { workspace = true }
+vil_knowledge = { workspace = true }
 vac_tools = { workspace = true }
 
 tokio = { workspace = true }

@@ -2,6 +2,7 @@
 
 pub mod auth;
 pub mod config;
+pub mod detector;
 pub mod engine;
 pub mod error;
 pub mod prelude;
@@ -12,6 +13,7 @@ pub mod task;
 
 pub use auth::{AuthStatus, StoredAuth};
 pub use config::VacConfig;
+pub use detector::{VilArchetype, VilProjectProfile};
 pub use engine::{EngineStatus, RuntimeUpdate, TaskHistoryEntry, VacEngine};
 pub use error::VacError;
 pub use profile::{ProfileName, ProfileOverride};
