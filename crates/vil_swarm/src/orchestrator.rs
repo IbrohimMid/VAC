@@ -2,6 +2,7 @@
 
 use crate::agent::*;
 use crate::error::{SwarmError, SwarmResult};
+use crate::semantic::{PlannerGateResult, evaluate_planner_output};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::mpsc;
@@ -193,7 +194,7 @@ impl SwarmOrchestrator {
     fn semantic_planner_prompt() -> String {
         "You are the VIL Semantic Planner. Your task is to analyze the user's request and produce a Semantic Plan before any code is written.
 
-IMPORTANT: For tasks related to VIL (Vastar Intermediate Language), you MUST use the `vil_knowledge` tool first to find relevant patterns.
+IMPORTANT: For tasks related to VIL (Vastar Intermediate Language), you MUST use the `vil_knowledge` tool first to find relevant patterns. Record the pattern names you consulted in `knowledge_refs`.
 
 Once you have consulted the knowledge base (if needed) and analyzed the task, you MUST produce a JSON plan in exactly this format and wrap it in ```json ... ```:
 ```json
@@ -205,11 +206,14 @@ Once you have consulted the knowledge base (if needed) and analyzed the task, yo
   \"generated_plumbing_expected\": true,
   \"forbidden_constructs\": [\"Json<T>\", \"Extension<T>\"],
   \"required_patterns\": [\"vx_app_handler\"],
+  \"knowledge_refs\": [\"vx_app_handler\", \"vil_response\"],
   \"rationale\": \"Why this architecture was chosen\"
 }
 ```
-Only use `GenericRust` or `Unknown` if the task is completely unrelated to VIL concepts.
-Always validate your choices against VIL's Tri-Lane and zero-copy semantics.".to_string()
+Rules:
+- `knowledge_refs` MUST list every VIL pattern name you looked up via `vil_knowledge`. Leave empty only for GenericRust/Unknown tasks.
+- Only use `GenericRust` or `Unknown` if the task is completely unrelated to VIL concepts.
+- Always validate your choices against VIL's Tri-Lane and zero-copy semantics.".to_string()
     }
 
     fn coder_system_prompt() -> String {
@@ -485,6 +489,16 @@ When you encounter errors:
         task_description: &str,
         updates: Option<mpsc::UnboundedSender<AgentLoopEvent>>,
     ) -> SwarmResult<ExecutionResult> {
+        self.agent_loop_with_context(task_description, updates, None, None).await
+    }
+
+    pub async fn agent_loop_with_context(
+        &mut self,
+        task_description: &str,
+        updates: Option<mpsc::UnboundedSender<AgentLoopEvent>>,
+        session_id: Option<uuid::Uuid>,
+        project_root: Option<std::path::PathBuf>,
+    ) -> SwarmResult<ExecutionResult> {
         info!(task = %task_description, "Starting Semantic VIL-native agent loop");
 
         let llm_router = self
@@ -499,7 +513,12 @@ When you encounter errors:
         let mut total_tokens = 0u64;
         let mut modified_files = Vec::new();
         let mut created_files = Vec::new();
-        let context = ToolContext::new(std::path::PathBuf::from("."));
+
+        let root = project_root.unwrap_or_else(|| std::path::PathBuf::from("."));
+        let mut context = ToolContext::new(root);
+        if let Some(sid) = session_id {
+            context = context.with_session_id(sid);
+        }
 
         let tool_defs: Vec<ToolDefinition> = tool_router
             .registry()
@@ -533,25 +552,36 @@ When you encounter errors:
             )
             .await?;
 
-        // Parse SemanticPlan from plan_output
-        let semantic_plan = if let Some(start) = plan_output.find("```json") {
-            let json_start = start + 7;
-            if let Some(end) = plan_output[json_start..].find("```") {
-                let json_str = &plan_output[json_start..json_start + end];
-                serde_json::from_str::<crate::semantic::SemanticPlan>(json_str).ok()
-            } else {
-                None
+        // Parse SemanticPlan from plan_output — gate-checked
+        let plan_context = match evaluate_planner_output(&plan_output) {
+            PlannerGateResult::Passed(plan) => {
+                info!(kind = ?plan.kind, knowledge_refs = ?plan.knowledge_refs, "SemanticPlan passed gate");
+                plan.to_markdown()
             }
-        } else {
-            serde_json::from_str::<crate::semantic::SemanticPlan>(&plan_output).ok()
-        };
-
-        let plan_context = if let Some(plan) = semantic_plan {
-            info!("Parsed SemanticPlan: {:?}", plan.kind);
-            plan.to_markdown()
-        } else {
-            warn!("Failed to parse SemanticPlan from planner output");
-            format!("### Planner Output\n{}", plan_output)
+            PlannerGateResult::KnowledgeGateFailed(plan) => {
+                // VIL task but no knowledge lookup — this is a gate violation.
+                // In strict mode this would be a hard stop. For now: warn and inject remediation.
+                warn!(
+                    kind = ?plan.kind,
+                    "SemanticPlan knowledge gate FAILED: VIL task without knowledge_refs. Injecting remediation."
+                );
+                format!(
+                    "{}\n\n> **WARNING**: Planner did not consult `vil_knowledge` for a VIL-specific task. \
+                    Coder MUST call `vil_knowledge` before writing any code.",
+                    plan.to_markdown()
+                )
+            }
+            PlannerGateResult::ParseFailed(raw) => {
+                warn!("Failed to parse SemanticPlan — planner output was not valid JSON");
+                // For VIL tasks, parse failure is a signal the planner didn't follow protocol.
+                // Inject a hard reminder into coder context.
+                format!(
+                    "### Planner Output (unparsed)\n{}\n\n\
+                    > **WARNING**: Planner did not produce a valid SemanticPlan JSON. \
+                    Coder MUST call `vil_knowledge` first and follow VIL-native patterns.",
+                    raw
+                )
+            }
         };
 
         // STAGE 2: CODER

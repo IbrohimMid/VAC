@@ -1,13 +1,25 @@
-//! VIL Knowledge — bootstrap library for VIL patterns and best practices.
+//! VIL Knowledge — authoritative VIL pattern library loaded from corpus.
+//!
+//! Source of truth priority:
+//!   1. `VIL_KNOWLEDGE_ROOT` env var
+//!   2. `.vac/config.toml` → `[knowledge] root`
+//!   3. Hardcoded bootstrap (fallback only, not authoritative)
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KnowledgeBase {
     pub patterns: HashMap<String, Pattern>,
     pub blueprints: Vec<Blueprint>,
     pub best_practices: Vec<BestPractice>,
+    /// Whether this KB was loaded from authoritative corpus (true) or fallback bootstrap (false)
+    #[serde(default)]
+    pub is_authoritative: bool,
+    /// Path to corpus root, if loaded from external source
+    #[serde(default)]
+    pub corpus_root: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -34,9 +46,136 @@ pub struct BestPractice {
     pub examples: Vec<String>,
 }
 
+/// A single corpus document loaded from `llm_knowledge/`
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct CorpusDoc {
+    /// Relative path within corpus root (e.g. "patterns/vx-app.md")
+    pub path: String,
+    pub content: String,
+}
+
 impl KnowledgeBase {
+    /// Load from authoritative corpus directory.
+    ///
+    /// Corpus layout expected:
+    ///   `<root>/patterns/*.md`   → Pattern entries
+    ///   `<root>/best_practices/*.md` → BestPractice entries
+    ///   `<root>/blueprints/*.md` → Blueprint entries
+    ///
+    /// Falls back to `bootstrap()` if corpus is missing or unreadable.
+    pub fn load_from_corpus(root: &Path) -> Self {
+        if !root.exists() {
+            tracing::warn!(
+                path = %root.display(),
+                "VIL knowledge corpus not found, falling back to bootstrap"
+            );
+            return Self::bootstrap();
+        }
+
+        tracing::info!(path = %root.display(), "Loading VIL knowledge from authoritative corpus");
+
+        let mut patterns = HashMap::new();
+        let mut blueprints = Vec::new();
+        let mut best_practices = Vec::new();
+
+        // Load patterns
+        let patterns_dir = root.join("patterns");
+        if patterns_dir.is_dir() {
+            for entry in walkdir_md(&patterns_dir) {
+                if let Some(pattern) = parse_pattern_doc(&entry) {
+                    patterns.insert(pattern.name.clone(), pattern);
+                }
+            }
+        }
+
+        // Load best practices
+        let bp_dir = root.join("best_practices");
+        if bp_dir.is_dir() {
+            for entry in walkdir_md(&bp_dir) {
+                best_practices.extend(parse_best_practices_doc(&entry));
+            }
+        }
+
+        // Load blueprints
+        let bp_dir2 = root.join("blueprints");
+        if bp_dir2.is_dir() {
+            for entry in walkdir_md(&bp_dir2) {
+                if let Some(bp) = parse_blueprint_doc(&entry) {
+                    blueprints.push(bp);
+                }
+            }
+        }
+
+        // If corpus exists but is empty/unparseable, still fall back
+        if patterns.is_empty() && blueprints.is_empty() && best_practices.is_empty() {
+            tracing::warn!(
+                path = %root.display(),
+                "Corpus found but yielded no entries, falling back to bootstrap"
+            );
+            return Self::bootstrap();
+        }
+
+        tracing::info!(
+            patterns = patterns.len(),
+            blueprints = blueprints.len(),
+            best_practices = best_practices.len(),
+            "Corpus loaded successfully"
+        );
+
+        Self {
+            patterns,
+            blueprints,
+            best_practices,
+            is_authoritative: true,
+            corpus_root: Some(root.to_path_buf()),
+        }
+    }
+
+    /// Resolve corpus root from env → config file → None.
+    pub fn resolve_corpus_root(project_root: &Path) -> Option<PathBuf> {
+        // 1. Env override
+        if let Ok(env_root) = std::env::var("VIL_KNOWLEDGE_ROOT") {
+            let p = PathBuf::from(env_root);
+            if p.exists() {
+                return Some(p);
+            }
+        }
+
+        // 2. .vac/config.toml [knowledge] root
+        let config_path = project_root.join(".vac/config.toml");
+        if config_path.exists() {
+            if let Ok(content) = std::fs::read_to_string(&config_path) {
+                if let Ok(table) = content.parse::<toml::Table>() {
+                    if let Some(root_str) = table
+                        .get("knowledge")
+                        .and_then(|k| k.get("root"))
+                        .and_then(|v| v.as_str())
+                    {
+                        let p = PathBuf::from(root_str);
+                        if p.exists() {
+                            return Some(p);
+                        }
+                    }
+                }
+            }
+        }
+
+        None
+    }
+
+    /// Load from corpus if available, else bootstrap. Use this as the primary constructor.
+    pub fn load(project_root: &Path) -> Self {
+        match Self::resolve_corpus_root(project_root) {
+            Some(root) => Self::load_from_corpus(&root),
+            None => {
+                tracing::debug!("No corpus root configured, using bootstrap knowledge");
+                Self::bootstrap()
+            }
+        }
+    }
+
     pub fn bootstrap() -> Self {
-        tracing::info!("Bootstrapping VIL knowledge base");
+        tracing::info!("Bootstrapping VIL knowledge base (fallback, not authoritative)");
 
         let mut patterns = HashMap::new();
 
@@ -574,6 +713,8 @@ let (_ir, handles) = vil_workflow! {
             patterns,
             blueprints,
             best_practices,
+            is_authoritative: false,
+            corpus_root: None,
         }
     }
 
@@ -629,4 +770,200 @@ let (_ir, handles) = vil_workflow! {
             .filter(|p| p.category == category)
             .collect()
     }
+}
+
+// ── Corpus parsing helpers ────────────────────────────────────────────────────
+
+/// Walk a directory and return (path, content) for all `.md` files.
+fn walkdir_md(dir: &Path) -> Vec<CorpusDoc> {
+    let mut docs = Vec::new();
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return docs;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) == Some("md") {
+            if let Ok(content) = std::fs::read_to_string(&path) {
+                docs.push(CorpusDoc {
+                    path: path.to_string_lossy().to_string(),
+                    content,
+                });
+            }
+        }
+    }
+    docs
+}
+
+/// Parse a markdown corpus doc into a Pattern.
+///
+/// Looks for HTML comment metadata at the top of the file:
+/// `<!-- name: vx_app_handler -->`, `<!-- category: server -->`, etc.
+/// First paragraph after metadata = description.
+/// First fenced code block = code_template.
+fn parse_pattern_doc(doc: &CorpusDoc) -> Option<Pattern> {
+    let name = extract_meta(&doc.content, "name")
+        .or_else(|| {
+            // Derive name from filename
+            std::path::Path::new(&doc.path)
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .map(|s| s.replace('-', "_"))
+        })?;
+
+    let category = extract_meta(&doc.content, "category").unwrap_or_else(|| "general".to_string());
+    let when_to_use = extract_meta(&doc.content, "when_to_use").unwrap_or_default();
+    let description = extract_first_paragraph(&doc.content);
+    let code_template = extract_first_code_block(&doc.content).unwrap_or_default();
+
+    Some(Pattern {
+        name,
+        category,
+        description,
+        code_template,
+        when_to_use,
+    })
+}
+
+/// Parse best practices from a markdown doc.
+/// Each `## Rule` heading starts a new best practice.
+fn parse_best_practices_doc(doc: &CorpusDoc) -> Vec<BestPractice> {
+    let mut practices = Vec::new();
+    let mut current_rule: Option<String> = None;
+    let mut current_rationale = String::new();
+    let mut current_examples: Vec<String> = Vec::new();
+    let mut in_example = false;
+    let mut example_buf = String::new();
+
+    for line in doc.content.lines() {
+        if line.starts_with("## ") {
+            // Save previous
+            if let Some(rule) = current_rule.take() {
+                practices.push(BestPractice {
+                    rule,
+                    rationale: current_rationale.trim().to_string(),
+                    examples: current_examples.clone(),
+                });
+            }
+            current_rule = Some(line.trim_start_matches("## ").trim().to_string());
+            current_rationale.clear();
+            current_examples.clear();
+            in_example = false;
+        } else if line.starts_with("```") {
+            if in_example {
+                current_examples.push(example_buf.trim().to_string());
+                example_buf.clear();
+                in_example = false;
+            } else {
+                in_example = true;
+            }
+        } else if in_example {
+            example_buf.push_str(line);
+            example_buf.push('\n');
+        } else if current_rule.is_some() && !line.trim().is_empty() {
+            current_rationale.push_str(line);
+            current_rationale.push(' ');
+        }
+    }
+    if let Some(rule) = current_rule {
+        practices.push(BestPractice {
+            rule,
+            rationale: current_rationale.trim().to_string(),
+            examples: current_examples,
+        });
+    }
+    practices
+}
+
+/// Parse a blueprint from a markdown doc.
+fn parse_blueprint_doc(doc: &CorpusDoc) -> Option<Blueprint> {
+    let name = extract_meta(&doc.content, "name").or_else(|| {
+        std::path::Path::new(&doc.path)
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .map(|s| s.replace('-', "_"))
+    })?;
+
+    let description = extract_first_paragraph(&doc.content);
+    let data_flow = extract_meta(&doc.content, "data_flow").unwrap_or_default();
+
+    // Modules: lines starting with "- " under a "## Modules" heading
+    let modules = extract_list_under_heading(&doc.content, "Modules");
+
+    Some(Blueprint {
+        name,
+        description,
+        modules,
+        data_flow,
+    })
+}
+
+fn extract_meta(content: &str, key: &str) -> Option<String> {
+    let prefix = format!("<!-- {key}:");
+    content.lines().find_map(|line| {
+        let line = line.trim();
+        if line.starts_with(&prefix) && line.ends_with("-->") {
+            let inner = line
+                .trim_start_matches(&prefix)
+                .trim_end_matches("-->")
+                .trim();
+            Some(inner.to_string())
+        } else {
+            None
+        }
+    })
+}
+
+fn extract_first_paragraph(content: &str) -> String {
+    let mut buf = String::new();
+    let mut started = false;
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("<!--") || trimmed.starts_with('#') {
+            if started {
+                break;
+            }
+            continue;
+        }
+        if trimmed.is_empty() {
+            if started {
+                break;
+            }
+        } else {
+            started = true;
+            buf.push_str(trimmed);
+            buf.push(' ');
+        }
+    }
+    buf.trim().to_string()
+}
+
+fn extract_first_code_block(content: &str) -> Option<String> {
+    let mut in_block = false;
+    let mut buf = String::new();
+    for line in content.lines() {
+        if line.starts_with("```") {
+            if in_block {
+                return Some(buf.trim_end().to_string());
+            } else {
+                in_block = true;
+            }
+        } else if in_block {
+            buf.push_str(line);
+            buf.push('\n');
+        }
+    }
+    None
+}
+
+fn extract_list_under_heading(content: &str, heading: &str) -> Vec<String> {
+    let mut items = Vec::new();
+    let mut under = false;
+    for line in content.lines() {
+        if line.starts_with("## ") {
+            under = line.trim_start_matches("## ").trim() == heading;
+        } else if under && line.trim_start().starts_with("- ") {
+            items.push(line.trim_start().trim_start_matches("- ").trim().to_string());
+        }
+    }
+    items
 }

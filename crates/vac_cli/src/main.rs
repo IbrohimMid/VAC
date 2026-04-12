@@ -34,6 +34,9 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Check VAC subsystem readiness (knowledge, SHM, trace, MCP, skills, config)
+    Doctor,
+
     /// Initialize VIL project context, scan codebase, build IR index
     Init {
         /// Force re-initialization even if already initialized
@@ -49,6 +52,10 @@ enum Commands {
         /// Priority: low, normal, high, critical
         #[arg(short, long, default_value = "normal")]
         priority: String,
+
+        /// Execution profile: default, strict-vil, migration, exploration, spec-hardening
+        #[arg(long, default_value = "default")]
+        profile: String,
 
         /// Require approval before applying changes
         #[arg(long)]
@@ -153,16 +160,20 @@ async fn main() -> anyhow::Result<()> {
         .unwrap_or_else(|| std::env::current_dir().expect("Failed to get current directory"));
 
     match cli.command {
+        Commands::Doctor => {
+            commands::doctor::execute(project_root).await?;
+        }
         Commands::Init { force } => {
             commands::init::execute(project_root, force).await?;
         }
         Commands::Run {
             task,
             priority,
+            profile,
             approve,
             target,
         } => {
-            commands::run::execute(project_root, task, priority, approve, target).await?;
+            commands::run::execute(project_root, task, priority, profile, approve, target).await?;
         }
         Commands::Interactive { resume } => {
             commands::interactive::execute(project_root, resume).await?;

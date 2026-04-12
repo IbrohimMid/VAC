@@ -301,6 +301,8 @@ impl VacEngine {
         let trace_handle = self.trace_recorder.clone();
         let update_tx = updates.clone();
         let (swarm_tx, mut swarm_rx) = mpsc::unbounded_channel::<vil_swarm::AgentLoopEvent>();
+        let session_id = self.session.read().await.id;
+        let project_root = self.project_root.clone();
         tokio::spawn(async move {
             while let Some(event) = swarm_rx.recv().await {
                 if let Some(ref recorder) = trace_handle {
@@ -382,12 +384,18 @@ impl VacEngine {
         });
 
         let execution = swarm
-            .agent_loop_with_events(&task.description, Some(swarm_tx))
+            .agent_loop_with_context(&task.description, Some(swarm_tx), Some(session_id), Some(project_root))
             .await?;
 
         info!("Phase 3: Validating...");
         let validation_score = if let Some(ir) = &self.ir_pipeline {
             let report = vil_validate::validate_changes(ir, &execution.modified_files)?;
+            if let Some(ref tx) = updates {
+                let _ = tx.send(RuntimeUpdate::ValidationResult {
+                    score: report.score,
+                    issues: report.issues.clone(),
+                });
+            }
             Some(report.score)
         } else {
             None
@@ -519,5 +527,10 @@ pub enum RuntimeUpdate {
         content: String,
         success: bool,
     },
+    ValidationResult {
+        score: f64,
+        issues: Vec<String>,
+    },
     Completed(TaskResult),
+    Failed(String),
 }

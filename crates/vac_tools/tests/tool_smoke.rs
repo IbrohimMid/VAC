@@ -16,7 +16,7 @@ use vac_tools::registry::{ToolContext, ToolRegistry, VilTool};
 
 #[tokio::test]
 async fn registers_all_builtin_tools() {
-    let registry = ToolRegistry::new();
+    let registry = std::sync::Arc::new(ToolRegistry::new());
     builtin::register_builtin_tools(&registry).await.unwrap();
 
     let mut names: Vec<_> = registry.list().await.into_iter().map(|tool| tool.name).collect();
@@ -33,9 +33,13 @@ async fn registers_all_builtin_tools() {
             "git",
             "glob",
             "grep",
+            "run_skill",
             "search",
+            "sequential_think",
             "task_done",
             "todo_write",
+            "vil_knowledge",
+            "vil_status",
         ]
     );
 }

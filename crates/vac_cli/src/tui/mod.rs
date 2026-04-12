@@ -306,6 +306,16 @@ pub async fn run(project_root: PathBuf, _resume: bool) -> anyhow::Result<()> {
                         app.last_result = Some(result);
                         app.finish_streaming();
                     }
+                    RuntimeUpdate::ValidationResult { score, issues } => {
+                        let msg = format!("Validation: {:.0}% ({} issues)", score * 100.0, issues.len());
+                        TuiApp::push_lane(&mut app.control_lane_log, msg.clone());
+                        app.set_activity("Validated", msg);
+                    }
+                    RuntimeUpdate::Failed(reason) => {
+                        app.finish_streaming();
+                        TuiApp::push_lane(&mut app.control_lane_log, format!("Failed: {reason}"));
+                        app.set_activity("Failed", reason);
+                    }
                 },
                 TaskEvent::Finished {
                     prompt,

@@ -1,4 +1,10 @@
 //! VIL Validate — Semantic IR validation for VIL Way compliance.
+//!
+//! Validation order per RULES.md:
+//!   1. Semantic correctness (SemanticModel boundary + message roles)
+//!   2. Zero-copy legality
+//!   3. Observability completeness
+//!   4. VIL Way compliance (forbidden constructs)
 
 pub mod passes;
 pub mod report;
@@ -35,10 +41,10 @@ pub fn validate_changes(
             info!(
                 file = file,
                 score = report.score,
-                issues_count = report.issues.len(),
+                issues = report.issues.len(),
                 "Validated file"
             );
-            for issue in report.issues {
+            for issue in &report.issues {
                 warn!("Validation issue in {}: {}", file, issue);
             }
         }

@@ -69,6 +69,14 @@ impl crate::registry::VilTool for FileEditTool {
         } else {
             context.working_dir.join(&input.file_path)
         };
+
+        // Snapshot before edit
+        crate::journal::snapshot_before_write(
+            &context.working_dir,
+            context.session_id,
+            &input.file_path,
+        );
+
         let content = tokio::fs::read_to_string(&path).await?;
 
         let occurrences_replaced = if input.replace_all {

@@ -45,8 +45,9 @@ pub struct KnowledgeTool {
 
 impl KnowledgeTool {
     pub fn new() -> Self {
+        let project_root = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
         Self {
-            knowledge: vil_knowledge::KnowledgeBase::bootstrap(),
+            knowledge: vil_knowledge::KnowledgeBase::load(&project_root),
         }
     }
 }

@@ -34,6 +34,17 @@ pub async fn execute(project_root: PathBuf, force: bool) -> anyhow::Result<()> {
 # See https://vastar.id/docs/vac/config for full reference
 
 # =============================================================================
+# VIL Knowledge Source of Truth
+# =============================================================================
+# Set this to the path of your VIL llm_knowledge corpus.
+# If not set, VAC falls back to built-in bootstrap patterns (not authoritative).
+# Can also be set via VIL_KNOWLEDGE_ROOT environment variable.
+
+[knowledge]
+# root = "/home/emp/Downloads/vac/VIL/llm_knowledge"
+# require_authoritative = false
+
+# =============================================================================
 # LLM Configuration
 # =============================================================================
 

@@ -103,6 +103,16 @@ impl VilTool for FileWriteTool {
         }
 
         let created = !path.exists();
+
+        // Snapshot before overwrite (not for append or new files)
+        if !created && !input.append.unwrap_or(false) {
+            crate::journal::snapshot_before_write(
+                &context.working_dir,
+                context.session_id,
+                &input.path,
+            );
+        }
+
         let bytes_written = if input.append.unwrap_or(false) {
             use tokio::io::AsyncWriteExt;
             let mut file = tokio::fs::OpenOptions::new()

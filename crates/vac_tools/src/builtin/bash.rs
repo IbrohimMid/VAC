@@ -8,6 +8,7 @@ use std::sync::Arc;
 use tokio::process::{Child, Command};
 use tracing::{debug, info, warn};
 
+use crate::approvals::{ShellApprovalPolicy, ScopePolicy, default_policy};
 use crate::error::ToolError;
 use crate::registry::{ToolContext, VilTool};
 
@@ -107,6 +108,15 @@ impl VilTool for BashTool {
         let input: BashInput =
             serde_json::from_value(args).map_err(|e| ToolError::InvalidArguments(e.to_string()))?;
 
+        // Hierarchical approval check
+        let policy = load_shell_policy(&context.working_dir);
+        if let Some(reason) = policy.is_denied(&input.command) {
+            warn!(command = %input.command, reason = %reason, "Bash command denied by scope policy");
+            return Err(ToolError::PermissionDenied(format!(
+                "Command `{}` {}", input.command, reason
+            )));
+        }
+
         let cwd = if let Some(cwd) = input.cwd {
             if PathBuf::from(&cwd).is_absolute() {
                 PathBuf::from(cwd)
@@ -167,4 +177,15 @@ impl VilTool for BashTool {
             success,
         })?)
     }
+}
+
+/// Load shell approval policy from .vac/config.toml [approvals], falling back to default.
+fn load_shell_policy(working_dir: &std::path::Path) -> ShellApprovalPolicy {
+    let config_path = working_dir.join(".vac/config.toml");
+    if let Ok(content) = std::fs::read_to_string(&config_path) {
+        if let Ok(table) = content.parse::<toml::Table>() {
+            return ShellApprovalPolicy::from_toml(&table);
+        }
+    }
+    default_policy()
 }
