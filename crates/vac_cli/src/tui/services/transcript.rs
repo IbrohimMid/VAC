@@ -101,3 +101,22 @@ fn truncate_str(s: &str, n: usize) -> String {
     if s.chars().count() > n { out.push_str("…"); }
     out
 }
+
+/// Count total wrapped lines for scroll calculation (without allocating).
+pub fn count_transcript_lines(entries: &[TranscriptEntry], max_width: usize) -> usize {
+    let mut count = 0usize;
+    for entry in entries {
+        count += 1; // label line
+        let body = collapse_json(&entry.body);
+        for raw in body.lines() {
+            if raw.is_empty() {
+                count += 1;
+            } else {
+                let chars = raw.chars().count();
+                count += (chars + max_width.saturating_sub(1)) / max_width.max(1);
+            }
+        }
+        count += 1; // separator
+    }
+    count
+}

@@ -206,16 +206,18 @@ impl TuiApp {
     }
 
     pub fn scroll_down(&mut self) {
+        use super::services::transcript::count_transcript_lines;
         match self.focus {
             FocusPane::Transcript => {
-                let total = self.session().transcript.len();
-                let height = self.scroll.transcript.area.height as usize;
+                let max_w = self.scroll.transcript.area.width.saturating_sub(4) as usize;
+                let total = count_transcript_lines(&self.session().transcript, max_w.max(20));
+                let height = self.scroll.transcript.area.height.saturating_sub(2) as usize;
                 self.scroll.transcript.scroll_down(3, total, height);
             }
             FocusPane::History => self.history_down(),
             FocusPane::Detail => {
-                let height = self.scroll.detail.area.height as usize;
-                self.scroll.detail.scroll_down(3, 20, height);
+                let height = self.scroll.detail.area.height.saturating_sub(2) as usize;
+                self.scroll.detail.scroll_down(3, 50, height);
             }
             _ => {}
         }
@@ -256,7 +258,7 @@ impl TuiApp {
             color,
         });
         self.trim_transcript();
-        self.scroll.transcript = usize::MAX; // auto-scroll to bottom
+        self.scroll.transcript.pin_to_bottom(); // auto-scroll to bottom
     }
 
     pub fn append_assistant_chunk(&mut self, chunk: &str) {
@@ -274,7 +276,7 @@ impl TuiApp {
                 e.body.push_str(chunk);
             }
         }
-        self.scroll.transcript = usize::MAX;
+        self.scroll.transcript.pin_to_bottom();
     }
 
     pub fn finish_streaming(&mut self) { self.streaming_assistant = None; }
