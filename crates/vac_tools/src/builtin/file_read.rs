@@ -6,20 +6,25 @@ use tracing::{debug, info};
 use crate::error::ToolError;
 use crate::registry::{ToolContext, VilTool};
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct FileReadInput {
     pub path: String,
+    #[serde(default)]
     pub start_line: Option<usize>,
+    #[serde(default)]
     pub end_line: Option<usize>,
+    #[serde(default)]
     pub max_bytes: Option<usize>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct FileReadOutput {
-    pub content: String,
     pub path: String,
-    pub line_count: usize,
-    pub truncated: bool,
+    pub content: String,
+    pub num_lines: usize,
+    pub start_line: Option<usize>,
+    pub total_lines: usize,
+    pub is_binary: bool,
 }
 
 pub struct FileReadTool;
@@ -71,7 +76,7 @@ impl VilTool for FileReadTool {
     }
 
     fn risk_level(&self) -> &str {
-        "Safe"
+        "safe"
     }
 
     async fn execute(
@@ -102,36 +107,53 @@ impl VilTool for FileReadTool {
             ));
         }
 
-        let mut content = tokio::fs::read_to_string(&path)
-            .await
-            .map_err(ToolError::IoError)?;
+        // Detect binary files
+        let mut bytes = tokio::fs::read(&path).await.map_err(ToolError::IoError)?;
+        if let Some(max_bytes) = input.max_bytes {
+            bytes.truncate(max_bytes);
+        }
+        let is_binary = bytes.contains(&0);
+
+        let content = if is_binary {
+            String::new()
+        } else {
+            String::from_utf8_lossy(&bytes).to_string()
+        };
 
         let total_lines = content.lines().count();
-        let mut truncated = false;
-
-        if let (Some(start), Some(end)) = (input.start_line, input.end_line) {
+        let (selected_content, start_line) = if !is_binary {
             let lines: Vec<&str> = content.lines().collect();
-            let start_idx = start.saturating_sub(1).min(lines.len());
-            let end_idx = end.min(lines.len());
-            content = lines[start_idx..end_idx].join("\n");
-            truncated = start > 1 || end < total_lines;
-        }
+            let start = input
+                .start_line
+                .unwrap_or(1)
+                .saturating_sub(1)
+                .min(lines.len());
+            let end = input
+                .end_line
+                .unwrap_or(lines.len())
+                .max(start)
+                .min(lines.len());
+            let selected = lines[start..end].join("\n");
+            let actual_start_line = if selected.is_empty() && lines.is_empty() {
+                None
+            } else {
+                Some(start + 1)
+            };
+            (selected, actual_start_line)
+        } else {
+            (String::new(), None)
+        };
 
-        if let Some(max_bytes) = input.max_bytes {
-            if content.len() > max_bytes {
-                content.truncate(max_bytes);
-                truncated = true;
-            }
-        }
-
-        let line_count = content.lines().count();
-        info!("Read {} lines from {:?}", line_count, path);
+        let num_lines = selected_content.lines().count();
+        info!("Read {} lines from {:?}", num_lines, path);
 
         Ok(serde_json::to_value(FileReadOutput {
-            content,
             path: path.to_string_lossy().to_string(),
-            line_count,
-            truncated,
+            content: selected_content,
+            num_lines,
+            start_line,
+            total_lines,
+            is_binary,
         })?)
     }
 }

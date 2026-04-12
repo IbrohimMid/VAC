@@ -1,19 +1,17 @@
 //! Lane-aware rendering for Tri-Lane communication visualization.
-//! Shows Trigger, Data, and Control lanes side-by-side.
 
 use super::TuiApp;
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Style},
+    style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem},
 };
 
-#[allow(dead_code)]
 pub fn render_lanes(f: &mut Frame, area: Rect, app: &TuiApp) {
-    let chunks = Layout::default()
-        .direction(Direction::Horizontal)
+    let rows = Layout::default()
+        .direction(Direction::Vertical)
         .constraints([
             Constraint::Percentage(33),
             Constraint::Percentage(34),
@@ -21,60 +19,60 @@ pub fn render_lanes(f: &mut Frame, area: Rect, app: &TuiApp) {
         ])
         .split(area);
 
-    // Trigger Lane
-    let trigger_items: Vec<ListItem> = app
-        .trigger_lane_log
-        .iter()
-        .map(|msg| {
-            ListItem::new(Line::from(Span::styled(
-                msg.clone(),
-                Style::default().fg(Color::Yellow),
-            )))
-        })
-        .collect();
-    let trigger_list = List::new(trigger_items).block(
-        Block::default()
-            .title(" ⚡ Trigger Lane ")
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Yellow)),
+    render_lane(
+        f,
+        rows[0],
+        "Thinking / Plan",
+        &app.trigger_lane_log,
+        Color::LightYellow,
     );
-    f.render_widget(trigger_list, chunks[0]);
+    render_lane(
+        f,
+        rows[1],
+        "Reading / Search",
+        &app.data_lane_log,
+        Color::Cyan,
+    );
+    render_lane(
+        f,
+        rows[2],
+        "Commands / Writes",
+        &app.control_lane_log,
+        Color::LightGreen,
+    );
+}
 
-    // Data Lane
-    let data_items: Vec<ListItem> = app
-        .data_lane_log
+fn render_lane(
+    frame: &mut Frame,
+    area: Rect,
+    title: &str,
+    items: &[String],
+    color: Color,
+) {
+    let visible = area.height.saturating_sub(2) as usize;
+    let list_items: Vec<ListItem> = items
         .iter()
+        .rev()
+        .take(visible.max(1))
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
         .map(|msg| {
             ListItem::new(Line::from(Span::styled(
                 msg.clone(),
-                Style::default().fg(Color::Cyan),
+                Style::default().fg(color),
             )))
         })
         .collect();
-    let data_list = List::new(data_items).block(
-        Block::default()
-            .title(" 📦 Data Lane ")
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Cyan)),
-    );
-    f.render_widget(data_list, chunks[1]);
 
-    // Control Lane
-    let control_items: Vec<ListItem> = app
-        .control_lane_log
-        .iter()
-        .map(|msg| {
-            ListItem::new(Line::from(Span::styled(
-                msg.clone(),
-                Style::default().fg(Color::Green),
-            )))
-        })
-        .collect();
-    let control_list = List::new(control_items).block(
+    let list = List::new(list_items).block(
         Block::default()
-            .title(" 🛡️ Control Lane ")
+            .title(Span::styled(
+                title,
+                Style::default().fg(color).add_modifier(Modifier::BOLD),
+            ))
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Green)),
+            .border_style(Style::default().fg(color)),
     );
-    f.render_widget(control_list, chunks[2]);
+    frame.render_widget(list, area);
 }

@@ -36,6 +36,11 @@ impl LlmRouter {
         self
     }
 
+    pub fn with_kilo_gateway(&mut self) -> &mut Self {
+        self.add_provider(Arc::new(AnthropicProvider::new()));
+        self
+    }
+
     pub fn set_fallback_chain(&mut self, chain: Vec<String>) {
         self.fallback_chain = chain;
     }

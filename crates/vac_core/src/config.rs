@@ -76,6 +76,25 @@ fn default_policy() -> String {
     "deny".into()
 }
 
+fn default_allowed_tools() -> HashMap<String, bool> {
+    [
+        "bash",
+        "cargo",
+        "file_edit",
+        "file_read",
+        "file_write",
+        "git",
+        "glob",
+        "grep",
+        "search",
+        "task_done",
+        "todo_write",
+    ]
+    .into_iter()
+    .map(|name| (name.to_string(), true))
+    .collect()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MemoryConfig {
     /// Path for persistent memory storage
@@ -190,6 +209,16 @@ fn get_default_config_dir() -> Option<PathBuf> {
 }
 
 impl VacConfig {
+    fn resolve_relative_paths(mut self, project_root: &Path) -> Self {
+        if self.memory.persist_path.is_relative() {
+            self.memory.persist_path = project_root.join(&self.memory.persist_path);
+        }
+        if self.trace.output_path.is_relative() {
+            self.trace.output_path = project_root.join(&self.trace.output_path);
+        }
+        self
+    }
+
     /// Load config from file path.
     pub fn load(path: &Path) -> crate::error::VacResult<Self> {
         let content = std::fs::read_to_string(path)
@@ -203,17 +232,17 @@ impl VacConfig {
     pub fn load_with_fallback(project_root: &Path) -> crate::error::VacResult<Self> {
         let project_config = project_root.join(".vac/config.toml");
         if project_config.exists() {
-            return Self::load(&project_config);
+            return Self::load(&project_config).map(|config| config.resolve_relative_paths(project_root));
         }
 
         if let Some(config_dir) = get_default_config_dir() {
             let global_config = config_dir.join("vac/config.toml");
             if global_config.exists() {
-                return Self::load(&global_config);
+                return Self::load(&global_config).map(|config| config.resolve_relative_paths(project_root));
             }
         }
 
-        Ok(Self::default())
+        Ok(Self::default().resolve_relative_paths(project_root))
     }
 }
 
@@ -228,7 +257,7 @@ impl Default for VacConfig {
             },
             tools: ToolConfig {
                 default_policy: default_policy(),
-                allow: HashMap::new(),
+                allow: default_allowed_tools(),
                 deny: HashMap::new(),
             },
             memory: MemoryConfig {

@@ -1,35 +1,51 @@
-//! Anthropic Claude LLM provider implementation.
+//! Kilo Gateway provider implementation.
 
 use crate::error::{LlmError, LlmResult};
 use crate::provider::{
-    FinishReason, LlmProvider, LlmRequest, LlmResponse, Role, StreamChunk, TokenUsage, ToolCall,
+    FinishReason, LlmProvider, LlmRequest, LlmResponse, Message, Role, StreamChunk, TokenUsage,
+    ToolCall, ToolDefinition,
 };
 use async_trait::async_trait;
-use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue};
+use reqwest::header::{AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderValue};
 use serde::{Deserialize, Serialize};
-use std::str::FromStr;
 use tokio::sync::mpsc;
 use tracing::{debug, error, info};
 
-const DEFAULT_MODEL: &str = "claude-sonnet-4-20250514";
-const API_ENDPOINT: &str = "https://api.anthropic.com/v1/messages";
+const DEFAULT_MODEL: &str = "kilo-auto/free";
+const API_ENDPOINT_PATH: &str = "/api/gateway/chat/completions";
 
 pub struct AnthropicProvider {
     api_key: String,
+    base_url: String,
     model: String,
     http_client: reqwest::Client,
 }
 
 impl AnthropicProvider {
     pub fn new() -> Self {
-        let api_key = std::env::var("ANTHROPIC_API_KEY")
-            .expect("ANTHROPIC_API_KEY environment variable must be set");
+        let base_url =
+            std::env::var("KILO_GATEWAY_URL").unwrap_or_else(|_| "https://api.kilo.ai".to_string());
+        let api_key = std::env::var("KILO_API_KEY")
+            .or_else(|_| std::env::var("ANTHROPIC_API_KEY"))
+            .unwrap_or_default();
+        let model = std::env::var("KILO_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.to_string());
 
         Self {
             api_key,
-            model: DEFAULT_MODEL.to_string(),
+            base_url,
+            model,
             http_client: reqwest::Client::new(),
         }
+    }
+
+    pub fn with_api_key(mut self, api_key: &str) -> Self {
+        self.api_key = api_key.to_string();
+        self
+    }
+
+    pub fn with_base_url(mut self, base_url: &str) -> Self {
+        self.base_url = base_url.trim_end_matches('/').to_string();
+        self
     }
 
     pub fn with_model(mut self, model: &str) -> Self {
@@ -37,58 +53,112 @@ impl AnthropicProvider {
         self
     }
 
-    fn role_to_anthropic(role: Role) -> &'static str {
-        match role {
-            Role::System => "system",
-            Role::User => "user",
-            Role::Assistant => "assistant",
-            Role::Tool => "user",
+    fn build_headers(&self) -> LlmResult<HeaderMap> {
+        if self.api_key.is_empty() {
+            return Err(LlmError::ApiKeyMissing(
+                "anthropic".to_string(),
+                "KILO_API_KEY".to_string(),
+            ));
         }
+
+        let mut headers = HeaderMap::new();
+        headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+        headers.insert(
+            AUTHORIZATION,
+            HeaderValue::from_str(&format!("Bearer {}", self.api_key)).map_err(|e| {
+                LlmError::Provider {
+                    provider: "anthropic".to_string(),
+                    message: format!("Invalid API key: {}", e),
+                }
+            })?,
+        );
+        Ok(headers)
     }
 
-    async fn build_request(&self, llm_request: &LlmRequest) -> LlmResult<AnthropicRequest> {
-        let messages: Vec<AnthropicMessage> = llm_request
-            .messages
-            .iter()
-            .map(|msg| AnthropicMessage {
-                role: Self::role_to_anthropic(msg.role).to_string(),
-                content: msg.content.clone(),
-            })
-            .collect();
+    fn map_message(msg: &Message) -> OpenAiMessage {
+        let mut mapped = OpenAiMessage {
+            role: match msg.role {
+                Role::System => "system".to_string(),
+                Role::User => "user".to_string(),
+                Role::Assistant => "assistant".to_string(),
+                Role::Tool => "tool".to_string(),
+            },
+            content: if matches!(msg.role, Role::Assistant) && !msg.tool_calls.is_empty() {
+                if msg.content.is_empty() {
+                    None
+                } else {
+                    Some(msg.content.clone())
+                }
+            } else {
+                Some(msg.content.clone())
+            },
+            name: msg.name.clone(),
+            tool_call_id: msg.tool_call_id.clone(),
+            tool_calls: None,
+        };
 
-        Ok(AnthropicRequest {
+        if matches!(msg.role, Role::Assistant) && !msg.tool_calls.is_empty() {
+            mapped.tool_calls = Some(
+                msg.tool_calls
+                    .iter()
+                    .map(|call| OpenAiToolCallMessage {
+                        id: call.id.clone(),
+                        type_: "function".to_string(),
+                        function: OpenAiToolFunctionCall {
+                            name: call.name.clone(),
+                            arguments: serde_json::to_string(&call.arguments)
+                                .unwrap_or_else(|_| "{}".to_string()),
+                        },
+                    })
+                    .collect(),
+            );
+        }
+
+        mapped
+    }
+
+    fn map_tools(tools: &[ToolDefinition]) -> Vec<OpenAiToolDefinition> {
+        tools.iter()
+            .map(|tool| OpenAiToolDefinition {
+                type_: "function".to_string(),
+                function: OpenAiFunctionDefinition {
+                    name: tool.name.clone(),
+                    description: tool.description.clone(),
+                    parameters: tool.input_schema.clone(),
+                },
+            })
+            .collect()
+    }
+
+    fn build_request(&self, llm_request: &LlmRequest) -> OpenAiChatRequest {
+        OpenAiChatRequest {
             model: llm_request
                 .model
                 .as_deref()
                 .unwrap_or(&self.model)
                 .to_string(),
-            messages,
+            messages: llm_request.messages.iter().map(Self::map_message).collect(),
             max_tokens: llm_request.max_tokens.unwrap_or(4096),
             stream: false,
-        })
+            tools: if llm_request.tools.is_empty() {
+                None
+            } else {
+                Some(Self::map_tools(&llm_request.tools))
+            },
+        }
     }
 
-    async fn do_complete(&self, request: &AnthropicRequest) -> LlmResult<AnthropicResponse> {
-        let mut headers = HeaderMap::new();
-        headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
-        headers.insert(
-            "x-api-key",
-            HeaderValue::from_bytes(self.api_key.as_bytes()).map_err(|e| LlmError::Provider {
-                provider: "anthropic".to_string(),
-                message: format!("Invalid API key: {}", e),
-            })?,
-        );
-        headers.insert("anthropic-version", HeaderValue::from_static("2023-06-01"));
-
+    async fn do_complete(&self, request: &OpenAiChatRequest) -> LlmResult<OpenAiChatResponse> {
         let body = serde_json::to_string(request)
             .map_err(|e| LlmError::Other(anyhow::anyhow!("Serialize: {}", e)))?;
 
-        debug!(model = %request.model, "Sending request to Anthropic");
+        debug!(model = %request.model, "Sending request to Kilo Gateway");
 
+        let endpoint = format!("{}{}", self.base_url.trim_end_matches('/'), API_ENDPOINT_PATH);
         let response = self
             .http_client
-            .post(API_ENDPOINT)
-            .headers(headers)
+            .post(&endpoint)
+            .headers(self.build_headers()?)
             .body(body)
             .send()
             .await?;
@@ -96,16 +166,23 @@ impl AnthropicProvider {
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
-            error!(status = %status, body = %body, "Anthropic API error");
+            error!(status = %status, body = %body, "Kilo Gateway API error");
             return Err(LlmError::Provider {
                 provider: "anthropic".to_string(),
                 message: format!("API error {}: {}", status, body),
             });
         }
 
-        let anthropic_response: AnthropicResponse = response.json().await?;
+        response.json().await.map_err(Into::into)
+    }
 
-        Ok(anthropic_response)
+    fn finish_reason(reason: Option<&str>) -> FinishReason {
+        match reason {
+            Some("stop") => FinishReason::Stop,
+            Some("length") => FinishReason::MaxTokens,
+            Some("tool_calls") => FinishReason::ToolUse,
+            _ => FinishReason::Stop,
+        }
     }
 }
 
@@ -122,49 +199,53 @@ impl LlmProvider for AnthropicProvider {
     }
 
     async fn complete(&self, request: &LlmRequest) -> LlmResult<LlmResponse> {
-        let anthropic_request = self.build_request(request).await?;
-        let response = self.do_complete(&anthropic_request).await?;
+        let response = self.do_complete(&self.build_request(request)).await?;
+        let choice = response
+            .choices
+            .into_iter()
+            .next()
+            .ok_or_else(|| LlmError::Provider {
+                provider: "anthropic".to_string(),
+                message: "No choices returned by provider".to_string(),
+            })?;
 
-        let content = response
-            .content
-            .first()
-            .and_then(|c| c.text.clone())
-            .unwrap_or_default();
-
-        let tool_calls: Vec<ToolCall> = response
-            .content
-            .iter()
-            .filter_map(|c| {
-                c.tool_use.as_ref().map(|tool_use| ToolCall {
-                    id: tool_use.id.clone(),
-                    name: tool_use.input.name.clone().unwrap_or_default(),
-                    arguments: tool_use.input.arguments.clone(),
-                })
+        let tool_calls = choice
+            .message
+            .tool_calls
+            .unwrap_or_default()
+            .into_iter()
+            .map(|call| {
+                let arguments = serde_json::from_str(&call.function.arguments).unwrap_or_else(
+                    |_| serde_json::json!({
+                        "raw": call.function.arguments
+                    }),
+                );
+                ToolCall {
+                    id: call.id,
+                    name: call.function.name,
+                    arguments,
+                }
             })
-            .collect();
+            .collect::<Vec<_>>();
 
-        let finish_reason = match response.stop_reason.as_deref() {
-            Some("end_turn") => FinishReason::Stop,
-            Some("max_tokens") => FinishReason::MaxTokens,
-            Some("tool_use") => FinishReason::ToolUse,
-            _ => FinishReason::Stop,
-        };
+        let usage = response.usage.unwrap_or_default();
+        let finish_reason = Self::finish_reason(choice.finish_reason.as_deref());
 
         info!(
             model = %response.model,
-            input_tokens = response.usage.input_tokens,
-            output_tokens = response.usage.output_tokens,
-            "Anthropic request completed"
+            prompt_tokens = usage.prompt_tokens,
+            completion_tokens = usage.completion_tokens,
+            "Kilo Gateway request completed"
         );
 
         Ok(LlmResponse {
-            content,
+            content: choice.message.content.unwrap_or_default(),
             model: response.model,
             finish_reason,
             usage: TokenUsage {
-                prompt_tokens: response.usage.input_tokens as u64,
-                completion_tokens: response.usage.output_tokens as u64,
-                total_tokens: (response.usage.input_tokens + response.usage.output_tokens) as u64,
+                prompt_tokens: usage.prompt_tokens,
+                completion_tokens: usage.completion_tokens,
+                total_tokens: usage.total_tokens,
             },
             tool_calls,
         })
@@ -172,154 +253,29 @@ impl LlmProvider for AnthropicProvider {
 
     async fn stream(&self, request: &LlmRequest) -> LlmResult<mpsc::Receiver<StreamChunk>> {
         let (tx, rx) = mpsc::channel(100);
-
-        let anthropic_request = AnthropicStreamRequest {
-            model: request.model.as_deref().unwrap_or(&self.model).to_string(),
-            messages: request
-                .messages
-                .iter()
-                .map(|msg| AnthropicMessage {
-                    role: Self::role_to_anthropic(msg.role).to_string(),
-                    content: msg.content.clone(),
-                })
-                .collect(),
-            max_tokens: request.max_tokens.unwrap_or(4096),
-            stream: true,
-        };
-
-        let api_key = self.api_key.clone();
-        let http_client = self.http_client.clone();
+        let response = self.complete(request).await?;
 
         tokio::spawn(async move {
-            let mut headers = HeaderMap::new();
-            headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
-            if let Ok(key) = HeaderValue::from_bytes(api_key.as_bytes()) {
-                headers.insert("x-api-key", key);
+            if !response.content.is_empty() {
+                let _ = tx.send(StreamChunk::Text(response.content.clone())).await;
             }
-            headers.insert("anthropic-version", HeaderValue::from_static("2023-06-01"));
 
-            let body = match serde_json::to_string(&anthropic_request) {
-                Ok(b) => b,
-                Err(e) => {
-                    let _ = tx
-                        .send(StreamChunk::Error(format!("Serialization: {}", e)))
-                        .await;
-                    return;
-                }
-            };
-
-            let response = match http_client
-                .post(API_ENDPOINT)
-                .headers(headers)
-                .body(body)
-                .send()
-                .await
-            {
-                Ok(r) => r,
-                Err(e) => {
-                    let _ = tx.send(StreamChunk::Error(format!("Request: {}", e))).await;
-                    return;
-                }
-            };
-
-            if !response.status().is_success() {
+            for call in &response.tool_calls {
                 let _ = tx
-                    .send(StreamChunk::Error(format!(
-                        "API error: {}",
-                        response.status()
-                    )))
+                    .send(StreamChunk::ToolCallStart {
+                        id: call.id.clone(),
+                        name: call.name.clone(),
+                    })
                     .await;
-                return;
+                let _ = tx
+                    .send(StreamChunk::ToolCallDelta {
+                        id: call.id.clone(),
+                        arguments_delta: call.arguments.to_string(),
+                    })
+                    .await;
             }
 
-            let mut stream = response.bytes_stream();
-
-            use futures::stream::StreamExt;
-
-            let mut buffer = String::new();
-            let mut current_tool_id: Option<String> = None;
-            #[allow(unused_variables)]
-            let current_tool_name: Option<String> = None;
-            let mut current_args = String::new();
-
-            while let Some(chunk) = stream.next().await {
-                match chunk {
-                    Ok(bytes) => {
-                        if let Ok(text) = String::from_utf8(bytes.to_vec()) {
-                            buffer.push_str(&text);
-                        }
-                    }
-                    Err(e) => {
-                        let _ = tx.send(StreamChunk::Error(format!("Read: {}", e))).await;
-                        break;
-                    }
-                }
-
-                while let Some(newline_pos) = buffer.find('\n') {
-                    let line = buffer.drain(..newline_pos + 1).collect::<String>();
-                    let line = line.trim();
-
-                    if let Some(data) = line.strip_prefix("data: ") {
-                        if data == "[DONE]" {
-                            let _ = tx.send(StreamChunk::Done(TokenUsage::default())).await;
-                            break;
-                        }
-
-                        if let Ok(event) = serde_json::from_str::<AnthropicStreamEvent>(data) {
-                            match event.type_.as_deref() {
-                                Some("content_block_delta") => {
-                                    if let Some(delta) = event.delta {
-                                        if let Some(text) = delta.text {
-                                            let _ = tx.send(StreamChunk::Text(text)).await;
-                                        } else if let Some(input_json) = delta.input_json {
-                                            current_args.push_str(&input_json);
-
-                                            if let Ok(args) =
-                                                serde_json::Value::from_str(&current_args)
-                                            {
-                                                let _ = tx
-                                                    .send(StreamChunk::ToolCallDelta {
-                                                        id: current_tool_id
-                                                            .as_ref()
-                                                            .cloned()
-                                                            .unwrap_or_default(),
-                                                        arguments_delta: args.to_string(),
-                                                    })
-                                                    .await;
-                                            }
-                                        }
-                                    }
-                                }
-                                Some("content_block_start") => {
-                                    if let Some(block) = event.block {
-                                        if let Some(tool_use) = block.tool_use {
-                                            current_tool_id = Some(tool_use.id.clone());
-                                            let _ = tx
-                                                .send(StreamChunk::ToolCallStart {
-                                                    id: tool_use.id,
-                                                    name: tool_use.name,
-                                                })
-                                                .await;
-                                        }
-                                    }
-                                }
-                                Some("message_delta") => {
-                                    if let Some(usage) = event.usage {
-                                        let _ = tx
-                                            .send(StreamChunk::Done(TokenUsage {
-                                                prompt_tokens: 0,
-                                                completion_tokens: usage.output_tokens,
-                                                total_tokens: usage.output_tokens,
-                                            }))
-                                            .await;
-                                    }
-                                }
-                                _ => {}
-                            }
-                        }
-                    }
-                }
-            }
+            let _ = tx.send(StreamChunk::Done(response.usage)).await;
         });
 
         Ok(rx)
@@ -327,104 +283,85 @@ impl LlmProvider for AnthropicProvider {
 }
 
 #[derive(Debug, Serialize)]
-struct AnthropicRequest {
+struct OpenAiChatRequest {
     model: String,
-    messages: Vec<AnthropicMessage>,
-    #[serde(rename = "max_tokens")]
+    messages: Vec<OpenAiMessage>,
     max_tokens: u32,
     stream: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tools: Option<Vec<OpenAiToolDefinition>>,
 }
 
 #[derive(Debug, Serialize)]
-struct AnthropicStreamRequest {
-    model: String,
-    messages: Vec<AnthropicMessage>,
-    #[serde(rename = "max_tokens")]
-    max_tokens: u32,
-    stream: bool,
-}
-
-#[derive(Debug, Serialize)]
-struct AnthropicMessage {
+struct OpenAiMessage {
     role: String,
-    content: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[allow(dead_code)]
-struct AnthropicResponse {
-    id: String,
-    #[serde(rename = "type")]
-    type_: Option<String>,
-    role: String,
-    content: Vec<AnthropicContent>,
-    model: String,
-    #[serde(rename = "stop_reason")]
-    stop_reason: Option<String>,
-    usage: AnthropicUsage,
-}
-
-#[derive(Debug, Deserialize)]
-#[allow(dead_code)]
-struct AnthropicContent {
-    #[serde(rename = "type")]
-    type_: Option<String>,
-    text: Option<String>,
-    #[serde(rename = "tool_use")]
-    tool_use: Option<AnthropicToolUse>,
-}
-
-#[derive(Debug, Deserialize)]
-struct AnthropicToolUse {
-    id: String,
-    name: String,
-    input: AnthropicToolInput,
-}
-
-#[derive(Debug, Deserialize)]
-struct AnthropicToolInput {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    content: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     name: Option<String>,
-    arguments: serde_json::Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tool_call_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tool_calls: Option<Vec<OpenAiToolCallMessage>>,
 }
 
-#[derive(Debug, Deserialize)]
-struct AnthropicUsage {
-    #[serde(rename = "input_tokens")]
-    input_tokens: u64,
-    #[serde(rename = "output_tokens")]
-    output_tokens: u64,
-}
-
-#[derive(Debug, Deserialize)]
-struct AnthropicStreamEvent {
+#[derive(Debug, Serialize)]
+struct OpenAiToolDefinition {
     #[serde(rename = "type")]
-    type_: Option<String>,
-    delta: Option<AnthropicStreamDelta>,
-    block: Option<AnthropicStreamBlock>,
-    usage: Option<AnthropicStreamUsage>,
+    type_: String,
+    function: OpenAiFunctionDefinition,
 }
 
-#[derive(Debug, Deserialize)]
-#[allow(dead_code)]
-struct AnthropicStreamDelta {
+#[derive(Debug, Serialize)]
+struct OpenAiFunctionDefinition {
+    name: String,
+    description: String,
+    parameters: serde_json::Value,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct OpenAiToolCallMessage {
+    id: String,
     #[serde(rename = "type")]
-    type_: Option<String>,
-    text: Option<String>,
-    #[serde(rename = "input_json")]
-    input_json: Option<String>,
+    type_: String,
+    function: OpenAiToolFunctionCall,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct OpenAiToolFunctionCall {
+    name: String,
+    arguments: String,
 }
 
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)]
-struct AnthropicStreamBlock {
-    #[serde(rename = "type")]
-    type_: Option<String>,
-    #[serde(rename = "tool_use")]
-    tool_use: Option<AnthropicToolUse>,
+struct OpenAiChatResponse {
+    model: String,
+    choices: Vec<OpenAiChoice>,
+    #[serde(default)]
+    usage: Option<OpenAiUsage>,
 }
 
 #[derive(Debug, Deserialize)]
-struct AnthropicStreamUsage {
-    #[serde(rename = "output_tokens")]
-    output_tokens: u64,
+struct OpenAiChoice {
+    #[serde(default)]
+    finish_reason: Option<String>,
+    message: OpenAiChoiceMessage,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenAiChoiceMessage {
+    #[serde(default)]
+    content: Option<String>,
+    #[serde(default)]
+    tool_calls: Option<Vec<OpenAiToolCallMessage>>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct OpenAiUsage {
+    #[serde(default)]
+    prompt_tokens: u64,
+    #[serde(default)]
+    completion_tokens: u64,
+    #[serde(default)]
+    total_tokens: u64,
 }

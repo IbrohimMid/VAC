@@ -1,6 +1,7 @@
 //! VacEngine — the main entry point for all VAC operations.
 
 use crate::{
+    auth,
     config::VacConfig,
     error::{VacError, VacResult},
     session::Session,
@@ -9,9 +10,10 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Arc;
-use tokio::sync::RwLock;
+use tokio::sync::{RwLock, mpsc};
 use tracing::{error, info, instrument, warn};
 use vil_llm::LlmRouter;
+use vil_llm::providers::anthropic::AnthropicProvider;
 
 /// The main VAC engine that orchestrates all subsystems.
 pub struct VacEngine {
@@ -24,7 +26,7 @@ pub struct VacEngine {
     swarm: Option<vil_swarm::SwarmOrchestrator>,
     tool_router: Option<vac_tools::ToolRouter>,
     llm_router: Option<std::sync::Arc<vil_llm::LlmRouter>>,
-    trace_recorder: Option<vac_trace::TraceRecorder>,
+    trace_recorder: Option<std::sync::Arc<std::sync::Mutex<vac_trace::TraceRecorder>>>,
 }
 
 impl VacEngine {
@@ -53,6 +55,14 @@ impl VacEngine {
     /// Initialize all subsystems. Called by `vac init`.
     #[instrument(skip(self))]
     pub async fn init(&mut self) -> VacResult<()> {
+        self.init_with_policy(None).await
+    }
+
+    #[instrument(skip(self, policy_override))]
+    pub async fn init_with_policy(
+        &mut self,
+        policy_override: Option<Arc<dyn vac_tools::router::PolicyEngine>>,
+    ) -> VacResult<()> {
         info!("Initializing VAC subsystems...");
 
         info!("Initializing IR pipeline...");
@@ -60,11 +70,16 @@ impl VacEngine {
         self.ir_pipeline = Some(ir);
 
         info!("Initializing context engine...");
+        let shm_path = self.project_root.join(".vac/cache/vil_context.shm");
+        if let Some(parent) = shm_path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| VacError::Other(anyhow::anyhow!("Context cache init error: {}", e)))?;
+        }
         let ctx_config = vil_context::ContextConfig {
             max_context_tokens: 8192,
             chunk_size: 512,
             chunk_overlap: 50,
-            shm_path: PathBuf::from("/tmp/vil_context.shm"),
+            shm_path,
         };
         let ctx = vil_context::ContextEngine::new(ctx_config).await?;
         self.context_engine = Some(ctx);
@@ -79,12 +94,37 @@ impl VacEngine {
 
         info!("Initializing tool router...");
         let registry = Arc::new(vac_tools::ToolRegistry::new());
-        let tools = vac_tools::ToolRouter::with_default_policy(registry.clone());
+        vac_tools::builtin::register_builtin_tools(registry.as_ref())
+            .await
+            .map_err(|e| VacError::Other(anyhow::anyhow!("Tool registration error: {}", e)))?;
+        let _tool_config = vac_tools::router::ToolConfigStub {
+            default_policy: self.config.tools.default_policy.clone(),
+            allow: self.config.tools.allow.clone(),
+            deny: self.config.tools.deny.clone(),
+        };
+        let policy: Arc<dyn vac_tools::router::PolicyEngine> =
+            if let Some(p) = policy_override.clone() {
+                p
+            } else {
+                Arc::new(vac_tools::router::VilTrustPolicyAdapter::new())
+            };
+        let tools = vac_tools::ToolRouter::new(registry.clone(), policy.clone());
         self.tool_router = Some(tools);
 
         info!("Initializing LLM router...");
         let budget_limit = self.config.llm.max_tokens_per_task;
-        let llm_router = LlmRouter::new(&self.config.llm.default_provider, budget_limit);
+        let mut llm_router = LlmRouter::new(&self.config.llm.default_provider, budget_limit);
+        match self.config.llm.default_provider.as_str() {
+            "anthropic" => {
+                llm_router.add_provider(Arc::new(self.build_kilo_provider("anthropic")));
+            }
+            "kilo_gateway" => {
+                llm_router.add_provider(Arc::new(self.build_kilo_provider("kilo_gateway")));
+            }
+            _ => {
+                llm_router.add_provider(Arc::new(self.build_kilo_provider("anthropic")));
+            }
+        }
         let llm_router = Arc::new(llm_router);
         self.llm_router = Some(llm_router.clone());
 
@@ -95,11 +135,13 @@ impl VacEngine {
                 self.config.trace.enable_signing,
             )
             .map_err(|e| VacError::Other(anyhow::anyhow!("Trace error: {}", e)))?;
-            self.trace_recorder = Some(trace);
+            self.trace_recorder = Some(std::sync::Arc::new(std::sync::Mutex::new(trace)));
         }
 
         info!("Initializing swarm orchestrator...");
-        let tool_router = vac_tools::ToolRouter::with_default_policy(registry);
+        let swarm_policy = policy_override
+            .unwrap_or_else(|| Arc::new(vac_tools::router::VilTrustPolicyAdapter::new()));
+        let tool_router = vac_tools::ToolRouter::new(registry, swarm_policy);
         let swarm = vil_swarm::SwarmOrchestrator::new(
             self.config.swarm.max_concurrent_agents,
             self.config.swarm.enable_parallel,
@@ -113,9 +155,38 @@ impl VacEngine {
         Ok(())
     }
 
+    fn build_kilo_provider(&self, provider_name: &str) -> AnthropicProvider {
+        let mut provider = AnthropicProvider::new();
+        if let Some(config) = self.config.llm.providers.get(provider_name) {
+            if let Some(api_key) = resolve_provider_api_key(config.api_key_env.as_str()) {
+                provider = provider.with_api_key(&api_key);
+            }
+            if let Some(base_url) = &config.base_url {
+                if !base_url.trim().is_empty() && std::env::var("KILO_GATEWAY_URL").is_err() {
+                    provider = provider.with_base_url(base_url);
+                }
+            }
+            if !config.model.trim().is_empty() && std::env::var("KILO_MODEL").is_err() {
+                provider = provider.with_model(&config.model);
+            }
+        } else if let Some(api_key) = resolve_provider_api_key("KILO_API_KEY") {
+            provider = provider.with_api_key(&api_key);
+        }
+        provider
+    }
+
     /// Execute a task end-to-end.
     #[instrument(skip(self), fields(task_id))]
     pub async fn run_task(&mut self, description: &str) -> VacResult<TaskResult> {
+        self.run_task_with_updates(description, None).await
+    }
+
+    #[instrument(skip(self, updates), fields(task_id))]
+    pub async fn run_task_with_updates(
+        &mut self,
+        description: &str,
+        updates: Option<mpsc::UnboundedSender<RuntimeUpdate>>,
+    ) -> VacResult<TaskResult> {
         let task = Task::new(description);
         let task_id = task.id;
         tracing::Span::current().record("task_id", tracing::field::display(task_id.0));
@@ -127,10 +198,16 @@ impl VacEngine {
             session.tasks.push(task.clone());
         }
 
-        let result = match self.execute_task_pipeline(task).await {
+        let result = match self.execute_task_pipeline(task, updates.clone()).await {
             Ok(result) => result,
             Err(e) => {
                 error!(error = %e, "Task execution failed");
+                if let Some(ref recorder) = self.trace_recorder {
+                    if let Ok(mut rec) = recorder.lock() {
+                        rec.record_task_failed(&task_id.0.to_string(), &e.to_string());
+                        let _ = rec.flush();
+                    }
+                }
                 TaskResult {
                     task_id,
                     status: TaskStatus::Failed(e.to_string()),
@@ -156,9 +233,19 @@ impl VacEngine {
         Ok(result)
     }
 
-    async fn execute_task_pipeline(&mut self, task: Task) -> VacResult<TaskResult> {
+    async fn execute_task_pipeline(
+        &mut self,
+        task: Task,
+        updates: Option<mpsc::UnboundedSender<RuntimeUpdate>>,
+    ) -> VacResult<TaskResult> {
         let start = std::time::Instant::now();
         let task_id = task.id;
+
+        if let Some(ref recorder) = self.trace_recorder {
+            if let Ok(mut rec) = recorder.lock() {
+                let _ = rec.record_task(&task_id.0.to_string(), &task.description);
+            }
+        }
 
         let swarm = self
             .swarm
@@ -173,11 +260,93 @@ impl VacEngine {
             .as_ref()
             .ok_or_else(|| VacError::Task("Tool router not initialized.".into()))?;
 
-        info!("Phase 1: Planning...");
-        let plan = swarm.plan_task(&task.description).await?;
+        info!("Starting agent loop execution...");
+        let trace_handle = self.trace_recorder.clone();
+        let update_tx = updates.clone();
+        let (swarm_tx, mut swarm_rx) = mpsc::unbounded_channel::<vil_swarm::AgentLoopEvent>();
+        tokio::spawn(async move {
+            while let Some(event) = swarm_rx.recv().await {
+                if let Some(ref recorder) = trace_handle {
+                    match recorder.lock() {
+                        Ok(mut rec) => {
+                            match &event {
+                                vil_swarm::AgentLoopEvent::LlmRequest {
+                                    provider,
+                                    model,
+                                    message_count,
+                                } => {
+                                    rec.record_llm_request(provider, model, *message_count);
+                                }
+                                vil_swarm::AgentLoopEvent::ToolCall {
+                                    id: _,
+                                    name,
+                                    arguments,
+                                } => {
+                                    rec.record_tool_call(name, arguments);
+                                }
+                                vil_swarm::AgentLoopEvent::ToolResult {
+                                    id: _,
+                                    name,
+                                    content,
+                                    success,
+                                } => {
+                                    rec.record_tool_result(name, content, *success);
+                                }
+                                vil_swarm::AgentLoopEvent::ModelResponse { provider, model } => {
+                                    rec.record_llm_response(provider, model);
+                                }
+                                _ => {}
+                            }
+                            if let Err(e) = rec.flush() {
+                                tracing::warn!("Failed to write trace to disk: {}", e);
+                            }
+                        }
+                        Err(e) => tracing::warn!("Trace recorder lock is poisoned: {}", e),
+                    }
+                }
+                if let Some(ref tx) = update_tx {
+                    let update = match event {
+                        vil_swarm::AgentLoopEvent::Status(message) => {
+                            Some(RuntimeUpdate::Status(message))
+                        }
+                        vil_swarm::AgentLoopEvent::ModelResponse { provider, model } => {
+                            Some(RuntimeUpdate::ModelInfo { provider, model })
+                        }
+                        vil_swarm::AgentLoopEvent::AssistantChunk(chunk) => {
+                            Some(RuntimeUpdate::AssistantChunk(chunk))
+                        }
+                        vil_swarm::AgentLoopEvent::ToolCall {
+                            id,
+                            name,
+                            arguments,
+                        } => Some(RuntimeUpdate::ToolCall {
+                            id,
+                            name,
+                            arguments,
+                        }),
+                        vil_swarm::AgentLoopEvent::ToolResult {
+                            id,
+                            name,
+                            content,
+                            success,
+                        } => Some(RuntimeUpdate::ToolResult {
+                            id,
+                            name,
+                            content,
+                            success,
+                        }),
+                        vil_swarm::AgentLoopEvent::LlmRequest { .. } => None,
+                    };
+                    if let Some(up) = update {
+                        let _ = tx.send(up);
+                    }
+                }
+            }
+        });
 
-        info!("Phase 2: Executing...");
-        let execution = swarm.execute_plan(&plan).await?;
+        let execution = swarm
+            .agent_loop_with_events(&task.description, Some(swarm_tx))
+            .await?;
 
         info!("Phase 3: Validating...");
         let validation_score = if let Some(ir) = &self.ir_pipeline {
@@ -189,16 +358,17 @@ impl VacEngine {
             None
         };
 
-        if let Some(recorder) = &mut self.trace_recorder {
-            let task_id_str = task_id.0.to_string();
-            recorder
-                .record_task(&task_id_str, &task.description)
-                .map_err(|e| VacError::Other(anyhow::anyhow!("Trace error: {}", e)))?;
+        if let Some(ref recorder) = self.trace_recorder {
+            if let Ok(mut rec) = recorder.lock() {
+                let task_id_str = task_id.0.to_string();
+                rec.record_task_complete(&task_id_str, &execution.summary);
+                let _ = rec.flush();
+            }
         }
 
         let elapsed = start.elapsed();
 
-        Ok(TaskResult {
+        let result = TaskResult {
             task_id,
             status: TaskStatus::Completed,
             summary: execution.summary,
@@ -217,7 +387,13 @@ impl VacEngine {
                     tokens_used: c.tokens_used,
                 })
                 .collect(),
-        })
+        };
+
+        if let Some(tx) = &updates {
+            let _ = tx.send(RuntimeUpdate::Completed(result.clone()));
+        }
+
+        Ok(result)
     }
 
     /// Get engine status information.
@@ -233,6 +409,38 @@ impl VacEngine {
             subsystems_initialized: self.swarm.is_some(),
         })
     }
+
+    pub async fn history(&self) -> VacResult<Vec<TaskHistoryEntry>> {
+        let session = self.session.read().await;
+        let mut history = session
+            .tasks
+            .iter()
+            .rev()
+            .map(|task| {
+                let result = session.results.get(&task.id);
+                TaskHistoryEntry {
+                    task_id: task.id.0,
+                    description: task.description.clone(),
+                    status: result
+                        .map(|r| r.status.clone())
+                        .unwrap_or_else(|| task.status.clone()),
+                    updated_at: task.updated_at,
+                    total_tokens_used: result.map(|r| r.total_tokens_used).unwrap_or_default(),
+                    summary: result.map(|r| r.summary.clone()),
+                }
+            })
+            .collect::<Vec<_>>();
+        history.truncate(20);
+        Ok(history)
+    }
+}
+
+fn resolve_provider_api_key(env_name: &str) -> Option<String> {
+    std::env::var(env_name)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .or_else(|| auth::resolve_kilo_api_key().ok().flatten())
 }
 
 /// Snapshot of engine status.
@@ -245,4 +453,36 @@ pub struct EngineStatus {
     pub failed_tasks: usize,
     pub total_tokens_used: u64,
     pub subsystems_initialized: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TaskHistoryEntry {
+    pub task_id: uuid::Uuid,
+    pub description: String,
+    pub status: TaskStatus,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
+    pub total_tokens_used: u64,
+    pub summary: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub enum RuntimeUpdate {
+    Status(String),
+    ModelInfo {
+        provider: String,
+        model: String,
+    },
+    AssistantChunk(String),
+    ToolCall {
+        id: String,
+        name: String,
+        arguments: serde_json::Value,
+    },
+    ToolResult {
+        id: String,
+        name: String,
+        content: String,
+        success: bool,
+    },
+    Completed(TaskResult),
 }

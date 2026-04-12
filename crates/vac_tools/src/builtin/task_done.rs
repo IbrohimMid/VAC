@@ -58,7 +58,7 @@ impl VilTool for TaskDoneTool {
     }
 
     fn risk_level(&self) -> &str {
-        "Safe"
+        "safe"
     }
 
     async fn execute(

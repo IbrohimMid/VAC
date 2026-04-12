@@ -2,9 +2,9 @@
 
 use crate::agent::*;
 use crate::error::{SwarmError, SwarmResult};
-use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
+use tokio::sync::mpsc;
 use tracing::{error, info, warn};
 use vac_tools::registry::ToolContext;
 use vac_tools::router::ToolRouter;
@@ -24,6 +24,32 @@ pub struct AgentContribution {
     pub agent_role: String,
     pub actions: Vec<String>,
     pub tokens_used: u64,
+}
+
+#[derive(Debug, Clone)]
+pub enum AgentLoopEvent {
+    Status(String),
+    LlmRequest {
+        provider: String,
+        model: String,
+        message_count: usize,
+    },
+    ModelResponse {
+        provider: String,
+        model: String,
+    },
+    AssistantChunk(String),
+    ToolCall {
+        id: String,
+        name: String,
+        arguments: serde_json::Value,
+    },
+    ToolResult {
+        id: String,
+        name: String,
+        content: String,
+        success: bool,
+    },
 }
 
 pub struct TaskPlan {
@@ -113,15 +139,18 @@ Rules:
 
 When given a subtask:
 1. Understand what needs to be built
-2. If you need to read existing files, use file_read tool
-3. Write new or modified code using file_write tool
-4. If compilation is needed, use bash tool to run cargo build or similar
-5. Report success or any errors encountered
+2. Use read/search tools like file_read, glob, grep, and search to inspect the codebase
+3. Write or modify code using file_write or file_edit
+4. Track progress with todo_write when a task has multiple steps
+5. If compilation is needed, use bash, cargo, or git tools as appropriate
+6. Report success or any errors encountered
 
 You have access to tools for:
 - Reading files: file_read
-- Writing files: file_write
-- Running commands: bash (cargo build, cargo test, etc.)
+- Searching files: glob, grep, search
+- Writing files: file_write, file_edit
+- Running commands: bash, cargo, git
+- Task tracking: todo_write, task_done
 
 When you encounter errors:
 1. Read the error message carefully
@@ -130,122 +159,16 @@ When you encounter errors:
 4. Repeat until successful or report failure".to_string()
     }
 
-    pub async fn plan_task(&mut self, task_description: &str) -> SwarmResult<TaskPlan> {
-        info!(task = %task_description, "Planning task via Architect agent");
-
-        let router = self
-            .llm_router
-            .as_ref()
-            .ok_or_else(|| SwarmError::Orchestration("LLM router not initialized".into()))?;
-
-        let system_prompt = Self::architect_system_prompt();
-        let request = LlmRequest::new(vec![
-            Message::system(system_prompt),
-            Message::user(task_description),
-        ])
-        .with_max_tokens(4000);
-
-        let response = router
-            .complete(&request)
-            .await
-            .map_err(|e| SwarmError::Orchestration(format!("LLM error: {}", e)))?;
-
-        let plan = self.parse_architect_response(&response.content)?;
-
-        info!(
-            subtasks = plan.subtasks.len(),
-            "Task plan generated successfully"
-        );
-        Ok(plan)
+    pub async fn agent_loop(&mut self, task_description: &str) -> SwarmResult<ExecutionResult> {
+        self.agent_loop_with_events(task_description, None).await
     }
 
-    fn parse_architect_response(&self, content: &str) -> SwarmResult<TaskPlan> {
-        let json_start = content.find('{').or_else(|| content.find('['));
-        let json_end = content.rfind('}').or_else(|| content.rfind(']'));
-
-        let json_str = if let (Some(start), Some(end)) = (json_start, json_end) {
-            &content[start..=end]
-        } else {
-            content
-        };
-
-        let parsed: serde_json::Value = serde_json::from_str(json_str)
-            .map_err(|e| SwarmError::Orchestration(format!("Failed to parse plan JSON: {}", e)))?;
-
-        let subtasks: Vec<SubTask> = parsed["subtasks"]
-            .as_array()
-            .ok_or_else(|| SwarmError::Orchestration("Missing subtasks in plan".into()))?
-            .iter()
-            .map(|t| {
-                let role_str = t["assigned_role"].as_str().unwrap_or("Coder");
-                let role = match role_str {
-                    "Architect" => AgentRole::Architect,
-                    "Coder" => AgentRole::Coder,
-                    "Tester" => AgentRole::Tester,
-                    "Security" => AgentRole::Security,
-                    "Deploy" => AgentRole::Deploy,
-                    "Monitor" => AgentRole::Monitor,
-                    "Optimizer" => AgentRole::Optimizer,
-                    "Documenter" => AgentRole::Documenter,
-                    _ => AgentRole::Coder,
-                };
-                SubTask {
-                    description: t["description"].as_str().unwrap_or("").to_string(),
-                    assigned_role: role,
-                    dependencies: t["dependencies"]
-                        .as_array()
-                        .map(|arr| {
-                            arr.iter()
-                                .filter_map(|v| v.as_u64().map(|n| n as usize))
-                                .collect()
-                        })
-                        .unwrap_or_default(),
-                }
-            })
-            .collect();
-
-        let execution_order: Vec<usize> = parsed["execution_order"]
-            .as_array()
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_u64().map(|n| n as usize))
-                    .collect()
-            })
-            .unwrap_or_else(|| (0..subtasks.len()).collect());
-
-        let can_parallelize: Vec<Vec<usize>> = parsed["can_parallelize"]
-            .as_array()
-            .map(|arr| {
-                arr.iter()
-                    .map(|v| {
-                        v.as_array()
-                            .map(|inner| {
-                                inner
-                                    .iter()
-                                    .filter_map(|x| x.as_u64().map(|n| n as usize))
-                                    .collect()
-                            })
-                            .unwrap_or_default()
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
-
-        Ok(TaskPlan {
-            subtasks,
-            execution_order,
-            can_parallelize,
-        })
-    }
-
-    pub async fn execute_plan(&mut self, plan: &TaskPlan) -> SwarmResult<ExecutionResult> {
-        info!(subtasks = plan.subtasks.len(), "Executing plan");
-
-        let mut contributions = Vec::new();
-        let mut total_tokens = 0u64;
-        let mut modified_files = Vec::new();
-        let mut created_files = Vec::new();
-        let mut subtask_logs = Vec::new();
+    pub async fn agent_loop_with_events(
+        &mut self,
+        task_description: &str,
+        updates: Option<mpsc::UnboundedSender<AgentLoopEvent>>,
+    ) -> SwarmResult<ExecutionResult> {
+        info!(task = %task_description, "Starting Claude Code compatible agent loop");
 
         let llm_router = self
             .llm_router
@@ -256,165 +179,261 @@ When you encounter errors:
             .as_ref()
             .ok_or_else(|| SwarmError::Orchestration("Tool router not initialized".into()))?;
 
-        for (i, idx) in plan.execution_order.iter().enumerate() {
-            let subtask = &plan.subtasks[*idx];
-            info!(step = i + 1, role = ?subtask.assigned_role, desc = %subtask.description, "Executing subtask");
+        let mut total_tokens = 0u64;
+        let mut modified_files = Vec::new();
+        let mut created_files = Vec::new();
+        let context = ToolContext::new(std::path::PathBuf::from("."));
 
-            let role = subtask.assigned_role;
-            let system_prompt = match role {
-                AgentRole::Coder => Self::coder_system_prompt(),
-                _ => format!(
-                    "You are the {:?} agent. Execute the subtask: {}",
-                    role, subtask.description
-                ),
-            };
+        let mut messages = vec![
+            Message::system(Self::coder_system_prompt()),
+            Message::user(task_description.to_string()),
+        ];
 
-            let context = ToolContext::new(std::path::PathBuf::from("."));
+        let tool_defs: Vec<ToolDefinition> = tool_router
+            .registry()
+            .list()
+            .await
+            .into_iter()
+            .map(|tool| ToolDefinition {
+                name: tool.name,
+                description: tool.description,
+                input_schema: tool.input_schema,
+            })
+            .collect();
 
-            let mut messages = vec![
-                Message::system(system_prompt),
-                Message::user(subtask.description.clone()),
-            ];
+        loop {
+            let request = LlmRequest::new(messages.clone())
+                .with_max_tokens(4000)
+                .with_tools(tool_defs.clone());
 
-            let tools = vec![
-                ToolDefinition {
-                    name: "file_read".to_string(),
-                    description: "Read contents of a file".to_string(),
-                    input_schema: json!({
-                        "type": "object",
-                        "properties": {
-                            "path": {"type": "string", "description": "Path to file to read"}
-                        },
-                        "required": ["path"]
-                    }),
-                },
-                ToolDefinition {
-                    name: "file_write".to_string(),
-                    description: "Write content to a file".to_string(),
-                    input_schema: json!({
-                        "type": "object",
-                        "properties": {
-                            "path": {"type": "string", "description": "Path to file to write"},
-                            "content": {"type": "string", "description": "Content to write"}
-                        },
-                        "required": ["path", "content"]
-                    }),
-                },
-                ToolDefinition {
-                    name: "bash".to_string(),
-                    description: "Run a bash command".to_string(),
-                    input_schema: json!({
-                        "type": "object",
-                        "properties": {
-                            "command": {"type": "string", "description": "Command to run"}
-                        },
-                        "required": ["command"]
-                    }),
-                },
-            ];
+            if let Some(tx) = &updates {
+                let _ = tx.send(AgentLoopEvent::Status("Thinking".to_string()));
+                let _ = tx.send(AgentLoopEvent::LlmRequest {
+                    provider: "kilo".to_string(), // In future this can be dynamic
+                    model: "default".to_string(),
+                    message_count: messages.len(),
+                });
+            }
 
-            let mut iterations = 0;
-            let max_iterations = 10;
-            let mut subtask_success = false;
+            let response = llm_router
+                .complete(&request)
+                .await
+                .map_err(|e| SwarmError::Orchestration(format!("LLM error: {}", e)))?;
 
-            while iterations < max_iterations {
-                iterations += 1;
+            total_tokens += response.usage.total_tokens;
 
-                let request = LlmRequest::new(messages.clone())
-                    .with_max_tokens(4000)
-                    .with_tools(tools.clone());
+            if let Some(tx) = &updates {
+                let _ = tx.send(AgentLoopEvent::ModelResponse {
+                    provider: "kilo".to_string(),
+                    model: response.model.clone(),
+                });
+            }
 
-                let response = match llm_router.complete(&request).await {
-                    Ok(resp) => resp,
-                    Err(e) => {
-                        warn!(error = %e, "LLM request failed");
-                        break;
+            if !response.content.is_empty() {
+                if let Some(tx) = &updates {
+                    for ch in response.content.chars() {
+                        let _ = tx.send(AgentLoopEvent::AssistantChunk(ch.to_string()));
                     }
-                };
+                }
+            }
 
-                total_tokens += response.usage.total_tokens;
-
-                if response.tool_calls.is_empty() {
-                    if !response.content.is_empty() {
-                        subtask_logs.push(format!("{:?}: {}", role, response.content));
+            match response.finish_reason {
+                vil_llm::provider::FinishReason::Stop => {
+                    if let Some(tx) = &updates {
+                        let _ =
+                            tx.send(AgentLoopEvent::Status("Preparing final answer".to_string()));
                     }
-                    subtask_success = true;
+                    info!("Agent loop completed successfully (Stop reason)");
                     break;
                 }
+                vil_llm::provider::FinishReason::ToolUse => {
+                    info!(count = response.tool_calls.len(), "Received tool calls");
+                    messages.push(Message::assistant_with_tool_calls(
+                        response.content.clone(),
+                        response.tool_calls.clone(),
+                    ));
 
-                for tool_call in &response.tool_calls {
-                    info!(tool = %tool_call.name, "Executing tool");
+                    // Classify tools: Data Lane (parallel reads) / Control Lane (serial writes)
+                    let mut parallel_reads = Vec::new();
+                    let mut serial_writes = Vec::new();
 
-                    let tool_name = &tool_call.name;
-                    let args = tool_call.arguments.clone();
+                    for call in response.tool_calls {
+                        if let Some(tx) = &updates {
+                            let _ = tx.send(AgentLoopEvent::ToolCall {
+                                id: call.id.clone(),
+                                name: call.name.clone(),
+                                arguments: call.arguments.clone(),
+                            });
+                        }
+                        match call.name.as_str() {
+                            "file_read" | "glob" | "grep" | "search" => parallel_reads.push(call),
+                            _ => serial_writes.push(call),
+                        }
+                    }
 
-                    match tool_router.route(tool_name, args.clone(), &context).await {
-                        Ok(result) => {
-                            let result_str =
-                                serde_json::to_string(&result).unwrap_or_else(|_| "[]".to_string());
-                            info!(tool = %tool_name, result = %result_str, "Tool executed");
+                    // Execute parallel read operations first (Data Lane)
+                    if !parallel_reads.is_empty() {
+                        if let Some(tx) = &updates {
+                            let _ = tx.send(AgentLoopEvent::Status(
+                                "Reading files and searching the workspace".to_string(),
+                            ));
+                        }
+                        info!(
+                            count = parallel_reads.len(),
+                            "Executing parallel read tools"
+                        );
+                        let futures = parallel_reads.into_iter().map(|call| async {
+                            let res = tool_router
+                                .route(&call.name, call.arguments.clone(), &context)
+                                .await;
+                            (call, res)
+                        });
 
-                            if tool_name == "file_write" {
-                                if let Ok(path) = serde_json::from_value::<String>(
-                                    args.get("path").cloned().unwrap_or(json!(null)).clone(),
-                                ) {
-                                    if !modified_files.contains(&path)
-                                        && !created_files.contains(&path)
-                                    {
-                                        if std::path::Path::new(&path).exists() {
-                                            modified_files.push(path.clone());
-                                        } else {
-                                            created_files.push(path.clone());
+                        let results = futures::future::join_all(futures).await;
+
+                        for (call, result) in results {
+                            match result {
+                                Ok(result_value) => {
+                                    let result_str = serde_json::to_string(&result_value)
+                                        .unwrap_or_else(|_| "[]".to_string());
+                                    if let Some(tx) = &updates {
+                                        let _ = tx.send(AgentLoopEvent::ToolResult {
+                                            id: call.id.clone(),
+                                            name: call.name.clone(),
+                                            content: result_str.clone(),
+                                            success: true,
+                                        });
+                                    }
+                                    messages.push(Message::tool(call.name, call.id, result_str));
+                                }
+                                Err(e) => {
+                                    error!(tool = %call.name, error = %e, "Parallel tool failed");
+                                    if let Some(tx) = &updates {
+                                        let _ = tx.send(AgentLoopEvent::ToolResult {
+                                            id: call.id.clone(),
+                                            name: call.name.clone(),
+                                            content: format!("Error: {}", e),
+                                            success: false,
+                                        });
+                                    }
+                                    messages.push(Message::tool(
+                                        call.name,
+                                        call.id,
+                                        format!("Error: {}", e),
+                                    ));
+                                }
+                            }
+                        }
+                    }
+
+                    // Execute serial write operations one at a time (Control Lane)
+                    for call in serial_writes {
+                        if let Some(tx) = &updates {
+                            let _ = tx.send(AgentLoopEvent::Status(status_for_tool(&call.name)));
+                        }
+                        info!(tool = %call.name, "Executing serial write tool");
+
+                        match tool_router
+                            .route(&call.name, call.arguments.clone(), &context)
+                            .await
+                        {
+                            Ok(result) => {
+                                let result_str = serde_json::to_string(&result)
+                                    .unwrap_or_else(|_| "[]".to_string());
+                                info!(tool = %call.name, "Tool executed successfully");
+                                if let Some(tx) = &updates {
+                                    let _ = tx.send(AgentLoopEvent::ToolResult {
+                                        id: call.id.clone(),
+                                        name: call.name.clone(),
+                                        content: result_str.clone(),
+                                        success: true,
+                                    });
+                                }
+
+                                if call.name == "file_write" || call.name == "file_edit" {
+                                    let path_arg = match call.name.as_str() {
+                                        "file_write" => call.arguments.get("path"),
+                                        "file_edit" => call.arguments.get("file_path"),
+                                        _ => None,
+                                    };
+
+                                    if let Some(path_value) = path_arg {
+                                        if let Ok(path) =
+                                            serde_json::from_value::<String>(path_value.clone())
+                                        {
+                                            let is_create = call.name == "file_write"
+                                                && result_str.contains("\"created\":true");
+                                            if is_create {
+                                                if !created_files.contains(&path) {
+                                                    created_files.push(path);
+                                                }
+                                            } else if !modified_files.contains(&path) {
+                                                modified_files.push(path);
+                                            }
                                         }
                                     }
                                 }
+
+                                messages.push(Message {
+                                    role: Role::Tool,
+                                    content: result_str,
+                                    name: Some(call.name),
+                                    tool_call_id: Some(call.id),
+                                    tool_calls: vec![],
+                                });
                             }
-
-                            messages.push(Message {
-                                role: Role::Tool,
-                                content: result_str,
-                                name: Some(tool_call.name.clone()),
-                            });
-                        }
-                        Err(e) => {
-                            error!(tool = %tool_name, error = %e, "Tool execution failed");
-
-                            messages.push(Message {
-                                role: Role::Tool,
-                                content: format!("Error: {}", e),
-                                name: Some(tool_call.name.clone()),
-                            });
+                            Err(e) => {
+                                error!(tool = %call.name, error = %e, "Serial tool execution failed");
+                                if let Some(tx) = &updates {
+                                    let _ = tx.send(AgentLoopEvent::ToolResult {
+                                        id: call.id.clone(),
+                                        name: call.name.clone(),
+                                        content: format!("Error: {}", e),
+                                        success: false,
+                                    });
+                                }
+                                messages.push(Message::tool(
+                                    call.name,
+                                    call.id,
+                                    format!("Error: {}", e),
+                                ));
+                            }
                         }
                     }
+                    if let Some(tx) = &updates {
+                        let _ =
+                            tx.send(AgentLoopEvent::Status("Reviewing tool results".to_string()));
+                    }
                 }
-
-                if response.finish_reason == vil_llm::provider::FinishReason::Stop {
-                    subtask_success = true;
+                vil_llm::provider::FinishReason::MaxTokens => {
+                    warn!("Context window limit reached, compressing context");
+                    // Keep system prompt and last 50% of messages
+                    let keep_count = (messages.len() / 2).max(4);
+                    let system_msg = messages.remove(0);
+                    messages = vec![system_msg]
+                        .into_iter()
+                        .chain(messages.drain(messages.len() - keep_count..))
+                        .collect();
+                    info!(remaining = messages.len(), "Context compressed");
+                }
+                _ => {
+                    warn!(reason = ?response.finish_reason, "Unknown finish reason, terminating loop");
                     break;
                 }
             }
-
-            if !subtask_success {
-                warn!(subtask = %subtask.description, "Subtask failed after max iterations");
-            }
-
-            contributions.push(AgentContribution {
-                agent_id: format!("{:?}-agent", role).to_lowercase(),
-                agent_role: format!("{:?}", role),
-                actions: subtask_logs.clone(),
-                tokens_used: 0,
-            });
         }
 
         Ok(ExecutionResult {
-            summary: format!(
-                "Task executed via swarm ({} subtasks completed)",
-                plan.subtasks.len()
-            ),
+            summary: "Task executed via single-agent loop".to_string(),
             modified_files,
             created_files,
             total_tokens_used: total_tokens,
-            agent_contributions: contributions,
+            agent_contributions: vec![AgentContribution {
+                agent_id: "unified-agent".to_string(),
+                agent_role: "Unified".to_string(),
+                actions: Vec::new(),
+                tokens_used: total_tokens,
+            }],
         })
     }
 
@@ -424,5 +443,18 @@ When you encounter errors:
 
     pub fn agents(&self) -> &HashMap<AgentId, AgentDefinition> {
         &self.agents
+    }
+}
+
+fn status_for_tool(tool_name: &str) -> String {
+    match tool_name {
+        "bash" => "Running shell command".to_string(),
+        "cargo" => "Running cargo task".to_string(),
+        "git" => "Running git command".to_string(),
+        "file_edit" => "Editing files".to_string(),
+        "file_write" => "Writing files".to_string(),
+        "todo_write" => "Updating task list".to_string(),
+        "task_done" => "Marking task complete".to_string(),
+        other => format!("Using {}", other),
     }
 }

@@ -8,6 +8,7 @@ license.workspace = true
 description = "VAC Tools — tool registry, execution, MCP bridge, and sandbox"
 
 [dependencies]
+vil_knowledge = { workspace = true }
 vil_ir = { workspace = true }
 vil_trust = { workspace = true }
 vil_rag = { workspace = true }
@@ -23,6 +24,13 @@ uuid = { workspace = true }
 reqwest = { workspace = true }
 walkdir = { workspace = true }
 futures = { workspace = true }
+dashmap = { workspace = true }
+chrono = { workspace = true }
+glob = "0.3"
+grep-regex = "0.1"
+grep-searcher = "0.1"
+ignore = "0.4"
+base64 = "0.22"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }

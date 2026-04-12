@@ -1,0 +1,22 @@
+[
+  {
+    "id": "b27ddb63-5d9d-4c5a-8344-2a3918c775ba",
+    "timestamp": "2026-04-12T02:34:10.279627671Z",
+    "record_type": "TaskStart",
+    "agent_id": null,
+    "content": {
+      "description": "Get the current operating system name",
+      "task_id": "0de4d95b-e297-44e7-a103-0da1e0e98298"
+    }
+  },
+  {
+    "id": "c0b958cd-5e91-4d2a-a11c-beaa38b2fbf9",
+    "timestamp": "2026-04-12T02:34:12.803929518Z",
+    "record_type": "TaskComplete",
+    "agent_id": null,
+    "content": {
+      "summary": "Task executed via single-agent loop",
+      "task_id": "0de4d95b-e297-44e7-a103-0da1e0e98298"
+    }
+  }
+]

@@ -18,6 +18,10 @@ pub struct Message {
     pub role: Role,
     pub content: String,
     pub name: Option<String>,
+    #[serde(default)]
+    pub tool_call_id: Option<String>,
+    #[serde(default)]
+    pub tool_calls: Vec<ToolCall>,
 }
 
 impl Message {
@@ -26,6 +30,8 @@ impl Message {
             role: Role::System,
             content: content.into(),
             name: None,
+            tool_call_id: None,
+            tool_calls: vec![],
         }
     }
     pub fn user(content: impl Into<String>) -> Self {
@@ -33,6 +39,8 @@ impl Message {
             role: Role::User,
             content: content.into(),
             name: None,
+            tool_call_id: None,
+            tool_calls: vec![],
         }
     }
     pub fn assistant(content: impl Into<String>) -> Self {
@@ -40,6 +48,35 @@ impl Message {
             role: Role::Assistant,
             content: content.into(),
             name: None,
+            tool_call_id: None,
+            tool_calls: vec![],
+        }
+    }
+
+    pub fn assistant_with_tool_calls(
+        content: impl Into<String>,
+        tool_calls: Vec<ToolCall>,
+    ) -> Self {
+        Self {
+            role: Role::Assistant,
+            content: content.into(),
+            name: None,
+            tool_call_id: None,
+            tool_calls,
+        }
+    }
+
+    pub fn tool(
+        tool_name: impl Into<String>,
+        tool_call_id: impl Into<String>,
+        content: impl Into<String>,
+    ) -> Self {
+        Self {
+            role: Role::Tool,
+            content: content.into(),
+            name: Some(tool_name.into()),
+            tool_call_id: Some(tool_call_id.into()),
+            tool_calls: vec![],
         }
     }
 }

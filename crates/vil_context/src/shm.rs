@@ -1,6 +1,6 @@
 use crate::error::ContextResult;
 use memmap2::MmapMut;
-use std::fs::File;
+use std::fs::OpenOptions;
 use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -14,9 +14,14 @@ pub struct ShmArena {
 
 impl ShmArena {
     pub fn new(path: &Path, size: usize) -> Result<Self, std::io::Error> {
-        let file = match File::open(path) {
+        let file = match OpenOptions::new().read(true).write(true).open(path) {
             Ok(f) => f,
-            Err(_) => File::create(path)?,
+            Err(_) => OpenOptions::new()
+                .read(true)
+                .write(true)
+                .create(true)
+                .truncate(false)
+                .open(path)?,
         };
 
         file.set_len(size as u64)?;

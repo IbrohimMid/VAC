@@ -42,6 +42,37 @@ pub enum PolicyDecision {
     RequireApproval,
 }
 
+impl Default for PolicyEngine {
+    fn default() -> Self {
+        let mut engine = Self::new(DefaultPolicy::Deny);
+
+        // Allow all read tools by default
+        engine.add_rule(PolicyRule {
+            name: "allow_read_tools".into(),
+            condition: PolicyCondition::RiskLevel(RiskLevel::Safe),
+            decision: PolicyDecision::Allow,
+            priority: 10,
+        });
+
+        // Require approval for write/modify tools
+        engine.add_rule(PolicyRule {
+            name: "write_tools_require_approval".into(),
+            condition: PolicyCondition::RiskLevel(RiskLevel::NeedsApproval),
+            decision: PolicyDecision::RequireApproval,
+            priority: 5,
+        });
+
+        engine.add_rule(PolicyRule {
+            name: "write_tools_require_approval_high".into(),
+            condition: PolicyCondition::RiskLevel(RiskLevel::Dangerous),
+            decision: PolicyDecision::RequireApproval,
+            priority: 5,
+        });
+
+        engine
+    }
+}
+
 impl PolicyEngine {
     pub fn new(default: DefaultPolicy) -> Self {
         Self {

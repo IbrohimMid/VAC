@@ -104,7 +104,7 @@ impl VilTool for CargoTool {
     }
 
     fn risk_level(&self) -> &str {
-        "Safe"
+        "needs_approval"
     }
 
     async fn execute(

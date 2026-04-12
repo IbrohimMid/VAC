@@ -35,16 +35,24 @@ pub async fn execute(project_root: PathBuf, force: bool) -> anyhow::Result<()> {
 default_provider = "anthropic"
 
 [llm.providers.anthropic]
-api_key_env = "ANTHROPIC_API_KEY"
-model = "claude-sonnet-4-20250514"
+api_key_env = "KILO_API_KEY"
+model = "kilo-auto/free"
 
 [tools]
 default_policy = "deny"
 
 [tools.allow]
+bash = true
+file_write = true
+file_edit = true
+glob = true
+grep = true
 file_read = true
 cargo = true
 git = true
+search = true
+task_done = true
+todo_write = true
 
 [memory]
 persist_path = ".vac/memory"
@@ -86,7 +94,8 @@ output_path = ".vac/traces"
     println!("\n✓ VAC initialized successfully!");
     println!("   Session: {}", status.session_id);
     println!("   Project: {}", status.project_root.display());
-    println!("\n   Run `vac interactive` to start coding.");
+    println!("\n   Run `vac auth login` if you have not saved your Kilo token yet.");
+    println!("   Then run `vac interactive` to start coding.");
 
     Ok(())
 }

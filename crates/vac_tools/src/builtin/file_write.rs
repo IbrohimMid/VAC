@@ -72,7 +72,7 @@ impl VilTool for FileWriteTool {
     }
 
     fn risk_level(&self) -> &str {
-        "NeedsApproval"
+        "needs_approval"
     }
 
     async fn execute(

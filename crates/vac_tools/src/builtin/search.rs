@@ -78,7 +78,7 @@ impl VilTool for SearchTool {
     }
 
     fn risk_level(&self) -> &str {
-        "Safe"
+        "safe"
     }
 
     async fn execute(
@@ -90,7 +90,12 @@ impl VilTool for SearchTool {
             serde_json::from_value(args).map_err(|e| ToolError::InvalidArguments(e.to_string()))?;
 
         let search_path = if let Some(path) = input.path {
-            PathBuf::from(path)
+            let path = PathBuf::from(path);
+            if path.is_absolute() {
+                path
+            } else {
+                context.working_dir.join(path)
+            }
         } else {
             context.working_dir.clone()
         };

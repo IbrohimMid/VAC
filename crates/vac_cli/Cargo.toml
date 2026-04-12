@@ -14,6 +14,7 @@ path = "src/main.rs"
 [dependencies]
 vac_core = { workspace = true }
 vil_swarm = { workspace = true }
+vac_tools = { workspace = true }
 
 clap = { workspace = true }
 ratatui = { workspace = true }
@@ -25,6 +26,8 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 anyhow = { workspace = true }
 chrono = { workspace = true }
+uuid = { workspace = true }
+async-trait = { workspace = true }
 
 [dev-dependencies]
 assert_cmd = "2.0"

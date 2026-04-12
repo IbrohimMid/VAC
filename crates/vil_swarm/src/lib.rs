@@ -14,5 +14,5 @@ pub use agent::{AgentDefinition, AgentId, AgentRole};
 pub use error::SwarmError;
 pub use error::SwarmResult;
 pub use lanes::{ControlLane, DataLane, TriggerLane};
-pub use orchestrator::SwarmOrchestrator;
+pub use orchestrator::{AgentLoopEvent, SwarmOrchestrator};
 pub use protocol::{ControlPayload, DataPayload, TriggerPayload, VapMessage};

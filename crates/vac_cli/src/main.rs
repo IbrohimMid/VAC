@@ -17,7 +17,7 @@ use tracing_subscriber::{EnvFilter, fmt};
 )]
 struct Cli {
     /// Path to project root (defaults to current directory)
-    #[arg(short, long, global = true)]
+    #[arg(short = 'C', long, global = true)]
     project: Option<PathBuf>,
 
     /// Verbosity level (-v, -vv, -vvv)
@@ -75,6 +75,12 @@ enum Commands {
         action: ConfigAction,
     },
 
+    /// Manage VAC authentication for Kilo Gateway
+    Auth {
+        #[command(subcommand)]
+        action: AuthAction,
+    },
+
     /// Export session as VAC artifact
     Export {
         /// Output path
@@ -109,21 +115,38 @@ enum ConfigAction {
     },
 }
 
+#[derive(Subcommand)]
+enum AuthAction {
+    /// Save a Kilo Gateway token for future VAC sessions
+    Login {
+        /// Token value to save. If omitted, VAC will prompt on stdin.
+        #[arg(long)]
+        token: Option<String>,
+    },
+    /// Show whether VAC can authenticate
+    Status,
+    /// Remove saved VAC authentication
+    Logout,
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
+    let interactive_mode = matches!(&cli.command, Commands::Interactive { .. });
 
-    // Setup tracing
-    let filter = match cli.verbose {
-        0 => "warn,vac=info",
-        1 => "info,vac=debug",
-        2 => "debug",
-        _ => "trace",
-    };
-    fmt()
-        .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| filter.into()))
-        .with_target(false)
-        .init();
+    // Keep alternate-screen TUI clean by disabling terminal log output in interactive mode.
+    if !interactive_mode {
+        let filter = match cli.verbose {
+            0 => "warn,vac=info",
+            1 => "info,vac=debug",
+            2 => "debug",
+            _ => "trace",
+        };
+        fmt()
+            .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| filter.into()))
+            .with_target(false)
+            .init();
+    }
 
     let project_root = cli
         .project
@@ -149,6 +172,9 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Config { action } => {
             commands::config::execute(project_root, action).await?;
+        }
+        Commands::Auth { action } => {
+            commands::auth::execute(action).await?;
         }
         Commands::Export {
             output,

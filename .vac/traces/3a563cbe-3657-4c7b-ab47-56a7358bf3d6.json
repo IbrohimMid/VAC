@@ -1,0 +1,88 @@
+[
+  {
+    "id": "bf89b37e-941e-40b6-b385-f53d8a845d84",
+    "timestamp": "2026-04-12T02:49:14.021268243Z",
+    "record_type": "TaskStart",
+    "agent_id": null,
+    "content": {
+      "description": "how to create VIL server",
+      "task_id": "cf542f1d-fa98-4354-8c53-092e48600aad"
+    }
+  },
+  {
+    "id": "cae2c295-017e-4cfa-a867-a3a9ff41be78",
+    "timestamp": "2026-04-12T02:49:14.021804006Z",
+    "record_type": "LlmRequest",
+    "agent_id": null,
+    "content": {
+      "message_count": 2,
+      "model": "default",
+      "provider": "kilo"
+    }
+  },
+  {
+    "id": "62615316-4da6-4e14-97d6-2a33878ac31a",
+    "timestamp": "2026-04-12T02:49:15.598329457Z",
+    "record_type": "LlmResponse",
+    "agent_id": null,
+    "content": {
+      "model": "minimax/minimax-m2.5:free",
+      "provider": "kilo"
+    }
+  },
+  {
+    "id": "57bf7194-4ff0-4a00-9a26-3700464fa55c",
+    "timestamp": "2026-04-12T02:49:15.598571464Z",
+    "record_type": "ToolCall",
+    "agent_id": null,
+    "content": {
+      "arguments": {
+        "max_results": 10,
+        "query": "create server VIL handler VX_APP"
+      },
+      "tool": "vil_knowledge"
+    }
+  },
+  {
+    "id": "b51b96cf-53ca-46b9-a8ba-2eae0a5275d2",
+    "timestamp": "2026-04-12T02:49:15.599813018Z",
+    "record_type": "ToolResult",
+    "agent_id": null,
+    "content": {
+      "content": "{\"best_practices\":[],\"patterns\":[{\"category\":\"server\",\"code_template\":\"use vil_server::prelude::*;\\n\\n#[vil_handler(shm)]\\nasync fn create_order(ctx: ServiceCtx, slice: ShmSlice) -> VilResponse<Order> {\\n    let input: CreateOrder = vil_json::from_slice(slice.as_ref())?;\\n    let db = ctx.state::<DbPool>();\\n    let order = db.insert(&input).await?;\\n    VilResponse::created(order)\\n}\",\"description\":\"VIL handler with ShmSlice zero-copy body extraction, ServiceCtx state access, and VilResponse output\",\"name\":\"vx_app_handler\",\"when_to_use\":\"Creating HTTP endpoints in VilApp with zero-copy body extraction. Use ShmSlice instead of Json<T>, ServiceCtx instead of Extension<T>, VilResponse instead of Json(data).\"},{\"category\":\"server\",\"code_template\":\"// ShmSlice — zero-copy body extraction\\nasync fn handler(slice: ShmSlice) -> VilResponse<Output> {\\n    let data: MyType = slice.json()?;    // Deserialize JSON\\n    let text = slice.text()?;             // As UTF-8 string\\n    let raw = slice.as_bytes();           // Raw bytes\\n    VilResponse::ok(process(data))\\n}\\n\\n// ServiceCtx — typed state access\\nasync fn handler(ctx: ServiceCtx) -> VilResponse<Output> {\\n    let db = ctx.state::<DbPool>();       // Typed state\\n    let name = ctx.service_name();        // Service identity\\n    let sid = ctx.session_id();           // Tri-Lane session ID\\n}\\n\\n// RequestId — auto-extracted from X-Request-Id\\nasync fn handler(id: RequestId) -> VilResponse<Output> {\\n    tracing::info!(%id, \\\"Processing request\\\");\\n}\",\"description\":\"VIL request extractors: ShmSlice (zero-copy body), ServiceCtx (typed state), RequestId\",\"name\":\"shm_extractors\",\"when_to_use\":\"Handling HTTP requests in VIL handlers. Always use ShmSlice instead of Json<T>, ServiceCtx instead of Extension<T>. Standard axum extractors (Path, Query, HeaderMap) work alongside VIL extractors.\"},{\"category\":\"server\",\"code_template\":\"// Success responses\\nVilResponse::ok(data)           // 200 OK\\nVilResponse::created(data)      // 201 Created\\nVilResponse::with_shm(data)     // Write-through to SHM\\n\\n// Error handling\\nasync fn get_order(Path(id): Path<u64>) -> HandlerResult<VilResponse<Order>> {\\n    let order = find_order(id)\\n        .ok_or_else(|| VilError::not_found(format!(\\\"Order {} not found\\\", id)))?;\\n    Ok(VilResponse::ok(order))\\n}\\n\\n// VilError factory methods:\\nVilError::bad_request(\\\"detail\\\")\\nVilError::unauthorized(\\\"detail\\\")\\nVilError::forbidden(\\\"detail\\\")\\nVilError::not_found(\\\"detail\\\")\\nVilError::internal(\\\"detail\\\")\\nVilError::rate_limited(\\\"detail\\\")\\nVilError::service_unavailable(\\\"detail\\\")\",\"description\":\"VilResponse SIMD-accelerated JSON envelope and VilError RFC 7807 structured errors\",\"name\":\"vil_response\",\"when_to_use\":\"Returning HTTP responses and handling errors in VIL. VilResponse uses SIMD-accelerated JSON (sonic-rs, 2-5x faster). VilError produces RFC 7807 Problem Details. HandlerResult<T> = Result<T, VilError>.\"},{\"category\":\"plugin\",\"code_template\":\"use vil_rag::prelude::*;\\n\\nlet rag = RagPipeline::new()\\n    .embedder(EmbedderConfig::openai(\\\"text-embedding-3-small\\\"))\\n    .vector_store(VectorStoreConfig::in_memory())\\n    .llm(LlmProvider::openai().model(\\\"gpt-4o\\\").build())\\n    .build();\\n\\n// Ingest documents\\nrag.ingest(vec![\\n    Document::text(\\\"VIL uses ShmSlice for zero-copy body extraction.\\\"),\\n    Document::file(\\\"path/to/document.pdf\\\")?,\\n]).await?;\\n\\n// Query with retrieval\\nlet answer = rag.query(\\\"How does VIL handle request bodies?\\\").await?;\\n\\n// Direct similarity search\\nlet results = rag.search(\\\"zero-copy transport\\\", 5).await?;\",\"description\":\"Document ingestion, vector search, and retrieval-augmented generation\",\"name\":\"rag_pipeline\",\"when_to_use\":\"Building RAG systems with VIL. Chunk strategies: Sliding, Sentence, Paragraph, Code, Table. Register as VilPlugin for server integration.\"},{\"category\":\"server\",\"code_template\":\"#[tokio::main]\\nasync fn main() {\\n    let api = ServiceProcess::new(\\\"api\\\")\\n        .visibility(Visibility::Public)\\n        .endpoint(Method::GET, \\\"/orders\\\", get(list_orders))\\n        .endpoint(Method::POST, \\\"/orders\\\", post(create_order))\\n        .extension(db_pool);\\n\\n    let worker = ServiceProcess::new(\\\"worker\\\")\\n        .visibility(Visibility::Internal);\\n\\n    let mesh = VxMeshConfig::new()\\n        .route(\\\"api\\\", \\\"worker\\\", VxLane::Data);\\n\\n    VilApp::new(\\\"my-app\\\")\\n        .port(8080)\\n        .observer(true)\\n        .service(api)\\n        .service(worker)\\n        .mesh(mesh)\\n        .run()\\n        .await;\\n}\",\"description\":\"Assemble a VilApp with multiple ServiceProcess instances and Tri-Lane mesh\",\"name\":\"vilapp_assembly\",\"when_to_use\":\"Building a multi-service VIL application with inter-service communication via Tri-Lane mesh. Use .observer(true) for built-in dashboard at /_vil/dashboard/.\"},{\"category\":\"config\",\"code_template\":\"# vil-server.yaml\\nserver:\\n  port: 8080\\n  workers: 0  # 0 = auto-detect CPU cores\\n\\nshm:\\n  pool_size: \\\"64MB\\\"\\n  page_size: \\\"4KB\\\"\\n\\nprofiles:\\n  dev:\\n    shm_pool_size: \\\"8MB\\\"\\n    log_level: \\\"debug\\\"\\n    admin_enabled: true\\n  staging:\\n    shm_pool_size: \\\"64MB\\\"\\n    log_level: \\\"info\\\"\\n    db_pool_size: 20\\n  prod:\\n    shm_pool_size: \\\"256MB\\\"\\n    log_level: \\\"warn\\\"\\n    db_pool_size: 50\\n    admin_enabled: false\\n\\n# ENV overrides (highest precedence):\\n# VIL_PROFILE=prod\\n# VIL_SERVER_PORT=9090\\n# VIL_SHM_POOL_SIZE=512MB\\n# VIL_DATABASE_URL=postgres://...\",\"description\":\"VIL configuration with 3 profiles (dev/staging/prod) and ENV overrides\",\"name\":\"config_profiles\",\"when_to_use\":\"Configuring VIL applications. Precedence: Code Default → YAML → Profile → ENV (VIL_*). Use VIL_PROFILE env var to select profile. SHM pool sizes: dev=8MB, staging=64MB, prod=256MB.\"},{\"category\":\"pipeline\",\"code_template\":\"// Pipeline 1: Ingest\\nlet (_ir1, h1) = vil_workflow! {\\n    name: \\\"Ingest\\\",\\n    token: ShmToken,\\n    instances: [ingest_sink, ingest_source],\\n    routes: [ingest_sink.out -> ingest_source.in (LoanWrite)]\\n};\\n\\n// Pipeline 2: Process (shares ExchangeHeap with Pipeline 1)\\nlet (_ir2, h2) = vil_workflow! {\\n    name: \\\"Process\\\",\\n    token: ShmToken,\\n    instances: [process_sink, process_source],\\n    routes: [process_sink.out -> process_source.in (LoanWrite)]\\n};\",\"description\":\"Multiple vil_workflow! pipelines sharing a common ExchangeHeap for zero-copy data exchange\",\"name\":\"multi_pipeline\",\"when_to_use\":\"Running independent pipelines that share SHM for zero-copy data exchange. Topologies: fan-out (1→N), fan-in (N→1), diamond (fan-out + process + fan-in).\"},{\"category\":\"plugin\",\"code_template\":\"use vil_server::plugin::{VilPlugin, PluginContext, PluginError};\\n\\nstruct MetricsPlugin {\\n    retention_hours: u64,\\n}\\n\\nimpl VilPlugin for MetricsPlugin {\\n    fn id(&self) -> &str { \\\"vil.metrics\\\" }\\n    fn name(&self) -> &str { \\\"Metrics Collector\\\" }\\n\\n    fn register(&self, ctx: &mut PluginContext) -> Result<(), PluginError> {\\n        ctx.state(MetricsStore::new(self.retention_hours));\\n        ctx.endpoint(Method::GET, \\\"/metrics\\\", get(metrics_handler));\\n        ctx.middleware(MetricsMiddleware::new());\\n        Ok(())\\n    }\\n}\\n\\n// Register in VilApp:\\nVilApp::new(\\\"my-app\\\")\\n    .plugin(MetricsPlugin { retention_hours: 24 })\\n    .service(api_service)\\n    .run()\\n    .await;\",\"description\":\"Implement VilPlugin trait to register capabilities, routes, and state into VilApp\",\"name\":\"vil_plugin\",\"when_to_use\":\"Creating reusable plugins for VilApp. Use PluginContext to register state (ctx.state()), endpoints (ctx.endpoint()), and middleware (ctx.middleware()). Plugins share ExchangeHeap and Tri-Lane mesh.\"},{\"category\":\"pipeline\",\"code_template\":\"use vil_sdk::prelude::*;\\nuse vil_sdk::http::{HttpSinkBuilder, HttpSourceBuilder, HttpFormat, SseSourceDialect};\\n\\nlet sink = HttpSinkBuilder::new()\\n    .port(3080)\\n    .path(\\\"/trigger\\\")\\n    .build();\\n\\nlet source = HttpSourceBuilder::new()\\n    .url(\\\"http://upstream/stream\\\")\\n    .format(HttpFormat::SSE)\\n    .dialect(SseSourceDialect::OpenAi)\\n    .json_tap(\\\"choices[0].delta.content\\\")\\n    .build();\\n\\nlet (_ir, handles) = vil_workflow! {\\n    name: \\\"Gateway\\\",\\n    token: ShmToken,\\n    instances: [sink, source],\\n    routes: [\\n        sink.out -> source.in (LoanWrite),\\n        source.data -> sink.in (LoanWrite),\\n    ]\\n};\\n\\nfor h in handles { h.join().unwrap(); }\",\"description\":\"HTTP streaming pipeline using vil_workflow! macro with HttpSink/Source\",\"name\":\"sdk_pipeline\",\"when_to_use\":\"Building streaming pipelines for SSE or NDJSON data. Use ShmToken for high throughput (8.5M msg/s) or GenericToken for simplicity (1.2M msg/s). Three API layers: http_gateway() (~5 lines), Pipeline::new() (~20 lines), vil_workflow! (full control).\"},{\"category\":\"tools\",\"code_template\":\"// Rust server-side registration:\\nlet sidecar = SidecarPool::new()\\n    .socket(\\\"/tmp/vil-sidecar.sock\\\")\\n    .pool_size(4)\\n    .reconnect(ReconnectPolicy::exponential(100, 5000))\\n    .build()\\n    .await?;\\n\\nlet service = ServiceProcess::new(\\\"ml\\\")\\n    .extension(sidecar.clone())\\n    .endpoint(Method::POST, \\\"/predict\\\", post(predict_handler));\\n\\n// Python sidecar:\\n# from vil_sdk import VilSidecar\\n# sidecar = VilSidecar(name=\\\"ml-inference\\\", socket=\\\"/tmp/vil-sidecar.sock\\\")\\n# @sidecar.handler(\\\"predict\\\")\\n# async def predict(request):\\n#     model = load_model()\\n#     return {\\\"prediction\\\": model.predict(request.data).tolist()}\\n# sidecar.run()\",\"description\":\"Python/Go sidecar processes connected to VIL via Unix Domain Socket with SHM bridge\",\"name\":\"sidecar_sdk\",\"when_to_use\":\"Integrating Python/Go code into VIL pipelines. Sidecar latency ~12μs per call. Use SHM Bridge for large payloads (request.shm_read/shm_write). Failover: restart with max retries.\"}],\"total_found\":10}",
+      "success": true,
+      "tool": "vil_knowledge"
+    }
+  },
+  {
+    "id": "489d0593-12f4-49e4-9c4c-e3855c7ee687",
+    "timestamp": "2026-04-12T02:49:15.602946588Z",
+    "record_type": "LlmRequest",
+    "agent_id": null,
+    "content": {
+      "message_count": 4,
+      "model": "default",
+      "provider": "kilo"
+    }
+  },
+  {
+    "id": "fdce44ed-778a-450c-9c8d-7301580bc1c2",
+    "timestamp": "2026-04-12T02:49:20.864404221Z",
+    "record_type": "LlmResponse",
+    "agent_id": null,
+    "content": {
+      "model": "minimax/minimax-m2.5:free",
+      "provider": "kilo"
+    }
+  },
+  {
+    "id": "9581e474-70f5-48e7-b6d0-851bde449937",
+    "timestamp": "2026-04-12T02:49:20.889507989Z",
+    "record_type": "TaskComplete",
+    "agent_id": null,
+    "content": {
+      "summary": "Task executed via single-agent loop",
+      "task_id": "cf542f1d-fa98-4354-8c53-092e48600aad"
+    }
+  }
+]

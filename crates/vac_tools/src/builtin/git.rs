@@ -94,7 +94,7 @@ impl VilTool for GitTool {
     }
 
     fn risk_level(&self) -> &str {
-        "NeedsApproval"
+        "needs_approval"
     }
 
     async fn execute(

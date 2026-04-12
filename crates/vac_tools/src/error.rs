@@ -1,5 +1,7 @@
 use thiserror::Error;
 
+pub type ToolResult<T> = Result<T, ToolError>;
+
 #[derive(Error, Debug)]
 pub enum ToolError {
     #[error("Tool not found: {0}")]
@@ -31,4 +33,16 @@ pub enum ToolError {
 
     #[error("Request error: {0}")]
     RequestError(#[from] reqwest::Error),
+
+    #[error("Glob pattern error: {0}")]
+    GlobPatternError(#[from] glob::PatternError),
+
+    #[error("Glob error: {0}")]
+    GlobError(#[from] glob::GlobError),
+
+    #[error("Ignore error: {0}")]
+    IgnoreError(#[from] ignore::Error),
+
+    #[error("Grep regex error: {0}")]
+    GrepRegexError(#[from] grep_regex::Error),
 }

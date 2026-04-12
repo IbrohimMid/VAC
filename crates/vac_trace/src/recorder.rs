@@ -76,6 +76,80 @@ impl TraceRecorder {
         Ok(())
     }
 
+    /// Record a tool call event
+    pub fn record_tool_call(&mut self, tool_name: &str, arguments: &serde_json::Value) {
+        self.record(
+            RecordType::ToolCall,
+            None,
+            serde_json::json!({
+                "tool": tool_name,
+                "arguments": arguments,
+            }),
+        );
+    }
+
+    /// Record a tool result event
+    pub fn record_tool_result(&mut self, tool_name: &str, content: &str, success: bool) {
+        self.record(
+            RecordType::ToolResult,
+            None,
+            serde_json::json!({
+                "tool": tool_name,
+                "content": content,
+                "success": success,
+            }),
+        );
+    }
+
+    /// Record an LLM request event
+    pub fn record_llm_request(&mut self, provider: &str, model: &str, message_count: usize) {
+        self.record(
+            RecordType::LlmRequest,
+            None,
+            serde_json::json!({
+                "provider": provider,
+                "model": model,
+                "message_count": message_count,
+            }),
+        );
+    }
+
+    /// Record an LLM response event
+    pub fn record_llm_response(&mut self, provider: &str, model: &str) {
+        self.record(
+            RecordType::LlmResponse,
+            None,
+            serde_json::json!({
+                "provider": provider,
+                "model": model,
+            }),
+        );
+    }
+
+    /// Record task completion
+    pub fn record_task_complete(&mut self, task_id: &str, summary: &str) {
+        self.record(
+            RecordType::TaskComplete,
+            None,
+            serde_json::json!({
+                "task_id": task_id,
+                "summary": summary,
+            }),
+        );
+    }
+
+    /// Record task failure
+    pub fn record_task_failed(&mut self, task_id: &str, error: &str) {
+        self.record(
+            RecordType::TaskFailed,
+            None,
+            serde_json::json!({
+                "task_id": task_id,
+                "error": error,
+            }),
+        );
+    }
+
     pub fn flush(&self) -> TraceResult<()> {
         let path = self.output_path.join(format!("{}.json", self.session_id));
         let content = serde_json::to_string_pretty(&self.records)
