@@ -8,13 +8,16 @@ pub mod glob;
 pub mod grep;
 pub mod knowledge;
 pub mod search;
+pub mod sequential_think;
+pub mod skill_runner;
 pub mod task_done;
 pub mod todo;
 
+use std::sync::Arc;
 use crate::ToolError;
 use crate::registry::ToolRegistry;
 
-pub async fn register_builtin_tools(registry: &ToolRegistry) -> Result<(), ToolError> {
+pub async fn register_builtin_tools(registry: &Arc<ToolRegistry>) -> Result<(), ToolError> {
     registry.register(file_read::FileReadTool::new()).await?;
     registry.register(file_write::FileWriteTool::new()).await?;
     registry.register(file_edit::FileEditTool).await?;
@@ -27,5 +30,10 @@ pub async fn register_builtin_tools(registry: &ToolRegistry) -> Result<(), ToolE
     registry.register(search::SearchTool::new()).await?;
     registry.register(task_done::TaskDoneTool::new()).await?;
     registry.register(todo::TodoTool::default()).await?;
+    registry.register(sequential_think::SequentialThinkTool::new()).await?;
+    
+    let skills_dir = std::path::PathBuf::from(".vac/skills");
+    registry.register(skill_runner::SkillRunnerTool::new(skills_dir, registry.clone())).await?;
+    
     Ok(())
 }

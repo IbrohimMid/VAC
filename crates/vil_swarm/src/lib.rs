@@ -9,6 +9,7 @@ pub mod lanes;
 pub mod orchestrator;
 pub mod patterns;
 pub mod protocol;
+pub mod semantic;
 
 pub use agent::{AgentDefinition, AgentId, AgentRole};
 pub use error::SwarmError;
@@ -16,3 +17,4 @@ pub use error::SwarmResult;
 pub use lanes::{ControlLane, DataLane, TriggerLane};
 pub use orchestrator::{AgentLoopEvent, SwarmOrchestrator};
 pub use protocol::{ControlPayload, DataPayload, TriggerPayload, VapMessage};
+pub use semantic::{SemanticPlan, TaskSemanticKind};

@@ -94,10 +94,10 @@ impl VacEngine {
 
         info!("Initializing tool router...");
         let registry = Arc::new(vac_tools::ToolRegistry::new());
-        vac_tools::builtin::register_builtin_tools(registry.as_ref())
+        vac_tools::builtin::register_builtin_tools(&registry.clone())
             .await
             .map_err(|e| VacError::Other(anyhow::anyhow!("Tool registration error: {}", e)))?;
-        let _tool_config = vac_tools::router::ToolConfigStub {
+        let tool_config = vac_tools::router::ToolConfigStub {
             default_policy: self.config.tools.default_policy.clone(),
             allow: self.config.tools.allow.clone(),
             deny: self.config.tools.deny.clone(),
@@ -106,10 +106,31 @@ impl VacEngine {
             if let Some(p) = policy_override.clone() {
                 p
             } else {
-                Arc::new(vac_tools::router::VilTrustPolicyAdapter::new())
+                Arc::new(
+                    vac_tools::router::VilTrustPolicyAdapter::with_registry_and_config(
+                        registry.clone(),
+                        tool_config.clone(),
+                    ),
+                )
             };
         let tools = vac_tools::ToolRouter::new(registry.clone(), policy.clone());
         self.tool_router = Some(tools);
+
+        if let Some(ref mcp_servers) = self.config.mcp_servers {
+            info!(count = mcp_servers.len(), "Initializing MCP servers...");
+            for server_config in mcp_servers {
+                let client = vac_tools::mcp::McpClient::new(server_config.clone(), registry.clone());
+                match client.connect().await {
+                    Ok(()) => {
+                        match client.register_proxy_tools().await {
+                            Ok(count) => info!(name = %server_config.name, tools = count, "MCP server connected"),
+                            Err(e) => warn!(name = %server_config.name, error = %e, "Failed to register MCP tools"),
+                        }
+                    }
+                    Err(e) => warn!(name = %server_config.name, error = %e, "Failed to connect MCP server"),
+                }
+            }
+        }
 
         info!("Initializing LLM router...");
         let budget_limit = self.config.llm.max_tokens_per_task;
@@ -139,8 +160,14 @@ impl VacEngine {
         }
 
         info!("Initializing swarm orchestrator...");
-        let swarm_policy = policy_override
-            .unwrap_or_else(|| Arc::new(vac_tools::router::VilTrustPolicyAdapter::new()));
+        let swarm_policy = policy_override.unwrap_or_else(|| {
+            Arc::new(
+                vac_tools::router::VilTrustPolicyAdapter::with_registry_and_config(
+                    registry.clone(),
+                    tool_config,
+                ),
+            )
+        });
         let tool_router = vac_tools::ToolRouter::new(registry, swarm_policy);
         let swarm = vil_swarm::SwarmOrchestrator::new(
             self.config.swarm.max_concurrent_agents,
@@ -244,6 +271,7 @@ impl VacEngine {
         if let Some(ref recorder) = self.trace_recorder {
             if let Ok(mut rec) = recorder.lock() {
                 let _ = rec.record_task(&task_id.0.to_string(), &task.description);
+                let _ = rec.flush();
             }
         }
 
@@ -350,10 +378,8 @@ impl VacEngine {
 
         info!("Phase 3: Validating...");
         let validation_score = if let Some(ir) = &self.ir_pipeline {
-            Some(vil_validate::validate_changes(
-                ir,
-                &execution.modified_files,
-            )?)
+            let report = vil_validate::validate_changes(ir, &execution.modified_files)?;
+            Some(report.score)
         } else {
             None
         };

@@ -20,6 +20,9 @@ pub struct VacConfig {
     pub swarm: SwarmConfig,
     /// Trace/audit settings
     pub trace: TraceConfig,
+    /// MCP server configurations
+    #[serde(default)]
+    pub mcp_servers: Option<Vec<vac_tools::mcp::McpServerConfig>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -232,13 +235,15 @@ impl VacConfig {
     pub fn load_with_fallback(project_root: &Path) -> crate::error::VacResult<Self> {
         let project_config = project_root.join(".vac/config.toml");
         if project_config.exists() {
-            return Self::load(&project_config).map(|config| config.resolve_relative_paths(project_root));
+            return Self::load(&project_config)
+                .map(|config| config.resolve_relative_paths(project_root));
         }
 
         if let Some(config_dir) = get_default_config_dir() {
             let global_config = config_dir.join("vac/config.toml");
             if global_config.exists() {
-                return Self::load(&global_config).map(|config| config.resolve_relative_paths(project_root));
+                return Self::load(&global_config)
+                    .map(|config| config.resolve_relative_paths(project_root));
             }
         }
 
@@ -283,6 +288,7 @@ impl Default for VacConfig {
                 enable_signing: false,
                 redaction: default_redaction(),
             },
+            mcp_servers: None,
         }
     }
 }
