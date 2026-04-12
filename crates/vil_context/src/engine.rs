@@ -84,13 +84,15 @@ impl ContextEngine {
 
         let mut entries = Vec::new();
         for (i, chunk) in chunks.iter().enumerate() {
+            let alloc = self.shm.allocate_and_write(chunk.as_bytes()).await.ok();
+            
             let entry = ContextEntry {
                 id: uuid::Uuid::new_v4().to_string(),
                 content: chunk.clone(),
                 chunk_index: i,
                 attention_weight: 1.0 / chunks.len() as f32,
                 embedding: None,
-                shm_alloc: None,
+                shm_alloc: alloc,
             };
             entries.push(entry);
         }
