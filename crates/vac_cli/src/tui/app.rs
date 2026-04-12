@@ -318,25 +318,38 @@ impl TuiApp {
         let Some(idx) = self.history.selected() else { return };
         let Some(entry) = self.session().history.get(idx) else { return };
         let task_id = entry.task_id.to_string();
-        let backup_dir = project_root.join(".vac/backups").join(&task_id);
-        if !backup_dir.exists() {
+        
+        // Use SnapshotManifest API instead of manual scan
+        let manifest_dir = project_root.join(".vac/snapshots");
+        let manifest_path = manifest_dir.join(format!("{}.manifest.json", task_id));
+        
+        if !manifest_path.exists() {
             self.push_transcript("Revert", format!("No snapshot for task {}", &task_id[..8]), ratatui::style::Color::Red);
+            self.detail = DetailMode::None;
             return;
         }
-        let mut restored = 0usize;
-        if let Ok(entries) = std::fs::read_dir(&backup_dir) {
-            for e in entries.flatten() {
-                let bak = e.path();
-                if bak.extension().map(|x| x == "bak").unwrap_or(false) {
-                    let rel = bak.file_stem().and_then(|s| s.to_str()).unwrap_or("").replace("__", "/");
-                    let dest = project_root.join(&rel);
-                    if let Some(p) = dest.parent() { let _ = std::fs::create_dir_all(p); }
-                    if std::fs::copy(&bak, &dest).is_ok() { restored += 1; }
+        
+        match vac_core::snapshot::SnapshotManifest::load(&manifest_path) {
+            Ok(manifest) => {
+                match manifest.restore() {
+                    Ok(report) => {
+                        let msg = if report.failed.is_empty() {
+                            format!("Reverted {} file(s) to before task {}", report.restored_count, &task_id[..8])
+                        } else {
+                            format!("Reverted {} file(s), {} failed", report.restored_count, report.failed.len())
+                        };
+                        self.push_transcript("Revert", msg, ratatui::style::Color::Magenta);
+                    }
+                    Err(e) => {
+                        self.push_transcript("Revert", format!("Restore failed: {}", e), ratatui::style::Color::Red);
+                    }
                 }
             }
+            Err(e) => {
+                self.push_transcript("Revert", format!("Failed to load manifest: {}", e), ratatui::style::Color::Red);
+            }
         }
-        let msg = format!("Reverted {} file(s) to before task {}", restored, &task_id[..8]);
-        self.push_transcript("Revert", msg, ratatui::style::Color::Magenta);
+        
         self.detail = DetailMode::None;
         self.focus = FocusPane::Transcript;
     }
