@@ -11,6 +11,7 @@ pub mod prelude;
 pub mod profile;
 pub mod rulebook;
 pub mod session;
+pub mod snapshot;
 pub mod spawn_subtask_tool;
 pub mod task;
 

@@ -29,12 +29,13 @@ anyhow = { workspace = true }
 thiserror = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
+blake3 = "1.5"
 dirs-next = { workspace = true }
 walkdir = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }
-tempfile = "3.14"
+tempfile = "3"
 vil_swarm = { workspace = true }
 vil_knowledge = { workspace = true }
 vil_validate = { workspace = true }
