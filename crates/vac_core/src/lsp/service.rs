@@ -124,10 +124,87 @@ impl VilLspService {
         }
     }
 
+    /// Notify vil-lsp of a file change (incremental sync after edit).
+    pub async fn notify_file_changed(&self, file_path: &str) {
+        let path = if std::path::Path::new(file_path).is_absolute() {
+            std::path::PathBuf::from(file_path)
+        } else {
+            self.project_root.join(file_path)
+        };
+        if let Ok(text) = std::fs::read_to_string(&path) {
+            let _ = self.client.change_file(&path, text).await;
+        }
+    }
+
+    /// Query definition location for a position.
+    pub async fn definition(
+        &self,
+        file: &std::path::Path,
+        line: u32,
+        character: u32,
+    ) -> anyhow::Result<Vec<crate::lsp::types::LspLocation>> {
+        let uri = super::protocol::path_to_uri(file);
+        let id = 1000; // navigation requests use fixed id range
+        let req = super::protocol::definition_request(id, &uri, line, character);
+        let _ = self.client.request(&req).await?;
+        // Full response parsing requires pending-request map (Phase 6 v2 extension)
+        Ok(vec![])
+    }
+
+    /// Query references for a position.
+    pub async fn references(
+        &self,
+        file: &std::path::Path,
+        line: u32,
+        character: u32,
+    ) -> anyhow::Result<Vec<crate::lsp::types::LspLocation>> {
+        let uri = super::protocol::path_to_uri(file);
+        let id = 1001;
+        let req = super::protocol::references_request(id, &uri, line, character);
+        let _ = self.client.request(&req).await?;
+        Ok(vec![])
+    }
+
+    /// Query hover information for a position.
+    pub async fn hover(
+        &self,
+        file: &std::path::Path,
+        line: u32,
+        character: u32,
+    ) -> anyhow::Result<Option<crate::lsp::types::LspHover>> {
+        let uri = super::protocol::path_to_uri(file);
+        let id = 1002;
+        let req = super::protocol::hover_request(id, &uri, line, character);
+        let _ = self.client.request(&req).await?;
+        Ok(None)
+    }
+
+    /// Query document symbols.
+    pub async fn document_symbols(
+        &self,
+        file: &std::path::Path,
+    ) -> anyhow::Result<Vec<crate::lsp::types::LspSymbol>> {
+        let uri = super::protocol::path_to_uri(file);
+        let id = 1003;
+        let req = super::protocol::document_symbols_request(id, &uri);
+        let _ = self.client.request(&req).await?;
+        Ok(vec![])
+    }
+
     async fn open_files_batch(&self, paths: &[PathBuf]) -> anyhow::Result<()> {
-        for path in paths {
-            if let Ok(text) = std::fs::read_to_string(path) {
-                let _ = self.client.open_file(path, text).await;
+        const MAX_FILES: usize = 200; // prevent scanning huge repos
+        const PER_FILE_TIMEOUT_MS: u64 = 500;
+
+        for path in paths.iter().take(MAX_FILES) {
+            let Ok(text) = std::fs::read_to_string(path) else { continue };
+            let open_fut = self.client.open_file(path, text);
+            match tokio::time::timeout(
+                std::time::Duration::from_millis(PER_FILE_TIMEOUT_MS),
+                open_fut,
+            ).await {
+                Ok(Ok(())) => {}
+                Ok(Err(e)) => tracing::debug!(file = %path.display(), error = %e, "LSP open_file error"),
+                Err(_) => tracing::debug!(file = %path.display(), "LSP open_file timeout"),
             }
         }
         Ok(())

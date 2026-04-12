@@ -8,4 +8,4 @@ pub mod vac_format;
 
 pub use error::TraceError;
 pub use error::TraceResult;
-pub use recorder::TraceRecorder;
+pub use recorder::{RecordType, TraceRecorder};

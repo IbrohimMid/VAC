@@ -240,6 +240,17 @@ impl VacEngine {
                         let _ = svc.analyze_workspace().await;
                     }
                     info!("vil-lsp service started");
+                    // Trace LSP start
+                    if let Some(ref recorder) = self.trace_recorder {
+                        if let Ok(mut rec) = recorder.lock() {
+                            rec.record(
+                                vac_trace::RecordType::LspStarted,
+                                None,
+                                serde_json::json!({ "binary": lsp_config.binary_path.display().to_string() }),
+                            );
+                            let _ = rec.flush();
+                        }
+                    }
                     self.vil_lsp = Some(Arc::new(svc));
                 }
                 Ok(Err(e)) => {
@@ -495,6 +506,10 @@ impl VacEngine {
         // Phase 6: post-edit LSP recheck
         if let Some(ref lsp) = self.vil_lsp {
             if !execution.modified_files.is_empty() && self.config.vil_lsp.analyze_after_edit {
+                // Incremental sync: notify LSP of each changed file immediately
+                for file in &execution.modified_files {
+                    lsp.notify_file_changed(file).await;
+                }
                 let _ = lsp.analyze_files(&execution.modified_files).await;
                 let snapshot = lsp.snapshot().await;
                 if let Some(ref tx) = updates {

@@ -40,6 +40,7 @@ async fn registers_all_builtin_tools() {
             "todo_write",
             "vil_diagnostics",
             "vil_knowledge",
+            "vil_lsp_query",
             "vil_status",
         ]
     );

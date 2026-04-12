@@ -79,3 +79,25 @@ impl LspPromptContext {
         Some(lines.join("\n"))
     }
 }
+
+// ── Navigation types ──────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LspLocation {
+    pub file_path: PathBuf,
+    pub range: LspRange,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LspHover {
+    pub contents: String,
+    pub range: Option<LspRange>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LspSymbol {
+    pub name: String,
+    pub kind: u32, // LSP SymbolKind
+    pub range: LspRange,
+    pub detail: Option<String>,
+}

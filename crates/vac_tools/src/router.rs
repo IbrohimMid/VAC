@@ -320,6 +320,7 @@ impl ToolRouter {
                 | "vil_diagnostics"
                 | "vil_knowledge"
                 | "vil_status"
+                | "vil_lsp_query"
         )
     }
 }

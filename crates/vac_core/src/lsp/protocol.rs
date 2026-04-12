@@ -106,3 +106,51 @@ pub fn path_to_uri(path: &std::path::Path) -> String {
 pub fn uri_to_path(uri: &str) -> std::path::PathBuf {
     std::path::PathBuf::from(uri.trim_start_matches("file://"))
 }
+
+// ── Navigation requests ───────────────────────────────────────────────────────
+
+pub fn definition_request(id: u64, uri: &str, line: u32, character: u32) -> JsonRpcRequest {
+    JsonRpcRequest {
+        jsonrpc: "2.0",
+        id,
+        method: "textDocument/definition",
+        params: Some(serde_json::json!({
+            "textDocument": { "uri": uri },
+            "position": { "line": line, "character": character }
+        })),
+    }
+}
+
+pub fn references_request(id: u64, uri: &str, line: u32, character: u32) -> JsonRpcRequest {
+    JsonRpcRequest {
+        jsonrpc: "2.0",
+        id,
+        method: "textDocument/references",
+        params: Some(serde_json::json!({
+            "textDocument": { "uri": uri },
+            "position": { "line": line, "character": character },
+            "context": { "includeDeclaration": true }
+        })),
+    }
+}
+
+pub fn hover_request(id: u64, uri: &str, line: u32, character: u32) -> JsonRpcRequest {
+    JsonRpcRequest {
+        jsonrpc: "2.0",
+        id,
+        method: "textDocument/hover",
+        params: Some(serde_json::json!({
+            "textDocument": { "uri": uri },
+            "position": { "line": line, "character": character }
+        })),
+    }
+}
+
+pub fn document_symbols_request(id: u64, uri: &str) -> JsonRpcRequest {
+    JsonRpcRequest {
+        jsonrpc: "2.0",
+        id,
+        method: "textDocument/documentSymbol",
+        params: Some(serde_json::json!({ "textDocument": { "uri": uri } })),
+    }
+}

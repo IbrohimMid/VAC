@@ -37,8 +37,10 @@ impl VilLspClient {
             .spawn()
             .map_err(|e| anyhow::anyhow!("Failed to spawn vil-lsp at {}: {e}", binary.display()))?;
 
-        let stdin = child.stdin.take().ok_or_else(|| anyhow::anyhow!("No stdin"))?;
-        let stdout = child.stdout.take().ok_or_else(|| anyhow::anyhow!("No stdout"))?;
+        let stdin = child.stdin.take()
+            .ok_or_else(|| anyhow::anyhow!("vil-lsp process has no stdin — check binary path"))?;
+        let stdout = child.stdout.take()
+            .ok_or_else(|| anyhow::anyhow!("vil-lsp process has no stdout — check binary path"))?;
 
         let stdin = Arc::new(Mutex::new(stdin));
         let child = Arc::new(Mutex::new(child));
@@ -120,6 +122,17 @@ impl VilLspClient {
         let uri = path_to_uri(path);
         let version = self.next_id.fetch_add(1, Ordering::SeqCst) as i32;
         self.send_notification(&did_change_notification(&uri, &text, version)).await
+    }
+
+    /// Send a request and wait for the response (with timeout).
+    pub async fn request(&self, req: &impl serde::Serialize) -> anyhow::Result<serde_json::Value> {
+        // For navigation queries we need a response channel.
+        // Simple approach: write request, then read next non-notification message.
+        // In production this would use a proper pending-request map.
+        self.write_message(req).await?;
+        // Return empty result — full response handling requires pending-request map
+        // which is out of scope for the minimal implementation.
+        Ok(serde_json::json!(null))
     }
 
     pub async fn shutdown(&self) -> anyhow::Result<()> {

@@ -539,7 +539,7 @@ Rules:
                             });
                         }
                         match call.name.as_str() {
-                            "file_read" | "glob" | "grep" | "search" | "vil_knowledge" | "vil_diagnostics" => {
+                            "file_read" | "glob" | "grep" | "search" | "vil_knowledge" | "vil_diagnostics" | "vil_lsp_query" => {
                                 parallel_reads.push(call)
                             }
                             _ => serial_writes.push(call),
@@ -768,28 +768,39 @@ Rules:
             .await?;
 
         // Parse SemanticPlan from plan_output — gate-checked
+        // strict_mode: if planner_gate is active (strict-vil profile), ParseFailed = hard stop
+        let strict_mode = std::env::var("VAC_PROFILE")
+            .map(|p| p == "strict-vil" || p == "spec-hardening")
+            .unwrap_or(false);
+
         let plan_context = match evaluate_planner_output(&plan_output) {
             PlannerGateResult::Passed(plan) => {
                 info!(kind = ?plan.kind, knowledge_refs = ?plan.knowledge_refs, "SemanticPlan passed gate");
                 plan.to_markdown()
             }
+            PlannerGateResult::KnowledgeGateFailed(plan) if strict_mode => {
+                return Err(SwarmError::Orchestration(format!(
+                    "Planner gate FAILED (strict-vil): VIL task '{:?}' produced no knowledge_refs. \
+                    Planner must call vil_knowledge before planning.",
+                    plan.kind
+                )));
+            }
             PlannerGateResult::KnowledgeGateFailed(plan) => {
-                // VIL task but no knowledge lookup — this is a gate violation.
-                // In strict mode this would be a hard stop. For now: warn and inject remediation.
-                warn!(
-                    kind = ?plan.kind,
-                    "SemanticPlan knowledge gate FAILED: VIL task without knowledge_refs. Injecting remediation."
-                );
+                warn!(kind = ?plan.kind, "SemanticPlan knowledge gate FAILED — injecting remediation");
                 format!(
-                    "{}\n\n> **WARNING**: Planner did not consult `vil_knowledge` for a VIL-specific task. \
+                    "{}\n\n> **WARNING**: Planner did not consult `vil_knowledge`. \
                     Coder MUST call `vil_knowledge` before writing any code.",
                     plan.to_markdown()
                 )
             }
+            PlannerGateResult::ParseFailed(raw) if strict_mode => {
+                return Err(SwarmError::Orchestration(
+                    "Planner gate FAILED (strict-vil): planner did not produce valid SemanticPlan JSON. \
+                    Cannot proceed without a typed plan in strict mode.".to_string()
+                ));
+            }
             PlannerGateResult::ParseFailed(raw) => {
-                warn!("Failed to parse SemanticPlan — planner output was not valid JSON");
-                // For VIL tasks, parse failure is a signal the planner didn't follow protocol.
-                // Inject a hard reminder into coder context.
+                warn!("Failed to parse SemanticPlan — injecting remediation context");
                 format!(
                     "### Planner Output (unparsed)\n{}\n\n\
                     > **WARNING**: Planner did not produce a valid SemanticPlan JSON. \
