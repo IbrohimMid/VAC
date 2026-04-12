@@ -138,3 +138,46 @@ fn wrap_line(text: &str, max_width: usize) -> Vec<Line<'static>> {
     }
     lines
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use vac_core::engine::TaskHistoryEntry;
+    use vac_core::TaskStatus;
+    use std::path::PathBuf;
+
+    #[test]
+    fn test_detail_mode_is_some() {
+        assert!(!DetailMode::None.is_some());
+        assert!(DetailMode::TaskDetail(0).is_some());
+        assert!(DetailMode::ErrorDetail("test".into()).is_some());
+        assert!(DetailMode::RevertConfirm(0).is_some());
+        assert!(DetailMode::LiveChanges.is_some());
+    }
+
+    #[test]
+    fn test_render_detail_content_wrapping() {
+        let long_text = "a".repeat(100);
+        let mode = DetailMode::ErrorDetail(long_text);
+        let (lines, total) = render_detail_content(&mode, &[], &[], &PathBuf::from("/tmp"), 50);
+        assert!(total > 2); // Should wrap into multiple lines
+        assert!(lines.len() > 2);
+    }
+
+    #[test]
+    fn test_revert_confirm_preview() {
+        let entry = TaskHistoryEntry {
+            task_id: uuid::Uuid::new_v4(),
+            description: "Test task".into(),
+            status: TaskStatus::Completed,
+            total_tokens_used: 100,
+            updated_at: chrono::Utc::now(),
+            summary: None,
+        };
+        let mode = DetailMode::RevertConfirm(0);
+        let (lines, _) = render_detail_content(&mode, &[entry], &[], &PathBuf::from("/tmp"), 80);
+        let content: String = lines.iter().map(|l| l.to_string()).collect::<Vec<_>>().join("\n");
+        assert!(content.contains("Revert to before"));
+        assert!(content.contains("[y] Confirm"));
+    }
+}
