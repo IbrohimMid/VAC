@@ -3,16 +3,7 @@
 use vac_core::engine::RuntimeUpdate;
 use crate::tui::app::{FocusPane, TuiApp};
 use super::detail::DetailMode;
-
-/// Returns true if the tool is a read-only tool (goes to reading lane).
-pub fn is_read_tool(name: &str) -> bool {
-    matches!(name, "file_read" | "glob" | "grep" | "search" | "vil_knowledge" | "vil_diagnostics" | "vil_lsp_query" | "vil_status")
-}
-
-/// Returns true if the tool is a write tool (goes to commands lane + live diff).
-pub fn is_write_tool(name: &str) -> bool {
-    matches!(name, "file_write" | "file_edit")
-}
+use super::tool_policy;
 
 /// Compact one-line description of a tool call for lane display.
 pub fn tool_call_summary(name: &str, args: &serde_json::Value) -> String {
@@ -123,7 +114,7 @@ pub fn route_update(app: &mut TuiApp, update: RuntimeUpdate) {
         ToolCall { name, arguments, .. } => {
             app.finish_streaming();
             let summary = tool_call_summary(&name, &arguments);
-            if is_write_tool(&name) {
+            if tool_policy::is_write_tool(&name) {
                 let file = arguments.get("path").or_else(|| arguments.get("file_path"))
                     .and_then(|v| v.as_str()).unwrap_or("?").to_string();
                 if !app.live_diff_files.contains(&file) {
@@ -132,7 +123,7 @@ pub fn route_update(app: &mut TuiApp, update: RuntimeUpdate) {
                 app.detail = DetailMode::LiveChanges;
                 app.push_commands(summary.clone());
                 app.set_activity("Writing", summary);
-            } else if is_read_tool(&name) {
+            } else if tool_policy::is_read_tool(&name) {
                 app.push_reading(summary.clone());
                 app.set_activity("Reading", summary);
             } else {
@@ -142,7 +133,7 @@ pub fn route_update(app: &mut TuiApp, update: RuntimeUpdate) {
         }
         ToolResult { name, content, success, .. } => {
             let summary = tool_result_summary(&name, &content, success);
-            if is_read_tool(&name) {
+            if tool_policy::is_read_tool(&name) {
                 app.push_reading(summary.clone());
             } else {
                 app.push_commands(summary.clone());

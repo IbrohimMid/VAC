@@ -370,54 +370,52 @@ fn auth_hint_for_error(error: &str) -> Option<String> {
 
 use std::collections::HashMap;
 use async_trait::async_trait;
+use crate::tui::services::tool_policy;
 
 struct TuiPolicyEngine {
     sender: Arc<std::sync::Mutex<Option<mpsc::UnboundedSender<TaskEvent>>>>,
-    allow: HashMap<String, bool>,
 }
 
 impl TuiPolicyEngine {
     fn new(sender: mpsc::UnboundedSender<TaskEvent>) -> Self {
-        let allow = ["file_read","glob","grep","search","task_done","todo_write","vil_knowledge","vil_diagnostics","vil_lsp_query","vil_status"]
-            .iter().map(|n| (n.to_string(), true)).collect();
-        Self { sender: Arc::new(std::sync::Mutex::new(Some(sender))), allow }
+        Self { sender: Arc::new(std::sync::Mutex::new(Some(sender))) }
     }
     fn set_sender(&self, s: mpsc::UnboundedSender<TaskEvent>) {
         if let Ok(mut g) = self.sender.lock() { *g = Some(s); }
-    }
-    fn needs_approval(name: &str) -> bool {
-        matches!(name, "file_write" | "file_edit" | "bash" | "git" | "cargo")
     }
 }
 
 #[async_trait]
 impl PolicyEngine for TuiPolicyEngine {
     async fn decide(&self, tool_name: &str, args: &serde_json::Value, context: &ToolContext) -> PolicyDecision {
-        use vac_tools::registry::AgentZone;
-        if context.agent_zone == AgentZone::SandboxedSubagent {
-            if Self::needs_approval(tool_name) {
+        if tool_policy::needs_approval(tool_name, context.agent_zone) {
+            // Sandbox denies write/exec entirely
+            use vac_tools::registry::AgentZone;
+            if context.agent_zone == AgentZone::SandboxedSubagent {
                 return PolicyDecision::Deny(format!("{tool_name} denied in sandbox"));
             }
-        }
-        if self.allow.get(tool_name).copied().unwrap_or(false) { return PolicyDecision::Allow; }
-        if !Self::needs_approval(tool_name) { return PolicyDecision::Allow; }
-
-        let preview = serde_json::to_string(args).unwrap_or_default();
-        let (resp_tx, resp_rx) = oneshot::channel();
-        let sender = self.sender.lock().ok().and_then(|g| g.as_ref().cloned());
-        if let Some(s) = sender {
-            let _ = s.send(TaskEvent::ApprovalRequest {
-                tool_name: tool_name.to_string(),
-                args_preview: preview,
-                responder: resp_tx,
-            });
-            match resp_rx.await {
-                Ok(true) => PolicyDecision::Allow,
-                Ok(false) => PolicyDecision::Deny(format!("User denied {tool_name}")),
-                Err(_) => PolicyDecision::Deny(format!("Approval channel closed")),
+            
+            // Normal mode: prompt user for approval
+            let preview = serde_json::to_string(args).unwrap_or_default();
+            let (resp_tx, resp_rx) = oneshot::channel();
+            let sender = self.sender.lock().ok().and_then(|g| g.as_ref().cloned());
+            if let Some(s) = sender {
+                let _ = s.send(TaskEvent::ApprovalRequest {
+                    tool_name: tool_name.to_string(),
+                    args_preview: preview,
+                    responder: resp_tx,
+                });
+                match resp_rx.await {
+                    Ok(true) => PolicyDecision::Allow,
+                    Ok(false) => PolicyDecision::Deny(format!("User denied {tool_name}")),
+                    Err(_) => PolicyDecision::Deny(format!("Approval channel closed")),
+                }
+            } else {
+                PolicyDecision::Allow // no UI attached, auto-allow
             }
         } else {
-            PolicyDecision::Allow // no UI attached, auto-allow
+            // Read-safe tools auto-allowed
+            PolicyDecision::Allow
         }
     }
 }
