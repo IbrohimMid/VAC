@@ -2,7 +2,8 @@
 
 mod commands;
 mod output;
-mod tui;
+
+use vac_cli::tui;
 
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
