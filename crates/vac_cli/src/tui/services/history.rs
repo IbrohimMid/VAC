@@ -54,6 +54,50 @@ impl HistoryState {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use vac_core::engine::TaskHistoryEntry;
+    use vac_core::task::TaskStatus;
+    use uuid::Uuid;
+
+    fn make_entry(desc: &str) -> TaskHistoryEntry {
+        TaskHistoryEntry {
+            task_id: Uuid::new_v4(),
+            description: desc.to_string(),
+            status: TaskStatus::Completed,
+            updated_at: chrono::Utc::now(),
+            total_tokens_used: 100,
+            summary: None,
+        }
+    }
+
+    #[test]
+    fn select_prev_from_zero_stays_zero() {
+        let mut state = HistoryState::new();
+        let entries = vec![make_entry("task1"), make_entry("task2")];
+        state.list.select(Some(0));
+        state.select_prev(&entries);
+        assert_eq!(state.selected(), Some(0));
+    }
+
+    #[test]
+    fn select_next_from_last_stays_last() {
+        let mut state = HistoryState::new();
+        let entries = vec![make_entry("task1"), make_entry("task2")];
+        state.list.select(Some(1));
+        state.select_next(&entries);
+        assert_eq!(state.selected(), Some(1));
+    }
+
+    #[test]
+    fn total_visual_rows_accurate() {
+        let state = HistoryState::new();
+        let entries = vec![make_entry("task1"), make_entry("task2"), make_entry("task3")];
+        assert_eq!(state.total_visual_rows(&entries), 6); // 3 items * 2 rows
+    }
+}
+
 /// Render history items into list items.
 pub fn render_history_items(entries: &[TaskHistoryEntry], max_rows: usize) -> Vec<ratatui::widgets::ListItem<'static>> {
     use ratatui::style::{Color, Style};
