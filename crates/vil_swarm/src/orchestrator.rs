@@ -476,17 +476,19 @@ Rules:
         llm_router: &Arc<vil_llm::LlmRouter>,
         tool_router: &Arc<vac_tools::router::ToolRouter>,
     ) -> SwarmResult<String> {
+        let mut trim_boundary: usize = 0;
         loop {
-            let request = LlmRequest::new(messages.clone())
+            let reduced = crate::context_budget::reduce_messages(messages.clone(), &mut trim_boundary);
+            let request = LlmRequest::new(reduced.clone())
                 .with_max_tokens(4000)
                 .with_tools(tool_defs.clone());
 
             if let Some(tx) = &updates {
                 let _ = tx.send(AgentLoopEvent::Status("Thinking".to_string()));
                 let _ = tx.send(AgentLoopEvent::LlmRequest {
-                    provider: "kilo".to_string(), // In future this can be dynamic
+                    provider: "kilo".to_string(),
                     model: "default".to_string(),
-                    message_count: messages.len(),
+                    message_count: reduced.len(),
                 });
             }
 
@@ -683,15 +685,10 @@ Rules:
                     }
                 }
                 vil_llm::provider::FinishReason::MaxTokens => {
-                    warn!("Context window limit reached, compressing context");
-                    // Keep system prompt and last 50% of messages
-                    let keep_count = (messages.len() / 2).max(4);
-                    let system_msg = messages.remove(0);
-                    messages = vec![system_msg]
-                        .into_iter()
-                        .chain(messages.drain(messages.len() - keep_count..))
-                        .collect();
-                    info!(remaining = messages.len(), "Context compressed");
+                    warn!("Context window limit reached, applying emergency context reduction");
+                    // Force trim_boundary forward to trigger Level B reduction next turn.
+                    trim_boundary = messages.len() / 2;
+                    info!(trim_boundary, "Context budget emergency: trim_boundary advanced");
                 }
                 _ => {
                     warn!(reason = ?response.finish_reason, "Unknown finish reason, terminating loop");
