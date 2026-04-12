@@ -12,6 +12,7 @@ vil_knowledge = { workspace = true }
 vil_ir = { workspace = true }
 vil_trust = { workspace = true }
 vil_rag = { workspace = true }
+vil_context = { workspace = true }
 
 tokio = { workspace = true }
 serde = { workspace = true }

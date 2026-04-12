@@ -4,6 +4,10 @@ use thiserror::Error;
 pub enum ContextError {
     #[error("SHM allocation failed: {0}")]
     ShmAllocation(String),
+    #[error("SHM arena is full")]
+    ShmFull,
+    #[error("SHM access out of bounds: {0}")]
+    OutOfBounds(String),
     #[error("Indexing error: {0}")]
     Indexing(String),
     #[error("Chunking error: {0}")]

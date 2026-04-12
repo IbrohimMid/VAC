@@ -1,20 +1,29 @@
-//! Embedding generation — Phase 2: local embedding via fastembed-rs.
+//! Embedding generation via fastembed.
 
-use crate::error::RagResult;
+use crate::error::{RagError, RagResult};
 
-pub struct EmbeddingModel;
+pub struct EmbeddingModel {
+    model: fastembed::TextEmbedding,
+}
 
 impl EmbeddingModel {
     pub fn new() -> RagResult<Self> {
-        tracing::info!("Embedding model initialized (stub — Phase 2)");
-        Ok(Self)
+        let model = fastembed::TextEmbedding::try_new(fastembed::InitOptions::new(
+            fastembed::EmbeddingModel::AllMiniLML6V2,
+        ))
+        .map_err(|e| RagError::EmbeddingError(e.to_string()))?;
+
+        tracing::info!("Embedding model initialized: AllMiniLML6V2 (384 dimensions)");
+        Ok(Self { model })
     }
 
-    pub fn embed(&self, _text: &str) -> RagResult<Vec<f32>> {
-        Ok(vec![0.0; 384])
+    pub fn embed(&self, text: &str) -> RagResult<Vec<f32>> {
+        let embeddings = self.model.embed(vec![text], None)?;
+        Ok(embeddings.into_iter().next().unwrap_or_default())
     }
 
     pub fn embed_batch(&self, texts: &[&str]) -> RagResult<Vec<Vec<f32>>> {
-        texts.iter().map(|t| self.embed(t)).collect()
+        let texts: Vec<&str> = texts.iter().map(|s| *s).collect();
+        Ok(self.model.embed(texts, None)?)
     }
 }

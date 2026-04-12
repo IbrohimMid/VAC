@@ -1,7 +1,11 @@
-//! RAG Index — manages document embeddings and similarity search.
+//! RAG Index — manages document embeddings and semantic similarity search.
 
-use crate::error::RagResult;
+use crate::embedding::EmbeddingModel;
+use crate::error::{RagError, RagResult};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::sync::Arc;
+use tokio::sync::RwLock;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IndexedDocument {
@@ -20,49 +24,92 @@ pub struct SearchResult {
 }
 
 pub struct RagIndex {
-    documents: Vec<IndexedDocument>,
+    documents: Arc<RwLock<HashMap<String, IndexedDocument>>>,
+    model: Arc<RwLock<Option<EmbeddingModel>>>,
 }
 
-#[allow(clippy::new_without_default)]
 impl RagIndex {
     pub fn new() -> Self {
         Self {
-            documents: Vec::new(),
+            documents: Arc::new(RwLock::new(HashMap::new())),
+            model: Arc::new(RwLock::new(None)),
         }
     }
 
-    pub fn add_document(&mut self, id: &str, path: &str, content: &str) -> RagResult<()> {
-        self.documents.push(IndexedDocument {
-            id: id.to_string(),
-            path: path.to_string(),
-            content_preview: content.chars().take(200).collect(),
-            embedding: vec![],
-        });
+    pub async fn init_model(&self) -> RagResult<()> {
+        let model = EmbeddingModel::new()?;
+        let mut m = self.model.write().await;
+        *m = Some(model);
         Ok(())
     }
 
-    pub fn search(&self, query: &str, top_k: usize) -> RagResult<Vec<SearchResult>> {
-        let query_lower = query.to_lowercase();
-        let mut results: Vec<SearchResult> = self
-            .documents
-            .iter()
-            .filter(|d| {
-                d.path.to_lowercase().contains(&query_lower)
-                    || d.content_preview.to_lowercase().contains(&query_lower)
+    pub async fn index_file(&self, id: &str, path: &str, content: &str) -> RagResult<()> {
+        let model_guard = self.model.read().await;
+        let model = model_guard
+            .as_ref()
+            .ok_or_else(|| RagError::Indexing("Model not initialized".to_string()))?;
+
+        let embedding = model.embed(content)?;
+
+        let doc = IndexedDocument {
+            id: id.to_string(),
+            path: path.to_string(),
+            content_preview: content.chars().take(200).collect(),
+            embedding,
+        };
+
+        let mut docs = self.documents.write().await;
+        docs.insert(id.to_string(), doc);
+
+        Ok(())
+    }
+
+    pub async fn search(&self, query: &str, top_k: usize) -> RagResult<Vec<SearchResult>> {
+        let model_guard = self.model.read().await;
+        let model = model_guard
+            .as_ref()
+            .ok_or_else(|| RagError::Search("Model not initialized".to_string()))?;
+
+        let query_embedding = model.embed(query)?;
+
+        let docs = self.documents.read().await;
+        let mut results: Vec<SearchResult> = docs
+            .values()
+            .map(|doc| {
+                let score = cosine_similarity(&query_embedding, &doc.embedding);
+                SearchResult {
+                    document_id: doc.id.clone(),
+                    path: doc.path.clone(),
+                    score,
+                    content_preview: doc.content_preview.clone(),
+                }
             })
-            .map(|d| SearchResult {
-                document_id: d.id.clone(),
-                path: d.path.clone(),
-                score: 1.0,
-                content_preview: d.content_preview.clone(),
-            })
+            .filter(|r| r.score > 0.0)
             .collect();
 
+        results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
         results.truncate(top_k);
+
         Ok(results)
     }
 
     pub fn document_count(&self) -> usize {
-        self.documents.len()
+        self.documents.blocking_read().len()
     }
+}
+
+fn cosine_similarity(a: &[f32], b: &[f32]) -> f64 {
+    if a.is_empty() || b.is_empty() || a.len() != b.len() {
+        return 0.0;
+    }
+
+    let dot_product: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
+    let norm_a: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
+    let norm_b: f32 = b.iter().map(|x| x * x).sum::<f32>().sqrt();
+
+    if norm_a == 0.0 || norm_b == 0.0 {
+        return 0.0;
+    }
+
+    (dot_product / (norm_a * norm_b)) as f64
 }

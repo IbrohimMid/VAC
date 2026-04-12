@@ -1,6 +1,6 @@
 use crate::chunking::SemanticChunker;
 use crate::error::{ContextError, ContextResult};
-use crate::shm::ShmArena;
+use crate::shm::{Allocation, ShmArena};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -14,6 +14,7 @@ pub struct ContextEntry {
     pub chunk_index: usize,
     pub attention_weight: f32,
     pub embedding: Option<Vec<f32>>,
+    pub shm_alloc: Option<Allocation>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -89,6 +90,7 @@ impl ContextEngine {
                 chunk_index: i,
                 attention_weight: 1.0 / chunks.len() as f32,
                 embedding: None,
+                shm_alloc: None,
             };
             entries.push(entry);
         }

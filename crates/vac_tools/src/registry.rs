@@ -6,6 +6,7 @@ use tokio::sync::RwLock;
 use tracing::{debug, info};
 
 use crate::error::ToolError;
+use vil_context::shm::ShmArena;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolDefinition {
@@ -32,11 +33,21 @@ pub trait VilTool: Send + Sync {
     ) -> Result<serde_json::Value, ToolError>;
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ToolContext {
     pub working_dir: std::path::PathBuf,
     pub env_vars: HashMap<String, String>,
     pub session_id: uuid::Uuid,
+    pub shm: Option<Arc<ShmArena>>,
+}
+
+impl std::fmt::Debug for ToolContext {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ToolContext")
+            .field("working_dir", &self.working_dir)
+            .field("session_id", &self.session_id)
+            .finish()
+    }
 }
 
 impl ToolContext {
@@ -45,11 +56,17 @@ impl ToolContext {
             working_dir,
             env_vars: std::env::vars().collect(),
             session_id: uuid::Uuid::new_v4(),
+            shm: None,
         }
     }
 
     pub fn with_session_id(mut self, session_id: uuid::Uuid) -> Self {
         self.session_id = session_id;
+        self
+    }
+
+    pub fn with_shm(mut self, shm: Arc<ShmArena>) -> Self {
+        self.shm = Some(shm);
         self
     }
 }
