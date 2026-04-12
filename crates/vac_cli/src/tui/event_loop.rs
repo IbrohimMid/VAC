@@ -80,7 +80,7 @@ pub async fn run(project_root: PathBuf, _resume: bool) -> anyhow::Result<()> {
                     }
                 }
                 Event::Mouse(mouse) => {
-                    handle_mouse(mouse, &mut app, &mut app.scroll);
+                    handle_mouse(mouse, &mut app);
                 }
                 Event::Resize(_, _) => {}
                 _ => {}
@@ -174,9 +174,32 @@ fn handle_key(
                 app.history.list.select(Some(idx));
                 app.revert_selected(&project_root);
             }
-            _ => { app.detail = DetailMode::None; }
+            KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+                app.detail = DetailMode::None;
+                // Return focus to history, not composer
+                app.focus = FocusPane::History;
+            }
+            _ => {} // Ignore other keys, keep modal open
         }
         return Ok(false);
+    }
+
+    // Detail panel: R for revert, Esc to close
+    if app.focus == FocusPane::Detail {
+        match key.code {
+            KeyCode::Char('r') | KeyCode::Char('R') => {
+                if let DetailMode::TaskDetail(idx) = app.detail {
+                    app.detail = DetailMode::RevertConfirm(idx);
+                }
+                return Ok(false);
+            }
+            KeyCode::Esc => {
+                app.detail = DetailMode::None;
+                app.focus = FocusPane::History;
+                return Ok(false);
+            }
+            _ => {}
+        }
     }
 
     // Ctrl combos
@@ -197,8 +220,10 @@ fn handle_key(
         }
         KeyCode::Esc => {
             app.input.clear();
-            app.detail = DetailMode::None;
-            app.focus = FocusPane::Composer;
+            if app.detail.is_some() {
+                app.detail = DetailMode::None;
+                app.focus = FocusPane::History;
+            }
         }
         KeyCode::Tab => {
             if app.input.is_empty() { app.cycle_focus(); } else { app.show_help = !app.show_help; }

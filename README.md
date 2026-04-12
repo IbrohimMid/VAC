@@ -19,3 +19,4 @@ vac interactive
 ## Documentation
 
 See https://vastar.id/docs/vac
+# Notion sync test

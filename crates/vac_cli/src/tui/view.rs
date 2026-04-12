@@ -143,7 +143,13 @@ fn render_detail_panel(frame: &mut Frame, area: Rect, app: &mut TuiApp) {
 
     // Update scroll with correct total
     let visible_h = area.height.saturating_sub(2) as usize;
-    app.scroll.detail.clamp(total_rows, visible_h);
+    let scroll_offset = app.scroll.detail.clamp(total_rows, visible_h);
+
+    // Apply scroll offset to visible lines
+    let visible_lines: Vec<Line> = lines.into_iter()
+        .skip(scroll_offset)
+        .take(visible_h)
+        .collect();
 
     let title = match &app.detail {
         DetailMode::LiveChanges => "Live Changes",
@@ -162,7 +168,7 @@ fn render_detail_panel(frame: &mut Frame, area: Rect, app: &mut TuiApp) {
     let border_style = if focused { Style::default().fg(Color::Blue) } else { Style::default().fg(border_color) };
 
     frame.render_widget(
-        Paragraph::new(lines)
+        Paragraph::new(visible_lines)
             .block(Block::default().title(title).borders(Borders::ALL).border_style(border_style))
             .wrap(Wrap { trim: true }),
         area,
