@@ -59,7 +59,7 @@ pub async fn run(project_root: PathBuf, _resume: bool) -> anyhow::Result<()> {
 
     let engine = Arc::new(Mutex::new(engine));
     let mut app = TuiApp::new(status, history, auth_hint);
-    let mut tg = TerminalGuard::new(false)?;
+    let mut tg = TerminalGuard::new(true)?;
 
     while app.running {
         app.spinner_tick = app.spinner_tick.wrapping_add(1);
