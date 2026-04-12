@@ -3,6 +3,7 @@
 pub mod error;
 pub mod provider;
 pub mod providers;
+pub mod retry;
 pub mod router;
 pub mod streaming;
 pub mod token_budget;

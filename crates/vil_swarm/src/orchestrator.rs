@@ -250,7 +250,7 @@ impl SwarmOrchestrator {
         let result = self.execute_agent_loop(
             messages, tool_defs, None,
             &mut total_tokens, &mut modified_files, &mut created_files,
-            &context, llm_router, tool_router,
+            &context, llm_router, tool_router, None,
         ).await;
 
         match result {
@@ -329,6 +329,7 @@ impl SwarmOrchestrator {
             &context,
             llm_router,
             tool_router,
+            None,
         ).await;
 
         match result {
@@ -479,10 +480,14 @@ Rules:
         context: &ToolContext,
         llm_router: &Arc<vil_llm::LlmRouter>,
         tool_router: &Arc<vac_tools::router::ToolRouter>,
+        cancel: Option<tokio_util::sync::CancellationToken>,
     ) -> SwarmResult<String> {
         let mut trim_boundary: usize = 0;
         let mut iterations: usize = 0;
         loop {
+            if cancel.as_ref().is_some_and(|c| c.is_cancelled()) {
+                return Err(SwarmError::Orchestration("Agent loop cancelled".into()));
+            }
             if let Err(e) = crate::loop_control::check_iteration_cap(iterations) {
                 warn!(iterations, "Max iterations reached, terminating agent loop");
                 return Err(e);
@@ -808,6 +813,7 @@ Rules:
                 &context,
                 llm_router,
                 tool_router,
+                None,
             )
             .await?;
 
@@ -893,6 +899,7 @@ Rules:
                 &context,
                 llm_router,
                 tool_router,
+                None,
             )
             .await?;
 

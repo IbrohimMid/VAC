@@ -33,6 +33,7 @@ description = "VAC — Vastar Agentic CLI: Autonomous development CLI built on V
 # Async runtime
 tokio = { version = "1.43", features = ["full"] }
 tokio-stream = "0.1"
+tokio-util = { version = "0.7", features = ["rt"] }
 futures = "0.3"
 
 # Serialization

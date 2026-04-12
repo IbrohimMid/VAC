@@ -4,6 +4,7 @@
 //! with fault isolation, checkpoint/restore, and parallel execution.
 
 pub mod agent;
+pub mod checkpoint;
 pub mod context_budget;
 pub mod error;
 pub mod events;
