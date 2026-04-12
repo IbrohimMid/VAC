@@ -9,5 +9,5 @@ pub mod sandbox;
 pub mod skills;
 
 pub use error::ToolError;
-pub use registry::{ToolDefinition, ToolRegistry};
+pub use registry::{ToolDefinition, ToolRegistry, VilTool};
 pub use router::ToolRouter;

@@ -9,6 +9,7 @@ pub mod engine;
 pub mod error;
 pub mod prelude;
 pub mod session;
+pub mod spawn_subtask_tool;
 pub mod task;
 
 pub use auth::{AuthStatus, StoredAuth};
@@ -16,4 +17,5 @@ pub use config::VacConfig;
 pub use engine::{EngineStatus, RuntimeUpdate, TaskHistoryEntry, VacEngine};
 pub use error::VacError;
 pub use session::Session;
+pub use spawn_subtask_tool::SpawnSubtaskTool;
 pub use task::{Priority, Task, TaskConstraints, TaskResult, TaskStatus};

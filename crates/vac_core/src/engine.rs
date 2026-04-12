@@ -5,6 +5,7 @@ use crate::{
     config::VacConfig,
     error::{VacError, VacResult},
     session::Session,
+    spawn_subtask_tool::SpawnSubtaskTool,
     task::{Task, TaskResult, TaskStatus},
 };
 use serde::{Deserialize, Serialize};
@@ -23,7 +24,7 @@ pub struct VacEngine {
     ir_pipeline: Option<vil_ir::IrPipeline>,
     context_engine: Option<vil_context::ContextEngine>,
     memory_store: Option<vil_memory::MemoryStore>,
-    swarm: Option<vil_swarm::SwarmOrchestrator>,
+    swarm: Option<Arc<RwLock<vil_swarm::SwarmOrchestrator>>>,
     tool_router: Option<vac_tools::ToolRouter>,
     llm_router: Option<std::sync::Arc<vil_llm::LlmRouter>>,
     trace_recorder: Option<std::sync::Arc<std::sync::Mutex<vac_trace::TraceRecorder>>>,
@@ -168,7 +169,7 @@ impl VacEngine {
                 ),
             )
         });
-        let tool_router = vac_tools::ToolRouter::new(registry, swarm_policy);
+        let tool_router = vac_tools::ToolRouter::new(registry.clone(), swarm_policy);
         let swarm = vil_swarm::SwarmOrchestrator::new(
             self.config.swarm.max_concurrent_agents,
             self.config.swarm.enable_parallel,
@@ -176,7 +177,13 @@ impl VacEngine {
             Some(Arc::new(tool_router)),
         )
         .await?;
-        self.swarm = Some(swarm);
+        self.swarm = Some(Arc::new(RwLock::new(swarm)));
+
+        if let Some(ref swarm_arc) = self.swarm {
+            let spawn_tool = SpawnSubtaskTool::new(swarm_arc.clone());
+            registry.register(spawn_tool).await
+                .map_err(|e| VacError::Other(anyhow::anyhow!("Spawn tool registration error: {}", e)))?;
+        }
 
         info!("All VAC subsystems initialized successfully.");
         Ok(())
@@ -275,10 +282,12 @@ impl VacEngine {
             }
         }
 
-        let swarm = self
+        let mut swarm = self
             .swarm
-            .as_mut()
-            .ok_or_else(|| VacError::Task("Swarm not initialized. Run `vac init` first.".into()))?;
+            .as_ref()
+            .ok_or_else(|| VacError::Task("Swarm not initialized. Run `vac init` first.".into()))?
+            .write()
+            .await;
         let _context = self
             .context_engine
             .as_ref()
