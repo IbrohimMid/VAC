@@ -193,3 +193,60 @@ fn activity_for_tool(name: &str) -> String {
         _ => "Working".to_string(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tui::app::TuiApp;
+    use vac_core::engine::EngineStatus;
+    use serde_json::json;
+
+    fn create_test_app() -> TuiApp {
+        let status = EngineStatus {
+            project_root: std::path::PathBuf::from("/tmp"),
+            session_id: uuid::Uuid::new_v4(),
+            total_tasks: 0,
+            completed_tasks: 0,
+            failed_tasks: 0,
+            total_tokens_used: 0,
+            subsystems_initialized: true,
+        };
+        TuiApp::new(status, vec![], None)
+    }
+
+    #[test]
+    fn test_route_update_read_tool() {
+        let mut app = create_test_app();
+        let update = RuntimeUpdate::ToolCall {
+            id: "1".into(),
+            name: "file_read".into(),
+            arguments: json!({"path": "/test/file.rs"}),
+        };
+        route_update(&mut app, update);
+        assert!(!app.session().reading_log.is_empty());
+        assert!(app.session().reading_log.last().unwrap().contains("Read"));
+    }
+
+    #[test]
+    fn test_route_update_write_tool() {
+        let mut app = create_test_app();
+        let update = RuntimeUpdate::ToolCall {
+            id: "1".into(),
+            name: "file_write".into(),
+            arguments: json!({"path": "/test/file.rs", "content": "test"}),
+        };
+        route_update(&mut app, update);
+        assert!(!app.session().commands_log.is_empty());
+        assert!(app.session().commands_log.last().unwrap().contains("Write"));
+        assert!(matches!(app.detail, DetailMode::LiveChanges));
+    }
+
+    #[test]
+    fn test_route_update_error() {
+        let mut app = create_test_app();
+        let update = RuntimeUpdate::Failed("Test error".into());
+        route_update(&mut app, update);
+        assert!(matches!(app.detail, DetailMode::ErrorDetail(_)));
+        assert!(!app.session().thinking_log.is_empty());
+    }
+}
