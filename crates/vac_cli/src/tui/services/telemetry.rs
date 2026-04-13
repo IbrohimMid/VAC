@@ -162,6 +162,15 @@ pub fn route_update(app: &mut TuiApp, update: RuntimeUpdate) {
             app.push_transcript("❌ Error", format!("{}\n\nPress Esc to dismiss.", reason), ratatui::style::Color::Red);
             app.focus = FocusPane::Transcript;
         }
+        Cancelled => {
+            app.finish_streaming();
+            app.live_diff_files.clear();
+            app.cancel_token = None;
+            app.push_commands("Cancelled".to_string());
+            app.set_activity("Cancelled", "Task cancelled by user".to_string());
+            app.push_transcript("⚠️ Cancelled", "Task was cancelled by user.\n\nPress Esc to dismiss.", ratatui::style::Color::Yellow);
+            app.focus = FocusPane::Transcript;
+        }
         LspStatus { available, .. } => {
             if available { app.push_commands("vil-lsp active".to_string()); }
         }

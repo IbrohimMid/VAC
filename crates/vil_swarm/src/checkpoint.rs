@@ -110,8 +110,8 @@ pub fn load_checkpoint_from_file(
 
 /// List available sessions from checkpoint directory.
 pub fn list_sessions(checkpoint_dir: &std::path::Path) -> Vec<SessionInfo> {
-    let mut sessions = Vec::new();
-    
+    let mut sessions: Vec<(SessionInfo, std::time::SystemTime)> = Vec::new();
+
     if let Ok(entries) = std::fs::read_dir(checkpoint_dir) {
         for entry in entries.flatten() {
             if let Ok(metadata) = entry.metadata() {
@@ -129,9 +129,9 @@ pub fn list_sessions(checkpoint_dir: &std::path::Path) -> Vec<SessionInfo> {
                                 }
                             })
                             .unwrap_or_else(|| "Untitled session".to_string());
-                        
-                        let updated_at = if let Ok(modified) = metadata.modified() {
-                            if let Ok(elapsed) = modified.elapsed() {
+
+                        let (updated_at_display, modified_time) = if let Ok(modified) = metadata.modified() {
+                            let display = if let Ok(elapsed) = modified.elapsed() {
                                 let secs = elapsed.as_secs();
                                 if secs < 60 {
                                     format!("{} seconds ago", secs)
@@ -144,25 +144,29 @@ pub fn list_sessions(checkpoint_dir: &std::path::Path) -> Vec<SessionInfo> {
                                 }
                             } else {
                                 "Unknown".to_string()
-                            }
+                            };
+                            (display, modified)
                         } else {
-                            "Unknown".to_string()
+                            ("Unknown".to_string(), std::time::SystemTime::UNIX_EPOCH)
                         };
-                        
-                        sessions.push(SessionInfo {
-                            id: entry.path().to_string_lossy().to_string(),
-                            title,
-                            updated_at,
-                        });
+
+                        sessions.push((
+                            SessionInfo {
+                                id: entry.path().to_string_lossy().to_string(),
+                                title,
+                                updated_at: updated_at_display,
+                            },
+                            modified_time,
+                        ));
                     }
                 }
             }
         }
     }
-    
-    // Sort by modified time (newest first)
-    sessions.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
-    sessions
+
+    // Sort by actual modified time (newest first)
+    sessions.sort_by(|a, b| b.1.cmp(&a.1));
+    sessions.into_iter().map(|(info, _)| info).collect()
 }
 
 #[derive(Debug, Clone)]

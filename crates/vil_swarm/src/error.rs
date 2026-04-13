@@ -14,6 +14,9 @@ pub enum SwarmError {
     #[error("Orchestration error: {0}")]
     Orchestration(String),
 
+    #[error("Agent loop cancelled")]
+    Cancelled,
+
     #[error("Checkpoint error: {0}")]
     Checkpoint(String),
 

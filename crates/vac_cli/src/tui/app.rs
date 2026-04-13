@@ -179,6 +179,27 @@ impl TuiApp {
     pub fn session(&self) -> &SessionTab { &self.sessions[self.active_session] }
     pub fn session_mut(&mut self) -> &mut SessionTab { &mut self.sessions[self.active_session] }
 
+    /// Restore TUI state from session metadata.
+    pub fn restore_tui_state(&mut self, metadata: &vac_core::session::SessionMetadata) {
+        if let Some(idx) = metadata.active_tab_idx {
+            if idx < self.sessions.len() {
+                self.active_session = idx;
+            }
+        }
+        if let Some(sel) = metadata.history_selection {
+            self.history.list.select(Some(sel));
+        }
+        if let Some(ref focus) = metadata.last_focus {
+            self.focus = match focus.as_str() {
+                "Composer" => FocusPane::Composer,
+                "Transcript" => FocusPane::Transcript,
+                "History" => FocusPane::History,
+                "Detail" => FocusPane::Detail,
+                _ => FocusPane::Composer,
+            };
+        }
+    }
+
     pub fn new_session(&mut self) {
         let idx = self.sessions.len();
         self.sessions.push(SessionTab::new(idx));
@@ -393,12 +414,29 @@ impl TuiApp {
     }
 
     /// Save TUI state to session metadata (for future restore).
-    /// TODO: Wire to session save on exit.
     pub fn save_tui_state(&self) -> (Option<usize>, Option<usize>, Option<String>) {
         let active_tab = Some(self.active_session);
         let history_sel = self.history.selected();
         let last_focus = Some(format!("{:?}", self.focus));
         (active_tab, history_sel, last_focus)
+    }
+
+    /// Persist TUI state to session metadata and save session.
+    pub async fn persist_session_state(&mut self, engine: &mut vac_core::VacEngine) {
+        let (active_tab, history_sel, last_focus) = self.save_tui_state();
+
+        // Update session metadata
+        {
+            let mut session = engine.session().write().await;
+            session.metadata.active_tab_idx = active_tab;
+            session.metadata.history_selection = history_sel;
+            session.metadata.last_focus = last_focus;
+
+            // Save session to disk
+            if let Err(e) = session.save() {
+                tracing::warn!(error = %e, "Failed to save session state");
+            }
+        }
     }
 }
 

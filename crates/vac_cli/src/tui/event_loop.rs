@@ -48,6 +48,17 @@ pub enum TaskEvent {
         jobs: Vec<vac_runtime::jobs::Job>,
         mode: vac_runtime::executor::OperatingMode,
     },
+    /// Session restored successfully.
+    SessionRestored {
+        session_id: uuid::Uuid,
+        session_title: String,
+        checkpoint: vil_swarm::checkpoint::CheckpointEnvelope,
+        status: vac_core::engine::EngineStatus,
+        history: Vec<vac_core::engine::TaskHistoryEntry>,
+    },
+    SessionRestoreFailed {
+        error: String,
+    },
 }
 
 // ── Main loop ─────────────────────────────────────────────────────────────────
@@ -67,6 +78,14 @@ pub async fn run(project_root: PathBuf, _resume: bool) -> anyhow::Result<()> {
 
     let engine = Arc::new(Mutex::new(engine));
     let mut app = TuiApp::new(status, history, auth_hint);
+
+    // Restore TUI state from session metadata
+    {
+        let eng = engine.lock().await;
+        let session = eng.session().read().await;
+        app.restore_tui_state(&session.metadata);
+    }
+
     let mut tg = TerminalGuard::new(true).map_err(|e| {
         anyhow::anyhow!("Failed to initialize terminal (TTY required): {}", e)
     })?;
@@ -99,6 +118,13 @@ pub async fn run(project_root: PathBuf, _resume: bool) -> anyhow::Result<()> {
             }
         }
     }
+
+    // Graceful exit: save TUI state to session
+    {
+        let mut eng = engine.lock().await;
+        app.persist_session_state(&mut eng).await;
+    }
+
     Ok(())
 }
 
@@ -154,6 +180,41 @@ fn handle_task_event(app: &mut TuiApp, ev: TaskEvent) {
         TaskEvent::RuntimeJobsUpdate { jobs, mode } => {
             app.runtime_jobs = jobs;
             app.operating_mode = Some(mode);
+        }
+        TaskEvent::SessionRestored { session_id, session_title, checkpoint, status, history } => {
+            app.status = status.clone();
+            app.session_mut().history = history.clone();
+
+            // Clear and restore transcript from checkpoint
+            let session_tab = app.session_mut();
+            session_tab.transcript.clear();
+            session_tab.transcript.push(super::app::TranscriptEntry {
+                label: "System".to_string(),
+                body: format!("Restored: {}", session_title),
+                color: ratatui::style::Color::Cyan,
+            });
+
+            for msg in &checkpoint.messages {
+                let label = format!("{:?}", msg.role);
+                let color = if label.contains("User") {
+                    ratatui::style::Color::Green
+                } else if label.contains("Assistant") {
+                    ratatui::style::Color::Blue
+                } else {
+                    ratatui::style::Color::Gray
+                };
+
+                session_tab.transcript.push(super::app::TranscriptEntry {
+                    label,
+                    body: msg.content.clone(),
+                    color,
+                });
+            }
+
+            app.push_transcript("System", format!("✓ Restored {} messages", checkpoint.messages.len()), ratatui::style::Color::Green);
+        }
+        TaskEvent::SessionRestoreFailed { error } => {
+            app.push_transcript("Error", format!("Failed to restore session: {}", error), ratatui::style::Color::Red);
         }
     }
 }
@@ -223,48 +284,26 @@ fn handle_key(
                         }
                     })
                     .collect();
-                
+
                 if let Some(session) = filtered.get(app.session_selected) {
-                    let session_id = session.id.clone();
+                    let session_id_str = session.id.clone();
                     let session_title = session.title.clone();
-                    
-                    // Load checkpoint and restore messages
-                    match vil_swarm::checkpoint::load_checkpoint_from_file(std::path::Path::new(&session_id)) {
-                        Ok(checkpoint) => {
-                            // Restore messages to current session
-                            let session_tab = app.session_mut();
-                            session_tab.transcript.clear();
-                            
-                            // Add system message
-                            session_tab.transcript.push(super::app::TranscriptEntry {
-                                label: "System".to_string(),
-                                body: format!("Restored session: {}", session_title),
-                                color: ratatui::style::Color::Cyan,
-                            });
-                            
-                            // Restore conversation from checkpoint
-                            for msg in &checkpoint.messages {
-                                let label = format!("{:?}", msg.role);
-                                let color = if label.contains("User") {
-                                    ratatui::style::Color::Green
-                                } else if label.contains("Assistant") {
-                                    ratatui::style::Color::Blue
-                                } else {
-                                    ratatui::style::Color::Gray
-                                };
-                                
-                                session_tab.transcript.push(super::app::TranscriptEntry {
-                                    label,
-                                    body: msg.content.clone(),
-                                    color,
-                                });
-                            }
-                            
-                            app.push_transcript("System", format!("✓ Restored {} messages", checkpoint.messages.len()), ratatui::style::Color::Green);
-                        }
-                        Err(e) => {
-                            app.push_transcript("Error", format!("Failed to load checkpoint: {}", e), ratatui::style::Color::Red);
-                        }
+
+                    // Parse session ID
+                    if let Ok(session_uuid) = uuid::Uuid::parse_str(&session_id_str) {
+                        // Clear transcript and show loading message
+                        let session_tab = app.session_mut();
+                        session_tab.transcript.clear();
+                        session_tab.transcript.push(super::app::TranscriptEntry {
+                            label: "System".to_string(),
+                            body: format!("Restoring session: {}...", session_title),
+                            color: ratatui::style::Color::Cyan,
+                        });
+
+                        // Spawn async session restore
+                        spawn_session_restore(session_uuid, session_title, engine.clone(), tx.clone());
+                    } else {
+                        app.push_transcript("Error", format!("Invalid session ID: {}", session_id_str), ratatui::style::Color::Red);
                     }
                 }
                 app.show_sessions_popup = false;
@@ -428,42 +467,24 @@ fn handle_key(
                         // Resume last session
                         let checkpoint_dir = project_root.join(".vac").join("checkpoints");
                         let sessions = vil_swarm::checkpoint::list_sessions(&checkpoint_dir);
-                        
+
                         if let Some(last_session) = sessions.first() {
-                            // Load and restore last session
-                            match vil_swarm::checkpoint::load_checkpoint_from_file(std::path::Path::new(&last_session.id)) {
-                                Ok(checkpoint) => {
-                                    let session_tab = app.session_mut();
-                                    session_tab.transcript.clear();
-                                    
-                                    session_tab.transcript.push(super::app::TranscriptEntry {
-                                        label: "System".to_string(),
-                                        body: format!("Resumed: {}", last_session.title),
-                                        color: ratatui::style::Color::Cyan,
-                                    });
-                                    
-                                    for msg in &checkpoint.messages {
-                                        let label = format!("{:?}", msg.role);
-                                        let color = if label.contains("User") {
-                                            ratatui::style::Color::Green
-                                        } else if label.contains("Assistant") {
-                                            ratatui::style::Color::Blue
-                                        } else {
-                                            ratatui::style::Color::Gray
-                                        };
-                                        
-                                        session_tab.transcript.push(super::app::TranscriptEntry {
-                                            label,
-                                            body: msg.content.clone(),
-                                            color,
-                                        });
-                                    }
-                                    
-                                    app.push_transcript("System", format!("✓ Restored {} messages", checkpoint.messages.len()), ratatui::style::Color::Green);
-                                }
-                                Err(e) => {
-                                    app.push_transcript("Error", format!("Failed to resume: {}", e), ratatui::style::Color::Red);
-                                }
+                            // Parse session ID
+                            if let Ok(session_uuid) = uuid::Uuid::parse_str(&last_session.id) {
+                                let session_title = last_session.title.clone();
+                                // Clear transcript and show loading message
+                                let session_tab = app.session_mut();
+                                session_tab.transcript.clear();
+                                session_tab.transcript.push(super::app::TranscriptEntry {
+                                    label: "System".to_string(),
+                                    body: format!("Restoring session: {}...", session_title),
+                                    color: ratatui::style::Color::Cyan,
+                                });
+
+                                // Spawn async session restore
+                                spawn_session_restore(session_uuid, session_title, engine.clone(), tx.clone());
+                            } else {
+                                app.push_transcript("Error", format!("Invalid session ID: {}", last_session.id), ratatui::style::Color::Red);
                             }
                         } else {
                             app.push_transcript("System", "No saved sessions found".to_string(), ratatui::style::Color::Yellow);
@@ -544,6 +565,51 @@ fn fallback_status(project_root: PathBuf) -> vac_core::engine::EngineStatus {
         total_tokens_used: 0,
         subsystems_initialized: true,
     }
+}
+
+// ── Session restore spawner ──────────────────────────────────────────────────
+
+fn spawn_session_restore(
+    session_id: uuid::Uuid,
+    session_title: String,
+    engine: Arc<Mutex<VacEngine>>,
+    tx: mpsc::UnboundedSender<TaskEvent>,
+) {
+    tokio::spawn(async move {
+        let mut eng = engine.lock().await;
+        let project_root = eng.status().await.map(|s| s.project_root.clone()).unwrap_or_default();
+
+        // Load checkpoint for transcript
+        let checkpoint_path = format!(".vac/checkpoints/{}.json", session_id);
+        let checkpoint = vil_swarm::checkpoint::load_checkpoint_from_file(std::path::Path::new(&checkpoint_path));
+
+        match eng.load_session(session_id).await {
+            Ok(()) => {
+                let status = eng.status().await.unwrap_or_else(|_| fallback_status(project_root));
+                let history = eng.history().await.unwrap_or_default();
+
+                match checkpoint {
+                    Ok(cp) => {
+                        let _ = tx.send(TaskEvent::SessionRestored {
+                            session_id,
+                            session_title,
+                            checkpoint: cp,
+                            status,
+                            history,
+                        });
+                    }
+                    Err(e) => {
+                        let _ = tx.send(TaskEvent::SessionRestoreFailed {
+                            error: format!("Session loaded but checkpoint missing: {}", e),
+                        });
+                    }
+                }
+            }
+            Err(e) => {
+                let _ = tx.send(TaskEvent::SessionRestoreFailed { error: e.to_string() });
+            }
+        }
+    });
 }
 
 // ── Runtime bridge ────────────────────────────────────────────────────────────

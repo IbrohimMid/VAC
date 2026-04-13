@@ -449,7 +449,7 @@ Rules:
             // Step 1: Cancellation check
             if state.is_cancelled() {
                 state.stage = crate::run_state::RunStage::Cancelled;
-                return Err(SwarmError::Orchestration("Agent loop cancelled".into()));
+                return Err(SwarmError::Cancelled);
             }
             // Step 2: Iteration cap check
             if let Err(e) = crate::loop_control::check_iteration_cap(state.iterations) {

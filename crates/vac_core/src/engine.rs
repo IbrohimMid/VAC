@@ -334,21 +334,43 @@ impl VacEngine {
         let result = match self.execute_task_pipeline(task, updates.clone(), cancel).await {
             Ok(result) => result,
             Err(e) => {
-                error!(error = %e, "Task execution failed");
+                // Check if this is a cancellation
+                let is_cancelled = matches!(e, VacError::Swarm(vil_swarm::SwarmError::Cancelled));
+
+                if is_cancelled {
+                    info!("Task cancelled by user");
+                } else {
+                    error!(error = %e, "Task execution failed");
+                }
+
                 if let Some(ref recorder) = self.trace_recorder {
                     if let Ok(mut rec) = recorder.lock() {
                         rec.record_task_failed(&task_id.0.to_string(), &e.to_string());
                         let _ = rec.flush();
                     }
                 }
-                // Emit Failed event so UI/runtime flow sees the error
+
+                // Emit appropriate event
                 if let Some(ref tx) = updates {
-                    let _ = tx.send(RuntimeUpdate::Failed(e.to_string()));
+                    if is_cancelled {
+                        let _ = tx.send(RuntimeUpdate::Cancelled);
+                    } else {
+                        let _ = tx.send(RuntimeUpdate::Failed(e.to_string()));
+                    }
                 }
+
                 TaskResult {
                     task_id,
-                    status: TaskStatus::Failed(e.to_string()),
-                    summary: format!("Task failed: {e}"),
+                    status: if is_cancelled {
+                        TaskStatus::Cancelled
+                    } else {
+                        TaskStatus::Failed(e.to_string())
+                    },
+                    summary: if is_cancelled {
+                        "Task cancelled by user".to_string()
+                    } else {
+                        format!("Task failed: {e}")
+                    },
                     modified_files: vec![],
                     created_files: vec![],
                     validation_score: None,
@@ -595,11 +617,22 @@ impl VacEngine {
             return;
         }
         let session = self.session.read().await;
-        // Store completed task descriptions as user messages for context continuity
-        let messages: Vec<vil_llm::provider::Message> = session.tasks.iter()
-            .filter(|t| matches!(t.status, crate::task::TaskStatus::Completed))
-            .map(|t| vil_llm::provider::Message::user(t.description.clone()))
-            .collect();
+        // Store completed tasks as user+assistant message pairs for context continuity
+        let mut messages: Vec<vil_llm::provider::Message> = Vec::new();
+        for task in session.tasks.iter().filter(|t| matches!(t.status, crate::task::TaskStatus::Completed)) {
+            // User message: the task description
+            messages.push(vil_llm::provider::Message::user(task.description.clone()));
+
+            // Assistant message: the result summary (if available)
+            if let Some(task_result) = session.results.get(&task.id) {
+                let summary = if task_result.summary.is_empty() {
+                    format!("Task completed ({} tokens)", task_result.total_tokens_used)
+                } else {
+                    task_result.summary.clone()
+                };
+                messages.push(vil_llm::provider::Message::assistant(summary));
+            }
+        }
         let envelope = vil_swarm::checkpoint::CheckpointEnvelope::new(
             Some(session.id),
             messages,
@@ -659,6 +692,41 @@ impl VacEngine {
             .collect::<Vec<_>>();
         history.truncate(20);
         Ok(history)
+    }
+
+    /// Load a specific session by ID, swapping the current session in memory.
+    /// This ensures transcript, history, and engine state are synchronized.
+    pub async fn load_session(&mut self, session_id: uuid::Uuid) -> VacResult<()> {
+        let session_path = self.project_root
+            .join(".vac/sessions")
+            .join(format!("{}.json", session_id));
+
+        if !session_path.exists() {
+            return Err(VacError::Other(anyhow::anyhow!(
+                "Session not found: {}",
+                session_id
+            )));
+        }
+
+        let content = std::fs::read_to_string(&session_path)?;
+        let session: Session = serde_json::from_str(&content)?;
+
+        info!(session_id = %session_id, "Session loaded");
+
+        let mut current = self.session.write().await;
+        *current = session;
+
+        Ok(())
+    }
+
+    /// Get current session ID.
+    pub async fn session_id(&self) -> uuid::Uuid {
+        self.session.read().await.id
+    }
+
+    /// Get read access to the current session.
+    pub fn session(&self) -> &Arc<RwLock<Session>> {
+        &self.session
     }
 }
 
@@ -735,4 +803,5 @@ pub enum RuntimeUpdate {
     LspDiagnostics(crate::lsp::types::LspWorkspaceSnapshot),
     Completed(TaskResult),
     Failed(String),
+    Cancelled,
 }
