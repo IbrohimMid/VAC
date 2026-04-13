@@ -94,12 +94,21 @@ impl LlmRouter {
                             return Ok(response);
                         }
                         Err(e) if is_retryable(&e) && attempt < self.retry_config.max_attempts => {
-                            let delay = crate::retry::resolve_retry_delay_ms(
-                                &std::collections::HashMap::new(),
-                                &self.retry_config,
-                                attempt,
-                                chrono::Utc::now(),
-                            );
+                            let delay = if let LlmError::RateLimited(_, retry_after_secs) = &e {
+                                // Use retry-after from error
+                                crate::retry::RetryDelay {
+                                    delay_ms: retry_after_secs * 1000,
+                                    source: crate::retry::RetryDelaySource::RetryAfterHeader,
+                                }
+                            } else {
+                                // Fallback to exponential backoff
+                                crate::retry::resolve_retry_delay_ms(
+                                    &std::collections::HashMap::new(),
+                                    &self.retry_config,
+                                    attempt,
+                                    chrono::Utc::now(),
+                                )
+                            };
                             warn!(provider = provider_name, attempt, delay_ms = delay.delay_ms, error = %e, "Retrying after delay");
                             tokio::time::sleep(std::time::Duration::from_millis(delay.delay_ms)).await;
                         }

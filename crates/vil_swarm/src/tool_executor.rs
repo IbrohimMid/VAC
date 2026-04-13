@@ -16,6 +16,7 @@ pub async fn execute_tools(
     context: &ToolContext,
     tool_router: &vac_tools::router::ToolRouter,
     updates: &Option<mpsc::UnboundedSender<AgentLoopEvent>>,
+    hook: Option<&dyn crate::hooks::AgentHook>,
 ) -> SwarmResult<()> {
     let (reads, writes) = crate::tool_execution::partition_calls(tool_calls);
 
@@ -69,7 +70,7 @@ pub async fn execute_tools(
         info!(count = writes.len(), "Executing serial writes");
         for call in writes {
             // H2: Hook intercept
-            if let crate::hooks::HookDecision::Deny(reason) = crate::hooks::run_before_hook(None, &call) {
+            if let crate::hooks::HookDecision::Deny(reason) = crate::hooks::run_before_hook(hook, &call) {
                 warn!(tool = %call.name, reason = %reason, "Tool denied by hook");
                 if let Some(tx) = updates {
                     let _ = tx.send(AgentLoopEvent::ToolResult {

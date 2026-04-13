@@ -436,7 +436,7 @@ Rules:
         self.agent_loop_with_events(task_description, None).await
     }
 
-    async fn execute_agent_loop(
+    pub async fn execute_agent_loop(
         &self,
         state: &mut crate::run_state::AgentRunState,
         tool_defs: Vec<ToolDefinition>,
@@ -533,7 +533,7 @@ Rules:
                         }
                     }
 
-                    crate::tool_executor::execute_tools(all_calls, state, context, tool_router, &updates).await?;
+                    crate::tool_executor::execute_tools(all_calls, state, context, tool_router, &updates, self.hook.as_deref()).await?;
                     
                     if let Some(tx) = &updates {
                         let _ = tx.send(AgentLoopEvent::Status("Reviewing tool results".to_string()));
