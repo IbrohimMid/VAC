@@ -39,7 +39,7 @@ pub use adapter::VacEngineAdapter;
 pub use terminal::TerminalGuard;
 
 // App module
-mod app;
+pub mod app;
 mod event;
 
 pub use app::{InputEvent, LoadingOperation, OutputEvent};
