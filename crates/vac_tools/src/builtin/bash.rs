@@ -108,6 +108,9 @@ impl VilTool for BashTool {
         let input: BashInput =
             serde_json::from_value(args).map_err(|e| ToolError::InvalidArguments(e.to_string()))?;
 
+        // Warden guardrails: sanitize command for injection patterns
+        crate::sandbox::sanitize_command(&input.command)?;
+
         // Hierarchical approval check
         let policy = load_shell_policy(&context.working_dir);
         if let Some(reason) = policy.is_denied(&input.command) {
