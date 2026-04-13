@@ -77,17 +77,6 @@ impl LlmRouter {
             }
         }
 
-        // Sanitize messages for provider compatibility
-        let sanitized_messages = sanitize::sanitize_messages(&request.messages, &self.default_provider);
-        let sanitized_request = LlmRequest {
-            messages: sanitized_messages,
-            model: request.model.clone(),
-            max_tokens: request.max_tokens,
-            temperature: request.temperature,
-            stop_sequences: request.stop_sequences.clone(),
-            tools: request.tools.clone(),
-        };
-
         let mut chain = vec![self.default_provider.clone()];
         chain.extend(self.fallback_chain.iter().cloned());
 
@@ -95,6 +84,17 @@ impl LlmRouter {
 
         for provider_name in &chain {
             if let Some(provider) = self.providers.get(provider_name) {
+                // Sanitize messages per-provider (each provider may have different contract rules)
+                let sanitized_messages = sanitize::sanitize_messages(&request.messages, provider_name);
+                let sanitized_request = LlmRequest {
+                    messages: sanitized_messages,
+                    model: request.model.clone(),
+                    max_tokens: request.max_tokens,
+                    temperature: request.temperature,
+                    stop_sequences: request.stop_sequences.clone(),
+                    tools: request.tools.clone(),
+                };
+
                 let mut attempt = 0usize;
                 loop {
                     attempt += 1;
@@ -138,7 +138,15 @@ impl LlmRouter {
     }
 
     pub async fn stream(&self, request: &LlmRequest) -> LlmResult<mpsc::Receiver<StreamChunk>> {
-        // Sanitize messages for provider compatibility
+        let provider =
+            self.providers
+                .get(&self.default_provider)
+                .ok_or_else(|| LlmError::Provider {
+                    provider: self.default_provider.clone(),
+                    message: "Default provider not found".into(),
+                })?;
+
+        // Sanitize messages for this specific provider
         let sanitized_messages = sanitize::sanitize_messages(&request.messages, &self.default_provider);
         let sanitized_request = LlmRequest {
             messages: sanitized_messages,
@@ -148,14 +156,6 @@ impl LlmRouter {
             stop_sequences: request.stop_sequences.clone(),
             tools: request.tools.clone(),
         };
-
-        let provider =
-            self.providers
-                .get(&self.default_provider)
-                .ok_or_else(|| LlmError::Provider {
-                    provider: self.default_provider.clone(),
-                    message: "Default provider not found".into(),
-                })?;
 
         provider.stream(&sanitized_request).await
     }

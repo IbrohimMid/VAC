@@ -67,6 +67,9 @@ redb = "2.4"
 cron = "0.12"
 notify = "6"
 
+# Tokenization
+tiktoken-rs = "0.6"
+
 # Embedding & ML
 ort = { version = "2.0", features = ["cuda", "tensorrt"] }
 fastembed = "4.4"

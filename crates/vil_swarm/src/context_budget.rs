@@ -1,16 +1,21 @@
 //! Context budget management — two-level message reducer.
 //! Adapted from stakpak/libs/agent-core/src/budget_context.rs (Apache-2.0).
 
+use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use vil_llm::provider::{Message, Role, ToolCall};
 
 const DEFAULT_CONTEXT_WINDOW: u64 = 204_800;
 const MAX_OUTPUT_TOKENS: u64 = 4_000;
-const BYTES_PER_TOKEN: f64 = 3.5;
 const SAFETY_BUFFER: f64 = 1.05;
 const TRIM_HEADROOM: f64 = 0.75;
 const KEEP_LAST_N_ASSISTANT: usize = 3;
 const TRIMMED_PLACEHOLDER: &str = "[trimmed older context]";
+
+/// Global tokenizer using cl100k_base (Claude/GPT-4 compatible)
+static TOKENIZER: Lazy<tiktoken_rs::CoreBPE> = Lazy::new(|| {
+    tiktoken_rs::cl100k_base().expect("cl100k_base BPE initialization failed")
+});
 
 /// Stores original message content before trimming for potential restoration.
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
@@ -48,18 +53,20 @@ impl TrimStore {
 }
 
 /// Estimate token count for a single message (content + tool overhead).
+/// Estimate token count for a single message using real BPE tokenization.
 fn message_token_estimate(msg: &Message) -> u64 {
-    let mut bytes = msg.content.len();
+    let mut text = msg.content.clone();
     for tc in &msg.tool_calls {
-        bytes += tc.name.len() + tc.arguments.to_string().len() + 30;
+        text.push_str(&tc.name);
+        text.push_str(&tc.arguments.to_string());
     }
     if let Some(id) = &msg.tool_call_id {
-        bytes += id.len();
+        text.push_str(id);
     }
     if let Some(n) = &msg.name {
-        bytes += n.len();
+        text.push_str(n);
     }
-    let tokens = (bytes as f64 / BYTES_PER_TOKEN).ceil() as u64;
+    let tokens = TOKENIZER.encode_ordinary(&text).len() as u64;
     tokens + 8 // per-message overhead
 }
 

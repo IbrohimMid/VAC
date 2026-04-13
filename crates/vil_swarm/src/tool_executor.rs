@@ -18,6 +18,10 @@ pub async fn execute_tools(
     updates: &Option<mpsc::UnboundedSender<AgentLoopEvent>>,
     hook: Option<&dyn crate::hooks::AgentHook>,
 ) -> SwarmResult<()> {
+    // Track active tool calls in state
+    state.active_tool_calls = tool_calls.clone();
+    state.last_execution_status = Some(format!("executing {} tool(s)", tool_calls.len()));
+
     let (reads, writes) = crate::tool_execution::partition_calls(tool_calls);
 
     // Parallel reads
@@ -145,6 +149,10 @@ pub async fn execute_tools(
             }
         }
     }
+
+    // Clear active tool calls after execution
+    state.active_tool_calls.clear();
+    state.last_execution_status = Some("completed".to_string());
 
     Ok(())
 }

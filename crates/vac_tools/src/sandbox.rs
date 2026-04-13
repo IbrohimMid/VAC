@@ -3,6 +3,38 @@ use tracing::info;
 
 use crate::error::ToolError;
 
+/// Sanitize shell command for dangerous patterns.
+/// Returns error if command contains injection patterns.
+pub fn sanitize_command(command: &str) -> Result<(), ToolError> {
+    // Block null bytes
+    if command.contains('\0') {
+        return Err(ToolError::WardenBlocked("null byte in command".into()));
+    }
+
+    // Block backtick substitution
+    if command.contains('`') {
+        return Err(ToolError::WardenBlocked("backtick substitution not allowed".into()));
+    }
+
+    // Block $() process substitution
+    if command.contains("$(") {
+        return Err(ToolError::WardenBlocked("process substitution $() not allowed".into()));
+    }
+
+    // Block command chaining operators (except when properly quoted)
+    let dangerous_ops = ["; ", "&&", "||", "| ", " &"];
+    for op in dangerous_ops {
+        if command.contains(op) {
+            return Err(ToolError::WardenBlocked(format!(
+                "command chaining '{}' not allowed",
+                op.trim()
+            )));
+        }
+    }
+
+    Ok(())
+}
+
 pub struct Sandbox {
     enabled: bool,
     working_dir: PathBuf,

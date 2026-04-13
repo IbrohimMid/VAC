@@ -50,6 +50,7 @@ pub struct ToolContext {
     pub session_id: uuid::Uuid,
     pub shm: Option<Arc<ShmArena>>,
     pub agent_zone: AgentZone,
+    pub privacy: Arc<RwLock<crate::PrivacyVault>>,
 }
 
 impl std::fmt::Debug for ToolContext {
@@ -58,7 +59,7 @@ impl std::fmt::Debug for ToolContext {
             .field("working_dir", &self.working_dir)
             .field("session_id", &self.session_id)
             .field("agent_zone", &self.agent_zone)
-            .finish()
+            .finish_non_exhaustive()
     }
 }
 
@@ -70,6 +71,7 @@ impl ToolContext {
             session_id: uuid::Uuid::new_v4(),
             shm: None,
             agent_zone: AgentZone::ParentAgent,
+            privacy: Arc::new(RwLock::new(crate::PrivacyVault::new())),
         }
     }
 
