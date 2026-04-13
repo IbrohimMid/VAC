@@ -12,6 +12,11 @@ use ratatui::{
 /// Main view function
 pub fn view(f: &mut Frame, state: &mut AppState) {
     let main_chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(75), Constraint::Percentage(25)])
+        .split(f.area());
+
+    let left_chunks = Layout::default()
         .direction(Direction::Vertical)
         .margin(1)
         .constraints([
@@ -19,16 +24,19 @@ pub fn view(f: &mut Frame, state: &mut AppState) {
             Constraint::Length(3),
             Constraint::Length(1),
         ])
-        .split(f.area());
+        .split(main_chunks[0]);
 
     // Render messages
-    render_messages(f, state, main_chunks[0]);
+    render_messages(f, state, left_chunks[0]);
 
     // Render input
-    render_input(f, state, main_chunks[1]);
+    render_input(f, state, left_chunks[1]);
 
     // Render status bar
-    render_status(f, state, main_chunks[2]);
+    render_status(f, state, left_chunks[2]);
+
+    // Render side panel
+    render_side_panel(f, state, main_chunks[1]);
 
     // Render overlays (command palette, dialogs)
     if state.show_command_palette {
@@ -219,6 +227,48 @@ fn render_shortcuts(f: &mut Frame, state: &mut AppState) {
         .block(Block::default().borders(Borders::ALL).title("Shortcuts (Esc to close)"));
     f.render_widget(list, area);
 }
+
+fn render_side_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
+    let mut lines = Vec::new();
+    
+    // Add run-state metadata
+    lines.push(Line::from(vec![
+        Span::styled("Session ID: ", Style::default().add_modifier(Modifier::BOLD)),
+        Span::raw(&state.session_id[..8]),
+    ]));
+    
+    if let Some(title) = &state.session_title {
+        lines.push(Line::from(vec![
+            Span::styled("Title: ", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(title),
+        ]));
+    }
+
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled("Active Tools:", Style::default().add_modifier(Modifier::BOLD))));
+    
+    if state.pending_tool_calls.is_empty() && state.approved_tools.is_empty() {
+        lines.push(Line::from(Span::styled("  None", Style::default().fg(Color::DarkGray))));
+    } else {
+        for call in &state.pending_tool_calls {
+            lines.push(Line::from(vec![
+                Span::styled("  [?] ", Style::default().fg(Color::Yellow)),
+                Span::raw(&call.function.name),
+            ]));
+        }
+        for call in &state.approved_tools {
+            lines.push(Line::from(vec![
+                Span::styled("  [✓] ", Style::default().fg(Color::Green)),
+                Span::raw(&call.function.name),
+            ]));
+        }
+    }
+
+    let widget = Paragraph::new(lines)
+        .block(Block::default().borders(Borders::ALL).title("Status & Tools"));
+    f.render_widget(widget, area);
+}
+
 
 fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
     let popup_layout = Layout::default()

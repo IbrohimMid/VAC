@@ -205,12 +205,16 @@ fn handle_input_event(
             InputEvent::DialogSelect => match state.dialog_selected {
                 0 => {
                     if let Some(tc) = state.dialog_command.take() {
+                        state.pending_tool_calls.retain(|c| c.id != tc.id);
+                        state.approved_tools.push(tc.clone());
                         let _ = output_tx.try_send(OutputEvent::AcceptTool(tc));
                     }
                     state.is_dialog_open = false;
                 }
                 1 => {
                     if let Some(tc) = state.dialog_command.take() {
+                        state.pending_tool_calls.retain(|c| c.id != tc.id);
+                        state.rejected_tools.push(tc.clone());
                         let _ = output_tx.try_send(OutputEvent::RejectTool(tc, false));
                     }
                     state.is_dialog_open = false;
@@ -221,12 +225,16 @@ fn handle_input_event(
             },
             InputEvent::ApproveTool => {
                 if let Some(tc) = state.dialog_command.take() {
+                    state.pending_tool_calls.retain(|c| c.id != tc.id);
+                    state.approved_tools.push(tc.clone());
                     let _ = output_tx.try_send(OutputEvent::AcceptTool(tc));
                 }
                 state.is_dialog_open = false;
             }
             InputEvent::RejectTool => {
                 if let Some(tc) = state.dialog_command.take() {
+                    state.pending_tool_calls.retain(|c| c.id != tc.id);
+                    state.rejected_tools.push(tc.clone());
                     let _ = output_tx.try_send(OutputEvent::RejectTool(tc, false));
                 }
                 state.is_dialog_open = false;
@@ -349,6 +357,8 @@ fn handle_backend_event(state: &mut AppState, event: InputEvent) {
             state.pending_tool_calls.push(tc);
         }
         InputEvent::ToolResult(result) => {
+            state.pending_tool_calls.retain(|c| c.id != result.call.id);
+            state.approved_tools.retain(|c| c.id != result.call.id);
             state.add_assistant_message(result.result);
         }
         _ => {}
