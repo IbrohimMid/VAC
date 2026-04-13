@@ -3,8 +3,6 @@
 mod commands;
 mod output;
 
-use vac_cli::tui;
-
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 use tracing_subscriber::{EnvFilter, fmt};
@@ -23,9 +21,6 @@ struct Cli {
     verbose: u8,
     #[arg(long, default_value = "text", global = true)]
     format: String,
-    /// Use TUI2 (transplanted from Stakpak)
-    #[arg(long, global = true)]
-    tui2: bool,
     #[command(subcommand)]
     command: Commands,
 }
@@ -96,9 +91,6 @@ enum Commands {
         #[command(subcommand)]
         action: RuntimeAction,
     },
-    /// Launch TUI2 (transplanted from Stakpak) for testing
-    #[cfg(feature = "tui2")]
-    Tui2,
 }
 
 #[derive(Subcommand)]
@@ -190,8 +182,6 @@ async fn main() -> anyhow::Result<()> {
             RuntimeAction::Jobs => commands::runtime::execute_jobs(project_root).await?,
             RuntimeAction::Start => commands::runtime::execute_start(project_root).await?,
         },
-        #[cfg(feature = "tui2")]
-        Commands::Tui2 => commands::tui2::execute().await?,
     }
 
     Ok(())

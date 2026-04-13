@@ -1,11 +1,11 @@
 //! Event Loop Module
 
-use crate::tui2::app::{AppState, AppStateOptions, InputEvent, LoadingOperation, OutputEvent};
-use crate::tui2::event::map_crossterm_event_to_input_event;
-use crate::tui2::services_minimal::helper_block::welcome_messages;
-use crate::tui2::terminal::TerminalGuard;
-use crate::tui2::view_minimal::view;
-use crate::tui2::Model;
+use crate::tui::app::{AppState, AppStateOptions, InputEvent, LoadingOperation, OutputEvent};
+use crate::tui::event::map_crossterm_event_to_input_event;
+use crate::tui::services_minimal::helper_block::welcome_messages;
+use crate::tui::terminal::TerminalGuard;
+use crate::tui::view_minimal::view;
+use crate::tui::Model;
 use crossterm::{
     event::{EnableBracketedPaste, EnableMouseCapture},
     execute,

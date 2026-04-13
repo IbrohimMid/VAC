@@ -2,7 +2,7 @@
 //!
 //! Bridges the Stakpak TUI shell with VAC's engine/runtime.
 
-use crate::tui2::adapter::types::*;
+use crate::tui::adapter::types::*;
 use tokio::sync::mpsc;
 use uuid::Uuid;
 

@@ -1,6 +1,6 @@
 //! View Module
 
-use crate::tui2::app::{AppState, HelperCommand, Message};
+use crate::tui::app::{AppState, HelperCommand, Message};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},

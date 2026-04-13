@@ -2,7 +2,7 @@
 //!
 //! Provides welcome messages and helper UI elements.
 
-use crate::tui2::app::{HelperCommand, CommandSource, Message};
+use crate::tui::app::{HelperCommand, CommandSource, Message};
 
 /// VAC ASCII logo
 const VAC_LOGO: &str = r#"
@@ -17,7 +17,7 @@ const VAC_LOGO: &str = r#"
 /// Generate welcome messages for TUI
 pub fn welcome_messages(
     version: Option<&str>,
-    _state: &crate::tui2::app::AppState,
+    _state: &crate::tui::app::AppState,
 ) -> Vec<Message> {
     let version_str = version.unwrap_or("unknown");
     vec![

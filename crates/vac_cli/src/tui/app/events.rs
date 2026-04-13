@@ -3,8 +3,8 @@
 use ratatui::style::Color;
 use uuid::Uuid;
 
-use crate::tui2::stub_types::*;
-use crate::tui2::app::{LoadingOperation, SessionInfo};
+use crate::tui::stub_types::*;
+use crate::tui::app::{LoadingOperation, SessionInfo};
 
 #[derive(Debug)]
 pub enum InputEvent {
@@ -20,7 +20,7 @@ pub enum InputEvent {
     EndLoadingOperation(LoadingOperation),
     Error(String),
     SetSessions(Vec<SessionInfo>),
-    SessionRestored { id: String, title: String, messages: Vec<crate::tui2::app::Message> },
+    SessionRestored { id: String, title: String, messages: Vec<crate::tui::app::Message> },
     
     // Input events
     InputChanged(char),

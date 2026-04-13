@@ -1,4 +1,4 @@
-use crate::tui2::app::InputEvent;
+use crate::tui::app::InputEvent;
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseEventKind};
 
 pub fn map_crossterm_event_to_input_event(event: Event) -> Option<InputEvent> {

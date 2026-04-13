@@ -2,11 +2,11 @@
 //!
 //! Handles message rendering and caching.
 
-use crate::tui2::app::Message;
+use crate::tui::app::Message;
 use ratatui::text::Line;
 
 /// Invalidate the message lines cache
-pub fn invalidate_message_lines_cache(_state: &mut crate::tui2::app::AppState) {
+pub fn invalidate_message_lines_cache(_state: &mut crate::tui::app::AppState) {
     // Stub - will be implemented when full services are activated
 }
 
