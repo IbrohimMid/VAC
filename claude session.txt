@@ -1,0 +1,910 @@
+╭─── Claude Code v2.1.92 ──────────────────────────────────────────────────────╮
+│                                        │ Tips for getting started            │
+│              Welcome back!             │ Run /init to create a CLAUDE.md fi… │
+│                                        │ ─────────────────────────────────── │
+│                 ▐▛███▜▌                │ Recent activity                     │
+│                ▝▜█████▛▘               │ No recent activity                  │
+│                  ▘▘ ▝▝                 │                                     │
+│                                        │                                     │
+│     Sonnet 4.6 · API Usage Billing     │                                     │
+│   ~/Documents/VAC/vastar-agentic-cli   │                                     │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+❯ anda bisa donor dari stakpak computer/tmp/vac-ui-donor/stakpak  :             
+                                                                                
+Berikut **plan lengkap final** yang saya sarankan untuk adopsi donor Stakpak ke 
+ VAC. Saya jadikan roadmap wave-based Anda sebagai baseline utama, bukan plan   
+high-level yang lebih abstrak tadi                                              
+                                                                                
+Plan ini sudah disesuaikan dengan keadaan repo sekarang:                        
+                                                                                
+* donor control-plane utama **sudah banyak landed**                             
+* sebagian hardening **sedang berjalan**                                        
+* `main` juga sudah bergerak lagi setelah `d6b49b1`, menyentuh `router.rs`,     
+`anthropic.rs`, `orchestrator.rs`, `semantic.rs`, `engine.rs`, dan TUI event    
+loop                                                                            
+                                                                                
+Jadi fokus plan ini adalah:                                                     
+                                                                                
+1. menyelesaikan wiring donor yang sudah ada,                                   
+2. mengonsolidasikan orchestrator/control-plane,                                
+3. baru setelah itu membuka resumability, guardrails, MCP/ACP, autopilot, dan   
+polish.                                                                         
+                                                                                
+---                                                                             
+                                                                                
+# Master Goal                                                                   
+                                                                                
+Membuat VAC menjadi:                                                            
+                                                                                
+**VIL-native autonomous development engine**                                    
+dengan:                                                                         
+                                                                                
+* semantic core tetap milik VIL/VAC                                             
+* control-plane reliability setara atau lebih baik dari Stakpak                 
+* resumability, approvals, cancellation, checkpoint, dan observability yang     
+matang                                                                          
+* interoperabilitas eksternal yang rapi tanpa mengorbankan identitas VAC        
+                                                                                
+---                                                                             
+                                                                                
+# Prinsip arsitektur                                                            
+                                                                                
+## Yang boleh didonor dari Stakpak                                              
+                                                                                
+* retry / backoff                                                               
+* hooks / intercept model                                                       
+* policy bridge / approval surface                                              
+* event envelope / observability                                                
+* checkpoint / resumability                                                     
+* cancellation / loop control                                                   
+* MCP/ACP transport dan interoperability                                        
+* autopilot / gateway mechanics                                                 
+* generic security guardrails                                                   
+                                                                                
+## Yang tidak boleh didonor mentah                                              
+                                                                                
+* semantic planner worldview                                                    
+* validator semantic core                                                       
+* VIL workflow/rule/expression source of truth                                  
+* canonical terminology VIL                                                     
+* archetype semantics                                                           
+* rulebook ordering yang menentukan VIL correctness                             
+                                                                                
+---                                                                             
+                                                                                
+# Prioritas eksekusi                                                            
+                                                                                
+## P0 — harus selesai dulu                                                      
+                                                                                
+* Wave 0                                                                        
+* Wave 1                                                                        
+                                                                                
+## P1 — sesudah P0 stabil                                                       
+                                                                                
+* Wave 2                                                                        
+* Wave 3                                                                        
+* Wave 7 parsial untuk reliability/security                                     
+                                                                                
+## P2 — jika P1 stabil                                                          
+                                                                                
+* Wave 4 audit                                                                  
+* Wave 4 adoption                                                               
+                                                                                
+## P3 — belakangan                                                              
+                                                                                
+* Wave 5                                                                        
+* Wave 6                                                                        
+                                                                                
+## P4 — paralel terus-menerus                                                   
+                                                                                
+* Wave 7 penuh                                                                  
+                                                                                
+---                                                                             
+                                                                                
+# Wave 0 — Hardening donor yang sudah landed                                    
+                                                                                
+Ini adalah wave yang **harus ditutup dulu** sebelum membuka donor besar baru.   
+                                                                                
+## Objective                                                                    
+                                                                                
+Menghidupkan semua modul donor yang sudah ada agar benar-benar masuk ke         
+execution path utama.                                                           
+                                                                                
+## Task W0.1 — Retry wiring                                                     
+                                                                                
+**Target files:**                                                               
+                                                                                
+* `crates/vil_llm/src/router.rs`                                                
+* `crates/vil_llm/src/retry.rs`                                                 
+                                                                                
+**Patch intent:**                                                               
+                                                                                
+* `LlmRouter::complete()` harus memakai retry policy                            
+* retryable status minimal:                                                     
+                                                                                
+  * 429                                                                         
+  * 502                                                                         
+  * 503                                                                         
+*                                                                               
+… +465 lines …                                                                  
+hardening                                                                       
+                                                                                
+## Objective                                                                    
+                                                                                
+Mengunci seluruh donor dari Stakpak agar menjadi bagian permanen VAC.           
+                                                                                
+## Task W7.1 — Swarm reliability tests                                          
+                                                                                
+* retry succeeds                                                                
+* retry exhausted                                                               
+* cancel interrupts loop                                                        
+* checkpoint roundtrip                                                          
+* resume recovers messages                                                      
+                                                                                
+## Task W7.2 — Hook/policy tests                                                
+                                                                                
+* hook deny                                                                     
+* policy bridge deny vs needs approval                                          
+* sandbox restriction                                                           
+* event emission                                                                
+                                                                                
+## Task W7.3 — Protocol tests                                                   
+                                                                                
+* MCP client/server lifecycle                                                   
+* ACP event translation                                                         
+* gateway delivery                                                              
+                                                                                
+## Task W7.4 — Security tests                                                   
+                                                                                
+* no secret leak to trace/transcript/checkpoint                                 
+* redaction stable on error paths                                               
+                                                                                
+## Task W7.5 — Golden flow test                                                 
+                                                                                
+Wajib ada satu integrasi besar:                                                 
+                                                                                
+* long run                                                                      
+* context reduced                                                               
+* approval required                                                             
+* cancel                                                                        
+* resume                                                                        
+* continue to completion                                                        
+                                                                                
+---                                                                             
+                                                                                
+# Urutan eksekusi yang saya sarankan                                            
+                                                                                
+## Batch A — sekarang                                                           
+                                                                                
+* selesaikan Wave 0                                                             
+* jangan campur dengan fitur baru besar                                         
+                                                                                
+## Batch B — segera setelah Wave 0 hijau                                        
+                                                                                
+* Wave 1                                                                        
+* Wave 7 parsial untuk reliability                                              
+                                                                                
+## Batch C                                                                      
+                                                                                
+* Wave 2                                                                        
+* Wave 3                                                                        
+* Wave 7 parsial untuk resumability/security                                    
+                                                                                
+## Batch D                                                                      
+                                                                                
+* Wave 4 audit                                                                  
+* putuskan adoption atau tidak                                                  
+                                                                                
+## Batch E                                                                      
+                                                                                
+* Wave 5                                                                        
+* Wave 6                                                                        
+* Wave 7 penuh                                                                  
+                                                                                
+---                                                                             
+                                                                                
+# Hal yang **tidak** jadi prioritas sekarang                                    
+                                                                                
+## 1. Tokenizer nyata untuk context budget                                      
+                                                                                
+Bukan sekarang. Estimator byte-based tetap cukup sampai control-plane stabil.   
+                                                                                
+## 2. Donor ulang arsitektur TUI besar                                          
+                                                                                
+Bukan sekarang. TUI cukup dipoles, bukan dimigrasi ulang.                       
+                                                                                
+## 3. Rewrite sandbox dari nol                                                  
+                                                                                
+Bukan sekarang. Hardening existing sandbox path saja.                           
+                                                                                
+---                                                                             
+                                                                                
+# Deliverable akhir yang harus Anda pegang                                      
+                                                                                
+Kalau plan ini dijalankan dengan benar, output akhirnya harus berupa:           
+                                                                                
+* swarm yang retry-able, cancel-able, checkpoint-able, resumable                
+* approval/hook/policy/event surface yang hidup penuh                           
+* secret-safe execution                                                         
+* control-plane yang rapi dan testable                                          
+* MCP/ACP adoption yang sadar gap, bukan donor liar                             
+* autopilot/gateway yang reuse control-plane yang sama                          
+* semantic core VAC tetap VIL-native                                            
+                                                                                
+---                                                                             
+                                                                                
+# Satu keputusan operasional yang saya sarankan                                 
+                                                                                
+Selagi agent sedang mengeksekusi hardening sekarang, siapkan **backlog          
+sesudahnya** dalam tiga paket:                                                  
+                                                                                
+## Paket 1                                                                      
+                                                                                
+* Wave 1 consolidation                                                          
+                                                                                
+## Paket 2                                                                      
+                                                                                
+* Wave 2 resumability                                                           
+                                                                                
+## Paket 3                                                                      
+                                                                                
+* Wave 3 security guardrails                                                    
+                                                                                
+Itu akan memberi jalur paling aman dan paling bernilai sebelum Anda membuka     
+MCP/ACP atau autopilot.                                                         
+                                                                                
+Kalau Anda mau, langkah berikutnya saya bisa turunkan plan ini menjadi          
+**checklist granular per wave dengan format task/target                         
+files/acceptance/reviewer checkpoint/risk notes**.                              
+
+● Let me explore the codebase and donor to understand the current state before
+  creating the execution plan.
+
+● 3 Explore agents finished (ctrl+o to expand)
+   ├─ Explore VAC codebase state · 34 tool uses · 44.6k tokens
+   │  ⎿  Done
+   ├─ Explore Stakpak donor code · 49 tool uses · 53.3k tokens
+   │  ⎿  Done
+   └─ Explore recent git changes · 27 tool uses · 43.9k tokens
+      ⎿  Done
+
+❯ mulai implementasi semua plan 
+
+● Good news from exploration: Wave 0 (H1-H8) is already 100% complete — all 8
+  hardening features are production-wired with 116 tests passing. The real work
+  starts at Wave 1.
+
+  Let me write the execution plan and get us moving.
+  ⎿  Interrupted · What should Claude do instead?
+
+❯ /effort                                                                       
+  ⎿  Effort level: auto (currently medium)
+
+❯ /effort max                                                                   
+  ⎿  Set effort level to max (this session only): Maximum capability with
+     deepest reasoning (Opus 4.6 only)
+
+❯ mulai dari wave 1 sampai selesai                                              
+
+● Let me read the critical files to build a precise implementation plan.
+
+  Read 5 files (ctrl+o to expand)
+
+● Now let me read the remaining critical files and understand the full
+  orchestrator structure, plus look at what Stakpak patterns we can adopt for
+  Waves 1-7.
+
+  Read 3 files (ctrl+o to expand)
+
+● Now let me look at the remaining files I need to understand - tool_execution,
+  context_budget, hooks, policy_bridge, and the Stakpak donor patterns for Waves
+   1-7.
+
+  Read 3 files (ctrl+o to expand)
+
+● Now let me check the Stakpak donor patterns for the specific things we need in
+   Waves 1-7.
+
+  Read 3 files (ctrl+o to expand)
+
+● Now let me look at the Stakpak resume flow and the CLI interactive to
+  understand what we need for Wave 2.
+
+  Searched for 1 pattern, read 2 files (ctrl+o to expand)
+
+● Now let me look at the CLI run and interactive commands to understand entry
+  points for resume flow.
+
+  Searched for 1 pattern, read 5 files (ctrl+o to expand)
+
+● Now let me check the Cargo.toml for existing dependencies and crate structure.
+
+  Searched for 1 pattern, read 3 files (ctrl+o to expand)
+
+● Now let me verify the build compiles before I start making changes.
+
+● Bash(cargo check 2>&1 | tail -30)
+  ⎿      |
+         = note: `#[warn(unused_variables)]` on by default
+     … +25 lines (ctrl+o to expand)
+
+● Good - compiles clean (only warnings, no errors). Now let me also run the
+  tests to make sure baseline is solid.
+
+● Bash(cargo test 2>&1 | tail -30)
+  ⎿     Doc-tests vil_metrics
+
+     running 0 tests
+     … +31 lines (ctrl+o to expand)
+  ⎿  (timeout 3m)
+
+● Bash(cargo test 2>&1 | grep -E "^(test result|running)" | head -30)
+  ⎿  running 14 tests
+     test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtere
+     d out; finished in 0.00s
+     … +21 lines (ctrl+o to expand)
+  ⎿  (timeout 3m)
+
+❯ anda langsung saja mulai implementasi setelah plan matang 
+
+● All 90 tests pass. I have a complete understanding of the codebase now. Let me
+   create the task list and start implementing Wave 1 through Wave 7.
+● Starting W1.1 - extracting AgentRunState from the orchestrator. Let me create
+  the new module.
+
+● Write(crates/vil_swarm/src/run_state.rs)
+  ⎿  Wrote 148 lines to crates/vil_swarm/src/run_state.rs
+       1 //! AgentRunState — consolidated mutable state for a single agen
+         t loop execution.
+       2 //! Extracted from orchestrator.rs to formalize the control-plan
+         e state contract.
+       3 
+       4 use crate::events::EventCollector;
+       5 use vil_llm::provider::Message;
+       6 
+       7 /// Consolidated mutable state for a single agent loop execution
+         .
+       8 ///
+       9 /// Every field that `execute_agent_loop` previously scattered a
+         cross separate
+      10 /// `&mut` parameters now lives here. This makes the pipeline au
+         ditable:
+     … +138 lines (ctrl+o to expand)
+
+● Now register the module in lib.rs and add exports:
+
+● Update(crates/vil_swarm/src/lib.rs)
+  ⎿  Added 1 line
+      17  pub mod orchestrator;
+      18  pub mod patterns;
+      19  pub mod protocol;
+      20 +pub mod run_state;                                             
+      21  pub mod sandbox;
+      22  pub mod semantic;
+      23  
+
+● Update(crates/vil_swarm/src/lib.rs)
+  ⎿  Added 1 line
+      28  pub use orchestrator::{AgentLoopEvent, ExternalDiagnosticContex
+          t, SubtaskResult, SwarmOrchestrator, VilProjectProfile, VilArch
+          etype};
+      29  pub use protocol::{ControlPayload, DataPayload, TriggerPayload,
+           VapMessage};
+      30  pub use sandbox::{SandboxHandle, SandboxMode, SandboxRegistry, 
+          SandboxStatus};
+      31 +pub use run_state::{AgentRunState, RunStage};                  
+      32  pub use semantic::{SemanticPlan, TaskSemanticKind};
+
+● Now refactor execute_agent_loop to use AgentRunState. This is the core of W1.1
+   — the orchestrator should take &mut AgentRunState instead of scattered &mut
+  params.
+
+● Update(crates/vil_swarm/src/orchestrator.rs)
+  ⎿  Added 15 lines, removed 17 lines
+      447  
+      448      async fn execute_agent_loop(
+      449          &self,
+      450 -        mut messages: Vec<Message>,                           
+      450 +        state: &mut crate::run_state::AgentRunState,          
+      451          tool_defs: Vec<ToolDefinition>,
+      452          updates: Option<mpsc::UnboundedSender<AgentLoopEvent>>
+           ,
+      453 -        total_tokens: &mut u64,                               
+      454 -        modified_files: &mut Vec<String>,                     
+      455 -        created_files: &mut Vec<String>,                      
+      453          context: &ToolContext,
+      454          llm_router: &Arc<vil_llm::LlmRouter>,
+      455          tool_router: &Arc<vac_tools::router::ToolRouter>,
+      459 -        cancel: Option<tokio_util::sync::CancellationToken>,  
+      456      ) -> SwarmResult<String> {
+      461 -        let mut trim_boundary: usize = 0;                     
+      462 -        let mut iterations: usize = 0;                        
+      463 -        let mut collector = crate::events::EventCollector::new
+          -();                                                           
+      457          loop {
+      465 -            if cancel.as_ref().is_some_and(|c| c.is_cancelled(
+          -)) {                                                          
+      458 +            // Step 1: Cancellation check                     
+      459 +            if state.is_cancelled() {                         
+      460 +                state.stage = crate::run_state::RunStage::Canc
+          +elled;                                                        
+      461                  return Err(SwarmError::Orchestration("Agent lo
+           op cancelled".into()));
+      462              }
+      468 -            if let Err(e) = crate::loop_control::check_iterati
+          -on_cap(iterations) {                                          
+      469 -                warn!(iterations, "Max iterations reached, ter
+          -minating agent loop");                                        
+      463 +            // Step 2: Iteration cap check                    
+      464 +            if let Err(e) = crate::loop_control::check_iterati
+          +on_cap(state.iterations) {                                    
+      465 +                warn!(iterations = state.iterations, "Max iter
+          +ations reached, terminating agent loop");                     
+      466                  return Err(e);
+      467              }
+      472 -            iterations += 1;                                  
+      473 -            collector.push(crate::events::AgentEvent::Iteratio
+          -nStarted { iteration: iterations });                          
+      474 -            let prev_boundary = trim_boundary;                
+      475 -            let reduced = crate::context_budget::reduce_messag
+          -es(messages.clone(), &mut trim_boundary);                     
+      476 -            if trim_boundary > prev_boundary {                
+      477 -                collector.context_reduced(messages.len(), redu
+          -ced.len(), trim_boundary);                                    
+      468 +            state.iterations += 1;                            
+      469 +            state.collector.push(crate::events::AgentEvent::It
+          +erationStarted { iteration: state.iterations });              
+      470 +            // Step 3: Context reduction                      
+      471 +            let prev_boundary = state.trim_boundary;          
+      472 +            let reduced = crate::context_budget::reduce_messag
+          +es(state.messages.clone(), &mut state.trim_boundary);         
+      473 +            if state.trim_boundary > prev_boundary {          
+      474 +                state.collector.context_reduced(state.messages
+          +.len(), reduced.len(), state.trim_boundary);                  
+      475              }
+      476 +            // Step 4: Build LLM request                      
+      477              let request = LlmRequest::new(reduced.clone())
+      478                  .with_max_tokens(4000)
+      479                  .with_tools(tool_defs.clone());
+
+● Now update the rest of the function body to use state.messages,
+  state.total_tokens, etc. Let me read the current state of the file after the
+  edit to find the right strings:
+
+  Read 1 file (ctrl+o to expand)
+
+● Update(crates/vil_swarm/src/orchestrator.rs)
+  ⎿  Added 1 line, removed 1 line
+      543                  tool_calls: stream_tool_calls,
+      544              };
+      545  
+      546 -            *total_tokens += stream_usage.total_tokens;       
+      546 +            state.total_tokens += stream_usage.total_tokens;  
+      547  
+      548              if let Some(tx) = &updates {
+      549                  let _ = tx.send(AgentLoopEvent::ModelResponse 
+           {
+
+● Now update the Stop/ToolUse/MaxTokens branches that reference messages,
+  modified_files, created_files, total_tokens:
+
+  Read 1 file (ctrl+o to expand)
+● Now I need to replace all occurrences of bare messages, modified_files,
+  created_files, total_tokens, collector, iterations, trim_boundary with state.
+  prefix in this function. Let me do this systematically:
+
+● Update(crates/vil_swarm/src/orchestrator.rs)
+  ⎿  Added 4 lines, removed 3 lines
+      559                              tx.send(AgentLoopEvent::Status("Pr
+           eparing final answer".to_string()));
+      560                      }
+      561                      info!("Agent loop completed successfully (
+           Stop reason)");
+      562 -                    collector.push(crate::events::AgentEvent::
+          -LoopCompleted {                                               
+      563 -                        total_iterations: iterations,         
+      564 -                        total_tokens: *total_tokens,          
+      562 +                    state.collector.push(crate::events::AgentE
+          +vent::LoopCompleted {                                         
+      563 +                        total_iterations: state.iterations,   
+      564 +                        total_tokens: state.total_tokens,     
+      565                      });
+      566 +                    state.stage = crate::run_state::RunStage::
+          +Completed;                                                    
+      567                      return Ok(response.content);
+      568                  }
+      569                  vil_llm::provider::FinishReason::ToolUse => {
+
+● Update(crates/vil_swarm/src/orchestrator.rs)
+  ⎿  Added 1 line, removed 1 line
+      568                  }
+      569                  vil_llm::provider::FinishReason::ToolUse => {
+      570                      info!(count = response.tool_calls.len(), "
+           Received tool calls");
+      571 -                    messages.push(Message::assistant_with_tool
+          -_calls(                                                       
+      571 +                    state.messages.push(Message::assistant_wit
+          +h_tool_calls(                                                 
+      572                          response.content.clone(),
+      573                          response.tool_calls.clone(),
+      574                      ));
+
+● Now replace all messages.push(Message::tool( with
+  state.messages.push(Message::tool( in the parallel reads section:
+
+● Update(crates/vil_swarm/src/orchestrator.rs)
+  ⎿  Added 2 lines, removed 2 lines
+      620                                              success: true,
+      621                                          });
+      622                                      }
+      623 -                                    messages.push(Message::too
+          -l(call.name, call.id, result_str));                           
+      623 +                                    state.messages.push(Messag
+          +e::tool(call.name, call.id, result_str));                     
+      624                                  }
+      625                                  Err(e) => {
+      626                                      error!(tool = %call.name, 
+           error = %e, "Parallel tool failed");
+     ...
+      632                                              success: false,
+      633                                          });
+      634                                      }
+      635 -                                    messages.push(Message::too
+          -l(                                                            
+      635 +                                    state.messages.push(Messag
+          +e::tool(                                                      
+      636                                          call.name,
+      637                                          call.id,
+      638                                          format!("Error: {}", e
+           ),
+
+● Now the serial writes section - hook denial message push:
+
+● Update(crates/vil_swarm/src/orchestrator.rs)
+  ⎿  Added 1 line, removed 1 line
+      654                                      content: format!("Denied: 
+           {}", reason), success: false,
+      655                                  });
+      656                              }
+      657 -                            messages.push(Message::tool(call.n
+          -ame, call.id, format!("Denied: {}", reason)));                
+      657 +                            state.messages.push(Message::tool(
+          +call.name, call.id, format!("Denied: {}", reason)));          
+      658                              continue;
+      659                          }
+      660                          // H3: Policy is enforced inside tool_
+           router.route() via PolicyEngine.
+
+● Now the file tracking and tool result message push in serial writes:
+
+● Update(crates/vil_swarm/src/orchestrator.rs)
+  ⎿  Added 4 lines, removed 6 lines
+      696                                              let is_create = ca
+           ll.name == "file_write"
+      697                                                  && result_str.
+           contains("\"created\":true");
+      698                                              if is_create {
+      699 -                                                if !created_fi
+          -les.contains(&path) {                                         
+      700 -                                                    created_fi
+          -les.push(path);                                               
+      701 -                                                }             
+      702 -                                            } else if !modifie
+          -d_files.contains(&path) {                                     
+      703 -                                                modified_files
+          -.push(path);                                                  
+      699 +                                                state.record_c
+          +reated(path);                                                 
+      700 +                                            } else {          
+      701 +                                                state.record_m
+          +odified(path);                                                
+      702                                              }
+      703                                          }
+      704                                      }
+      705                                  }
+      706  
+      709 -                                messages.push(Message {       
+      707 +                                state.messages.push(Message { 
+      708                                      role: Role::Tool,
+      709                                      content: result_str,
+      710                                      name: Some(call.name),
+
+● Now the error path in serial writes and the MaxTokens branch:
+
+● Update(crates/vil_swarm/src/orchestrator.rs)
+  ⎿  Added 3 lines, removed 3 lines
+      722                                          success: false,
+      723                                      });
+      724                                  }
+      725 -                                messages.push(Message::tool(  
+      725 +                                state.messages.push(Message::t
+          +ool(                                                          
+      726                                      call.name,
+      727                                      call.id,
+      728                                      format!("Error: {}", e),
+     ...
+      737                  }
+      738                  vil_llm::provider::FinishReason::MaxTokens => 
+           {
+      739                      warn!("Context window limit reached, apply
+           ing emergency context reduction");
+      740 -                    trim_boundary = crate::loop_control::emerg
+          -ency_trim_boundary(messages.len(), trim_boundary);            
+      741 -                    info!(trim_boundary, "Context budget emerg
+          -ency: trim_boundary advanced");                               
+      740 +                    state.trim_boundary = crate::loop_control:
+          +:emergency_trim_boundary(state.messages.len(), state.trim_boun
+          +dary);                                                        
+      741 +                    info!(trim_boundary = state.trim_boundary,
+          + "Context budget emergency: trim_boundary advanced");         
+      742                  }
+      743                  _ => {
+      744                      warn!(reason = ?response.finish_reason, "U
+           nknown finish reason, terminating loop");
+
+● Now update all the callers of execute_agent_loop. First,
+  spawn_subtask_sandboxed:
+
+● Update(crates/vil_swarm/src/orchestrator.rs)
+  ⎿  Added 7 lines, removed 10 lines
+      235          let tool_defs = crate::subagent::build_tool_defs(tool_
+           router.registry()).await;
+      236          let context = crate::subagent::build_sandbox_context(s
+           andbox.overlay_dir.clone());
+      237  
+      238 -        let mut total_tokens = 0u64;                          
+      239 -        let mut modified_files = Vec::new();                  
+      240 -        let mut created_files = Vec::new();                   
+      238 +        let mut state = crate::run_state::AgentRunState::new(m
+          +essages, None);                                               
+      239  
+      240          let result = self.execute_agent_loop(
+      243 -            messages, tool_defs, None,                        
+      244 -            &mut total_tokens, &mut modified_files, &mut creat
+          -ed_files,                                                     
+      245 -            &context, llm_router, tool_router, None,          
+      241 +            &mut state, tool_defs, None,                      
+      242 +            &context, llm_router, tool_router,                
+      243          ).await;
+      244  
+      245          match result {
+     ...
+      249                  Ok(SubtaskResult {
+      250                      role,
+      251                      summary,
+      255 -                    modified_files: patch.as_ref().map(|p| p.m
+          -odified_files.clone()).unwrap_or(modified_files),             
+      256 -                    created_files: patch.as_ref().map(|p| p.cr
+          -eated_files.clone()).unwrap_or(created_files),                
+      257 -                    tokens_used: total_tokens,                
+      252 +                    modified_files: patch.as_ref().map(|p| p.m
+          +odified_files.clone()).unwrap_or(state.modified_files),       
+      253 +                    created_files: patch.as_ref().map(|p| p.cr
+          +eated_files.clone()).unwrap_or(state.created_files),          
+      254 +                    tokens_used: state.total_tokens,          
+      255                      success: true,
+      256                      error: None,
+      257                  })
+      258              }
+      259              Err(e) => {
+      260                  self.sandbox_registry.fail(sandbox_id, e.to_st
+           ring()).await;
+      264 -                Ok(SubtaskResult { role, summary: String::new(
+          -), modified_files, created_files, tokens_used: total_tokens, s
+          -uccess: false, error: Some(e.to_string()) })                  
+      261 +                Ok(SubtaskResult { role, summary: String::new(
+          +), modified_files: state.modified_files, created_files: state.
+          +created_files, tokens_used: state.total_tokens, success: false
+          +, error: Some(e.to_string()) })                               
+      262              }
+      263          }
+      264      }
+
+● Now update spawn_subtask:
+
+● Update(crates/vil_swarm/src/orchestrator.rs)
+  ⎿  Added 8 lines, removed 14 lines
+      288          let messages = crate::subagent::build_subagent_message
+           s(&role, task_description);
+      289          let tool_defs = crate::subagent::build_tool_defs(tool_
+           router.registry()).await;
+      290          let context = crate::subagent::build_parent_context(st
+           d::path::PathBuf::from("."));
+      291 -        let mut total_tokens = 0u64;                          
+      292 -        let mut modified_files = Vec::new();                  
+      293 -        let mut created_files = Vec::new();                   
+      291 +        let mut state = crate::run_state::AgentRunState::new(m
+          +essages, None);                                               
+      292  
+      293          let result = self.execute_agent_loop(
+      296 -            messages,                                         
+      294 +            &mut state,                                       
+      295              tool_defs,
+      296              None,
+      299 -            &mut total_tokens,                                
+      300 -            &mut modified_files,                              
+      301 -            &mut created_files,                               
+      297              &context,
+      298              llm_router,
+      299              tool_router,
+      305 -            None,                                             
+      300          ).await;
+      301  
+      302          match result {
+     ...
+      305                  Ok(SubtaskResult {
+      306                      role,
+      307                      summary,
+      314 -                    modified_files,                           
+      315 -                    created_files,                            
+      316 -                    tokens_used: total_tokens,                
+      308 +                    modified_files: state.modified_files,     
+      309 +                    created_files: state.created_files,       
+      310 +                    tokens_used: state.total_tokens,          
+      311                      success: true,
+      312                      error: None,
+      313                  })
+     ...
+      317                  Ok(SubtaskResult {
+      318                      role,
+      319                      summary: String::new(),
+      326 -                    modified_files,                           
+      327 -                    created_files,                            
+      328 -                    tokens_used: total_tokens,                
+      320 +                    modified_files: state.modified_files,     
+      321 +                    created_files: state.created_files,       
+      322 +                    tokens_used: state.total_tokens,          
+      323                      success: false,
+      324                      error: Some(e.to_string()),
+      325                  })
+
+● Now update agent_loop_with_context — the main entry point:
+
+  Read 1 file (ctrl+o to expand)
+
+● Update(crates/vil_swarm/src/orchestrator.rs)
+  ⎿  Added 4 lines, removed 9 lines
+      766              .as_ref()
+      767              .ok_or_else(|| SwarmError::Orchestration("Tool rou
+           ter not initialized".into()))?;
+      768  
+      769 -        let mut total_tokens = 0u64;                          
+      770 -        let mut modified_files = Vec::new();                  
+      771 -        let mut created_files = Vec::new();                   
+      772 -                                                              
+      769          let root = project_root.unwrap_or_else(|| std::path::P
+           athBuf::from("."));
+      770          let mut context = ToolContext::new(root);
+      771          if let Some(sid) = session_id {
+     ...
+      790              Message::user(task_description.to_string()),
+      791          ];
+      792  
+      793 +        let mut state = crate::run_state::AgentRunState::new(p
+          +lanner_messages, cancel.clone());                             
+      794 +        state.stage = crate::run_state::RunStage::Planner;    
+      795 +                                                              
+      796          let plan_output = self
+      797              .execute_agent_loop(
+      799 -                planner_messages,                             
+      798 +                &mut state,                                   
+      799                  tool_defs.clone(), // Planner needs access to 
+           vil_knowledge
+      800                  updates.clone(),
+      802 -                &mut total_tokens,                            
+      803 -                &mut modified_files,                          
+      804 -                &mut created_files,                           
+      801                  &context,
+      802                  llm_router,
+      803                  tool_router,
+      808 -                cancel.clone(),                               
+      804              )
+      805              .await?;
+      806          // strict_mode: if planner_gate is active (strict-vil 
+           profile), ParseFailed = hard stop
+
+● Now update the coder stage call and the return:
+
+● Update(crates/vil_swarm/src/orchestrator.rs)
+  ⎿  Added 11 lines, removed 9 lines
+      868              Self::coder_system_prompt()
+      869          };
+      870  
+      871 +        // Reset state for coder stage — keep tokens/files, re
+          +place messages                                                
+      872          let coder_messages = vec![
+      873              Message::system(coder_prompt),
+      874              Message::user(format!("Task: {}\n\n{}", task_descr
+           iption, plan_context)),
+      875          ];
+      876 +        state.messages = coder_messages;                      
+      877 +        state.trim_boundary = 0;                              
+      878 +        state.iterations = 0;                                 
+      879 +        state.stage = crate::run_state::RunStage::Coder;      
+      880 +        state.cancel = cancel;                                
+      881  
+      882          let final_output = self
+      883              .execute_agent_loop(
+      878 -                coder_messages,                               
+      884 +                &mut state,                                   
+      885                  tool_defs,
+      886                  updates,
+      881 -                &mut total_tokens,                            
+      882 -                &mut modified_files,                          
+      883 -                &mut created_files,                           
+      887                  &context,
+      888                  llm_router,
+      889                  tool_router,
+      887 -                cancel,                                       
+      890              )
+      891              .await?;
+      892  
+      893          Ok(ExecutionResult {
+      894              summary: final_output,
+      893 -            modified_files,                                   
+      894 -            created_files,                                    
+      895 -            total_tokens_used: total_tokens,                  
+      895 +            modified_files: state.modified_files,             
+      896 +            created_files: state.created_files,               
+      897 +            total_tokens_used: state.total_tokens,            
+      898              agent_contributions: vec![AgentContribution {
+      899                  agent_id: "vil-native-agent".to_string(),
+      900                  agent_role: "SemanticEngineer".to_string(),
+      901                  actions: Vec::new(),
+      900 -                tokens_used: total_tokens,                    
+      902 +                tokens_used: state.total_tokens,              
+      903              }],
+      904          })
+      905      }
+
+● Now let's compile and test:
+
+● Bash(cargo check 2>&1 | grep -E "^error" | head -20)
+  ⎿  (No output)
+  ⎿  (timeout 2m)
+
+● No errors. Let's run the tests:
+
+● Bash(cargo test 2>&1 | grep -E "^(test result|running|FAILED)" | head -30)
+  ⎿  running 14 tests
+     test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtere
+     d out; finished in 0.00s
+     … +21 lines (ctrl+o to expand)
+  ⎿  (timeout 3m)
+
+● All tests pass including the new run_state tests. W1.1 is complete.
+● Now W1.2 — extract the stream processing into a dedicated module. The stream
+  processing logic (lines ~496-536 in orchestrator) is a self-contained unit
+  that should be its own function.
+
+● Write(crates/vil_swarm/src/stream_processor.rs)
+  ⎿  Wrote 91 lines to crates/vil_swarm/src/stream_processor.rs
+       1 //! Stream processor — reconstructs LlmResponse from SSE stream 
+         chunks.
+       2 //! Extracted from orchestrator.rs for pipeline clarity.
+       3 
+       4 use tokio::sync::mpsc;
+       5 use vil_llm::provider::{
+       6     FinishReason, LlmResponse, StreamChunk, TokenUsage, ToolCall
+         ,
+       7 };
+       8 
+       9 use crate::error::{SwarmError, SwarmResult};
+      10 use crate::orchestrator::AgentLoopEvent;
+     … +81 lines (ctrl+o to expand)
+  ⎿  API Error: 400 You have exceeded your daily token limit. You can resume at 
+     2026-04-14 00:00 UTC.
+
+✻ Sautéed for 6m 36s
+
+❯ /cost                                                                         
+  ⎿  Total cost:            $16.98
+     Total duration (API):  13m 11s
+     Total duration (wall): 1h 17m 59s
+     Total code changes:    304 lines added, 76 lines removed
+     Usage by model:
+         claude-haiku-4-5:  207.4k input, 26.3k output, 3.0m cache read, 0 cache
+      write ($0.63)
+          claude-opus-4-6:  1.3m input, 17.3k output, 19.2m cache read, 0 cache 
+     write ($16.35)

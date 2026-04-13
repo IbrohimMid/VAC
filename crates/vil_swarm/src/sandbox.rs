@@ -48,6 +48,46 @@ impl Default for SandboxSpec {
     }
 }
 
+impl SandboxSpec {
+    /// Check if a tool is allowed by this sandbox spec.
+    pub fn is_tool_allowed(&self, tool_name: &str) -> bool {
+        // Explicit deny takes precedence
+        if self.denied_tools.contains(&tool_name.to_string()) {
+            return false;
+        }
+        
+        // If allowed_tools is empty, allow all (except denied)
+        if self.allowed_tools.is_empty() {
+            return true;
+        }
+        
+        // Otherwise, must be in allowed list
+        self.allowed_tools.contains(&tool_name.to_string())
+    }
+    
+    /// Create a restrictive sandbox spec (read-only tools only).
+    pub fn restrictive() -> Self {
+        Self {
+            mode: SandboxMode::Ephemeral,
+            working_dir: PathBuf::from("."),
+            mount_project_readonly: true,
+            allow_shell: false,
+            max_runtime_secs: 180,
+            allowed_tools: vec![
+                "file_read".to_string(),
+                "glob".to_string(),
+                "grep".to_string(),
+                "vil_knowledge".to_string(),
+            ],
+            denied_tools: vec![
+                "bash".to_string(),
+                "file_write".to_string(),
+                "file_edit".to_string(),
+            ],
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SandboxPatchResult {
     pub created_files: Vec<String>,
@@ -255,5 +295,50 @@ impl SandboxRegistry {
             }
         }
         tracing::info!("All sandboxes torn down");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sandbox_allows_all_when_empty() {
+        let spec = SandboxSpec::default();
+        assert!(spec.is_tool_allowed("file_read"));
+        assert!(spec.is_tool_allowed("bash"));
+    }
+
+    #[test]
+    fn sandbox_respects_denied_tools() {
+        let mut spec = SandboxSpec::default();
+        spec.denied_tools.push("bash".to_string());
+        assert!(!spec.is_tool_allowed("bash"));
+        assert!(spec.is_tool_allowed("file_read"));
+    }
+
+    #[test]
+    fn sandbox_respects_allowed_tools() {
+        let mut spec = SandboxSpec::default();
+        spec.allowed_tools.push("file_read".to_string());
+        assert!(spec.is_tool_allowed("file_read"));
+        assert!(!spec.is_tool_allowed("bash"));
+    }
+
+    #[test]
+    fn sandbox_deny_overrides_allow() {
+        let mut spec = SandboxSpec::default();
+        spec.allowed_tools.push("bash".to_string());
+        spec.denied_tools.push("bash".to_string());
+        assert!(!spec.is_tool_allowed("bash"));
+    }
+
+    #[test]
+    fn restrictive_sandbox_blocks_writes() {
+        let spec = SandboxSpec::restrictive();
+        assert!(spec.is_tool_allowed("file_read"));
+        assert!(spec.is_tool_allowed("glob"));
+        assert!(!spec.is_tool_allowed("file_write"));
+        assert!(!spec.is_tool_allowed("bash"));
     }
 }

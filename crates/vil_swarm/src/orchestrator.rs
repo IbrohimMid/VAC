@@ -235,14 +235,11 @@ impl SwarmOrchestrator {
         let tool_defs = crate::subagent::build_tool_defs(tool_router.registry()).await;
         let context = crate::subagent::build_sandbox_context(sandbox.overlay_dir.clone());
 
-        let mut total_tokens = 0u64;
-        let mut modified_files = Vec::new();
-        let mut created_files = Vec::new();
+        let mut state = crate::run_state::AgentRunState::new(messages, None);
 
         let result = self.execute_agent_loop(
-            messages, tool_defs, None,
-            &mut total_tokens, &mut modified_files, &mut created_files,
-            &context, llm_router, tool_router, None,
+            &mut state, tool_defs, None,
+            &context, llm_router, tool_router,
         ).await;
 
         match result {
@@ -252,16 +249,16 @@ impl SwarmOrchestrator {
                 Ok(SubtaskResult {
                     role,
                     summary,
-                    modified_files: patch.as_ref().map(|p| p.modified_files.clone()).unwrap_or(modified_files),
-                    created_files: patch.as_ref().map(|p| p.created_files.clone()).unwrap_or(created_files),
-                    tokens_used: total_tokens,
+                    modified_files: patch.as_ref().map(|p| p.modified_files.clone()).unwrap_or(state.modified_files),
+                    created_files: patch.as_ref().map(|p| p.created_files.clone()).unwrap_or(state.created_files),
+                    tokens_used: state.total_tokens,
                     success: true,
                     error: None,
                 })
             }
             Err(e) => {
                 self.sandbox_registry.fail(sandbox_id, e.to_string()).await;
-                Ok(SubtaskResult { role, summary: String::new(), modified_files, created_files, tokens_used: total_tokens, success: false, error: Some(e.to_string()) })
+                Ok(SubtaskResult { role, summary: String::new(), modified_files: state.modified_files, created_files: state.created_files, tokens_used: state.total_tokens, success: false, error: Some(e.to_string()) })
             }
         }
     }
@@ -291,21 +288,15 @@ impl SwarmOrchestrator {
         let messages = crate::subagent::build_subagent_messages(&role, task_description);
         let tool_defs = crate::subagent::build_tool_defs(tool_router.registry()).await;
         let context = crate::subagent::build_parent_context(std::path::PathBuf::from("."));
-        let mut total_tokens = 0u64;
-        let mut modified_files = Vec::new();
-        let mut created_files = Vec::new();
+        let mut state = crate::run_state::AgentRunState::new(messages, None);
 
         let result = self.execute_agent_loop(
-            messages,
+            &mut state,
             tool_defs,
             None,
-            &mut total_tokens,
-            &mut modified_files,
-            &mut created_files,
             &context,
             llm_router,
             tool_router,
-            None,
         ).await;
 
         match result {
@@ -314,9 +305,9 @@ impl SwarmOrchestrator {
                 Ok(SubtaskResult {
                     role,
                     summary,
-                    modified_files,
-                    created_files,
-                    tokens_used: total_tokens,
+                    modified_files: state.modified_files,
+                    created_files: state.created_files,
+                    tokens_used: state.total_tokens,
                     success: true,
                     error: None,
                 })
@@ -326,9 +317,9 @@ impl SwarmOrchestrator {
                 Ok(SubtaskResult {
                     role,
                     summary: String::new(),
-                    modified_files,
-                    created_files,
-                    tokens_used: total_tokens,
+                    modified_files: state.modified_files,
+                    created_files: state.created_files,
+                    tokens_used: state.total_tokens,
                     success: false,
                     error: Some(e.to_string()),
                 })
@@ -447,35 +438,33 @@ Rules:
 
     async fn execute_agent_loop(
         &self,
-        mut messages: Vec<Message>,
+        state: &mut crate::run_state::AgentRunState,
         tool_defs: Vec<ToolDefinition>,
         updates: Option<mpsc::UnboundedSender<AgentLoopEvent>>,
-        total_tokens: &mut u64,
-        modified_files: &mut Vec<String>,
-        created_files: &mut Vec<String>,
         context: &ToolContext,
         llm_router: &Arc<vil_llm::LlmRouter>,
         tool_router: &Arc<vac_tools::router::ToolRouter>,
-        cancel: Option<tokio_util::sync::CancellationToken>,
     ) -> SwarmResult<String> {
-        let mut trim_boundary: usize = 0;
-        let mut iterations: usize = 0;
-        let mut collector = crate::events::EventCollector::new();
         loop {
-            if cancel.as_ref().is_some_and(|c| c.is_cancelled()) {
+            // Step 1: Cancellation check
+            if state.is_cancelled() {
+                state.stage = crate::run_state::RunStage::Cancelled;
                 return Err(SwarmError::Orchestration("Agent loop cancelled".into()));
             }
-            if let Err(e) = crate::loop_control::check_iteration_cap(iterations) {
-                warn!(iterations, "Max iterations reached, terminating agent loop");
+            // Step 2: Iteration cap check
+            if let Err(e) = crate::loop_control::check_iteration_cap(state.iterations) {
+                warn!(iterations = state.iterations, "Max iterations reached, terminating agent loop");
                 return Err(e);
             }
-            iterations += 1;
-            collector.push(crate::events::AgentEvent::IterationStarted { iteration: iterations });
-            let prev_boundary = trim_boundary;
-            let reduced = crate::context_budget::reduce_messages(messages.clone(), &mut trim_boundary);
-            if trim_boundary > prev_boundary {
-                collector.context_reduced(messages.len(), reduced.len(), trim_boundary);
+            state.iterations += 1;
+            state.collector.push(crate::events::AgentEvent::IterationStarted { iteration: state.iterations });
+            // Step 3: Context reduction
+            let prev_boundary = state.trim_boundary;
+            let reduced = crate::context_budget::reduce_messages(state.messages.clone(), &mut state.trim_boundary);
+            if state.trim_boundary > prev_boundary {
+                state.collector.context_reduced(state.messages.len(), reduced.len(), state.trim_boundary);
             }
+            // Step 4: Build LLM request
             let request = LlmRequest::new(reduced.clone())
                 .with_max_tokens(4000)
                 .with_tools(tool_defs.clone());
@@ -489,63 +478,15 @@ Rules:
                 });
             }
 
-            // Use streaming for real-time AssistantChunk delivery.
-            let mut rx = llm_router
+            // Step 5: Stream processing
+            let rx = llm_router
                 .stream(&request)
                 .await
                 .map_err(|e| SwarmError::Orchestration(format!("LLM error: {}", e)))?;
 
-            let mut full_content = String::new();
-            let mut stream_tool_calls: Vec<vil_llm::provider::ToolCall> = Vec::new();
-            let mut tool_args_buf: std::collections::HashMap<String, (String, String)> = std::collections::HashMap::new();
-            let mut stream_usage = vil_llm::provider::TokenUsage::default();
-            let mut stream_finish = vil_llm::provider::FinishReason::Stop;
-
-            while let Some(chunk) = rx.recv().await {
-                match chunk {
-                    vil_llm::provider::StreamChunk::Text(text) => {
-                        full_content.push_str(&text);
-                        if let Some(tx) = &updates {
-                            let _ = tx.send(AgentLoopEvent::AssistantChunk(text));
-                        }
-                    }
-                    vil_llm::provider::StreamChunk::ToolCallStart { id, name } => {
-                        tool_args_buf.insert(id, (name, String::new()));
-                    }
-                    vil_llm::provider::StreamChunk::ToolCallDelta { id, arguments_delta } => {
-                        if let Some((_, args)) = tool_args_buf.get_mut(&id) {
-                            args.push_str(&arguments_delta);
-                        }
-                    }
-                    vil_llm::provider::StreamChunk::Done { usage, finish_reason } => {
-                        stream_usage = usage;
-                        stream_finish = finish_reason;
-                    }
-                    vil_llm::provider::StreamChunk::Error(e) => {
-                        return Err(SwarmError::Orchestration(format!("LLM stream error: {}", e)));
-                    }
-                }
-            }
-
-            for (id, (name, args_str)) in tool_args_buf {
-                let arguments = serde_json::from_str(&args_str)
-                    .unwrap_or_else(|_| serde_json::json!({"raw": args_str}));
-                stream_tool_calls.push(vil_llm::provider::ToolCall { id, name, arguments });
-            }
-            // Fallback: if SSE didn't provide finish_reason, infer from tool_calls presence
-            if stream_finish == vil_llm::provider::FinishReason::Stop && !stream_tool_calls.is_empty() {
-                stream_finish = vil_llm::provider::FinishReason::ToolUse;
-            }
-
-            let response = vil_llm::provider::LlmResponse {
-                content: full_content,
-                model: std::env::var("KILO_MODEL").unwrap_or_else(|_| "kilo-auto/free".to_string()),
-                finish_reason: stream_finish,
-                usage: stream_usage.clone(),
-                tool_calls: stream_tool_calls,
-            };
-
-            *total_tokens += stream_usage.total_tokens;
+            let stream_result = crate::stream_processor::process_stream(rx, &updates).await?;
+            let response = stream_result.response;
+            state.total_tokens += response.usage.total_tokens;
 
             if let Some(tx) = &updates {
                 let _ = tx.send(AgentLoopEvent::ModelResponse {
@@ -561,15 +502,16 @@ Rules:
                             tx.send(AgentLoopEvent::Status("Preparing final answer".to_string()));
                     }
                     info!("Agent loop completed successfully (Stop reason)");
-                    collector.push(crate::events::AgentEvent::LoopCompleted {
-                        total_iterations: iterations,
-                        total_tokens: *total_tokens,
+                    state.collector.push(crate::events::AgentEvent::LoopCompleted {
+                        total_iterations: state.iterations,
+                        total_tokens: state.total_tokens,
                     });
+                    state.stage = crate::run_state::RunStage::Completed;
                     return Ok(response.content);
                 }
                 vil_llm::provider::FinishReason::ToolUse => {
                     info!(count = response.tool_calls.len(), "Received tool calls");
-                    messages.push(Message::assistant_with_tool_calls(
+                    state.messages.push(Message::assistant_with_tool_calls(
                         response.content.clone(),
                         response.tool_calls.clone(),
                     ));
@@ -577,9 +519,12 @@ Rules:
                     // Classify tools: Data Lane (parallel reads) / Control Lane (serial writes)
                     let (parallel_reads, serial_writes) = crate::tool_execution::partition_calls(response.tool_calls);
 
-                    // Emit ToolCall events for all calls
+                    // Step 6: Tool execution via tool_executor module
+                    let all_calls: Vec<_> = parallel_reads.into_iter().chain(serial_writes).collect();
+                    
+                    // Emit ToolCall events
                     if let Some(tx) = &updates {
-                        for call in parallel_reads.iter().chain(serial_writes.iter()) {
+                        for call in &all_calls {
                             let _ = tx.send(AgentLoopEvent::ToolCall {
                                 id: call.id.clone(),
                                 name: call.name.clone(),
@@ -588,160 +533,16 @@ Rules:
                         }
                     }
 
-                    // Execute parallel read operations first (Data Lane)
-                    if !parallel_reads.is_empty() {
-                        if let Some(tx) = &updates {
-                            let _ = tx.send(AgentLoopEvent::Status(
-                                "Reading files and searching the workspace".to_string(),
-                            ));
-                        }
-                        info!(
-                            count = parallel_reads.len(),
-                            "Executing parallel read tools"
-                        );
-                        let futures = parallel_reads.into_iter().map(|call| async {
-                            let res = tool_router
-                                .route(&call.name, call.arguments.clone(), context)
-                                .await;
-                            (call, res)
-                        });
-
-                        let results = futures::future::join_all(futures).await;
-
-                        for (call, result) in results {
-                            match result {
-                                Ok(result_value) => {
-                                    let result_str = serde_json::to_string(&result_value)
-                                        .unwrap_or_else(|_| "[]".to_string());
-                                    if let Some(tx) = &updates {
-                                        let _ = tx.send(AgentLoopEvent::ToolResult {
-                                            id: call.id.clone(),
-                                            name: call.name.clone(),
-                                            content: result_str.clone(),
-                                            success: true,
-                                        });
-                                    }
-                                    messages.push(Message::tool(call.name, call.id, result_str));
-                                }
-                                Err(e) => {
-                                    error!(tool = %call.name, error = %e, "Parallel tool failed");
-                                    if let Some(tx) = &updates {
-                                        let _ = tx.send(AgentLoopEvent::ToolResult {
-                                            id: call.id.clone(),
-                                            name: call.name.clone(),
-                                            content: format!("Error: {}", e),
-                                            success: false,
-                                        });
-                                    }
-                                    messages.push(Message::tool(
-                                        call.name,
-                                        call.id,
-                                        format!("Error: {}", e),
-                                    ));
-                                }
-                            }
-                        }
-                    }
-
-                    // Execute serial write operations one at a time (Control Lane)
-                    for call in serial_writes {
-                        // H2: Hook check before execution
-                        let hook_ref = self.hook.as_deref();
-                        if let crate::hooks::HookDecision::Deny(reason) = crate::hooks::run_before_hook(hook_ref, &call) {
-                            warn!(tool = %call.name, reason = %reason, "Hook denied tool call");
-                            if let Some(tx) = &updates {
-                                let _ = tx.send(AgentLoopEvent::ToolResult {
-                                    id: call.id.clone(), name: call.name.clone(),
-                                    content: format!("Denied: {}", reason), success: false,
-                                });
-                            }
-                            messages.push(Message::tool(call.name, call.id, format!("Denied: {}", reason)));
-                            continue;
-                        }
-                        // H3: Policy is enforced inside tool_router.route() via PolicyEngine.
-                        // PermissionDenied errors are handled in the match below.
-
-                        if let Some(tx) = &updates {
-                            let _ = tx.send(AgentLoopEvent::Status(status_for_tool(&call.name)));
-                        }
-                        info!(tool = %call.name, "Executing serial write tool");
-
-                        match tool_router
-                            .route(&call.name, call.arguments.clone(), context)
-                            .await
-                        {
-                            Ok(result) => {
-                                let result_str = serde_json::to_string(&result)
-                                    .unwrap_or_else(|_| "[]".to_string());
-                                info!(tool = %call.name, "Tool executed successfully");
-                                if let Some(tx) = &updates {
-                                    let _ = tx.send(AgentLoopEvent::ToolResult {
-                                        id: call.id.clone(),
-                                        name: call.name.clone(),
-                                        content: result_str.clone(),
-                                        success: true,
-                                    });
-                                }
-
-                                if call.name == "file_write" || call.name == "file_edit" {
-                                    let path_arg = match call.name.as_str() {
-                                        "file_write" => call.arguments.get("path"),
-                                        "file_edit" => call.arguments.get("file_path"),
-                                        _ => None,
-                                    };
-
-                                    if let Some(path_value) = path_arg {
-                                        if let Ok(path) =
-                                            serde_json::from_value::<String>(path_value.clone())
-                                        {
-                                            let is_create = call.name == "file_write"
-                                                && result_str.contains("\"created\":true");
-                                            if is_create {
-                                                if !created_files.contains(&path) {
-                                                    created_files.push(path);
-                                                }
-                                            } else if !modified_files.contains(&path) {
-                                                modified_files.push(path);
-                                            }
-                                        }
-                                    }
-                                }
-
-                                messages.push(Message {
-                                    role: Role::Tool,
-                                    content: result_str,
-                                    name: Some(call.name),
-                                    tool_call_id: Some(call.id),
-                                    tool_calls: vec![],
-                                });
-                            }
-                            Err(e) => {
-                                error!(tool = %call.name, error = %e, "Serial tool execution failed");
-                                if let Some(tx) = &updates {
-                                    let _ = tx.send(AgentLoopEvent::ToolResult {
-                                        id: call.id.clone(),
-                                        name: call.name.clone(),
-                                        content: format!("Error: {}", e),
-                                        success: false,
-                                    });
-                                }
-                                messages.push(Message::tool(
-                                    call.name,
-                                    call.id,
-                                    format!("Error: {}", e),
-                                ));
-                            }
-                        }
-                    }
+                    crate::tool_executor::execute_tools(all_calls, state, context, tool_router, &updates).await?;
+                    
                     if let Some(tx) = &updates {
-                        let _ =
-                            tx.send(AgentLoopEvent::Status("Reviewing tool results".to_string()));
+                        let _ = tx.send(AgentLoopEvent::Status("Reviewing tool results".to_string()));
                     }
                 }
                 vil_llm::provider::FinishReason::MaxTokens => {
                     warn!("Context window limit reached, applying emergency context reduction");
-                    trim_boundary = crate::loop_control::emergency_trim_boundary(messages.len(), trim_boundary);
-                    info!(trim_boundary, "Context budget emergency: trim_boundary advanced");
+                    state.trim_boundary = crate::loop_control::emergency_trim_boundary(state.messages.len(), state.trim_boundary);
+                    info!(trim_boundary = state.trim_boundary, "Context budget emergency: trim_boundary advanced");
                 }
                 _ => {
                     warn!(reason = ?response.finish_reason, "Unknown finish reason, terminating loop");
@@ -778,10 +579,6 @@ Rules:
             .as_ref()
             .ok_or_else(|| SwarmError::Orchestration("Tool router not initialized".into()))?;
 
-        let mut total_tokens = 0u64;
-        let mut modified_files = Vec::new();
-        let mut created_files = Vec::new();
-
         let root = project_root.unwrap_or_else(|| std::path::PathBuf::from("."));
         let mut context = ToolContext::new(root);
         if let Some(sid) = session_id {
@@ -806,18 +603,17 @@ Rules:
             Message::user(task_description.to_string()),
         ];
 
+        let mut state = crate::run_state::AgentRunState::new(planner_messages, cancel.clone());
+        state.stage = crate::run_state::RunStage::Planner;
+
         let plan_output = self
             .execute_agent_loop(
-                planner_messages,
+                &mut state,
                 tool_defs.clone(), // Planner needs access to vil_knowledge
                 updates.clone(),
-                &mut total_tokens,
-                &mut modified_files,
-                &mut created_files,
                 &context,
                 llm_router,
                 tool_router,
-                cancel.clone(),
             )
             .await?;
         // strict_mode: if planner_gate is active (strict-vil profile), ParseFailed = hard stop
@@ -885,36 +681,38 @@ Rules:
             Self::coder_system_prompt()
         };
 
+        // Reset state for coder stage — keep tokens/files, replace messages
         let coder_messages = vec![
             Message::system(coder_prompt),
             Message::user(format!("Task: {}\n\n{}", task_description, plan_context)),
         ];
+        state.messages = coder_messages;
+        state.trim_boundary = 0;
+        state.iterations = 0;
+        state.stage = crate::run_state::RunStage::Coder;
+        state.cancel = cancel;
 
         let final_output = self
             .execute_agent_loop(
-                coder_messages,
+                &mut state,
                 tool_defs,
                 updates,
-                &mut total_tokens,
-                &mut modified_files,
-                &mut created_files,
                 &context,
                 llm_router,
                 tool_router,
-                cancel,
             )
             .await?;
 
         Ok(ExecutionResult {
             summary: final_output,
-            modified_files,
-            created_files,
-            total_tokens_used: total_tokens,
+            modified_files: state.modified_files,
+            created_files: state.created_files,
+            total_tokens_used: state.total_tokens,
             agent_contributions: vec![AgentContribution {
                 agent_id: "vil-native-agent".to_string(),
                 agent_role: "SemanticEngineer".to_string(),
                 actions: Vec::new(),
-                tokens_used: total_tokens,
+                tokens_used: state.total_tokens,
             }],
         })
     }

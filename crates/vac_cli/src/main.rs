@@ -53,6 +53,10 @@ enum Commands {
         #[arg(long)]
         resume: bool,
     },
+    /// Resume from checkpoint
+    Resume {
+        checkpoint: PathBuf,
+    },
     /// Show engine status
     Status,
     /// Manage configuration
@@ -163,6 +167,7 @@ async fn main() -> anyhow::Result<()> {
             commands::run::execute(project_root, task, priority, profile, approve, target).await?;
         }
         Commands::Interactive { resume } => commands::interactive::execute(project_root, resume).await?,
+        Commands::Resume { checkpoint } => commands::resume::execute(project_root, checkpoint).await?,
         Commands::Status => commands::status::execute(project_root).await?,
         Commands::Config { action } => commands::config::execute(project_root, action).await?,
         Commands::Auth { action } => commands::auth::execute(action).await?,

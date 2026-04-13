@@ -88,6 +88,26 @@ fn migrate_legacy(value: serde_json::Value) -> Option<CheckpointEnvelope> {
     Some(CheckpointEnvelope::new(run_id, messages, metadata))
 }
 
+/// Save checkpoint to file.
+pub fn save_checkpoint_to_file(
+    path: &std::path::Path,
+    envelope: &CheckpointEnvelope,
+) -> Result<(), CheckpointError> {
+    let bytes = serialize_checkpoint(envelope)?;
+    std::fs::write(path, bytes)
+        .map_err(|e| CheckpointError::InvalidPayload(serde_json::Error::io(e)))?;
+    Ok(())
+}
+
+/// Load checkpoint from file.
+pub fn load_checkpoint_from_file(
+    path: &std::path::Path,
+) -> Result<CheckpointEnvelope, CheckpointError> {
+    let bytes = std::fs::read(path)
+        .map_err(|e| CheckpointError::InvalidPayload(serde_json::Error::io(e)))?;
+    deserialize_checkpoint(&bytes)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -17,8 +17,12 @@ pub mod lanes;
 pub mod orchestrator;
 pub mod patterns;
 pub mod protocol;
+pub mod redaction;
+pub mod run_state;
 pub mod sandbox;
 pub mod semantic;
+pub mod stream_processor;
+pub mod tool_executor;
 
 pub use agent::{AgentDefinition, AgentId, AgentRole};
 pub use error::SwarmError;
@@ -27,4 +31,5 @@ pub use lanes::{ControlLane, DataLane, TriggerLane};
 pub use orchestrator::{AgentLoopEvent, ExternalDiagnosticContext, SubtaskResult, SwarmOrchestrator, VilProjectProfile, VilArchetype};
 pub use protocol::{ControlPayload, DataPayload, TriggerPayload, VapMessage};
 pub use sandbox::{SandboxHandle, SandboxMode, SandboxRegistry, SandboxStatus};
+pub use run_state::{AgentRunState, RunStage};
 pub use semantic::{SemanticPlan, TaskSemanticKind};

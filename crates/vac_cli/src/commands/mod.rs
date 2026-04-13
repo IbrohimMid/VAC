@@ -5,6 +5,7 @@ pub mod doctor;
 pub mod export;
 pub mod init;
 pub mod interactive;
+pub mod resume;
 pub mod rulebook;
 pub mod run;
 pub mod runtime;
