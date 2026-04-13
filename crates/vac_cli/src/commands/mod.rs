@@ -10,3 +10,6 @@ pub mod rulebook;
 pub mod run;
 pub mod runtime;
 pub mod status;
+
+#[cfg(feature = "tui2")]
+pub mod tui2;

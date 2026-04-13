@@ -512,6 +512,15 @@ impl VacEngine {
                             content,
                             success,
                         }),
+                        vil_swarm::AgentLoopEvent::ApprovalRequired {
+                            tool_call_id,
+                            tool_name,
+                            arguments,
+                        } => Some(RuntimeUpdate::ApprovalRequired {
+                            tool_call_id,
+                            tool_name,
+                            arguments,
+                        }),
                         vil_swarm::AgentLoopEvent::LlmRequest { .. } => None,
                     };
                     if let Some(up) = update {
@@ -804,4 +813,9 @@ pub enum RuntimeUpdate {
     Completed(TaskResult),
     Failed(String),
     Cancelled,
+    ApprovalRequired {
+        tool_call_id: String,
+        tool_name: String,
+        arguments: serde_json::Value,
+    },
 }

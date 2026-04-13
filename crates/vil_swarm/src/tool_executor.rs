@@ -18,7 +18,6 @@ pub async fn execute_tools(
     updates: &Option<mpsc::UnboundedSender<AgentLoopEvent>>,
     hook: Option<&dyn crate::hooks::AgentHook>,
 ) -> SwarmResult<()> {
-    // Track active tool calls in state
     state.active_tool_calls = tool_calls.clone();
     state.last_execution_status = Some(format!("executing {} tool(s)", tool_calls.len()));
 
@@ -41,8 +40,7 @@ pub async fn execute_tools(
         for (call, result) in results {
             match result {
                 Ok(result_value) => {
-                    let result_str = serde_json::to_string(&result_value)
-                        .unwrap_or_else(|_| "[]".to_string());
+                    let result_str = serde_json::to_string(&result_value).unwrap_or_else(|_| "[]".to_string());
                     if let Some(tx) = updates {
                         let _ = tx.send(AgentLoopEvent::ToolResult {
                             id: call.id.clone(),
@@ -73,7 +71,6 @@ pub async fn execute_tools(
     if !writes.is_empty() {
         info!(count = writes.len(), "Executing serial writes");
         for call in writes {
-            // H2: Hook intercept
             if let crate::hooks::HookDecision::Deny(reason) = crate::hooks::run_before_hook(hook, &call) {
                 warn!(tool = %call.name, reason = %reason, "Tool denied by hook");
                 if let Some(tx) = updates {
@@ -87,7 +84,6 @@ pub async fn execute_tools(
                 state.messages.push(Message::tool(call.name, call.id, format!("Denied: {}", reason)));
                 continue;
             }
-            // H3: Policy enforcement happens inside tool_router.route() via PolicyEngine
 
             if let Some(tx) = updates {
                 let _ = tx.send(AgentLoopEvent::Status(crate::tool_execution::status_for_tool(&call.name)));
@@ -95,25 +91,19 @@ pub async fn execute_tools(
 
             match tool_router.route(&call.name, call.arguments.clone(), context).await {
                 Ok(result_value) => {
-                    let result_str = serde_json::to_string(&result_value)
-                        .unwrap_or_else(|_| "[]".to_string());
+                    let result_str = serde_json::to_string(&result_value).unwrap_or_else(|_| "[]".to_string());
                     
-                    // Track file modifications
                     if call.name == "file_write" || call.name == "file_edit" {
                         let path_arg = match call.name.as_str() {
                             "file_write" => call.arguments.get("path"),
                             "file_edit" => call.arguments.get("file_path"),
                             _ => None,
                         };
-
                         if let Some(path_value) = path_arg {
                             if let Ok(path) = serde_json::from_value::<String>(path_value.clone()) {
                                 let is_create = call.name == "file_write" && result_str.contains("\"created\":true");
-                                if is_create {
-                                    state.record_created(path);
-                                } else {
-                                    state.record_modified(path);
-                                }
+                                if is_create { state.record_created(path); } 
+                                else { state.record_modified(path); }
                             }
                         }
                     }
@@ -126,48 +116,51 @@ pub async fn execute_tools(
                             success: true,
                         });
                     }
-                    state.messages.push(Message {
-                        role: Role::Tool,
-                        content: result_str,
-                        name: Some(call.name),
-                        tool_call_id: Some(call.id),
-                        tool_calls: vec![],
-                    });
+                    state.messages.push(Message { role: Role::Tool, content: result_str, name: Some(call.name), tool_call_id: Some(call.id), tool_calls: vec![] });
                 }
                 Err(e) => {
-                    // Check if this is an approval-required error
                     if matches!(e, vac_tools::error::ToolError::ApprovalRequired(_)) {
-                        // Add to pending approvals for HITL
                         state.pending_approvals.push(vac_tools::approvals::PendingApproval {
                             tool_call_id: call.id.clone(),
                             tool_name: call.name.clone(),
                             scope: call.name.clone(),
                             arguments: call.arguments.clone(),
                         });
-                        state.last_execution_status = Some(format!("waiting for approval: {}", call.name));
                         warn!(tool = %call.name, "Tool requires approval, added to pending_approvals");
+                        
+                        if let Some(tx) = updates {
+                            let _ = tx.send(AgentLoopEvent::ApprovalRequired {
+                                tool_call_id: call.id.clone(),
+                                tool_name: call.name.clone(),
+                                arguments: call.arguments.clone(),
+                            });
+                        }
+                        
+                        state.messages.push(Message::tool(call.name.clone(), call.id.clone(), format!("⏳ Waiting for approval")));
+                    } else {
+                        error!(tool = %call.name, error = %e, "Serial tool failed");
+                        if let Some(tx) = updates {
+                            let _ = tx.send(AgentLoopEvent::ToolResult {
+                                id: call.id.clone(),
+                                name: call.name.clone(),
+                                content: format!("Error: {}", e),
+                                success: false,
+                            });
+                        }
+                        state.messages.push(Message::tool(call.name, call.id, format!("Error: {}", e)));
                     }
-                    error!(tool = %call.name, error = %e, "Serial tool failed");
-                    if let Some(tx) = updates {
-                        let _ = tx.send(AgentLoopEvent::ToolResult {
-                            id: call.id.clone(),
-                            name: call.name.clone(),
-                            content: format!("Error: {}", e),
-                            success: false,
-                        });
-                    }
-                    state.messages.push(Message::tool(call.name, call.id, format!("Error: {}", e)));
                 }
             }
         }
     }
 
-    // Clear active tool calls after execution
     state.active_tool_calls.clear();
-    state.last_execution_status = Some("completed".to_string());
-
-    // Note: pending_approvals would be populated by policy layer when HITL is fully implemented
-    // For now, we track the execution lifecycle via last_execution_status
+    
+    if !state.pending_approvals.is_empty() {
+        state.last_execution_status = Some(format!("waiting for approval: {} tool(s)", state.pending_approvals.len()));
+    } else {
+        state.last_execution_status = Some("completed".to_string());
+    }
 
     Ok(())
 }

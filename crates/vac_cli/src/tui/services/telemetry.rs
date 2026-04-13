@@ -179,6 +179,12 @@ pub fn route_update(app: &mut TuiApp, update: RuntimeUpdate) {
                 app.push_commands(format!("LSP: {} err, {} warn", snap.total_errors, snap.total_warnings));
             }
         }
+        ApprovalRequired { tool_call_id, tool_name, arguments } => {
+            let args_preview = serde_json::to_string(&arguments).unwrap_or_default();
+            let summary = format!("{}: {}", tool_name, &args_preview[..args_preview.len().min(60)]);
+            app.push_commands(format!("⏳ Approval needed: {}", &summary[..summary.len().min(46)]));
+            app.set_activity("Awaiting approval", summary);
+        }
         _ => {}
     }
 }

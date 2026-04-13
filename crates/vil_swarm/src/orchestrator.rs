@@ -51,6 +51,11 @@ pub enum AgentLoopEvent {
         content: String,
         success: bool,
     },
+    ApprovalRequired {
+        tool_call_id: String,
+        tool_name: String,
+        arguments: serde_json::Value,
+    },
 }
 
 pub struct TaskPlan {
