@@ -480,13 +480,27 @@ fn render_sessions_popup(frame: &mut Frame, area: Rect, app: &TuiApp) {
         .block(Block::default().borders(Borders::ALL).title("Search"));
     frame.render_widget(search, chunks[1]);
 
-    // Sessions list
-    let items: Vec<ListItem> = app
+    // Sessions list - filter by search
+    let search_lower = app.session_search.to_lowercase();
+    let filtered_sessions: Vec<(usize, &super::app::SessionInfo)> = app
         .available_sessions
         .iter()
         .enumerate()
-        .map(|(i, session)| {
-            let style = if i == app.session_selected {
+        .filter(|(_, session)| {
+            if search_lower.is_empty() {
+                true
+            } else {
+                session.title.to_lowercase().contains(&search_lower)
+            }
+        })
+        .collect();
+    
+    let selected = app.session_selected;
+    let items: Vec<ListItem> = filtered_sessions
+        .iter()
+        .enumerate()
+        .map(|(display_idx, (_, session))| {
+            let style = if display_idx == selected {
                 Style::default().bg(Color::DarkGray).fg(Color::Yellow)
             } else {
                 Style::default()
@@ -497,7 +511,7 @@ fn render_sessions_popup(frame: &mut Frame, area: Rect, app: &TuiApp) {
         .collect();
 
     let list = List::new(items)
-        .block(Block::default().borders(Borders::ALL).title("Available Sessions"));
+        .block(Block::default().borders(Borders::ALL).title(format!("Available Sessions ({})", filtered_sessions.len())));
     frame.render_widget(list, chunks[2]);
 
     // Help text

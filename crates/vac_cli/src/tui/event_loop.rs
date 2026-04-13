@@ -196,18 +196,71 @@ fn handle_key(
                 }
             }
             KeyCode::Down => {
-                if app.session_selected + 1 < app.available_sessions.len() {
+                let filtered_count = app.available_sessions
+                    .iter()
+                    .filter(|session| {
+                        if app.session_search.is_empty() {
+                            true
+                        } else {
+                            session.title.to_lowercase().contains(&app.session_search.to_lowercase())
+                        }
+                    })
+                    .count();
+                
+                if app.session_selected + 1 < filtered_count {
                     app.session_selected += 1;
                 }
             }
             KeyCode::Enter => {
-                if let Some(session) = app.available_sessions.get(app.session_selected) {
+                // Filter sessions to find the actual selected one
+                let filtered: Vec<_> = app.available_sessions
+                    .iter()
+                    .filter(|session| {
+                        if app.session_search.is_empty() {
+                            true
+                        } else {
+                            session.title.to_lowercase().contains(&app.session_search.to_lowercase())
+                        }
+                    })
+                    .collect();
+                
+                if let Some(session) = filtered.get(app.session_selected) {
+                    let session_id = session.id.clone();
+                    let session_title = session.title.clone();
+                    
                     // Load checkpoint and restore messages
-                    match vil_swarm::checkpoint::load_checkpoint_from_file(std::path::Path::new(&session.id)) {
+                    match vil_swarm::checkpoint::load_checkpoint_from_file(std::path::Path::new(&session_id)) {
                         Ok(checkpoint) => {
-                            app.push_transcript("System", format!("Resumed session: {}", session.title), ratatui::style::Color::Cyan);
-                            // TODO: Restore messages to current session
-                            // For now just show success message
+                            // Restore messages to current session
+                            let session_tab = app.session_mut();
+                            session_tab.transcript.clear();
+                            
+                            // Add system message
+                            session_tab.transcript.push(super::app::TranscriptEntry {
+                                label: "System".to_string(),
+                                body: format!("Restored session: {}", session_title),
+                                color: ratatui::style::Color::Cyan,
+                            });
+                            
+                            // Restore conversation from checkpoint
+                            for msg in &checkpoint.messages {
+                                let label = format!("{:?}", msg.role);
+                                let color = if label.contains("User") {
+                                    ratatui::style::Color::Green
+                                } else if label.contains("Assistant") {
+                                    ratatui::style::Color::Blue
+                                } else {
+                                    ratatui::style::Color::Gray
+                                };
+                                
+                                session_tab.transcript.push(super::app::TranscriptEntry {
+                                    label,
+                                    body: msg.content.clone(),
+                                    color,
+                                });
+                            }
+                            
+                            app.push_transcript("System", format!("✓ Restored {} messages", checkpoint.messages.len()), ratatui::style::Color::Green);
                         }
                         Err(e) => {
                             app.push_transcript("Error", format!("Failed to load checkpoint: {}", e), ratatui::style::Color::Red);
@@ -219,11 +272,13 @@ fn handle_key(
             }
             KeyCode::Char(ch) => {
                 app.session_search.push(ch);
-                // TODO: Filter sessions by search
+                // Filter sessions by search
+                app.session_selected = 0; // Reset selection when search changes
             }
             KeyCode::Backspace => {
                 app.session_search.pop();
-                // TODO: Re-filter sessions
+                // Re-filter sessions
+                app.session_selected = 0; // Reset selection when search changes
             }
             _ => {}
         }
@@ -371,7 +426,48 @@ fn handle_key(
                         return Ok(false);
                     } else if prompt == "/resume" {
                         // Resume last session
-                        app.push_transcript("System", "Resume functionality coming soon".to_string(), ratatui::style::Color::Yellow);
+                        let checkpoint_dir = project_root.join(".vac").join("checkpoints");
+                        let sessions = vil_swarm::checkpoint::list_sessions(&checkpoint_dir);
+                        
+                        if let Some(last_session) = sessions.first() {
+                            // Load and restore last session
+                            match vil_swarm::checkpoint::load_checkpoint_from_file(std::path::Path::new(&last_session.id)) {
+                                Ok(checkpoint) => {
+                                    let session_tab = app.session_mut();
+                                    session_tab.transcript.clear();
+                                    
+                                    session_tab.transcript.push(super::app::TranscriptEntry {
+                                        label: "System".to_string(),
+                                        body: format!("Resumed: {}", last_session.title),
+                                        color: ratatui::style::Color::Cyan,
+                                    });
+                                    
+                                    for msg in &checkpoint.messages {
+                                        let label = format!("{:?}", msg.role);
+                                        let color = if label.contains("User") {
+                                            ratatui::style::Color::Green
+                                        } else if label.contains("Assistant") {
+                                            ratatui::style::Color::Blue
+                                        } else {
+                                            ratatui::style::Color::Gray
+                                        };
+                                        
+                                        session_tab.transcript.push(super::app::TranscriptEntry {
+                                            label,
+                                            body: msg.content.clone(),
+                                            color,
+                                        });
+                                    }
+                                    
+                                    app.push_transcript("System", format!("✓ Restored {} messages", checkpoint.messages.len()), ratatui::style::Color::Green);
+                                }
+                                Err(e) => {
+                                    app.push_transcript("Error", format!("Failed to resume: {}", e), ratatui::style::Color::Red);
+                                }
+                            }
+                        } else {
+                            app.push_transcript("System", "No saved sessions found".to_string(), ratatui::style::Color::Yellow);
+                        }
                         app.input.clear();
                         return Ok(false);
                     }

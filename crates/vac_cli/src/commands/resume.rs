@@ -14,17 +14,30 @@ pub async fn execute(project_root: PathBuf, checkpoint_path: PathBuf) -> anyhow:
         state.iterations, state.total_tokens, state.stage
     );
 
-    println!("Resuming agent loop...");
+    // Extract last user message as task description
+    let task_description = state.messages
+        .iter()
+        .rev()
+        .find(|m| format!("{:?}", m.role).to_lowercase().contains("user"))
+        .map(|m| m.content.clone())
+        .unwrap_or_else(|| "Continue from checkpoint".to_string());
+
+    println!("🤖 Resuming task: {}", task_description);
     
-    // Initialize orchestrator
-    let orchestrator = vil_swarm::SwarmOrchestrator::new(4, true, None, None).await?;
+    // Initialize engine and continue execution
+    let mut engine = vac_core::VacEngine::new(project_root).await?;
+    engine.init().await?;
     
-    // Orchestrator is ready, state is loaded
-    // execute_agent_loop is now public and can be called with restored state
+    let result = engine.run_task(&task_description).await?;
     
-    println!("✓ Resume ready. Orchestrator initialized with {} messages", state.messages.len());
-    println!("  Stage: {}, Iterations: {}, Tokens: {}", state.stage, state.iterations, state.total_tokens);
-    println!("  execute_agent_loop() is now public for resume integration");
+    println!("\n{}", "=".repeat(60));
+    match &result.status {
+        vac_core::TaskStatus::Completed => println!("✓ Task completed successfully!"),
+        vac_core::TaskStatus::Failed(reason) => println!("❌ Task failed: {}", reason),
+        _ => println!("⚠️  Task ended with status: {:?}", result.status),
+    }
+
+    println!("\n📋 Summary: {}", result.summary);
     
     Ok(())
 }
