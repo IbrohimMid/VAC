@@ -5,10 +5,10 @@
 //! ## Architecture
 //!
 //! - `app/` - Application state and event definitions
-//! - `services_minimal/` - Essential UI services
+//! - `services/` - UI services
 //! - `adapter/` - Bridge between TUI types and VAC engine
-//! - `event_loop_minimal.rs` - Main event loop
-//! - `view_minimal.rs` - Rendering logic
+//! - `event_loop.rs` - Main event loop
+//! - `view.rs` - Rendering logic
 //!
 //! ## License Attribution
 //!
@@ -22,17 +22,16 @@
 
 pub mod adapter;
 pub mod constants;
-pub mod stub_types;
+pub mod types;
 pub mod terminal;
 pub mod runner;
 
-// Minimal implementations
-pub mod services_minimal;
-pub mod view_minimal;
-pub mod event_loop_minimal;
+pub mod services;
+pub mod view;
+pub mod event_loop;
 
-// Stub types that replace Stakpak dependencies
-pub use stub_types::{
+// Types
+pub use types::{
     ContentPart, FunctionCall, Model, ToolCall, ToolCallResult, ToolCallResultStatus,
 };
 
@@ -45,5 +44,5 @@ mod event;
 
 pub use app::{InputEvent, LoadingOperation, OutputEvent};
 pub use event::map_crossterm_event_to_input_event;
-pub use event_loop_minimal::{run_tui, RulebookConfig};
+pub use event_loop::{run_tui, RulebookConfig};
 pub use runner::run_vac_tui;

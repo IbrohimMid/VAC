@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::tui::stub_types::*;
+use crate::tui::types::*;
 
 // ========== Cache Types ==========
 
@@ -283,7 +283,7 @@ impl AppState {
     }
     
     fn default_commands() -> Vec<HelperCommand> {
-        crate::tui::services_minimal::helper_block::vac_commands()
+        crate::tui::services::helper_block::vac_commands()
     }
     
     pub fn add_user_message(&mut self, content: String) {

@@ -3,7 +3,7 @@
 use ratatui::style::Color;
 use uuid::Uuid;
 
-use crate::tui::stub_types::*;
+use crate::tui::types::*;
 use crate::tui::app::{LoadingOperation, SessionInfo};
 
 #[derive(Debug)]
