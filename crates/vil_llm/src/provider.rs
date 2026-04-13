@@ -103,6 +103,23 @@ impl LlmRequest {
         }
     }
 
+    /// Create from universal LlmMessage format
+    pub fn from_llm_messages(messages: Vec<crate::models::LlmMessage>) -> Self {
+        Self {
+            messages: messages.iter().map(|m| Message::from(m)).collect(),
+            model: None,
+            max_tokens: None,
+            temperature: None,
+            stop_sequences: vec![],
+            tools: vec![],
+        }
+    }
+
+    /// Convert to universal LlmMessage format
+    pub fn to_llm_messages(&self) -> Vec<crate::models::LlmMessage> {
+        self.messages.iter().map(crate::models::LlmMessage::from).collect()
+    }
+
     pub fn with_model(mut self, model: &str) -> Self {
         self.model = Some(model.to_string());
         self

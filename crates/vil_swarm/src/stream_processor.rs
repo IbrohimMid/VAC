@@ -66,7 +66,7 @@ pub async fn process_stream(
     let mut stream_tool_calls: Vec<ToolCall> = Vec::new();
     for (id, (name, args_str)) in tool_args_buf {
         let arguments = serde_json::from_str(&args_str)
-            .unwrap_or_else(|_| serde_json::json!({"raw": args_str}));
+            .unwrap_or_else(|_| serde_json::json!({"_parse_error": true}));
         stream_tool_calls.push(ToolCall {
             id,
             name,
@@ -88,6 +88,13 @@ pub async fn process_stream(
     };
 
     Ok(StreamResult { response })
+}
+
+/// Collect text from stream with error checking.
+/// Returns error if stream contains StreamChunk::Error.
+pub async fn collect_text_checked_wrapper(rx: mpsc::Receiver<StreamChunk>) -> SwarmResult<String> {
+    use vil_llm::streaming::collect_text_checked;
+    collect_text_checked(rx).await.map_err(|e| SwarmError::Orchestration(e))
 }
 
 #[cfg(test)]

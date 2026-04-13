@@ -6,6 +6,7 @@
 //! - No orphan tool calls (tool calls must have corresponding tool results)
 //! - No duplicate tool results for same tool_call_id
 
+use crate::models::LlmMessage;
 use crate::provider::{Message, Role};
 
 /// Sanitize messages for provider compatibility.
@@ -24,6 +25,14 @@ pub fn sanitize_messages(messages: &[Message], _provider_name: &str) -> Vec<Mess
     result = drop_orphan_tool_calls(&result);
     result = merge_consecutive_same_role(&result);
     result
+}
+
+/// Sanitize LlmMessage format for provider compatibility.
+pub fn sanitize_llm_messages(messages: &[LlmMessage], provider_name: &str) -> Vec<LlmMessage> {
+    // Convert to Message, sanitize, convert back
+    let msgs: Vec<Message> = messages.iter().map(Message::from).collect();
+    let sanitized = sanitize_messages(&msgs, provider_name);
+    sanitized.iter().map(LlmMessage::from).collect()
 }
 
 /// Merge consecutive messages with the same role.

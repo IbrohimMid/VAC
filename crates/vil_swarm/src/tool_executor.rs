@@ -154,5 +154,8 @@ pub async fn execute_tools(
     state.active_tool_calls.clear();
     state.last_execution_status = Some("completed".to_string());
 
+    // Note: pending_approvals would be populated by policy layer when HITL is fully implemented
+    // For now, we track the execution lifecycle via last_execution_status
+
     Ok(())
 }

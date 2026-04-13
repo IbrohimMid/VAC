@@ -126,3 +126,49 @@ impl LlmMessage {
         result
     }
 }
+
+impl From<&LlmMessage> for Message {
+    fn from(msg: &LlmMessage) -> Self {
+        let role = match msg.role {
+            LlmRole::System => Role::System,
+            LlmRole::User => Role::User,
+            LlmRole::Assistant => Role::Assistant,
+            LlmRole::Tool => Role::Tool,
+        };
+
+        // Extract text content
+        let text: String = msg.content.iter()
+            .filter_map(|c| match c {
+                LlmContent::Text { text } => Some(text.clone()),
+                _ => None,
+            })
+            .collect();
+
+        // Extract tool calls
+        let tool_calls: Vec<ToolCall> = msg.content.iter()
+            .filter_map(|c| match c {
+                LlmContent::ToolUse { id, name, input } => Some(ToolCall {
+                    id: id.clone(),
+                    name: name.clone(),
+                    arguments: input.clone(),
+                }),
+                _ => None,
+            })
+            .collect();
+
+        // Extract tool_call_id for tool messages
+        let tool_call_id = msg.content.iter()
+            .find_map(|c| match c {
+                LlmContent::ToolResult { tool_use_id, .. } => Some(tool_use_id.clone()),
+                _ => None,
+            });
+
+        Message {
+            role,
+            content: text,
+            name: None,
+            tool_call_id,
+            tool_calls,
+        }
+    }
+}
