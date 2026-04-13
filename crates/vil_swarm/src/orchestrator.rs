@@ -94,6 +94,8 @@ pub struct SwarmOrchestrator {
     sandbox_registry: Arc<crate::sandbox::SandboxRegistry>,
     /// External LSP diagnostic context injected before agent loop
     lsp_context: Option<ExternalDiagnosticContext>,
+    /// Optional hook for tool call interception
+    pub hook: Option<Arc<dyn crate::hooks::AgentHook>>,
 }
 
 /// Lightweight diagnostic context from vil-lsp, decoupled from vac_core types.
@@ -167,6 +169,7 @@ impl SwarmOrchestrator {
             rulebook: None,
             sandbox_registry: Arc::new(crate::sandbox::SandboxRegistry::with_project_root(std::path::Path::new("."))),
             lsp_context: None,
+            hook: None,
         };
 
         let roles = [
@@ -631,6 +634,30 @@ Rules:
 
                     // Execute serial write operations one at a time (Control Lane)
                     for call in serial_writes {
+                        // Hook check before execution
+                        let hook_ref = self.hook.as_deref();
+                        if let crate::hooks::HookDecision::Deny(reason) = crate::hooks::run_before_hook(hook_ref, &call) {
+                            warn!(tool = %call.name, reason = %reason, "Hook denied tool call");
+                            messages.push(Message::tool(call.name, call.id, format!("Denied: {}", reason)));
+                            continue;
+                        }
+
+                        // Policy bridge check
+                        let is_sandboxed = context.agent_zone == vac_tools::registry::AgentZone::SandboxedSubagent;
+                        match crate::policy_bridge::resolve_decision(&call.name, false, is_sandboxed) {
+                            crate::policy_bridge::ExecutionDecision::Deny(reason) => {
+                                warn!(tool = %call.name, reason = %reason, "Policy denied tool call");
+                                messages.push(Message::tool(call.name, call.id, format!("Policy denied: {}", reason)));
+                                continue;
+                            }
+                            crate::policy_bridge::ExecutionDecision::NeedsApproval(summary) => {
+                                if let Some(tx) = &updates {
+                                    let _ = tx.send(AgentLoopEvent::Status(format!("Approval needed: {}", summary)));
+                                }
+                            }
+                            crate::policy_bridge::ExecutionDecision::Allow => {}
+                        }
+
                         if let Some(tx) = &updates {
                             let _ = tx.send(AgentLoopEvent::Status(status_for_tool(&call.name)));
                         }
