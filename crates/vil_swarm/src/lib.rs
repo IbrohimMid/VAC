@@ -25,6 +25,7 @@ pub mod stream_processor;
 pub mod tool_executor;
 
 pub use agent::{AgentDefinition, AgentId, AgentRole};
+pub use checkpoint::SessionInfo;
 pub use error::SwarmError;
 pub use error::SwarmResult;
 pub use lanes::{ControlLane, DataLane, TriggerLane};

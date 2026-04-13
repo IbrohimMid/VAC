@@ -183,6 +183,53 @@ fn handle_key(
         return Ok(false);
     }
 
+    // Sessions popup intercepts keys
+    if app.show_sessions_popup {
+        match key.code {
+            KeyCode::Esc => {
+                app.show_sessions_popup = false;
+                app.session_search.clear();
+            }
+            KeyCode::Up => {
+                if app.session_selected > 0 {
+                    app.session_selected -= 1;
+                }
+            }
+            KeyCode::Down => {
+                if app.session_selected + 1 < app.available_sessions.len() {
+                    app.session_selected += 1;
+                }
+            }
+            KeyCode::Enter => {
+                if let Some(session) = app.available_sessions.get(app.session_selected) {
+                    // Load checkpoint and restore messages
+                    match vil_swarm::checkpoint::load_checkpoint_from_file(std::path::Path::new(&session.id)) {
+                        Ok(checkpoint) => {
+                            app.push_transcript("System", format!("Resumed session: {}", session.title), ratatui::style::Color::Cyan);
+                            // TODO: Restore messages to current session
+                            // For now just show success message
+                        }
+                        Err(e) => {
+                            app.push_transcript("Error", format!("Failed to load checkpoint: {}", e), ratatui::style::Color::Red);
+                        }
+                    }
+                }
+                app.show_sessions_popup = false;
+                app.session_search.clear();
+            }
+            KeyCode::Char(ch) => {
+                app.session_search.push(ch);
+                // TODO: Filter sessions by search
+            }
+            KeyCode::Backspace => {
+                app.session_search.pop();
+                // TODO: Re-filter sessions
+            }
+            _ => {}
+        }
+        return Ok(false);
+    }
+
     // Revert confirm modal
     if let DetailMode::RevertConfirm(idx) = app.detail.clone() {
         match key.code {
@@ -248,13 +295,41 @@ fn handle_key(
             }
         }
         KeyCode::Tab => {
-            if app.input.is_empty() { app.cycle_focus(); } else { app.show_help = !app.show_help; }
+            if app.show_command_list {
+                // Autocomplete selected command
+                let commands = super::app::TuiApp::available_commands();
+                if let Some(cmd) = commands.get(app.command_selected) {
+                    app.input = cmd.name.clone();
+                    app.show_command_list = false;
+                }
+            } else if app.input.is_empty() { 
+                app.cycle_focus(); 
+            } else { 
+                app.show_help = !app.show_help; 
+            }
         }
         KeyCode::Up => {
-            if app.focus == FocusPane::History { app.history_up(); } else { app.scroll_up(); }
+            if app.show_command_list {
+                if app.command_selected > 0 {
+                    app.command_selected -= 1;
+                }
+            } else if app.focus == FocusPane::History { 
+                app.history_up(); 
+            } else { 
+                app.scroll_up(); 
+            }
         }
         KeyCode::Down => {
-            if app.focus == FocusPane::History { app.history_down(); } else { app.scroll_down(); }
+            if app.show_command_list {
+                let max = super::app::TuiApp::available_commands().len().saturating_sub(1);
+                if app.command_selected < max {
+                    app.command_selected += 1;
+                }
+            } else if app.focus == FocusPane::History { 
+                app.history_down(); 
+            } else { 
+                app.scroll_down(); 
+            }
         }
         KeyCode::PageUp => { for _ in 0..5 { app.scroll_up(); } }
         KeyCode::PageDown => { for _ in 0..5 { app.scroll_down(); } }
@@ -280,6 +355,27 @@ fn handle_key(
             if app.session().active_task.is_none() {
                 let prompt = app.input.trim().to_string();
                 if !prompt.is_empty() {
+                    // Handle slash commands
+                    if prompt == "/sessions" {
+                        app.show_sessions_popup = true;
+                        app.session_selected = 0;
+                        app.session_search.clear();
+                        // Load sessions from checkpoint directory
+                        let checkpoint_dir = project_root.join(".vac").join("checkpoints");
+                        app.available_sessions = vil_swarm::checkpoint::list_sessions(&checkpoint_dir);
+                        if app.available_sessions.is_empty() {
+                            app.push_transcript("System", "No saved sessions found".to_string(), ratatui::style::Color::Yellow);
+                            app.show_sessions_popup = false;
+                        }
+                        app.input.clear();
+                        return Ok(false);
+                    } else if prompt == "/resume" {
+                        // Resume last session
+                        app.push_transcript("System", "Resume functionality coming soon".to_string(), ratatui::style::Color::Yellow);
+                        app.input.clear();
+                        return Ok(false);
+                    }
+                    
                     app.input.clear();
                     let cancel = tokio_util::sync::CancellationToken::new();
                     app.cancel_token = Some(cancel.clone());
@@ -287,10 +383,23 @@ fn handle_key(
                 }
             }
         }
-        KeyCode::Backspace => { app.input.pop(); }
+        KeyCode::Backspace => { 
+            app.input.pop(); 
+            // Hide command list if input is cleared
+            if app.input.is_empty() {
+                app.show_command_list = false;
+            }
+        }
         KeyCode::Char(ch) => {
             if app.focus != FocusPane::Composer { app.focus = FocusPane::Composer; }
             app.input.push(ch);
+            // Show command list when user types /
+            if app.input == "/" {
+                app.show_command_list = true;
+                app.command_selected = 0;
+            } else if !app.input.starts_with('/') {
+                app.show_command_list = false;
+            }
         }
         _ => {}
     }

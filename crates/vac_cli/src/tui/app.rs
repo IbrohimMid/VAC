@@ -32,6 +32,25 @@ pub struct PendingApproval {
 
 // ── Per-session state ─────────────────────────────────────────────────────────
 
+pub use vil_swarm::SessionInfo;
+
+#[derive(Clone)]
+pub struct CommandInfo {
+    pub name: String,
+    pub description: String,
+}
+
+impl TuiApp {
+    pub fn available_commands() -> Vec<CommandInfo> {
+        vec![
+            CommandInfo { name: "/sessions".to_string(), description: "List and resume previous sessions".to_string() },
+            CommandInfo { name: "/resume".to_string(), description: "Resume last session".to_string() },
+            CommandInfo { name: "/help".to_string(), description: "Show help information".to_string() },
+            CommandInfo { name: "/quit".to_string(), description: "Exit VAC interactive mode".to_string() },
+        ]
+    }
+}
+
 #[derive(Clone)]
 pub struct TranscriptEntry {
     pub label: String,
@@ -97,6 +116,14 @@ pub struct TuiApp {
     // Runtime integration (optional — None when no scheduler attached)
     pub runtime_jobs: Vec<Job>,
     pub operating_mode: Option<OperatingMode>,
+    // Session management
+    pub show_sessions_popup: bool,
+    pub available_sessions: Vec<SessionInfo>,
+    pub session_selected: usize,
+    pub session_search: String,
+    // Command autocomplete
+    pub show_command_list: bool,
+    pub command_selected: usize,
     /// Cancellation token for the currently running task (None when idle)
     pub cancel_token: Option<tokio_util::sync::CancellationToken>,
 }
@@ -137,6 +164,12 @@ impl TuiApp {
             streaming_assistant: None,
             runtime_jobs: vec![],
             operating_mode: None,
+            show_sessions_popup: false,
+            available_sessions: vec![],
+            session_selected: 0,
+            session_search: String::new(),
+            show_command_list: false,
+            command_selected: 0,
             cancel_token: None,
         }
     }

@@ -25,8 +25,16 @@ pub fn render(frame: &mut Frame, app: &mut TuiApp) {
     render_body(frame, chunks[1], app);
     render_composer(frame, chunks[2], app);
 
+    if app.show_command_list {
+        render_command_list(frame, chunks[2], app);
+    }
+
     if app.pending_approval.is_some() {
         render_approval_modal(frame, area, app);
+    }
+    
+    if app.show_sessions_popup {
+        render_sessions_popup(frame, area, app);
     }
 }
 
@@ -406,4 +414,95 @@ fn centered_rect(w_pct: u16, h_pct: u16, area: Rect) -> Rect {
     Layout::default().direction(Direction::Horizontal)
         .constraints([Constraint::Percentage((100-w_pct)/2), Constraint::Percentage(w_pct), Constraint::Percentage((100-w_pct)/2)])
         .flex(Flex::Center).split(v[1])[1]
+}
+
+// ── Sessions Popup ────────────────────────────────────────────────────────────
+
+fn render_command_list(frame: &mut Frame, composer_area: Rect, app: &TuiApp) {
+    let commands = super::app::TuiApp::available_commands();
+    let height = (commands.len() as u16 + 2).min(10);
+    
+    // Position above composer
+    let list_area = Rect {
+        x: composer_area.x,
+        y: composer_area.y.saturating_sub(height),
+        width: composer_area.width,
+        height,
+    };
+
+    let items: Vec<ListItem> = commands
+        .iter()
+        .enumerate()
+        .map(|(i, cmd)| {
+            let style = if i == app.command_selected {
+                Style::default().bg(Color::DarkGray).fg(Color::Yellow)
+            } else {
+                Style::default()
+            };
+            let content = format!("{:<20} {}", cmd.name, cmd.description);
+            ListItem::new(content).style(style)
+        })
+        .collect();
+
+    let list = List::new(items)
+        .block(Block::default().borders(Borders::ALL).title("Commands"));
+    frame.render_widget(list, list_area);
+}
+
+fn render_sessions_popup(frame: &mut Frame, area: Rect, app: &TuiApp) {
+    let modal = centered_rect(60, 70, area);
+    frame.render_widget(Clear, modal);
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(3), // Title
+            Constraint::Length(3), // Search
+            Constraint::Min(5),    // List
+            Constraint::Length(2), // Help
+        ])
+        .split(modal);
+
+    // Title
+    let title = Paragraph::new("Sessions")
+        .style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
+        .block(Block::default().borders(Borders::ALL));
+    frame.render_widget(title, chunks[0]);
+
+    // Search bar
+    let search_text = if app.session_search.is_empty() {
+        "Type to filter...".to_string()
+    } else {
+        app.session_search.clone()
+    };
+    let search = Paragraph::new(search_text)
+        .style(Style::default().fg(if app.session_search.is_empty() { Color::DarkGray } else { Color::White }))
+        .block(Block::default().borders(Borders::ALL).title("Search"));
+    frame.render_widget(search, chunks[1]);
+
+    // Sessions list
+    let items: Vec<ListItem> = app
+        .available_sessions
+        .iter()
+        .enumerate()
+        .map(|(i, session)| {
+            let style = if i == app.session_selected {
+                Style::default().bg(Color::DarkGray).fg(Color::Yellow)
+            } else {
+                Style::default()
+            };
+            let content = format!("{} ({})", session.title, session.updated_at);
+            ListItem::new(content).style(style)
+        })
+        .collect();
+
+    let list = List::new(items)
+        .block(Block::default().borders(Borders::ALL).title("Available Sessions"));
+    frame.render_widget(list, chunks[2]);
+
+    // Help text
+    let help = Paragraph::new("↑↓: Navigate | Enter: Resume | Esc: Close")
+        .style(Style::default().fg(Color::DarkGray))
+        .block(Block::default().borders(Borders::ALL));
+    frame.render_widget(help, chunks[3]);
 }

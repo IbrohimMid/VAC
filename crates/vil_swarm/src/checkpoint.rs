@@ -108,6 +108,70 @@ pub fn load_checkpoint_from_file(
     deserialize_checkpoint(&bytes)
 }
 
+/// List available sessions from checkpoint directory.
+pub fn list_sessions(checkpoint_dir: &std::path::Path) -> Vec<SessionInfo> {
+    let mut sessions = Vec::new();
+    
+    if let Ok(entries) = std::fs::read_dir(checkpoint_dir) {
+        for entry in entries.flatten() {
+            if let Ok(metadata) = entry.metadata() {
+                if metadata.is_file() && entry.path().extension().map_or(false, |e| e == "json") {
+                    if let Ok(checkpoint) = load_checkpoint_from_file(&entry.path()) {
+                        let title = checkpoint.messages
+                            .iter()
+                            .find(|m| matches!(m.role, vil_llm::provider::Role::User))
+                            .map(|m| {
+                                let content = m.content.chars().take(50).collect::<String>();
+                                if m.content.len() > 50 {
+                                    format!("{}...", content)
+                                } else {
+                                    content
+                                }
+                            })
+                            .unwrap_or_else(|| "Untitled session".to_string());
+                        
+                        let updated_at = if let Ok(modified) = metadata.modified() {
+                            if let Ok(elapsed) = modified.elapsed() {
+                                let secs = elapsed.as_secs();
+                                if secs < 60 {
+                                    format!("{} seconds ago", secs)
+                                } else if secs < 3600 {
+                                    format!("{} minutes ago", secs / 60)
+                                } else if secs < 86400 {
+                                    format!("{} hours ago", secs / 3600)
+                                } else {
+                                    format!("{} days ago", secs / 86400)
+                                }
+                            } else {
+                                "Unknown".to_string()
+                            }
+                        } else {
+                            "Unknown".to_string()
+                        };
+                        
+                        sessions.push(SessionInfo {
+                            id: entry.path().to_string_lossy().to_string(),
+                            title,
+                            updated_at,
+                        });
+                    }
+                }
+            }
+        }
+    }
+    
+    // Sort by modified time (newest first)
+    sessions.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+    sessions
+}
+
+#[derive(Debug, Clone)]
+pub struct SessionInfo {
+    pub id: String,
+    pub title: String,
+    pub updated_at: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
