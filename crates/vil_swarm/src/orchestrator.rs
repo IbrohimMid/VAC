@@ -460,6 +460,7 @@ Rules:
     ) -> SwarmResult<String> {
         let mut trim_boundary: usize = 0;
         let mut iterations: usize = 0;
+        let mut collector = crate::events::EventCollector::new();
         loop {
             if cancel.as_ref().is_some_and(|c| c.is_cancelled()) {
                 return Err(SwarmError::Orchestration("Agent loop cancelled".into()));
@@ -469,7 +470,12 @@ Rules:
                 return Err(e);
             }
             iterations += 1;
+            collector.push(crate::events::AgentEvent::IterationStarted { iteration: iterations });
+            let prev_boundary = trim_boundary;
             let reduced = crate::context_budget::reduce_messages(messages.clone(), &mut trim_boundary);
+            if trim_boundary > prev_boundary {
+                collector.context_reduced(messages.len(), reduced.len(), trim_boundary);
+            }
             let request = LlmRequest::new(reduced.clone())
                 .with_max_tokens(4000)
                 .with_tools(tool_defs.clone());
@@ -554,6 +560,10 @@ Rules:
                             tx.send(AgentLoopEvent::Status("Preparing final answer".to_string()));
                     }
                     info!("Agent loop completed successfully (Stop reason)");
+                    collector.push(crate::events::AgentEvent::LoopCompleted {
+                        total_iterations: iterations,
+                        total_tokens: *total_tokens,
+                    });
                     return Ok(response.content);
                 }
                 vil_llm::provider::FinishReason::ToolUse => {

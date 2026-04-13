@@ -357,6 +357,9 @@ impl VacEngine {
             }
         }
 
+        // Save checkpoint for potential resume
+        self.save_checkpoint(&result).await;
+
         Ok(result)
     }
 
@@ -571,6 +574,37 @@ impl VacEngine {
         }
 
         Ok(result)
+    }
+
+    /// Save a checkpoint of the current session messages for potential resume.
+    async fn save_checkpoint(&self, result: &TaskResult) {
+        let checkpoint_dir = self.project_root.join(".vac/checkpoints");
+        if let Err(e) = std::fs::create_dir_all(&checkpoint_dir) {
+            warn!(error = %e, "Failed to create checkpoint dir");
+            return;
+        }
+        let session = self.session.read().await;
+        let messages: Vec<vil_llm::provider::Message> = session.tasks.iter().map(|t| {
+            vil_llm::provider::Message::user(t.description.clone())
+        }).collect();
+        let envelope = vil_swarm::checkpoint::CheckpointEnvelope::new(
+            Some(session.id),
+            messages,
+            serde_json::json!({
+                "task_id": result.task_id.0.to_string(),
+                "status": format!("{:?}", result.status),
+                "total_tokens": result.total_tokens_used,
+            }),
+        );
+        let path = checkpoint_dir.join(format!("{}.json", session.id));
+        match vil_swarm::checkpoint::serialize_checkpoint(&envelope) {
+            Ok(bytes) => {
+                if let Err(e) = std::fs::write(&path, bytes) {
+                    warn!(error = %e, "Failed to write checkpoint");
+                }
+            }
+            Err(e) => warn!(error = %e, "Failed to serialize checkpoint"),
+        }
     }
 
     /// Get engine status information.
