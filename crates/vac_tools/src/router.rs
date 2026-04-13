@@ -248,21 +248,10 @@ impl ToolRouter {
                         tool_name
                     )));
                 }
-                debug!(%tool_name, %reason, "Auto-allowing needs-approval tool in agent loop");
-                // Restore secrets before execution
-                let restored_args = {
-                    let privacy = context.privacy.read().await;
-                    privacy.restore_value(args)
-                };
-                let result = self.registry.execute(tool_name, restored_args, context).await;
-                // Substitute secrets in result
-                match result {
-                    Ok(v) => {
-                        let mut privacy = context.privacy.write().await;
-                        Ok(privacy.substitute_value(v))
-                    }
-                    Err(e) => Err(e),
-                }
+                // Return ApprovalRequired error to be captured by executor
+                // This allows the executor to populate pending_approvals
+                warn!(%tool_name, %reason, "Tool requires approval");
+                Err(ToolError::ApprovalRequired(reason))
             }
             PolicyDecision::Allow => {
                 debug!("Tool {} allowed by policy", tool_name);

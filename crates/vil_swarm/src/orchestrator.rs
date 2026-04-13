@@ -468,8 +468,11 @@ Rules:
             if state.trim_boundary > prev_boundary {
                 state.collector.context_reduced(state.messages.len(), reduced.len(), state.trim_boundary);
             }
-            // Step 4: Build LLM request
-            let request = LlmRequest::new(reduced.clone())
+            // Step 4: Build LLM request using LlmMessage canonical path
+            let llm_messages: Vec<vil_llm::models::LlmMessage> = reduced.iter()
+                .map(vil_llm::models::LlmMessage::from)
+                .collect();
+            let request = LlmRequest::from_llm_messages(llm_messages)
                 .with_max_tokens(4000)
                 .with_tools(tool_defs.clone());
 

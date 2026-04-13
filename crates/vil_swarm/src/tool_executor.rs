@@ -135,6 +135,18 @@ pub async fn execute_tools(
                     });
                 }
                 Err(e) => {
+                    // Check if this is an approval-required error
+                    if matches!(e, vac_tools::error::ToolError::ApprovalRequired(_)) {
+                        // Add to pending approvals for HITL
+                        state.pending_approvals.push(vac_tools::approvals::PendingApproval {
+                            tool_call_id: call.id.clone(),
+                            tool_name: call.name.clone(),
+                            scope: call.name.clone(),
+                            arguments: call.arguments.clone(),
+                        });
+                        state.last_execution_status = Some(format!("waiting for approval: {}", call.name));
+                        warn!(tool = %call.name, "Tool requires approval, added to pending_approvals");
+                    }
                     error!(tool = %call.name, error = %e, "Serial tool failed");
                     if let Some(tx) = updates {
                         let _ = tx.send(AgentLoopEvent::ToolResult {

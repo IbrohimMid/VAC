@@ -28,6 +28,9 @@ pub enum ToolError {
     #[error("Warden blocked: {0}")]
     WardenBlocked(String),
 
+    #[error("Approval required: {0}")]
+    ApprovalRequired(String),
+
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
 
