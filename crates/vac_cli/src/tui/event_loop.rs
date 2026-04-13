@@ -317,7 +317,7 @@ fn spawn_task(
         });
 
         let mut eng = engine.lock().await;
-        let result = eng.run_task_with_updates(&prompt, Some(updates_tx)).await;
+        let result = eng.run_task_with_cancel(&prompt, Some(updates_tx), Some(cancel.clone())).await;
         let status = eng.status().await.unwrap_or_else(|_| fallback_status(project_root.clone()));
         let history = eng.history().await.unwrap_or_default();
         let _ = cancel; // token kept alive until task completes

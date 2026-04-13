@@ -310,6 +310,16 @@ impl VacEngine {
         description: &str,
         updates: Option<mpsc::UnboundedSender<RuntimeUpdate>>,
     ) -> VacResult<TaskResult> {
+        self.run_task_with_cancel(description, updates, None).await
+    }
+
+    #[instrument(skip(self, updates, cancel), fields(task_id))]
+    pub async fn run_task_with_cancel(
+        &mut self,
+        description: &str,
+        updates: Option<mpsc::UnboundedSender<RuntimeUpdate>>,
+        cancel: Option<tokio_util::sync::CancellationToken>,
+    ) -> VacResult<TaskResult> {
         let task = Task::new(description);
         let task_id = task.id;
         tracing::Span::current().record("task_id", tracing::field::display(task_id.0));
@@ -321,7 +331,7 @@ impl VacEngine {
             session.tasks.push(task.clone());
         }
 
-        let result = match self.execute_task_pipeline(task, updates.clone()).await {
+        let result = match self.execute_task_pipeline(task, updates.clone(), cancel).await {
             Ok(result) => result,
             Err(e) => {
                 error!(error = %e, "Task execution failed");
@@ -367,6 +377,7 @@ impl VacEngine {
         &mut self,
         task: Task,
         updates: Option<mpsc::UnboundedSender<RuntimeUpdate>>,
+        cancel: Option<tokio_util::sync::CancellationToken>,
     ) -> VacResult<TaskResult> {
         let start = std::time::Instant::now();
         let task_id = task.id;
@@ -489,7 +500,7 @@ impl VacEngine {
         });
 
         let execution = swarm
-            .agent_loop_with_context(&task.description, Some(swarm_tx), Some(session_id), Some(project_root), None)
+            .agent_loop_with_context(&task.description, Some(swarm_tx), Some(session_id), Some(project_root), cancel)
             .await?;
 
         info!("Phase 3: Validating...");
@@ -576,7 +587,7 @@ impl VacEngine {
         Ok(result)
     }
 
-    /// Save a checkpoint of the current session messages for potential resume.
+    /// Save a checkpoint of the current session for potential resume.
     async fn save_checkpoint(&self, result: &TaskResult) {
         let checkpoint_dir = self.project_root.join(".vac/checkpoints");
         if let Err(e) = std::fs::create_dir_all(&checkpoint_dir) {
@@ -584,16 +595,19 @@ impl VacEngine {
             return;
         }
         let session = self.session.read().await;
-        let messages: Vec<vil_llm::provider::Message> = session.tasks.iter().map(|t| {
-            vil_llm::provider::Message::user(t.description.clone())
-        }).collect();
+        // Store completed task descriptions as user messages for context continuity
+        let messages: Vec<vil_llm::provider::Message> = session.tasks.iter()
+            .filter(|t| matches!(t.status, crate::task::TaskStatus::Completed))
+            .map(|t| vil_llm::provider::Message::user(t.description.clone()))
+            .collect();
         let envelope = vil_swarm::checkpoint::CheckpointEnvelope::new(
             Some(session.id),
             messages,
             serde_json::json!({
-                "task_id": result.task_id.0.to_string(),
-                "status": format!("{:?}", result.status),
+                "last_task_id": result.task_id.0.to_string(),
+                "last_status": format!("{:?}", result.status),
                 "total_tokens": result.total_tokens_used,
+                "completed_tasks": session.metadata.total_tasks_completed,
             }),
         );
         let path = checkpoint_dir.join(format!("{}.json", session.id));
@@ -601,6 +615,8 @@ impl VacEngine {
             Ok(bytes) => {
                 if let Err(e) = std::fs::write(&path, bytes) {
                     warn!(error = %e, "Failed to write checkpoint");
+                } else {
+                    info!(path = %path.display(), "Checkpoint saved");
                 }
             }
             Err(e) => warn!(error = %e, "Failed to serialize checkpoint"),

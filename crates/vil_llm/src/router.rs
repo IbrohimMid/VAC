@@ -28,6 +28,7 @@ pub struct LlmRouter {
     default_provider: String,
     fallback_chain: Vec<String>,
     budget: Arc<RwLock<TokenBudget>>,
+    retry_config: crate::retry::RetryConfig,
 }
 
 impl LlmRouter {
@@ -37,7 +38,13 @@ impl LlmRouter {
             default_provider: default_provider.to_string(),
             fallback_chain: vec![],
             budget: Arc::new(RwLock::new(TokenBudget::new(budget_limit))),
+            retry_config: crate::retry::RetryConfig::default(),
         }
+    }
+
+    pub fn with_retry_config(mut self, config: crate::retry::RetryConfig) -> Self {
+        self.retry_config = config;
+        self
     }
 
     pub fn add_provider(&mut self, provider: Arc<dyn LlmProvider>) {
@@ -72,7 +79,6 @@ impl LlmRouter {
         let mut chain = vec![self.default_provider.clone()];
         chain.extend(self.fallback_chain.iter().cloned());
 
-        let retry_cfg = crate::retry::RetryConfig::default();
         let mut last_error = None;
 
         for provider_name in &chain {
@@ -87,10 +93,10 @@ impl LlmRouter {
                             info!(provider = provider_name, tokens = response.usage.total_tokens, "LLM request completed");
                             return Ok(response);
                         }
-                        Err(e) if is_retryable(&e) && attempt < retry_cfg.max_attempts => {
+                        Err(e) if is_retryable(&e) && attempt < self.retry_config.max_attempts => {
                             let delay = crate::retry::resolve_retry_delay_ms(
                                 &std::collections::HashMap::new(),
-                                &retry_cfg,
+                                &self.retry_config,
                                 attempt,
                                 chrono::Utc::now(),
                             );
