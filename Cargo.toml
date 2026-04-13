@@ -63,6 +63,10 @@ shared_memory = "0.12"
 # Embedded database
 redb = "2.4"
 
+# Scheduling
+cron = "0.12"
+notify = "6"
+
 # Embedding & ML
 ort = { version = "2.0", features = ["cuda", "tensorrt"] }
 fastembed = "4.4"

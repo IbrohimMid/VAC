@@ -2,7 +2,8 @@
 //! Extracted from orchestrator.rs to formalize the control-plane state contract.
 
 use crate::events::EventCollector;
-use vil_llm::provider::Message;
+use vil_llm::provider::{Message, ToolCall};
+use vac_tools::approvals::PendingApproval;
 
 /// Consolidated mutable state for a single agent loop execution.
 ///
@@ -29,6 +30,14 @@ pub struct AgentRunState {
     pub cancel: Option<tokio_util::sync::CancellationToken>,
     /// Current stage marker for checkpoint metadata.
     pub stage: RunStage,
+    /// Active tool calls pending execution (for checkpoint restore).
+    pub active_tool_calls: Vec<ToolCall>,
+    /// Tool calls awaiting human approval (for checkpoint restore).
+    pub pending_approvals: Vec<PendingApproval>,
+    /// Last execution status message (for checkpoint restore).
+    pub last_execution_status: Option<String>,
+    /// Store for trimmed message content (for cache-preserving context reduction).
+    pub trim_store: crate::context_budget::TrimStore,
 }
 
 /// Which high-level stage the agent loop is in.
@@ -74,6 +83,10 @@ impl AgentRunState {
             collector: EventCollector::new(),
             cancel,
             stage: RunStage::Planner,
+            active_tool_calls: Vec::new(),
+            pending_approvals: Vec::new(),
+            last_execution_status: None,
+            trim_store: crate::context_budget::TrimStore::default(),
         }
     }
 
@@ -91,6 +104,10 @@ impl AgentRunState {
             "trim_boundary": self.trim_boundary,
             "modified_files": self.modified_files,
             "created_files": self.created_files,
+            "active_tool_calls": self.active_tool_calls,
+            "pending_approvals": self.pending_approvals,
+            "last_execution_status": self.last_execution_status,
+            "trim_store": serde_json::to_value(&self.trim_store.0).unwrap_or_default(),
         });
         let envelope = crate::checkpoint::CheckpointEnvelope::new(run_id, self.messages.clone(), metadata);
         crate::checkpoint::save_checkpoint_to_file(path, &envelope)
@@ -131,6 +148,20 @@ impl AgentRunState {
             stage,
             cancel: None,
             collector: EventCollector::new(),
+            active_tool_calls: metadata.get("active_tool_calls")
+                .and_then(|v| serde_json::from_value(v.clone()).ok())
+                .unwrap_or_default(),
+            pending_approvals: metadata.get("pending_approvals")
+                .and_then(|v| serde_json::from_value(v.clone()).ok())
+                .unwrap_or_default(),
+            last_execution_status: metadata.get("last_execution_status")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            trim_store: crate::context_budget::TrimStore(
+                metadata.get("trim_store")
+                    .and_then(|v| serde_json::from_value(v.clone()).ok())
+                    .unwrap_or_default()
+            ),
         })
     }
 

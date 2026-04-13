@@ -1,7 +1,8 @@
 //! Context budget management — two-level message reducer.
 //! Adapted from stakpak/libs/agent-core/src/budget_context.rs (Apache-2.0).
 
-use vil_llm::provider::{Message, Role};
+use std::collections::HashMap;
+use vil_llm::provider::{Message, Role, ToolCall};
 
 const DEFAULT_CONTEXT_WINDOW: u64 = 204_800;
 const MAX_OUTPUT_TOKENS: u64 = 4_000;
@@ -10,6 +11,41 @@ const SAFETY_BUFFER: f64 = 1.05;
 const TRIM_HEADROOM: f64 = 0.75;
 const KEEP_LAST_N_ASSISTANT: usize = 3;
 const TRIMMED_PLACEHOLDER: &str = "[trimmed older context]";
+
+/// Stores original message content before trimming for potential restoration.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct TrimStore(pub HashMap<usize, TrimmedEntry>);
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct TrimmedEntry {
+    pub content: String,
+    pub tool_calls: Vec<ToolCall>,
+}
+
+impl TrimStore {
+    /// Save original message content and replace with placeholder.
+    /// IMPORTANT: Does NOT clear tool_calls to preserve prompt caching stability.
+    pub fn trim_one(&mut self, idx: usize, msg: &mut Message) {
+        self.0.entry(idx).or_insert_with(|| TrimmedEntry {
+            content: msg.content.clone(),
+            tool_calls: msg.tool_calls.clone(),
+        });
+        msg.content = TRIMMED_PLACEHOLDER.to_string();
+        // DO NOT clear tool_calls - preserving them maintains message structure for prompt caching
+        // and prevents orphan tool results in sanitize_messages
+    }
+
+    /// Restore original message content if it was trimmed.
+    pub fn restore(&self, idx: usize, msg: &mut Message) -> bool {
+        if let Some(entry) = self.0.get(&idx) {
+            msg.content = entry.content.clone();
+            msg.tool_calls = entry.tool_calls.clone();
+            true
+        } else {
+            false
+        }
+    }
+}
 
 /// Estimate token count for a single message (content + tool overhead).
 fn message_token_estimate(msg: &Message) -> u64 {
@@ -39,7 +75,8 @@ pub fn estimate_tokens(messages: &[Message]) -> u64 {
 /// Level B: emergency hard cap — trim oldest non-system messages if still over budget.
 ///
 /// `trim_boundary` tracks the highest trimmed index across turns (cache stability).
-pub fn reduce_messages(mut messages: Vec<Message>, trim_boundary: &mut usize) -> Vec<Message> {
+/// `store` preserves original content for potential restoration.
+pub fn reduce_messages(mut messages: Vec<Message>, trim_boundary: &mut usize, store: &mut TrimStore) -> Vec<Message> {
     let available = DEFAULT_CONTEXT_WINDOW.saturating_sub(MAX_OUTPUT_TOKENS);
     let threshold = (available as f64 * 0.90) as u64;
     let trim_target = (threshold as f64 * TRIM_HEADROOM) as u64;
@@ -77,8 +114,7 @@ pub fn reduce_messages(mut messages: Vec<Message>, trim_boundary: &mut usize) ->
             && !preserved_assistant.contains(&i)
             && Some(i) != latest_user_idx
         {
-            messages[i].content = TRIMMED_PLACEHOLDER.to_string();
-            messages[i].tool_calls.clear();
+            store.trim_one(i, &mut messages[i]);
             new_boundary = new_boundary.max(i + 1);
         }
     }
@@ -94,8 +130,9 @@ pub fn reduce_messages(mut messages: Vec<Message>, trim_boundary: &mut usize) ->
     let mut i = 0;
     while i < messages.len() && estimate_tokens(&messages) > trim_target {
         if messages[i].role != Role::System && Some(i) != latest_user_idx {
-            messages[i].content = TRIMMED_PLACEHOLDER.to_string();
-            messages[i].tool_calls.clear();
+            store.trim_one(i, &mut messages[i]);
+            // Update trim_boundary to track this emergency trim
+            *trim_boundary = (*trim_boundary).max(i + 1);
         }
         i += 1;
     }
@@ -160,7 +197,8 @@ mod tests {
             msg(Role::Assistant, "ok"),
         ];
         let mut boundary = 0;
-        let reduced = reduce_messages(messages.clone(), &mut boundary);
+        let mut store = TrimStore::default();
+        let reduced = reduce_messages(messages.clone(), &mut boundary, &mut store);
         assert_eq!(reduced.len(), messages.len());
         assert_eq!(boundary, 0);
     }
@@ -177,7 +215,8 @@ mod tests {
         messages.push(msg(Role::User, "latest user task"));
 
         let mut boundary = 0;
-        let reduced = reduce_messages(messages, &mut boundary);
+        let mut store = TrimStore::default();
+        let reduced = reduce_messages(messages, &mut boundary, &mut store);
 
         let latest_user = reduced.iter().rev().find(|m| m.role == Role::User);
         assert!(latest_user.is_some());
@@ -195,7 +234,8 @@ mod tests {
         messages.push(msg(Role::User, "new task"));
 
         let mut boundary = 0;
-        let reduced = reduce_messages(messages, &mut boundary);
+        let mut store = TrimStore::default();
+        let reduced = reduce_messages(messages, &mut boundary, &mut store);
 
         // At least some old assistant/tool messages should be trimmed.
         let trimmed_count = reduced.iter()
@@ -212,7 +252,8 @@ mod tests {
             msg(Role::Assistant, "done"),
         ];
         let mut boundary = 0;
-        reduce_messages(messages, &mut boundary);
+        let mut store = TrimStore::default();
+        reduce_messages(messages, &mut boundary, &mut store);
         assert_eq!(boundary, 0, "boundary should not advance when under budget");
     }
 
@@ -228,10 +269,39 @@ mod tests {
         messages.push(msg(Role::User, "final task"));
 
         let mut boundary = 0;
-        let reduced = reduce_messages(messages, &mut boundary);
+        let mut store = TrimStore::default();
+        let reduced = reduce_messages(messages, &mut boundary, &mut store);
 
         assert!(estimate_tokens(&reduced) < 204_800);
         // Latest user message preserved.
         assert_eq!(reduced.last().unwrap().content, "final task");
+    }
+
+    #[test]
+    fn trim_store_trim_one_and_restore() {
+        let mut store = TrimStore::default();
+        let mut msg = msg(Role::Assistant, "original content");
+        msg.tool_calls.push(ToolCall {
+            id: "tc1".into(),
+            name: "test".into(),
+            arguments: json!({}),
+        });
+
+        store.trim_one(5, &mut msg);
+        assert_eq!(msg.content, TRIMMED_PLACEHOLDER);
+        // tool_calls should NOT be cleared (prompt caching stability)
+        assert_eq!(msg.tool_calls.len(), 1);
+
+        let restored = store.restore(5, &mut msg);
+        assert!(restored);
+        assert_eq!(msg.content, "original content");
+        assert_eq!(msg.tool_calls.len(), 1);
+    }
+
+    #[test]
+    fn trim_store_restore_returns_false_for_unknown_idx() {
+        let store = TrimStore::default();
+        let mut msg = msg(Role::User, "test");
+        assert!(!store.restore(99, &mut msg));
     }
 }

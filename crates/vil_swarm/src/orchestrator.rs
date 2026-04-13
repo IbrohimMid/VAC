@@ -460,7 +460,11 @@ Rules:
             state.collector.push(crate::events::AgentEvent::IterationStarted { iteration: state.iterations });
             // Step 3: Context reduction
             let prev_boundary = state.trim_boundary;
-            let reduced = crate::context_budget::reduce_messages(state.messages.clone(), &mut state.trim_boundary);
+            let reduced = crate::context_budget::reduce_messages(
+                state.messages.clone(),
+                &mut state.trim_boundary,
+                &mut state.trim_store,
+            );
             if state.trim_boundary > prev_boundary {
                 state.collector.context_reduced(state.messages.len(), reduced.len(), state.trim_boundary);
             }

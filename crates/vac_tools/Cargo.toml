@@ -33,6 +33,7 @@ grep-regex = "0.1"
 grep-searcher = "0.1"
 ignore = "0.4"
 base64 = "0.22"
+regex = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }

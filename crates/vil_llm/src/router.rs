@@ -2,6 +2,7 @@
 
 use crate::error::{LlmError, LlmResult};
 use crate::provider::{LlmProvider, LlmRequest, LlmResponse, StreamChunk};
+use crate::sanitize;
 use crate::token_budget::TokenBudget;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -76,6 +77,17 @@ impl LlmRouter {
             }
         }
 
+        // Sanitize messages for provider compatibility
+        let sanitized_messages = sanitize::sanitize_messages(&request.messages, &self.default_provider);
+        let sanitized_request = LlmRequest {
+            messages: sanitized_messages,
+            model: request.model.clone(),
+            max_tokens: request.max_tokens,
+            temperature: request.temperature,
+            stop_sequences: request.stop_sequences.clone(),
+            tools: request.tools.clone(),
+        };
+
         let mut chain = vec![self.default_provider.clone()];
         chain.extend(self.fallback_chain.iter().cloned());
 
@@ -86,7 +98,7 @@ impl LlmRouter {
                 let mut attempt = 0usize;
                 loop {
                     attempt += 1;
-                    match provider.complete(request).await {
+                    match provider.complete(&sanitized_request).await {
                         Ok(response) => {
                             let mut budget = self.budget.write().await;
                             budget.add_usage(response.usage.total_tokens);
@@ -126,6 +138,17 @@ impl LlmRouter {
     }
 
     pub async fn stream(&self, request: &LlmRequest) -> LlmResult<mpsc::Receiver<StreamChunk>> {
+        // Sanitize messages for provider compatibility
+        let sanitized_messages = sanitize::sanitize_messages(&request.messages, &self.default_provider);
+        let sanitized_request = LlmRequest {
+            messages: sanitized_messages,
+            model: request.model.clone(),
+            max_tokens: request.max_tokens,
+            temperature: request.temperature,
+            stop_sequences: request.stop_sequences.clone(),
+            tools: request.tools.clone(),
+        };
+
         let provider =
             self.providers
                 .get(&self.default_provider)
@@ -134,7 +157,7 @@ impl LlmRouter {
                     message: "Default provider not found".into(),
                 })?;
 
-        provider.stream(request).await
+        provider.stream(&sanitized_request).await
     }
 
     pub async fn token_usage(&self) -> (u64, u64) {

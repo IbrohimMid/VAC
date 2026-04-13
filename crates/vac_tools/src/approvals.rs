@@ -10,6 +10,16 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+/// A tool call that was intercepted by the approval gate and not yet resolved.
+/// Serialized into checkpoint metadata so it can be re-surfaced on resume.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PendingApproval {
+    pub tool_call_id: String,
+    pub tool_name: String,
+    pub scope: String,
+    pub arguments: serde_json::Value,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ScopePolicy {
     Allow,

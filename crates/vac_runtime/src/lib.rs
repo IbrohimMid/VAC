@@ -1,9 +1,13 @@
+pub mod cron_scheduler;
 pub mod executor;
 pub mod jobs;
 pub mod queue;
 pub mod scheduler;
+pub mod watcher;
 
+pub use cron_scheduler::{CronEntry, CronScheduler};
 pub use executor::{OperatingMode, TaskExecutor};
-pub use jobs::{Job, JobKind, JobStatus};
+pub use jobs::{Job, JobKind, JobStatus, JobTrigger};
 pub use queue::TaskQueue;
 pub use scheduler::Scheduler;
+pub use watcher::{FileWatcher, WatchEntry};
