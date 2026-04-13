@@ -285,7 +285,7 @@ async fn handle_vac_command(cmd: &str, input_tx: &mpsc::Sender<InputEvent>, proj
         "/vil" => {
             let _ = input_tx.send(InputEvent::AddUserMessage(
                 "VIL Engine Status:\n\
-                • Version: 1.0.0\n\
+                • Version: 0.1\n\
                 • Mode: VIL-native\n\
                 • Restore: restore-first\n\
                 • Checkpoint: enabled".to_string()
