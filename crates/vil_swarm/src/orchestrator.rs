@@ -517,8 +517,9 @@ Rules:
                             args.push_str(&arguments_delta);
                         }
                     }
-                    vil_llm::provider::StreamChunk::Done(usage) => {
+                    vil_llm::provider::StreamChunk::Done { usage, finish_reason } => {
                         stream_usage = usage;
+                        stream_finish = finish_reason;
                     }
                     vil_llm::provider::StreamChunk::Error(e) => {
                         return Err(SwarmError::Orchestration(format!("LLM stream error: {}", e)));
@@ -530,10 +531,10 @@ Rules:
                 let arguments = serde_json::from_str(&args_str)
                     .unwrap_or_else(|_| serde_json::json!({"raw": args_str}));
                 stream_tool_calls.push(vil_llm::provider::ToolCall { id, name, arguments });
-                stream_finish = vil_llm::provider::FinishReason::ToolUse;
             }
-            if stream_tool_calls.is_empty() {
-                stream_finish = vil_llm::provider::FinishReason::Stop;
+            // Fallback: if SSE didn't provide finish_reason, infer from tool_calls presence
+            if stream_finish == vil_llm::provider::FinishReason::Stop && !stream_tool_calls.is_empty() {
+                stream_finish = vil_llm::provider::FinishReason::ToolUse;
             }
 
             let response = vil_llm::provider::LlmResponse {
@@ -763,7 +764,7 @@ Rules:
         task_description: &str,
         updates: Option<mpsc::UnboundedSender<AgentLoopEvent>>,
     ) -> SwarmResult<ExecutionResult> {
-        self.agent_loop_with_context(task_description, updates, None, None).await
+        self.agent_loop_with_context(task_description, updates, None, None, None).await
     }
 
     pub async fn agent_loop_with_context(
@@ -772,6 +773,7 @@ Rules:
         updates: Option<mpsc::UnboundedSender<AgentLoopEvent>>,
         session_id: Option<uuid::Uuid>,
         project_root: Option<std::path::PathBuf>,
+        cancel: Option<tokio_util::sync::CancellationToken>,
     ) -> SwarmResult<ExecutionResult> {
         info!(task = %task_description, "Starting Semantic VIL-native agent loop");
 
@@ -823,11 +825,9 @@ Rules:
                 &context,
                 llm_router,
                 tool_router,
-                None,
+                cancel.clone(),
             )
             .await?;
-
-        // Parse SemanticPlan from plan_output — gate-checked
         // strict_mode: if planner_gate is active (strict-vil profile), ParseFailed = hard stop
         let strict_mode = std::env::var("VAC_PROFILE")
             .map(|p| p == "strict-vil" || p == "spec-hardening")
@@ -909,7 +909,7 @@ Rules:
                 &context,
                 llm_router,
                 tool_router,
-                None,
+                cancel,
             )
             .await?;
 

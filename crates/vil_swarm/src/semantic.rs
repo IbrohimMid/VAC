@@ -103,6 +103,11 @@ pub fn evaluate_planner_output(output: &str) -> PlannerGateResult {
     match plan {
         None => PlannerGateResult::ParseFailed(output.to_string()),
         Some(plan) => {
+            // Log canonical term warnings (non-blocking)
+            let (_, warnings) = plan.canonical_terms_gate();
+            for w in &warnings {
+                tracing::warn!(canonical_term_issue = %w, "Planner output contains legacy VIL alias");
+            }
             if plan.knowledge_gate_passed() {
                 PlannerGateResult::Passed(plan)
             } else {

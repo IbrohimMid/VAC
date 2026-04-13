@@ -8,7 +8,7 @@ pub async fn collect_text(mut rx: mpsc::Receiver<StreamChunk>) -> String {
     while let Some(chunk) = rx.recv().await {
         match chunk {
             StreamChunk::Text(t) => text.push_str(&t),
-            StreamChunk::Done(_) => break,
+            StreamChunk::Done { .. } => break,
             StreamChunk::Error(e) => {
                 tracing::error!(error = %e, "Stream error");
                 break;
@@ -27,7 +27,7 @@ pub async fn print_stream(mut rx: mpsc::Receiver<StreamChunk>) {
                 print!("{}", t);
                 let _ = std::io::stdout().flush();
             }
-            StreamChunk::Done(usage) => {
+            StreamChunk::Done { usage, .. } => {
                 println!("\n[Done: {} tokens]", usage.total_tokens);
                 break;
             }

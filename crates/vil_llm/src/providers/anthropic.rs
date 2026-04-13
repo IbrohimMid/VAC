@@ -282,6 +282,7 @@ impl LlmProvider for AnthropicProvider {
             let mut stream = response.bytes_stream();
             let mut buf = String::new();
             let mut usage = OpenAiUsage::default();
+            let mut finish_reason = crate::provider::FinishReason::Stop;
 
             while let Some(chunk) = stream.next().await {
                 let bytes = match chunk {
@@ -313,6 +314,12 @@ impl LlmProvider for AnthropicProvider {
 
                     let Some(choices) = val.get("choices").and_then(|c| c.as_array()) else { continue };
                     let Some(choice) = choices.first() else { continue };
+
+                    // Parse finish_reason if present
+                    if let Some(fr) = choice.get("finish_reason").and_then(|v| v.as_str()) {
+                        finish_reason = Self::finish_reason(Some(fr));
+                    }
+
                     let delta = match choice.get("delta") { Some(d) => d, None => continue };
 
                     // Text delta
@@ -340,11 +347,14 @@ impl LlmProvider for AnthropicProvider {
                 }
             }
 
-            let _ = tx.send(StreamChunk::Done(TokenUsage {
-                prompt_tokens: usage.prompt_tokens,
-                completion_tokens: usage.completion_tokens,
-                total_tokens: usage.total_tokens,
-            })).await;
+            let _ = tx.send(StreamChunk::Done {
+                usage: TokenUsage {
+                    prompt_tokens: usage.prompt_tokens,
+                    completion_tokens: usage.completion_tokens,
+                    total_tokens: usage.total_tokens,
+                },
+                finish_reason,
+            }).await;
         });
 
         Ok(rx)

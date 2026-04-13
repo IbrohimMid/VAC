@@ -97,6 +97,8 @@ pub struct TuiApp {
     // Runtime integration (optional — None when no scheduler attached)
     pub runtime_jobs: Vec<Job>,
     pub operating_mode: Option<OperatingMode>,
+    /// Cancellation token for the currently running task (None when idle)
+    pub cancel_token: Option<tokio_util::sync::CancellationToken>,
 }
 
 impl TuiApp {
@@ -135,6 +137,7 @@ impl TuiApp {
             streaming_assistant: None,
             runtime_jobs: vec![],
             operating_mode: None,
+            cancel_token: None,
         }
     }
 

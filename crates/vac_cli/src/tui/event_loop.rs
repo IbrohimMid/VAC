@@ -124,6 +124,7 @@ fn handle_task_event(app: &mut TuiApp, ev: TaskEvent) {
             app.status = status;
             app.session_mut().history = history;
             app.session_mut().active_task = None;
+            app.cancel_token = None;
             // route_update handles Completed — but we also get it here for status sync
             let _ = prompt;
         }
@@ -131,6 +132,7 @@ fn handle_task_event(app: &mut TuiApp, ev: TaskEvent) {
             app.status = status;
             app.session_mut().history = history;
             app.session_mut().active_task = None;
+            app.cancel_token = None;
             let _ = prompt;
             // route_update handles Failed — but ensure auth hint
             if let Some(hint) = auth_hint_for_error(&error) {
@@ -234,6 +236,12 @@ fn handle_key(
         }
         KeyCode::Esc => {
             app.input.clear();
+            // Cancel running task if Esc pressed while busy
+            if app.session().active_task.is_some() {
+                if let Some(token) = app.cancel_token.take() {
+                    token.cancel();
+                }
+            }
             if app.detail.is_some() {
                 app.detail = DetailMode::None;
                 app.focus = FocusPane::History;
@@ -273,7 +281,9 @@ fn handle_key(
                 let prompt = app.input.trim().to_string();
                 if !prompt.is_empty() {
                     app.input.clear();
-                    spawn_task(prompt, engine, tx, project_root);
+                    let cancel = tokio_util::sync::CancellationToken::new();
+                    app.cancel_token = Some(cancel.clone());
+                    spawn_task(prompt, engine, tx, project_root, cancel);
                 }
             }
         }
@@ -294,6 +304,7 @@ fn spawn_task(
     engine: Arc<Mutex<VacEngine>>,
     tx: mpsc::UnboundedSender<TaskEvent>,
     project_root: PathBuf,
+    cancel: tokio_util::sync::CancellationToken,
 ) {
     let _ = tx.send(TaskEvent::Started { prompt: prompt.clone() });
     tokio::spawn(async move {
@@ -309,6 +320,7 @@ fn spawn_task(
         let result = eng.run_task_with_updates(&prompt, Some(updates_tx)).await;
         let status = eng.status().await.unwrap_or_else(|_| fallback_status(project_root.clone()));
         let history = eng.history().await.unwrap_or_default();
+        let _ = cancel; // token kept alive until task completes
 
         match result {
             Ok(r) => { let _ = tx.send(TaskEvent::Finished { prompt, result: r, status, history }); }

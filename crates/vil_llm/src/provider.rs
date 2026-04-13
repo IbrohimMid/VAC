@@ -162,7 +162,7 @@ pub enum StreamChunk {
     Text(String),
     ToolCallStart { id: String, name: String },
     ToolCallDelta { id: String, arguments_delta: String },
-    Done(TokenUsage),
+    Done { usage: TokenUsage, finish_reason: FinishReason },
     Error(String),
 }
 

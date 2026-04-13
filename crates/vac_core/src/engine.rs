@@ -489,7 +489,7 @@ impl VacEngine {
         });
 
         let execution = swarm
-            .agent_loop_with_context(&task.description, Some(swarm_tx), Some(session_id), Some(project_root))
+            .agent_loop_with_context(&task.description, Some(swarm_tx), Some(session_id), Some(project_root), None)
             .await?;
 
         info!("Phase 3: Validating...");
