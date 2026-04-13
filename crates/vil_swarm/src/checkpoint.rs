@@ -114,53 +114,70 @@ pub fn list_sessions(checkpoint_dir: &std::path::Path) -> Vec<SessionInfo> {
 
     if let Ok(entries) = std::fs::read_dir(checkpoint_dir) {
         for entry in entries.flatten() {
-            if let Ok(metadata) = entry.metadata() {
-                if metadata.is_file() && entry.path().extension().map_or(false, |e| e == "json") {
-                    if let Ok(checkpoint) = load_checkpoint_from_file(&entry.path()) {
-                        let title = checkpoint.messages
-                            .iter()
-                            .find(|m| matches!(m.role, vil_llm::provider::Role::User))
-                            .map(|m| {
-                                let content = m.content.chars().take(50).collect::<String>();
-                                if m.content.len() > 50 {
-                                    format!("{}...", content)
-                                } else {
-                                    content
-                                }
-                            })
-                            .unwrap_or_else(|| "Untitled session".to_string());
+            let checkpoint_path = entry.path();
 
-                        let (updated_at_display, modified_time) = if let Ok(modified) = metadata.modified() {
-                            let display = if let Ok(elapsed) = modified.elapsed() {
-                                let secs = elapsed.as_secs();
-                                if secs < 60 {
-                                    format!("{} seconds ago", secs)
-                                } else if secs < 3600 {
-                                    format!("{} minutes ago", secs / 60)
-                                } else if secs < 86400 {
-                                    format!("{} hours ago", secs / 3600)
-                                } else {
-                                    format!("{} days ago", secs / 86400)
-                                }
-                            } else {
-                                "Unknown".to_string()
-                            };
-                            (display, modified)
-                        } else {
-                            ("Unknown".to_string(), std::time::SystemTime::UNIX_EPOCH)
-                        };
-
-                        sessions.push((
-                            SessionInfo {
-                                id: entry.path().to_string_lossy().to_string(),
-                                title,
-                                updated_at: updated_at_display,
-                            },
-                            modified_time,
-                        ));
-                    }
-                }
+            if !checkpoint_path.is_file()
+                || checkpoint_path.extension().is_none_or(|e| e != "json")
+            {
+                continue;
             }
+
+            let Ok(metadata) = entry.metadata() else { continue };
+            let Ok(checkpoint) = load_checkpoint_from_file(&checkpoint_path) else { continue };
+
+            let title = checkpoint
+                .messages
+                .iter()
+                .find(|m| matches!(m.role, vil_llm::provider::Role::User))
+                .map(|m| {
+                    let content = m.content.chars().take(50).collect::<String>();
+                    if m.content.len() > 50 {
+                        format!("{content}...")
+                    } else {
+                        content
+                    }
+                })
+                .unwrap_or_else(|| "Untitled session".to_string());
+
+            // Get session_id from checkpoint run_id, or fallback to file stem
+            let session_id = checkpoint.run_id.or_else(|| {
+                checkpoint_path
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .and_then(|s| Uuid::parse_str(s).ok())
+            });
+
+            let Some(session_id) = session_id else { continue };
+
+            let (updated_at_display, modified_time) = if let Ok(modified) = metadata.modified() {
+                let display = if let Ok(elapsed) = modified.elapsed() {
+                    let secs = elapsed.as_secs();
+                    if secs < 60 {
+                        format!("{secs} seconds ago")
+                    } else if secs < 3600 {
+                        format!("{} minutes ago", secs / 60)
+                    } else if secs < 86400 {
+                        format!("{} hours ago", secs / 3600)
+                    } else {
+                        format!("{} days ago", secs / 86400)
+                    }
+                } else {
+                    "Unknown".to_string()
+                };
+                (display, modified)
+            } else {
+                ("Unknown".to_string(), std::time::SystemTime::UNIX_EPOCH)
+            };
+
+            sessions.push((
+                SessionInfo {
+                    session_id,
+                    checkpoint_path,
+                    title,
+                    updated_at: updated_at_display,
+                },
+                modified_time,
+            ));
         }
     }
 
@@ -171,7 +188,8 @@ pub fn list_sessions(checkpoint_dir: &std::path::Path) -> Vec<SessionInfo> {
 
 #[derive(Debug, Clone)]
 pub struct SessionInfo {
-    pub id: String,
+    pub session_id: Uuid,
+    pub checkpoint_path: std::path::PathBuf,
     pub title: String,
     pub updated_at: String,
 }
@@ -204,6 +222,46 @@ mod tests {
         });
         let err = deserialize_checkpoint(payload.to_string().as_bytes()).unwrap_err();
         assert!(err.to_string().contains("unsupported checkpoint version: 2"));
+    }
+
+    #[test]
+    fn list_sessions_returns_uuid_and_checkpoint_path() {
+        use std::fs;
+
+        let dir = std::env::temp_dir();
+        let test_dir = dir.join("vac_test_sessions");
+        fs::create_dir_all(&test_dir).unwrap();
+
+        let run_id = Uuid::new_v4();
+        let env = CheckpointEnvelope::new(
+            Some(run_id),
+            vec![Message::user("hello")],
+            serde_json::json!({}),
+        );
+
+        let path = test_dir.join(format!("{run_id}.json"));
+        save_checkpoint_to_file(&path, &env).unwrap();
+
+        let sessions = list_sessions(&test_dir);
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].session_id, run_id);
+        assert_eq!(sessions[0].checkpoint_path, path);
+
+        // Cleanup
+        fs::remove_dir_all(&test_dir).ok();
+    }
+
+    #[test]
+    fn session_info_uses_typed_uuid_not_string_parse() {
+        let session_id = Uuid::new_v4();
+        let info = SessionInfo {
+            session_id,
+            checkpoint_path: std::path::PathBuf::from(format!(".vac/checkpoints/{session_id}.json")),
+            title: "test".to_string(),
+            updated_at: "1 second ago".to_string(),
+        };
+
+        assert_eq!(info.session_id, session_id);
     }
 
     #[test]

@@ -286,25 +286,25 @@ fn handle_key(
                     .collect();
 
                 if let Some(session) = filtered.get(app.session_selected) {
-                    let session_id_str = session.id.clone();
+                    let session_uuid = session.session_id;
                     let session_title = session.title.clone();
+                    let checkpoint_path = session.checkpoint_path.clone();
 
-                    // Parse session ID
-                    if let Ok(session_uuid) = uuid::Uuid::parse_str(&session_id_str) {
-                        // Clear transcript and show loading message
-                        let session_tab = app.session_mut();
-                        session_tab.transcript.clear();
-                        session_tab.transcript.push(super::app::TranscriptEntry {
-                            label: "System".to_string(),
-                            body: format!("Restoring session: {}...", session_title),
-                            color: ratatui::style::Color::Cyan,
-                        });
+                    let session_tab = app.session_mut();
+                    session_tab.transcript.clear();
+                    session_tab.transcript.push(super::app::TranscriptEntry {
+                        label: "System".to_string(),
+                        body: format!("Restoring session: {}...", session_title),
+                        color: ratatui::style::Color::Cyan,
+                    });
 
-                        // Spawn async session restore
-                        spawn_session_restore(session_uuid, session_title, engine.clone(), tx.clone());
-                    } else {
-                        app.push_transcript("Error", format!("Invalid session ID: {}", session_id_str), ratatui::style::Color::Red);
-                    }
+                    spawn_session_restore(
+                        session_uuid,
+                        session_title,
+                        checkpoint_path,
+                        engine.clone(),
+                        tx.clone(),
+                    );
                 }
                 app.show_sessions_popup = false;
                 app.session_search.clear();
@@ -469,23 +469,25 @@ fn handle_key(
                         let sessions = vil_swarm::checkpoint::list_sessions(&checkpoint_dir);
 
                         if let Some(last_session) = sessions.first() {
-                            // Parse session ID
-                            if let Ok(session_uuid) = uuid::Uuid::parse_str(&last_session.id) {
-                                let session_title = last_session.title.clone();
-                                // Clear transcript and show loading message
-                                let session_tab = app.session_mut();
-                                session_tab.transcript.clear();
-                                session_tab.transcript.push(super::app::TranscriptEntry {
-                                    label: "System".to_string(),
-                                    body: format!("Restoring session: {}...", session_title),
-                                    color: ratatui::style::Color::Cyan,
-                                });
+                            let session_uuid = last_session.session_id;
+                            let session_title = last_session.title.clone();
+                            let checkpoint_path = last_session.checkpoint_path.clone();
 
-                                // Spawn async session restore
-                                spawn_session_restore(session_uuid, session_title, engine.clone(), tx.clone());
-                            } else {
-                                app.push_transcript("Error", format!("Invalid session ID: {}", last_session.id), ratatui::style::Color::Red);
-                            }
+                            let session_tab = app.session_mut();
+                            session_tab.transcript.clear();
+                            session_tab.transcript.push(super::app::TranscriptEntry {
+                                label: "System".to_string(),
+                                body: format!("Restoring session: {}...", session_title),
+                                color: ratatui::style::Color::Cyan,
+                            });
+
+                            spawn_session_restore(
+                                session_uuid,
+                                session_title,
+                                checkpoint_path,
+                                engine.clone(),
+                                tx.clone(),
+                            );
                         } else {
                             app.push_transcript("System", "No saved sessions found".to_string(), ratatui::style::Color::Yellow);
                         }
@@ -572,20 +574,27 @@ fn fallback_status(project_root: PathBuf) -> vac_core::engine::EngineStatus {
 fn spawn_session_restore(
     session_id: uuid::Uuid,
     session_title: String,
+    checkpoint_path: std::path::PathBuf,
     engine: Arc<Mutex<VacEngine>>,
     tx: mpsc::UnboundedSender<TaskEvent>,
 ) {
     tokio::spawn(async move {
         let mut eng = engine.lock().await;
-        let project_root = eng.status().await.map(|s| s.project_root.clone()).unwrap_or_default();
 
-        // Load checkpoint for transcript
-        let checkpoint_path = format!(".vac/checkpoints/{}.json", session_id);
-        let checkpoint = vil_swarm::checkpoint::load_checkpoint_from_file(std::path::Path::new(&checkpoint_path));
+        // Load checkpoint for transcript using canonical path from SessionInfo
+        let checkpoint = vil_swarm::checkpoint::load_checkpoint_from_file(&checkpoint_path);
 
         match eng.load_session(session_id).await {
             Ok(()) => {
-                let status = eng.status().await.unwrap_or_else(|_| fallback_status(project_root));
+                let project_root = eng
+                    .status()
+                    .await
+                    .map(|s| s.project_root.clone())
+                    .unwrap_or_default();
+                let status = eng
+                    .status()
+                    .await
+                    .unwrap_or_else(|_| fallback_status(project_root));
                 let history = eng.history().await.unwrap_or_default();
 
                 match checkpoint {
@@ -600,13 +609,18 @@ fn spawn_session_restore(
                     }
                     Err(e) => {
                         let _ = tx.send(TaskEvent::SessionRestoreFailed {
-                            error: format!("Session loaded but checkpoint missing: {}", e),
+                            error: format!(
+                                "Session loaded but checkpoint missing/unreadable: {}",
+                                e
+                            ),
                         });
                     }
                 }
             }
             Err(e) => {
-                let _ = tx.send(TaskEvent::SessionRestoreFailed { error: e.to_string() });
+                let _ = tx.send(TaskEvent::SessionRestoreFailed {
+                    error: e.to_string(),
+                });
             }
         }
     });
