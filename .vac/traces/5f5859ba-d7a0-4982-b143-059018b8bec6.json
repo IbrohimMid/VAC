@@ -1,0 +1,240 @@
+[
+  {
+    "id": "388cfc9a-00f2-48d2-a496-a83ba1fa5457",
+    "timestamp": "2026-04-13T19:02:30.185202043Z",
+    "record_type": "TaskStart",
+    "agent_id": null,
+    "content": {
+      "description": "hi",
+      "task_id": "ff34ea1c-9ce0-4f5d-98d9-9c4c93da56e6"
+    }
+  },
+  {
+    "id": "a8510819-561a-4611-887b-f87e38248e75",
+    "timestamp": "2026-04-13T19:02:30.186753642Z",
+    "record_type": "LlmRequest",
+    "agent_id": null,
+    "content": {
+      "message_count": 2,
+      "model": "default",
+      "provider": "kilo"
+    }
+  },
+  {
+    "id": "d703eac9-fa50-4f88-92fd-38ee1c235d0d",
+    "timestamp": "2026-04-13T19:02:35.053847157Z",
+    "record_type": "LlmResponse",
+    "agent_id": null,
+    "content": {
+      "model": "kilo-auto/free",
+      "provider": "kilo"
+    }
+  },
+  {
+    "id": "94d08d3d-e08a-46ab-b7a6-9a7939b699a4",
+    "timestamp": "2026-04-13T19:02:35.054519733Z",
+    "record_type": "LlmRequest",
+    "agent_id": null,
+    "content": {
+      "message_count": 2,
+      "model": "default",
+      "provider": "kilo"
+    }
+  },
+  {
+    "id": "1ad8e031-4e1e-463a-961a-57664bc5fcc7",
+    "timestamp": "2026-04-13T19:02:38.151558291Z",
+    "record_type": "LlmResponse",
+    "agent_id": null,
+    "content": {
+      "model": "kilo-auto/free",
+      "provider": "kilo"
+    }
+  },
+  {
+    "id": "ee265980-5e9d-4822-a273-288c73f75349",
+    "timestamp": "2026-04-13T19:02:38.151913591Z",
+    "record_type": "ToolCall",
+    "agent_id": null,
+    "content": {
+      "arguments": {
+        "raw": ""
+      },
+      "tool": "vil_knowledge"
+    }
+  },
+  {
+    "id": "7a0e9d45-ff35-48c2-9787-5b8e810fa7df",
+    "timestamp": "2026-04-13T19:02:38.158013444Z",
+    "record_type": "ToolResult",
+    "agent_id": null,
+    "content": {
+      "content": "Error: Invalid tool arguments: missing field `query`",
+      "success": false,
+      "tool": "vil_knowledge"
+    }
+  },
+  {
+    "id": "06a92c3b-2e99-494a-be42-a4a33102e0ac",
+    "timestamp": "2026-04-13T19:02:38.159036237Z",
+    "record_type": "LlmRequest",
+    "agent_id": null,
+    "content": {
+      "message_count": 4,
+      "model": "default",
+      "provider": "kilo"
+    }
+  },
+  {
+    "id": "59345683-b4ad-4561-91da-3ddefd95b831",
+    "timestamp": "2026-04-13T19:02:39.929679056Z",
+    "record_type": "LlmResponse",
+    "agent_id": null,
+    "content": {
+      "model": "kilo-auto/free",
+      "provider": "kilo"
+    }
+  },
+  {
+    "id": "59446f75-85c4-4555-9d74-30ed27e4cdb5",
+    "timestamp": "2026-04-13T19:02:39.929994019Z",
+    "record_type": "ToolCall",
+    "agent_id": null,
+    "content": {
+      "arguments": {
+        "raw": ""
+      },
+      "tool": "vil_knowledge"
+    }
+  },
+  {
+    "id": "f5a5e7e5-8e45-4606-aed7-fd18d237e4a6",
+    "timestamp": "2026-04-13T19:02:39.930331739Z",
+    "record_type": "ToolResult",
+    "agent_id": null,
+    "content": {
+      "content": "Error: Invalid tool arguments: missing field `query`",
+      "success": false,
+      "tool": "vil_knowledge"
+    }
+  },
+  {
+    "id": "59366c79-b6e1-4079-8a8a-afd3b1e2a15f",
+    "timestamp": "2026-04-13T19:02:39.930877424Z",
+    "record_type": "LlmRequest",
+    "agent_id": null,
+    "content": {
+      "message_count": 6,
+      "model": "default",
+      "provider": "kilo"
+    }
+  },
+  {
+    "id": "c45c91aa-dd2a-4e8d-b6a6-f08b0ceb11b5",
+    "timestamp": "2026-04-13T19:02:44.282489860Z",
+    "record_type": "LlmResponse",
+    "agent_id": null,
+    "content": {
+      "model": "kilo-auto/free",
+      "provider": "kilo"
+    }
+  },
+  {
+    "id": "6bc80dab-8a96-4dcd-acc8-6e277a38e18b",
+    "timestamp": "2026-04-13T19:02:44.282700640Z",
+    "record_type": "ToolCall",
+    "agent_id": null,
+    "content": {
+      "arguments": {
+        "raw": ""
+      },
+      "tool": "vil_knowledge"
+    }
+  },
+  {
+    "id": "0eba64d0-20e8-42d2-8e06-c353137c252c",
+    "timestamp": "2026-04-13T19:02:44.283846931Z",
+    "record_type": "ToolResult",
+    "agent_id": null,
+    "content": {
+      "content": "Error: Invalid tool arguments: missing field `query`",
+      "success": false,
+      "tool": "vil_knowledge"
+    }
+  },
+  {
+    "id": "85fe68cb-f7af-4965-b1d0-0a0dc111a321",
+    "timestamp": "2026-04-13T19:02:44.284466055Z",
+    "record_type": "LlmRequest",
+    "agent_id": null,
+    "content": {
+      "message_count": 8,
+      "model": "default",
+      "provider": "kilo"
+    }
+  },
+  {
+    "id": "72485bcd-e9bf-40bd-8797-8b13553c7b83",
+    "timestamp": "2026-04-13T19:02:45.560181210Z",
+    "record_type": "LlmResponse",
+    "agent_id": null,
+    "content": {
+      "model": "kilo-auto/free",
+      "provider": "kilo"
+    }
+  },
+  {
+    "id": "7cdb728d-16db-43c4-bc4e-7f3a6a1ff65c",
+    "timestamp": "2026-04-13T19:02:45.560608845Z",
+    "record_type": "ToolCall",
+    "agent_id": null,
+    "content": {
+      "arguments": {
+        "raw": ""
+      },
+      "tool": "vil_status"
+    }
+  },
+  {
+    "id": "55fa3cfa-688c-4c45-bdf0-bc0049ead4bb",
+    "timestamp": "2026-04-13T19:02:45.567090533Z",
+    "record_type": "ToolResult",
+    "agent_id": null,
+    "content": {
+      "content": "{\"builtin_tools\":18,\"corpus_root\":null,\"knowledge\":{\"best_practices\":6,\"blueprints\":3,\"patterns\":15},\"knowledge_authoritative\":false,\"mcp_servers_configured\":[],\"project_root\":\"/home/emp/Documents/VAC/vastar-agentic-cli\",\"session_active\":true,\"session_id\":\"27bd8ed4-9e74-4186-9c68-f53c261741b3\",\"skills_available\":{\"builtin\":4,\"custom\":0,\"total\":4},\"trace_enabled\":null,\"trace_signing_enabled\":null}",
+      "success": true,
+      "tool": "vil_status"
+    }
+  },
+  {
+    "id": "bcfa9394-6ce1-4399-9af6-314b72c03dd5",
+    "timestamp": "2026-04-13T19:02:45.567999070Z",
+    "record_type": "LlmRequest",
+    "agent_id": null,
+    "content": {
+      "message_count": 10,
+      "model": "default",
+      "provider": "kilo"
+    }
+  },
+  {
+    "id": "5227f7b4-1e7b-4650-abf7-35c3f1dfc348",
+    "timestamp": "2026-04-13T19:02:49.955039465Z",
+    "record_type": "LlmResponse",
+    "agent_id": null,
+    "content": {
+      "model": "kilo-auto/free",
+      "provider": "kilo"
+    }
+  },
+  {
+    "id": "e55e84a1-f184-4022-b363-f5b9144285e2",
+    "timestamp": "2026-04-13T19:02:49.956065983Z",
+    "record_type": "TaskComplete",
+    "agent_id": null,
+    "content": {
+      "summary": "Hi! 👋\n\nI'm your VIL-native Coder agent. I can help you build:\n\n- **VIL Servers** (VX_APP with ShmSlice + ServiceCtx + VilResponse)\n- **Streaming Pipelines** (vil_workflow! + ShmToken)\n- **Plugins** (VilPlugin + PluginContext for LLM, RAG, Agent)\n- **Sidecars & Wasm modules**\n\nWhat would you like to work on? Just describe what you need, and I'll help you plan and implement it using VIL's semantic patterns.",
+      "task_id": "ff34ea1c-9ce0-4f5d-98d9-9c4c93da56e6"
+    }
+  }
+]

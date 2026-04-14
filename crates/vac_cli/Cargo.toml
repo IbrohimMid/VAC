@@ -37,6 +37,7 @@ chrono = { workspace = true }
 uuid = { workspace = true }
 async-trait = { workspace = true }
 toml = { workspace = true }
+regex = "1.11"
 
 # TUI2 dependencies (from Stakpak)
 textwrap = "0.16.2"

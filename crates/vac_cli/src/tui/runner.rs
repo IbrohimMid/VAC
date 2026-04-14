@@ -105,15 +105,26 @@ async fn handle_runtime_update(
 }
 
 /// Run the VAC TUI with VacEngine integration
-pub async fn run_vac_tui(project_root: PathBuf, _resume: bool) -> Result<()> {
+pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
     // Initialize VacEngine
-    let engine = VacEngine::new(project_root.clone()).await?;
+    let mut engine = VacEngine::new(project_root.clone()).await?;
+    
+    // Initialize engine (load tools, policies, etc.)
+    engine.init().await?;
+    
     let engine = Arc::new(Mutex::new(engine));
 
     // Create channels
     let (input_tx, input_rx) = mpsc::channel::<InputEvent>(100);
     let (output_tx, mut output_rx) = mpsc::channel::<OutputEvent>(100);
     let (shutdown_tx, _shutdown_rx) = tokio::sync::broadcast::channel::<()>(1);
+
+    // Handle session restore if requested
+    if resume {
+        // TODO: Implement proper session restore from last session
+        // For now, just log that restore was requested
+        log::info!("Session restore requested but not yet fully implemented");
+    }
 
     // Spawn task to handle output events
     let engine_clone = engine.clone();
@@ -145,6 +156,9 @@ pub async fn run_vac_tui(project_root: PathBuf, _resume: bool) -> Result<()> {
                     });
                 }
                 OutputEvent::AcceptTool(tc) => {
+                    // TODO: TECHNICAL DEBT - Replace natural language approval with structured flow
+                    // Current: Sends approval as natural language message to LLM
+                    // Target: Use structured approval flow with tool_call_id reference
                     let msg = format!("I have APPROVED the tool call '{}' with arguments '{}'. Please proceed.", tc.function.name, tc.function.arguments);
                     let engine = engine_clone.clone();
                     let input_tx = input_tx_clone.clone();
@@ -168,6 +182,7 @@ pub async fn run_vac_tui(project_root: PathBuf, _resume: bool) -> Result<()> {
                     });
                 }
                 OutputEvent::RejectTool(tc, _) => {
+                    // TODO: TECHNICAL DEBT - Replace natural language rejection with structured flow
                     let msg = format!("I have REJECTED the tool call '{}'. Please revise your plan.", tc.function.name);
                     let engine = engine_clone.clone();
                     let input_tx = input_tx_clone.clone();
@@ -221,7 +236,15 @@ pub async fn run_vac_tui(project_root: PathBuf, _resume: bool) -> Result<()> {
                 OutputEvent::ResumeSession(id) => {
                     if let Ok(uuid) = uuid::Uuid::parse_str(&id) {
                         let mut eng = engine_clone.lock().await;
-                        let _ = eng.load_session(uuid).await;
+                        if let Ok(_) = eng.load_session(uuid).await {
+                            // TODO: Extract transcript from loaded session and send SessionRestored event
+                            // For now, just notify that session was restored
+                            let _ = input_tx_clone.send(InputEvent::SessionRestored {
+                                id: id.clone(),
+                                title: format!("Session {}", &id[..8]),
+                                messages: vec![],
+                            }).await;
+                        }
                     }
                 }
                 _ => {}

@@ -226,6 +226,12 @@ pub struct AppState {
     // Shortcuts popup
     pub show_shortcuts: bool,
     pub shortcuts_mode: ShortcutsPopupMode,
+    
+    // Diff preview
+    pub show_diff_preview: bool,
+    pub diff_file_path: Option<String>,
+    pub diff_old_content: Option<String>,
+    pub diff_new_content: Option<String>,
 }
 
 /// Options for creating AppState
@@ -279,6 +285,10 @@ impl AppState {
             commands: Self::default_commands(),
             show_shortcuts: false,
             shortcuts_mode: ShortcutsPopupMode::default(),
+            show_diff_preview: false,
+            diff_file_path: None,
+            diff_old_content: None,
+            diff_new_content: None,
         }
     }
     

@@ -53,6 +53,8 @@ pub fn view(f: &mut Frame, state: &mut AppState) {
 }
 
 fn render_messages(f: &mut Frame, state: &mut AppState, area: Rect) {
+    use crate::tui::services::render_markdown_to_lines_safe;
+    
     let lines: Vec<Line> = state
         .messages
         .iter()
@@ -67,20 +69,41 @@ fn render_messages(f: &mut Frame, state: &mut AppState, area: Rect) {
                 "assistant" => Color::Green,
                 _ => Color::White,
             };
-            msg.content
-                .lines()
-                .enumerate()
-                .map(move |(i, line)| {
-                    if i == 0 {
-                        Line::from(vec![
-                            Span::styled(prefix, Style::default().fg(color).add_modifier(Modifier::BOLD)),
-                            Span::raw(line),
-                        ])
-                    } else {
-                        Line::raw(line)
+            
+            // Use markdown rendering for assistant messages
+            if msg.role == "assistant" {
+                let mut result = vec![
+                    Line::from(Span::styled(prefix, Style::default().fg(color).add_modifier(Modifier::BOLD)))
+                ];
+                
+                // Render markdown with fallback to plain text on error
+                match render_markdown_to_lines_safe(&msg.content) {
+                    Ok(markdown_lines) => {
+                        result.extend(markdown_lines);
                     }
-                })
-                .collect::<Vec<_>>()
+                    Err(_) => {
+                        // Fallback to plain text if markdown rendering fails
+                        result.extend(msg.content.lines().map(|line| Line::raw(line)));
+                    }
+                }
+                result
+            } else {
+                // Simple rendering for user messages
+                msg.content
+                    .lines()
+                    .enumerate()
+                    .map(move |(i, line)| {
+                        if i == 0 {
+                            Line::from(vec![
+                                Span::styled(prefix, Style::default().fg(color).add_modifier(Modifier::BOLD)),
+                                Span::raw(line),
+                            ])
+                        } else {
+                            Line::raw(line)
+                        }
+                    })
+                    .collect::<Vec<_>>()
+            }
         })
         .collect();
 
