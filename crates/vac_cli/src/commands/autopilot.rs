@@ -26,6 +26,7 @@ pub async fn execute_up(project_root: PathBuf) -> anyhow::Result<()> {
     let config = AutopilotConfig::load(&project_root)?;
 
     let exe = std::env::current_exe()?;
+    std::fs::create_dir_all(project_root.join(".vac"))?;
     let log_path = project_root.join(LOG_FILE);
     let log_file = std::fs::OpenOptions::new()
         .create(true)
@@ -40,7 +41,6 @@ pub async fn execute_up(project_root: PathBuf) -> anyhow::Result<()> {
         .spawn()?;
 
     let pid = child.id();
-    std::fs::create_dir_all(project_root.join(".vac"))?;
     std::fs::write(&pid_path, pid.to_string())?;
 
     // Lifecycle event: started

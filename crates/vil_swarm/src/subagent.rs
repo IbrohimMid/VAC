@@ -13,8 +13,8 @@ pub fn build_subagent_messages(role: &AgentRole, task_description: &str) -> Vec<
     ]
 }
 
-/// Build tool definitions from a registry listing, filtered by allowed_tools.
-/// If allowed_tools is empty, all tools are included.
+/// Build tool definitions from a registry listing.
+/// Filtering by allowed_tools is enforced at execution time via SandboxSpec in the router.
 pub async fn build_tool_defs(
     registry: &vac_tools::registry::ToolRegistry,
 ) -> Vec<ToolDefinition> {
