@@ -16,6 +16,9 @@ struct SpawnSubtaskInput {
     task_description: String,
     #[serde(default = "default_wait")]
     wait_for_completion: bool,
+    /// Optional list of tool names the subagent is allowed to use
+    #[serde(default)]
+    allowed_tools: Vec<String>,
 }
 
 fn default_wait() -> bool {
@@ -83,6 +86,11 @@ impl VilTool for SpawnSubtaskTool {
                     "type": "boolean",
                     "default": true,
                     "description": "Wait for subtask to complete"
+                },
+                "allowed_tools": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Optional list of tool names the subagent is allowed to use. Empty = all tools."
                 }
             },
             "required": ["target_role", "task_description"]
@@ -100,20 +108,33 @@ impl VilTool for SpawnSubtaskTool {
     async fn execute(
         &self,
         args: serde_json::Value,
-        _context: &ToolContext,
+        context: &ToolContext,
     ) -> Result<serde_json::Value, ToolError> {
         let input: SpawnSubtaskInput = serde_json::from_value(args)
             .map_err(|e| ToolError::InvalidArguments(e.to_string()))?;
 
         let role = Self::parse_role(&input.target_role)?;
-        info!(role = ?role, "Spawning subtask");
+        info!(role = ?role, allowed_tools = ?input.allowed_tools, "Spawning subtask");
 
         let swarm = self.swarm.read().await;
 
-        let result = swarm
-            .spawn_subtask(role, &input.task_description, input.wait_for_completion)
-            .await
-            .map_err(|e| ToolError::ExecutionFailed(e.to_string()))?;
+        let result = if !input.allowed_tools.is_empty() {
+            // Use sandboxed spawn with filtered tool access
+            let spec = vil_swarm::sandbox::SandboxSpec {
+                allowed_tools: input.allowed_tools.clone(),
+                working_dir: context.working_dir.clone(),
+                ..Default::default()
+            };
+            swarm
+                .spawn_subtask_sandboxed(role, &input.task_description, spec)
+                .await
+                .map_err(|e| ToolError::ExecutionFailed(e.to_string()))?
+        } else {
+            swarm
+                .spawn_subtask(role, &input.task_description, input.wait_for_completion)
+                .await
+                .map_err(|e| ToolError::ExecutionFailed(e.to_string()))?
+        };
 
         let output = SpawnSubtaskOutput {
             role: format!("{:?}", result.role),

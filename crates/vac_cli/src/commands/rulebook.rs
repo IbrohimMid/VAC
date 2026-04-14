@@ -50,3 +50,40 @@ pub async fn execute_validate(project_root: PathBuf) -> anyhow::Result<()> {
     }
     Ok(())
 }
+
+pub async fn execute_apply(project_root: PathBuf, path: PathBuf) -> anyhow::Result<()> {
+    if !path.exists() {
+        anyhow::bail!("File not found: {}", path.display());
+    }
+
+    let content = std::fs::read_to_string(&path)?;
+
+    // Parse YAML frontmatter between --- delimiters
+    let rulebook_id = if content.starts_with("---") {
+        let end = content[3..].find("---").map(|i| i + 3);
+        if let Some(end_idx) = end {
+            let frontmatter = &content[3..end_idx];
+            // Extract id from frontmatter if present
+            frontmatter
+                .lines()
+                .find_map(|l| l.strip_prefix("id:").map(|v| v.trim().to_string()))
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("rulebook");
+    let id = rulebook_id.unwrap_or_else(|| stem.to_string());
+
+    // Copy to .vac/rulebooks/
+    let dest_dir = project_root.join(".vac/rulebooks");
+    std::fs::create_dir_all(&dest_dir)?;
+    let dest = dest_dir.join(format!("{id}.md"));
+    std::fs::copy(&path, &dest)?;
+
+    println!("✓ Applied rulebook '{id}' → {}", dest.display());
+    println!("  Run `vac rulebook list` to verify.");
+    Ok(())
+}

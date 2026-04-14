@@ -55,6 +55,10 @@ enum Commands {
     Resume {
         checkpoint: PathBuf,
     },
+    /// Restore file to pre-agent state
+    Restore {
+        file: PathBuf,
+    },
     /// Show engine status
     Status,
     /// Manage configuration
@@ -91,6 +95,11 @@ enum Commands {
         #[command(subcommand)]
         action: RuntimeAction,
     },
+    /// Autopilot daemon management
+    Autopilot {
+        #[command(subcommand)]
+        action: AutopilotAction,
+    },
 }
 
 #[derive(Subcommand)]
@@ -124,6 +133,10 @@ enum RulebookAction {
     List,
     /// Validate all rulebooks
     Validate,
+    /// Apply a rulebook from a markdown file
+    Apply {
+        path: PathBuf,
+    },
 }
 
 #[derive(Subcommand)]
@@ -134,6 +147,16 @@ enum RuntimeAction {
     Jobs,
     /// Start the background scheduler (attaches live engine)
     Start,
+}
+
+#[derive(Subcommand)]
+enum AutopilotAction {
+    /// Start autopilot daemon
+    Up,
+    /// Stop autopilot daemon
+    Down,
+    /// Show autopilot status
+    Status,
 }
 
 #[tokio::main]
@@ -166,6 +189,7 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Interactive { resume } => commands::interactive::execute(project_root, resume).await?,
         Commands::Resume { checkpoint } => commands::resume::execute(project_root, checkpoint).await?,
+        Commands::Restore { file } => commands::restore::execute(project_root, file).await?,
         Commands::Status => commands::status::execute(project_root).await?,
         Commands::Config { action } => commands::config::execute(project_root, action).await?,
         Commands::Auth { action } => commands::auth::execute(action).await?,
@@ -175,12 +199,18 @@ async fn main() -> anyhow::Result<()> {
         Commands::Rulebook { action } => match action {
             RulebookAction::List => commands::rulebook::execute_list(project_root).await?,
             RulebookAction::Validate => commands::rulebook::execute_validate(project_root).await?,
+            RulebookAction::Apply { path } => commands::rulebook::execute_apply(project_root, path).await?,
         },
         Commands::Acp { port } => commands::acp::execute(project_root, port).await?,
         Commands::Runtime { action } => match action {
             RuntimeAction::Status => commands::runtime::execute_status(project_root).await?,
             RuntimeAction::Jobs => commands::runtime::execute_jobs(project_root).await?,
             RuntimeAction::Start => commands::runtime::execute_start(project_root).await?,
+        },
+        Commands::Autopilot { action } => match action {
+            AutopilotAction::Up => commands::autopilot::execute_up(project_root).await?,
+            AutopilotAction::Down => commands::autopilot::execute_down(project_root).await?,
+            AutopilotAction::Status => commands::autopilot::execute_status(project_root).await?,
         },
     }
 

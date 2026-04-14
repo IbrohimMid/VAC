@@ -1,10 +1,12 @@
 pub mod acp;
 pub mod auth;
+pub mod autopilot;
 pub mod config;
 pub mod doctor;
 pub mod export;
 pub mod init;
 pub mod interactive;
+pub mod restore;
 pub mod resume;
 pub mod rulebook;
 pub mod run;

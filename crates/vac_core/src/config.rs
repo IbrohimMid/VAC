@@ -404,3 +404,42 @@ impl Default for RuntimeConfig {
         }
     }
 }
+
+/// Autopilot daemon configuration (`autopilot.toml`)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AutopilotConfig {
+    /// Polling interval in seconds
+    #[serde(default = "default_poll_interval")]
+    pub poll_interval_secs: u64,
+    /// Max tasks to run concurrently
+    #[serde(default = "default_max_concurrent")]
+    pub max_concurrent: usize,
+    /// Operating mode: "monitor" | "auto"
+    #[serde(default = "default_autopilot_mode")]
+    pub mode: String,
+}
+
+fn default_poll_interval() -> u64 { 30 }
+fn default_max_concurrent() -> usize { 1 }
+fn default_autopilot_mode() -> String { "monitor".to_string() }
+
+impl Default for AutopilotConfig {
+    fn default() -> Self {
+        Self {
+            poll_interval_secs: default_poll_interval(),
+            max_concurrent: default_max_concurrent(),
+            mode: default_autopilot_mode(),
+        }
+    }
+}
+
+impl AutopilotConfig {
+    pub fn load(project_root: &std::path::Path) -> anyhow::Result<Self> {
+        let path = project_root.join("autopilot.toml");
+        if !path.exists() {
+            return Ok(Self::default());
+        }
+        let content = std::fs::read_to_string(&path)?;
+        Ok(toml::from_str(&content)?)
+    }
+}

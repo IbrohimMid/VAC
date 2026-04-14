@@ -4,6 +4,7 @@ use crate::{
     auth,
     config::VacConfig,
     error::{VacError, VacResult},
+    security::SecretSubstitution,
     session::Session,
     spawn_subtask_tool::SpawnSubtaskTool,
     task::{Task, TaskResult, TaskStatus},
@@ -29,6 +30,7 @@ pub struct VacEngine {
     llm_router: Option<std::sync::Arc<vil_llm::LlmRouter>>,
     trace_recorder: Option<std::sync::Arc<std::sync::Mutex<vac_trace::TraceRecorder>>>,
     vil_lsp: Option<Arc<crate::lsp::service::VilLspService>>,
+    secret_sub: SecretSubstitution,
 }
 
 impl VacEngine {
@@ -52,6 +54,7 @@ impl VacEngine {
             llm_router: None,
             trace_recorder: None,
             vil_lsp: None,
+            secret_sub: SecretSubstitution::new(),
         })
     }
 
@@ -228,6 +231,14 @@ impl VacEngine {
 
         self.swarm = Some(Arc::new(RwLock::new(swarm)));
 
+        // Register SpawnSubtaskTool now that swarm is available
+        if let Some(ref swarm_arc) = self.swarm {
+            let spawn_tool = SpawnSubtaskTool::new(swarm_arc.clone());
+            registry.register(spawn_tool).await
+                .map_err(|e| VacError::Other(anyhow::anyhow!("SpawnSubtask registration error: {}", e)))?;
+            info!("SpawnSubtaskTool registered");
+        }
+
         // Phase 6: start vil-lsp service for VIL projects
         if profile.is_vil_project && self.config.vil_lsp.enable {
             let lsp_config = &self.config.vil_lsp;
@@ -323,6 +334,11 @@ impl VacEngine {
         let task = Task::new(description);
         let task_id = task.id;
         tracing::Span::current().record("task_id", tracing::field::display(task_id.0));
+
+        // Substitute secrets before sending to LLM
+        let safe_description = self.secret_sub.substitute(description);
+        let task = Task::new(&safe_description);
+        let task_id = task.id;
 
         info!(task = %description, "Starting task execution");
 
@@ -429,6 +445,7 @@ impl VacEngine {
         let (swarm_tx, mut swarm_rx) = mpsc::unbounded_channel::<vil_swarm::AgentLoopEvent>();
         let session_id = self.session.read().await.id;
         let project_root = self.project_root.clone();
+        let secrets_map = self.secret_sub.clone_secrets();
 
         // Phase 6: inject LSP diagnostic context into swarm before execution
         if let Some(ref lsp) = self.vil_lsp {
@@ -490,7 +507,8 @@ impl VacEngine {
                             Some(RuntimeUpdate::ModelInfo { provider, model })
                         }
                         vil_swarm::AgentLoopEvent::AssistantChunk(chunk) => {
-                            Some(RuntimeUpdate::AssistantChunk(chunk))
+                            let restored = crate::security::SecretSubstitution::restore_with(&secrets_map, &chunk);
+                            Some(RuntimeUpdate::AssistantChunk(restored))
                         }
                         vil_swarm::AgentLoopEvent::ToolCall {
                             id,

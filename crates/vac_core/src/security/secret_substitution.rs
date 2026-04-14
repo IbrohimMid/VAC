@@ -90,6 +90,20 @@ impl SecretSubstitution {
     pub fn count(&self) -> usize {
         self.secrets.len()
     }
+
+    /// Clone the current secrets map for use in closures
+    pub fn clone_secrets(&self) -> HashMap<String, String> {
+        self.secrets.clone()
+    }
+
+    /// Restore using a pre-cloned secrets map (for use in closures)
+    pub fn restore_with(secrets: &HashMap<String, String>, text: &str) -> String {
+        let mut result = text.to_string();
+        for (placeholder, original) in secrets {
+            result = result.replace(placeholder, original);
+        }
+        result
+    }
 }
 
 #[cfg(test)]

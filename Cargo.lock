@@ -4632,6 +4632,7 @@ dependencies = [
  "dirs 5.0.1",
  "ignore",
  "image",
+ "libc",
  "log",
  "nucleo-matcher",
  "portable-pty",
