@@ -250,7 +250,7 @@ impl SwarmOrchestrator {
 
         let messages = crate::subagent::build_subagent_messages(&role, task_description);
         let tool_defs = crate::subagent::build_tool_defs(tool_router.registry()).await;
-        let context = crate::subagent::build_sandbox_context(sandbox.overlay_dir.clone());
+        let context = crate::subagent::build_sandbox_context(sandbox.overlay_dir.clone(), self.privacy_vault.clone());
 
         let mut state = crate::run_state::AgentRunState::new(messages, None);
 
@@ -304,7 +304,7 @@ impl SwarmOrchestrator {
 
         let messages = crate::subagent::build_subagent_messages(&role, task_description);
         let tool_defs = crate::subagent::build_tool_defs(tool_router.registry()).await;
-        let context = crate::subagent::build_parent_context(std::path::PathBuf::from("."));
+        let context = crate::subagent::build_parent_context(std::path::PathBuf::from("."), self.privacy_vault.clone());
         let mut state = crate::run_state::AgentRunState::new(messages, None);
 
         let result = self.execute_agent_loop(

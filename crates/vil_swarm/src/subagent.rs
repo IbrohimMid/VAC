@@ -37,14 +37,17 @@ pub async fn build_tool_defs(
 /// - Strips all env_vars (parent env may contain secrets/credentials)
 /// - Assigns a fresh session_id (no parent session state leaks)
 /// - Sets zone to SandboxedSubagent (router enforces NeedsApproval → Deny)
-pub fn build_sandbox_context(overlay_dir: std::path::PathBuf) -> ToolContext {
+pub fn build_sandbox_context(overlay_dir: std::path::PathBuf, privacy_vault: std::sync::Arc<tokio::sync::RwLock<vac_tools::PrivacyVault>>) -> ToolContext {
     let mut ctx = ToolContext::new(overlay_dir).with_zone(AgentZone::SandboxedSubagent);
     // Explicitly clear env_vars to prevent parent environment leaking into subagent
     ctx.env_vars.clear();
+    ctx.privacy = privacy_vault;
     ctx
 }
 
 /// Build a parent-level tool context.
-pub fn build_parent_context(root: std::path::PathBuf) -> ToolContext {
-    ToolContext::new(root)
+pub fn build_parent_context(root: std::path::PathBuf, privacy_vault: std::sync::Arc<tokio::sync::RwLock<vac_tools::PrivacyVault>>) -> ToolContext {
+    let mut ctx = ToolContext::new(root);
+    ctx.privacy = privacy_vault;
+    ctx
 }
