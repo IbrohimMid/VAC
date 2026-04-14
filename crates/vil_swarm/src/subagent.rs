@@ -51,3 +51,31 @@ pub fn build_parent_context(root: std::path::PathBuf, privacy_vault: std::sync::
     ctx.privacy = privacy_vault;
     ctx
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+    use tokio::sync::RwLock;
+    use vac_tools::PrivacyVault;
+    use std::path::PathBuf;
+
+    #[test]
+    fn test_context_builders() {
+        let vault = Arc::new(RwLock::new(PrivacyVault::new()));
+        let overlay_dir = PathBuf::from("/tmp/sandbox");
+        let parent_dir = PathBuf::from("/tmp/parent");
+
+        let sandbox_ctx = build_sandbox_context(overlay_dir.clone(), vault.clone());
+        let parent_ctx = build_parent_context(parent_dir.clone(), vault.clone());
+
+        assert_eq!(sandbox_ctx.working_dir, overlay_dir);
+        assert_eq!(sandbox_ctx.agent_zone, AgentZone::SandboxedSubagent);
+        assert!(sandbox_ctx.env_vars.is_empty());
+        assert!(Arc::ptr_eq(&sandbox_ctx.privacy, &vault));
+
+        assert_eq!(parent_ctx.working_dir, parent_dir);
+        assert_eq!(parent_ctx.agent_zone, AgentZone::ParentAgent);
+        assert!(Arc::ptr_eq(&parent_ctx.privacy, &vault));
+    }
+}
