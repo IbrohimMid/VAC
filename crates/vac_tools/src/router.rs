@@ -365,7 +365,9 @@ impl ToolRouter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::registry::AgentZone;
+    use crate::registry::{AgentZone, VilTool};
+    use async_trait::async_trait;
+    use serde_json::json;
 
     struct MockNeedsApprovalPolicy;
 
@@ -378,6 +380,43 @@ mod tests {
             _context: &ToolContext,
         ) -> PolicyDecision {
             PolicyDecision::NeedsApproval("mock reason".to_string())
+        }
+    }
+
+    struct PrivacyMockTool;
+
+    #[async_trait]
+    impl VilTool for PrivacyMockTool {
+        fn name(&self) -> &str {
+            "privacy_mock_tool"
+        }
+
+        fn description(&self) -> &str {
+            "A mock tool to test privacy restoration and substitution"
+        }
+
+        fn input_schema(&self) -> serde_json::Value {
+            json!({})
+        }
+
+        fn trust_requirement(&self) -> &str {
+            "none"
+        }
+
+        fn risk_level(&self) -> &str {
+            "safe"
+        }
+
+        async fn execute(
+            &self,
+            args: serde_json::Value,
+            _context: &ToolContext,
+        ) -> Result<serde_json::Value, ToolError> {
+            // Verify that the args have been correctly restored from alias to the actual secret
+            assert_eq!(args, json!("192.168.1.1"), "Args were not restored correctly");
+            
+            // Return a new secret that should be substituted by the router before returning
+            Ok(json!("sk-abcdefghijklmnopqrstuvwxyz1234567890"))
         }
     }
 
@@ -399,5 +438,61 @@ mod tests {
             }
             other => panic!("Expected Err(ToolError::PermissionDenied), got {:?}", other),
         }
+    }
+
+    #[tokio::test]
+    async fn test_router_privacy_route_allow() {
+        let registry = Arc::new(ToolRegistry::new());
+        registry.register(PrivacyMockTool).await.unwrap();
+
+        let mut config = ToolConfigStub::default();
+        config.allow.insert("privacy_mock_tool".to_string(), true);
+
+        let policy = Arc::new(DefaultPolicyEngine::new(config));
+        let router = ToolRouter::new(registry, policy);
+
+        let context = ToolContext::new(std::path::PathBuf::from("."));
+        
+        let alias = {
+            let mut privacy = context.privacy.write().await;
+            privacy.substitute("192.168.1.1")
+        };
+
+        // Ensure the alias is actually an alias and not the secret itself
+        assert_ne!(alias, "192.168.1.1");
+        assert!(alias.starts_with("SECRET_"));
+
+        let result = router.route("privacy_mock_tool", json!(alias), &context).await.unwrap();
+
+        // Ensure the result has been substituted
+        assert_ne!(result, json!("sk-abcdefghijklmnopqrstuvwxyz1234567890"));
+        assert!(result.as_str().unwrap().starts_with("SECRET_API_KEY_"));
+    }
+
+    #[tokio::test]
+    async fn test_router_privacy_route_approved() {
+        let registry = Arc::new(ToolRegistry::new());
+        registry.register(PrivacyMockTool).await.unwrap();
+
+        // Policy engine doesn't matter for route_approved, but we need it for router initialization
+        let config = ToolConfigStub::default();
+        let policy = Arc::new(DefaultPolicyEngine::new(config));
+        let router = ToolRouter::new(registry, policy);
+
+        let context = ToolContext::new(std::path::PathBuf::from("."));
+        
+        let alias = {
+            let mut privacy = context.privacy.write().await;
+            privacy.substitute("192.168.1.1")
+        };
+
+        assert_ne!(alias, "192.168.1.1");
+        assert!(alias.starts_with("SECRET_"));
+
+        let result = router.route_approved("privacy_mock_tool", json!(alias), &context).await.unwrap();
+
+        // Ensure the result has been substituted
+        assert_ne!(result, json!("sk-abcdefghijklmnopqrstuvwxyz1234567890"));
+        assert!(result.as_str().unwrap().starts_with("SECRET_API_KEY_"));
     }
 }
