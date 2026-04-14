@@ -184,7 +184,7 @@ fn render_approval_dialog(f: &mut Frame, state: &mut AppState) {
     let buttons = vec![
         ("Approve (Enter)", state.dialog_selected == 0),
         ("Reject (r)", state.dialog_selected == 1),
-        ("Cancel (Esc)", state.dialog_selected == 2),
+        ("Close & Reject (Esc)", state.dialog_selected == 2),
     ];
     let button_items: Vec<ListItem> = buttons
         .iter()

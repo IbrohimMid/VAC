@@ -191,18 +191,22 @@ fn handle_input_event(
     if state.is_dialog_open {
         match event {
             InputEvent::HandleEsc | InputEvent::DialogCancel => {
+                if let Some(tc) = state.dialog_command.take() {
+                    state.pending_tool_calls.retain(|c| c.id != tc.id);
+                    state.rejected_tools.push(tc.clone());
+                    let _ = output_tx.try_send(OutputEvent::RejectTool(tc, true));
+                }
                 state.is_dialog_open = false;
-                state.dialog_command = None;
             }
-            InputEvent::DialogUp => {
+            InputEvent::Up | InputEvent::DialogUp => {
                 if state.dialog_selected > 0 {
                     state.dialog_selected -= 1;
                 }
             }
-            InputEvent::DialogDown => {
+            InputEvent::Down | InputEvent::DialogDown => {
                 state.dialog_selected = (state.dialog_selected + 1) % 3;
             }
-            InputEvent::DialogSelect => match state.dialog_selected {
+            InputEvent::InputSubmitted | InputEvent::DialogSelect => match state.dialog_selected {
                 0 => {
                     if let Some(tc) = state.dialog_command.take() {
                         state.pending_tool_calls.retain(|c| c.id != tc.id);
@@ -220,6 +224,11 @@ fn handle_input_event(
                     state.is_dialog_open = false;
                 }
                 _ => {
+                    if let Some(tc) = state.dialog_command.take() {
+                        state.pending_tool_calls.retain(|c| c.id != tc.id);
+                        state.rejected_tools.push(tc.clone());
+                        let _ = output_tx.try_send(OutputEvent::RejectTool(tc, true));
+                    }
                     state.is_dialog_open = false;
                 }
             },
@@ -231,7 +240,7 @@ fn handle_input_event(
                 }
                 state.is_dialog_open = false;
             }
-            InputEvent::RejectTool => {
+            InputEvent::InputChanged('r') | InputEvent::RejectTool => {
                 if let Some(tc) = state.dialog_command.take() {
                     state.pending_tool_calls.retain(|c| c.id != tc.id);
                     state.rejected_tools.push(tc.clone());
