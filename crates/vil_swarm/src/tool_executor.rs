@@ -27,7 +27,7 @@ pub async fn execute_tools(
     if !reads.is_empty() {
         info!(count = reads.len(), "Executing parallel reads");
         let futures = reads.into_iter().map(|call| {
-            let router = tool_router.clone();
+            let router = tool_router;
             let ctx = context.clone();
             let is_approved = state.approved_tools.contains(&call.id);
             async move {
