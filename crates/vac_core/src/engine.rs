@@ -852,3 +852,40 @@ pub enum RuntimeUpdate {
         arguments: serde_json::Value,
     },
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_engine_injects_privacy_vault() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let project_root = temp_dir.path().to_path_buf();
+        
+        // Write minimal config so init won't fail
+        std::fs::write(project_root.join("vac.toml"), r#"
+[llm]
+default_provider = "anthropic"
+[llm.providers.anthropic]
+api_key_env = "ANTHROPIC_API_KEY"
+model = "claude-3-5-sonnet-20241022"
+"#).unwrap();
+
+        let mut engine = VacEngine::new(project_root.clone()).await.unwrap();
+        
+        // Disable things that require real setup
+        engine.config.vil_lsp.enable = false;
+        engine.config.trace.enable = false;
+        
+        engine.init().await.unwrap();
+        
+        let swarm_arc = engine.swarm.clone().expect("Swarm should be initialized");
+        let swarm = swarm_arc.read().await;
+
+        assert!(
+            Arc::ptr_eq(&engine.privacy_vault, &swarm.privacy_vault),
+            "Engine did not inject its shared privacy vault to the SwarmOrchestrator"
+        );
+    }
+}
+
