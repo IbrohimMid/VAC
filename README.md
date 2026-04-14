@@ -53,3 +53,5 @@ vac interactive
 ## 📖 Documentation
 
 For full documentation and advanced usage, visit: [https://vastar.id/docs/vac](https://vastar.id/docs/vac)
+
+- [Arsitektur Privasi dan Kontrak Eksekusi](docs/privacy_architecture.md)
