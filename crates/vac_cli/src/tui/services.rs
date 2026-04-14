@@ -9,6 +9,7 @@ pub mod helper_block;
 pub mod syntax_highlighter;
 pub mod markdown_renderer;
 pub mod file_diff;
+pub mod bash_block;
 
 // Re-export commonly used types
 pub use detect_term::ThemeColors;

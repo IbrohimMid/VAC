@@ -307,6 +307,38 @@ impl VacEngine {
         self.run_task_with_updates(description, None).await
     }
 
+    /// Approve a pending tool call by ID (structured approval flow).
+    /// Sends ApprovalResponse to the active update channel if present.
+    pub async fn approve_tool_call(
+        &self,
+        tool_call_id: String,
+        updates: Option<&mpsc::UnboundedSender<RuntimeUpdate>>,
+    ) {
+        if let Some(tx) = updates {
+            let _ = tx.send(RuntimeUpdate::ApprovalResponse {
+                tool_call_id,
+                approved: true,
+                reason: None,
+            });
+        }
+    }
+
+    /// Reject a pending tool call by ID (structured approval flow).
+    pub async fn reject_tool_call(
+        &self,
+        tool_call_id: String,
+        reason: Option<String>,
+        updates: Option<&mpsc::UnboundedSender<RuntimeUpdate>>,
+    ) {
+        if let Some(tx) = updates {
+            let _ = tx.send(RuntimeUpdate::ApprovalResponse {
+                tool_call_id,
+                approved: false,
+                reason,
+            });
+        }
+    }
+
     #[instrument(skip(self, updates), fields(task_id))]
     pub async fn run_task_with_updates(
         &mut self,
@@ -825,5 +857,10 @@ pub enum RuntimeUpdate {
         tool_call_id: String,
         tool_name: String,
         arguments: serde_json::Value,
+    },
+    ApprovalResponse {
+        tool_call_id: String,
+        approved: bool,
+        reason: Option<String>,
     },
 }

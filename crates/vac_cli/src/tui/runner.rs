@@ -10,6 +10,9 @@ use vac_core::RuntimeUpdate;
 
 use super::{run_tui, InputEvent, OutputEvent, ToolCall, FunctionCall, ToolCallResult, ToolCallResultStatus, LoadingOperation};
 
+/// Shared handle to the active task's update channel for structured approval routing.
+type ActiveUpdateTx = Arc<Mutex<Option<mpsc::UnboundedSender<RuntimeUpdate>>>>;
+
 async fn handle_runtime_update(
     update: RuntimeUpdate,
     input_tx_inner: &mpsc::Sender<InputEvent>,
@@ -119,6 +122,9 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
     let (output_tx, mut output_rx) = mpsc::channel::<OutputEvent>(100);
     let (shutdown_tx, _shutdown_rx) = tokio::sync::broadcast::channel::<()>(1);
 
+    // Shared handle to active task's update channel for structured approval routing
+    let active_update_tx: ActiveUpdateTx = Arc::new(Mutex::new(None));
+
     // Handle session restore if requested
     if resume {
         // TODO: Implement proper session restore from last session
@@ -129,6 +135,7 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
     // Spawn task to handle output events
     let engine_clone = engine.clone();
     let input_tx_clone = input_tx.clone();
+    let active_update_tx_clone = active_update_tx.clone();
     tokio::spawn(async move {
         while let Some(event) = output_rx.recv().await {
             match event {
@@ -136,6 +143,7 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                     let engine = engine_clone.clone();
                     let input_tx = input_tx_clone.clone();
                     let msg = msg.clone();
+                    let active_tx = active_update_tx_clone.clone();
                     
                     let _ = input_tx.send(InputEvent::StartLoadingOperation(LoadingOperation::LlmRequest)).await;
 
@@ -143,6 +151,9 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                         let (update_tx, mut update_rx) = mpsc::unbounded_channel::<RuntimeUpdate>();
                         let input_tx_inner = input_tx.clone();
                         let stream_uuid = uuid::Uuid::new_v4();
+
+                        // Store active update_tx for structured approval routing
+                        *active_tx.lock().await = Some(update_tx.clone());
 
                         tokio::spawn(async move {
                             let mut active_tools: HashMap<String, ToolCall> = HashMap::new();
@@ -153,57 +164,32 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
 
                         let mut eng = engine.lock().await;
                         let _ = eng.run_task_with_updates(&msg, Some(update_tx)).await;
+
+                        // Clear active update_tx when task completes
+                        *active_tx.lock().await = None;
                     });
                 }
                 OutputEvent::AcceptTool(tc) => {
-                    // TODO: TECHNICAL DEBT - Replace natural language approval with structured flow
-                    // Current: Sends approval as natural language message to LLM
-                    // Target: Use structured approval flow with tool_call_id reference
-                    let msg = format!("I have APPROVED the tool call '{}' with arguments '{}'. Please proceed.", tc.function.name, tc.function.arguments);
-                    let engine = engine_clone.clone();
-                    let input_tx = input_tx_clone.clone();
-                    
-                    let _ = input_tx.send(InputEvent::StartLoadingOperation(LoadingOperation::LlmRequest)).await;
-
-                    tokio::spawn(async move {
-                        let (update_tx, mut update_rx) = mpsc::unbounded_channel::<RuntimeUpdate>();
-                        let input_tx_inner = input_tx.clone();
-                        let stream_uuid = uuid::Uuid::new_v4();
-
-                        tokio::spawn(async move {
-                            let mut active_tools: HashMap<String, ToolCall> = HashMap::new();
-                            while let Some(update) = update_rx.recv().await {
-                                handle_runtime_update(update, &input_tx_inner, stream_uuid, &mut active_tools).await;
-                            }
+                    // Structured approval flow: send ApprovalResponse directly to active task
+                    let active_tx = active_update_tx_clone.lock().await;
+                    if let Some(ref tx) = *active_tx {
+                        let _ = tx.send(RuntimeUpdate::ApprovalResponse {
+                            tool_call_id: tc.id.clone(),
+                            approved: true,
+                            reason: None,
                         });
-
-                        let mut eng = engine.lock().await;
-                        let _ = eng.run_task_with_updates(&msg, Some(update_tx)).await;
-                    });
+                    }
                 }
                 OutputEvent::RejectTool(tc, _) => {
-                    // TODO: TECHNICAL DEBT - Replace natural language rejection with structured flow
-                    let msg = format!("I have REJECTED the tool call '{}'. Please revise your plan.", tc.function.name);
-                    let engine = engine_clone.clone();
-                    let input_tx = input_tx_clone.clone();
-                    
-                    let _ = input_tx.send(InputEvent::StartLoadingOperation(LoadingOperation::LlmRequest)).await;
-
-                    tokio::spawn(async move {
-                        let (update_tx, mut update_rx) = mpsc::unbounded_channel::<RuntimeUpdate>();
-                        let input_tx_inner = input_tx.clone();
-                        let stream_uuid = uuid::Uuid::new_v4();
-
-                        tokio::spawn(async move {
-                            let mut active_tools: HashMap<String, ToolCall> = HashMap::new();
-                            while let Some(update) = update_rx.recv().await {
-                                handle_runtime_update(update, &input_tx_inner, stream_uuid, &mut active_tools).await;
-                            }
+                    // Structured rejection flow: send ApprovalResponse directly to active task
+                    let active_tx = active_update_tx_clone.lock().await;
+                    if let Some(ref tx) = *active_tx {
+                        let _ = tx.send(RuntimeUpdate::ApprovalResponse {
+                            tool_call_id: tc.id.clone(),
+                            approved: false,
+                            reason: Some(format!("User rejected tool '{}'", tc.function.name)),
                         });
-
-                        let mut eng = engine.lock().await;
-                        let _ = eng.run_task_with_updates(&msg, Some(update_tx)).await;
-                    });
+                    }
                 }
                 OutputEvent::ExecuteCommand(cmd) => {
                     let msg = format!("Execute command: {}", cmd);
