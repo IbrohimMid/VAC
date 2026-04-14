@@ -13,37 +13,13 @@ pub struct BashBlock {
     pub content: String,
 }
 
-/// Extract all fenced code blocks from text.
-/// Supports ```bash, ```sh, ```shell, and plain ``` fences.
-pub fn extract_bash_blocks(text: &str) -> Vec<BashBlock> {
-    let mut blocks = Vec::new();
-    let mut in_block = false;
-    let mut lang = String::new();
-    let mut current = Vec::new();
-
-    for line in text.lines() {
-        if !in_block {
-            if let Some(fence) = line.strip_prefix("```") {
-                let l = fence.trim().to_lowercase();
-                if l.is_empty() || matches!(l.as_str(), "bash" | "sh" | "shell") {
-                    in_block = true;
-                    lang = if l.is_empty() { "bash".to_string() } else { l };
-                    current.clear();
-                }
-            }
-        } else if line.trim() == "```" {
-            blocks.push(BashBlock {
-                language: lang.clone(),
-                content: current.join("\n"),
-            });
-            in_block = false;
-            current.clear();
-        } else {
-            current.push(line.to_string());
-        }
+/// Truncate a string to max_chars, respecting UTF-8 character boundaries.
+fn truncate_chars(s: &str, max_chars: usize) -> String {
+    if s.chars().count() <= max_chars {
+        s.to_string()
+    } else {
+        s.chars().take(max_chars.saturating_sub(1)).chain(std::iter::once('…')).collect()
     }
-
-    blocks
 }
 
 /// Render a bash block as styled TUI lines.
@@ -65,11 +41,7 @@ pub fn render_bash_block(block: &BashBlock, width: usize) -> Vec<Line<'static>> 
 
     // Content lines
     for line in block.content.lines() {
-        let truncated = if line.len() > width.saturating_sub(2) {
-            format!("{}…", &line[..width.saturating_sub(3)])
-        } else {
-            line.to_string()
-        };
+        let truncated = truncate_chars(line, width.saturating_sub(2));
         lines.push(Line::from(vec![
             Span::styled("│ ", Style::default().fg(Color::DarkGray)),
             Span::styled(truncated, Style::default().fg(Color::Cyan)),
@@ -87,8 +59,15 @@ pub fn render_bash_block(block: &BashBlock, width: usize) -> Vec<Line<'static>> 
 
 /// Render all bash blocks found in text.
 pub fn render_bash_blocks_in_text(text: &str, width: usize) -> Vec<Line<'static>> {
-    extract_bash_blocks(text)
-        .iter()
-        .flat_map(|b| render_bash_block(b, width))
+    use super::message::split_content_segments;
+    split_content_segments(text)
+        .into_iter()
+        .filter_map(|seg| match seg {
+            super::message::ContentSegment::Code { language, content } => {
+                Some(render_bash_block(&BashBlock { language, content }, width))
+            }
+            _ => None,
+        })
+        .flatten()
         .collect()
 }

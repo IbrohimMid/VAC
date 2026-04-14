@@ -13,6 +13,9 @@ use super::{run_tui, InputEvent, OutputEvent, ToolCall, FunctionCall, ToolCallRe
 /// Shared handle to the active task's update channel for structured approval routing.
 type ActiveUpdateTx = Arc<Mutex<Option<mpsc::UnboundedSender<RuntimeUpdate>>>>;
 
+/// Shared handle to the active task's approval channel for structured approval flow.
+type ActiveApprovalTx = Arc<Mutex<Option<mpsc::UnboundedSender<vil_swarm::ApprovalResponse>>>>;
+
 async fn handle_runtime_update(
     update: RuntimeUpdate,
     input_tx_inner: &mpsc::Sender<InputEvent>,
@@ -125,6 +128,9 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
     // Shared handle to active task's update channel for structured approval routing
     let active_update_tx: ActiveUpdateTx = Arc::new(Mutex::new(None));
 
+    // Shared handle to active task's approval channel for structured approval flow
+    let active_approval_tx: ActiveApprovalTx = Arc::new(Mutex::new(None));
+
     // Handle session restore if requested
     if resume {
         // TODO: Implement proper session restore from last session
@@ -136,6 +142,7 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
     let engine_clone = engine.clone();
     let input_tx_clone = input_tx.clone();
     let active_update_tx_clone = active_update_tx.clone();
+    let active_approval_tx_clone = active_approval_tx.clone();
     tokio::spawn(async move {
         while let Some(event) = output_rx.recv().await {
             match event {
@@ -144,16 +151,19 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                     let input_tx = input_tx_clone.clone();
                     let msg = msg.clone();
                     let active_tx = active_update_tx_clone.clone();
-                    
+                    let active_approval = active_approval_tx_clone.clone();
+
                     let _ = input_tx.send(InputEvent::StartLoadingOperation(LoadingOperation::LlmRequest)).await;
 
                     tokio::spawn(async move {
                         let (update_tx, mut update_rx) = mpsc::unbounded_channel::<RuntimeUpdate>();
+                        let (approval_tx, approval_rx) = mpsc::unbounded_channel::<vil_swarm::ApprovalResponse>();
                         let input_tx_inner = input_tx.clone();
                         let stream_uuid = uuid::Uuid::new_v4();
 
-                        // Store active update_tx for structured approval routing
+                        // Store active channels for structured approval routing
                         *active_tx.lock().await = Some(update_tx.clone());
+                        *active_approval.lock().await = Some(approval_tx);
 
                         tokio::spawn(async move {
                             let mut active_tools: HashMap<String, ToolCall> = HashMap::new();
@@ -163,17 +173,18 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                         });
 
                         let mut eng = engine.lock().await;
-                        let _ = eng.run_task_with_updates(&msg, Some(update_tx)).await;
+                        let _ = eng.run_task_with_approvals(&msg, Some(update_tx), None, Some(approval_rx)).await;
 
-                        // Clear active update_tx when task completes
+                        // Clear active channels when task completes
                         *active_tx.lock().await = None;
+                        *active_approval.lock().await = None;
                     });
                 }
                 OutputEvent::AcceptTool(tc) => {
-                    // Structured approval flow: send ApprovalResponse directly to active task
-                    let active_tx = active_update_tx_clone.lock().await;
-                    if let Some(ref tx) = *active_tx {
-                        let _ = tx.send(RuntimeUpdate::ApprovalResponse {
+                    // Structured approval flow: send directly to swarm's approval channel
+                    let approval_tx = active_approval_tx_clone.lock().await;
+                    if let Some(ref tx) = *approval_tx {
+                        let _ = tx.send(vil_swarm::ApprovalResponse {
                             tool_call_id: tc.id.clone(),
                             approved: true,
                             reason: None,
@@ -181,10 +192,10 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                     }
                 }
                 OutputEvent::RejectTool(tc, _) => {
-                    // Structured rejection flow: send ApprovalResponse directly to active task
-                    let active_tx = active_update_tx_clone.lock().await;
-                    if let Some(ref tx) = *active_tx {
-                        let _ = tx.send(RuntimeUpdate::ApprovalResponse {
+                    // Structured rejection flow: send directly to swarm's approval channel
+                    let approval_tx = active_approval_tx_clone.lock().await;
+                    if let Some(ref tx) = *approval_tx {
+                        let _ = tx.send(vil_swarm::ApprovalResponse {
                             tool_call_id: tc.id.clone(),
                             approved: false,
                             reason: Some(format!("User rejected tool '{}'", tc.function.name)),

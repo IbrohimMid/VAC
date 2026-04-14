@@ -58,6 +58,14 @@ pub enum AgentLoopEvent {
     },
 }
 
+/// Response from the TUI/host to a pending approval request.
+#[derive(Debug, Clone)]
+pub struct ApprovalResponse {
+    pub tool_call_id: String,
+    pub approved: bool,
+    pub reason: Option<String>,
+}
+
 pub struct TaskPlan {
     pub subtasks: Vec<SubTask>,
     pub execution_order: Vec<usize>,
@@ -450,6 +458,19 @@ Rules:
         llm_router: &Arc<vil_llm::LlmRouter>,
         tool_router: &Arc<vac_tools::router::ToolRouter>,
     ) -> SwarmResult<String> {
+        self.execute_agent_loop_with_approvals(state, tool_defs, updates, context, llm_router, tool_router, None).await
+    }
+
+    pub async fn execute_agent_loop_with_approvals(
+        &self,
+        state: &mut crate::run_state::AgentRunState,
+        tool_defs: Vec<ToolDefinition>,
+        updates: Option<mpsc::UnboundedSender<AgentLoopEvent>>,
+        context: &ToolContext,
+        llm_router: &Arc<vil_llm::LlmRouter>,
+        tool_router: &Arc<vac_tools::router::ToolRouter>,
+        mut approval_rx: Option<mpsc::UnboundedReceiver<ApprovalResponse>>,
+    ) -> SwarmResult<String> {
         loop {
             // Step 1: Cancellation check
             if state.is_cancelled() {
@@ -546,7 +567,80 @@ Rules:
                     }
 
                     crate::tool_executor::execute_tools(all_calls, state, context, tool_router, &updates, self.hook.as_deref()).await?;
-                    
+
+                    // Step 7: Wait for approval responses if any tools require approval
+                    if !state.pending_approvals.is_empty() {
+                        if let Some(ref mut rx) = approval_rx {
+                            info!(count = state.pending_approvals.len(), "Waiting for approval responses");
+                            let approval_timeout = std::time::Duration::from_secs(300); // 5 min max wait
+                            while !state.pending_approvals.is_empty() {
+                                let recv_future = rx.recv();
+                                match tokio::time::timeout(approval_timeout, recv_future).await {
+                                    Ok(Some(response)) => {
+                                        let pos = state.pending_approvals.iter().position(|p| p.tool_call_id == response.tool_call_id);
+                                        if let Some(idx) = pos {
+                                            let pending = state.pending_approvals.remove(idx);
+                                            if response.approved {
+                                                info!(tool = %pending.tool_name, "Tool approved, re-executing");
+                                                let approved_call = vil_llm::provider::ToolCall {
+                                                    id: pending.tool_call_id.clone(),
+                                                    name: pending.tool_name.clone(),
+                                                    arguments: pending.arguments.clone(),
+                                                };
+                                                crate::tool_executor::execute_tools(
+                                                    vec![approved_call], state, context, tool_router, &updates, self.hook.as_deref()
+                                                ).await?;
+                                            } else {
+                                                let reason = response.reason.unwrap_or_else(|| "User rejected".to_string());
+                                                info!(tool = %pending.tool_name, reason = %reason, "Tool rejected by user");
+                                                state.messages.push(Message::tool(
+                                                    pending.tool_name,
+                                                    pending.tool_call_id,
+                                                    format!("Rejected: {reason}"),
+                                                ));
+                                            }
+                                        } else {
+                                            warn!(tool_call_id = %response.tool_call_id, "Received approval for unknown tool call, ignoring");
+                                        }
+                                    }
+                                    Ok(None) => {
+                                        warn!("Approval channel closed while waiting for responses");
+                                        // Reject all remaining pending approvals
+                                        for pending in state.pending_approvals.drain(..) {
+                                            state.messages.push(Message::tool(
+                                                pending.tool_name,
+                                                pending.tool_call_id,
+                                                "Rejected: approval channel closed".to_string(),
+                                            ));
+                                        }
+                                        break;
+                                    }
+                                    Err(_) => {
+                                        warn!("Approval wait timeout, rejecting remaining pending approvals");
+                                        for pending in state.pending_approvals.drain(..) {
+                                            state.messages.push(Message::tool(
+                                                pending.tool_name,
+                                                pending.tool_call_id,
+                                                "Rejected: approval timeout".to_string(),
+                                            ));
+                                        }
+                                        break;
+                                    }
+                                }
+                            }
+                        } else {
+                            // No approval channel — auto-reject all pending
+                            warn!("Pending approvals but no approval channel, auto-rejecting");
+                            for pending in state.pending_approvals.drain(..) {
+                                state.messages.push(Message::tool(
+                                    pending.tool_name,
+                                    pending.tool_call_id,
+                                    "Rejected: no approval channel configured".to_string(),
+                                ));
+                            }
+                        }
+                    }
+
                     if let Some(tx) = &updates {
                         let _ = tx.send(AgentLoopEvent::Status("Reviewing tool results".to_string()));
                     }
@@ -579,6 +673,18 @@ Rules:
         session_id: Option<uuid::Uuid>,
         project_root: Option<std::path::PathBuf>,
         cancel: Option<tokio_util::sync::CancellationToken>,
+    ) -> SwarmResult<ExecutionResult> {
+        self.agent_loop_with_full_context(task_description, updates, session_id, project_root, cancel, None).await
+    }
+
+    pub async fn agent_loop_with_full_context(
+        &mut self,
+        task_description: &str,
+        updates: Option<mpsc::UnboundedSender<AgentLoopEvent>>,
+        session_id: Option<uuid::Uuid>,
+        project_root: Option<std::path::PathBuf>,
+        cancel: Option<tokio_util::sync::CancellationToken>,
+        approval_rx: Option<mpsc::UnboundedReceiver<ApprovalResponse>>,
     ) -> SwarmResult<ExecutionResult> {
         info!(task = %task_description, "Starting Semantic VIL-native agent loop");
 
@@ -705,13 +811,14 @@ Rules:
         state.cancel = cancel;
 
         let final_output = self
-            .execute_agent_loop(
+            .execute_agent_loop_with_approvals(
                 &mut state,
                 tool_defs,
                 updates,
                 &context,
                 llm_router,
                 tool_router,
+                approval_rx,
             )
             .await?;
 

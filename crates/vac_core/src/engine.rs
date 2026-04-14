@@ -307,38 +307,6 @@ impl VacEngine {
         self.run_task_with_updates(description, None).await
     }
 
-    /// Approve a pending tool call by ID (structured approval flow).
-    /// Sends ApprovalResponse to the active update channel if present.
-    pub async fn approve_tool_call(
-        &self,
-        tool_call_id: String,
-        updates: Option<&mpsc::UnboundedSender<RuntimeUpdate>>,
-    ) {
-        if let Some(tx) = updates {
-            let _ = tx.send(RuntimeUpdate::ApprovalResponse {
-                tool_call_id,
-                approved: true,
-                reason: None,
-            });
-        }
-    }
-
-    /// Reject a pending tool call by ID (structured approval flow).
-    pub async fn reject_tool_call(
-        &self,
-        tool_call_id: String,
-        reason: Option<String>,
-        updates: Option<&mpsc::UnboundedSender<RuntimeUpdate>>,
-    ) {
-        if let Some(tx) = updates {
-            let _ = tx.send(RuntimeUpdate::ApprovalResponse {
-                tool_call_id,
-                approved: false,
-                reason,
-            });
-        }
-    }
-
     #[instrument(skip(self, updates), fields(task_id))]
     pub async fn run_task_with_updates(
         &mut self,
@@ -355,6 +323,19 @@ impl VacEngine {
         updates: Option<mpsc::UnboundedSender<RuntimeUpdate>>,
         cancel: Option<tokio_util::sync::CancellationToken>,
     ) -> VacResult<TaskResult> {
+        self.run_task_with_approvals(description, updates, cancel, None).await
+    }
+
+    /// Run a task with structured approval support.
+    /// The `approval_rx` channel receives approval/rejection decisions from the TUI.
+    #[instrument(skip(self, updates, cancel, approval_rx), fields(task_id))]
+    pub async fn run_task_with_approvals(
+        &mut self,
+        description: &str,
+        updates: Option<mpsc::UnboundedSender<RuntimeUpdate>>,
+        cancel: Option<tokio_util::sync::CancellationToken>,
+        approval_rx: Option<mpsc::UnboundedReceiver<vil_swarm::ApprovalResponse>>,
+    ) -> VacResult<TaskResult> {
         // Substitute secrets before sending to LLM
         let safe_description = self.secret_sub.substitute(description);
         let task = Task::new(&safe_description);
@@ -369,7 +350,7 @@ impl VacEngine {
             session.tasks.push(task.clone());
         }
 
-        let result = match self.execute_task_pipeline(task, updates.clone(), cancel).await {
+        let result = match self.execute_task_pipeline_with_approvals(task, updates.clone(), cancel, approval_rx).await {
             Ok(result) => result,
             Err(e) => {
                 // Check if this is a cancellation
@@ -438,6 +419,16 @@ impl VacEngine {
         task: Task,
         updates: Option<mpsc::UnboundedSender<RuntimeUpdate>>,
         cancel: Option<tokio_util::sync::CancellationToken>,
+    ) -> VacResult<TaskResult> {
+        self.execute_task_pipeline_with_approvals(task, updates, cancel, None).await
+    }
+
+    async fn execute_task_pipeline_with_approvals(
+        &mut self,
+        task: Task,
+        updates: Option<mpsc::UnboundedSender<RuntimeUpdate>>,
+        cancel: Option<tokio_util::sync::CancellationToken>,
+        approval_rx: Option<mpsc::UnboundedReceiver<vil_swarm::ApprovalResponse>>,
     ) -> VacResult<TaskResult> {
         let start = std::time::Instant::now();
         let task_id = task.id;
@@ -571,7 +562,7 @@ impl VacEngine {
         });
 
         let execution = swarm
-            .agent_loop_with_context(&task.description, Some(swarm_tx), Some(session_id), Some(project_root), cancel)
+            .agent_loop_with_full_context(&task.description, Some(swarm_tx), Some(session_id), Some(project_root), cancel, approval_rx)
             .await?;
 
         info!("Phase 3: Validating...");
@@ -857,10 +848,5 @@ pub enum RuntimeUpdate {
         tool_call_id: String,
         tool_name: String,
         arguments: serde_json::Value,
-    },
-    ApprovalResponse {
-        tool_call_id: String,
-        approved: bool,
-        reason: Option<String>,
     },
 }

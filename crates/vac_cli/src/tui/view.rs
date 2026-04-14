@@ -1,6 +1,6 @@
 //! View Module
 
-use crate::tui::app::{AppState, HelperCommand, Message};
+use crate::tui::app::AppState;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
@@ -53,59 +53,31 @@ pub fn view(f: &mut Frame, state: &mut AppState) {
 }
 
 fn render_messages(f: &mut Frame, state: &mut AppState, area: Rect) {
-    use crate::tui::services::render_markdown_to_lines_safe;
-    
-    let lines: Vec<Line> = state
-        .messages
-        .iter()
-        .flat_map(|msg| {
-            let prefix = match msg.role.as_str() {
-                "user" => "You: ",
-                "assistant" => "VAC: ",
-                _ => "",
-            };
-            let color = match msg.role.as_str() {
-                "user" => Color::Cyan,
-                "assistant" => Color::Green,
-                _ => Color::White,
-            };
-            
-            // Use markdown rendering for assistant messages
-            if msg.role == "assistant" {
-                let mut result = vec![
-                    Line::from(Span::styled(prefix, Style::default().fg(color).add_modifier(Modifier::BOLD)))
-                ];
-                
-                // Render markdown with fallback to plain text on error
-                match render_markdown_to_lines_safe(&msg.content) {
-                    Ok(markdown_lines) => {
-                        result.extend(markdown_lines);
-                    }
-                    Err(_) => {
-                        // Fallback to plain text if markdown rendering fails
-                        result.extend(msg.content.lines().map(|line| Line::raw(line)));
-                    }
-                }
-                result
-            } else {
-                // Simple rendering for user messages
-                msg.content
-                    .lines()
-                    .enumerate()
-                    .map(move |(i, line)| {
-                        if i == 0 {
-                            Line::from(vec![
-                                Span::styled(prefix, Style::default().fg(color).add_modifier(Modifier::BOLD)),
-                                Span::raw(line),
-                            ])
-                        } else {
-                            Line::raw(line)
-                        }
-                    })
-                    .collect::<Vec<_>>()
+    use crate::tui::services::message::{render_user_message, render_assistant_message_with_width};
+    use crate::tui::services::message::render_tool_call_pending;
+
+    let width = area.width.saturating_sub(2) as usize; // account for border
+    let mut lines: Vec<Line> = Vec::new();
+
+    for msg in &state.messages {
+        match msg.role.as_str() {
+            "user" => {
+                lines.extend(render_user_message(&msg.content, width));
             }
-        })
-        .collect();
+            "assistant" => {
+                lines.extend(render_assistant_message_with_width(&msg.content, width));
+            }
+            _ => {
+                lines.extend(msg.content.lines().map(|l| Line::raw(l.to_string())));
+            }
+        }
+        lines.push(Line::raw("")); // spacing between messages
+    }
+
+    // Render pending tool calls from state
+    for tc in &state.pending_tool_calls {
+        lines.extend(render_tool_call_pending(tc));
+    }
 
     let widget = Paragraph::new(lines)
         .block(Block::default().borders(Borders::ALL).title("Messages"))

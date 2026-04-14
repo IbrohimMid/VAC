@@ -29,7 +29,7 @@ pub use checkpoint::SessionInfo;
 pub use error::SwarmError;
 pub use error::SwarmResult;
 pub use lanes::{ControlLane, DataLane, TriggerLane};
-pub use orchestrator::{AgentLoopEvent, ExternalDiagnosticContext, SubtaskResult, SwarmOrchestrator, VilProjectProfile, VilArchetype};
+pub use orchestrator::{AgentLoopEvent, ApprovalResponse, ExternalDiagnosticContext, SubtaskResult, SwarmOrchestrator, VilProjectProfile, VilArchetype};
 pub use protocol::{ControlPayload, DataPayload, TriggerPayload, VapMessage};
 pub use sandbox::{SandboxHandle, SandboxMode, SandboxRegistry, SandboxStatus};
 pub use run_state::{AgentRunState, RunStage};
