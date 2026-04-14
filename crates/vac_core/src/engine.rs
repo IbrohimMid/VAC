@@ -417,15 +417,6 @@ impl VacEngine {
         Ok(result)
     }
 
-    async fn execute_task_pipeline(
-        &mut self,
-        task: Task,
-        updates: Option<mpsc::UnboundedSender<RuntimeUpdate>>,
-        cancel: Option<tokio_util::sync::CancellationToken>,
-    ) -> VacResult<TaskResult> {
-        self.execute_task_pipeline_with_approvals(task, updates, cancel, None).await
-    }
-
     async fn execute_task_pipeline_with_approvals(
         &mut self,
         task: Task,
