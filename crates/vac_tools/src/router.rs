@@ -361,3 +361,43 @@ impl ToolRouter {
         )
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::registry::AgentZone;
+
+    struct MockNeedsApprovalPolicy;
+
+    #[async_trait]
+    impl PolicyEngine for MockNeedsApprovalPolicy {
+        async fn decide(
+            &self,
+            _tool_name: &str,
+            _args: &serde_json::Value,
+            _context: &ToolContext,
+        ) -> PolicyDecision {
+            PolicyDecision::NeedsApproval("mock reason".to_string())
+        }
+    }
+
+    #[tokio::test]
+    async fn test_route_needs_approval_in_sandboxed_subagent_zone() {
+        let registry = Arc::new(ToolRegistry::new());
+        let policy = Arc::new(MockNeedsApprovalPolicy);
+        let router = ToolRouter::new(registry, policy);
+
+        let mut context = ToolContext::new("/tmp".into());
+        context.agent_zone = AgentZone::SandboxedSubagent;
+
+        let args = serde_json::json!({});
+        let result = router.route("test_tool", args, &context).await;
+
+        match result {
+            Err(ToolError::PermissionDenied(reason)) => {
+                assert!(reason.contains("denied in sandboxed subagent zone"));
+            }
+            other => panic!("Expected Err(ToolError::PermissionDenied), got {:?}", other),
+        }
+    }
+}
