@@ -262,4 +262,34 @@ mod tests {
 
         std::fs::remove_file(temp_path).ok();
     }
+
+    #[test]
+    fn checkpoint_roundtrip_with_approved_tools() {
+        let mut state = AgentRunState::new(
+            vec![Message::user("test task".to_string())],
+            None,
+        );
+        state.iterations = 5;
+        state.total_tokens = 1000;
+        state.record_modified("src/main.rs".to_string());
+        state.stage = RunStage::Coder;
+        
+        let mut approved = std::collections::HashSet::new();
+        approved.insert("bash_command".to_string());
+        approved.insert("write_file".to_string());
+        state.approved_tools = approved.clone();
+
+        let temp_path = std::env::temp_dir().join("test_checkpoint_tools.json");
+        state.save_checkpoint(&temp_path, None).unwrap();
+
+        let restored = AgentRunState::from_checkpoint(&temp_path).unwrap();
+        assert_eq!(restored.iterations, 5);
+        assert_eq!(restored.total_tokens, 1000);
+        assert_eq!(restored.modified_files.len(), 1);
+        assert_eq!(restored.stage, RunStage::Coder);
+        assert_eq!(restored.messages[0].content, "test task");
+        assert_eq!(restored.approved_tools, approved);
+
+        std::fs::remove_file(temp_path).ok();
+    }
 }
