@@ -109,6 +109,8 @@ pub struct SwarmOrchestrator {
     lsp_context: Option<ExternalDiagnosticContext>,
     /// Optional hook for tool call interception
     pub hook: Option<Arc<dyn crate::hooks::AgentHook>>,
+    /// Shared privacy vault for redacting sensitive information
+    pub privacy_vault: Arc<tokio::sync::RwLock<vac_tools::PrivacyVault>>,
 }
 
 /// Lightweight diagnostic context from vil-lsp, decoupled from vac_core types.
@@ -170,6 +172,7 @@ impl SwarmOrchestrator {
         enable_parallel: bool,
         llm_router: Option<Arc<LlmRouter>>,
         tool_router: Option<Arc<ToolRouter>>,
+        privacy_vault: Arc<tokio::sync::RwLock<vac_tools::PrivacyVault>>,
     ) -> SwarmResult<Self> {
         let mut orchestrator = Self {
             agents: HashMap::new(),
@@ -183,6 +186,7 @@ impl SwarmOrchestrator {
             sandbox_registry: Arc::new(crate::sandbox::SandboxRegistry::with_project_root(std::path::Path::new("."))),
             lsp_context: None,
             hook: None,
+            privacy_vault,
         };
 
         let roles = [
@@ -675,7 +679,7 @@ Rules:
         project_root: Option<std::path::PathBuf>,
         cancel: Option<tokio_util::sync::CancellationToken>,
     ) -> SwarmResult<ExecutionResult> {
-        self.agent_loop_with_full_context(task_description, updates, session_id, project_root, cancel, None, std::sync::Arc::new(tokio::sync::RwLock::new(vac_tools::PrivacyVault::new()))).await
+        self.agent_loop_with_full_context(task_description, updates, session_id, project_root, cancel, None).await
     }
 
     pub async fn agent_loop_with_full_context(
@@ -686,7 +690,6 @@ Rules:
         project_root: Option<std::path::PathBuf>,
         cancel: Option<tokio_util::sync::CancellationToken>,
         approval_rx: Option<mpsc::UnboundedReceiver<ApprovalResponse>>,
-        privacy_vault: std::sync::Arc<tokio::sync::RwLock<vac_tools::PrivacyVault>>,
     ) -> SwarmResult<ExecutionResult> {
         info!(task = %task_description, "Starting Semantic VIL-native agent loop");
 
@@ -701,7 +704,7 @@ Rules:
 
         let root = project_root.unwrap_or_else(|| std::path::PathBuf::from("."));
         let mut context = ToolContext::new(root);
-        context.privacy = privacy_vault;
+        context.privacy = self.privacy_vault.clone();
         if let Some(sid) = session_id {
             context = context.with_session_id(sid);
         }

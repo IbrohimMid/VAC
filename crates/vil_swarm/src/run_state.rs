@@ -109,6 +109,7 @@ impl AgentRunState {
             "created_files": self.created_files,
             "active_tool_calls": self.active_tool_calls,
             "pending_approvals": self.pending_approvals,
+            "approved_tools": self.approved_tools,
             "last_execution_status": self.last_execution_status,
             "trim_store": serde_json::to_value(&self.trim_store.0).unwrap_or_default(),
         });
@@ -151,13 +152,18 @@ impl AgentRunState {
             stage,
             cancel: None,
             collector: EventCollector::new(),
-            active_tool_calls: metadata.get("active_tool_calls")
+            active_tool_calls: metadata
+                .get("active_tool_calls")
                 .and_then(|v| serde_json::from_value(v.clone()).ok())
                 .unwrap_or_default(),
-            pending_approvals: metadata.get("pending_approvals")
+            pending_approvals: metadata
+                .get("pending_approvals")
                 .and_then(|v| serde_json::from_value(v.clone()).ok())
                 .unwrap_or_default(),
-            approved_tools: std::collections::HashSet::new(), // Not saved in checkpoint
+            approved_tools: metadata
+                .get("approved_tools")
+                .and_then(|v| serde_json::from_value(v.clone()).ok())
+                .unwrap_or_default(),
             last_execution_status: metadata.get("last_execution_status")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string()),

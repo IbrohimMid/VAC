@@ -179,6 +179,7 @@ impl VacEngine {
             self.config.swarm.enable_parallel,
             Some(llm_router),
             Some(Arc::new(tool_router)),
+            self.privacy_vault.clone(),
         )
         .await?;
 
@@ -558,7 +559,7 @@ impl VacEngine {
         });
 
         let execution = swarm
-            .agent_loop_with_full_context(&task.description, Some(swarm_tx), Some(session_id), Some(project_root), cancel, approval_rx, self.privacy_vault.clone())
+            .agent_loop_with_full_context(&task.description, Some(swarm_tx), Some(session_id), Some(project_root), cancel, approval_rx)
             .await?;
 
         info!("Phase 3: Validating...");
