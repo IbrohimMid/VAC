@@ -764,6 +764,11 @@ impl VacEngine {
         self.session.read().await.id
     }
 
+    /// List all available sessions for this project.
+    pub async fn list_sessions(&self) -> VacResult<Vec<Session>> {
+        Session::list_all(&self.project_root)
+    }
+
     /// Get read access to the current session.
     pub fn session(&self) -> &Arc<RwLock<Session>> {
         &self.session

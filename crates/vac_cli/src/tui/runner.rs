@@ -125,9 +125,46 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
 
     // Handle session restore if requested
     if resume {
-        // TODO: Implement proper session restore from last session
-        // For now, just log that restore was requested
-        log::info!("Session restore requested but not yet fully implemented");
+        let mut eng = engine.lock().await;
+        if let Ok(Some(session)) = vac_core::session::Session::load_latest(&project_root) {
+            let mut messages = Vec::new();
+            for task in &session.tasks {
+                messages.push(crate::tui::app::Message {
+                    id: task.id.0,
+                    role: "user".to_string(),
+                    content: task.description.clone(),
+                    tool_calls: None,
+                });
+                if let Some(result) = session.results.get(&task.id) {
+                    let mut content = result.summary.clone();
+                    if !result.modified_files.is_empty() {
+                        content.push_str("\n\n**Modified Files**:\n");
+                        for file in &result.modified_files {
+                            content.push_str(&format!("- `{}`\n", file));
+                        }
+                    }
+                    if !result.created_files.is_empty() {
+                        content.push_str("\n**Created Files**:\n");
+                        for file in &result.created_files {
+                            content.push_str(&format!("- `{}`\n", file));
+                        }
+                    }
+                    messages.push(crate::tui::app::Message {
+                        id: uuid::Uuid::new_v4(),
+                        role: "assistant".to_string(),
+                        content,
+                        tool_calls: None,
+                    });
+                }
+            }
+            if let Ok(_) = eng.load_session(session.id).await {
+                let _ = input_tx.send(InputEvent::SessionRestored {
+                    id: session.id.to_string(),
+                    title: format!("Session {}", &session.id.to_string()[..8]),
+                    messages,
+                }).await;
+            }
+        }
     }
 
     // Spawn task to handle output events
@@ -218,20 +255,70 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                     });
                 }
                 OutputEvent::ListSessions => {
-                    let _ = input_tx_clone.send(InputEvent::SetSessions(vec![])).await;
+                    let eng = engine_clone.lock().await;
+                    if let Ok(sessions) = eng.list_sessions().await {
+                        let session_infos = sessions.into_iter().map(|s| crate::tui::app::SessionInfo {
+                            id: s.id.to_string(),
+                            title: format!("Session {}", &s.id.to_string()[..8]),
+                            updated_at: s.updated_at.to_rfc3339(),
+                            checkpoints: vec![],
+                        }).collect();
+                        let _ = input_tx_clone.send(InputEvent::SetSessions(session_infos)).await;
+                    } else {
+                        let _ = input_tx_clone.send(InputEvent::SetSessions(vec![])).await;
+                    }
                 }
                 OutputEvent::NewSession => {
+                    let mut eng = engine_clone.lock().await;
+                    if let Ok(status) = eng.status().await {
+                        let mut current_session = eng.session().write().await;
+                        *current_session = vac_core::session::Session::new(status.project_root);
+                        let _ = input_tx_clone.send(InputEvent::SessionRestored {
+                            id: current_session.id.to_string(),
+                            title: "New Session".to_string(),
+                            messages: vec![],
+                        }).await;
+                    }
                 }
                 OutputEvent::ResumeSession(id) => {
                     if let Ok(uuid) = uuid::Uuid::parse_str(&id) {
                         let mut eng = engine_clone.lock().await;
                         if let Ok(_) = eng.load_session(uuid).await {
-                            // TODO: Extract transcript from loaded session and send SessionRestored event
-                            // For now, just notify that session was restored
+                            let session = eng.session().read().await;
+                            let mut messages = Vec::new();
+                            for task in &session.tasks {
+                                messages.push(crate::tui::app::Message {
+                                    id: task.id.0,
+                                    role: "user".to_string(),
+                                    content: task.description.clone(),
+                                    tool_calls: None,
+                                });
+                                if let Some(result) = session.results.get(&task.id) {
+                                    let mut content = result.summary.clone();
+                                    if !result.modified_files.is_empty() {
+                                        content.push_str("\n\n**Modified Files**:\n");
+                                        for file in &result.modified_files {
+                                            content.push_str(&format!("- `{}`\n", file));
+                                        }
+                                    }
+                                    if !result.created_files.is_empty() {
+                                        content.push_str("\n**Created Files**:\n");
+                                        for file in &result.created_files {
+                                            content.push_str(&format!("- `{}`\n", file));
+                                        }
+                                    }
+                                    messages.push(crate::tui::app::Message {
+                                        id: uuid::Uuid::new_v4(),
+                                        role: "assistant".to_string(),
+                                        content,
+                                        tool_calls: None,
+                                    });
+                                }
+                            }
                             let _ = input_tx_clone.send(InputEvent::SessionRestored {
                                 id: id.clone(),
                                 title: format!("Session {}", &id[..8]),
-                                messages: vec![],
+                                messages,
                             }).await;
                         }
                     }

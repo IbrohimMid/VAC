@@ -76,6 +76,26 @@ impl Session {
         Ok(sessions.into_iter().next())
     }
 
+    /// List all sessions from disk, sorted by updated_at descending.
+    pub fn list_all(project_root: &Path) -> crate::error::VacResult<Vec<Self>> {
+        let session_dir = project_root.join(".vac/sessions");
+        if !session_dir.exists() {
+            return Ok(Vec::new());
+        }
+
+        let mut sessions: Vec<Self> = std::fs::read_dir(&session_dir)?
+            .filter_map(|entry| entry.ok())
+            .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "json"))
+            .filter_map(|entry| {
+                let content = std::fs::read_to_string(entry.path()).ok()?;
+                serde_json::from_str(&content).ok()
+            })
+            .collect();
+
+        sessions.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+        Ok(sessions)
+    }
+
     /// Add a task result and update metadata.
     pub fn record_result(&mut self, result: TaskResult) {
         match &result.status {
