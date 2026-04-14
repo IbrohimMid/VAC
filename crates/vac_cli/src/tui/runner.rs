@@ -81,10 +81,6 @@ async fn handle_runtime_update(
         }
         RuntimeUpdate::Completed(_result) => {
             let _ = input_tx_inner.send(InputEvent::EndLoadingOperation(LoadingOperation::LlmRequest)).await;
-            let _ = input_tx_inner.send(InputEvent::StreamAssistantMessage(
-                stream_uuid,
-                "\n\n**[Process Completed]**".to_string(),
-            )).await;
         }
         RuntimeUpdate::Failed(err) => {
             let _ = input_tx_inner.send(InputEvent::EndLoadingOperation(LoadingOperation::LlmRequest)).await;
