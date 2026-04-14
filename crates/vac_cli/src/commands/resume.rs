@@ -3,7 +3,7 @@
 
 use std::path::PathBuf;
 
-pub async fn execute(project_root: PathBuf, checkpoint_path: PathBuf) -> anyhow::Result<()> {
+pub async fn execute(_project_root: PathBuf, checkpoint_path: PathBuf) -> anyhow::Result<()> {
     println!("Loading checkpoint from: {}", checkpoint_path.display());
 
     let checkpoint = vil_swarm::checkpoint::load_checkpoint_from_file(&checkpoint_path)

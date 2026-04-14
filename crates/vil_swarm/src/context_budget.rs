@@ -184,7 +184,7 @@ mod tests {
     #[test]
     fn estimate_tokens_grows_with_content() {
         let small = vec![msg(Role::User, "hi")];
-        let large = vec![msg(Role::User, &"x".repeat(10_000))];
+        let large = vec![msg(Role::User, &"word ".repeat(2_000))];
         assert!(estimate_tokens(&large) > estimate_tokens(&small));
     }
 
@@ -213,7 +213,7 @@ mod tests {
     #[test]
     fn reduce_keeps_latest_user_message() {
         // Build a large context that forces trimming.
-        let big = "x".repeat(50_000);
+        let big = "word ".repeat(10_000);
         let mut messages = vec![msg(Role::System, "sys")];
         for _ in 0..5 {
             messages.push(msg(Role::Assistant, &big));
@@ -232,7 +232,7 @@ mod tests {
 
     #[test]
     fn reduce_trims_old_assistant_tool_messages() {
-        let big = "x".repeat(100_000);
+        let big = "word ".repeat(20_000);
         let mut messages = vec![msg(Role::System, "sys")];
         for _ in 0..8 {
             messages.push(msg(Role::Assistant, &big));
@@ -267,7 +267,7 @@ mod tests {
     #[test]
     fn reduce_still_shrinks_when_many_user_turns_exist() {
         // Many large user turns — emergency fallback must still reduce.
-        let big = "x".repeat(30_000);
+        let big = "word ".repeat(6_000);
         let mut messages = vec![msg(Role::System, "sys")];
         for _ in 0..10 {
             messages.push(msg(Role::User, &big));

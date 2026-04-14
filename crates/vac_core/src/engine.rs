@@ -4,7 +4,6 @@ use crate::{
     auth,
     config::VacConfig,
     error::{VacError, VacResult},
-    security::SecretSubstitution,
     session::Session,
     spawn_subtask_tool::SpawnSubtaskTool,
     task::{Task, TaskResult, TaskStatus},

@@ -6,11 +6,11 @@ use crate::semantic::{PlannerGateResult, evaluate_planner_output};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::mpsc;
-use tracing::{error, info, warn};
+use tracing::{info, warn};
 use vac_tools::registry::ToolContext;
 use vac_tools::router::ToolRouter;
 use vil_llm::LlmRouter;
-use vil_llm::provider::{LlmRequest, Message, Role, ToolDefinition};
+use vil_llm::provider::{LlmRequest, Message, ToolDefinition};
 
 pub struct ExecutionResult {
     pub summary: String,
@@ -848,6 +848,4 @@ Rules:
     }
 }
 
-fn status_for_tool(tool_name: &str) -> String {
-    crate::tool_execution::status_for_tool(tool_name)
-}
+

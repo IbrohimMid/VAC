@@ -1,6 +1,5 @@
 //! Input and Output Events
 
-use ratatui::style::Color;
 use uuid::Uuid;
 
 use crate::tui::types::*;

@@ -3,7 +3,6 @@
 //! Provides type mappings between Stakpak TUI types and VAC types.
 
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 /// Model representation for TUI (adapted from Stakpak's stakai::Model)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

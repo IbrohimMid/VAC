@@ -2,7 +2,7 @@
 //!
 //! Replaces secrets with placeholders and restores them
 
-use super::secret_detector::{DetectedSecret, SecretDetector};
+use super::secret_detector::SecretDetector;
 use std::collections::HashMap;
 
 /// A placeholder for a secret

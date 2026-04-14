@@ -269,7 +269,7 @@ fn render_approval_dialog(f: &mut Frame, state: &mut AppState) {
     f.render_widget(list, chunks[1]);
 }
 
-fn render_shortcuts(f: &mut Frame, state: &mut AppState) {
+fn render_shortcuts(f: &mut Frame, _state: &mut AppState) {
     let area = centered_rect(70, 60, f.area());
     f.render_widget(Clear, area);
 

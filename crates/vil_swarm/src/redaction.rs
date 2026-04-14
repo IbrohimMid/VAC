@@ -3,16 +3,16 @@
 use regex::Regex;
 use once_cell::sync::Lazy;
 
-static SECRET_PATTERNS: Lazy<Vec<Regex>> = Lazy::new(|| {
+static SECRET_PATTERNS: Lazy<Vec<(Regex, &'static str)>> = Lazy::new(|| {
     vec![
-        // API keys
-        Regex::new(r#"(?i)(api[_-]?key|apikey|access[_-]?token|secret[_-]?key)["']?\s*[:=]\s*["']?([a-zA-Z0-9_\-]{20,})"#).unwrap(),
-        // AWS keys - capture the whole key
-        Regex::new(r"(AKIA[0-9A-Z]{16})").unwrap(),
-        // Generic tokens
-        Regex::new(r#"(?i)(bearer\s+)([a-zA-Z0-9_\-\.]{20,})"#).unwrap(),
+        // AWS keys - replace entire match
+        (Regex::new(r"AKIA[0-9A-Z]{16}").unwrap(), "[REDACTED]"),
+        // API keys - keep prefix, redact value
+        (Regex::new(r#"(?i)(api[_-]?key|apikey|access[_-]?token|secret[_-]?key)["']?\s*[:=]\s*["']?([a-zA-Z0-9_\-]{20,})"#).unwrap(), "$1=[REDACTED]"),
+        // Bearer tokens
+        (Regex::new(r#"(?i)(bearer\s+)([a-zA-Z0-9_\-\.]{20,})"#).unwrap(), "$1[REDACTED]"),
         // Passwords
-        Regex::new(r#"(?i)(password|passwd|pwd)["']?\s*[:=]\s*["']?([^\s"']{8,})"#).unwrap(),
+        (Regex::new(r#"(?i)(password|passwd|pwd)["']?\s*[:=]\s*["']?([^\s"']{8,})"#).unwrap(), "$1=[REDACTED]"),
     ]
 });
 
@@ -20,21 +20,9 @@ static SECRET_PATTERNS: Lazy<Vec<Regex>> = Lazy::new(|| {
 pub fn redact_secrets(text: &str) -> String {
     let mut result = text.to_string();
     
-    // AWS keys - replace entire match
-    result = Regex::new(r"AKIA[0-9A-Z]{16}").unwrap()
-        .replace_all(&result, "[REDACTED]").to_string();
-    
-    // API keys - keep prefix, redact value
-    result = Regex::new(r#"(?i)(api[_-]?key|apikey|access[_-]?token|secret[_-]?key)["']?\s*[:=]\s*["']?([a-zA-Z0-9_\-]{20,})"#).unwrap()
-        .replace_all(&result, "$1=[REDACTED]").to_string();
-    
-    // Bearer tokens
-    result = Regex::new(r#"(?i)(bearer\s+)([a-zA-Z0-9_\-\.]{20,})"#).unwrap()
-        .replace_all(&result, "$1[REDACTED]").to_string();
-    
-    // Passwords
-    result = Regex::new(r#"(?i)(password|passwd|pwd)["']?\s*[:=]\s*["']?([^\s"']{8,})"#).unwrap()
-        .replace_all(&result, "$1=[REDACTED]").to_string();
+    for (pattern, replacement) in SECRET_PATTERNS.iter() {
+        result = pattern.replace_all(&result, *replacement).to_string();
+    }
     
     result
 }

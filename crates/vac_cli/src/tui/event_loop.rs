@@ -1,6 +1,6 @@
 //! Event Loop Module
 
-use crate::tui::app::{AppState, AppStateOptions, InputEvent, LoadingOperation, OutputEvent};
+use crate::tui::app::{AppState, AppStateOptions, InputEvent, OutputEvent};
 use crate::tui::event::map_crossterm_event_to_input_event;
 use crate::tui::services::helper_block::welcome_messages;
 use crate::tui::terminal::TerminalGuard;

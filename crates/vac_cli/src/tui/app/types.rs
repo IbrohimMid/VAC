@@ -72,11 +72,7 @@ pub struct SessionInfo {
     pub checkpoints: Vec<String>,
 }
 
-#[derive(Debug, PartialEq)]
-pub enum LoadingType {
-    Llm,
-    Sessions,
-}
+
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum LoadingOperation {

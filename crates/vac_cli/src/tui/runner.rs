@@ -269,7 +269,7 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                     }
                 }
                 OutputEvent::NewSession => {
-                    let mut eng = engine_clone.lock().await;
+                    let eng = engine_clone.lock().await;
                     if let Ok(status) = eng.status().await {
                         let mut current_session = eng.session().write().await;
                         *current_session = vac_core::session::Session::new(status.project_root);

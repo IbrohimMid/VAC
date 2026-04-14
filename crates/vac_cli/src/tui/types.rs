@@ -4,7 +4,6 @@
 //! The goal is to maintain API compatibility while using VAC's semantics.
 
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 // ========== Model (from stakai) ==========
 
