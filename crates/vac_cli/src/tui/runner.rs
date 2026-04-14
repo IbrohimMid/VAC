@@ -79,16 +79,12 @@ async fn handle_runtime_update(
             };
             let _ = input_tx_inner.send(InputEvent::ToolResult(tool_result)).await;
         }
-        RuntimeUpdate::Completed(result) => {
+        RuntimeUpdate::Completed(_result) => {
             let _ = input_tx_inner.send(InputEvent::EndLoadingOperation(LoadingOperation::LlmRequest)).await;
-            if !result.summary.is_empty() {
-                let _ = input_tx_inner
-                    .send(InputEvent::StreamAssistantMessage(
-                        stream_uuid,
-                        format!("\n\n**Result:**\n{}", result.summary),
-                    ))
-                    .await;
-            }
+            let _ = input_tx_inner.send(InputEvent::StreamAssistantMessage(
+                stream_uuid,
+                "\n\n**[Process Completed]**".to_string(),
+            )).await;
         }
         RuntimeUpdate::Failed(err) => {
             let _ = input_tx_inner.send(InputEvent::EndLoadingOperation(LoadingOperation::LlmRequest)).await;
