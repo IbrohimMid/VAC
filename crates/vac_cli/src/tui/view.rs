@@ -181,22 +181,70 @@ fn render_command_palette(f: &mut Frame, state: &mut AppState) {
 }
 
 fn render_approval_dialog(f: &mut Frame, state: &mut AppState) {
-    let area = centered_rect(60, 40, f.area());
+    let area = centered_rect(80, 80, f.area());
     f.render_widget(Clear, area);
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
+        .constraints([Constraint::Percentage(80), Constraint::Percentage(20)])
         .split(area);
 
     // Tool call info
-    let tool_info = if let Some(tc) = &state.dialog_command {
-        format!("Tool: {}\nArguments: {}", tc.function.name, tc.function.arguments)
+    let mut lines = Vec::new();
+    if let Some(tc) = &state.dialog_command {
+        lines.push(Line::from(vec![
+            Span::styled("Tool: ", Style::default().add_modifier(Modifier::BOLD)),
+            Span::styled(tc.function.name.clone(), Style::default().fg(Color::Yellow)),
+        ]));
+        lines.push(Line::from(""));
+
+        let args = &tc.function.arguments;
+        if tc.function.name == "SearchReplace" {
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(args) {
+                let file_path = v.get("file_path").and_then(|v| v.as_str()).unwrap_or("");
+                let old_str = v.get("old_str").and_then(|v| v.as_str()).unwrap_or("");
+                let new_str = v.get("new_str").and_then(|v| v.as_str()).unwrap_or("");
+                lines.extend(crate::tui::services::file_diff::preview_file_diff(
+                    file_path,
+                    old_str,
+                    new_str,
+                    area.width as usize,
+                ));
+            } else {
+                lines.push(Line::from(args.to_string()));
+            }
+        } else if tc.function.name == "Write" {
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(args) {
+                let file_path = v.get("file_path").and_then(|v| v.as_str()).unwrap_or("");
+                let content = v.get("content").and_then(|v| v.as_str()).unwrap_or("");
+                lines.extend(crate::tui::services::file_diff::preview_file_diff(
+                    file_path,
+                    "",
+                    content,
+                    area.width as usize,
+                ));
+            } else {
+                lines.push(Line::from(args.to_string()));
+            }
+        } else {
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(args) {
+                let formatted = serde_json::to_string_pretty(&v).unwrap_or_else(|_| args.to_string());
+                for line in formatted.lines() {
+                    lines.push(Line::from(line.to_string()));
+                }
+            } else {
+                for line in args.lines() {
+                    lines.push(Line::from(line.to_string()));
+                }
+            }
+        }
     } else {
-        "No tool call".to_string()
-    };
-    let info = Paragraph::new(tool_info)
-        .block(Block::default().borders(Borders::ALL).title("Approve Tool?"));
+        lines.push(Line::from("No tool call"));
+    }
+
+    let info = Paragraph::new(lines)
+        .block(Block::default().borders(Borders::ALL).title("Approve Tool?"))
+        .wrap(Wrap { trim: false });
     f.render_widget(info, chunks[0]);
 
     // Buttons
