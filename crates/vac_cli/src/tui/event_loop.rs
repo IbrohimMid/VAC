@@ -347,6 +347,17 @@ fn handle_backend_event(state: &mut AppState, event: InputEvent) {
             state.session_title = Some(title);
             state.messages = messages;
             state.loading = false;
+            
+            // Clear transient UI state to prevent leakage between sessions
+            state.pending_tool_calls.clear();
+            state.approved_tools.clear();
+            state.rejected_tools.clear();
+            state.dialog_command = None;
+            state.is_dialog_open = false;
+            state.is_streaming = false;
+            state.streaming_message_id = None;
+            state.scroll = 0;
+            state.input.clear();
         }
         InputEvent::ShowConfirmationDialog(tc) => {
             state.dialog_command = Some(tc);
