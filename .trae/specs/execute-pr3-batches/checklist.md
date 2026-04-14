@@ -1,0 +1,8 @@
+- [x] BATCH 1: README.md mencerminkan VIL-native autonomous coding agent dengan arsitektur ringkas, limitasi jelas, dan tanpa *marketing fluff*.
+- [x] BATCH 2: Pengujian `vil_swarm::run_state` membuktikan `approved_tools` dipulihkan secara utuh setelah direstorasi dari *checkpoint*.
+- [x] BATCH 3: Pengujian `vil_swarm::subagent` memverifikasi `context.privacy` merujuk pada *vault* yang disuntikkan.
+- [x] BATCH 4: Pengujian `vac_tools::router` membuktikan hasil *routing* alat yang membutuhkan izin pada subagent bernilai `PermissionDenied`.
+- [x] BATCH 5: Pengujian `vac_tools::router` membuktikan *tool arguments* dipulihkan dan hasilnya disubstitusi untuk kedua rute.
+- [x] BATCH 6: Smoke test pada `vac_core::engine` berhasil memeriksa keterikatan `SwarmOrchestrator::new` dengan *shared privacy vault*.
+- [x] BATCH 7: Kompilasi dengan `cargo check` pada komponen terkait berjalan tanpa memunculkan *warnings* baru.
+- [x] BATCH 8: Berkas dokumentasi arsitektur privasi yang baru berhasil dibuat dan secara akurat merefleksikan implementasi yang sebenarnya.
