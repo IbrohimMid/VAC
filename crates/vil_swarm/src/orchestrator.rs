@@ -91,10 +91,8 @@ pub struct SubtaskResult {
 
 pub struct SwarmOrchestrator {
     agents: HashMap<AgentId, AgentDefinition>,
-    #[allow(dead_code)]
-    max_concurrent: usize,
-    #[allow(dead_code)]
-    enable_parallel: bool,
+    _max_concurrent: usize,
+    _enable_parallel: bool,
     llm_router: Option<Arc<LlmRouter>>,
     tool_router: Option<Arc<ToolRouter>>,
     /// VIL project profile — drives archetype-aware system prompts
@@ -176,8 +174,8 @@ impl SwarmOrchestrator {
     ) -> SwarmResult<Self> {
         let mut orchestrator = Self {
             agents: HashMap::new(),
-            max_concurrent,
-            enable_parallel,
+            _max_concurrent: max_concurrent,
+            _enable_parallel: enable_parallel,
             llm_router,
             tool_router,
             project_profile: None,
@@ -465,6 +463,7 @@ Rules:
         self.execute_agent_loop_with_approvals(state, tool_defs, updates, context, llm_router, tool_router, None).await
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn execute_agent_loop_with_approvals(
         &self,
         state: &mut crate::run_state::AgentRunState,
