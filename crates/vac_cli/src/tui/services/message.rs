@@ -5,6 +5,8 @@
 
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
+use regex::Regex;
+use serde_json::Value;
 
 use crate::tui::types::{ToolCall, ToolCallResult, ToolCallResultStatus};
 use crate::tui::services::render_markdown_to_lines_safe;
@@ -16,6 +18,60 @@ fn truncate_chars(s: &str, max_chars: usize) -> String {
     } else {
         s.chars().take(max_chars.saturating_sub(1)).chain(std::iter::once('…')).collect()
     }
+}
+
+/// Helper to format json values
+fn format_json_value(value: &Value) -> String {
+    match value {
+        Value::Object(obj) => {
+            if obj.is_empty() { return "{}".to_string(); }
+            let mut values = obj.into_iter().map(|(k, v)| (k, format_json_value(v))).collect::<Vec<_>>();
+            values.sort_by_key(|(_, val)| val.len());
+            values.into_iter().map(|(k, v)| format!("{} = {}", k, v)).collect::<Vec<_>>().join(", ")
+        }
+        Value::Array(arr) => {
+            if arr.is_empty() { "[]".to_string() }
+            else { format!("[{}]", arr.iter().map(format_simple_value).collect::<Vec<_>>().join(", ")) }
+        }
+        _ => format_simple_value(value),
+    }
+}
+
+fn format_simple_value(value: &Value) -> String {
+    match value {
+        Value::String(s) => s.clone(),
+        Value::Number(n) => n.to_string(),
+        Value::Bool(b) => b.to_string(),
+        Value::Null => "null".to_string(),
+        Value::Object(_) => "object".to_string(),
+        Value::Array(arr) => format!("[{}]", arr.len()),
+    }
+}
+
+pub fn extract_full_command_arguments(tool_call: &ToolCall) -> String {
+    let args = &tool_call.function.arguments;
+    if let Ok(v) = serde_json::from_str::<Value>(args) {
+        return format_json_value(&v);
+    }
+    let patterns = vec![r#"["']?(\w+)["']?\s*:\s*["']([^"']+)["']"#, r#"(\w+)\s*:\s*([^,}\s]+)"#];
+    for pattern in patterns {
+        if let Ok(re) = Regex::new(pattern) {
+            let mut results = Vec::new();
+            for caps in re.captures_iter(args) {
+                if caps.len() >= 3 {
+                    results.push(format!("{} = {}", caps.get(1).unwrap().as_str(), caps.get(2).unwrap().as_str()));
+                }
+            }
+            if !results.is_empty() { return results.join(", "); }
+        }
+    }
+    let wrapped = format!("{{{}}}", args);
+    if let Ok(v) = serde_json::from_str::<Value>(&wrapped) {
+        return format_json_value(&v);
+    }
+    let trimmed = args.trim();
+    if !trimmed.is_empty() { return trimmed.to_string(); }
+    String::new()
 }
 
 /// Render a user message as styled lines with cyan prefix bar.
@@ -52,38 +108,28 @@ pub fn split_content_segments(content: &str) -> Vec<ContentSegment> {
 
     for line in content.lines() {
         if !in_block {
-            // Check for fence start (allow up to 3 spaces of indentation per CommonMark)
             let trimmed = line.trim_start();
-            let indent = line.len() - trimmed.len();
-            if indent <= 3 {
-                if let Some(fence) = trimmed.strip_prefix("```") {
-                    let l = fence.trim().to_lowercase();
-                    if l.is_empty() || matches!(l.as_str(), "bash" | "sh" | "shell") {
-                        // Flush accumulated text
-                        if !current_text.is_empty() {
-                            segments.push(ContentSegment::Text(std::mem::take(&mut current_text)));
-                        }
-                        in_block = true;
-                        lang = if l.is_empty() { "bash".to_string() } else { l };
-                        current_code.clear();
-                        continue;
-                    }
+            if trimmed.starts_with("```") {
+                let fence = trimmed.strip_prefix("```").unwrap();
+                if !current_text.is_empty() {
+                    segments.push(ContentSegment::Text(std::mem::take(&mut current_text)));
                 }
+                in_block = true;
+                lang = fence.trim().to_lowercase();
+                current_code.clear();
+                continue;
             }
-            // Not a fence — accumulate text
             if !current_text.is_empty() {
                 current_text.push('\n');
             }
             current_text.push_str(line);
-        } else if line.trim() == "```" {
-            // End of code block
+        } else if line.trim_start().starts_with("```") {
             segments.push(ContentSegment::Code {
                 language: std::mem::take(&mut lang),
                 content: std::mem::take(&mut current_code),
             });
             in_block = false;
         } else {
-            // Inside code block
             if !current_code.is_empty() {
                 current_code.push('\n');
             }
@@ -91,7 +137,6 @@ pub fn split_content_segments(content: &str) -> Vec<ContentSegment> {
         }
     }
 
-    // Handle unclosed fence — treat remaining as code
     if in_block {
         segments.push(ContentSegment::Code {
             language: lang,
@@ -131,8 +176,16 @@ pub fn render_assistant_message_with_width(content: &str, width: usize) -> Vec<L
                 }
             }
             ContentSegment::Code { language, content } => {
-                let block = super::bash_block::BashBlock { language, content };
-                lines.extend(render_bash_block(&block, width));
+                if language.is_empty() || matches!(language.as_str(), "bash" | "sh" | "shell") {
+                    let block = super::bash_block::BashBlock { language: "bash".to_string(), content };
+                    lines.extend(render_bash_block(&block, width));
+                } else {
+                    let reconstructed = format!("```{}\n{}\n```", language, content);
+                    match render_markdown_to_lines_safe(&reconstructed) {
+                        Ok(md_lines) => lines.extend(md_lines),
+                        Err(_) => lines.extend(reconstructed.lines().map(|l| Line::raw(l.to_string()))),
+                    }
+                }
             }
         }
     }
@@ -142,7 +195,7 @@ pub fn render_assistant_message_with_width(content: &str, width: usize) -> Vec<L
 
 /// Render a pending tool call bubble.
 pub fn render_tool_call_pending(tool_call: &ToolCall) -> Vec<Line<'static>> {
-    vec![
+    let mut lines = vec![
         Line::from(vec![
             Span::styled("⏳ ", Style::default().fg(Color::Yellow)),
             Span::styled(
@@ -151,7 +204,15 @@ pub fn render_tool_call_pending(tool_call: &ToolCall) -> Vec<Line<'static>> {
             ),
             Span::styled(" [pending approval]", Style::default().fg(Color::DarkGray)),
         ]),
-    ]
+    ];
+    let args = extract_full_command_arguments(tool_call);
+    if !args.is_empty() {
+        lines.push(Line::from(vec![
+            Span::raw("  "),
+            Span::styled(truncate_chars(&args, 100), Style::default().fg(Color::DarkGray)),
+        ]));
+    }
+    lines
 }
 
 /// Render a tool call result bubble.
@@ -161,7 +222,7 @@ pub fn render_tool_result(result: &ToolCallResult) -> Vec<Line<'static>> {
         ToolCallResultStatus::Error => ("✗", Color::Red),
         _ => ("·", Color::Gray),
     };
-    vec![
+    let mut lines = vec![
         Line::from(vec![
             Span::styled(format!("{icon} "), Style::default().fg(color)),
             Span::styled(
@@ -169,9 +230,36 @@ pub fn render_tool_result(result: &ToolCallResult) -> Vec<Line<'static>> {
                 Style::default().fg(color).add_modifier(Modifier::BOLD),
             ),
         ]),
-        Line::from(vec![
+    ];
+    
+    let args = extract_full_command_arguments(&result.call);
+    if !args.is_empty() {
+        lines.push(Line::from(vec![
             Span::raw("  "),
-            Span::styled(result.result.clone(), Style::default().fg(Color::DarkGray)),
-        ]),
-    ]
+            Span::styled(truncate_chars(&args, 100), Style::default().fg(Color::DarkGray)),
+        ]));
+    }
+
+    let mut result_lines: Vec<&str> = result.result.lines().collect();
+    let truncated = if result_lines.len() > 5 {
+        result_lines.truncate(5);
+        true
+    } else {
+        false
+    };
+
+    for line in result_lines {
+        lines.push(Line::from(vec![
+            Span::raw("    "),
+            Span::styled(truncate_chars(line, 100), Style::default().fg(Color::DarkGray)),
+        ]));
+    }
+    if truncated {
+        lines.push(Line::from(vec![
+            Span::raw("    "),
+            Span::styled("... (output truncated)", Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC)),
+        ]));
+    }
+
+    lines
 }
