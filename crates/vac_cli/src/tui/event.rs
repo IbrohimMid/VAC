@@ -66,7 +66,7 @@ pub fn map_crossterm_event_to_input_event(event: Event) -> Option<InputEvent> {
                     Some(InputEvent::RulebookSwitcherDeselectAll)
                 }
                 KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                    Some(InputEvent::InputDelete)
+                    Some(InputEvent::InputClear)
                 }
                 KeyCode::Char('w') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                     Some(InputEvent::InputDeleteWord)
@@ -104,7 +104,7 @@ pub fn map_crossterm_event_to_input_event(event: Event) -> Option<InputEvent> {
                 }
                 KeyCode::Char('h') => {
                     if key.modifiers.contains(KeyModifiers::CONTROL) {
-                        Some(InputEvent::InputDelete)
+                        Some(InputEvent::InputBackspace)
                     } else if key.modifiers.contains(KeyModifiers::ALT) {
                         Some(InputEvent::InputDeleteWord)
                     } else {
@@ -114,14 +114,21 @@ pub fn map_crossterm_event_to_input_event(event: Event) -> Option<InputEvent> {
                 KeyCode::Char(c) => Some(InputEvent::InputChanged(c)),
                 KeyCode::Backspace => {
                     if key.modifiers.contains(KeyModifiers::CONTROL) {
-                        Some(InputEvent::InputDelete)
+                        Some(InputEvent::InputClear)
                     } else if key.modifiers.contains(KeyModifiers::ALT) {
                         Some(InputEvent::InputDeleteWord)
                     } else {
                         Some(InputEvent::InputBackspace)
                     }
                 }
-                KeyCode::Enter => Some(InputEvent::InputSubmitted),
+                KeyCode::Delete => Some(InputEvent::InputDelete),
+                KeyCode::Enter => {
+                    if key.modifiers.contains(KeyModifiers::ALT) {
+                        Some(InputEvent::InputChangedNewline)
+                    } else {
+                        Some(InputEvent::InputSubmitted)
+                    }
+                }
                 KeyCode::Esc => Some(InputEvent::HandleEsc),
                 KeyCode::Up => {
                     if key

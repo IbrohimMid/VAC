@@ -7,6 +7,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::tui::types::*;
+use crate::tui::services::textarea::TextArea;
 
 // ========== Cache Types ==========
 
@@ -173,7 +174,7 @@ impl Message {
 /// Main application state for TUI
 pub struct AppState {
     // Input state
-    pub input: String,
+    pub input: TextArea,
     pub cursor_position: usize,
     
     // Messages
@@ -254,7 +255,7 @@ impl Default for AppState {
 impl AppState {
     pub fn new(options: AppStateOptions) -> Self {
         Self {
-            input: String::new(),
+            input: TextArea::new(),
             cursor_position: 0,
             messages: Vec::new(),
             scroll: 0,

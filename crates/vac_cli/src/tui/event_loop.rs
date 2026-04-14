@@ -267,21 +267,54 @@ fn handle_input_event(
     // Normal input handling
     match event {
         InputEvent::InputChanged(c) => {
-            state.input.push(c);
+            state.input.input(c);
+        }
+        InputEvent::InputChangedNewline => {
+            state.input.newline();
         }
         InputEvent::InputBackspace => {
-            state.input.pop();
+            state.input.backspace();
         }
         InputEvent::InputDelete => {
+            state.input.delete();
+        }
+        InputEvent::InputClear => {
             state.input.clear();
         }
         InputEvent::InputSubmitted => {
             if !state.input.is_empty() {
-                let msg = state.input.clone();
+                let msg = state.input.get_content();
                 state.add_user_message(msg.clone());
                 state.input.clear();
                 let _ = output_tx.try_send(OutputEvent::UserMessage(msg, None, vec![], None));
             }
+        }
+        InputEvent::HandlePaste(text) => {
+            for c in text.chars() {
+                if c == '\n' {
+                    state.input.newline();
+                } else if c != '\r' {
+                    state.input.input(c);
+                }
+            }
+        }
+        InputEvent::CursorLeft => {
+            state.input.move_cursor_left();
+        }
+        InputEvent::CursorRight => {
+            state.input.move_cursor_right();
+        }
+        InputEvent::Up => {
+            state.input.move_cursor_up();
+        }
+        InputEvent::Down => {
+            state.input.move_cursor_down();
+        }
+        InputEvent::InputCursorStart => {
+            state.input.move_cursor_start();
+        }
+        InputEvent::InputCursorEnd => {
+            state.input.move_cursor_end();
         }
         InputEvent::AttemptQuit => {
             state.cancel_requested = true;

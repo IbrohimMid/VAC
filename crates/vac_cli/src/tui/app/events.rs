@@ -26,6 +26,7 @@ pub enum InputEvent {
     InputChanged(char),
     InputBackspace,
     InputDelete,
+    InputClear,
     InputDeleteWord,
     InputChangedNewline,
     InputSubmitted,

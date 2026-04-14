@@ -21,7 +21,7 @@ pub fn view(f: &mut Frame, state: &mut AppState) {
         .margin(1)
         .constraints([
             Constraint::Min(1),
-            Constraint::Length(3),
+            Constraint::Length(5),
             Constraint::Length(1),
         ])
         .split(main_chunks[0]);
@@ -86,14 +86,33 @@ fn render_messages(f: &mut Frame, state: &mut AppState, area: Rect) {
 }
 
 fn render_input(f: &mut Frame, state: &mut AppState, area: Rect) {
-    let input_text = if state.input.is_empty() {
-        Span::styled("Type your message... (Ctrl+P for commands)", Style::default().fg(Color::DarkGray))
+    let mut lines = Vec::new();
+    if state.input.is_empty() {
+        lines.push(Line::from(Span::styled(
+            "Type your message... (Ctrl+P for commands)",
+            Style::default().fg(Color::DarkGray),
+        )));
     } else {
-        Span::raw(&state.input)
-    };
-    let widget = Paragraph::new(Line::from(input_text))
-        .block(Block::default().borders(Borders::ALL).title("Input"));
+        for line in &state.input.lines {
+            lines.push(Line::raw(line.as_str()));
+        }
+    }
+
+    let widget = Paragraph::new(lines)
+        .block(Block::default().borders(Borders::ALL).title("Input"))
+        .wrap(Wrap { trim: false });
     f.render_widget(widget, area);
+
+    if !state.input.is_empty()
+        && !state.show_command_palette
+        && !state.is_dialog_open
+        && !state.show_shortcuts
+    {
+        let (row, col) = state.input.cursor;
+        let cy = area.y + 1 + (row as u16).min(area.height.saturating_sub(3));
+        let cx = area.x + 1 + (col as u16).min(area.width.saturating_sub(3));
+        f.set_cursor(cx, cy);
+    }
 }
 
 fn render_status(f: &mut Frame, state: &mut AppState, area: Rect) {
