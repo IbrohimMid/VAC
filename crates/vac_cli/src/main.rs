@@ -55,8 +55,9 @@ enum Commands {
     Resume {
         checkpoint: PathBuf,
     },
-    /// Restore file to pre-agent state
+    /// Restore file to pre-agent state from snapshot journal
     Restore {
+        /// File path to restore (relative to project root)
         file: PathBuf,
     },
     /// Show engine status
@@ -80,7 +81,7 @@ enum Commands {
         #[arg(long)]
         sign: bool,
     },
-    /// Manage rulebooks
+    /// Manage VIL-native rulebooks (SOP, playbooks, governance constraints)
     Rulebook {
         #[command(subcommand)]
         action: RulebookAction,
@@ -95,7 +96,7 @@ enum Commands {
         #[command(subcommand)]
         action: RuntimeAction,
     },
-    /// Autopilot daemon management
+    /// Autopilot daemon — 24/7 autonomous runtime with VIL policy enforcement
     Autopilot {
         #[command(subcommand)]
         action: AutopilotAction,
@@ -129,12 +130,13 @@ enum AuthAction {
 
 #[derive(Subcommand)]
 enum RulebookAction {
-    /// List all loaded rulebooks
+    /// List all loaded rulebooks with constraint summary
     List,
-    /// Validate all rulebooks
+    /// Validate rulebooks against VIL semantic contracts
     Validate,
-    /// Apply a rulebook from a markdown file
+    /// Apply a rulebook from a markdown file (YAML frontmatter supported, backs up existing)
     Apply {
+        /// Path to the markdown rulebook file
         path: PathBuf,
     },
 }
@@ -151,11 +153,11 @@ enum RuntimeAction {
 
 #[derive(Subcommand)]
 enum AutopilotAction {
-    /// Start autopilot daemon
+    /// Start autopilot daemon (spawns background runtime, writes PID + event log)
     Up,
-    /// Stop autopilot daemon
+    /// Stop autopilot daemon gracefully via SIGTERM
     Down,
-    /// Show autopilot status
+    /// Show autopilot status, mode, and log path
     Status,
 }
 

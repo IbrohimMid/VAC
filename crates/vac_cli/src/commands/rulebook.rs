@@ -63,7 +63,6 @@ pub async fn execute_apply(project_root: PathBuf, path: PathBuf) -> anyhow::Resu
         let end = content[3..].find("---").map(|i| i + 3);
         if let Some(end_idx) = end {
             let frontmatter = &content[3..end_idx];
-            // Extract id from frontmatter if present
             frontmatter
                 .lines()
                 .find_map(|l| l.strip_prefix("id:").map(|v| v.trim().to_string()))
@@ -77,12 +76,18 @@ pub async fn execute_apply(project_root: PathBuf, path: PathBuf) -> anyhow::Resu
     let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("rulebook");
     let id = rulebook_id.unwrap_or_else(|| stem.to_string());
 
-    // Copy to .vac/rulebooks/
     let dest_dir = project_root.join(".vac/rulebooks");
     std::fs::create_dir_all(&dest_dir)?;
     let dest = dest_dir.join(format!("{id}.md"));
-    std::fs::copy(&path, &dest)?;
 
+    // Rollback safety: snapshot existing rulebook before overwriting
+    if dest.exists() {
+        let backup = dest_dir.join(format!("{id}.md.bak"));
+        std::fs::copy(&dest, &backup)?;
+        println!("  ↩ Previous rulebook backed up to {}", backup.display());
+    }
+
+    std::fs::copy(&path, &dest)?;
     println!("✓ Applied rulebook '{id}' → {}", dest.display());
     println!("  Run `vac rulebook list` to verify.");
     Ok(())

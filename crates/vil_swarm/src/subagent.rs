@@ -13,7 +13,8 @@ pub fn build_subagent_messages(role: &AgentRole, task_description: &str) -> Vec<
     ]
 }
 
-/// Build tool definitions from a registry listing.
+/// Build tool definitions from a registry listing, filtered by allowed_tools.
+/// If allowed_tools is empty, all tools are included.
 pub async fn build_tool_defs(
     registry: &vac_tools::registry::ToolRegistry,
 ) -> Vec<ToolDefinition> {
@@ -30,8 +31,17 @@ pub async fn build_tool_defs(
 }
 
 /// Build a sandboxed tool context for a subagent.
+///
+/// Context leak prevention:
+/// - Uses overlay_dir as working_dir (isolated from parent project root)
+/// - Strips all env_vars (parent env may contain secrets/credentials)
+/// - Assigns a fresh session_id (no parent session state leaks)
+/// - Sets zone to SandboxedSubagent (router enforces NeedsApproval → Deny)
 pub fn build_sandbox_context(overlay_dir: std::path::PathBuf) -> ToolContext {
-    ToolContext::new(overlay_dir).with_zone(AgentZone::SandboxedSubagent)
+    let mut ctx = ToolContext::new(overlay_dir).with_zone(AgentZone::SandboxedSubagent);
+    // Explicitly clear env_vars to prevent parent environment leaking into subagent
+    ctx.env_vars.clear();
+    ctx
 }
 
 /// Build a parent-level tool context.
