@@ -581,6 +581,7 @@ Rules:
                                         if let Some(idx) = pos {
                                             let pending = state.pending_approvals.remove(idx);
                                             if response.approved {
+                                                state.approved_tools.insert(response.tool_call_id.clone());
                                                 info!(tool = %pending.tool_name, "Tool approved, re-executing");
                                                 let approved_call = vil_llm::provider::ToolCall {
                                                     id: pending.tool_call_id.clone(),
@@ -674,7 +675,7 @@ Rules:
         project_root: Option<std::path::PathBuf>,
         cancel: Option<tokio_util::sync::CancellationToken>,
     ) -> SwarmResult<ExecutionResult> {
-        self.agent_loop_with_full_context(task_description, updates, session_id, project_root, cancel, None).await
+        self.agent_loop_with_full_context(task_description, updates, session_id, project_root, cancel, None, std::sync::Arc::new(tokio::sync::RwLock::new(vac_tools::PrivacyVault::new()))).await
     }
 
     pub async fn agent_loop_with_full_context(
@@ -685,6 +686,7 @@ Rules:
         project_root: Option<std::path::PathBuf>,
         cancel: Option<tokio_util::sync::CancellationToken>,
         approval_rx: Option<mpsc::UnboundedReceiver<ApprovalResponse>>,
+        privacy_vault: std::sync::Arc<tokio::sync::RwLock<vac_tools::PrivacyVault>>,
     ) -> SwarmResult<ExecutionResult> {
         info!(task = %task_description, "Starting Semantic VIL-native agent loop");
 
@@ -699,6 +701,7 @@ Rules:
 
         let root = project_root.unwrap_or_else(|| std::path::PathBuf::from("."));
         let mut context = ToolContext::new(root);
+        context.privacy = privacy_vault;
         if let Some(sid) = session_id {
             context = context.with_session_id(sid);
         }

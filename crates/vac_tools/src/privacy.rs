@@ -128,6 +128,18 @@ impl PrivacyVault {
             })
             .collect()
     }
+
+    pub fn clone_secrets(&self) -> HashMap<String, String> {
+        self.map.clone()
+    }
+
+    pub fn restore_with(secrets: &HashMap<String, String>, text: &str) -> String {
+        let mut out = text.to_string();
+        for (alias, secret) in secrets {
+            out = out.replace(alias.as_str(), secret.as_str());
+        }
+        out
+    }
 }
 
 #[cfg(test)]

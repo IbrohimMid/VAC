@@ -29,8 +29,13 @@ pub async fn execute_tools(
         let futures = reads.into_iter().map(|call| {
             let router = tool_router.clone();
             let ctx = context.clone();
+            let is_approved = state.approved_tools.contains(&call.id);
             async move {
-                let res = router.route(&call.name, call.arguments.clone(), &ctx).await;
+                let res = if is_approved {
+                    router.route_approved(&call.name, call.arguments.clone(), &ctx).await
+                } else {
+                    router.route(&call.name, call.arguments.clone(), &ctx).await
+                };
                 (call, res)
             }
         });
@@ -89,7 +94,14 @@ pub async fn execute_tools(
                 let _ = tx.send(AgentLoopEvent::Status(crate::tool_execution::status_for_tool(&call.name)));
             }
 
-            match tool_router.route(&call.name, call.arguments.clone(), context).await {
+            let is_approved = state.approved_tools.contains(&call.id);
+            let route_res = if is_approved {
+                tool_router.route_approved(&call.name, call.arguments.clone(), context).await
+            } else {
+                tool_router.route(&call.name, call.arguments.clone(), context).await
+            };
+
+            match route_res {
                 Ok(result_value) => {
                     let result_str = serde_json::to_string(&result_value).unwrap_or_else(|_| "[]".to_string());
                     

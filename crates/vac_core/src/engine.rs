@@ -30,7 +30,7 @@ pub struct VacEngine {
     llm_router: Option<std::sync::Arc<vil_llm::LlmRouter>>,
     trace_recorder: Option<std::sync::Arc<std::sync::Mutex<vac_trace::TraceRecorder>>>,
     vil_lsp: Option<Arc<crate::lsp::service::VilLspService>>,
-    secret_sub: SecretSubstitution,
+    pub privacy_vault: Arc<RwLock<vac_tools::PrivacyVault>>,
 }
 
 impl VacEngine {
@@ -54,7 +54,7 @@ impl VacEngine {
             llm_router: None,
             trace_recorder: None,
             vil_lsp: None,
-            secret_sub: SecretSubstitution::new(),
+            privacy_vault: Arc::new(RwLock::new(vac_tools::PrivacyVault::new())),
         })
     }
 
@@ -337,7 +337,10 @@ impl VacEngine {
         approval_rx: Option<mpsc::UnboundedReceiver<vil_swarm::ApprovalResponse>>,
     ) -> VacResult<TaskResult> {
         // Substitute secrets before sending to LLM
-        let safe_description = self.secret_sub.substitute(description);
+        let safe_description = {
+            let mut vault = self.privacy_vault.write().await;
+            vault.substitute(description)
+        };
         let task = Task::new(&safe_description);
         let task_id = task.id;
         tracing::Span::current().record("task_id", tracing::field::display(task_id.0));
@@ -458,7 +461,7 @@ impl VacEngine {
         let (swarm_tx, mut swarm_rx) = mpsc::unbounded_channel::<vil_swarm::AgentLoopEvent>();
         let session_id = self.session.read().await.id;
         let project_root = self.project_root.clone();
-        let secrets_map = self.secret_sub.clone_secrets();
+        let privacy_vault = self.privacy_vault.clone();
 
         // Phase 6: inject LSP diagnostic context into swarm before execution
         if let Some(ref lsp) = self.vil_lsp {
@@ -520,7 +523,10 @@ impl VacEngine {
                             Some(RuntimeUpdate::ModelInfo { provider, model })
                         }
                         vil_swarm::AgentLoopEvent::AssistantChunk(chunk) => {
-                            let restored = crate::security::SecretSubstitution::restore_with(&secrets_map, &chunk);
+                            let restored = {
+                                let vault = privacy_vault.read().await;
+                                vault.restore(&chunk)
+                            };
                             Some(RuntimeUpdate::AssistantChunk(restored))
                         }
                         vil_swarm::AgentLoopEvent::ToolCall {
@@ -562,7 +568,7 @@ impl VacEngine {
         });
 
         let execution = swarm
-            .agent_loop_with_full_context(&task.description, Some(swarm_tx), Some(session_id), Some(project_root), cancel, approval_rx)
+            .agent_loop_with_full_context(&task.description, Some(swarm_tx), Some(session_id), Some(project_root), cancel, approval_rx, self.privacy_vault.clone())
             .await?;
 
         info!("Phase 3: Validating...");

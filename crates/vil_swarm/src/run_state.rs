@@ -34,6 +34,8 @@ pub struct AgentRunState {
     pub active_tool_calls: Vec<ToolCall>,
     /// Tool calls awaiting human approval (for checkpoint restore).
     pub pending_approvals: Vec<PendingApproval>,
+    /// Tool calls that have been explicitly approved by the user.
+    pub approved_tools: std::collections::HashSet<String>,
     /// Last execution status message (for checkpoint restore).
     pub last_execution_status: Option<String>,
     /// Store for trimmed message content (for cache-preserving context reduction).
@@ -85,6 +87,7 @@ impl AgentRunState {
             stage: RunStage::Planner,
             active_tool_calls: Vec::new(),
             pending_approvals: Vec::new(),
+            approved_tools: std::collections::HashSet::new(),
             last_execution_status: None,
             trim_store: crate::context_budget::TrimStore::default(),
         }
@@ -154,6 +157,7 @@ impl AgentRunState {
             pending_approvals: metadata.get("pending_approvals")
                 .and_then(|v| serde_json::from_value(v.clone()).ok())
                 .unwrap_or_default(),
+            approved_tools: std::collections::HashSet::new(), // Not saved in checkpoint
             last_execution_status: metadata.get("last_execution_status")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string()),

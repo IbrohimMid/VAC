@@ -273,6 +273,28 @@ impl ToolRouter {
         }
     }
 
+    pub async fn route_approved(
+        &self,
+        tool_name: &str,
+        args: serde_json::Value,
+        context: &ToolContext,
+    ) -> Result<serde_json::Value, ToolError> {
+        // Restore secrets before execution
+        let restored_args = {
+            let privacy = context.privacy.read().await;
+            privacy.restore_value(args)
+        };
+        let result = self.registry.execute(tool_name, restored_args, context).await;
+        // Substitute secrets in result
+        match result {
+            Ok(v) => {
+                let mut privacy = context.privacy.write().await;
+                Ok(privacy.substitute_value(v))
+            }
+            Err(e) => Err(e),
+        }
+    }
+
     pub fn registry(&self) -> &Arc<ToolRegistry> {
         &self.registry
     }
