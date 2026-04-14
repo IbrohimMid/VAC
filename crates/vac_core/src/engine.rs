@@ -231,14 +231,6 @@ impl VacEngine {
 
         self.swarm = Some(Arc::new(RwLock::new(swarm)));
 
-        // Register SpawnSubtaskTool now that swarm is available
-        if let Some(ref swarm_arc) = self.swarm {
-            let spawn_tool = SpawnSubtaskTool::new(swarm_arc.clone());
-            registry.register(spawn_tool).await
-                .map_err(|e| VacError::Other(anyhow::anyhow!("SpawnSubtask registration error: {}", e)))?;
-            info!("SpawnSubtaskTool registered");
-        }
-
         // Phase 6: start vil-lsp service for VIL projects
         if profile.is_vil_project && self.config.vil_lsp.enable {
             let lsp_config = &self.config.vil_lsp;
@@ -331,16 +323,14 @@ impl VacEngine {
         updates: Option<mpsc::UnboundedSender<RuntimeUpdate>>,
         cancel: Option<tokio_util::sync::CancellationToken>,
     ) -> VacResult<TaskResult> {
-        let task = Task::new(description);
-        let task_id = task.id;
-        tracing::Span::current().record("task_id", tracing::field::display(task_id.0));
-
         // Substitute secrets before sending to LLM
         let safe_description = self.secret_sub.substitute(description);
         let task = Task::new(&safe_description);
         let task_id = task.id;
+        tracing::Span::current().record("task_id", tracing::field::display(task_id.0));
 
-        info!(task = %description, "Starting task execution");
+        // Log redacted: never log original description to avoid secret leakage
+        info!(task_id = %task_id.0, "Starting task execution");
 
         {
             let mut session = self.session.write().await;
