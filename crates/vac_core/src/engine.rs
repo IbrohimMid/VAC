@@ -1,7 +1,7 @@
 //! VacEngine — the main entry point for all VAC operations.
 
 use crate::{
-    approval::{ApprovalHandle, ApprovalStore},
+    approval::{ActiveApprovalRegistry, ApprovalHandle, ApprovalStore},
     auth,
     config::VacConfig,
     error::{VacError, VacResult},
@@ -31,10 +31,7 @@ pub struct VacEngine {
     trace_recorder: Option<std::sync::Arc<std::sync::Mutex<vac_trace::TraceRecorder>>>,
     vil_lsp: Option<Arc<crate::lsp::service::VilLspService>>,
     pub privacy_vault: Arc<RwLock<vac_tools::PrivacyVault>>,
-    // The sender channel to approve or reject a tool call for the currently running task.
-    // This allows clients to send ApprovalResponse without needing to pass channels around manually.
-    pub active_approval_tx:
-        Arc<tokio::sync::Mutex<Option<mpsc::UnboundedSender<vil_swarm::ApprovalResponse>>>>,
+    pub active_approvals: ActiveApprovalRegistry,
 }
 
 impl VacEngine {
@@ -59,12 +56,12 @@ impl VacEngine {
             trace_recorder: None,
             vil_lsp: None,
             privacy_vault: Arc::new(RwLock::new(vac_tools::PrivacyVault::new())),
-            active_approval_tx: Arc::new(tokio::sync::Mutex::new(None)),
+            active_approvals: ActiveApprovalRegistry::new(),
         })
     }
 
     pub fn approval_handle(&self) -> ApprovalHandle {
-        ApprovalHandle::new(self.project_root.clone(), self.active_approval_tx.clone())
+        ApprovalHandle::new(self.project_root.clone(), self.active_approvals.clone())
     }
 
     /// Initialize all subsystems. Called by `vac init`.
@@ -361,20 +358,6 @@ impl VacEngine {
         cancel: Option<tokio_util::sync::CancellationToken>,
         approval_rx: Option<mpsc::UnboundedReceiver<vil_swarm::ApprovalResponse>>,
     ) -> VacResult<TaskResult> {
-        // If we didn't get an approval_rx, create one and store the tx in active_approval_tx.
-        let mut active_tx = None;
-        let final_approval_rx = if approval_rx.is_none() {
-            let (app_tx, app_rx) = mpsc::unbounded_channel();
-            active_tx = Some(app_tx);
-            Some(app_rx)
-        } else {
-            approval_rx
-        };
-
-        if let Some(app_tx) = active_tx {
-            *self.active_approval_tx.lock().await = Some(app_tx);
-        }
-
         // Substitute secrets before sending to LLM
         let safe_description = {
             let mut vault = self.privacy_vault.write().await;
@@ -386,6 +369,18 @@ impl VacEngine {
 
         // Log redacted: never log original description to avoid secret leakage
         info!(task_id = %task_id.0, "Starting task execution");
+
+        // If we didn't get an approval_rx, create one and register it scoped to this task.
+        let final_approval_rx = if approval_rx.is_none() {
+            let (app_tx, app_rx) = mpsc::unbounded_channel();
+            let session_id = self.session.read().await.id;
+            self.active_approvals
+                .register(task_id.0, session_id, app_tx)
+                .await;
+            Some(app_rx)
+        } else {
+            approval_rx
+        };
 
         {
             let mut session = self.session.write().await;

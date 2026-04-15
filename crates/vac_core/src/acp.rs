@@ -320,12 +320,13 @@ async fn handle_acp_connection(
                     continue;
                 };
 
+                let reason = feedback.clone();
                 match handler(tool_call_id.clone(), approved, feedback).await {
                     Ok(()) => {
                         let _ = tx_writer.send(serde_json::json!({
                             "id": id,
                             "event": "tool_approval_resolved",
-                            "data": { "tool_call_id": tool_call_id, "approved": approved }
+                            "data": { "tool_call_id": tool_call_id, "approved": approved, "reason": reason }
                         }));
                     }
                     Err(e) => {
@@ -363,12 +364,13 @@ async fn handle_acp_connection(
                     continue;
                 };
 
+                let reason = feedback.clone();
                 match handler(tool_call_id.clone(), false, feedback).await {
                     Ok(()) => {
                         let _ = tx_writer.send(serde_json::json!({
                             "id": id,
                             "event": "tool_approval_resolved",
-                            "data": { "tool_call_id": tool_call_id, "approved": false }
+                            "data": { "tool_call_id": tool_call_id, "approved": false, "reason": reason }
                         }));
                     }
                     Err(e) => {

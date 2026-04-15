@@ -1,7 +1,9 @@
 use crate::error::{VacError, VacResult};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use tokio::sync::mpsc;
 use tracing::warn;
 use uuid::Uuid;
@@ -234,21 +236,17 @@ impl ApprovalStore {
 
 #[derive(Clone)]
 pub struct ApprovalHandle {
-    active_approval_tx: std::sync::Arc<
-        tokio::sync::Mutex<Option<mpsc::UnboundedSender<vil_swarm::ApprovalResponse>>>,
-    >,
+    active: ActiveApprovalRegistry,
     store: ApprovalStore,
 }
 
 impl ApprovalHandle {
     pub fn new(
         project_root: PathBuf,
-        active_approval_tx: std::sync::Arc<
-            tokio::sync::Mutex<Option<mpsc::UnboundedSender<vil_swarm::ApprovalResponse>>>,
-        >,
+        active: ActiveApprovalRegistry,
     ) -> Self {
         Self {
-            active_approval_tx,
+            active,
             store: ApprovalStore::new(project_root),
         }
     }
@@ -271,21 +269,55 @@ impl ApprovalHandle {
         approved: bool,
         reason: Option<String>,
     ) -> VacResult<()> {
-        {
-            let tx_guard = self.active_approval_tx.lock().await;
-            if let Some(tx) = &*tx_guard {
-                tx.send(vil_swarm::ApprovalResponse {
+        let mut record = None;
+        for attempt in 0..5 {
+            let store = self.store.clone();
+            let id = tool_call_id.clone();
+            record = tokio::task::spawn_blocking(move || store.load(&id))
+                .await
+                .map_err(|e| VacError::Task(format!("Approval store task failed: {e}")))??;
+            if record.is_some() {
+                break;
+            }
+            if attempt < 4 {
+                tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+            }
+        }
+        let record = record.ok_or_else(|| {
+            VacError::Task(format!(
+                "Unknown tool_call_id (no approval record found): {tool_call_id}"
+            ))
+        })?;
+
+        if record.state != ApprovalState::Pending {
+            return Err(VacError::Task(format!(
+                "Approval is not pending (tool_call_id={tool_call_id}, state={:?})",
+                record.state
+            )));
+        }
+
+        let task_id = record.task_id.ok_or_else(|| {
+            VacError::Task(format!(
+                "Approval record missing task_id (tool_call_id={tool_call_id})"
+            ))
+        })?;
+        let session_id = record.session_id.ok_or_else(|| {
+            VacError::Task(format!(
+                "Approval record missing session_id (tool_call_id={tool_call_id})"
+            ))
+        })?;
+
+        self.active
+            .send(
+                task_id,
+                session_id,
+                vil_swarm::ApprovalResponse {
                     tool_call_id: tool_call_id.clone(),
                     approved,
                     reason: reason.clone(),
-                })
-                .map_err(|e| VacError::Task(format!("Failed to send approval response: {}", e)))?;
-            } else {
-                return Err(VacError::Task(
-                    "No active task requires approval".to_string(),
-                ));
-            }
-        }
+                },
+            )
+            .await?;
 
         let store = self.store.clone();
         tokio::task::spawn_blocking(move || store.record_decision(tool_call_id, approved, reason))
@@ -317,4 +349,78 @@ fn derive_scope(tool_name: &str, arguments: &serde_json::Value) -> String {
         }
     }
     tool_name.to_string()
+}
+
+#[derive(Debug, Clone)]
+pub struct ActiveApprovalEntry {
+    pub session_id: Uuid,
+    pub tx: mpsc::UnboundedSender<vil_swarm::ApprovalResponse>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ActiveApprovalRegistry {
+    inner: Arc<tokio::sync::Mutex<HashMap<Uuid, ActiveApprovalEntry>>>,
+}
+
+impl ActiveApprovalRegistry {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub async fn register(
+        &self,
+        task_id: Uuid,
+        session_id: Uuid,
+        tx: mpsc::UnboundedSender<vil_swarm::ApprovalResponse>,
+    ) {
+        {
+            let mut map = self.inner.lock().await;
+            map.insert(task_id, ActiveApprovalEntry { session_id, tx: tx.clone() });
+        }
+
+        let registry = self.clone();
+        tokio::spawn(async move {
+            tx.closed().await;
+            let mut map = registry.inner.lock().await;
+            map.remove(&task_id);
+        });
+    }
+
+    pub async fn send(
+        &self,
+        task_id: Uuid,
+        session_id: Uuid,
+        response: vil_swarm::ApprovalResponse,
+    ) -> VacResult<()> {
+        let tx = {
+            let map = self.inner.lock().await;
+            let Some(entry) = map.get(&task_id) else {
+                return Err(VacError::Task(format!(
+                    "No active approval channel for task_id={task_id} (stale or wrong target)"
+                )));
+            };
+            if entry.session_id != session_id {
+                return Err(VacError::Task(format!(
+                    "Approval target session mismatch for task_id={task_id} (expected {}, got {})",
+                    entry.session_id, session_id
+                )));
+            }
+            entry.tx.clone()
+        };
+
+        tx.send(response).map_err(|e| {
+            let registry = self.clone();
+            tokio::spawn(async move {
+                let mut map = registry.inner.lock().await;
+                map.remove(&task_id);
+            });
+            VacError::Task(format!(
+                "Approval channel closed for task_id={task_id}: {e}"
+            ))
+        })
+    }
+
+    pub async fn is_active(&self, task_id: Uuid) -> bool {
+        self.inner.lock().await.contains_key(&task_id)
+    }
 }
