@@ -462,7 +462,7 @@ fn handle_input_event(
                     }
                 }
             }
-            InputEvent::ReviewRevertSelected | InputEvent::FileChangesRevertFile => {
+            InputEvent::ReviewRevertSelected => {
                 let Some(path) = state.review_selected_path.clone() else {
                     return;
                 };
@@ -545,7 +545,7 @@ fn handle_input_event(
                 state.review_sync_items();
                 state.review_normalize_selection();
             }
-            InputEvent::ReviewRevertAll | InputEvent::FileChangesRevertAll => {
+            InputEvent::ReviewRevertAll => {
                 let files = state.modified_files.clone();
                 if files.is_empty() {
                     state.add_assistant_message("No files to revert.".to_string());
@@ -585,7 +585,7 @@ fn handle_input_event(
                 state.review_sync_items();
                 state.review_normalize_selection();
             }
-            InputEvent::ReviewOpenEditor | InputEvent::FileChangesOpenEditor => {
+            InputEvent::ReviewOpenEditor => {
                 let Some(path) = state.review_selected_path.clone() else {
                     return;
                 };
@@ -605,82 +605,6 @@ fn handle_input_event(
                 let _ = Command::new(editor).arg(&path).status();
                 let _ = execute!(std::io::stdout(), EnterAlternateScreen, EnableBracketedPaste, EnableMouseCapture, Clear(ClearType::All));
                 let _ = enable_raw_mode();
-            }
-            _ => {}
-        }
-        return;
-    }
-
-    // Handle File Changes Popup
-    if state.show_file_changes_popup {
-        match event {
-            InputEvent::HandleEsc => {
-                state.show_file_changes_popup = false;
-            }
-            InputEvent::Up | InputEvent::ScrollUp => {
-                if state.file_changes_selected > 0 {
-                    state.file_changes_selected -= 1;
-                }
-            }
-            InputEvent::Down | InputEvent::ScrollDown => {
-                if state.file_changes_selected < state.modified_files.len().saturating_sub(1) {
-                    state.file_changes_selected += 1;
-                }
-            }
-            InputEvent::InputChanged(c) => {
-                state.file_changes_search.push(c);
-                state.file_changes_selected = 0;
-            }
-            InputEvent::InputBackspace => {
-                state.file_changes_search.pop();
-                state.file_changes_selected = 0;
-            }
-            InputEvent::FileChangesRevertFile => {
-                if let Some(file) = state.modified_files.get(state.file_changes_selected).cloned() {
-                    let mut success = false;
-                    if let Ok(session_id) = uuid::Uuid::parse_str(&state.session_id) {
-                        if vac_tools::journal::restore_snapshot(&state.project_root, session_id, &file).is_ok() {
-                            success = true;
-                        }
-                    }
-                    
-                    if success {
-                        state.add_assistant_message(format!("Reverted file: {}", file));
-                        state.modified_files.retain(|f| f != &file);
-                        if state.file_changes_selected >= state.modified_files.len() {
-                            state.file_changes_selected = state.modified_files.len().saturating_sub(1);
-                        }
-                        if state.modified_files.is_empty() {
-                            state.show_file_changes_popup = false;
-                        }
-                    } else {
-                        state.add_assistant_message(format!("Failed to revert file: {}", file));
-                    }
-                }
-            }
-            InputEvent::FileChangesRevertAll => {
-                let files = state.modified_files.clone();
-                if files.is_empty() {
-                    state.add_assistant_message("No files to revert.".to_string());
-                } else {
-                    let mut success_count = 0;
-                    if let Ok(session_id) = uuid::Uuid::parse_str(&state.session_id) {
-                        for file in &files {
-                            if vac_tools::journal::restore_snapshot(&state.project_root, session_id, file).is_ok() {
-                                success_count += 1;
-                            }
-                        }
-                    }
-                    state.add_assistant_message(format!("Reverted {}/{} files.", success_count, files.len()));
-                    state.modified_files.clear();
-                    state.file_changes_selected = 0;
-                    state.show_file_changes_popup = false;
-                }
-            }
-            InputEvent::FileChangesOpenEditor => {
-                if let Some(file) = state.modified_files.get(state.file_changes_selected).cloned() {
-                    state.add_assistant_message(format!("Opening editor for: {}", file));
-                }
             }
             _ => {}
         }
@@ -805,11 +729,6 @@ fn handle_input_event(
         }
         InputEvent::ShowShortcuts => {
             state.show_shortcuts = true;
-        }
-        InputEvent::ShowFileChangesPopup => {
-            state.show_file_changes_popup = true;
-            state.file_changes_selected = 0;
-            state.file_changes_search.clear();
         }
         InputEvent::ToggleAutoApprove => {
             state.auto_approve = !state.auto_approve;

@@ -165,6 +165,9 @@ impl TaskExecutor {
                     result.summary
                 ))
             }
+            JobKind::ManualApproval { tool_name } => {
+                Ok(format!("Manual approval required for {tool_name} (use autopilot controller approval file)"))
+            }
         }
     }
 }

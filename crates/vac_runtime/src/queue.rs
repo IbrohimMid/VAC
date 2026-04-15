@@ -24,25 +24,21 @@ impl TaskQueue {
     }
 
     pub fn with_storage(path: PathBuf) -> Self {
-        let queue = Self {
-            jobs: Arc::new(RwLock::new(VecDeque::new())),
-            storage_path: Some(path.clone()),
-        };
-        
-        // Try to load existing
+        let mut loaded = VecDeque::new();
         if path.exists() {
             if let Ok(content) = std::fs::read_to_string(&path) {
                 if let Ok(jobs) = serde_json::from_str::<Vec<Job>>(&content) {
-                    if let Ok(mut q) = queue.jobs.try_write() {
-                        for job in jobs {
-                            q.push_back(job);
-                        }
+                    for job in jobs {
+                        loaded.push_back(job);
                     }
                 }
             }
         }
-        
-        queue
+
+        Self {
+            jobs: Arc::new(RwLock::new(loaded)),
+            storage_path: Some(path),
+        }
     }
 
     async fn persist(&self) {

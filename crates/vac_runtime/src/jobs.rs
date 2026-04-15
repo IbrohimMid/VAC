@@ -9,6 +9,7 @@ pub enum JobKind {
     DiagnosticSweep,
     RulebookComplianceCheck,
     PatchProposal { files: Vec<String> },
+    ManualApproval { tool_name: String },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -77,6 +78,7 @@ impl Job {
             JobKind::DiagnosticSweep => "DiagnosticSweep".to_string(),
             JobKind::RulebookComplianceCheck => "RulebookComplianceCheck".to_string(),
             JobKind::PatchProposal { .. } => "PatchProposal".to_string(),
+            JobKind::ManualApproval { tool_name } => format!("ManualApproval: {}", tool_name),
         }
     }
 }

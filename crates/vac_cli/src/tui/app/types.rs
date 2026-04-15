@@ -255,11 +255,6 @@ pub struct AppState {
     pub diff_old_content: Option<String>,
     pub diff_new_content: Option<String>,
     
-    // File changes popup state
-    pub show_file_changes_popup: bool,
-    pub file_changes_search: String,
-    pub file_changes_scroll: usize,
-    pub file_changes_selected: usize,
     pub modified_files: Vec<String>,
 
     pub review_open: bool,
@@ -333,10 +328,6 @@ impl AppState {
             diff_file_path: None,
             diff_old_content: None,
             diff_new_content: None,
-            show_file_changes_popup: false,
-            file_changes_search: String::new(),
-            file_changes_scroll: 0,
-            file_changes_selected: 0,
             modified_files: Vec::new(),
             review_open: false,
             review_filter: String::new(),

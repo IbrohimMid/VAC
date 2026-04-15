@@ -34,7 +34,12 @@ pub async fn execute_up(project_root: PathBuf) -> anyhow::Result<()> {
         .open(&log_path)?;
 
     let child = std::process::Command::new(exe)
-        .args(["runtime", "start"])
+        .args([
+            "--project",
+            project_root.to_str().unwrap_or("."),
+            "autopilot",
+            "run",
+        ])
         .current_dir(&project_root)
         .stdout(log_file.try_clone()?)
         .stderr(log_file)
@@ -50,6 +55,31 @@ pub async fn execute_up(project_root: PathBuf) -> anyhow::Result<()> {
     println!("  Mode:     {}", config.mode);
     println!("  Interval: {}s", config.poll_interval_secs);
     println!("  Log:      {}", log_path.display());
+    Ok(())
+}
+
+pub async fn execute_run(project_root: PathBuf) -> anyhow::Result<()> {
+    let controller = vac_runtime::AutopilotController::new(project_root).await?;
+    let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
+
+    let shutdown_tx_ctrlc = shutdown_tx.clone();
+    tokio::spawn(async move {
+        let _ = tokio::signal::ctrl_c().await;
+        let _ = shutdown_tx_ctrlc.send(true);
+    });
+
+    #[cfg(unix)]
+    {
+        let shutdown_tx = shutdown_tx.clone();
+        tokio::spawn(async move {
+            if let Ok(mut sigterm) = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+                sigterm.recv().await;
+                let _ = shutdown_tx.send(true);
+            }
+        });
+    }
+
+    controller.run(shutdown_rx).await?;
     Ok(())
 }
 

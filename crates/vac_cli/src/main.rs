@@ -179,6 +179,8 @@ enum AutopilotAction {
     Down,
     /// Show autopilot status, mode, and log path
     Status,
+    #[command(hide = true)]
+    Run,
 }
 
 #[tokio::main]
@@ -237,6 +239,7 @@ async fn main() -> anyhow::Result<()> {
             AutopilotAction::Up => commands::autopilot::execute_up(project_root).await?,
             AutopilotAction::Down => commands::autopilot::execute_down(project_root).await?,
             AutopilotAction::Status => commands::autopilot::execute_status(project_root, &cli.format).await?,
+            AutopilotAction::Run => commands::autopilot::execute_run(project_root).await?,
         },
     }
 

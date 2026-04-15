@@ -65,6 +65,7 @@ pub async fn execute_jobs(project_root: PathBuf, format: &str) -> anyhow::Result
                 vac_runtime::JobKind::DiagnosticSweep => "DiagnosticSweep".to_string(),
                 vac_runtime::JobKind::RulebookComplianceCheck => "RulebookComplianceCheck".to_string(),
                 vac_runtime::JobKind::PatchProposal { .. } => "PatchProposal".to_string(),
+                vac_runtime::JobKind::ManualApproval { tool_name } => format!("ManualApproval: {}", tool_name),
             };
             println!("  [{}] {} ({}) - {:?}", status, job.id, kind_str, job.created_at);
         }
@@ -112,6 +113,7 @@ pub async fn execute_inspect(project_root: PathBuf, id: uuid::Uuid, format: &str
                 vac_runtime::JobKind::DiagnosticSweep => "DiagnosticSweep".to_string(),
                 vac_runtime::JobKind::RulebookComplianceCheck => "RulebookComplianceCheck".to_string(),
                 vac_runtime::JobKind::PatchProposal { .. } => "PatchProposal".to_string(),
+                vac_runtime::JobKind::ManualApproval { tool_name } => format!("ManualApproval: {}", tool_name),
             };
 
             println!("Job Inspection: {}", job.id);
