@@ -123,15 +123,6 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
     // Shared handle to active task's approval channel for structured approval flow
     let active_approval_tx: ActiveApprovalTx = Arc::new(Mutex::new(None));
 
-    // Handle session restore if requested
-    if resume {
-        if let Ok(Some(session)) = vac_core::session::Session::load_latest(&project_root) {
-            let session_id = session.id.to_string();
-            // Just send it through the output channel directly
-            let _ = output_tx.send(OutputEvent::ResumeSession(session_id)).await;
-        }
-    }
-
     // Spawn task to handle output events
     let engine_clone = engine.clone();
     let input_tx_clone = input_tx.clone();
@@ -280,10 +271,17 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
         }
     });
 
+    // Handle session restore if requested
+    if resume {
+        if let Ok(Some(session)) = vac_core::session::Session::load_latest(&project_root) {
+            let _ = output_tx.send(OutputEvent::ResumeSession(session.id.to_string())).await;
+        }
+    }
+
     // Run TUI
     run_tui(
         input_rx,
-        output_tx,
+        output_tx.clone(),
         None,
         shutdown_tx,
         None,

@@ -62,7 +62,7 @@ pub async fn run_tui(
 
     // Check for session restore
     let checkpoint_path = std::env::var("VAC_CHECKPOINT").ok().map(std::path::PathBuf::from);
-    
+
     let mut state = AppState::new(AppStateOptions {
         model: model.clone(),
         session_id: None,
@@ -74,7 +74,7 @@ pub async fn run_tui(
     state.messages.extend(welcome);
 
     // Request session restore if checkpoint exists
-    if let Some(path) = checkpoint_path {
+    if let Some(path) = &checkpoint_path {
         if let Some(session_id) = path.file_name().and_then(|n| n.to_str()) {
             let _ = output_tx.try_send(OutputEvent::ResumeSession(session_id.to_string()));
         }

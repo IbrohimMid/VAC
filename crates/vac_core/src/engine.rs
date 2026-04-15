@@ -660,29 +660,14 @@ impl VacEngine {
     }
 
     /// Save a checkpoint of the current session for potential resume.
-    async fn save_checkpoint(&self, result: &TaskResult) {
-        let checkpoint_dir = self.project_root.join(".vac/checkpoints");
-        if let Err(e) = std::fs::create_dir_all(&checkpoint_dir) {
-            warn!(error = %e, "Failed to create checkpoint dir");
-            return;
-        }
+    async fn save_checkpoint(&self, _result: &TaskResult) {
+        // We no longer write the custom CheckpointEnvelope or dual semantics here.
+        // SwarmOrchestrator already saves AgentRunState to `_state.json`.
+        // If we want session-level info, we rely on the normal `Session::save`
+        // which writes to `.vac/sessions/`.
         let session = self.session.read().await;
-        // Instead of writing a custom envelope, we rely on SwarmOrchestrator saving AgentRunState
-        // via `state.save_checkpoint(...)` which handles all the rich info.
-        // We just save a tiny marker file so we know this session exists.
-        let path = checkpoint_dir.join(format!("{}.json", session.id));
-        let metadata = serde_json::json!({
-            "run_id": session.id.to_string(),
-            "last_task_id": result.task_id.0.to_string(),
-            "last_status": format!("{:?}", result.status),
-            "total_tokens": result.total_tokens_used,
-            "completed_tasks": session.metadata.total_tasks_completed,
-            "state_file": format!("{}_state.json", session.id)
-        });
-        if let Err(e) = std::fs::write(&path, serde_json::to_string_pretty(&metadata).unwrap_or_default()) {
-            warn!(error = %e, "Failed to write checkpoint marker");
-        } else {
-            info!(path = %path.display(), "Checkpoint marker saved");
+        if let Err(e) = session.save() {
+            warn!(error = %e, "Failed to save session metadata");
         }
     }
 
@@ -705,14 +690,13 @@ impl VacEngine {
             .map_err(|e| VacError::Config(format!("Failed to load state: {}", e)))?;
 
         // Re-hydrate session in memory
-        let session_path = checkpoint_dir.join(format!("{}.json", session_id));
-        if session_path.exists() {
-            if let Ok(envelope) = vil_swarm::checkpoint::load_checkpoint_from_file(&session_path) {
+        if let Ok(Some(session_disk)) = crate::session::Session::load_latest(&self.project_root) {
+            if session_disk.id == session_id {
                 let mut session = self.session.write().await;
                 session.id = session_id;
-                if let Some(completed) = envelope.metadata.get("completed_tasks").and_then(|v| v.as_u64()) {
-                    session.metadata.total_tasks_completed = completed as usize;
-                }
+                session.metadata = session_disk.metadata;
+                session.tasks = session_disk.tasks;
+                session.results = session_disk.results;
             }
         }
 
