@@ -373,4 +373,89 @@ impl AppState {
             .cloned()
             .collect()
     }
+
+    pub fn review_sync_items(&mut self) {
+        let session_id = uuid::Uuid::parse_str(&self.session_id).ok();
+        let mut keys: std::collections::HashSet<String> = std::collections::HashSet::new();
+        for path in &self.modified_files {
+            keys.insert(path.clone());
+        }
+
+        self.review_items.retain(|k, _| keys.contains(k));
+
+        for path in &self.modified_files {
+            let has_snapshot = session_id
+                .map(|sid| crate::tui::services::review::snapshot_path(&self.project_root, sid, path).exists())
+                .unwrap_or(false);
+
+            self.review_items
+                .entry(path.clone())
+                .and_modify(|it| it.has_snapshot = has_snapshot)
+                .or_insert_with(|| ReviewItem {
+                    path: path.clone(),
+                    status: ReviewItemStatus::Pending,
+                    has_snapshot,
+                    last_error: None,
+                    dirty_generation: 0,
+                });
+        }
+    }
+
+    pub fn review_filtered_paths(&self) -> Vec<String> {
+        let filter = self.review_filter.trim().to_lowercase();
+        self.modified_files
+            .iter()
+            .filter(|p| {
+                if filter.is_empty() {
+                    true
+                } else {
+                    p.to_lowercase().contains(&filter)
+                }
+            })
+            .cloned()
+            .collect()
+    }
+
+    pub fn review_normalize_selection(&mut self) {
+        let paths = self.review_filtered_paths();
+        if paths.is_empty() {
+            self.review_selected_idx = 0;
+            self.review_selected_path = None;
+            self.review_diff = None;
+            return;
+        }
+
+        if let Some(path) = self.review_selected_path.clone() {
+            if let Some(idx) = paths.iter().position(|p| p == &path) {
+                self.review_selected_idx = idx;
+                return;
+            }
+        }
+
+        if self.review_selected_idx >= paths.len() {
+            self.review_selected_idx = paths.len() - 1;
+        }
+        self.review_selected_path = Some(paths[self.review_selected_idx].clone());
+    }
+
+    pub fn review_select_by_delta(&mut self, delta: isize) {
+        let paths = self.review_filtered_paths();
+        if paths.is_empty() {
+            self.review_selected_idx = 0;
+            self.review_selected_path = None;
+            self.review_diff = None;
+            return;
+        }
+
+        let len = paths.len() as isize;
+        let mut idx = self.review_selected_idx as isize + delta;
+        if idx < 0 {
+            idx = 0;
+        }
+        if idx >= len {
+            idx = len - 1;
+        }
+        self.review_selected_idx = idx as usize;
+        self.review_selected_path = Some(paths[self.review_selected_idx].clone());
+    }
 }

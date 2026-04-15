@@ -190,9 +190,10 @@ fn handle_input_event(
                                 let _ = output_tx.try_send(OutputEvent::NewSession);
                             } else if cmd.command == "/review" {
                                 state.add_user_message(cmd.command.clone());
-                                state.show_file_changes_popup = true;
-                                state.file_changes_selected = 0;
-                                state.file_changes_search.clear();
+                                state.review_open = true;
+                                state.review_generation = state.review_generation.saturating_add(1);
+                                state.review_sync_items();
+                                state.review_normalize_selection();
                             } else {
                                 state.add_user_message(cmd.command.clone());
                                 let _ = output_tx.try_send(OutputEvent::UserMessage(cmd.command, None, vec![], None));
@@ -285,6 +286,65 @@ fn handle_input_event(
         match event {
             InputEvent::HandleEsc | InputEvent::HideShortcuts => {
                 state.show_shortcuts = false;
+            }
+            _ => {}
+        }
+        return;
+    }
+
+    if state.review_open {
+        match event {
+            InputEvent::HandleEsc | InputEvent::ReviewClose => {
+                state.review_open = false;
+                state.review_diff = None;
+            }
+            InputEvent::ReviewOpen => {
+                state.review_open = true;
+                state.review_generation = state.review_generation.saturating_add(1);
+                state.review_sync_items();
+                state.review_normalize_selection();
+            }
+            InputEvent::ReviewUp | InputEvent::Up | InputEvent::ScrollUp => {
+                state.review_select_by_delta(-1);
+            }
+            InputEvent::ReviewDown | InputEvent::Down | InputEvent::ScrollDown => {
+                state.review_select_by_delta(1);
+            }
+            InputEvent::ReviewFilterInput(c) => {
+                state.review_filter.push(c);
+                state.review_normalize_selection();
+            }
+            InputEvent::ReviewFilterBackspace => {
+                state.review_filter.pop();
+                state.review_normalize_selection();
+            }
+            InputEvent::ReviewToggleDiff => {
+                if let Some(path) = state.review_selected_path.clone() {
+                    if state.review_diff.as_ref().map(|d| d.path.as_str()) == Some(path.as_str()) {
+                        state.review_diff = None;
+                    } else if let Ok(session_id) = uuid::Uuid::parse_str(&state.session_id) {
+                        match crate::tui::services::review::load_diff(&state.project_root, session_id, &path) {
+                            Ok(diff) => {
+                                state.review_diff = Some(crate::tui::app::ReviewDiffState {
+                                    path: diff.path,
+                                    old_content: Some(diff.old_content),
+                                    new_content: Some(diff.new_content),
+                                    scroll: 0,
+                                    last_error: None,
+                                });
+                            }
+                            Err(e) => {
+                                state.review_diff = Some(crate::tui::app::ReviewDiffState {
+                                    path,
+                                    old_content: None,
+                                    new_content: None,
+                                    scroll: 0,
+                                    last_error: Some(e),
+                                });
+                            }
+                        }
+                    }
+                }
             }
             _ => {}
         }
@@ -407,9 +467,10 @@ fn handle_input_event(
                                     let _ = output_tx.try_send(OutputEvent::NewSession);
                                 } else if cmd.command == "/review" {
                                     state.add_user_message(trimmed.to_string());
-                                    state.show_file_changes_popup = true;
-                                    state.file_changes_selected = 0;
-                                    state.file_changes_search.clear();
+                                    state.review_open = true;
+                                    state.review_generation = state.review_generation.saturating_add(1);
+                                    state.review_sync_items();
+                                    state.review_normalize_selection();
                                 } else {
                                     state.add_user_message(trimmed.to_string());
                                     let _ = output_tx.try_send(OutputEvent::UserMessage(trimmed.to_string(), None, vec![], None));
@@ -615,6 +676,11 @@ fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, e
                         state.modified_files.push(file.clone());
                     }
                 }
+            }
+            if state.review_open {
+                state.review_generation = state.review_generation.saturating_add(1);
+                state.review_sync_items();
+                state.review_normalize_selection();
             }
             state.add_assistant_message(content);
             state.loading = false;
