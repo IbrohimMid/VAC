@@ -1,6 +1,7 @@
 //! View Module
 
 use crate::tui::app::{ActivityKind, AppState, WorkbenchTab, WorkspaceFocus};
+use crate::tui::services::ToastStyle;
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
@@ -27,6 +28,195 @@ pub fn view(f: &mut Frame, state: &mut AppState) {
     if state.show_shortcuts {
         render_shortcuts(f, state);
     }
+
+    if state.show_model_switcher {
+        render_model_switcher(f, state);
+    }
+
+    if state.show_file_search {
+        render_file_search(f, state);
+    }
+
+    if state.show_changeset {
+        render_changeset(f, state);
+    }
+
+    if !state.toasts.is_empty() {
+        render_toast(f, state);
+    }
+}
+
+fn render_model_switcher(f: &mut Frame, state: &mut AppState) {
+    let area = centered_rect(70, 60, f.area());
+    f.render_widget(Clear, area);
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(3), Constraint::Min(1)])
+        .split(area);
+
+    let input = Paragraph::new(Line::from(vec![
+        Span::styled("Filter ", Style::default().fg(Color::DarkGray)),
+        Span::raw(&state.model_switcher_filter),
+    ]))
+    .block(Block::default().borders(Borders::ALL).title("Model Switcher"));
+    f.render_widget(input, chunks[0]);
+
+    let models = state.model_switcher_filtered();
+    let items: Vec<ListItem> = models
+        .iter()
+        .enumerate()
+        .map(|(i, m)| {
+            let style = if i == state.model_switcher_selected_idx {
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default()
+            };
+            ListItem::new(Line::from(vec![
+                Span::styled(format!("{}  ", m.provider), Style::default().fg(Color::DarkGray)),
+                Span::styled(m.name.clone(), style),
+            ]))
+        })
+        .collect();
+
+    let list = List::new(items)
+        .block(Block::default().borders(Borders::ALL).title("Models"))
+        .highlight_style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD));
+    f.render_widget(list, chunks[1]);
+}
+
+fn render_file_search(f: &mut Frame, state: &mut AppState) {
+    let area = centered_rect(80, 70, f.area());
+    f.render_widget(Clear, area);
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(3), Constraint::Min(1)])
+        .split(area);
+
+    let input = Paragraph::new(Line::from(vec![
+        Span::styled("Query ", Style::default().fg(Color::DarkGray)),
+        Span::raw(&state.file_search_query),
+    ]))
+    .block(Block::default().borders(Borders::ALL).title("File Search"));
+    f.render_widget(input, chunks[0]);
+
+    let items: Vec<ListItem> = state
+        .file_search_results
+        .iter()
+        .enumerate()
+        .map(|(i, path)| {
+            let style = if i == state.file_search_selected_idx {
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default()
+            };
+            ListItem::new(Line::from(Span::styled(path.clone(), style)))
+        })
+        .collect();
+
+    let list = List::new(items)
+        .block(Block::default().borders(Borders::ALL).title("Files"))
+        .highlight_style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD));
+    f.render_widget(list, chunks[1]);
+}
+
+fn render_changeset(f: &mut Frame, state: &mut AppState) {
+    let area = centered_rect(90, 80, f.area());
+    f.render_widget(Clear, area);
+
+    let body = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(35), Constraint::Percentage(65)])
+        .split(area);
+
+    let items: Vec<ListItem> = state
+        .modified_files
+        .iter()
+        .enumerate()
+        .map(|(i, path)| {
+            let style = if i == state.changeset_selected_idx {
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default()
+            };
+            ListItem::new(Line::from(Span::styled(path.clone(), style)))
+        })
+        .collect();
+
+    let list = List::new(items)
+        .block(Block::default().borders(Borders::ALL).title("Changeset"))
+        .highlight_style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD));
+    f.render_widget(list, body[0]);
+
+    let width = body[1].width.saturating_sub(2) as usize;
+    let mut lines: Vec<Line> = Vec::new();
+    if let Some(diff) = &state.changeset_diff {
+        if let Some(err) = &diff.last_error {
+            lines.push(Line::styled(
+                err.clone(),
+                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+            ));
+        } else if let (Some(old), Some(new)) = (&diff.old_content, &diff.new_content) {
+            lines.extend(crate::tui::services::preview_file_diff(
+                &diff.path,
+                old,
+                new,
+                width,
+            ));
+        } else {
+            lines.push(Line::styled(
+                "No diff available",
+                Style::default().fg(Color::DarkGray),
+            ));
+        }
+    } else {
+        lines.push(Line::styled(
+            "Select a file to preview diff",
+            Style::default().fg(Color::DarkGray),
+        ));
+    }
+
+    let detail = Paragraph::new(lines)
+        .block(Block::default().borders(Borders::ALL).title("Preview"))
+        .wrap(Wrap { trim: false })
+        .scroll((state.changeset_diff_scroll as u16, 0));
+    f.render_widget(detail, body[1]);
+}
+
+fn render_toast(f: &mut Frame, state: &mut AppState) {
+    let Some(toast) = state.toasts.last() else {
+        return;
+    };
+
+    let area = f.area();
+    let max_width = area.width.saturating_sub(2).min(60);
+    let text_width = toast.message.chars().count() as u16;
+    let width = (text_width + 4).min(max_width).max(10);
+    let height = 3u16.min(area.height.saturating_sub(1)).max(1);
+    let x = area.x + area.width.saturating_sub(width + 1);
+    let y = area.y + 1;
+
+    let bg = match toast.style {
+        ToastStyle::Success => Color::Green,
+        ToastStyle::Error => Color::Red,
+        ToastStyle::Info => Color::Blue,
+    };
+    let fg = Color::Black;
+
+    let rect = Rect { x, y, width, height };
+    f.render_widget(Clear, rect);
+    let widget = Paragraph::new(Line::from(Span::raw(toast.message.clone())))
+        .style(Style::default().bg(bg).fg(fg).add_modifier(Modifier::BOLD))
+        .block(Block::default().borders(Borders::ALL).style(Style::default().bg(bg).fg(fg)))
+        .wrap(Wrap { trim: true });
+    f.render_widget(widget, rect);
 }
 
 fn render_header(f: &mut Frame, state: &mut AppState, area: Rect) {
@@ -643,6 +833,34 @@ fn render_sessions_pane(f: &mut Frame, state: &mut AppState, area: Rect) {
 }
 
 fn render_footer(f: &mut Frame, state: &mut AppState, area: Rect) {
+    if !state.pending_approvals.is_empty() {
+        let idx = state
+            .approval_selected_idx
+            .min(state.pending_approvals.len().saturating_sub(1));
+        let tc = state.pending_approvals.get(idx);
+        let preview = tc
+            .map(crate::tui::services::approval_preview)
+            .unwrap_or_else(|| "approval".to_string());
+        let hints = vec![
+            Span::styled("APPROVAL ", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                format!("[{}/{}] ", idx + 1, state.pending_approvals.len()),
+                Style::default().fg(Color::Yellow),
+            ),
+            Span::raw(preview),
+            Span::raw("  "),
+            Span::styled("Ctrl+M", Style::default().fg(Color::Cyan)),
+            Span::styled(": approve  ", Style::default().fg(Color::DarkGray)),
+            Span::styled("Ctrl+Shift+M", Style::default().fg(Color::Cyan)),
+            Span::styled(": reject  ", Style::default().fg(Color::DarkGray)),
+            Span::styled("Ctrl+Tab", Style::default().fg(Color::Cyan)),
+            Span::styled(": tabs", Style::default().fg(Color::DarkGray)),
+        ];
+        let widget = Paragraph::new(Line::from(hints)).wrap(Wrap { trim: true });
+        f.render_widget(widget, area);
+        return;
+    }
+
     let hints: Vec<Span> = match state.focus {
         WorkspaceFocus::Input => vec![
             Span::styled("Enter", Style::default().fg(Color::Cyan)),
@@ -800,4 +1018,48 @@ fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
             Constraint::Percentage((100 - percent_x) / 2),
         ])
         .split(popup_layout[1])[1]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tui::app::AppStateOptions;
+    use ratatui::backend::TestBackend;
+    use ratatui::Terminal;
+
+    #[test]
+    fn view_smoke_renders() {
+        let backend = TestBackend::new(120, 40);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        let mut state = AppState::new(AppStateOptions {
+            model: None,
+            session_id: Some(uuid::Uuid::new_v4().to_string()),
+            checkpoint_path: None,
+            project_root: std::env::current_dir().unwrap(),
+        });
+
+        state.pending_approvals.push(crate::tui::ToolCall {
+            id: "tc-1".to_string(),
+            r#type: "function".to_string(),
+            function: crate::tui::FunctionCall {
+                name: "file_write".to_string(),
+                arguments: r#"{"file_path":"src/lib.rs"}"#.to_string(),
+            },
+            metadata: None,
+        });
+        state.available_models.push(crate::tui::Model {
+            id: "kilo-auto/free".to_string(),
+            name: "kilo-auto/free".to_string(),
+            provider: "anthropic".to_string(),
+            supports_reasoning: false,
+        });
+        state.show_model_switcher = true;
+        state.show_file_search = true;
+        state.file_search_results = vec!["src/main.rs".to_string()];
+        state.show_changeset = true;
+        state.modified_files = vec!["src/main.rs".to_string()];
+
+        terminal.draw(|f| view(f, &mut state)).unwrap();
+    }
 }

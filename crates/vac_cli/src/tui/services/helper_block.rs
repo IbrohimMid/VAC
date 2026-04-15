@@ -108,6 +108,21 @@ pub fn vac_commands() -> Vec<HelperCommand> {
             source: CommandSource::BuiltIn,
         },
         HelperCommand {
+            command: "/model".to_string(),
+            description: "Switch active model".to_string(),
+            source: CommandSource::BuiltIn,
+        },
+        HelperCommand {
+            command: "/files".to_string(),
+            description: "Search files in workspace".to_string(),
+            source: CommandSource::BuiltIn,
+        },
+        HelperCommand {
+            command: "/changes".to_string(),
+            description: "Review current changeset".to_string(),
+            source: CommandSource::BuiltIn,
+        },
+        HelperCommand {
             command: "/fix".to_string(),
             description: "Fix linter/build errors".to_string(),
             source: CommandSource::BuiltInWithPrompt {

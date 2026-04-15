@@ -3,6 +3,7 @@
 use uuid::Uuid;
 
 use crate::tui::app::{LoadingOperation, SessionInfo};
+use crate::tui::services::Toast;
 use crate::tui::types::*;
 
 #[derive(Debug)]
@@ -18,6 +19,9 @@ pub enum InputEvent {
     StartLoadingOperation(LoadingOperation),
     EndLoadingOperation(LoadingOperation),
     Error(String),
+    SetCurrentModel(Model),
+    AvailableModelsLoaded(Vec<Model>),
+    ShowToast(Toast),
     SetSessions(Vec<SessionInfo>),
     SessionRestored {
         id: String,
@@ -62,6 +66,12 @@ pub enum InputEvent {
     // Dialog/Approval
     ShowConfirmationDialog(ToolCall),
     ShowConfirmationDialogWithExplanation(ToolCall, Option<String>),
+    RejectCurrentTool,
+
+    // Popups
+    ShowModelSwitcher,
+    ShowFileSearch,
+    ShowChangeset,
 
     // Command palette
     ShowCommandPalette,
@@ -121,6 +131,9 @@ impl InputEvent {
                 | InputEvent::Error(_)
                 | InputEvent::RunToolCall(_)
                 | InputEvent::ToolResult(_)
+                | InputEvent::SetCurrentModel(_)
+                | InputEvent::AvailableModelsLoaded(_)
+                | InputEvent::ShowToast(_)
                 | InputEvent::SetSessions(_)
                 | InputEvent::SessionRestored { .. }
                 | InputEvent::AddUserMessage(_)
@@ -138,6 +151,7 @@ pub enum OutputEvent {
     ),
     AcceptTool(ToolCall),
     RejectTool(ToolCall, bool),
+    SwitchToModel(Model),
     ListSessions,
     SwitchToSession(String),
     NewSession,

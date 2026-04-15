@@ -25,6 +25,12 @@ impl TextArea {
         }
     }
 
+    pub fn insert_str(&mut self, s: &str) {
+        for c in s.chars() {
+            self.input(c);
+        }
+    }
+
     pub fn newline(&mut self) {
         let (row, col) = self.cursor;
         if let Some(line) = self.lines.get_mut(row) {

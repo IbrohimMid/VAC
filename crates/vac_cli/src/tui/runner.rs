@@ -117,6 +117,16 @@ async fn handle_runtime_update(
                 ))
                 .await;
         }
+        RuntimeUpdate::ModelInfo { provider, model } => {
+            let _ = input_tx_inner
+                .send(InputEvent::SetCurrentModel(crate::tui::Model {
+                    id: model.clone(),
+                    name: model,
+                    provider,
+                    supports_reasoning: false,
+                }))
+                .await;
+        }
         RuntimeUpdate::AssistantChunk(chunk) => {
             let _ = input_tx_inner
                 .send(InputEvent::StreamAssistantMessage(stream_uuid, chunk))
@@ -304,6 +314,19 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                         log::error!("Failed to reject tool call {}: {}", tc.id, e);
                     }
                 }
+                OutputEvent::SwitchToModel(model) => {
+                    let mut eng = engine_clone.lock().await;
+                    if eng.set_model_override(Some(model.id.clone())).await.is_ok() {
+                        let _ = input_tx_clone
+                            .send(InputEvent::ShowToast(crate::tui::services::Toast::success(
+                                format!("Model: {}", model.name),
+                            )))
+                            .await;
+                        let _ = input_tx_clone
+                            .send(InputEvent::SetCurrentModel(model))
+                            .await;
+                    }
+                }
                 OutputEvent::ExecuteCommand(cmd) => {
                     let msg = format!("Execute command: {}", cmd);
                     let engine = engine_clone.clone();
@@ -403,6 +426,23 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
     }
 
     // Run TUI
+    {
+        let eng = engine.lock().await;
+        let models = eng
+            .available_models()
+            .into_iter()
+            .map(|(provider, model)| crate::tui::Model {
+                id: model.clone(),
+                name: model,
+                provider,
+                supports_reasoning: false,
+            })
+            .collect::<Vec<_>>();
+        let _ = input_tx
+            .send(InputEvent::AvailableModelsLoaded(models))
+            .await;
+    }
+
     run_tui(
         input_rx,
         output_tx.clone(),
