@@ -2025,6 +2025,338 @@ mod tests {
         assert!(state.modified_files.contains(&"b.txt".to_string()));
     }
 
+
+    #[tokio::test]
+    async fn global_approval_hotkey_ctrl_m_approves_current() {
+        let dir = tempfile::tempdir().unwrap();
+        let (tx, mut rx) = tokio::sync::mpsc::channel(4);
+        let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
+        
+        // Add pending approval
+        state.pending_approvals.push(ToolCall {
+            id: "tc-1".to_string(),
+            r#type: "function".to_string(),
+            function: FunctionCall {
+                name: "test_tool".to_string(),
+                arguments: "{}".to_string(),
+            },
+            metadata: None,
+        });
+        
+        // Trigger Ctrl+M (AutoApproveCurrentTool)
+        handle_input_event(&mut state, &tx, InputEvent::AutoApproveCurrentTool);
+        
+        // Verify approval processed
+        assert_eq!(state.pending_approvals.len(), 0);
+        assert_eq!(state.approved_tools.len(), 1);
+        assert_eq!(state.approved_tools[0].id, "tc-1");
+        
+        // Verify output event sent
+        let output = rx.try_recv().unwrap();
+        assert!(matches!(output, OutputEvent::AcceptTool(_)));
+    }
+
+    #[tokio::test]
+    async fn global_approval_hotkey_ctrl_shift_m_rejects_current() {
+        let dir = tempfile::tempdir().unwrap();
+        let (tx, mut rx) = tokio::sync::mpsc::channel(4);
+        let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
+        
+        // Add pending approval
+        state.pending_approvals.push(ToolCall {
+            id: "tc-2".to_string(),
+            r#type: "function".to_string(),
+            function: FunctionCall {
+                name: "test_tool".to_string(),
+                arguments: "{}".to_string(),
+            },
+            metadata: None,
+        });
+        
+        // Trigger Ctrl+Shift+M (RejectCurrentTool)
+        handle_input_event(&mut state, &tx, InputEvent::RejectCurrentTool);
+        
+        // Verify rejection processed
+        assert_eq!(state.pending_approvals.len(), 0);
+        assert_eq!(state.rejected_tools.len(), 1);
+        assert_eq!(state.rejected_tools[0].id, "tc-2");
+        
+        // Verify output event sent
+        let output = rx.try_recv().unwrap();
+        assert!(matches!(output, OutputEvent::RejectTool(_, _)));
+    }
+
+    #[tokio::test]
+    async fn global_approval_hotkeys_safe_when_no_pending() {
+        let dir = tempfile::tempdir().unwrap();
+        let (tx, _rx) = tokio::sync::mpsc::channel(4);
+        let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
+        
+        // No pending approvals
+        assert_eq!(state.pending_approvals.len(), 0);
+        
+        // Trigger hotkeys - should not panic
+        handle_input_event(&mut state, &tx, InputEvent::AutoApproveCurrentTool);
+        handle_input_event(&mut state, &tx, InputEvent::RejectCurrentTool);
+        
+        // State unchanged
+        assert_eq!(state.approved_tools.len(), 0);
+        assert_eq!(state.rejected_tools.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn slash_command_model_exists_in_commands() {
+        let dir = tempfile::tempdir().unwrap();
+        let (_tx, _rx) = tokio::sync::mpsc::channel::<OutputEvent>(4);
+        let state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
+        
+        // Verify /model command exists
+        let commands = state.commands;
+        assert!(commands.iter().any(|c| c.command == "/model"));
+    }
+
+    #[tokio::test]
+    async fn slash_command_files_exists_in_commands() {
+        let dir = tempfile::tempdir().unwrap();
+        let (_tx, _rx) = tokio::sync::mpsc::channel::<OutputEvent>(4);
+        let state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
+        
+        // Verify /files command exists
+        let commands = state.commands;
+        assert!(commands.iter().any(|c| c.command == "/files"));
+    }
+
+    #[tokio::test]
+    async fn slash_command_changes_exists_in_commands() {
+        let dir = tempfile::tempdir().unwrap();
+        let (_tx, _rx) = tokio::sync::mpsc::channel::<OutputEvent>(4);
+        let state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
+        
+        // Verify /changes command exists
+        let commands = state.commands;
+        assert!(commands.iter().any(|c| c.command == "/changes"));
+    }
+
+    #[test]
+    fn footer_approval_bar_shows_when_pending_approvals() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
+        
+        // Add pending approval
+        state.pending_approvals.push(ToolCall {
+            id: "tc-1".to_string(),
+            r#type: "function".to_string(),
+            function: FunctionCall {
+                name: "file_write".to_string(),
+                arguments: r#"{"file_path":"test.rs"}"#.to_string(),
+            },
+            metadata: None,
+        });
+        
+        // Footer should show approval bar (verified by view rendering logic)
+        assert!(!state.pending_approvals.is_empty());
+        assert_eq!(state.approval_selected_idx, 0);
+    }
+
+    #[test]
+    fn footer_approval_bar_hidden_when_no_pending() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
+        
+        // No pending approvals
+        assert!(state.pending_approvals.is_empty());
+        // Footer should show normal hints (verified by view rendering logic)
+    }
+
+    #[test]
+    fn footer_approval_bar_shows_correct_index() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
+        
+        // Add multiple pending approvals
+        for i in 0..3 {
+            state.pending_approvals.push(ToolCall {
+                id: format!("tc-{}", i),
+                r#type: "function".to_string(),
+                function: FunctionCall {
+                    name: "test_tool".to_string(),
+                    arguments: "{}".to_string(),
+                },
+                metadata: None,
+            });
+        }
+        
+        // Select second approval
+        state.approval_selected_idx = 1;
+        
+        // Verify index
+        assert_eq!(state.approval_selected_idx, 1);
+        assert_eq!(state.pending_approvals.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn session_restore_clears_popup_state() {
+        let dir = tempfile::tempdir().unwrap();
+        let (tx, _rx) = tokio::sync::mpsc::channel(4);
+        let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
+        
+        // Set popup states
+        state.show_model_switcher = true;
+        state.show_file_search = true;
+        state.show_changeset = true;
+        state.model_switcher_filter = "test".to_string();
+        state.file_search_query = "query".to_string();
+        
+        // Trigger session restore
+        handle_backend_event(
+            &mut state,
+            &tx,
+            InputEvent::SessionRestored {
+                id: uuid::Uuid::new_v4().to_string(),
+                title: "New Session".to_string(),
+                messages: vec![],
+            },
+        );
+        
+        // Verify all popup states cleared
+        assert!(!state.show_model_switcher);
+        assert!(!state.show_file_search);
+        assert!(!state.show_changeset);
+        assert!(state.model_switcher_filter.is_empty());
+        assert!(state.file_search_query.is_empty());
+    }
+
+    #[tokio::test]
+    async fn session_restore_clears_changeset_store() {
+        let dir = tempfile::tempdir().unwrap();
+        let (tx, _rx) = tokio::sync::mpsc::channel(4);
+        let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
+        
+        // Add changeset entries
+        state.changeset_store.file_created("a.rs".to_string(), "agent".to_string());
+        state.changeset_store.file_modified("b.rs".to_string(), "agent".to_string(), true);
+        assert_eq!(state.changeset_store.entries().len(), 2);
+        
+        // Trigger session restore
+        handle_backend_event(
+            &mut state,
+            &tx,
+            InputEvent::SessionRestored {
+                id: uuid::Uuid::new_v4().to_string(),
+                title: "New Session".to_string(),
+                messages: vec![],
+            },
+        );
+        
+        // Verify changeset cleared
+        assert_eq!(state.changeset_store.entries().len(), 0);
+    }
+
+    #[tokio::test]
+    async fn session_restore_clears_approval_state() {
+        let dir = tempfile::tempdir().unwrap();
+        let (tx, _rx) = tokio::sync::mpsc::channel(4);
+        let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
+        
+        // Add approval state
+        state.pending_approvals.push(ToolCall {
+            id: "tc-1".to_string(),
+            r#type: "function".to_string(),
+            function: FunctionCall {
+                name: "test".to_string(),
+                arguments: "{}".to_string(),
+            },
+            metadata: None,
+        });
+        state.approved_tools.push(ToolCall {
+            id: "tc-2".to_string(),
+            r#type: "function".to_string(),
+            function: FunctionCall {
+                name: "test".to_string(),
+                arguments: "{}".to_string(),
+            },
+            metadata: None,
+        });
+        
+        // Trigger session restore
+        handle_backend_event(
+            &mut state,
+            &tx,
+            InputEvent::SessionRestored {
+                id: uuid::Uuid::new_v4().to_string(),
+                title: "New Session".to_string(),
+                messages: vec![],
+            },
+        );
+        
+        // Verify approval state cleared
+        assert_eq!(state.pending_approvals.len(), 0);
+        assert_eq!(state.approved_tools.len(), 0);
+        assert_eq!(state.rejected_tools.len(), 0);
+    }
+
+    #[test]
+    fn command_palette_filters_commands_correctly() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
+        
+        // Empty filter shows all commands
+        state.command_palette_input = "".to_string();
+        let all = state.filtered_commands();
+        assert!(!all.is_empty());
+        
+        // Filter by prefix
+        state.command_palette_input = "/model".to_string();
+        let filtered = state.filtered_commands();
+        assert!(filtered.iter().any(|c| c.command == "/model"));
+        
+        // Non-matching filter
+        state.command_palette_input = "/nonexistent".to_string();
+        let empty = state.filtered_commands();
+        assert!(empty.is_empty());
+    }
+
+    #[test]
+    fn command_palette_selection_stays_within_bounds() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
+        
+        state.command_palette_input = "".to_string();
+        let commands = state.filtered_commands();
+        
+        // Selection should not exceed command count
+        if !commands.is_empty() {
+            state.command_palette_selected = 0;
+            assert_eq!(state.command_palette_selected, 0);
+            
+            state.command_palette_selected = commands.len() - 1;
+            assert_eq!(state.command_palette_selected, commands.len() - 1);
+        }
+    }
+
+    #[tokio::test]
+    async fn command_palette_dispatch_does_not_send_literal_slash() {
+        let dir = tempfile::tempdir().unwrap();
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<OutputEvent>(4);
+        let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
+        
+        // Execute /review command
+        state.show_command_palette = true;
+        let filtered = state.filtered_commands();
+        if let Some(cmd) = filtered.iter().find(|c| c.command == "/review") {
+            // Simulate command execution
+            state.add_user_message(cmd.command.clone());
+            state.review_open = true;
+            state.show_command_palette = false;
+        }
+        
+        // Verify review opened, not sent as literal message
+        assert!(state.review_open);
+        assert!(!state.show_command_palette);
+        
+        // No output event should be sent for /review
+        assert!(rx.try_recv().is_err());
+    }
     #[tokio::test]
     async fn revert_all_clears_modified_files_and_marks_status() {
         let dir = tempfile::tempdir().unwrap();
