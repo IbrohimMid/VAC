@@ -96,6 +96,7 @@ pub struct SwarmOrchestrator {
     _enable_parallel: bool,
     llm_router: Option<Arc<LlmRouter>>,
     tool_router: Option<Arc<ToolRouter>>,
+    model_override: Option<String>,
     /// VIL project profile — drives archetype-aware system prompts
     pub project_profile: Option<vac_core_types::VilProjectProfile>,
     /// Loaded knowledge base — injected into planner/coder prompts
@@ -179,6 +180,7 @@ impl SwarmOrchestrator {
             _enable_parallel: enable_parallel,
             llm_router,
             tool_router,
+            model_override: None,
             project_profile: None,
             knowledge: None,
             rulebook: None,
@@ -208,6 +210,14 @@ impl SwarmOrchestrator {
         }
 
         Ok(orchestrator)
+    }
+
+    pub fn set_model_override(&mut self, model: Option<String>) {
+        self.model_override = model;
+    }
+
+    pub fn model_override(&self) -> Option<&str> {
+        self.model_override.as_deref()
     }
 
     /// Set the VIL project profile for archetype-aware prompt injection.
@@ -588,15 +598,18 @@ Rules:
                 .iter()
                 .map(vil_llm::models::LlmMessage::from)
                 .collect();
-            let request = LlmRequest::from_llm_messages(llm_messages)
+            let mut request = LlmRequest::from_llm_messages(llm_messages)
                 .with_max_tokens(4000)
                 .with_tools(tool_defs.clone());
+            if let Some(model) = self.model_override() {
+                request = request.with_model(model);
+            }
 
             if let Some(tx) = &updates {
                 let _ = tx.send(AgentLoopEvent::Status("Thinking".to_string()));
                 let _ = tx.send(AgentLoopEvent::LlmRequest {
                     provider: "kilo".to_string(),
-                    model: "default".to_string(),
+                    model: request.model.clone().unwrap_or_else(|| "default".to_string()),
                     message_count: reduced.len(),
                 });
             }

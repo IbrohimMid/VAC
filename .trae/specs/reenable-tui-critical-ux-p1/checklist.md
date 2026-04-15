@@ -1,0 +1,7 @@
+- [x] TUI menampilkan toast untuk aksi UI penting (model switch, approval decision, error) tanpa mengganggu input.
+- [x] Approval bar muncul saat ada request approval, menahan eksekusi, dan accept/reject mengubah alur eksekusi sesuai keputusan user.
+- [x] Approval bar dapat menampilkan preview ringkas untuk perubahan file/changeset (minimal daftar file + ringkasan diff bila tersedia).
+- [x] Model switcher dapat dibuka via shortcut/palette dan mengganti model aktif tanpa restart.
+- [x] File search fuzzy dapat menemukan file di workspace dan selection memicu preview/action yang valid.
+- [x] Changeset melacak perubahan file selama sesi dan popup review dapat menampilkan daftar perubahan + preview diff ringkas.
+- [x] Build dan smoke run TUI sukses (tanpa panic) dalam skenario state kosong dan state aktif (ada tool calls/approval).

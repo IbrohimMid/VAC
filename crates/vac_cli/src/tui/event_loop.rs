@@ -133,6 +133,11 @@ pub async fn run_tui(
             state.spinner_frame = (state.spinner_frame + 1) % 10;
         }
 
+        state.toasts.retain(|t| !t.is_expired());
+        if state.toasts.len() > 3 {
+            state.toasts.drain(0..state.toasts.len().saturating_sub(3));
+        }
+
         // Render
         terminal.draw(|f| view(f, &mut state))?;
 
@@ -206,6 +211,65 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                                 state.review_generation = state.review_generation.saturating_add(1);
                                 state.review_sync_items();
                                 state.review_normalize_selection();
+                            } else if cmd.command == "/model" {
+                                state.add_user_message(cmd.command.clone());
+                                state.show_model_switcher = true;
+                                state.model_switcher_filter.clear();
+                                state.model_switcher_selected_idx = 0;
+                            } else if cmd.command == "/files" {
+                                state.add_user_message(cmd.command.clone());
+                                state.show_file_search = true;
+                                state.file_search_query.clear();
+                                state.file_search_selected_idx = 0;
+                                if state.all_files.is_empty() {
+                                    state.all_files =
+                                        crate::tui::services::build_file_index(&state.project_root);
+                                }
+                                state.file_search_results = crate::tui::services::fuzzy_search_files(
+                                    "",
+                                    &state.all_files,
+                                    50,
+                                );
+                            } else if cmd.command == "/changes" {
+                                state.add_user_message(cmd.command.clone());
+                                state.show_changeset = true;
+                                state.changeset_selected_idx = 0;
+                                state.changeset_diff_scroll = 0;
+                                state.changeset_selected_path =
+                                    state.modified_files.first().cloned();
+                                state.changeset_diff = state.changeset_selected_path.clone().map(|p| {
+                                    let session_id = uuid::Uuid::parse_str(&state.session_id).ok();
+                                    if let Some(session_id) = session_id {
+                                        match crate::tui::services::review::load_diff(
+                                            &state.project_root,
+                                            session_id,
+                                            &p,
+                                        ) {
+                                            Ok(diff) => crate::tui::app::ReviewDiffState {
+                                                path: diff.path,
+                                                old_content: Some(diff.old_content),
+                                                new_content: Some(diff.new_content),
+                                                scroll: 0,
+                                                last_error: None,
+                                            },
+                                            Err(e) => crate::tui::app::ReviewDiffState {
+                                                path: p,
+                                                old_content: None,
+                                                new_content: None,
+                                                scroll: 0,
+                                                last_error: Some(e),
+                                            },
+                                        }
+                                    } else {
+                                        crate::tui::app::ReviewDiffState {
+                                            path: p,
+                                            old_content: None,
+                                            new_content: None,
+                                            scroll: 0,
+                                            last_error: Some("Invalid session id".to_string()),
+                                        }
+                                    }
+                                });
                             } else {
                                 state.add_user_message(cmd.command.clone());
                                 let _ = output_tx.try_send(OutputEvent::UserMessage(
@@ -242,6 +306,219 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
         match event {
             InputEvent::HandleEsc | InputEvent::HideShortcuts => {
                 state.show_shortcuts = false;
+            }
+            _ => {}
+        }
+        return;
+    }
+
+    if state.show_model_switcher {
+        match event {
+            InputEvent::HandleEsc => {
+                state.show_model_switcher = false;
+                state.model_switcher_filter.clear();
+                state.model_switcher_selected_idx = 0;
+            }
+            InputEvent::InputChanged(c) => {
+                state.model_switcher_filter.push(c);
+                state.model_switcher_selected_idx = 0;
+            }
+            InputEvent::InputBackspace => {
+                state.model_switcher_filter.pop();
+                state.model_switcher_selected_idx = 0;
+            }
+            InputEvent::Up => {
+                let len = state.model_switcher_filtered().len();
+                if len > 0 {
+                    state.model_switcher_selected_idx =
+                        state.model_switcher_selected_idx.saturating_sub(1).min(len - 1);
+                }
+            }
+            InputEvent::Down => {
+                let len = state.model_switcher_filtered().len();
+                if len > 0 {
+                    state.model_switcher_selected_idx =
+                        (state.model_switcher_selected_idx + 1).min(len - 1);
+                }
+            }
+            InputEvent::InputSubmitted => {
+                let models = state.model_switcher_filtered();
+                if let Some(selected) = models.get(state.model_switcher_selected_idx).cloned() {
+                    state.current_model = Some(selected.clone());
+                    let _ = output_tx.try_send(OutputEvent::SwitchToModel(selected.clone()));
+                    state.show_model_switcher = false;
+                    state.model_switcher_filter.clear();
+                    state.model_switcher_selected_idx = 0;
+                    state.push_activity(
+                        crate::tui::app::ActivityKind::Status,
+                        format!("Model switched: {}", selected.name),
+                    );
+                }
+            }
+            _ => {}
+        }
+        return;
+    }
+
+    if state.show_file_search {
+        if state.all_files.is_empty() {
+            state.all_files = crate::tui::services::build_file_index(&state.project_root);
+        }
+        if state.file_search_results.is_empty() {
+            state.file_search_results = crate::tui::services::fuzzy_search_files(
+                &state.file_search_query,
+                &state.all_files,
+                50,
+            );
+            state.file_search_selected_idx = state
+                .file_search_selected_idx
+                .min(state.file_search_results.len().saturating_sub(1));
+        }
+
+        match event {
+            InputEvent::HandleEsc => {
+                state.show_file_search = false;
+                state.file_search_query.clear();
+                state.file_search_selected_idx = 0;
+                state.file_search_results.clear();
+            }
+            InputEvent::InputChanged(c) => {
+                state.file_search_query.push(c);
+                state.file_search_selected_idx = 0;
+                state.file_search_results = crate::tui::services::fuzzy_search_files(
+                    &state.file_search_query,
+                    &state.all_files,
+                    50,
+                );
+            }
+            InputEvent::InputBackspace => {
+                state.file_search_query.pop();
+                state.file_search_selected_idx = 0;
+                state.file_search_results = crate::tui::services::fuzzy_search_files(
+                    &state.file_search_query,
+                    &state.all_files,
+                    50,
+                );
+            }
+            InputEvent::Up => {
+                if !state.file_search_results.is_empty() {
+                    state.file_search_selected_idx =
+                        state.file_search_selected_idx.saturating_sub(1);
+                }
+            }
+            InputEvent::Down => {
+                if !state.file_search_results.is_empty() {
+                    state.file_search_selected_idx = (state.file_search_selected_idx + 1)
+                        .min(state.file_search_results.len().saturating_sub(1));
+                }
+            }
+            InputEvent::InputSubmitted => {
+                if let Some(path) = state
+                    .file_search_results
+                    .get(state.file_search_selected_idx)
+                    .cloned()
+                {
+                    state.show_file_search = false;
+                    state.file_search_query.clear();
+                    state.file_search_selected_idx = 0;
+                    state.file_search_results.clear();
+                    state.focus = crate::tui::app::WorkspaceFocus::Input;
+                    state.input.insert_str(&path);
+                    state.toasts
+                        .push(crate::tui::services::Toast::info(format!("Inserted: {}", path)));
+                }
+            }
+            _ => {}
+        }
+        return;
+    }
+
+    if state.show_changeset {
+        let load_diff = |state: &AppState, path: &str| -> crate::tui::app::ReviewDiffState {
+            let session_id = uuid::Uuid::parse_str(&state.session_id).ok();
+            if let Some(session_id) = session_id {
+                match crate::tui::services::review::load_diff(&state.project_root, session_id, path)
+                {
+                    Ok(diff) => crate::tui::app::ReviewDiffState {
+                        path: diff.path,
+                        old_content: Some(diff.old_content),
+                        new_content: Some(diff.new_content),
+                        scroll: 0,
+                        last_error: None,
+                    },
+                    Err(e) => crate::tui::app::ReviewDiffState {
+                        path: path.to_string(),
+                        old_content: None,
+                        new_content: None,
+                        scroll: 0,
+                        last_error: Some(e),
+                    },
+                }
+            } else {
+                crate::tui::app::ReviewDiffState {
+                    path: path.to_string(),
+                    old_content: None,
+                    new_content: None,
+                    scroll: 0,
+                    last_error: Some("Invalid session id".to_string()),
+                }
+            }
+        };
+
+        if state.changeset_selected_path.is_none() {
+            state.changeset_selected_idx = state
+                .changeset_selected_idx
+                .min(state.modified_files.len().saturating_sub(1));
+            state.changeset_selected_path = state
+                .modified_files
+                .get(state.changeset_selected_idx)
+                .cloned();
+            if let Some(path) = state.changeset_selected_path.clone() {
+                state.changeset_diff = Some(load_diff(state, &path));
+            }
+        }
+
+        match event {
+            InputEvent::HandleEsc => {
+                state.show_changeset = false;
+                state.changeset_selected_idx = 0;
+                state.changeset_diff_scroll = 0;
+                state.changeset_selected_path = None;
+                state.changeset_diff = None;
+            }
+            InputEvent::Up => {
+                if !state.modified_files.is_empty() {
+                    state.changeset_selected_idx =
+                        state.changeset_selected_idx.saturating_sub(1);
+                    state.changeset_diff_scroll = 0;
+                    state.changeset_selected_path = state
+                        .modified_files
+                        .get(state.changeset_selected_idx)
+                        .cloned();
+                    if let Some(path) = state.changeset_selected_path.clone() {
+                        state.changeset_diff = Some(load_diff(state, &path));
+                    }
+                }
+            }
+            InputEvent::Down => {
+                if !state.modified_files.is_empty() {
+                    state.changeset_selected_idx = (state.changeset_selected_idx + 1)
+                        .min(state.modified_files.len().saturating_sub(1));
+                    state.changeset_diff_scroll = 0;
+                    state.changeset_selected_path = state
+                        .modified_files
+                        .get(state.changeset_selected_idx)
+                        .cloned();
+                    if let Some(path) = state.changeset_selected_path.clone() {
+                        state.changeset_diff = Some(load_diff(state, &path));
+                    }
+                }
+            }
+            InputEvent::ScrollUp => {
+                state.changeset_diff_scroll = state.changeset_diff_scroll.saturating_sub(1);
+            }
+            InputEvent::ScrollDown => {
+                state.changeset_diff_scroll = state.changeset_diff_scroll.saturating_add(1);
             }
             _ => {}
         }
@@ -682,6 +959,9 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                                         crate::tui::app::ActivityKind::Approval,
                                         format!("Approved: {}", tool_name),
                                     );
+                                    state.toasts.push(crate::tui::services::Toast::success(
+                                        format!("Approved: {}", tool_name),
+                                    ));
                                 }
                             }
                             'r' => {
@@ -700,6 +980,9 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                                         crate::tui::app::ActivityKind::Approval,
                                         format!("Rejected: {}", tool_name),
                                     );
+                                    state.toasts.push(crate::tui::services::Toast::error(
+                                        format!("Rejected: {}", tool_name),
+                                    ));
                                 }
                             }
                             _ => {}
@@ -750,6 +1033,10 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                         crate::tui::app::ActivityKind::Approval,
                         format!("Approved: {}", tool_name),
                     );
+                    state.toasts.push(crate::tui::services::Toast::success(format!(
+                        "Approved: {}",
+                        tool_name
+                    )));
                 }
                 return;
             }
@@ -809,6 +1096,65 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                                         state.review_generation.saturating_add(1);
                                     state.review_sync_items();
                                     state.review_normalize_selection();
+                                } else if cmd.command == "/model" {
+                                    state.add_user_message(trimmed.to_string());
+                                    state.show_model_switcher = true;
+                                    state.model_switcher_filter.clear();
+                                    state.model_switcher_selected_idx = 0;
+                                } else if cmd.command == "/files" {
+                                    state.add_user_message(trimmed.to_string());
+                                    state.show_file_search = true;
+                                    state.file_search_query.clear();
+                                    state.file_search_selected_idx = 0;
+                                    if state.all_files.is_empty() {
+                                        state.all_files =
+                                            crate::tui::services::build_file_index(&state.project_root);
+                                    }
+                                    state.file_search_results = crate::tui::services::fuzzy_search_files(
+                                        "",
+                                        &state.all_files,
+                                        50,
+                                    );
+                                } else if cmd.command == "/changes" {
+                                    state.add_user_message(trimmed.to_string());
+                                    state.show_changeset = true;
+                                    state.changeset_selected_idx = 0;
+                                    state.changeset_diff_scroll = 0;
+                                    state.changeset_selected_path =
+                                        state.modified_files.first().cloned();
+                                    state.changeset_diff = state.changeset_selected_path.clone().map(|p| {
+                                        let session_id = uuid::Uuid::parse_str(&state.session_id).ok();
+                                        if let Some(session_id) = session_id {
+                                            match crate::tui::services::review::load_diff(
+                                                &state.project_root,
+                                                session_id,
+                                                &p,
+                                            ) {
+                                                Ok(diff) => crate::tui::app::ReviewDiffState {
+                                                    path: diff.path,
+                                                    old_content: Some(diff.old_content),
+                                                    new_content: Some(diff.new_content),
+                                                    scroll: 0,
+                                                    last_error: None,
+                                                },
+                                                Err(e) => crate::tui::app::ReviewDiffState {
+                                                    path: p,
+                                                    old_content: None,
+                                                    new_content: None,
+                                                    scroll: 0,
+                                                    last_error: Some(e),
+                                                },
+                                            }
+                                        } else {
+                                            crate::tui::app::ReviewDiffState {
+                                                path: p,
+                                                old_content: None,
+                                                new_content: None,
+                                                scroll: 0,
+                                                last_error: Some("Invalid session id".to_string()),
+                                            }
+                                        }
+                                    });
                                 } else {
                                     state.add_user_message(trimmed.to_string());
                                     let _ = output_tx.try_send(OutputEvent::UserMessage(
@@ -994,7 +1340,22 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
             state.cancel_requested = true;
         }
         InputEvent::HandleEsc => {
-            if state.is_streaming {
+            if state.show_model_switcher {
+                state.show_model_switcher = false;
+                state.model_switcher_filter.clear();
+                state.model_switcher_selected_idx = 0;
+            } else if state.show_file_search {
+                state.show_file_search = false;
+                state.file_search_query.clear();
+                state.file_search_selected_idx = 0;
+                state.file_search_results.clear();
+            } else if state.show_changeset {
+                state.show_changeset = false;
+                state.changeset_selected_idx = 0;
+                state.changeset_diff_scroll = 0;
+                state.changeset_selected_path = None;
+                state.changeset_diff = None;
+            } else if state.is_streaming {
                 let _ = output_tx.try_send(OutputEvent::CancelStream);
                 state.is_streaming = false;
             } else if state.focus == crate::tui::app::WorkspaceFocus::Workbench
@@ -1002,6 +1363,50 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
             {
                 state.review_open = false;
                 state.review_diff = None;
+            }
+        }
+        InputEvent::AutoApproveCurrentTool => {
+            if let Some(tc) = state
+                .pending_approvals
+                .get(state.approval_selected_idx)
+                .cloned()
+            {
+                state.pending_approvals.retain(|t| t.id != tc.id);
+                state.approval_explanations.remove(&tc.id);
+                state.approved_tools.push(tc.clone());
+                state.approval_normalize_selection();
+                let tool_name = tc.function.name.clone();
+                let _ = output_tx.try_send(OutputEvent::AcceptTool(tc));
+                state.push_activity(
+                    crate::tui::app::ActivityKind::Approval,
+                    format!("Approved: {}", tool_name),
+                );
+                state.toasts.push(crate::tui::services::Toast::success(format!(
+                    "Approved: {}",
+                    tool_name
+                )));
+            }
+        }
+        InputEvent::RejectCurrentTool => {
+            if let Some(tc) = state
+                .pending_approvals
+                .get(state.approval_selected_idx)
+                .cloned()
+            {
+                state.pending_approvals.retain(|t| t.id != tc.id);
+                state.approval_explanations.remove(&tc.id);
+                state.rejected_tools.push(tc.clone());
+                state.approval_normalize_selection();
+                let tool_name = tc.function.name.clone();
+                let _ = output_tx.try_send(OutputEvent::RejectTool(tc, false));
+                state.push_activity(
+                    crate::tui::app::ActivityKind::Approval,
+                    format!("Rejected: {}", tool_name),
+                );
+                state.toasts.push(crate::tui::services::Toast::error(format!(
+                    "Rejected: {}",
+                    tool_name
+                )));
             }
         }
         InputEvent::ScrollUp => {
@@ -1030,6 +1435,57 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
             state.show_command_palette = true;
             state.command_palette_input.clear();
             state.command_palette_selected = 0;
+        }
+        InputEvent::ShowModelSwitcher => {
+            state.show_model_switcher = true;
+            state.model_switcher_filter.clear();
+            state.model_switcher_selected_idx = 0;
+        }
+        InputEvent::ShowFileSearch => {
+            state.show_file_search = true;
+            state.file_search_query.clear();
+            state.file_search_selected_idx = 0;
+            if state.all_files.is_empty() {
+                state.all_files = crate::tui::services::build_file_index(&state.project_root);
+            }
+            state.file_search_results =
+                crate::tui::services::fuzzy_search_files("", &state.all_files, 50);
+        }
+        InputEvent::ShowChangeset => {
+            state.show_changeset = true;
+            state.changeset_selected_idx = 0;
+            state.changeset_diff_scroll = 0;
+            state.changeset_selected_path = state.modified_files.first().cloned();
+            state.changeset_diff = state.changeset_selected_path.clone().map(|p| {
+                let session_id = uuid::Uuid::parse_str(&state.session_id).ok();
+                if let Some(session_id) = session_id {
+                    match crate::tui::services::review::load_diff(&state.project_root, session_id, &p)
+                    {
+                        Ok(diff) => crate::tui::app::ReviewDiffState {
+                            path: diff.path,
+                            old_content: Some(diff.old_content),
+                            new_content: Some(diff.new_content),
+                            scroll: 0,
+                            last_error: None,
+                        },
+                        Err(e) => crate::tui::app::ReviewDiffState {
+                            path: p,
+                            old_content: None,
+                            new_content: None,
+                            scroll: 0,
+                            last_error: Some(e),
+                        },
+                    }
+                } else {
+                    crate::tui::app::ReviewDiffState {
+                        path: p,
+                        old_content: None,
+                        new_content: None,
+                        scroll: 0,
+                        last_error: Some("Invalid session id".to_string()),
+                    }
+                }
+            });
         }
         InputEvent::ShowShortcuts => {
             state.show_shortcuts = true;
@@ -1122,9 +1578,25 @@ fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, e
         }
         InputEvent::Error(msg) => {
             state.add_assistant_message(format!("Error: {}", msg));
+            state.toasts.push(crate::tui::services::Toast::error(msg.clone()));
+            if state.toasts.len() > 3 {
+                state.toasts.drain(0..state.toasts.len().saturating_sub(3));
+            }
             state.loading = false;
             state.is_streaming = false;
             state.push_activity(crate::tui::app::ActivityKind::Error, msg);
+        }
+        InputEvent::SetCurrentModel(model) => {
+            state.current_model = Some(model);
+        }
+        InputEvent::AvailableModelsLoaded(models) => {
+            state.available_models = models;
+        }
+        InputEvent::ShowToast(toast) => {
+            state.toasts.push(toast);
+            if state.toasts.len() > 3 {
+                state.toasts.drain(0..state.toasts.len().saturating_sub(3));
+            }
         }
         InputEvent::SetSessions(sessions) => {
             state.sessions = sessions;
@@ -1160,6 +1632,19 @@ fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, e
             state.review_selected_path = None;
             state.activity.clear();
             state.activity_scroll = 0;
+            state.toasts.clear();
+            state.show_model_switcher = false;
+            state.model_switcher_filter.clear();
+            state.model_switcher_selected_idx = 0;
+            state.show_file_search = false;
+            state.file_search_query.clear();
+            state.file_search_selected_idx = 0;
+            state.file_search_results.clear();
+            state.show_changeset = false;
+            state.changeset_selected_idx = 0;
+            state.changeset_diff_scroll = 0;
+            state.changeset_selected_path = None;
+            state.changeset_diff = None;
             state.workbench_tab = crate::tui::app::WorkbenchTab::Approvals;
             state.focus = crate::tui::app::WorkspaceFocus::Input;
             state.push_activity(crate::tui::app::ActivityKind::Session, "Session restored");

@@ -64,6 +64,28 @@ impl VacEngine {
         ApprovalHandle::new(self.project_root.clone(), self.active_approvals.clone())
     }
 
+    pub async fn set_model_override(&mut self, model: Option<String>) -> VacResult<()> {
+        let Some(ref swarm) = self.swarm else {
+            return Err(VacError::Task(
+                "Swarm not initialized. Run `vac init` first.".into(),
+            ));
+        };
+        swarm.write().await.set_model_override(model);
+        Ok(())
+    }
+
+    pub fn available_models(&self) -> Vec<(String, String)> {
+        let mut models: Vec<(String, String)> = self
+            .config
+            .llm
+            .providers
+            .iter()
+            .map(|(provider, cfg)| (provider.clone(), cfg.model.clone()))
+            .collect();
+        models.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
+        models
+    }
+
     /// Initialize all subsystems. Called by `vac init`.
     #[instrument(skip(self))]
     pub async fn init(&mut self) -> VacResult<()> {

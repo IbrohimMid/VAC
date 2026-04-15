@@ -8,6 +8,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::tui::services::textarea::TextArea;
+use crate::tui::services::Toast;
 use crate::tui::types::*;
 
 // ========== Cache Types ==========
@@ -315,6 +316,25 @@ pub struct AppState {
     pub activity: Vec<ActivityItem>,
     pub activity_scroll: usize,
 
+    pub toasts: Vec<Toast>,
+
+    pub available_models: Vec<Model>,
+    pub show_model_switcher: bool,
+    pub model_switcher_filter: String,
+    pub model_switcher_selected_idx: usize,
+
+    pub all_files: Vec<String>,
+    pub show_file_search: bool,
+    pub file_search_query: String,
+    pub file_search_selected_idx: usize,
+    pub file_search_results: Vec<String>,
+
+    pub show_changeset: bool,
+    pub changeset_selected_idx: usize,
+    pub changeset_diff_scroll: usize,
+    pub changeset_selected_path: Option<String>,
+    pub changeset_diff: Option<ReviewDiffState>,
+
     // Permission UX
     pub auto_approve: bool,
     pub project_root: PathBuf,
@@ -388,6 +408,21 @@ impl AppState {
             sessions_selected_idx: 0,
             activity: Vec::new(),
             activity_scroll: 0,
+            toasts: Vec::new(),
+            available_models: Vec::new(),
+            show_model_switcher: false,
+            model_switcher_filter: String::new(),
+            model_switcher_selected_idx: 0,
+            all_files: Vec::new(),
+            show_file_search: false,
+            file_search_query: String::new(),
+            file_search_selected_idx: 0,
+            file_search_results: Vec::new(),
+            show_changeset: false,
+            changeset_selected_idx: 0,
+            changeset_diff_scroll: 0,
+            changeset_selected_path: None,
+            changeset_diff: None,
             auto_approve: false,
             project_root: options.project_root,
         }
@@ -414,6 +449,23 @@ impl AppState {
             .filter(|c| c.command.starts_with(&self.command_palette_input))
             .cloned()
             .collect()
+    }
+
+    pub fn model_switcher_filtered(&self) -> Vec<Model> {
+        let q = self.model_switcher_filter.trim().to_lowercase();
+        let mut out = self
+            .available_models
+            .iter()
+            .filter(|m| {
+                q.is_empty()
+                    || m.name.to_lowercase().contains(&q)
+                    || m.provider.to_lowercase().contains(&q)
+                    || m.id.to_lowercase().contains(&q)
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        out.sort_by(|a, b| a.provider.cmp(&b.provider).then_with(|| a.name.cmp(&b.name)));
+        out
     }
 
     pub fn review_sync_items(&mut self) {
