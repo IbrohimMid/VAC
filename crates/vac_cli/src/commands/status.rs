@@ -2,9 +2,14 @@
 
 use std::path::PathBuf;
 
-pub async fn execute(project_root: PathBuf) -> anyhow::Result<()> {
+pub async fn execute(project_root: PathBuf, format: &str) -> anyhow::Result<()> {
     let engine = vac_core::VacEngine::new(project_root).await?;
     let status = engine.status().await?;
+
+    if format == "json" {
+        println!("{}", serde_json::to_string_pretty(&status)?);
+        return Ok(());
+    }
 
     println!("📊 VAC Status");
     println!("{}", "=".repeat(40));

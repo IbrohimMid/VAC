@@ -229,6 +229,18 @@ pub struct AppState {
     pub diff_file_path: Option<String>,
     pub diff_old_content: Option<String>,
     pub diff_new_content: Option<String>,
+    
+    // File changes popup state
+    pub show_file_changes_popup: bool,
+    pub file_changes_search: String,
+    pub file_changes_scroll: usize,
+    pub file_changes_selected: usize,
+    pub modified_files: Vec<String>,
+    
+    // Permission UX
+    pub auto_approve: bool,
+    pub permission_explanation: Option<String>,
+    pub project_root: PathBuf,
 }
 
 /// Options for creating AppState
@@ -236,6 +248,7 @@ pub struct AppStateOptions {
     pub model: Option<Model>,
     pub session_id: Option<String>,
     pub checkpoint_path: Option<PathBuf>,
+    pub project_root: PathBuf,
 }
 
 impl Default for AppState {
@@ -244,6 +257,7 @@ impl Default for AppState {
             model: None,
             session_id: None,
             checkpoint_path: None,
+            project_root: std::env::current_dir().unwrap_or_default(),
         })
     }
 }
@@ -286,6 +300,14 @@ impl AppState {
             diff_file_path: None,
             diff_old_content: None,
             diff_new_content: None,
+            show_file_changes_popup: false,
+            file_changes_search: String::new(),
+            file_changes_scroll: 0,
+            file_changes_selected: 0,
+            modified_files: Vec::new(),
+            auto_approve: false,
+            permission_explanation: None,
+            project_root: options.project_root,
         }
     }
     

@@ -30,6 +30,9 @@ pub struct VacEngine {
     trace_recorder: Option<std::sync::Arc<std::sync::Mutex<vac_trace::TraceRecorder>>>,
     vil_lsp: Option<Arc<crate::lsp::service::VilLspService>>,
     pub privacy_vault: Arc<RwLock<vac_tools::PrivacyVault>>,
+    // The sender channel to approve or reject a tool call for the currently running task.
+    // This allows clients to send ApprovalResponse without needing to pass channels around manually.
+    pub active_approval_tx: Arc<tokio::sync::Mutex<Option<mpsc::UnboundedSender<vil_swarm::ApprovalResponse>>>>,
 }
 
 impl VacEngine {
@@ -54,6 +57,7 @@ impl VacEngine {
             trace_recorder: None,
             vil_lsp: None,
             privacy_vault: Arc::new(RwLock::new(vac_tools::PrivacyVault::new())),
+            active_approval_tx: Arc::new(tokio::sync::Mutex::new(None)),
         })
     }
 
@@ -336,6 +340,20 @@ impl VacEngine {
         cancel: Option<tokio_util::sync::CancellationToken>,
         approval_rx: Option<mpsc::UnboundedReceiver<vil_swarm::ApprovalResponse>>,
     ) -> VacResult<TaskResult> {
+        // If we didn't get an approval_rx, create one and store the tx in active_approval_tx.
+        let mut active_tx = None;
+        let final_approval_rx = if approval_rx.is_none() {
+            let (app_tx, app_rx) = mpsc::unbounded_channel();
+            active_tx = Some(app_tx);
+            Some(app_rx)
+        } else {
+            approval_rx
+        };
+        
+        if let Some(app_tx) = active_tx {
+            *self.active_approval_tx.lock().await = Some(app_tx);
+        }
+
         // Substitute secrets before sending to LLM
         let safe_description = {
             let mut vault = self.privacy_vault.write().await;
@@ -353,7 +371,7 @@ impl VacEngine {
             session.tasks.push(task.clone());
         }
 
-        let result = match self.execute_task_pipeline_with_approvals(task, updates.clone(), cancel, approval_rx).await {
+        let result = match self.execute_task_pipeline_with_approvals(task, updates.clone(), cancel, final_approval_rx).await {
             Ok(result) => result,
             Err(e) => {
                 // Check if this is a cancellation
@@ -544,10 +562,12 @@ impl VacEngine {
                             tool_call_id,
                             tool_name,
                             arguments,
+                            explanation,
                         } => Some(RuntimeUpdate::ApprovalRequired {
                             tool_call_id,
                             tool_name,
                             arguments,
+                            explanation,
                         }),
                         vil_swarm::AgentLoopEvent::LlmRequest { .. } => None,
                     };
@@ -757,7 +777,7 @@ impl VacEngine {
                         }
                         vil_swarm::AgentLoopEvent::ToolCall { id, name, arguments } => Some(RuntimeUpdate::ToolCall { id, name, arguments }),
                         vil_swarm::AgentLoopEvent::ToolResult { id, name, content, success } => Some(RuntimeUpdate::ToolResult { id, name, content, success }),
-                        vil_swarm::AgentLoopEvent::ApprovalRequired { tool_call_id, tool_name, arguments } => Some(RuntimeUpdate::ApprovalRequired { tool_call_id, tool_name, arguments }),
+                        vil_swarm::AgentLoopEvent::ApprovalRequired { tool_call_id, tool_name, arguments, explanation } => Some(RuntimeUpdate::ApprovalRequired { tool_call_id, tool_name, arguments, explanation }),
                         vil_swarm::AgentLoopEvent::LlmRequest { .. } => None,
                     };
                     if let Some(up) = update {
@@ -890,6 +910,38 @@ impl VacEngine {
     pub fn session(&self) -> &Arc<RwLock<Session>> {
         &self.session
     }
+
+    /// Approve a pending tool call for the currently running task.
+    pub async fn approve_tool_call(&self, tool_call_id: String) -> VacResult<()> {
+        let mut tx_guard = self.active_approval_tx.lock().await;
+        if let Some(tx) = &*tx_guard {
+            tx.send(vil_swarm::ApprovalResponse {
+                tool_call_id,
+                approved: true,
+                reason: None,
+            })
+            .map_err(|e| VacError::Task(format!("Failed to send approval: {}", e)))?;
+        } else {
+            return Err(VacError::Task("No active task requires approval".to_string()));
+        }
+        Ok(())
+    }
+
+    /// Reject a pending tool call for the currently running task.
+    pub async fn reject_tool_call(&self, tool_call_id: String) -> VacResult<()> {
+        let mut tx_guard = self.active_approval_tx.lock().await;
+        if let Some(tx) = &*tx_guard {
+            tx.send(vil_swarm::ApprovalResponse {
+                tool_call_id,
+                approved: false,
+                reason: None,
+            })
+            .map_err(|e| VacError::Task(format!("Failed to send rejection: {}", e)))?;
+        } else {
+            return Err(VacError::Task("No active task requires approval".to_string()));
+        }
+        Ok(())
+    }
 }
 
 /// Convert vac_core::VilArchetype to vil_swarm::VilArchetype (same shape, separate types).
@@ -970,6 +1022,7 @@ pub enum RuntimeUpdate {
         tool_call_id: String,
         tool_name: String,
         arguments: serde_json::Value,
+        explanation: Option<String>,
     },
 }
 

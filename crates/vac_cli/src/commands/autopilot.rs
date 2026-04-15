@@ -71,9 +71,39 @@ pub async fn execute_down(project_root: PathBuf) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub async fn execute_status(project_root: PathBuf) -> anyhow::Result<()> {
+pub async fn execute_status(project_root: PathBuf, format: &str) -> anyhow::Result<()> {
     let pid_path = project_root.join(PID_FILE);
+    let state_path = project_root.join(".vac/autopilot.state");
+
+    let mut state_json = serde_json::json!({ "state": "Unknown" });
+    let mut state_str = "Unknown".to_string();
+
+    if state_path.exists() {
+        if let Ok(content) = std::fs::read_to_string(&state_path) {
+            if let Ok(state) = serde_json::from_str::<vac_runtime::AutopilotState>(&content) {
+                match state {
+                    vac_runtime::AutopilotState::Idle => {
+                        state_str = "Idle (Waiting for jobs)".to_string();
+                        state_json = serde_json::json!({ "state": "Idle" });
+                    }
+                    vac_runtime::AutopilotState::Executing { job_id, kind } => {
+                        state_str = format!("Executing job {} ({})", job_id, kind);
+                        state_json = serde_json::json!({
+                            "state": "Executing",
+                            "job_id": job_id,
+                            "kind": kind
+                        });
+                    }
+                }
+            }
+        }
+    }
+
     if !pid_path.exists() {
+        if format == "json" {
+            println!("{}", serde_json::to_string_pretty(&serde_json::json!({ "status": "stopped", "internal_state": state_json }))?);
+            return Ok(());
+        }
         println!("Autopilot: stopped");
         return Ok(());
     }
@@ -81,12 +111,27 @@ pub async fn execute_status(project_root: PathBuf) -> anyhow::Result<()> {
     let pid: u32 = std::fs::read_to_string(&pid_path)?.trim().parse()?;
     if is_running(pid) {
         let config = AutopilotConfig::load(&project_root)?;
+        if format == "json" {
+            println!("{}", serde_json::to_string_pretty(&serde_json::json!({
+                "status": "running",
+                "pid": pid,
+                "mode": config.mode,
+                "internal_state": state_json,
+                "log": project_root.join(LOG_FILE).display().to_string()
+            }))?);
+            return Ok(());
+        }
         println!("Autopilot: running");
-        println!("  PID:  {pid}");
-        println!("  Mode: {}", config.mode);
-        println!("  Log:  {}", project_root.join(LOG_FILE).display());
+        println!("  PID:    {pid}");
+        println!("  Mode:   {}", config.mode);
+        println!("  State:  {}", state_str);
+        println!("  Log:    {}", project_root.join(LOG_FILE).display());
     } else {
         std::fs::remove_file(&pid_path)?;
+        if format == "json" {
+            println!("{}", serde_json::to_string_pretty(&serde_json::json!({ "status": "stopped", "stale_pid_removed": true }))?);
+            return Ok(());
+        }
         println!("Autopilot: stopped (stale PID removed)");
     }
     Ok(())

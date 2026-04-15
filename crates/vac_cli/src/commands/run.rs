@@ -41,7 +41,9 @@ pub async fn execute(
 
     println!("🤖 Running task: {}", task_description);
     if approve {
-        println!("⚠️  Auto-approval enabled: Tools will run without confirmation.");
+        println!("⚠️  Permission Mode: AUTO-APPROVE (Tools will run without confirmation)");
+    } else {
+        println!("🛡️  Permission Mode: PROMPT (You will be prompted for tool execution)");
     }
     println!("   Priority: {:?} | Profile: {}", priority, profile_name);
     if profile_override.planner_gate {
@@ -56,23 +58,42 @@ pub async fn execute(
     }
 
     let (update_tx, mut update_rx) = tokio::sync::mpsc::unbounded_channel::<vac_core::engine::RuntimeUpdate>();
-    
-    // If --approve is set, we use an interactive approval channel.
-    // In a real CLI, this would need a TUI or stdin prompt.
-    // For now, we wire it to a dummy channel that auto-rejects if not interactive.
     let (approval_tx, approval_rx) = tokio::sync::mpsc::unbounded_channel::<vil_swarm::ApprovalResponse>();
-    let _ = approval_tx; // Keep for future stdin-to-channel wiring
 
+    // If auto-approve is enabled, tools shouldn't require approval anyway (policy="allow").
     tokio::spawn(async move {
         while let Some(update) = update_rx.recv().await {
             match update {
                 vac_core::engine::RuntimeUpdate::Status(msg) => println!("⏳ {}", msg),
                 vac_core::engine::RuntimeUpdate::ToolCall { name, .. } => println!("🛠️  Calling: {}", name),
-                vac_core::engine::RuntimeUpdate::ApprovalRequired { tool_name, .. } => {
-                    if !approve {
-                        println!("🛡️  Tool '{}' requires approval but --approve is not set. Auto-rejecting.", tool_name);
+                vac_core::engine::RuntimeUpdate::ApprovalRequired { tool_call_id, tool_name, .. } => {
+                    if approve {
+                        println!("\n[!] Unexpected approval required for: {}", tool_name);
+                        continue;
+                    }
+                    
+                    println!("\n[!] Tool requires approval: {}", tool_name);
+                    
+                    // Prompt user for approval interactively
+                    use std::io::Write;
+                    print!("Approve? [Y/n]: ");
+                    let _ = std::io::stdout().flush();
+                    let mut input = String::new();
+                    if std::io::stdin().read_line(&mut input).is_ok() {
+                        let input = input.trim().to_lowercase();
+                        let approved = input.is_empty() || input == "y" || input == "yes";
+                        let _ = approval_tx.send(vil_swarm::ApprovalResponse {
+                            tool_call_id,
+                            approved,
+                            reason: if approved { None } else { Some("Rejected by user via CLI".to_string()) },
+                        });
                     } else {
-                        println!("🛡️  Tool '{}' requires approval. (Interactive approval in 'vac run' is coming soon, use 'vac interactive' for now)", tool_name);
+                        // If reading fails, reject by default
+                        let _ = approval_tx.send(vil_swarm::ApprovalResponse {
+                            tool_call_id,
+                            approved: false,
+                            reason: Some("Input read error".to_string()),
+                        });
                     }
                 }
                 _ => {}
@@ -80,11 +101,7 @@ pub async fn execute(
         }
     });
 
-    let result = if approve {
-        engine.run_task_with_approvals(&task_description, Some(update_tx), None, Some(approval_rx)).await?
-    } else {
-        engine.run_task_with_updates(&task_description, Some(update_tx)).await?
-    };
+    let result = engine.run_task_with_approvals(&task_description, Some(update_tx), None, Some(approval_rx)).await?;
 
     println!("\n{}", "=".repeat(60));
     match &result.status {

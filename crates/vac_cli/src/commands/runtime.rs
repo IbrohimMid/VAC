@@ -4,8 +4,18 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-pub async fn execute_status(project_root: PathBuf) -> anyhow::Result<()> {
+pub async fn execute_status(project_root: PathBuf, format: &str) -> anyhow::Result<()> {
     let config = vac_core::VacConfig::load_with_fallback(&project_root)?;
+    if format == "json" {
+        let status = serde_json::json!({
+            "enabled": config.runtime.enable,
+            "operating_mode": config.runtime.operating_mode,
+            "max_jobs": config.runtime.max_concurrent_jobs,
+        });
+        println!("{}", serde_json::to_string_pretty(&status)?);
+        return Ok(());
+    }
+
     println!("VAC Runtime Status");
     println!("  enabled:        {}", config.runtime.enable);
     println!("  operating_mode: {}", config.runtime.operating_mode);
@@ -16,14 +26,112 @@ pub async fn execute_status(project_root: PathBuf) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub async fn execute_jobs(project_root: PathBuf) -> anyhow::Result<()> {
+pub async fn execute_jobs(project_root: PathBuf, format: &str) -> anyhow::Result<()> {
     let config = vac_core::VacConfig::load_with_fallback(&project_root)?;
-    if !config.runtime.enable {
-        println!("Runtime is disabled. No jobs.");
+    let queue_path = project_root.join(".vac/queue.json");
+    let queue = vac_runtime::TaskQueue::with_storage(queue_path);
+    let jobs = queue.list().await;
+
+    if format == "json" {
+        let jobs_json = serde_json::json!({
+            "enabled": config.runtime.enable,
+            "jobs": jobs
+        });
+        println!("{}", serde_json::to_string_pretty(&jobs_json)?);
         return Ok(());
     }
-    println!("No persistent job queue in this session.");
-    println!("Use `vac runtime start` (future) to attach a persistent scheduler.");
+
+    if !config.runtime.enable {
+        println!("Runtime is disabled. Set [runtime] enable = true in .vac/config.toml to activate.");
+    }
+    
+    if jobs.is_empty() {
+        println!("No jobs in the queue.");
+    } else {
+        println!("VAC Runtime Jobs ({} total):", jobs.len());
+        for job in jobs {
+            let status = match job.status {
+                vac_runtime::JobStatus::Queued => "Queued",
+                vac_runtime::JobStatus::Running => "Running",
+                vac_runtime::JobStatus::Completed => "Completed",
+                vac_runtime::JobStatus::Failed(_) => "Failed",
+                vac_runtime::JobStatus::Cancelled => "Cancelled",
+            };
+            let kind_str = match &job.kind {
+                vac_runtime::JobKind::RunTask { description } => format!("RunTask: {}", description),
+                vac_runtime::JobKind::DiagnosticSweep => "DiagnosticSweep".to_string(),
+                vac_runtime::JobKind::RulebookComplianceCheck => "RulebookComplianceCheck".to_string(),
+                vac_runtime::JobKind::PatchProposal { .. } => "PatchProposal".to_string(),
+            };
+            println!("  [{}] {} ({}) - {:?}", status, job.id, kind_str, job.created_at);
+        }
+    }
+    Ok(())
+}
+
+pub async fn execute_cancel(project_root: PathBuf, id: uuid::Uuid) -> anyhow::Result<()> {
+    let queue_path = project_root.join(".vac/queue.json");
+    let queue = vac_runtime::TaskQueue::with_storage(queue_path);
+    if queue.cancel(id).await {
+        println!("Job {} cancelled successfully.", id);
+    } else {
+        println!("Failed to cancel job {}. It may not exist, or it is already completed/failed.", id);
+    }
+    Ok(())
+}
+
+pub async fn execute_retry(project_root: PathBuf, id: uuid::Uuid) -> anyhow::Result<()> {
+    let queue_path = project_root.join(".vac/queue.json");
+    let queue = vac_runtime::TaskQueue::with_storage(queue_path);
+    if queue.retry(id).await {
+        println!("Job {} queued for retry.", id);
+    } else {
+        println!("Failed to retry job {}. It may not exist, or it is not in a failed/cancelled state.", id);
+    }
+    Ok(())
+}
+
+pub async fn execute_inspect(project_root: PathBuf, id: uuid::Uuid, format: &str) -> anyhow::Result<()> {
+    let queue_path = project_root.join(".vac/queue.json");
+    let queue = vac_runtime::TaskQueue::with_storage(queue_path);
+    
+    if let Some(job) = queue.get(id).await {
+        if format == "json" {
+            println!("{}", serde_json::to_string_pretty(&job)?);
+        } else {
+            let status = match &job.status {
+                vac_runtime::JobStatus::Queued => "Queued".to_string(),
+                vac_runtime::JobStatus::Running => "Running".to_string(),
+                vac_runtime::JobStatus::Completed => "Completed".to_string(),
+                vac_runtime::JobStatus::Failed(e) => format!("Failed: {}", e),
+                vac_runtime::JobStatus::Cancelled => "Cancelled".to_string(),
+            };
+            
+            let kind_str = match &job.kind {
+                vac_runtime::JobKind::RunTask { description } => format!("RunTask: {}", description),
+                vac_runtime::JobKind::DiagnosticSweep => "DiagnosticSweep".to_string(),
+                vac_runtime::JobKind::RulebookComplianceCheck => "RulebookComplianceCheck".to_string(),
+                vac_runtime::JobKind::PatchProposal { .. } => "PatchProposal".to_string(),
+            };
+
+            println!("Job Inspection: {}", job.id);
+            println!("  Kind:       {}", kind_str);
+            println!("  Status:     {}", status);
+            println!("  Created:    {}", job.created_at);
+            if let Some(started) = job.started_at {
+                println!("  Started:    {}", started);
+            }
+            if let Some(completed) = job.completed_at {
+                println!("  Completed:  {}", completed);
+            }
+            println!("  Retries:    {}/{}", job.retry_count, job.max_retries);
+            if let Some(summary) = &job.result_summary {
+                println!("  Summary:    {}", summary);
+            }
+        }
+    } else {
+        println!("Job {} not found.", id);
+    }
     Ok(())
 }
 

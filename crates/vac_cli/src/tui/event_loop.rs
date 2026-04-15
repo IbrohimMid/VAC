@@ -48,6 +48,7 @@ pub async fn run_tui(
     _send_init_prompt_on_start: bool,
     _recent_models: Vec<String>,
     _banner_message: Option<()>,
+    project_root: std::path::PathBuf,
 ) -> io::Result<()> {
     let _guard = TerminalGuard;
     enable_raw_mode()?;
@@ -67,6 +68,7 @@ pub async fn run_tui(
         model: model.clone(),
         session_id: None,
         checkpoint_path: checkpoint_path.clone(),
+        project_root,
     });
 
     // Add welcome messages
@@ -175,8 +177,27 @@ fn handle_input_event(
             }
             InputEvent::CommandPaletteSelect => {
                 let filtered = state.filtered_commands();
-                if let Some(cmd) = filtered.get(state.command_palette_selected) {
-                    let _ = output_tx.try_send(OutputEvent::ExecuteCommand(cmd.command.clone()));
+                if let Some(cmd) = filtered.get(state.command_palette_selected).cloned() {
+                    match cmd.source {
+                        crate::tui::app::CommandSource::BuiltIn => {
+                            if cmd.command == "/clear" {
+                                state.messages.clear();
+                                state.messages.extend(crate::tui::services::helper_block::welcome_messages(None, state));
+                            } else if cmd.command == "/sessions" {
+                                let _ = output_tx.try_send(OutputEvent::ListSessions);
+                            } else if cmd.command == "/new" {
+                                let _ = output_tx.try_send(OutputEvent::NewSession);
+                            } else {
+                                state.add_user_message(cmd.command.clone());
+                                let _ = output_tx.try_send(OutputEvent::UserMessage(cmd.command, None, vec![], None));
+                            }
+                        }
+                        crate::tui::app::CommandSource::BuiltInWithPrompt { prompt_content } |
+                        crate::tui::app::CommandSource::Custom { prompt_content } => {
+                            state.add_user_message(cmd.command.clone());
+                            let _ = output_tx.try_send(OutputEvent::UserMessage(prompt_content, None, vec![], None));
+                        }
+                    }
                 }
                 state.show_command_palette = false;
                 state.command_palette_input.clear();
@@ -264,6 +285,82 @@ fn handle_input_event(
         return;
     }
 
+    // Handle File Changes Popup
+    if state.show_file_changes_popup {
+        match event {
+            InputEvent::HandleEsc => {
+                state.show_file_changes_popup = false;
+            }
+            InputEvent::Up | InputEvent::ScrollUp => {
+                if state.file_changes_selected > 0 {
+                    state.file_changes_selected -= 1;
+                }
+            }
+            InputEvent::Down | InputEvent::ScrollDown => {
+                if state.file_changes_selected < state.modified_files.len().saturating_sub(1) {
+                    state.file_changes_selected += 1;
+                }
+            }
+            InputEvent::InputChanged(c) => {
+                state.file_changes_search.push(c);
+                state.file_changes_selected = 0;
+            }
+            InputEvent::InputBackspace => {
+                state.file_changes_search.pop();
+                state.file_changes_selected = 0;
+            }
+            InputEvent::FileChangesRevertFile => {
+                if let Some(file) = state.modified_files.get(state.file_changes_selected).cloned() {
+                    let mut success = false;
+                    if let Ok(session_id) = uuid::Uuid::parse_str(&state.session_id) {
+                        if vac_tools::journal::restore_snapshot(&state.project_root, session_id, &file).is_ok() {
+                            success = true;
+                        }
+                    }
+                    
+                    if success {
+                        state.add_assistant_message(format!("Reverted file: {}", file));
+                        state.modified_files.retain(|f| f != &file);
+                        if state.file_changes_selected >= state.modified_files.len() {
+                            state.file_changes_selected = state.modified_files.len().saturating_sub(1);
+                        }
+                        if state.modified_files.is_empty() {
+                            state.show_file_changes_popup = false;
+                        }
+                    } else {
+                        state.add_assistant_message(format!("Failed to revert file: {}", file));
+                    }
+                }
+            }
+            InputEvent::FileChangesRevertAll => {
+                let files = state.modified_files.clone();
+                if files.is_empty() {
+                    state.add_assistant_message("No files to revert.".to_string());
+                } else {
+                    let mut success_count = 0;
+                    if let Ok(session_id) = uuid::Uuid::parse_str(&state.session_id) {
+                        for file in &files {
+                            if vac_tools::journal::restore_snapshot(&state.project_root, session_id, file).is_ok() {
+                                success_count += 1;
+                            }
+                        }
+                    }
+                    state.add_assistant_message(format!("Reverted {}/{} files.", success_count, files.len()));
+                    state.modified_files.clear();
+                    state.file_changes_selected = 0;
+                    state.show_file_changes_popup = false;
+                }
+            }
+            InputEvent::FileChangesOpenEditor => {
+                if let Some(file) = state.modified_files.get(state.file_changes_selected).cloned() {
+                    state.add_assistant_message(format!("Opening editor for: {}", file));
+                }
+            }
+            _ => {}
+        }
+        return;
+    }
+
     // Normal input handling
     match event {
         InputEvent::InputChanged(c) => {
@@ -284,9 +381,39 @@ fn handle_input_event(
         InputEvent::InputSubmitted => {
             if !state.input.is_empty() {
                 let msg = state.input.get_content();
-                state.add_user_message(msg.clone());
                 state.input.clear();
-                let _ = output_tx.try_send(OutputEvent::UserMessage(msg, None, vec![], None));
+                
+                if msg.starts_with('/') {
+                    let cmd_name = msg.trim().to_string();
+                    if let Some(cmd) = state.commands.iter().find(|c| c.command == cmd_name).cloned() {
+                        match cmd.source {
+                            crate::tui::app::CommandSource::BuiltIn => {
+                                if cmd.command == "/clear" {
+                                    state.messages.clear();
+                                    state.messages.extend(crate::tui::services::helper_block::welcome_messages(None, state));
+                                } else if cmd.command == "/sessions" {
+                                    let _ = output_tx.try_send(OutputEvent::ListSessions);
+                                } else if cmd.command == "/new" {
+                                    let _ = output_tx.try_send(OutputEvent::NewSession);
+                                } else {
+                                    state.add_user_message(cmd.command.clone());
+                                    let _ = output_tx.try_send(OutputEvent::UserMessage(cmd.command, None, vec![], None));
+                                }
+                            }
+                            crate::tui::app::CommandSource::BuiltInWithPrompt { prompt_content } |
+                            crate::tui::app::CommandSource::Custom { prompt_content } => {
+                                state.add_user_message(cmd.command.clone());
+                                let _ = output_tx.try_send(OutputEvent::UserMessage(prompt_content, None, vec![], None));
+                            }
+                        }
+                    } else {
+                        state.add_user_message(msg.clone());
+                        let _ = output_tx.try_send(OutputEvent::UserMessage(msg, None, vec![], None));
+                    }
+                } else {
+                    state.add_user_message(msg.clone());
+                    let _ = output_tx.try_send(OutputEvent::UserMessage(msg, None, vec![], None));
+                }
             }
         }
         InputEvent::HandlePaste(text) => {
@@ -338,6 +465,19 @@ fn handle_input_event(
         }
         InputEvent::ShowShortcuts => {
             state.show_shortcuts = true;
+        }
+        InputEvent::ShowFileChangesPopup => {
+            state.show_file_changes_popup = true;
+            state.file_changes_selected = 0;
+            state.file_changes_search.clear();
+        }
+        InputEvent::ToggleAutoApprove => {
+            state.auto_approve = !state.auto_approve;
+            if state.auto_approve {
+                state.add_assistant_message("Permission Mode: AUTO-APPROVE (Tools will run without confirmation)".to_string());
+            } else {
+                state.add_assistant_message("Permission Mode: PROMPT (You will be prompted for tool execution)".to_string());
+            }
         }
         InputEvent::RequestSessionList => {
             let _ = output_tx.try_send(OutputEvent::ListSessions);
@@ -405,6 +545,13 @@ fn handle_backend_event(state: &mut AppState, event: InputEvent) {
             state.dialog_command = Some(tc);
             state.is_dialog_open = true;
             state.dialog_selected = 0;
+            state.permission_explanation = None;
+        }
+        InputEvent::ShowConfirmationDialogWithExplanation(tc, explanation) => {
+            state.dialog_command = Some(tc);
+            state.is_dialog_open = true;
+            state.dialog_selected = 0;
+            state.permission_explanation = explanation;
         }
         InputEvent::RunToolCall(tc) => {
             state.pending_tool_calls.push(tc);
@@ -413,6 +560,30 @@ fn handle_backend_event(state: &mut AppState, event: InputEvent) {
             state.pending_tool_calls.retain(|c| c.id != result.call.id);
             state.approved_tools.retain(|c| c.id != result.call.id);
             state.add_assistant_message(result.result);
+        }
+        InputEvent::TaskCompleted(result) => {
+            let mut content = result.summary.clone();
+            if !result.modified_files.is_empty() {
+                content.push_str("\n\n**Modified Files**:\n");
+                for file in &result.modified_files {
+                    content.push_str(&format!("- `{}`\n", file));
+                    if !state.modified_files.contains(file) {
+                        state.modified_files.push(file.clone());
+                    }
+                }
+            }
+            if !result.created_files.is_empty() {
+                content.push_str("\n**Created Files**:\n");
+                for file in &result.created_files {
+                    content.push_str(&format!("- `{}`\n", file));
+                    if !state.modified_files.contains(file) {
+                        state.modified_files.push(file.clone());
+                    }
+                }
+            }
+            state.add_assistant_message(content);
+            state.loading = false;
+            state.is_streaming = false;
         }
         _ => {}
     }

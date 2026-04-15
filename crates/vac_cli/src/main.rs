@@ -28,7 +28,12 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     /// Check VAC subsystem readiness
-    Doctor,
+    Doctor {
+        #[arg(long)]
+        strict: bool,
+        #[arg(long)]
+        fix: bool,
+    },
     /// Initialize VIL project context
     Init {
         #[arg(short, long)]
@@ -149,6 +154,21 @@ enum RuntimeAction {
     Jobs,
     /// Start the background scheduler (attaches live engine)
     Start,
+    /// Cancel a queued or running job
+    Cancel {
+        /// The UUID of the job to cancel
+        id: uuid::Uuid,
+    },
+    /// Retry a failed or cancelled job
+    Retry {
+        /// The UUID of the job to retry
+        id: uuid::Uuid,
+    },
+    /// Inspect a specific job's details
+    Inspect {
+        /// The UUID of the job to inspect
+        id: uuid::Uuid,
+    },
 }
 
 #[derive(Subcommand)]
@@ -176,6 +196,7 @@ async fn main() -> anyhow::Result<()> {
         fmt()
             .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| filter.into()))
             .with_target(false)
+            .with_writer(std::io::stderr)
             .init();
     }
 
@@ -184,7 +205,7 @@ async fn main() -> anyhow::Result<()> {
         .unwrap_or_else(|| std::env::current_dir().expect("Failed to get current directory"));
 
     match cli.command {
-        Commands::Doctor => commands::doctor::execute(project_root).await?,
+        Commands::Doctor { strict, fix } => commands::doctor::execute(project_root, &cli.format, strict, fix).await?,
         Commands::Init { force } => commands::init::execute(project_root, force).await?,
         Commands::Run { task, priority, profile, approve, target } => {
             commands::run::execute(project_root, task, priority, profile, approve, target).await?;
@@ -192,7 +213,7 @@ async fn main() -> anyhow::Result<()> {
         Commands::Interactive { resume } => commands::interactive::execute(project_root, resume).await?,
         Commands::Resume { checkpoint } => commands::resume::execute(project_root, checkpoint).await?,
         Commands::Restore { file } => commands::restore::execute(project_root, file).await?,
-        Commands::Status => commands::status::execute(project_root).await?,
+        Commands::Status => commands::status::execute(project_root, &cli.format).await?,
         Commands::Config { action } => commands::config::execute(project_root, action).await?,
         Commands::Auth { action } => commands::auth::execute(action).await?,
         Commands::Export { output, format, sign } => {
@@ -205,14 +226,17 @@ async fn main() -> anyhow::Result<()> {
         },
         Commands::Acp { port } => commands::acp::execute(project_root, port).await?,
         Commands::Runtime { action } => match action {
-            RuntimeAction::Status => commands::runtime::execute_status(project_root).await?,
-            RuntimeAction::Jobs => commands::runtime::execute_jobs(project_root).await?,
+            RuntimeAction::Status => commands::runtime::execute_status(project_root, &cli.format).await?,
+            RuntimeAction::Jobs => commands::runtime::execute_jobs(project_root, &cli.format).await?,
             RuntimeAction::Start => commands::runtime::execute_start(project_root).await?,
+            RuntimeAction::Cancel { id } => commands::runtime::execute_cancel(project_root, id).await?,
+            RuntimeAction::Retry { id } => commands::runtime::execute_retry(project_root, id).await?,
+            RuntimeAction::Inspect { id } => commands::runtime::execute_inspect(project_root, id, &cli.format).await?,
         },
         Commands::Autopilot { action } => match action {
             AutopilotAction::Up => commands::autopilot::execute_up(project_root).await?,
             AutopilotAction::Down => commands::autopilot::execute_down(project_root).await?,
-            AutopilotAction::Status => commands::autopilot::execute_status(project_root).await?,
+            AutopilotAction::Status => commands::autopilot::execute_status(project_root, &cli.format).await?,
         },
     }
 

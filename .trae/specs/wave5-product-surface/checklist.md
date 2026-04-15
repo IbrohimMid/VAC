@@ -1,0 +1,9 @@
+- [x] Output `--format json` valid dan stabil di CLI.
+- [x] TUI memiliki command palette dan mendukung slash commands.
+- [x] `vac doctor` dapat mengeluarkan JSON dan melakukan autofix.
+- [x] TUI memiliki panel review dengan kapabilitas bulk action dan restore per-file.
+- [x] Permission mode terlihat jelas dan seragam di seluruh entrypoint.
+- [x] Antrean (queue) runtime bersifat persisten dan survive saat restart.
+- [x] Pekerjaan (jobs) pada runtime dapat diinspeksi, dibatalkan, dan di-retry.
+- [x] Autopilot memiliki status/event detail dan tidak sekadar wrapper PID.
+- [x] Seluruh integrasi suite lulus dan tidak ada command placeholder ("future") yang tersisa.

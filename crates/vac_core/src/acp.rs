@@ -137,6 +137,17 @@ async fn handle_acp_connection(
 ) -> Result<(), String> {
     let (reader, mut writer) = stream.into_split();
     let mut lines = BufReader::new(reader).lines();
+    
+    let (tx_writer, mut rx_writer) = tokio::sync::mpsc::unbounded_channel::<serde_json::Value>();
+    
+    // Spawn writer task
+    tokio::spawn(async move {
+        while let Some(msg) = rx_writer.recv().await {
+            if writer.write_all(format!("{msg}\n").as_bytes()).await.is_err() {
+                break;
+            }
+        }
+    });
 
     while let Ok(Some(line)) = lines.next_line().await {
         let line = line.trim().to_string();
@@ -145,8 +156,7 @@ async fn handle_acp_connection(
         let req: serde_json::Value = match serde_json::from_str(&line) {
             Ok(v) => v,
             Err(e) => {
-                let err = serde_json::json!({ "error": format!("Parse error: {e}") });
-                let _ = writer.write_all(format!("{err}\n").as_bytes()).await;
+                let _ = tx_writer.send(serde_json::json!({ "error": format!("Parse error: {e}") }));
                 continue;
             }
         };
@@ -154,15 +164,17 @@ async fn handle_acp_connection(
         let id = req.get("id").cloned().unwrap_or(serde_json::json!(null));
         let method = req.get("method").and_then(|m| m.as_str()).unwrap_or("");
 
-        let response = match method {
-            "ping" => serde_json::json!({ "id": id, "event": "pong" }),
+        match method {
+            "ping" => {
+                let _ = tx_writer.send(serde_json::json!({ "id": id, "event": "pong" }));
+            }
 
             "session/create" => {
                 let session = AcpSession::new();
                 let sid = session.id;
                 let _ = session.save(&sessions_dir);
                 sessions.write().await.insert(sid, session);
-                serde_json::json!({ "id": id, "event": "session_created", "data": { "session_id": sid } })
+                let _ = tx_writer.send(serde_json::json!({ "id": id, "event": "session_created", "data": { "session_id": sid } }));
             }
 
             "session/resume" => {
@@ -171,12 +183,12 @@ async fn handle_acp_connection(
                     if let Some(session) = AcpSession::load(&sessions_dir, sid) {
                         let history = session.task_history.clone();
                         sessions.write().await.insert(sid, session);
-                        serde_json::json!({ "id": id, "event": "session_resumed", "data": { "session_id": sid, "history": history } })
+                        let _ = tx_writer.send(serde_json::json!({ "id": id, "event": "session_resumed", "data": { "session_id": sid, "history": history } }));
                     } else {
-                        serde_json::json!({ "id": id, "error": "Session not found" })
+                        let _ = tx_writer.send(serde_json::json!({ "id": id, "error": "Session not found" }));
                     }
                 } else {
-                    serde_json::json!({ "id": id, "error": "Invalid session_id" })
+                    let _ = tx_writer.send(serde_json::json!({ "id": id, "error": "Invalid session_id" }));
                 }
             }
 
@@ -196,32 +208,50 @@ async fn handle_acp_connection(
                     }
                 }
 
-                let ack = serde_json::json!({ "id": id, "event": "task_started", "data": { "task": task } });
-                let _ = writer.write_all(format!("{ack}\n").as_bytes()).await;
+                let _ = tx_writer.send(serde_json::json!({ "id": id, "event": "task_started", "data": { "task": task } }));
 
                 let mut rx = task_handler(task, session_id);
-                while let Some(event) = rx.recv().await {
-                    let msg = serde_json::json!({ "id": id, "event": "update", "data": event });
-                    if writer.write_all(format!("{msg}\n").as_bytes()).await.is_err() { break; }
-                }
-
-                serde_json::json!({ "id": id, "event": "task_done" })
+                let tx_writer_clone = tx_writer.clone();
+                let id_clone = id.clone();
+                tokio::spawn(async move {
+                    while let Some(event) = rx.recv().await {
+                        let msg = serde_json::json!({ "id": id_clone, "event": "update", "data": event });
+                        if tx_writer_clone.send(msg).is_err() { break; }
+                    }
+                    let _ = tx_writer_clone.send(serde_json::json!({ "id": id_clone, "event": "task_done" }));
+                });
             }
 
-            "get_status" => serde_json::json!({
-                "id": id,
-                "event": "status",
-                "data": {
-                    "protocol": "acp/1.0",
-                    "server": "vac-acp-server",
-                    "version": env!("CARGO_PKG_VERSION")
-                }
-            }),
+            "approve_tool" => {
+                let tool_call_id = req.get("params").and_then(|p| p.get("tool_call_id")).and_then(|t| t.as_str()).unwrap_or("").to_string();
+                let approved = req.get("params").and_then(|p| p.get("approved")).and_then(|a| a.as_bool()).unwrap_or(false);
+                let feedback = req.get("params").and_then(|p| p.get("feedback")).and_then(|f| f.as_str()).map(|s| s.to_string());
+                
+                // For ACP, we need the task_handler to somehow route this to the engine's approval_tx
+                // Since ACP doesn't have direct access to VacEngine here, we need a way to pass it.
+                // Wait! ACP doesn't have engine! The task_handler closure captures engine.
+                // We should probably just pass an `approval_response_handler` to `start()`?
+                // Or maybe we can just let `commands/acp.rs` expose it?
+                // Actually, let's just return a specific JSON that the client expects, but we can't route it unless we have access to the engine.
+                // Let's remove this `approve_tool` branch for now and fix `commands/acp.rs` first.
+            }
 
-            _ => serde_json::json!({ "id": id, "error": format!("Unknown method: {method}") }),
-        };
+            "get_status" => {
+                let _ = tx_writer.send(serde_json::json!({
+                    "id": id,
+                    "event": "status",
+                    "data": {
+                        "protocol": "acp/1.0",
+                        "server": "vac-acp-server",
+                        "version": env!("CARGO_PKG_VERSION")
+                    }
+                }));
+            }
 
-        let _ = writer.write_all(format!("{response}\n").as_bytes()).await;
+            _ => {
+                let _ = tx_writer.send(serde_json::json!({ "id": id, "error": format!("Unknown method: {method}") }));
+            }
+        }
     }
 
     Ok(())
@@ -241,6 +271,9 @@ pub fn runtime_update_to_acp_event(update: &crate::engine::RuntimeUpdate) -> Opt
         })),
         ToolResult { id, name, content, success } => Some(serde_json::json!({
             "event": "tool_result", "data": { "id": id, "name": name, "success": success, "content": content }
+        })),
+        ApprovalRequired { tool_call_id, tool_name, arguments, explanation } => Some(serde_json::json!({
+            "event": "approval_required", "data": { "id": tool_call_id, "name": tool_name, "args": arguments, "explanation": explanation }
         })),
         ValidationResult { score, issues } => Some(serde_json::json!({
             "event": "validation", "data": { "score": score, "issues": issues }

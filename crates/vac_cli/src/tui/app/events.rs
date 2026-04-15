@@ -56,6 +56,7 @@ pub enum InputEvent {
     
     // Dialog/Approval
     ShowConfirmationDialog(ToolCall),
+    ShowConfirmationDialogWithExplanation(ToolCall, Option<String>),
     DialogUp,
     DialogDown,
     DialogSelect,
@@ -100,6 +101,7 @@ pub enum InputEvent {
     MouseDrag(u16, u16),
     MouseDragEnd(u16, u16),
     MouseMove(u16, u16),
+    TaskCompleted(vac_core::task::TaskResult),
 }
 
 impl InputEvent {

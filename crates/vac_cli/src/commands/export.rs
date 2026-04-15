@@ -28,6 +28,16 @@ pub async fn execute(
     let session = vac_core::Session::load_latest(&project_root)?
         .ok_or_else(|| anyhow::anyhow!("No session found. Run a task first."))?;
 
+    // Load trace records if available
+    let trace_path = project_root.join(".vac/traces").join(format!("{}.json", session.id));
+    let records = if trace_path.exists() {
+        let content = std::fs::read_to_string(&trace_path)?;
+        serde_json::from_str::<Vec<vac_trace::recorder::TraceRecord>>(&content)?
+    } else {
+        println!("   ⚠️  No trace records found for this session.");
+        Vec::new()
+    };
+
     // Create output directory
     if let Some(parent) = output_path.parent() {
         std::fs::create_dir_all(parent)?;
@@ -37,8 +47,14 @@ pub async fn execute(
     match format.as_str() {
         "vac-cbor" => {
             println!("   💾 Exporting as VAC CBOR...");
-            // TODO: vac_trace::export_vac_cbor(&session, &output_path, sign)?;
-            println!("   (VAC CBOR export implementation pending)");
+            vac_trace::exporter::export_vac(
+                &session.id.to_string(),
+                records,
+                &output_path,
+                sign,
+                None,
+            ).map_err(|e| anyhow::anyhow!("Failed to export VAC CBOR: {}", e))?;
+            println!("   ✓ Exported as VAC CBOR");
         }
         "opencode-json" => {
             let json = serde_json::to_string_pretty(&session)?;
@@ -46,7 +62,10 @@ pub async fn execute(
             println!("   ✓ Exported as OpenCode JSON");
         }
         "claude-jsonl" => {
-            println!("   (Claude JSONL export implementation pending)");
+            println!("   🤖 Exporting as Claude JSONL...");
+            vac_trace::exporter::export_claude_jsonl(&records, &output_path)
+                .map_err(|e| anyhow::anyhow!("Failed to export Claude JSONL: {}", e))?;
+            println!("   ✓ Exported as Claude JSONL");
         }
         _ => {
             anyhow::bail!(

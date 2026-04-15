@@ -132,6 +132,13 @@ pub async fn execute_tools(
                 }
                 Err(e) => {
                     if matches!(e, vac_tools::error::ToolError::ApprovalRequired(_)) {
+                        // Extract explanation from error if available
+                        let explanation = if let vac_tools::error::ToolError::ApprovalRequired(reason) = &e {
+                            Some(reason.clone())
+                        } else {
+                            None
+                        };
+
                         state.pending_approvals.push(vac_tools::approvals::PendingApproval {
                             tool_call_id: call.id.clone(),
                             tool_name: call.name.clone(),
@@ -145,6 +152,7 @@ pub async fn execute_tools(
                                 tool_call_id: call.id.clone(),
                                 tool_name: call.name.clone(),
                                 arguments: call.arguments.clone(),
+                                explanation,
                             });
                         }
                         

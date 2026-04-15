@@ -79,14 +79,15 @@ async fn handle_runtime_update(
             };
             let _ = input_tx_inner.send(InputEvent::ToolResult(tool_result)).await;
         }
-        RuntimeUpdate::Completed(_result) => {
+        RuntimeUpdate::Completed(result) => {
             let _ = input_tx_inner.send(InputEvent::EndLoadingOperation(LoadingOperation::LlmRequest)).await;
+            let _ = input_tx_inner.send(InputEvent::TaskCompleted(result)).await;
         }
         RuntimeUpdate::Failed(err) => {
             let _ = input_tx_inner.send(InputEvent::EndLoadingOperation(LoadingOperation::LlmRequest)).await;
             let _ = input_tx_inner.send(InputEvent::Error(err)).await;
         }
-        RuntimeUpdate::ApprovalRequired { tool_call_id, tool_name, arguments } => {
+        RuntimeUpdate::ApprovalRequired { tool_call_id, tool_name, arguments, explanation } => {
             let tool_call = ToolCall {
                 id: tool_call_id,
                 r#type: "function".to_string(),
@@ -96,7 +97,7 @@ async fn handle_runtime_update(
                 },
                 metadata: None,
             };
-            let _ = input_tx_inner.send(InputEvent::ShowConfirmationDialog(tool_call)).await;
+            let _ = input_tx_inner.send(InputEvent::ShowConfirmationDialogWithExplanation(tool_call, explanation)).await;
         }
         _ => {}
     }
@@ -166,25 +167,15 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                     });
                 }
                 OutputEvent::AcceptTool(tc) => {
-                    // Structured approval flow: send directly to swarm's approval channel
-                    let approval_tx = active_approval_tx_clone.lock().await;
-                    if let Some(ref tx) = *approval_tx {
-                        let _ = tx.send(vil_swarm::ApprovalResponse {
-                            tool_call_id: tc.id.clone(),
-                            approved: true,
-                            reason: None,
-                        });
+                    let mut lock = engine_clone.lock().await;
+                    if let Err(e) = lock.approve_tool_call(tc.id.clone()).await {
+                        log::error!("Failed to approve tool call {}: {}", tc.id, e);
                     }
                 }
                 OutputEvent::RejectTool(tc, _) => {
-                    // Structured rejection flow: send directly to swarm's approval channel
-                    let approval_tx = active_approval_tx_clone.lock().await;
-                    if let Some(ref tx) = *approval_tx {
-                        let _ = tx.send(vil_swarm::ApprovalResponse {
-                            tool_call_id: tc.id.clone(),
-                            approved: false,
-                            reason: Some(format!("User rejected tool '{}'", tc.function.name)),
-                        });
+                    let mut lock = engine_clone.lock().await;
+                    if let Err(e) = lock.reject_tool_call(tc.id.clone()).await {
+                        log::error!("Failed to reject tool call {}: {}", tc.id, e);
                     }
                 }
                 OutputEvent::ExecuteCommand(cmd) => {
@@ -299,6 +290,7 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
         false,
         vec![],
         None,
+        project_root,
     ).await?;
 
     Ok(())

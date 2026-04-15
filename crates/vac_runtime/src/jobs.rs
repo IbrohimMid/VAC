@@ -70,6 +70,15 @@ impl Job {
         self.trigger = trigger;
         self
     }
+
+    pub fn kind_name(&self) -> String {
+        match &self.kind {
+            JobKind::RunTask { description } => format!("RunTask: {}", description),
+            JobKind::DiagnosticSweep => "DiagnosticSweep".to_string(),
+            JobKind::RulebookComplianceCheck => "RulebookComplianceCheck".to_string(),
+            JobKind::PatchProposal { .. } => "PatchProposal".to_string(),
+        }
+    }
 }
 
 #[cfg(test)]

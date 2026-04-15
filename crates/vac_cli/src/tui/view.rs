@@ -50,6 +50,10 @@ pub fn view(f: &mut Frame, state: &mut AppState) {
     if state.show_shortcuts {
         render_shortcuts(f, state);
     }
+
+    if state.show_file_changes_popup {
+        render_file_changes_popup(f, state);
+    }
 }
 
 fn render_messages(f: &mut Frame, state: &mut AppState, area: Rect) {
@@ -111,7 +115,7 @@ fn render_input(f: &mut Frame, state: &mut AppState, area: Rect) {
         let (row, col) = state.input.cursor;
         let cy = area.y + 1 + (row as u16).min(area.height.saturating_sub(3));
         let cx = area.x + 1 + (col as u16).min(area.width.saturating_sub(3));
-        f.set_cursor(cx, cy);
+        f.set_cursor_position((cx, cy));
     }
 }
 
@@ -191,6 +195,27 @@ fn render_approval_dialog(f: &mut Frame, state: &mut AppState) {
 
     // Tool call info
     let mut lines = Vec::new();
+    
+    // Approval Queue View
+    let queue_info = format!("Queue: {} pending | {} approved | {} rejected", 
+        state.pending_tool_calls.len(), state.approved_tools.len(), state.rejected_tools.len());
+    lines.push(Line::styled(queue_info, Style::default().fg(Color::Cyan)));
+    lines.push(Line::from(""));
+
+    // Permission Mode & Explainability
+    if state.auto_approve {
+        lines.push(Line::styled("Permission Mode: AUTO-APPROVE (Ctrl+A to toggle)", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)));
+    } else {
+        lines.push(Line::styled("Permission Mode: MANUAL (Ctrl+A to toggle)", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)));
+    }
+    
+    if let Some(reason) = &state.permission_explanation {
+        lines.push(Line::from(""));
+        lines.push(Line::styled("Why is permission needed?", Style::default().add_modifier(Modifier::BOLD)));
+        lines.push(Line::styled(reason, Style::default().fg(Color::DarkGray)));
+    }
+    lines.push(Line::from(""));
+
     if let Some(tc) = &state.dialog_command {
         lines.push(Line::from(vec![
             Span::styled("Tool: ", Style::default().add_modifier(Modifier::BOLD)),
@@ -280,6 +305,11 @@ fn render_shortcuts(f: &mut Frame, _state: &mut AppState) {
         "Up/Down - Scroll/Navigate",
         "Enter - Submit/Select",
         "Ctrl+L - Toggle mouse capture",
+        "Ctrl+X - Revert file",
+        "Ctrl+Z - Revert all files",
+        "Ctrl+N - Open in editor",
+        "Ctrl+O - Show file changes (Review Mode)",
+        "Ctrl+A - Toggle auto-approve",
     ];
     let items: Vec<ListItem> = shortcuts
         .iter()
@@ -288,6 +318,87 @@ fn render_shortcuts(f: &mut Frame, _state: &mut AppState) {
     let list = List::new(items)
         .block(Block::default().borders(Borders::ALL).title("Shortcuts (Esc to close)"));
     f.render_widget(list, area);
+}
+
+fn render_file_changes_popup(f: &mut Frame, state: &mut AppState) {
+    let area = centered_rect(60, 60, f.area());
+    f.render_widget(Clear, area);
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(3), // Search
+            Constraint::Min(3),    // Content
+            Constraint::Length(1), // Footer
+        ])
+        .split(area);
+
+    let query = state.file_changes_search.to_lowercase();
+    let filtered_files: Vec<_> = state.modified_files
+        .iter()
+        .filter(|f| query.is_empty() || f.to_lowercase().contains(&query))
+        .collect();
+
+    // Search input
+    let search_text = if state.file_changes_search.is_empty() {
+        vec![
+            Span::styled(">", Style::default().fg(Color::Magenta)),
+            Span::raw(" "),
+            Span::styled("Type to filter...", Style::default().fg(Color::DarkGray)),
+        ]
+    } else {
+        vec![
+            Span::styled(">", Style::default().fg(Color::Magenta)),
+            Span::raw(" "),
+            Span::styled(&state.file_changes_search, Style::default().add_modifier(Modifier::BOLD)),
+            Span::styled("|", Style::default().fg(Color::Cyan)),
+        ]
+    };
+
+    let search_p = Paragraph::new(Line::from(search_text))
+        .block(Block::default().borders(Borders::ALL).title("Modified Files (Review Mode)"));
+    f.render_widget(search_p, chunks[0]);
+
+    // Files list
+    let mut visible_lines = Vec::new();
+    let height = chunks[1].height as usize;
+    let total_items = filtered_files.len();
+    let scroll = state.file_changes_scroll;
+
+    for i in 0..height {
+        let idx = scroll + i;
+        if idx >= total_items {
+            break;
+        }
+        let file = filtered_files[idx];
+        let is_selected = idx == state.file_changes_selected;
+        let style = if is_selected {
+            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(Color::White)
+        };
+        visible_lines.push(ListItem::new(Line::styled(format!("  {} ", file), style)));
+    }
+
+    let list = List::new(visible_lines)
+        .block(Block::default().borders(Borders::ALL));
+    f.render_widget(list, chunks[1]);
+
+    // Footer
+    let footer_text = vec![
+        Span::styled("↑/↓", Style::default().fg(Color::Cyan)),
+        Span::styled(": Navigate  ", Style::default().fg(Color::DarkGray)),
+        Span::styled("Ctrl+x", Style::default().fg(Color::Cyan)),
+        Span::styled(": Revert  ", Style::default().fg(Color::DarkGray)),
+        Span::styled("Ctrl+z", Style::default().fg(Color::Cyan)),
+        Span::styled(": Revert All  ", Style::default().fg(Color::DarkGray)),
+        Span::styled("Ctrl+n", Style::default().fg(Color::Cyan)),
+        Span::styled(": Edit  ", Style::default().fg(Color::DarkGray)),
+        Span::styled("Esc", Style::default().fg(Color::Cyan)),
+        Span::styled(": Close", Style::default().fg(Color::DarkGray)),
+    ];
+    let footer = Paragraph::new(Line::from(footer_text)).alignment(ratatui::layout::Alignment::Left);
+    f.render_widget(footer, chunks[2]);
 }
 
 fn render_side_panel(f: &mut Frame, state: &mut AppState, area: Rect) {

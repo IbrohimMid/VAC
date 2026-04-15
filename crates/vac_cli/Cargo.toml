@@ -20,6 +20,7 @@ tui2 = []
 [dependencies]
 vac_core = { workspace = true }
 vil_swarm = { workspace = true }
+vac_trace = { workspace = true }
 vac_tools = { workspace = true }
 vac_runtime = { workspace = true }
 

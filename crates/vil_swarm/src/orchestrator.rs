@@ -55,6 +55,7 @@ pub enum AgentLoopEvent {
         tool_call_id: String,
         tool_name: String,
         arguments: serde_json::Value,
+        explanation: Option<String>,
     },
 }
 
