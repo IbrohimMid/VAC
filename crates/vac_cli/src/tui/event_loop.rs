@@ -3,6 +3,7 @@
 use crate::tui::Model;
 use crate::tui::app::{AppState, AppStateOptions, InputEvent, OutputEvent};
 use crate::tui::event::map_crossterm_event_to_input_event;
+use crate::tui::handlers::HandlerContext;
 use crate::tui::services::helper_block::welcome_messages;
 use crate::tui::terminal::TerminalGuard;
 use crate::tui::view::view;

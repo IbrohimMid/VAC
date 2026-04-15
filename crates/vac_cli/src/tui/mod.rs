@@ -22,6 +22,7 @@
 
 pub mod adapter;
 pub mod constants;
+pub mod handlers;
 pub mod runner;
 pub mod terminal;
 pub mod types;
