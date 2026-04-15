@@ -449,15 +449,24 @@ impl AutopilotController {
         match router.route(&tool_name, arguments.clone(), &context).await {
             Ok(value) => Ok(format!("Tool executed: {tool_name} | result={}", value)),
             Err(vac_tools::error::ToolError::ApprovalRequired(reason)) => {
-                let store = vac_core::ApprovalStore::new(self.project_root.clone());
                 let session_id = resolve_or_create_session_id(&self.project_root);
+                let task_id = job.id;
+                let active = vac_core::approval::ActiveApprovalRegistry::new();
+                let approvals =
+                    vac_core::ApprovalHandle::new(self.project_root.clone(), active.clone());
+                let store = approvals.store().clone();
+
+                let (approval_tx, _approval_rx) =
+                    tokio::sync::mpsc::unbounded_channel::<vil_swarm::ApprovalResponse>();
+                active.register(task_id, session_id, approval_tx).await;
+
                 store.record_request(
                     tool_call_id.clone(),
                     tool_name.clone(),
                     arguments.clone(),
                     Some(reason),
                     Some(session_id),
-                    Some(job.id),
+                    Some(task_id),
                 )?;
 
                 self.write_state(AutopilotStateFile {
@@ -477,11 +486,14 @@ impl AutopilotController {
                 let _ = store.clear_intent(&tool_call_id);
 
                 if intent.approved {
-                    store.record_decision(
-                        tool_call_id.clone(),
-                        true,
-                        intent.reason.clone(),
-                    )?;
+                    approvals.approve(tool_call_id.clone()).await?;
+                } else {
+                    approvals
+                        .reject(tool_call_id.clone(), intent.reason.clone())
+                        .await?;
+                }
+
+                if intent.approved {
                     let value = router
                         .route_approved(&tool_name, arguments, &context)
                         .await?;
@@ -490,11 +502,6 @@ impl AutopilotController {
                         value
                     ))
                 } else {
-                    store.record_decision(
-                        tool_call_id.clone(),
-                        false,
-                        intent.reason.clone(),
-                    )?;
                     anyhow::bail!(format!(
                         "Tool rejected: {}",
                         intent.reason.unwrap_or_else(|| "no reason".to_string())
@@ -580,5 +587,70 @@ async fn wait_for_approval_intent(
             _ = tokio::time::sleep(std::time::Duration::from_millis(200)) => {}
             _ = shutdown.changed() => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tokio::sync::mpsc;
+
+    #[tokio::test]
+    async fn toolcall_overlap_routes_to_correct_task() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().to_path_buf();
+        std::fs::create_dir_all(root.join(".vac")).unwrap();
+
+        let session_id = uuid::Uuid::new_v4();
+        let task_a = uuid::Uuid::new_v4();
+        let task_b = uuid::Uuid::new_v4();
+        let tc_a = format!("tc-{task_a}");
+        let tc_b = format!("tc-{task_b}");
+
+        let active = vac_core::approval::ActiveApprovalRegistry::new();
+        let approvals = vac_core::ApprovalHandle::new(root.clone(), active.clone());
+        let store = approvals.store().clone();
+
+        let (tx_a, mut rx_a) = mpsc::unbounded_channel::<vil_swarm::ApprovalResponse>();
+        let (tx_b, mut rx_b) = mpsc::unbounded_channel::<vil_swarm::ApprovalResponse>();
+        active.register(task_a, session_id, tx_a).await;
+        active.register(task_b, session_id, tx_b).await;
+
+        store
+            .record_request(
+                tc_a.clone(),
+                "file_write".to_string(),
+                serde_json::json!({"path":"a.txt","content":"a"}),
+                Some("needs approval".to_string()),
+                Some(session_id),
+                Some(task_a),
+            )
+            .unwrap();
+        store
+            .record_request(
+                tc_b.clone(),
+                "file_write".to_string(),
+                serde_json::json!({"path":"b.txt","content":"b"}),
+                Some("needs approval".to_string()),
+                Some(session_id),
+                Some(task_b),
+            )
+            .unwrap();
+
+        approvals.approve(tc_a.clone()).await.unwrap();
+        let got_a = tokio::time::timeout(std::time::Duration::from_secs(1), rx_a.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(got_a.tool_call_id, tc_a);
+
+        let none_b = tokio::time::timeout(std::time::Duration::from_millis(100), rx_b.recv()).await;
+        assert!(none_b.is_err());
+
+        approvals.approve(tc_b.clone()).await.unwrap();
+        let got_b = tokio::time::timeout(std::time::Duration::from_secs(1), rx_b.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(got_b.tool_call_id, tc_b);
     }
 }

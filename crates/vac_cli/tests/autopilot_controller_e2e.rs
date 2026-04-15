@@ -176,6 +176,206 @@ fn autopilot_waiting_approval_state_is_observable_and_unblocks_on_store_intent()
             .unwrap_or(false)
     });
     assert!(done_ok);
+    let status = read_queue(root)
+        .iter()
+        .find(|j| j.id == id)
+        .map(|j| j.status.clone())
+        .unwrap();
+    assert_eq!(status, JobStatus::Completed);
+    assert!(root.join("autopilot_approval_test.txt").exists());
+
+    run_vac(root, &["autopilot", "down"]).success();
+}
+
+#[test]
+fn autopilot_toolcall_reject_flow_blocks_execution() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+
+    write_autopilot_toml(root, "auto", 1);
+    write_vac_config_toml(root);
+    let job = Job::new(JobKind::ToolCall {
+        tool_name: "file_write".to_string(),
+        arguments: json!({
+            "path": "autopilot_reject_test.txt",
+            "content": "hello"
+        }),
+    });
+    let id = job.id;
+    write_queue(root, vec![job]);
+
+    run_vac(root, &["autopilot", "up"]).success();
+
+    let mut tool_call_id: Option<String> = None;
+    let waiting_ok = wait_until(Duration::from_secs(4), || {
+        if let Ok(content) = std::fs::read_to_string(root.join(".vac/autopilot.state")) {
+            if let Ok(sf) = serde_json::from_str::<vac_runtime::AutopilotStateFile>(&content) {
+                if let vac_runtime::AutopilotState::WaitingApproval { tool_call_id: id } = sf.state
+                {
+                    tool_call_id = Some(id);
+                    return true;
+                }
+            }
+        }
+        false
+    });
+    assert!(waiting_ok);
+    let tool_call_id = tool_call_id.unwrap();
+
+    let store = vac_core::ApprovalStore::new(root.to_path_buf());
+    let record_ok = wait_until(Duration::from_secs(4), || {
+        store.load(&tool_call_id).ok().flatten().is_some()
+    });
+    assert!(record_ok);
+    store
+        .record_intent(tool_call_id.clone(), false, Some("no".to_string()))
+        .unwrap();
+
+    let done_ok = wait_until(Duration::from_secs(4), || {
+        read_queue(root)
+            .iter()
+            .find(|j| j.id == id)
+            .map(|j| j.status == JobStatus::Completed || matches!(j.status, JobStatus::Failed(_)))
+            .unwrap_or(false)
+    });
+    assert!(done_ok);
+    let status = read_queue(root)
+        .iter()
+        .find(|j| j.id == id)
+        .map(|j| j.status.clone())
+        .unwrap();
+    assert!(matches!(status, JobStatus::Failed(_)));
+    assert!(!root.join("autopilot_reject_test.txt").exists());
+
+    run_vac(root, &["autopilot", "down"]).success();
+}
+
+#[test]
+fn autopilot_toolcall_stale_approval_errors_and_does_not_resolve_record() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+
+    write_autopilot_toml(root, "auto", 1);
+    write_vac_config_toml(root);
+    let job = Job::new(JobKind::ToolCall {
+        tool_name: "file_write".to_string(),
+        arguments: json!({
+            "path": "autopilot_stale_test.txt",
+            "content": "hello"
+        }),
+    });
+    write_queue(root, vec![job]);
+
+    run_vac(root, &["autopilot", "up"]).success();
+
+    let mut tool_call_id: Option<String> = None;
+    let waiting_ok = wait_until(Duration::from_secs(4), || {
+        if let Ok(content) = std::fs::read_to_string(root.join(".vac/autopilot.state")) {
+            if let Ok(sf) = serde_json::from_str::<vac_runtime::AutopilotStateFile>(&content) {
+                if let vac_runtime::AutopilotState::WaitingApproval { tool_call_id: id } = sf.state
+                {
+                    tool_call_id = Some(id);
+                    return true;
+                }
+            }
+        }
+        false
+    });
+    assert!(waiting_ok);
+    let tool_call_id = tool_call_id.unwrap();
+
+    let store = vac_core::ApprovalStore::new(root.to_path_buf());
+    let record_ok = wait_until(Duration::from_secs(4), || {
+        store.load(&tool_call_id).ok().flatten().is_some()
+    });
+    assert!(record_ok);
+
+    run_vac(root, &["autopilot", "down"]).success();
+
+    let approvals = vac_core::ApprovalHandle::new(
+        root.to_path_buf(),
+        vac_core::approval::ActiveApprovalRegistry::new(),
+    );
+    let err = tokio::runtime::Runtime::new()
+        .unwrap()
+        .block_on(async { approvals.approve(tool_call_id.clone()).await })
+        .unwrap_err();
+    assert!(err.to_string().contains("No active approval channel"));
+
+    let rec = store.load(&tool_call_id).unwrap().unwrap();
+    assert_eq!(rec.state, vac_core::ApprovalState::Pending);
+}
+
+#[test]
+fn autopilot_toolcall_wrong_target_isolation() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+
+    write_autopilot_toml(root, "auto", 1);
+    write_vac_config_toml(root);
+    let job = Job::new(JobKind::ToolCall {
+        tool_name: "file_write".to_string(),
+        arguments: json!({
+            "path": "autopilot_wrong_target_test.txt",
+            "content": "hello"
+        }),
+    });
+    let id = job.id;
+    write_queue(root, vec![job]);
+
+    run_vac(root, &["autopilot", "up"]).success();
+
+    let mut tool_call_id: Option<String> = None;
+    let waiting_ok = wait_until(Duration::from_secs(4), || {
+        if let Ok(content) = std::fs::read_to_string(root.join(".vac/autopilot.state")) {
+            if let Ok(sf) = serde_json::from_str::<vac_runtime::AutopilotStateFile>(&content) {
+                if let vac_runtime::AutopilotState::WaitingApproval { tool_call_id: id } = sf.state
+                {
+                    tool_call_id = Some(id);
+                    return true;
+                }
+            }
+        }
+        false
+    });
+    assert!(waiting_ok);
+    let tool_call_id = tool_call_id.unwrap();
+
+    let store = vac_core::ApprovalStore::new(root.to_path_buf());
+    let record_ok = wait_until(Duration::from_secs(4), || {
+        store.load(&tool_call_id).ok().flatten().is_some()
+    });
+    assert!(record_ok);
+
+    let path = store.approvals_dir().join(format!("{tool_call_id}.json"));
+    let mut v: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    v["task_id"] = serde_json::Value::String(uuid::Uuid::new_v4().to_string());
+    std::fs::write(&path, serde_json::to_string_pretty(&v).unwrap()).unwrap();
+
+    store
+        .record_intent(tool_call_id.clone(), true, Some("ok".to_string()))
+        .unwrap();
+
+    let done_ok = wait_until(Duration::from_secs(4), || {
+        read_queue(root)
+            .iter()
+            .find(|j| j.id == id)
+            .map(|j| j.status == JobStatus::Completed || matches!(j.status, JobStatus::Failed(_)))
+            .unwrap_or(false)
+    });
+    assert!(done_ok);
+
+    let status = read_queue(root)
+        .iter()
+        .find(|j| j.id == id)
+        .map(|j| j.status.clone())
+        .unwrap();
+    assert!(matches!(status, JobStatus::Failed(_)));
+    assert!(!root.join("autopilot_wrong_target_test.txt").exists());
+
+    let rec = store.load(&tool_call_id).unwrap().unwrap();
+    assert_eq!(rec.state, vac_core::ApprovalState::Pending);
 
     run_vac(root, &["autopilot", "down"]).success();
 }
