@@ -1,0 +1,18 @@
+- [ ] Stream 1: Ada tests nyata untuk review workstation (selection/filter normalization, revert state update, diff loader, open/close transitions, slash semantics)
+- [ ] Stream 1: Tidak ada event “pinjaman” untuk revert filtered (harus `ReviewRevertFiltered` end-to-end)
+- [ ] Stream 1: Diff scroll end-to-end dipakai (state `ReviewDiffState.scroll` → event → render viewport)
+- [ ] Stream 2: Workstation review usable end-to-end via `/review` (selection, filter, diff, revert selected/filtered/all, close)
+- [ ] Stream 2: Status visual per file tampil (pending/restored/failed + has_snapshot) dan hint keyboard sinkron dengan behavior
+- [ ] Stream 2: Error restore per file dan error diff load terlihat di UI (bukan hanya assistant message)
+- [ ] Stream 2: Open editor aman dengan fallback `VAC_EDITOR` → `EDITOR` → `nvim/vim/nano`, tanpa crash jika editor tidak tersedia
+- [ ] Stream 3: Autopilot phase 1 punya state machine lebih kaya (Idle/Polling/Executing/WaitingApproval/Backoff/Failed)
+- [ ] Stream 3: `.vac/autopilot.state` berisi field minimal yang disepakati + `updated_at` dan dipakai oleh status
+- [ ] Stream 3: `vac autopilot status` menampilkan status yang actionable (tidak tipis)
+- [ ] Stream 3: `poll_interval_secs` benar-benar dipakai di loop/tick
+- [ ] Stream 3: `mode=monitor` vs `mode=auto` observable beda perilaku
+- [ ] Stream 4: Runtime/queue path helper konsisten dan ada test restart/reload yang load-bearing
+- [ ] Stream 4: Permission mode messaging/hints konsisten (tidak drift)
+- [ ] Stream 4: Ada test gate tambahan yang relevan (bukan cuma compile-pass)
+- [ ] Verifikasi: `cargo test --workspace` lulus
+- [ ] Delivery: Perubahan sudah ada di `main` dan laporan pasca-push mencantumkan commit hash + file berubah + per-stream selesai/partial + test yang dijalankan
+
