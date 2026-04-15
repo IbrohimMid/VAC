@@ -6,7 +6,9 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::future::Future;
 use std::path::{Path, PathBuf};
+use std::pin::Pin;
 use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
@@ -80,6 +82,12 @@ pub type TaskHandler = Arc<
         + Sync,
 >;
 
+pub type ApprovalHandler = Arc<
+    dyn Fn(String, bool, Option<String>) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send>>
+        + Send
+        + Sync,
+>;
+
 impl AcpServer {
     pub fn new(project_root: &Path) -> Self {
         Self {
@@ -89,7 +97,12 @@ impl AcpServer {
         }
     }
 
-    pub async fn start(&self, port: u16, task_handler: TaskHandler) -> Result<(), String> {
+    pub async fn start(
+        &self,
+        port: u16,
+        task_handler: TaskHandler,
+        approval_handler: Option<ApprovalHandler>,
+    ) -> Result<(), String> {
         let listener = TcpListener::bind(format!("127.0.0.1:{port}"))
             .await
             .map_err(|e| format!("Failed to bind ACP server on port {port}: {e}"))?;
@@ -105,6 +118,7 @@ impl AcpServer {
         let state = self.state.clone();
         let sessions = self.sessions.clone();
         let sessions_dir = self.sessions_dir.clone();
+        let approval_handler = approval_handler.clone();
 
         tokio::spawn(async move {
             loop {
@@ -119,8 +133,10 @@ impl AcpServer {
                         let sess = sessions.clone();
                         let sdir = sessions_dir.clone();
                         let handler = task_handler.clone();
+                        let approval = approval_handler.clone();
                         tokio::spawn(async move {
-                            if let Err(e) = handle_acp_connection(stream, handler, sess, sdir).await
+                            if let Err(e) =
+                                handle_acp_connection(stream, handler, approval, sess, sdir).await
                             {
                                 warn!(error = %e, "ACP connection error");
                             }
@@ -157,6 +173,7 @@ impl AcpServer {
 async fn handle_acp_connection(
     stream: TcpStream,
     task_handler: TaskHandler,
+    approval_handler: Option<ApprovalHandler>,
     sessions: Arc<RwLock<HashMap<Uuid, AcpSession>>>,
     sessions_dir: PathBuf,
 ) -> Result<(), String> {
@@ -270,34 +287,94 @@ async fn handle_acp_connection(
             }
 
             "approve_tool" => {
-                let _tool_call_id = req
+                let tool_call_id = req
                     .get("params")
                     .and_then(|p| p.get("tool_call_id"))
                     .and_then(|t| t.as_str())
                     .unwrap_or("")
                     .to_string();
-                let _approved = req
+                let approved = req
                     .get("params")
                     .and_then(|p| p.get("approved"))
                     .and_then(|a| a.as_bool())
                     .unwrap_or(false);
-                let _feedback = req
+                let feedback = req
                     .get("params")
                     .and_then(|p| p.get("feedback"))
                     .and_then(|f| f.as_str())
                     .map(|s| s.to_string());
 
-                // For ACP, we need the task_handler to somehow route this to the engine's approval_tx
-                // Since ACP doesn't have direct access to VacEngine here, we need a way to pass it.
-                // Wait! ACP doesn't have engine! The task_handler closure captures engine.
-                // We should probably just pass an `approval_response_handler` to `start()`?
-                // Or maybe we can just let `commands/acp.rs` expose it?
-                // Actually, let's just return a specific JSON that the client expects, but we can't route it unless we have access to the engine.
-                // Let's remove this `approve_tool` branch for now and fix `commands/acp.rs` first.
-                let _ = tx_writer.send(serde_json::json!({
-                    "id": id,
-                    "error": "approve_tool is not supported over ACP yet"
-                }));
+                if tool_call_id.is_empty() {
+                    let _ = tx_writer.send(serde_json::json!({
+                        "id": id,
+                        "error": "Missing params.tool_call_id"
+                    }));
+                    continue;
+                }
+
+                let Some(handler) = approval_handler.clone() else {
+                    let _ = tx_writer.send(serde_json::json!({
+                        "id": id,
+                        "error": "Approval handler not configured"
+                    }));
+                    continue;
+                };
+
+                match handler(tool_call_id.clone(), approved, feedback).await {
+                    Ok(()) => {
+                        let _ = tx_writer.send(serde_json::json!({
+                            "id": id,
+                            "event": "tool_approval_resolved",
+                            "data": { "tool_call_id": tool_call_id, "approved": approved }
+                        }));
+                    }
+                    Err(e) => {
+                        let _ = tx_writer.send(serde_json::json!({ "id": id, "error": e }));
+                    }
+                }
+            }
+
+            "reject_tool" => {
+                let tool_call_id = req
+                    .get("params")
+                    .and_then(|p| p.get("tool_call_id"))
+                    .and_then(|t| t.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let feedback = req
+                    .get("params")
+                    .and_then(|p| p.get("feedback"))
+                    .and_then(|f| f.as_str())
+                    .map(|s| s.to_string());
+
+                if tool_call_id.is_empty() {
+                    let _ = tx_writer.send(serde_json::json!({
+                        "id": id,
+                        "error": "Missing params.tool_call_id"
+                    }));
+                    continue;
+                }
+
+                let Some(handler) = approval_handler.clone() else {
+                    let _ = tx_writer.send(serde_json::json!({
+                        "id": id,
+                        "error": "Approval handler not configured"
+                    }));
+                    continue;
+                };
+
+                match handler(tool_call_id.clone(), false, feedback).await {
+                    Ok(()) => {
+                        let _ = tx_writer.send(serde_json::json!({
+                            "id": id,
+                            "event": "tool_approval_resolved",
+                            "data": { "tool_call_id": tool_call_id, "approved": false }
+                        }));
+                    }
+                    Err(e) => {
+                        let _ = tx_writer.send(serde_json::json!({ "id": id, "error": e }));
+                    }
+                }
             }
 
             "get_status" => {

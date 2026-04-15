@@ -2,21 +2,41 @@
 
 use std::path::PathBuf;
 use std::sync::Arc;
-use tokio::sync::RwLock;
+use tokio::sync::Mutex;
 
 pub async fn execute(project_root: PathBuf, port: u16) -> anyhow::Result<()> {
     println!("🔌 Starting VAC ACP server on port {port}...");
     println!("   Protocol: acp/1.0 (JSON-over-TCP, newline-delimited)");
     println!("   Sessions: {}/.vac/sessions/", project_root.display());
-    println!("🛡️  Permission Mode: PROMPT (Auto-rejecting tools requiring approval over ACP)");
+    println!("🛡️  Permission Mode: PROMPT (Approvals resolved via ACP approve_tool)");
     println!("   Press Ctrl+C to stop.\n");
 
     // Initialize engine
     let mut engine = vac_core::VacEngine::new(project_root.clone()).await?;
     engine.init().await?;
-    let engine = Arc::new(RwLock::new(engine));
+    let approvals = engine.approval_handle();
+    let engine = Arc::new(Mutex::new(engine));
 
     let server = vac_core::AcpServer::new(&project_root);
+
+    let approval_handler: vac_core::acp::ApprovalHandler = Arc::new(move |tool_call_id,
+                                                                      approved,
+                                                                      feedback| {
+        let approvals = approvals.clone();
+        Box::pin(async move {
+            if approved {
+                approvals
+                    .approve(tool_call_id)
+                    .await
+                    .map_err(|e| e.to_string())
+            } else {
+                approvals
+                    .reject(tool_call_id, feedback)
+                    .await
+                    .map_err(|e| e.to_string())
+            }
+        })
+    });
 
     // Task handler: delegates to VacEngine, streams RuntimeUpdate as ACP events
     let handler: vac_core::acp::TaskHandler = Arc::new(move |task, _session_id| {
@@ -37,20 +57,9 @@ pub async fn execute(project_root: PathBuf, port: u16) -> anyhow::Result<()> {
                 }
             });
 
-            // Create approval channels for this task
-            let (approval_tx, approval_rx) =
-                tokio::sync::mpsc::unbounded_channel::<vil_swarm::ApprovalResponse>();
-
-            // We drop approval_tx immediately so that if a tool requires approval,
-            // vil_swarm receives a closed channel and auto-rejects the tool instead of hanging.
-            // This ensures a consistent permission mode (respecting "ask" policy)
-            // even when the entrypoint (ACP) cannot prompt the user interactively.
-            drop(approval_tx);
-
+            let mut engine = engine.lock().await;
             let result = engine
-                .write()
-                .await
-                .run_task_with_approvals(&task, Some(update_tx), None, Some(approval_rx))
+                .run_task_with_approvals(&task, Some(update_tx), None, None)
                 .await;
 
             match result {
@@ -80,7 +89,7 @@ pub async fn execute(project_root: PathBuf, port: u16) -> anyhow::Result<()> {
     });
 
     server
-        .start(port, handler)
+        .start(port, handler, Some(approval_handler))
         .await
         .map_err(|e| anyhow::anyhow!(e))?;
     println!("✓ ACP server ready on port {port}");
