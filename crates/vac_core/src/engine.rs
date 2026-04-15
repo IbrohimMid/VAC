@@ -667,42 +667,22 @@ impl VacEngine {
             return;
         }
         let session = self.session.read().await;
-        // Store completed tasks as user+assistant message pairs for context continuity
-        let mut messages: Vec<vil_llm::provider::Message> = Vec::new();
-        for task in session.tasks.iter().filter(|t| matches!(t.status, crate::task::TaskStatus::Completed)) {
-            // User message: the task description
-            messages.push(vil_llm::provider::Message::user(task.description.clone()));
-
-            // Assistant message: the result summary (if available)
-            if let Some(task_result) = session.results.get(&task.id) {
-                let summary = if task_result.summary.is_empty() {
-                    format!("Task completed ({} tokens)", task_result.total_tokens_used)
-                } else {
-                    task_result.summary.clone()
-                };
-                messages.push(vil_llm::provider::Message::assistant(summary));
-            }
-        }
-        let envelope = vil_swarm::checkpoint::CheckpointEnvelope::new(
-            Some(session.id),
-            messages,
-            serde_json::json!({
-                "last_task_id": result.task_id.0.to_string(),
-                "last_status": format!("{:?}", result.status),
-                "total_tokens": result.total_tokens_used,
-                "completed_tasks": session.metadata.total_tasks_completed,
-            }),
-        );
+        // Instead of writing a custom envelope, we rely on SwarmOrchestrator saving AgentRunState
+        // via `state.save_checkpoint(...)` which handles all the rich info.
+        // We just save a tiny marker file so we know this session exists.
         let path = checkpoint_dir.join(format!("{}.json", session.id));
-        match vil_swarm::checkpoint::serialize_checkpoint(&envelope) {
-            Ok(bytes) => {
-                if let Err(e) = std::fs::write(&path, bytes) {
-                    warn!(error = %e, "Failed to write checkpoint");
-                } else {
-                    info!(path = %path.display(), "Checkpoint saved");
-                }
-            }
-            Err(e) => warn!(error = %e, "Failed to serialize checkpoint"),
+        let metadata = serde_json::json!({
+            "run_id": session.id.to_string(),
+            "last_task_id": result.task_id.0.to_string(),
+            "last_status": format!("{:?}", result.status),
+            "total_tokens": result.total_tokens_used,
+            "completed_tasks": session.metadata.total_tasks_completed,
+            "state_file": format!("{}_state.json", session.id)
+        });
+        if let Err(e) = std::fs::write(&path, serde_json::to_string_pretty(&metadata).unwrap_or_default()) {
+            warn!(error = %e, "Failed to write checkpoint marker");
+        } else {
+            info!(path = %path.display(), "Checkpoint marker saved");
         }
     }
 

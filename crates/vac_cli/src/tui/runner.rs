@@ -125,45 +125,10 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
 
     // Handle session restore if requested
     if resume {
-        let mut eng = engine.lock().await;
         if let Ok(Some(session)) = vac_core::session::Session::load_latest(&project_root) {
-            let mut messages = Vec::new();
-            for task in &session.tasks {
-                messages.push(crate::tui::app::Message {
-                    id: task.id.0,
-                    role: "user".to_string(),
-                    content: task.description.clone(),
-                    tool_calls: None,
-                });
-                if let Some(result) = session.results.get(&task.id) {
-                    let mut content = result.summary.clone();
-                    if !result.modified_files.is_empty() {
-                        content.push_str("\n\n**Modified Files**:\n");
-                        for file in &result.modified_files {
-                            content.push_str(&format!("- `{}`\n", file));
-                        }
-                    }
-                    if !result.created_files.is_empty() {
-                        content.push_str("\n**Created Files**:\n");
-                        for file in &result.created_files {
-                            content.push_str(&format!("- `{}`\n", file));
-                        }
-                    }
-                    messages.push(crate::tui::app::Message {
-                        id: uuid::Uuid::new_v4(),
-                        role: "assistant".to_string(),
-                        content,
-                        tool_calls: None,
-                    });
-                }
-            }
-            if let Ok(_) = eng.load_session(session.id).await {
-                let _ = input_tx.send(InputEvent::SessionRestored {
-                    id: session.id.to_string(),
-                    title: format!("Session {}", &session.id.to_string()[..8]),
-                    messages,
-                }).await;
-            }
+            let session_id = session.id.to_string();
+            // Just send it through the output channel directly
+            let _ = output_tx.send(OutputEvent::ResumeSession(session_id)).await;
         }
     }
 

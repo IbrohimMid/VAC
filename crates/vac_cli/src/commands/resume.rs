@@ -5,10 +5,12 @@ use std::path::PathBuf;
 pub async fn execute(project_root: PathBuf, checkpoint_path: PathBuf) -> anyhow::Result<()> {
     println!("Loading checkpoint from: {}", checkpoint_path.display());
 
-    let checkpoint = vil_swarm::checkpoint::load_checkpoint_from_file(&checkpoint_path)
-        .map_err(|e| anyhow::anyhow!("Failed to load checkpoint: {}", e))?;
-
-    let session_id = checkpoint.run_id.ok_or_else(|| anyhow::anyhow!("No run_id in checkpoint"))?;
+    let session_id_str = checkpoint_path.file_stem()
+        .and_then(|s| s.to_str())
+        .ok_or_else(|| anyhow::anyhow!("Invalid checkpoint filename"))?;
+        
+    let session_id = uuid::Uuid::parse_str(session_id_str.replace("_state", "").as_str())
+        .map_err(|e| anyhow::anyhow!("Failed to parse session ID: {}", e))?;
 
     println!("\n{}", "=".repeat(60));
     println!("✓ Session restored (headless mode)");
