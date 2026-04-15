@@ -125,7 +125,7 @@ fn autopilot_auto_mode_executes_job_end_to_end() {
 }
 
 #[test]
-fn autopilot_waiting_approval_state_is_observable_and_unblocks_on_file() {
+fn autopilot_waiting_approval_state_is_observable_and_unblocks_on_store_intent() {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
 
@@ -159,13 +159,14 @@ fn autopilot_waiting_approval_state_is_observable_and_unblocks_on_file() {
     assert!(waiting_ok);
     let tool_call_id = tool_call_id.unwrap();
 
-    let approval_path = vac_runtime::approval_file_path(root, &tool_call_id);
-    let payload = serde_json::json!({ "approved": true, "reason": "test" });
-    std::fs::write(
-        approval_path,
-        serde_json::to_string_pretty(&payload).unwrap(),
-    )
-    .unwrap();
+    let store = vac_core::ApprovalStore::new(root.to_path_buf());
+    let record_ok = wait_until(Duration::from_secs(4), || {
+        store.load(&tool_call_id).ok().flatten().is_some()
+    });
+    assert!(record_ok);
+    store
+        .record_intent(tool_call_id.clone(), true, Some("test".to_string()))
+        .unwrap();
 
     let done_ok = wait_until(Duration::from_secs(4), || {
         read_queue(root)

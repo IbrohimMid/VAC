@@ -6,7 +6,7 @@ pub mod queue;
 pub mod scheduler;
 pub mod watcher;
 
-pub use autopilot::{AutopilotController, approval_file_path, approval_request_file_path};
+pub use autopilot::AutopilotController;
 pub use cron_scheduler::{CronEntry, CronScheduler};
 pub use executor::{OperatingMode, TaskExecutor};
 pub use jobs::{Job, JobKind, JobStatus, JobTrigger};

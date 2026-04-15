@@ -1,9 +1,8 @@
 use std::collections::HashSet;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use chrono::Utc;
-use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
 use crate::executor::{OperatingMode, TaskExecutor};
@@ -11,23 +10,12 @@ use crate::jobs::{Job, JobKind, JobStatus};
 use crate::queue::TaskQueue;
 use crate::scheduler::{AutopilotEvent, AutopilotState, AutopilotStateFile};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AutopilotApprovalRequest {
-    pub tool_call_id: String,
-    pub tool_name: String,
-    pub arguments: serde_json::Value,
-    pub explanation: Option<String>,
-    pub job_id: uuid::Uuid,
-    pub created_at: chrono::DateTime<chrono::Utc>,
-}
-
 pub struct AutopilotController {
     project_root: PathBuf,
     queue: Arc<TaskQueue>,
     executor: TaskExecutor,
     config: vac_core::config::AutopilotConfig,
     state_path: PathBuf,
-    approvals_dir: PathBuf,
     engine: Option<Arc<Mutex<vac_core::VacEngine>>>,
 }
 
@@ -42,7 +30,6 @@ impl AutopilotController {
         ));
         Ok(Self {
             state_path: project_root.join(".vac/autopilot.state"),
-            approvals_dir: project_root.join(".vac/autopilot.approvals"),
             project_root,
             queue,
             executor,
@@ -233,12 +220,11 @@ impl AutopilotController {
 
         let (update_tx, mut update_rx) =
             tokio::sync::mpsc::unbounded_channel::<vac_core::engine::RuntimeUpdate>();
-        let (approval_tx, approval_rx) =
-            tokio::sync::mpsc::unbounded_channel::<vil_swarm::ApprovalResponse>();
+        let approvals = engine.lock().await.approval_handle();
+        let store = approvals.store().clone();
 
         let queue = self.queue.clone();
         let state_path = self.state_path.clone();
-        let approvals_dir = self.approvals_dir.clone();
         let mode = self.config.mode.clone();
         let poll_interval_secs = self.config.poll_interval_secs;
         let job_id = job.id;
@@ -248,14 +234,15 @@ impl AutopilotController {
 
         tokio::spawn({
             let pending = pending.clone();
-            let approval_tx = approval_tx.clone();
+            let approvals = approvals.clone();
+            let store = store.clone();
             async move {
                 while let Some(update) = update_rx.recv().await {
                     if let vac_core::engine::RuntimeUpdate::ApprovalRequired {
                         tool_call_id,
-                        tool_name,
-                        arguments,
-                        explanation,
+                        tool_name: _,
+                        arguments: _,
+                        explanation: _,
                     } = update
                     {
                         let is_new = {
@@ -266,17 +253,6 @@ impl AutopilotController {
                         if !is_new {
                             continue;
                         }
-
-                        let req = AutopilotApprovalRequest {
-                            tool_call_id: tool_call_id.clone(),
-                            tool_name: tool_name.clone(),
-                            arguments: arguments.clone(),
-                            explanation: explanation.clone(),
-                            job_id,
-                            created_at: Utc::now(),
-                        };
-
-                        let _ = write_approval_request(&approvals_dir, &req);
 
                         let queue_len = queued_len(&queue).await;
                         write_state_at(
@@ -296,28 +272,60 @@ impl AutopilotController {
                         );
 
                         tokio::spawn({
-                            let approvals_dir = approvals_dir.clone();
                             let state_path = state_path.clone();
                             let mode = mode.clone();
                             let queue = queue.clone();
                             let kind_label = kind_label.clone();
                             let pending = pending.clone();
-                            let approval_tx = approval_tx.clone();
+                            let approvals = approvals.clone();
+                            let store = store.clone();
                             let mut shutdown = shutdown.clone();
                             async move {
-                                let response = wait_for_approval_response(
-                                    &approvals_dir,
+                                let intent = wait_for_approval_intent(
+                                    &store,
                                     &tool_call_id,
                                     &mut shutdown,
                                 )
-                                .await
-                                .unwrap_or_else(|e| vil_swarm::ApprovalResponse {
-                                    tool_call_id: tool_call_id.clone(),
-                                    approved: false,
-                                    reason: Some(e.to_string()),
-                                });
+                                .await;
 
-                                let _ = approval_tx.send(response);
+                                if let Ok(intent) = intent {
+                                    let res = if intent.approved {
+                                        approvals.approve(tool_call_id.clone()).await
+                                    } else {
+                                        approvals
+                                            .reject(tool_call_id.clone(), intent.reason.clone())
+                                            .await
+                                    };
+
+                                    if let Err(e) = res {
+                                        let store = store.clone();
+                                        let id = tool_call_id.clone();
+                                        let _ = tokio::task::spawn_blocking(move || {
+                                            store.clear_intent(&id)
+                                        })
+                                        .await;
+
+                                        let queue_len = queued_len(&queue).await;
+                                        write_state_at(
+                                            &state_path,
+                                            AutopilotStateFile {
+                                                state: AutopilotState::Backoff {
+                                                    until: Utc::now()
+                                                        + chrono::Duration::seconds(
+                                                            poll_interval_secs as i64,
+                                                        ),
+                                                },
+                                                mode: mode.clone(),
+                                                poll_interval_secs,
+                                                queue_len,
+                                                current_job: Some(job_id),
+                                                last_event: Some(AutopilotEvent::TaskFailed),
+                                                last_error: Some(e.to_string()),
+                                                updated_at: Utc::now(),
+                                            },
+                                        );
+                                    }
+                                }
 
                                 {
                                     let mut p = pending.lock().await;
@@ -375,7 +383,7 @@ impl AutopilotController {
             JobKind::RunTask { description } => engine
                 .lock()
                 .await
-                .run_task_with_approvals(description, Some(update_tx), None, Some(approval_rx))
+                .run_task_with_approvals(description, Some(update_tx), None, None)
                 .await
                 .map_err(|e| anyhow::anyhow!("Engine error: {e}"))?,
             JobKind::PatchProposal { files } => {
@@ -383,7 +391,7 @@ impl AutopilotController {
                 engine
                     .lock()
                     .await
-                    .run_task_with_approvals(&task, Some(update_tx), None, Some(approval_rx))
+                    .run_task_with_approvals(&task, Some(update_tx), None, None)
                     .await
                     .map_err(|e| anyhow::anyhow!("Engine error: {e}"))?
             }
@@ -441,15 +449,16 @@ impl AutopilotController {
         match router.route(&tool_name, arguments.clone(), &context).await {
             Ok(value) => Ok(format!("Tool executed: {tool_name} | result={}", value)),
             Err(vac_tools::error::ToolError::ApprovalRequired(reason)) => {
-                let req = AutopilotApprovalRequest {
-                    tool_call_id: tool_call_id.clone(),
-                    tool_name: tool_name.clone(),
-                    arguments: arguments.clone(),
-                    explanation: Some(reason),
-                    job_id: job.id,
-                    created_at: Utc::now(),
-                };
-                write_approval_request(&self.approvals_dir, &req)?;
+                let store = vac_core::ApprovalStore::new(self.project_root.clone());
+                let session_id = resolve_or_create_session_id(&self.project_root);
+                store.record_request(
+                    tool_call_id.clone(),
+                    tool_name.clone(),
+                    arguments.clone(),
+                    Some(reason),
+                    Some(session_id),
+                    Some(job.id),
+                )?;
 
                 self.write_state(AutopilotStateFile {
                     state: AutopilotState::WaitingApproval {
@@ -464,11 +473,15 @@ impl AutopilotController {
                     updated_at: Utc::now(),
                 });
 
-                let response =
-                    wait_for_approval_response(&self.approvals_dir, &tool_call_id, &mut shutdown)
-                        .await?;
+                let intent = wait_for_approval_intent(&store, &tool_call_id, &mut shutdown).await?;
+                let _ = store.clear_intent(&tool_call_id);
 
-                if response.approved {
+                if intent.approved {
+                    store.record_decision(
+                        tool_call_id.clone(),
+                        true,
+                        intent.reason.clone(),
+                    )?;
                     let value = router
                         .route_approved(&tool_name, arguments, &context)
                         .await?;
@@ -477,27 +490,20 @@ impl AutopilotController {
                         value
                     ))
                 } else {
+                    store.record_decision(
+                        tool_call_id.clone(),
+                        false,
+                        intent.reason.clone(),
+                    )?;
                     anyhow::bail!(format!(
                         "Tool rejected: {}",
-                        response.reason.unwrap_or_else(|| "no reason".to_string())
+                        intent.reason.unwrap_or_else(|| "no reason".to_string())
                     ))
                 }
             }
             Err(e) => Err(anyhow::anyhow!("Tool error: {e}")),
         }
     }
-}
-
-pub fn approval_file_path(project_root: &Path, tool_call_id: &str) -> PathBuf {
-    project_root
-        .join(".vac/autopilot.approvals")
-        .join(format!("{tool_call_id}.json"))
-}
-
-pub fn approval_request_file_path(project_root: &Path, tool_call_id: &str) -> PathBuf {
-    project_root
-        .join(".vac/autopilot.approvals")
-        .join(format!("{tool_call_id}.request.json"))
 }
 
 fn write_state_at(path: &PathBuf, state: AutopilotStateFile) {
@@ -518,22 +524,23 @@ async fn queued_len(queue: &TaskQueue) -> usize {
         .count()
 }
 
-fn write_approval_request(
-    dir: &std::path::Path,
-    req: &AutopilotApprovalRequest,
-) -> anyhow::Result<()> {
-    std::fs::create_dir_all(dir)?;
-    let path = dir.join(format!("{}.request.json", req.tool_call_id));
-    std::fs::write(path, serde_json::to_string_pretty(req)?)?;
-    Ok(())
+fn resolve_or_create_session_id(project_root: &PathBuf) -> uuid::Uuid {
+    match vac_core::Session::load_latest(project_root) {
+        Ok(Some(s)) => s.id,
+        _ => {
+            let session = vac_core::Session::new(project_root.clone());
+            let id = session.id;
+            let _ = session.save();
+            id
+        }
+    }
 }
 
-async fn wait_for_approval_response(
-    dir: &std::path::Path,
+async fn wait_for_approval_intent(
+    store: &vac_core::ApprovalStore,
     tool_call_id: &str,
     shutdown: &mut tokio::sync::watch::Receiver<bool>,
-) -> anyhow::Result<vil_swarm::ApprovalResponse> {
-    let approval_path = dir.join(format!("{tool_call_id}.json"));
+) -> anyhow::Result<vac_core::approval::ApprovalIntent> {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(300);
 
     loop {
@@ -541,30 +548,32 @@ async fn wait_for_approval_response(
             anyhow::bail!("Shutdown while waiting approval");
         }
 
-        if approval_path.exists() {
-            let content = std::fs::read_to_string(&approval_path)?;
-            let v: serde_json::Value = serde_json::from_str(&content)?;
-            let approved = v.get("approved").and_then(|b| b.as_bool()).unwrap_or(false);
-            let reason = v
-                .get("reason")
-                .and_then(|s| s.as_str())
-                .map(|s| s.to_string());
-            let _ = std::fs::remove_file(&approval_path);
-            let _ = std::fs::remove_file(dir.join(format!("{tool_call_id}.request.json")));
+        let record = {
+            let store = store.clone();
+            let id = tool_call_id.to_string();
+            tokio::task::spawn_blocking(move || store.load(&id))
+                .await
+                .map_err(|e| anyhow::anyhow!(e))??
+        };
 
-            return Ok(vil_swarm::ApprovalResponse {
-                tool_call_id: tool_call_id.to_string(),
-                approved,
-                reason,
-            });
+        let Some(record) = record else {
+            anyhow::bail!("Unknown tool_call_id (no approval record found): {tool_call_id}");
+        };
+
+        if record.state != vac_core::ApprovalState::Pending {
+            anyhow::bail!(
+                "Approval is not pending (tool_call_id={}, state={:?})",
+                tool_call_id,
+                record.state
+            );
+        }
+
+        if let Some(intent) = record.intent {
+            return Ok(intent);
         }
 
         if std::time::Instant::now() > deadline {
-            return Ok(vil_swarm::ApprovalResponse {
-                tool_call_id: tool_call_id.to_string(),
-                approved: false,
-                reason: Some("approval timeout".to_string()),
-            });
+            anyhow::bail!("approval timeout");
         }
 
         tokio::select! {

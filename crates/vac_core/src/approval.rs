@@ -36,6 +36,14 @@ pub enum ApprovalEvent {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApprovalIntent {
+    pub intent_id: Uuid,
+    pub approved: bool,
+    pub reason: Option<String>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ApprovalRecord {
     pub version: u32,
     pub tool_call_id: String,
@@ -49,6 +57,8 @@ pub struct ApprovalRecord {
     pub reason: Option<String>,
     pub session_id: Option<Uuid>,
     pub task_id: Option<Uuid>,
+    #[serde(default)]
+    pub intent: Option<ApprovalIntent>,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -86,6 +96,7 @@ impl ApprovalStateMachine {
                 reason: None,
                 session_id: None,
                 task_id: None,
+                intent: None,
             },
         }
     }
@@ -110,6 +121,7 @@ impl ApprovalStateMachine {
                 self.record.created_at = Utc::now();
                 self.record.resolved_at = None;
                 self.record.reason = None;
+                self.record.intent = None;
             }
             ApprovalEvent::Approve { reason } => {
                 if self.record.resolved_at.is_some() {
@@ -118,6 +130,7 @@ impl ApprovalStateMachine {
                 self.record.state = ApprovalState::Approved;
                 self.record.resolved_at = Some(Utc::now());
                 self.record.reason = reason;
+                self.record.intent = None;
             }
             ApprovalEvent::Reject { reason } => {
                 if self.record.resolved_at.is_some() {
@@ -126,6 +139,7 @@ impl ApprovalStateMachine {
                 self.record.state = ApprovalState::Rejected;
                 self.record.resolved_at = Some(Utc::now());
                 self.record.reason = reason;
+                self.record.intent = None;
             }
         }
         Ok(self)
@@ -208,6 +222,48 @@ impl ApprovalStore {
         let record = sm.clone().into_record();
         self.write(&record)?;
         Ok(record)
+    }
+
+    pub fn record_intent(
+        &self,
+        tool_call_id: String,
+        approved: bool,
+        reason: Option<String>,
+    ) -> VacResult<ApprovalRecord> {
+        std::fs::create_dir_all(&self.approvals_dir)?;
+
+        let mut record = self.load(&tool_call_id)?.ok_or_else(|| {
+            VacError::Task(format!(
+                "Unknown tool_call_id (no approval record found): {tool_call_id}"
+            ))
+        })?;
+
+        if record.state != ApprovalState::Pending {
+            return Err(VacError::Task(format!(
+                "Approval is not pending (tool_call_id={tool_call_id}, state={:?})",
+                record.state
+            )));
+        }
+
+        record.intent = Some(ApprovalIntent {
+            intent_id: Uuid::new_v4(),
+            approved,
+            reason,
+            created_at: Utc::now(),
+        });
+        self.write(&record)?;
+        Ok(record)
+    }
+
+    pub fn clear_intent(&self, tool_call_id: &str) -> VacResult<()> {
+        let Some(mut record) = self.load(tool_call_id)? else {
+            return Ok(());
+        };
+        if record.intent.is_some() {
+            record.intent = None;
+            self.write(&record)?;
+        }
+        Ok(())
     }
 
     pub fn load(&self, tool_call_id: &str) -> VacResult<Option<ApprovalRecord>> {

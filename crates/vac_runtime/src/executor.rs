@@ -78,14 +78,13 @@ impl TaskExecutor {
                         })?;
 
                         let mode = self.operating_mode.clone();
-                        let (approval_tx, approval_rx) =
-                            tokio::sync::mpsc::unbounded_channel::<vil_swarm::ApprovalResponse>();
+                        let approvals = engine.lock().await.approval_handle();
 
                         // We need an updates channel to listen for ApprovalRequired
                         let (update_tx, mut update_rx) = tokio::sync::mpsc::unbounded_channel::<
                             vac_core::engine::RuntimeUpdate,
                         >();
-                        let approval_tx_clone = approval_tx.clone();
+                        let approvals_clone = approvals.clone();
 
                         tokio::spawn(async move {
                             while let Some(update) = update_rx.recv().await {
@@ -96,22 +95,22 @@ impl TaskExecutor {
                                 } = update
                                 {
                                     let approve = match mode {
-                                        OperatingMode::PatchProposal => false, // Never auto-approve in PatchProposal
+                                        OperatingMode::PatchProposal => false,
                                         OperatingMode::AutoFixLowRisk => {
-                                            // Only approve if it's a low risk tool
                                             is_low_risk_tool(&tool_name)
                                         }
                                         _ => false,
                                     };
-                                    let _ = approval_tx_clone.send(vil_swarm::ApprovalResponse {
-                                        tool_call_id,
-                                        approved: approve,
-                                        reason: if approve {
-                                            None
-                                        } else {
-                                            Some("Headless policy denied this action".to_string())
-                                        },
-                                    });
+                                    if approve {
+                                        let _ = approvals_clone.approve(tool_call_id).await;
+                                    } else {
+                                        let _ = approvals_clone
+                                            .reject(
+                                                tool_call_id,
+                                                Some("Headless policy denied this action".to_string()),
+                                            )
+                                            .await;
+                                    }
                                 }
                             }
                         });
@@ -123,7 +122,7 @@ impl TaskExecutor {
                                 description,
                                 Some(update_tx),
                                 None,
-                                Some(approval_rx),
+                                None,
                             )
                             .await
                             .map_err(|e| anyhow::anyhow!("Engine error: {e}"))?;
@@ -182,11 +181,10 @@ impl TaskExecutor {
                 let task = format!("Review and propose patches for: {}", files.join(", "));
 
                 let mode = self.operating_mode.clone();
-                let (approval_tx, approval_rx) =
-                    tokio::sync::mpsc::unbounded_channel::<vil_swarm::ApprovalResponse>();
+                let approvals = engine.lock().await.approval_handle();
                 let (update_tx, mut update_rx) =
                     tokio::sync::mpsc::unbounded_channel::<vac_core::engine::RuntimeUpdate>();
-                let approval_tx_clone = approval_tx.clone();
+                let approvals_clone = approvals.clone();
 
                 tokio::spawn(async move {
                     while let Some(update) = update_rx.recv().await {
@@ -197,19 +195,20 @@ impl TaskExecutor {
                         } = update
                         {
                             let approve = match mode {
-                                OperatingMode::PatchProposal => false, // Never auto-approve in PatchProposal
+                                OperatingMode::PatchProposal => false,
                                 OperatingMode::AutoFixLowRisk => is_low_risk_tool(&tool_name),
                                 _ => false,
                             };
-                            let _ = approval_tx_clone.send(vil_swarm::ApprovalResponse {
-                                tool_call_id,
-                                approved: approve,
-                                reason: if approve {
-                                    None
-                                } else {
-                                    Some("Headless policy denied this action".to_string())
-                                },
-                            });
+                            if approve {
+                                let _ = approvals_clone.approve(tool_call_id).await;
+                            } else {
+                                let _ = approvals_clone
+                                    .reject(
+                                        tool_call_id,
+                                        Some("Headless policy denied this action".to_string()),
+                                    )
+                                    .await;
+                            }
                         }
                     }
                 });
@@ -217,7 +216,7 @@ impl TaskExecutor {
                 let result = engine
                     .lock()
                     .await
-                    .run_task_with_approvals(&task, Some(update_tx), None, Some(approval_rx))
+                    .run_task_with_approvals(&task, Some(update_tx), None, None)
                     .await
                     .map_err(|e| anyhow::anyhow!("Engine error: {e}"))?;
                 Ok(format!(

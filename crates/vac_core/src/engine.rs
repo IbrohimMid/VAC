@@ -788,6 +788,30 @@ impl VacEngine {
             session.results = session_disk.results;
         }
 
+        let mut resume_task_id = None;
+        if !state.pending_approvals.is_empty() {
+            let store = ApprovalStore::new(self.project_root.clone());
+            let first = state
+                .pending_approvals
+                .first()
+                .map(|p| p.tool_call_id.clone())
+                .unwrap_or_default();
+            let record = tokio::task::spawn_blocking(move || store.load(&first))
+                .await
+                .map_err(|e| VacError::Task(format!("Approval store task failed: {e}")))??;
+            resume_task_id = record.and_then(|r| r.task_id);
+        }
+        let resume_task_id = resume_task_id.unwrap_or_else(uuid::Uuid::new_v4);
+
+        let mut final_approval_rx = approval_rx;
+        if final_approval_rx.is_none() {
+            let (app_tx, app_rx) = tokio::sync::mpsc::unbounded_channel();
+            self.active_approvals
+                .register(resume_task_id, session_id, app_tx)
+                .await;
+            final_approval_rx = Some(app_rx);
+        }
+
         let mut swarm = self
             .swarm
             .as_ref()
@@ -808,6 +832,9 @@ impl VacEngine {
             tokio::sync::mpsc::unbounded_channel::<vil_swarm::AgentLoopEvent>();
         let project_root = self.project_root.clone();
         let privacy_vault = self.privacy_vault.clone();
+        let approval_store = ApprovalStore::new(project_root.clone());
+        let task_uuid = resume_task_id;
+        let session_uuid = session_id;
 
         tokio::spawn(async move {
             while let Some(event) = swarm_rx.recv().await {
@@ -884,12 +911,31 @@ impl VacEngine {
                             tool_name,
                             arguments,
                             explanation,
-                        } => Some(RuntimeUpdate::ApprovalRequired {
-                            tool_call_id,
-                            tool_name,
-                            arguments,
-                            explanation,
-                        }),
+                        } => {
+                            let store = approval_store.clone();
+                            let tool_call_id_disk = tool_call_id.clone();
+                            let tool_name_disk = tool_name.clone();
+                            let args_disk = arguments.clone();
+                            let explanation_disk = explanation.clone();
+                            let _ = tokio::task::spawn_blocking(move || {
+                                store.record_request(
+                                    tool_call_id_disk,
+                                    tool_name_disk,
+                                    args_disk,
+                                    explanation_disk,
+                                    Some(session_uuid),
+                                    Some(task_uuid),
+                                )
+                            })
+                            .await;
+
+                            Some(RuntimeUpdate::ApprovalRequired {
+                                tool_call_id,
+                                tool_name,
+                                arguments,
+                                explanation,
+                            })
+                        }
                         vil_swarm::AgentLoopEvent::LlmRequest { .. } => None,
                     };
                     if let Some(up) = update {
@@ -908,7 +954,7 @@ impl VacEngine {
                 Some(swarm_tx),
                 Some(session_id),
                 Some(project_root),
-                approval_rx,
+                final_approval_rx,
             )
             .await;
 
