@@ -56,3 +56,55 @@ pub fn submit_selected(ctx: &mut HandlerContext) -> HandlerResult {
     }
     Ok(())
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tui::app::{AppState, AppStateOptions, OutputEvent};
+    use tokio::sync::mpsc;
+
+    fn create_test_context() -> (AppState, mpsc::Sender<OutputEvent>, mpsc::Receiver<OutputEvent>) {
+        let state = AppState::new(AppStateOptions {
+            model: None,
+            session_id: Some(uuid::Uuid::new_v4().to_string()),
+            checkpoint_path: None,
+            project_root: std::env::current_dir().unwrap(),
+        });
+        let (tx, rx) = mpsc::channel(10);
+        (state, tx, rx)
+    }
+
+    #[test]
+    fn test_open_model_switcher() {
+        let (mut state, tx, _rx) = create_test_context();
+        let mut ctx = HandlerContext::new(&mut state, &tx);
+        
+        assert!(open(&mut ctx).is_ok());
+        assert!(ctx.state.show_model_switcher);
+        assert_eq!(ctx.state.model_switcher_selected_idx, 0);
+    }
+
+    #[test]
+    fn test_close_model_switcher() {
+        let (mut state, tx, _rx) = create_test_context();
+        let mut ctx = HandlerContext::new(&mut state, &tx);
+        
+        ctx.state.show_model_switcher = true;
+        ctx.state.model_switcher_filter = "test".to_string();
+        
+        assert!(close(&mut ctx).is_ok());
+        assert!(!ctx.state.show_model_switcher);
+        assert!(ctx.state.model_switcher_filter.is_empty());
+    }
+
+    #[test]
+    fn test_update_filter() {
+        let (mut state, tx, _rx) = create_test_context();
+        let mut ctx = HandlerContext::new(&mut state, &tx);
+        
+        assert!(update_filter(&mut ctx, "gpt".to_string()).is_ok());
+        assert_eq!(ctx.state.model_switcher_filter, "gpt");
+        assert_eq!(ctx.state.model_switcher_selected_idx, 0);
+    }
+}

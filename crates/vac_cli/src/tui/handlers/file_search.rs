@@ -68,3 +68,55 @@ pub fn insert_selected(ctx: &mut HandlerContext) -> HandlerResult {
     }
     Ok(())
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tui::app::{AppState, AppStateOptions, OutputEvent};
+    use tokio::sync::mpsc;
+
+    fn create_test_context() -> (AppState, mpsc::Sender<OutputEvent>, mpsc::Receiver<OutputEvent>) {
+        let state = AppState::new(AppStateOptions {
+            model: None,
+            session_id: Some(uuid::Uuid::new_v4().to_string()),
+            checkpoint_path: None,
+            project_root: std::env::current_dir().unwrap(),
+        });
+        let (tx, rx) = mpsc::channel(10);
+        (state, tx, rx)
+    }
+
+    #[test]
+    fn test_open_file_search() {
+        let (mut state, tx, _rx) = create_test_context();
+        let mut ctx = HandlerContext::new(&mut state, &tx);
+        
+        assert!(open(&mut ctx).is_ok());
+        assert!(ctx.state.show_file_search);
+        assert_eq!(ctx.state.file_search_selected_idx, 0);
+    }
+
+    #[test]
+    fn test_close_file_search() {
+        let (mut state, tx, _rx) = create_test_context();
+        let mut ctx = HandlerContext::new(&mut state, &tx);
+        
+        ctx.state.show_file_search = true;
+        ctx.state.file_search_query = "test".to_string();
+        
+        assert!(close(&mut ctx).is_ok());
+        assert!(!ctx.state.show_file_search);
+        assert!(ctx.state.file_search_query.is_empty());
+    }
+
+    #[test]
+    fn test_update_query() {
+        let (mut state, tx, _rx) = create_test_context();
+        let mut ctx = HandlerContext::new(&mut state, &tx);
+        
+        assert!(update_query(&mut ctx, "main.rs".to_string()).is_ok());
+        assert_eq!(ctx.state.file_search_query, "main.rs");
+        assert_eq!(ctx.state.file_search_selected_idx, 0);
+    }
+}

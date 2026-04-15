@@ -93,3 +93,54 @@ pub fn toggle_auto_approve(ctx: &mut HandlerContext) -> HandlerResult {
         .push(Toast::info(format!("Auto-approve {}", status)));
     Ok(())
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tui::app::{AppState, AppStateOptions, OutputEvent};
+    use tokio::sync::mpsc;
+
+    fn create_test_context() -> (AppState, mpsc::Sender<OutputEvent>, mpsc::Receiver<OutputEvent>) {
+        let state = AppState::new(AppStateOptions {
+            model: None,
+            session_id: Some(uuid::Uuid::new_v4().to_string()),
+            checkpoint_path: None,
+            project_root: std::env::current_dir().unwrap(),
+        });
+        let (tx, rx) = mpsc::channel(10);
+        (state, tx, rx)
+    }
+
+    #[test]
+    fn test_open_approval() {
+        let (mut state, tx, _rx) = create_test_context();
+        let mut ctx = HandlerContext::new(&mut state, &tx);
+        
+        assert!(open(&mut ctx).is_ok());
+        assert_eq!(ctx.state.workbench_tab, crate::tui::app::WorkbenchTab::Approvals);
+        assert_eq!(ctx.state.focus, crate::tui::app::WorkspaceFocus::Workbench);
+    }
+
+    #[test]
+    fn test_toggle_auto_approve() {
+        let (mut state, tx, _rx) = create_test_context();
+        let mut ctx = HandlerContext::new(&mut state, &tx);
+        
+        let initial = ctx.state.auto_approve;
+        assert!(toggle_auto_approve(&mut ctx).is_ok());
+        assert_eq!(ctx.state.auto_approve, !initial);
+        
+        assert!(toggle_auto_approve(&mut ctx).is_ok());
+        assert_eq!(ctx.state.auto_approve, initial);
+    }
+
+    #[test]
+    fn test_select_next_empty_queue() {
+        let (mut state, tx, _rx) = create_test_context();
+        let mut ctx = HandlerContext::new(&mut state, &tx);
+        
+        assert!(select_next(&mut ctx).is_ok());
+        assert_eq!(ctx.state.approval_selected_idx, 0);
+    }
+}
