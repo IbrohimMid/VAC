@@ -300,6 +300,7 @@ pub struct AppState {
     pub show_shortcuts: bool,
     pub shortcuts_mode: ShortcutsPopupMode,
 
+    pub changeset_store: crate::tui::services::ChangesetStore,
     pub modified_files: Vec<String>,
 
     pub workbench_tab: WorkbenchTab,
@@ -396,6 +397,7 @@ impl AppState {
             commands: Self::default_commands(),
             show_shortcuts: false,
             shortcuts_mode: ShortcutsPopupMode::default(),
+            changeset_store: crate::tui::services::ChangesetStore::new(),
             modified_files: Vec::new(),
             workbench_tab: WorkbenchTab::Approvals,
             review_open: false,

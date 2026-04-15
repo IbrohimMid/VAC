@@ -1,13 +1,312 @@
+use std::time::SystemTime;
+
+/// Represents the lifecycle state of a file in the changeset.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FileState {
+    /// File was newly created by the agent
+    Created,
+    /// Existing file was modified
+    Modified,
+    /// File was removed/deleted
+    Removed,
+    /// File was successfully reverted to snapshot
+    Reverted,
+    /// Revert operation failed
+    FailedRestore,
+}
+
+/// A single entry in the changeset tracking a file's lifecycle.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChangesetEntry {
     pub path: String,
+    pub state: FileState,
+    pub source: String,
+    pub has_snapshot: bool,
+    pub dirty_generation: u32,
+    pub last_error: Option<String>,
+    pub timestamp: SystemTime,
+    pub actor: String,
+}
+
+impl ChangesetEntry {
+    pub fn new(path: String, state: FileState, actor: String) -> Self {
+        Self {
+            path,
+            state,
+            source: String::new(),
+            has_snapshot: false,
+            dirty_generation: 0,
+            last_error: None,
+            timestamp: SystemTime::now(),
+            actor,
+        }
+    }
+}
+
+/// Store for tracking all file changes in the current session.
+/// Provides a single source of truth for changeset state.
+#[derive(Debug, Clone, Default)]
+pub struct ChangesetStore {
+    entries: Vec<ChangesetEntry>,
+    generation: u32,
+}
+
+impl ChangesetStore {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Track a newly created file.
+    pub fn file_created(&mut self, path: String, actor: String) {
+        self.generation += 1;
+        if let Some(entry) = self.entries.iter_mut().find(|e| e.path == path) {
+            entry.state = FileState::Created;
+            entry.dirty_generation = self.generation;
+            entry.timestamp = SystemTime::now();
+            entry.actor = actor;
+            entry.last_error = None;
+        } else {
+            let mut entry = ChangesetEntry::new(path, FileState::Created, actor);
+            entry.dirty_generation = self.generation;
+            self.entries.push(entry);
+        }
+    }
+
+    /// Track a file modification. Preserves Created state if file was newly created.
+    pub fn file_modified(&mut self, path: String, actor: String, has_snapshot: bool) {
+        self.generation += 1;
+        if let Some(entry) = self.entries.iter_mut().find(|e| e.path == path) {
+            if entry.state != FileState::Created {
+                entry.state = FileState::Modified;
+            }
+            entry.dirty_generation = self.generation;
+            entry.timestamp = SystemTime::now();
+            entry.actor = actor;
+            entry.has_snapshot = has_snapshot;
+            entry.last_error = None;
+        } else {
+            let mut entry = ChangesetEntry::new(path, FileState::Modified, actor);
+            entry.dirty_generation = self.generation;
+            entry.has_snapshot = has_snapshot;
+            self.entries.push(entry);
+        }
+    }
+
+    /// Track a file removal/deletion.
+    pub fn file_removed(&mut self, path: String, actor: String) {
+        self.generation += 1;
+        if let Some(entry) = self.entries.iter_mut().find(|e| e.path == path) {
+            entry.state = FileState::Removed;
+            entry.dirty_generation = self.generation;
+            entry.timestamp = SystemTime::now();
+            entry.actor = actor;
+            entry.last_error = None;
+        } else {
+            let mut entry = ChangesetEntry::new(path, FileState::Removed, actor);
+            entry.dirty_generation = self.generation;
+            self.entries.push(entry);
+        }
+    }
+
+    /// Mark a file as successfully reverted. Creates entry if not exists.
+    pub fn revert_success(&mut self, path: &str) {
+        self.generation += 1;
+        if let Some(entry) = self.entries.iter_mut().find(|e| e.path == path) {
+            entry.state = FileState::Reverted;
+            entry.dirty_generation = self.generation;
+            entry.timestamp = SystemTime::now();
+            entry.last_error = None;
+        } else {
+            // Create entry if file not tracked yet (edge case: manual revert)
+            let mut entry = ChangesetEntry::new(path.to_string(), FileState::Reverted, "manual".to_string());
+            entry.dirty_generation = self.generation;
+            self.entries.push(entry);
+        }
+    }
+
+    /// Mark a file revert as failed with error message. Creates entry if not exists.
+    pub fn revert_failed(&mut self, path: &str, error: String) {
+        self.generation += 1;
+        if let Some(entry) = self.entries.iter_mut().find(|e| e.path == path) {
+            entry.state = FileState::FailedRestore;
+            entry.dirty_generation = self.generation;
+            entry.timestamp = SystemTime::now();
+            entry.last_error = Some(error);
+        } else {
+            // Create entry if file not tracked yet (edge case: manual revert)
+            let mut entry = ChangesetEntry::new(path.to_string(), FileState::FailedRestore, "manual".to_string());
+            entry.dirty_generation = self.generation;
+            entry.last_error = Some(error);
+            self.entries.push(entry);
+        }
+    }
+
+    /// Get all changeset entries.
+    pub fn entries(&self) -> &[ChangesetEntry] {
+        &self.entries
+    }
+
+    /// Get derived view of modified/created files (backward compatible with modified_files Vec).
+    pub fn modified_files(&self) -> Vec<String> {
+        self.entries
+            .iter()
+            .filter(|e| matches!(e.state, FileState::Created | FileState::Modified))
+            .map(|e| e.path.clone())
+            .collect()
+    }
+
+    /// Clear all changeset state (used on session restore).
+    pub fn clear(&mut self) {
+        self.entries.clear();
+        self.generation = 0;
+    }
 }
 
 pub fn build_changeset(modified_files: &[String]) -> Vec<ChangesetEntry> {
     modified_files
         .iter()
         .cloned()
-        .map(|path| ChangesetEntry { path })
+        .map(|path| ChangesetEntry::new(path, FileState::Modified, "unknown".to_string()))
         .collect()
 }
 
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_file_created() {
+        let mut store = ChangesetStore::new();
+        store.file_created("src/main.rs".to_string(), "agent".to_string());
+        
+        let entries = store.entries();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].path, "src/main.rs");
+        assert_eq!(entries[0].state, FileState::Created);
+        assert_eq!(entries[0].actor, "agent");
+    }
+
+    #[test]
+    fn test_file_modified() {
+        let mut store = ChangesetStore::new();
+        store.file_modified("src/lib.rs".to_string(), "agent".to_string(), true);
+        
+        let entries = store.entries();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].path, "src/lib.rs");
+        assert_eq!(entries[0].state, FileState::Modified);
+        assert!(entries[0].has_snapshot);
+    }
+
+    #[test]
+    fn test_lifecycle_transition_created_to_modified() {
+        let mut store = ChangesetStore::new();
+        store.file_created("test.rs".to_string(), "agent".to_string());
+        store.file_modified("test.rs".to_string(), "agent".to_string(), true);
+        
+        let entries = store.entries();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].state, FileState::Created);
+    }
+
+    #[test]
+    fn test_lifecycle_transition_modified_to_reverted() {
+        let mut store = ChangesetStore::new();
+        store.file_modified("test.rs".to_string(), "agent".to_string(), true);
+        store.revert_success("test.rs");
+        
+        let entries = store.entries();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].state, FileState::Reverted);
+        assert!(entries[0].last_error.is_none());
+    }
+
+    #[test]
+    fn test_revert_failed() {
+        let mut store = ChangesetStore::new();
+        store.file_modified("test.rs".to_string(), "agent".to_string(), true);
+        store.revert_failed("test.rs", "Permission denied".to_string());
+        
+        let entries = store.entries();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].state, FileState::FailedRestore);
+        assert_eq!(entries[0].last_error, Some("Permission denied".to_string()));
+    }
+
+    #[test]
+    fn test_file_removed() {
+        let mut store = ChangesetStore::new();
+        store.file_removed("old.rs".to_string(), "agent".to_string());
+        
+        let entries = store.entries();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].state, FileState::Removed);
+    }
+
+    #[test]
+    fn test_modified_files_derived_view() {
+        let mut store = ChangesetStore::new();
+        store.file_created("a.rs".to_string(), "agent".to_string());
+        store.file_modified("b.rs".to_string(), "agent".to_string(), true);
+        store.file_removed("c.rs".to_string(), "agent".to_string());
+        store.file_modified("d.rs".to_string(), "agent".to_string(), false);
+        store.revert_success("d.rs");
+        
+        let modified = store.modified_files();
+        assert_eq!(modified.len(), 2);
+        assert!(modified.contains(&"a.rs".to_string()));
+        assert!(modified.contains(&"b.rs".to_string()));
+    }
+
+    #[test]
+    fn test_generation_increments() {
+        let mut store = ChangesetStore::new();
+        assert_eq!(store.generation, 0);
+        
+        store.file_created("a.rs".to_string(), "agent".to_string());
+        assert_eq!(store.generation, 1);
+        
+        store.file_modified("b.rs".to_string(), "agent".to_string(), true);
+        assert_eq!(store.generation, 2);
+        
+        store.revert_success("a.rs");
+        assert_eq!(store.generation, 3);
+    }
+
+    #[test]
+    fn test_clear() {
+        let mut store = ChangesetStore::new();
+        store.file_created("a.rs".to_string(), "agent".to_string());
+        store.file_modified("b.rs".to_string(), "agent".to_string(), true);
+        
+        store.clear();
+        assert_eq!(store.entries().len(), 0);
+        assert_eq!(store.generation, 0);
+    }
+
+    #[test]
+    fn test_revert_success_creates_entry_if_not_tracked() {
+        let mut store = ChangesetStore::new();
+        store.revert_success("untracked.rs");
+        
+        let entries = store.entries();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].path, "untracked.rs");
+        assert_eq!(entries[0].state, FileState::Reverted);
+        assert_eq!(entries[0].actor, "manual");
+    }
+
+    #[test]
+    fn test_revert_failed_creates_entry_if_not_tracked() {
+        let mut store = ChangesetStore::new();
+        store.revert_failed("untracked.rs", "File not found".to_string());
+        
+        let entries = store.entries();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].path, "untracked.rs");
+        assert_eq!(entries[0].state, FileState::FailedRestore);
+        assert_eq!(entries[0].last_error, Some("File not found".to_string()));
+        assert_eq!(entries[0].actor, "manual");
+    }
+}

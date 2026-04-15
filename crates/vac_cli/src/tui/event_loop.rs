@@ -747,6 +747,7 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                     vac_tools::journal::restore_snapshot(&state.project_root, session_id, &path);
                 match result {
                     Ok(()) => {
+                        state.changeset_store.revert_success(&path);
                         state.modified_files.retain(|p| p != &path);
                         state.review_items.entry(path.clone()).and_modify(|it| {
                             it.status = crate::tui::app::ReviewItemStatus::Restored;
@@ -760,6 +761,7 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                         );
                     }
                     Err(e) => {
+                        state.changeset_store.revert_failed(&path, e.clone());
                         state.review_items.entry(path.clone()).and_modify(|it| {
                             it.status = crate::tui::app::ReviewItemStatus::Failed;
                             it.last_error = Some(e.clone());
@@ -803,6 +805,7 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                     ) {
                         Ok(()) => {
                             success_count += 1;
+                            state.changeset_store.revert_success(file);
                             state.modified_files.retain(|p| p != file);
                             state.review_items.entry(file.clone()).and_modify(|it| {
                                 it.status = crate::tui::app::ReviewItemStatus::Restored;
@@ -811,6 +814,7 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                             });
                         }
                         Err(e) => {
+                            state.changeset_store.revert_failed(file, e.clone());
                             state.review_items.entry(file.clone()).and_modify(|it| {
                                 it.status = crate::tui::app::ReviewItemStatus::Failed;
                                 it.last_error = Some(e.clone());
@@ -847,20 +851,24 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
 
                 let mut success_count = 0usize;
                 for file in &files {
-                    if vac_tools::journal::restore_snapshot(&state.project_root, session_id, file)
-                        .is_ok()
-                    {
-                        success_count += 1;
-                        state.review_items.entry(file.clone()).and_modify(|it| {
-                            it.status = crate::tui::app::ReviewItemStatus::Restored;
-                            it.last_error = None;
-                            it.dirty_generation = it.dirty_generation.saturating_add(1);
-                        });
-                    } else {
-                        state.review_items.entry(file.clone()).and_modify(|it| {
-                            it.status = crate::tui::app::ReviewItemStatus::Failed;
-                            it.dirty_generation = it.dirty_generation.saturating_add(1);
-                        });
+                    match vac_tools::journal::restore_snapshot(&state.project_root, session_id, file) {
+                        Ok(()) => {
+                            success_count += 1;
+                            state.changeset_store.revert_success(file);
+                            state.review_items.entry(file.clone()).and_modify(|it| {
+                                it.status = crate::tui::app::ReviewItemStatus::Restored;
+                                it.last_error = None;
+                                it.dirty_generation = it.dirty_generation.saturating_add(1);
+                            });
+                        }
+                        Err(e) => {
+                            state.changeset_store.revert_failed(file, e.clone());
+                            state.review_items.entry(file.clone()).and_modify(|it| {
+                                it.status = crate::tui::app::ReviewItemStatus::Failed;
+                                it.last_error = Some(e);
+                                it.dirty_generation = it.dirty_generation.saturating_add(1);
+                            });
+                        }
                     }
                 }
                 state.modified_files.clear();
@@ -1644,6 +1652,7 @@ fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, e
             state.changeset_selected_idx = 0;
             state.changeset_diff_scroll = 0;
             state.changeset_selected_path = None;
+            state.changeset_store.clear();
             state.changeset_diff = None;
             state.workbench_tab = crate::tui::app::WorkbenchTab::Approvals;
             state.focus = crate::tui::app::WorkspaceFocus::Input;
@@ -1704,6 +1713,11 @@ fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, e
                 content.push_str("\n\n**Modified Files**:\n");
                 for file in &result.modified_files {
                     content.push_str(&format!("- `{}`\n", file));
+                    state.changeset_store.file_modified(
+                        file.clone(),
+                        "agent".to_string(),
+                        true,
+                    );
                     if !state.modified_files.contains(file) {
                         state.modified_files.push(file.clone());
                     }
@@ -1713,6 +1727,10 @@ fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, e
                 content.push_str("\n**Created Files**:\n");
                 for file in &result.created_files {
                     content.push_str(&format!("- `{}`\n", file));
+                    state.changeset_store.file_created(
+                        file.clone(),
+                        "agent".to_string(),
+                    );
                     if !state.modified_files.contains(file) {
                         state.modified_files.push(file.clone());
                     }

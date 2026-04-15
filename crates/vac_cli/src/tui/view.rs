@@ -134,11 +134,11 @@ fn render_changeset(f: &mut Frame, state: &mut AppState) {
         .constraints([Constraint::Percentage(35), Constraint::Percentage(65)])
         .split(area);
 
-    let items: Vec<ListItem> = state
-        .modified_files
+    let entries = state.changeset_store.entries();
+    let items: Vec<ListItem> = entries
         .iter()
         .enumerate()
-        .map(|(i, path)| {
+        .map(|(i, entry)| {
             let style = if i == state.changeset_selected_idx {
                 Style::default()
                     .fg(Color::Yellow)
@@ -146,7 +146,25 @@ fn render_changeset(f: &mut Frame, state: &mut AppState) {
             } else {
                 Style::default()
             };
-            ListItem::new(Line::from(Span::styled(path.clone(), style)))
+            let indicator = match entry.state {
+                crate::tui::services::FileState::Created => "[+]",
+                crate::tui::services::FileState::Modified => "[~]",
+                crate::tui::services::FileState::Removed => "[-]",
+                crate::tui::services::FileState::Reverted => "[✓]",
+                crate::tui::services::FileState::FailedRestore => "[✗]",
+            };
+            let indicator_color = match entry.state {
+                crate::tui::services::FileState::Created => Color::Green,
+                crate::tui::services::FileState::Modified => Color::Yellow,
+                crate::tui::services::FileState::Removed => Color::Red,
+                crate::tui::services::FileState::Reverted => Color::Cyan,
+                crate::tui::services::FileState::FailedRestore => Color::Red,
+            };
+            ListItem::new(Line::from(vec![
+                Span::styled(indicator, Style::default().fg(indicator_color)),
+                Span::raw(" "),
+                Span::styled(entry.path.clone(), style),
+            ]))
         })
         .collect();
 

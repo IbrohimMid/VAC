@@ -19,7 +19,7 @@ pub mod toast;
 // Re-export commonly used types
 pub use detect_term::ThemeColors;
 pub use approval_bar::approval_preview;
-pub use changeset::{ChangesetEntry, build_changeset};
+pub use changeset::{ChangesetEntry, ChangesetStore, FileState, build_changeset};
 pub use file_diff::{preview_file_diff, render_diff};
 pub use file_search::{build_file_index, fuzzy_search_files};
 pub use helper_block::welcome_messages;
