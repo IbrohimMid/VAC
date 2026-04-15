@@ -54,6 +54,10 @@ pub fn view(f: &mut Frame, state: &mut AppState) {
     if state.show_file_changes_popup {
         render_file_changes_popup(f, state);
     }
+
+    if state.review_open {
+        render_review_workstation(f, state);
+    }
 }
 
 fn render_messages(f: &mut Frame, state: &mut AppState, area: Rect) {
@@ -305,11 +309,12 @@ fn render_shortcuts(f: &mut Frame, _state: &mut AppState) {
         "Up/Down - Scroll/Navigate",
         "Enter - Submit/Select",
         "Ctrl+L - Toggle mouse capture",
-        "Ctrl+X - Revert file",
-        "Ctrl+Z - Revert all files",
-        "Ctrl+N - Open in editor",
-        "Ctrl+O - Show file changes (Review Mode)",
-        "Ctrl+A - Toggle auto-approve",
+        "Ctrl+X - Revert selected (Review)",
+        "Ctrl+Y - Revert filtered (Review)",
+        "Ctrl+Z - Revert all (Review)",
+        "Ctrl+N - Open in editor (Review)",
+        "Ctrl+G - Open review workstation",
+        "Ctrl+O - Toggle auto-approve",
     ];
     let items: Vec<ListItem> = shortcuts
         .iter()
@@ -392,6 +397,121 @@ fn render_file_changes_popup(f: &mut Frame, state: &mut AppState) {
         Span::styled(": Revert  ", Style::default().fg(Color::DarkGray)),
         Span::styled("Ctrl+z", Style::default().fg(Color::Cyan)),
         Span::styled(": Revert All  ", Style::default().fg(Color::DarkGray)),
+        Span::styled("Ctrl+n", Style::default().fg(Color::Cyan)),
+        Span::styled(": Edit  ", Style::default().fg(Color::DarkGray)),
+        Span::styled("Esc", Style::default().fg(Color::Cyan)),
+        Span::styled(": Close", Style::default().fg(Color::DarkGray)),
+    ];
+    let footer = Paragraph::new(Line::from(footer_text)).alignment(ratatui::layout::Alignment::Left);
+    f.render_widget(footer, chunks[2]);
+}
+
+fn render_review_workstation(f: &mut Frame, state: &mut AppState) {
+    let area = centered_rect(90, 90, f.area());
+    f.render_widget(Clear, area);
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(3),
+            Constraint::Min(3),
+            Constraint::Length(1),
+        ])
+        .split(area);
+
+    let header = {
+        let title = format!("Review Workstation ({})", state.review_filtered_paths().len());
+        let search_text = if state.review_filter.is_empty() {
+            vec![
+                Span::styled("Filter: ", Style::default().fg(Color::Cyan)),
+                Span::styled("type to filter…", Style::default().fg(Color::DarkGray)),
+            ]
+        } else {
+            vec![
+                Span::styled("Filter: ", Style::default().fg(Color::Cyan)),
+                Span::styled(&state.review_filter, Style::default().add_modifier(Modifier::BOLD)),
+            ]
+        };
+        Paragraph::new(Line::from(search_text))
+            .block(Block::default().borders(Borders::ALL).title(title))
+    };
+    f.render_widget(header, chunks[0]);
+
+    let body = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(40), Constraint::Percentage(60)])
+        .split(chunks[1]);
+
+    let files = state.review_filtered_paths();
+    let items: Vec<ListItem> = files
+        .iter()
+        .enumerate()
+        .map(|(idx, path)| {
+            let is_selected = idx == state.review_selected_idx;
+            let style = if is_selected {
+                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(Color::White)
+            };
+
+            let (status_span, snap_span) = match state.review_items.get(path) {
+                Some(it) => {
+                    let status = match it.status {
+                        crate::tui::app::ReviewItemStatus::Pending => Span::styled("• ", Style::default().fg(Color::DarkGray)),
+                        crate::tui::app::ReviewItemStatus::Restored => Span::styled("✓ ", Style::default().fg(Color::Green)),
+                        crate::tui::app::ReviewItemStatus::Failed => Span::styled("! ", Style::default().fg(Color::Red)),
+                    };
+                    let snap = if it.has_snapshot {
+                        Span::styled("S ", Style::default().fg(Color::Cyan))
+                    } else {
+                        Span::styled("- ", Style::default().fg(Color::DarkGray))
+                    };
+                    (status, snap)
+                }
+                None => (
+                    Span::styled("• ", Style::default().fg(Color::DarkGray)),
+                    Span::styled("? ", Style::default().fg(Color::DarkGray)),
+                ),
+            };
+
+            ListItem::new(Line::from(vec![
+                status_span,
+                snap_span,
+                Span::styled(path.clone(), style),
+            ]))
+        })
+        .collect();
+
+    let list = List::new(items).block(Block::default().borders(Borders::ALL).title("Files"));
+    f.render_widget(list, body[0]);
+
+    let diff_lines: Vec<Line> = if let Some(diff) = &state.review_diff {
+        if let (Some(old), Some(new)) = (diff.old_content.as_deref(), diff.new_content.as_deref()) {
+            crate::tui::services::file_diff::render_diff(old, new, body[1].width as usize)
+        } else if let Some(err) = &diff.last_error {
+            vec![Line::from(Span::styled(err.clone(), Style::default().fg(Color::Red)))]
+        } else {
+            vec![Line::raw("No diff loaded.")]
+        }
+    } else {
+        vec![Line::raw("Press Enter to toggle diff.")]
+    };
+    let diff = Paragraph::new(diff_lines)
+        .block(Block::default().borders(Borders::ALL).title("Diff"))
+        .wrap(Wrap { trim: false });
+    f.render_widget(diff, body[1]);
+
+    let footer_text = vec![
+        Span::styled("↑/↓", Style::default().fg(Color::Cyan)),
+        Span::styled(": Select  ", Style::default().fg(Color::DarkGray)),
+        Span::styled("Enter", Style::default().fg(Color::Cyan)),
+        Span::styled(": Diff  ", Style::default().fg(Color::DarkGray)),
+        Span::styled("Ctrl+x", Style::default().fg(Color::Cyan)),
+        Span::styled(": Revert selected  ", Style::default().fg(Color::DarkGray)),
+        Span::styled("Ctrl+y", Style::default().fg(Color::Cyan)),
+        Span::styled(": Revert filtered  ", Style::default().fg(Color::DarkGray)),
+        Span::styled("Ctrl+z", Style::default().fg(Color::Cyan)),
+        Span::styled(": Revert all  ", Style::default().fg(Color::DarkGray)),
         Span::styled("Ctrl+n", Style::default().fg(Color::Cyan)),
         Span::styled(": Edit  ", Style::default().fg(Color::DarkGray)),
         Span::styled("Esc", Style::default().fg(Color::Cyan)),

@@ -48,19 +48,19 @@ pub fn map_crossterm_event_to_input_event(event: Event) -> Option<InputEvent> {
                     Some(InputEvent::HandleCtrlS)
                 }
                 KeyCode::Char('g') if key.modifiers == (KeyModifiers::CONTROL) => {
-                    Some(InputEvent::ShowFileChangesPopup)
+                    Some(InputEvent::ReviewOpen)
                 }
                 KeyCode::Char('e') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                     Some(InputEvent::InputCursorEnd)
                 }
                 KeyCode::Char('x') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                    Some(InputEvent::FileChangesRevertFile)
+                    Some(InputEvent::ReviewRevertSelected)
                 }
                 KeyCode::Char('z') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                    Some(InputEvent::FileChangesRevertAll)
+                    Some(InputEvent::ReviewRevertAll)
                 }
                 KeyCode::Char('n') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                    Some(InputEvent::FileChangesOpenEditor)
+                    Some(InputEvent::ReviewOpenEditor)
                 }
                 KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                     Some(InputEvent::RulebookSwitcherDeselectAll)

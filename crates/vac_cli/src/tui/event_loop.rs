@@ -9,10 +9,11 @@ use crate::tui::Model;
 use crossterm::{
     event::{EnableBracketedPaste, EnableMouseCapture},
     execute,
-    terminal::{enable_raw_mode, EnterAlternateScreen},
+    terminal::{disable_raw_mode, enable_raw_mode, Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use ratatui::{backend::CrosstermBackend, Terminal};
 use std::io;
+use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -310,15 +311,15 @@ fn handle_input_event(
             InputEvent::ReviewDown | InputEvent::Down | InputEvent::ScrollDown => {
                 state.review_select_by_delta(1);
             }
-            InputEvent::ReviewFilterInput(c) => {
+            InputEvent::ReviewFilterInput(c) | InputEvent::InputChanged(c) => {
                 state.review_filter.push(c);
                 state.review_normalize_selection();
             }
-            InputEvent::ReviewFilterBackspace => {
+            InputEvent::ReviewFilterBackspace | InputEvent::InputBackspace => {
                 state.review_filter.pop();
                 state.review_normalize_selection();
             }
-            InputEvent::ReviewToggleDiff => {
+            InputEvent::ReviewToggleDiff | InputEvent::InputSubmitted => {
                 if let Some(path) = state.review_selected_path.clone() {
                     if state.review_diff.as_ref().map(|d| d.path.as_str()) == Some(path.as_str()) {
                         state.review_diff = None;
@@ -345,6 +346,128 @@ fn handle_input_event(
                         }
                     }
                 }
+            }
+            InputEvent::ReviewRevertSelected | InputEvent::FileChangesRevertFile => {
+                let Some(path) = state.review_selected_path.clone() else {
+                    return;
+                };
+                let Ok(session_id) = uuid::Uuid::parse_str(&state.session_id) else {
+                    state.add_assistant_message("Invalid session id; cannot restore snapshot.".to_string());
+                    return;
+                };
+
+                let result = vac_tools::journal::restore_snapshot(&state.project_root, session_id, &path);
+                match result {
+                    Ok(()) => {
+                        state.modified_files.retain(|p| p != &path);
+                        state.review_items.remove(&path);
+                        state.add_assistant_message(format!("Reverted file: {}", path));
+                    }
+                    Err(e) => {
+                        state.review_items
+                            .entry(path.clone())
+                            .and_modify(|it| {
+                                it.status = crate::tui::app::ReviewItemStatus::Failed;
+                                it.last_error = Some(e.clone());
+                                it.dirty_generation = it.dirty_generation.saturating_add(1);
+                            });
+                        state.add_assistant_message(format!("Failed to revert file: {}", path));
+                    }
+                }
+
+                state.review_generation = state.review_generation.saturating_add(1);
+                state.review_sync_items();
+                state.review_normalize_selection();
+            }
+            InputEvent::ReviewRevertFiltered | InputEvent::ToggleSidePanel => {
+                let files = state.review_filtered_paths();
+                if files.is_empty() {
+                    state.add_assistant_message("No files to revert.".to_string());
+                    return;
+                }
+                let Ok(session_id) = uuid::Uuid::parse_str(&state.session_id) else {
+                    state.add_assistant_message("Invalid session id; cannot restore snapshot.".to_string());
+                    return;
+                };
+
+                let mut success_count = 0usize;
+                for file in &files {
+                    match vac_tools::journal::restore_snapshot(&state.project_root, session_id, file) {
+                        Ok(()) => {
+                            success_count += 1;
+                            state.modified_files.retain(|p| p != file);
+                            state.review_items.remove(file);
+                        }
+                        Err(e) => {
+                            state.review_items
+                                .entry(file.clone())
+                                .and_modify(|it| {
+                                    it.status = crate::tui::app::ReviewItemStatus::Failed;
+                                    it.last_error = Some(e.clone());
+                                    it.dirty_generation = it.dirty_generation.saturating_add(1);
+                                });
+                        }
+                    }
+                }
+                state.add_assistant_message(format!("Reverted {}/{} files.", success_count, files.len()));
+                state.review_generation = state.review_generation.saturating_add(1);
+                state.review_sync_items();
+                state.review_normalize_selection();
+            }
+            InputEvent::ReviewRevertAll | InputEvent::FileChangesRevertAll => {
+                let files = state.modified_files.clone();
+                if files.is_empty() {
+                    state.add_assistant_message("No files to revert.".to_string());
+                    return;
+                }
+                let Ok(session_id) = uuid::Uuid::parse_str(&state.session_id) else {
+                    state.add_assistant_message("Invalid session id; cannot restore snapshot.".to_string());
+                    return;
+                };
+
+                let mut success_count = 0usize;
+                for file in &files {
+                    if vac_tools::journal::restore_snapshot(&state.project_root, session_id, file).is_ok() {
+                        success_count += 1;
+                    } else {
+                        state.review_items
+                            .entry(file.clone())
+                            .and_modify(|it| {
+                                it.status = crate::tui::app::ReviewItemStatus::Failed;
+                                it.dirty_generation = it.dirty_generation.saturating_add(1);
+                            });
+                    }
+                }
+                state.modified_files.clear();
+                state.review_items.clear();
+                state.review_diff = None;
+                state.review_selected_idx = 0;
+                state.review_selected_path = None;
+                state.add_assistant_message(format!("Reverted {}/{} files.", success_count, files.len()));
+            }
+            InputEvent::ReviewOpenEditor | InputEvent::FileChangesOpenEditor => {
+                let Some(path) = state.review_selected_path.clone() else {
+                    return;
+                };
+                let editor = std::env::var("VAC_EDITOR")
+                    .ok()
+                    .and_then(|s| if s.trim().is_empty() { None } else { Some(s) })
+                    .or_else(|| {
+                        std::env::var("EDITOR")
+                            .ok()
+                            .and_then(|s| if s.trim().is_empty() { None } else { Some(s) })
+                    });
+
+                let Some(editor) = editor else {
+                    state.add_assistant_message("No editor configured. Set VAC_EDITOR or EDITOR.".to_string());
+                    return;
+                };
+
+                let _ = disable_raw_mode();
+                let _ = execute!(std::io::stdout(), LeaveAlternateScreen);
+                let _ = Command::new(editor).arg(&path).status();
+                let _ = execute!(std::io::stdout(), EnterAlternateScreen, EnableBracketedPaste, EnableMouseCapture, Clear(ClearType::All));
+                let _ = enable_raw_mode();
             }
             _ => {}
         }
