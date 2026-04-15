@@ -1,5 +1,6 @@
 //! Type Definitions Module
 
+use chrono::{DateTime, Utc};
 use ratatui::text::Line;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -87,6 +88,59 @@ pub enum ToolCallStatus {
     Executed,
     Skipped,
     Pending,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WorkspaceFocus {
+    Conversation,
+    Input,
+    Workbench,
+    Activity,
+}
+
+impl WorkspaceFocus {
+    pub fn next(self) -> Self {
+        match self {
+            Self::Conversation => Self::Input,
+            Self::Input => Self::Workbench,
+            Self::Workbench => Self::Activity,
+            Self::Activity => Self::Conversation,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WorkbenchTab {
+    Approvals,
+    Review,
+    Sessions,
+}
+
+impl WorkbenchTab {
+    pub fn next(self) -> Self {
+        match self {
+            Self::Approvals => Self::Review,
+            Self::Review => Self::Sessions,
+            Self::Sessions => Self::Approvals,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ActivityKind {
+    Status,
+    Tool,
+    Approval,
+    Review,
+    Session,
+    Error,
+}
+
+#[derive(Debug, Clone)]
+pub struct ActivityItem {
+    pub at: DateTime<Utc>,
+    pub kind: ActivityKind,
+    pub message: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
@@ -194,6 +248,7 @@ pub struct AppState {
     // Input state
     pub input: TextArea,
     pub cursor_position: usize,
+    pub focus: WorkspaceFocus,
 
     // Messages
     pub messages: Vec<Message>,
@@ -216,16 +271,14 @@ pub struct AppState {
     // Mouse capture
     pub mouse_capture_enabled: bool,
 
-    // Dialog state
-    pub is_dialog_open: bool,
-    pub dialog_command: Option<ToolCall>,
-    pub dialog_selected: usize,
-    pub dialog_focused: bool,
-
     // Approval state
+    pub pending_approvals: Vec<ToolCall>,
     pub pending_tool_calls: Vec<ToolCall>,
     pub approved_tools: Vec<ToolCall>,
     pub rejected_tools: Vec<ToolCall>,
+    pub approval_selected_idx: usize,
+    pub approval_detail_scroll: usize,
+    pub approval_explanations: HashMap<String, Option<String>>,
 
     // Shell state
     pub shell_popup_visible: bool,
@@ -246,14 +299,9 @@ pub struct AppState {
     pub show_shortcuts: bool,
     pub shortcuts_mode: ShortcutsPopupMode,
 
-    // Diff preview
-    pub show_diff_preview: bool,
-    pub diff_file_path: Option<String>,
-    pub diff_old_content: Option<String>,
-    pub diff_new_content: Option<String>,
-
     pub modified_files: Vec<String>,
 
+    pub workbench_tab: WorkbenchTab,
     pub review_open: bool,
     pub review_filter: String,
     pub review_selected_idx: usize,
@@ -262,9 +310,13 @@ pub struct AppState {
     pub review_diff: Option<ReviewDiffState>,
     pub review_generation: u64,
 
+    pub sessions_selected_idx: usize,
+
+    pub activity: Vec<ActivityItem>,
+    pub activity_scroll: usize,
+
     // Permission UX
     pub auto_approve: bool,
-    pub permission_explanation: Option<String>,
     pub project_root: PathBuf,
 }
 
@@ -292,6 +344,7 @@ impl AppState {
         Self {
             input: TextArea::new(),
             cursor_position: 0,
+            focus: WorkspaceFocus::Input,
             messages: Vec::new(),
             scroll: 0,
             loading: false,
@@ -305,13 +358,13 @@ impl AppState {
             checkpoint_path: options.checkpoint_path,
             current_model: options.model,
             mouse_capture_enabled: true,
-            is_dialog_open: false,
-            dialog_command: None,
-            dialog_selected: 0,
-            dialog_focused: true,
+            pending_approvals: Vec::new(),
             pending_tool_calls: Vec::new(),
             approved_tools: Vec::new(),
             rejected_tools: Vec::new(),
+            approval_selected_idx: 0,
+            approval_detail_scroll: 0,
+            approval_explanations: HashMap::new(),
             shell_popup_visible: false,
             shell_output: String::new(),
             is_streaming: false,
@@ -323,11 +376,8 @@ impl AppState {
             commands: Self::default_commands(),
             show_shortcuts: false,
             shortcuts_mode: ShortcutsPopupMode::default(),
-            show_diff_preview: false,
-            diff_file_path: None,
-            diff_old_content: None,
-            diff_new_content: None,
             modified_files: Vec::new(),
+            workbench_tab: WorkbenchTab::Approvals,
             review_open: false,
             review_filter: String::new(),
             review_selected_idx: 0,
@@ -335,8 +385,10 @@ impl AppState {
             review_items: HashMap::new(),
             review_diff: None,
             review_generation: 0,
+            sessions_selected_idx: 0,
+            activity: Vec::new(),
+            activity_scroll: 0,
             auto_approve: false,
-            permission_explanation: None,
             project_root: options.project_root,
         }
     }
@@ -472,5 +524,34 @@ impl AppState {
         }
         self.review_selected_idx = idx as usize;
         self.review_selected_path = Some(paths[self.review_selected_idx].clone());
+    }
+
+    pub fn approval_normalize_selection(&mut self) {
+        if self.pending_approvals.is_empty() {
+            self.approval_selected_idx = 0;
+            self.approval_reset_detail();
+            return;
+        }
+        if self.approval_selected_idx >= self.pending_approvals.len() {
+            self.approval_selected_idx = self.pending_approvals.len() - 1;
+            self.approval_reset_detail();
+        }
+    }
+
+    pub fn push_activity(&mut self, kind: ActivityKind, message: impl Into<String>) {
+        self.activity.push(ActivityItem {
+            at: Utc::now(),
+            kind,
+            message: message.into(),
+        });
+        if self.activity.len() > 500 {
+            let overflow = self.activity.len() - 500;
+            self.activity.drain(0..overflow);
+            self.activity_scroll = self.activity_scroll.saturating_sub(overflow);
+        }
+    }
+
+    fn approval_reset_detail(&mut self) {
+        self.approval_detail_scroll = 0;
     }
 }

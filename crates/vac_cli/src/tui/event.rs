@@ -172,7 +172,13 @@ pub fn map_crossterm_event_to_input_event(event: Event) -> Option<InputEvent> {
                 KeyCode::End => Some(InputEvent::InputCursorEnd),
                 KeyCode::PageUp => Some(InputEvent::PageUp),
                 KeyCode::PageDown => Some(InputEvent::PageDown),
-                KeyCode::Tab => Some(InputEvent::Tab),
+                KeyCode::Tab => {
+                    if key.modifiers.contains(KeyModifiers::CONTROL) {
+                        Some(InputEvent::WorkbenchNextTab)
+                    } else {
+                        Some(InputEvent::Tab)
+                    }
+                }
                 _ => None,
             }
         }

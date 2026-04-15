@@ -192,12 +192,17 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                                     ),
                                 );
                             } else if cmd.command == "/sessions" {
+                                state.workbench_tab = crate::tui::app::WorkbenchTab::Sessions;
+                                state.focus = crate::tui::app::WorkspaceFocus::Workbench;
                                 let _ = output_tx.try_send(OutputEvent::ListSessions);
                             } else if cmd.command == "/new" {
                                 let _ = output_tx.try_send(OutputEvent::NewSession);
                             } else if cmd.command == "/review" {
                                 state.add_user_message(cmd.command.clone());
                                 state.review_open = true;
+                                state.workbench_tab = crate::tui::app::WorkbenchTab::Review;
+                                state.focus = crate::tui::app::WorkspaceFocus::Workbench;
+                                state.push_activity(crate::tui::app::ActivityKind::Review, "Open review");
                                 state.review_generation = state.review_generation.saturating_add(1);
                                 state.review_sync_items();
                                 state.review_normalize_selection();
@@ -232,72 +237,6 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
         return;
     }
 
-    // Handle dialog input
-    if state.is_dialog_open {
-        match event {
-            InputEvent::HandleEsc | InputEvent::DialogCancel => {
-                if let Some(tc) = state.dialog_command.take() {
-                    state.pending_tool_calls.retain(|c| c.id != tc.id);
-                    state.rejected_tools.push(tc.clone());
-                    let _ = output_tx.try_send(OutputEvent::RejectTool(tc, true));
-                }
-                state.is_dialog_open = false;
-            }
-            InputEvent::Up | InputEvent::DialogUp => {
-                if state.dialog_selected > 0 {
-                    state.dialog_selected -= 1;
-                }
-            }
-            InputEvent::Down | InputEvent::DialogDown => {
-                state.dialog_selected = (state.dialog_selected + 1) % 3;
-            }
-            InputEvent::InputSubmitted | InputEvent::DialogSelect => match state.dialog_selected {
-                0 => {
-                    if let Some(tc) = state.dialog_command.take() {
-                        state.pending_tool_calls.retain(|c| c.id != tc.id);
-                        state.approved_tools.push(tc.clone());
-                        let _ = output_tx.try_send(OutputEvent::AcceptTool(tc));
-                    }
-                    state.is_dialog_open = false;
-                }
-                1 => {
-                    if let Some(tc) = state.dialog_command.take() {
-                        state.pending_tool_calls.retain(|c| c.id != tc.id);
-                        state.rejected_tools.push(tc.clone());
-                        let _ = output_tx.try_send(OutputEvent::RejectTool(tc, false));
-                    }
-                    state.is_dialog_open = false;
-                }
-                _ => {
-                    if let Some(tc) = state.dialog_command.take() {
-                        state.pending_tool_calls.retain(|c| c.id != tc.id);
-                        state.rejected_tools.push(tc.clone());
-                        let _ = output_tx.try_send(OutputEvent::RejectTool(tc, true));
-                    }
-                    state.is_dialog_open = false;
-                }
-            },
-            InputEvent::ApproveTool => {
-                if let Some(tc) = state.dialog_command.take() {
-                    state.pending_tool_calls.retain(|c| c.id != tc.id);
-                    state.approved_tools.push(tc.clone());
-                    let _ = output_tx.try_send(OutputEvent::AcceptTool(tc));
-                }
-                state.is_dialog_open = false;
-            }
-            InputEvent::InputChanged('r') | InputEvent::RejectTool => {
-                if let Some(tc) = state.dialog_command.take() {
-                    state.pending_tool_calls.retain(|c| c.id != tc.id);
-                    state.rejected_tools.push(tc.clone());
-                    let _ = output_tx.try_send(OutputEvent::RejectTool(tc, false));
-                }
-                state.is_dialog_open = false;
-            }
-            _ => {}
-        }
-        return;
-    }
-
     // Handle shortcuts popup
     if state.show_shortcuts {
         match event {
@@ -309,7 +248,10 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
         return;
     }
 
-    if state.review_open {
+    if state.review_open
+        && state.focus == crate::tui::app::WorkspaceFocus::Workbench
+        && state.workbench_tab == crate::tui::app::WorkbenchTab::Review
+    {
         match event {
             InputEvent::HandleEsc | InputEvent::ReviewClose => {
                 state.review_open = false;
@@ -535,6 +477,10 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                             it.dirty_generation = it.dirty_generation.saturating_add(1);
                         });
                         state.add_assistant_message(format!("Reverted file: {}", path));
+                        state.push_activity(
+                            crate::tui::app::ActivityKind::Review,
+                            format!("Reverted: {path}"),
+                        );
                     }
                     Err(e) => {
                         state.review_items.entry(path.clone()).and_modify(|it| {
@@ -543,6 +489,10 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                             it.dirty_generation = it.dirty_generation.saturating_add(1);
                         });
                         state.add_assistant_message(format!("Failed to revert file: {}", path));
+                        state.push_activity(
+                            crate::tui::app::ActivityKind::Review,
+                            format!("Revert failed: {path}"),
+                        );
                     }
                 }
 
@@ -597,6 +547,10 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                     success_count,
                     files.len()
                 ));
+                state.push_activity(
+                    crate::tui::app::ActivityKind::Review,
+                    format!("Reverted filtered: {success_count}/{}", files.len()),
+                );
                 state.review_generation = state.review_generation.saturating_add(1);
                 state.review_sync_items();
                 state.review_normalize_selection();
@@ -641,6 +595,10 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                     success_count,
                     files.len()
                 ));
+                state.push_activity(
+                    crate::tui::app::ActivityKind::Review,
+                    format!("Reverted all: {success_count}/{}", files.len()),
+                );
                 state.review_generation = state.review_generation.saturating_add(1);
                 state.review_sync_items();
                 state.review_normalize_selection();
@@ -667,6 +625,11 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                     return;
                 };
 
+                state.push_activity(
+                    crate::tui::app::ActivityKind::Review,
+                    format!("Open editor: {path}"),
+                );
+
                 let _ = disable_raw_mode();
                 let _ = execute!(std::io::stdout(), LeaveAlternateScreen);
                 let _ = Command::new(editor).arg(&path).status();
@@ -686,22 +649,125 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
 
     // Normal input handling
     match event {
+        InputEvent::Tab => {
+            state.focus = state.focus.next();
+        }
+        InputEvent::WorkbenchNextTab => {
+            if state.focus != crate::tui::app::WorkspaceFocus::Workbench {
+                state.focus = crate::tui::app::WorkspaceFocus::Workbench;
+            }
+            state.workbench_tab = state.workbench_tab.next();
+        }
         InputEvent::InputChanged(c) => {
-            state.input.input(c);
+            match state.focus {
+                crate::tui::app::WorkspaceFocus::Input => {
+                    state.input.input(c);
+                }
+                crate::tui::app::WorkspaceFocus::Workbench => match state.workbench_tab {
+                    crate::tui::app::WorkbenchTab::Approvals => {
+                        match c {
+                            'a' => {
+                                if let Some(tc) = state
+                                    .pending_approvals
+                                    .get(state.approval_selected_idx)
+                                    .cloned()
+                                {
+                                    state.pending_approvals.retain(|t| t.id != tc.id);
+                                    state.approval_explanations.remove(&tc.id);
+                                    state.approved_tools.push(tc.clone());
+                                    state.approval_normalize_selection();
+                                    let tool_name = tc.function.name.clone();
+                                    let _ = output_tx.try_send(OutputEvent::AcceptTool(tc));
+                                    state.push_activity(
+                                        crate::tui::app::ActivityKind::Approval,
+                                        format!("Approved: {}", tool_name),
+                                    );
+                                }
+                            }
+                            'r' => {
+                                if let Some(tc) = state
+                                    .pending_approvals
+                                    .get(state.approval_selected_idx)
+                                    .cloned()
+                                {
+                                    state.pending_approvals.retain(|t| t.id != tc.id);
+                                    state.approval_explanations.remove(&tc.id);
+                                    state.rejected_tools.push(tc.clone());
+                                    state.approval_normalize_selection();
+                                    let tool_name = tc.function.name.clone();
+                                    let _ = output_tx.try_send(OutputEvent::RejectTool(tc, false));
+                                    state.push_activity(
+                                        crate::tui::app::ActivityKind::Approval,
+                                        format!("Rejected: {}", tool_name),
+                                    );
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                    crate::tui::app::WorkbenchTab::Review => {}
+                    crate::tui::app::WorkbenchTab::Sessions => {}
+                },
+                _ => {}
+            }
         }
         InputEvent::InputChangedNewline => {
-            state.input.newline();
+            if state.focus == crate::tui::app::WorkspaceFocus::Input {
+                state.input.newline();
+            }
         }
         InputEvent::InputBackspace => {
-            state.input.backspace();
+            if state.focus == crate::tui::app::WorkspaceFocus::Input {
+                state.input.backspace();
+            }
         }
         InputEvent::InputDelete => {
-            state.input.delete();
+            if state.focus == crate::tui::app::WorkspaceFocus::Input {
+                state.input.delete();
+            }
         }
         InputEvent::InputClear => {
-            state.input.clear();
+            if state.focus == crate::tui::app::WorkspaceFocus::Input {
+                state.input.clear();
+            }
         }
         InputEvent::InputSubmitted => {
+            if state.focus == crate::tui::app::WorkspaceFocus::Workbench
+                && state.workbench_tab == crate::tui::app::WorkbenchTab::Approvals
+            {
+                if let Some(tc) = state
+                    .pending_approvals
+                    .get(state.approval_selected_idx)
+                    .cloned()
+                {
+                    state.pending_approvals.retain(|t| t.id != tc.id);
+                    state.approval_explanations.remove(&tc.id);
+                    state.approved_tools.push(tc.clone());
+                    state.approval_normalize_selection();
+                    let tool_name = tc.function.name.clone();
+                    let _ = output_tx.try_send(OutputEvent::AcceptTool(tc));
+                    state.push_activity(
+                        crate::tui::app::ActivityKind::Approval,
+                        format!("Approved: {}", tool_name),
+                    );
+                }
+                return;
+            }
+
+            if state.focus == crate::tui::app::WorkspaceFocus::Workbench
+                && state.workbench_tab == crate::tui::app::WorkbenchTab::Sessions
+            {
+                if let Some(sel) = state.sessions.get(state.sessions_selected_idx).cloned() {
+                    let _ = output_tx.try_send(OutputEvent::SwitchToSession(sel.id));
+                    state.push_activity(crate::tui::app::ActivityKind::Session, "Switch session");
+                }
+                return;
+            }
+
+            if state.focus != crate::tui::app::WorkspaceFocus::Input || state.input.is_empty() {
+                return;
+            }
+
             if !state.input.is_empty() {
                 let msg = state.input.get_content();
                 state.input.clear();
@@ -728,12 +794,17 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                                         ),
                                     );
                                 } else if cmd.command == "/sessions" {
+                                    state.workbench_tab = crate::tui::app::WorkbenchTab::Sessions;
+                                    state.focus = crate::tui::app::WorkspaceFocus::Workbench;
                                     let _ = output_tx.try_send(OutputEvent::ListSessions);
                                 } else if cmd.command == "/new" {
                                     let _ = output_tx.try_send(OutputEvent::NewSession);
                                 } else if cmd.command == "/review" {
                                     state.add_user_message(trimmed.to_string());
                                     state.review_open = true;
+                                    state.workbench_tab = crate::tui::app::WorkbenchTab::Review;
+                                    state.focus = crate::tui::app::WorkspaceFocus::Workbench;
+                                    state.push_activity(crate::tui::app::ActivityKind::Review, "Open review");
                                     state.review_generation =
                                         state.review_generation.saturating_add(1);
                                     state.review_sync_items();
@@ -786,22 +857,138 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
             }
         }
         InputEvent::CursorLeft => {
-            state.input.move_cursor_left();
+            if state.focus == crate::tui::app::WorkspaceFocus::Input {
+                state.input.move_cursor_left();
+            }
         }
         InputEvent::CursorRight => {
-            state.input.move_cursor_right();
+            if state.focus == crate::tui::app::WorkspaceFocus::Input {
+                state.input.move_cursor_right();
+            }
         }
         InputEvent::Up => {
-            state.input.move_cursor_up();
+            match state.focus {
+                crate::tui::app::WorkspaceFocus::Input => state.input.move_cursor_up(),
+                crate::tui::app::WorkspaceFocus::Conversation => {
+                    state.scroll = state.scroll.saturating_sub(1);
+                }
+                crate::tui::app::WorkspaceFocus::Activity => {
+                    state.activity_scroll = state.activity_scroll.saturating_add(1);
+                }
+                crate::tui::app::WorkspaceFocus::Workbench => match state.workbench_tab {
+                    crate::tui::app::WorkbenchTab::Approvals => {
+                        state.approval_selected_idx = state.approval_selected_idx.saturating_sub(1);
+                        state.approval_detail_scroll = 0;
+                    }
+                    crate::tui::app::WorkbenchTab::Sessions => {
+                        state.sessions_selected_idx = state.sessions_selected_idx.saturating_sub(1);
+                    }
+                    crate::tui::app::WorkbenchTab::Review => {
+                        let prev = state.review_selected_path.clone();
+                        state.review_select_by_delta(-1);
+                        if state.review_diff.is_some() && prev != state.review_selected_path {
+                            if let (Some(path), Ok(session_id)) = (
+                                state.review_selected_path.clone(),
+                                uuid::Uuid::parse_str(&state.session_id),
+                            ) {
+                                match crate::tui::services::review::load_diff(
+                                    &state.project_root,
+                                    session_id,
+                                    &path,
+                                ) {
+                                    Ok(diff) => {
+                                        state.review_diff = Some(crate::tui::app::ReviewDiffState {
+                                            path: diff.path,
+                                            old_content: Some(diff.old_content),
+                                            new_content: Some(diff.new_content),
+                                            scroll: 0,
+                                            last_error: None,
+                                        });
+                                    }
+                                    Err(e) => {
+                                        state.review_diff = Some(crate::tui::app::ReviewDiffState {
+                                            path,
+                                            old_content: None,
+                                            new_content: None,
+                                            scroll: 0,
+                                            last_error: Some(e),
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+            }
         }
         InputEvent::Down => {
-            state.input.move_cursor_down();
+            match state.focus {
+                crate::tui::app::WorkspaceFocus::Input => state.input.move_cursor_down(),
+                crate::tui::app::WorkspaceFocus::Conversation => {
+                    state.scroll = state.scroll.saturating_add(1);
+                }
+                crate::tui::app::WorkspaceFocus::Activity => {
+                    state.activity_scroll = state.activity_scroll.saturating_sub(1);
+                }
+                crate::tui::app::WorkspaceFocus::Workbench => match state.workbench_tab {
+                    crate::tui::app::WorkbenchTab::Approvals => {
+                        if state.approval_selected_idx + 1 < state.pending_approvals.len() {
+                            state.approval_selected_idx += 1;
+                            state.approval_detail_scroll = 0;
+                        }
+                    }
+                    crate::tui::app::WorkbenchTab::Sessions => {
+                        if state.sessions_selected_idx + 1 < state.sessions.len() {
+                            state.sessions_selected_idx += 1;
+                        }
+                    }
+                    crate::tui::app::WorkbenchTab::Review => {
+                        let prev = state.review_selected_path.clone();
+                        state.review_select_by_delta(1);
+                        if state.review_diff.is_some() && prev != state.review_selected_path {
+                            if let (Some(path), Ok(session_id)) = (
+                                state.review_selected_path.clone(),
+                                uuid::Uuid::parse_str(&state.session_id),
+                            ) {
+                                match crate::tui::services::review::load_diff(
+                                    &state.project_root,
+                                    session_id,
+                                    &path,
+                                ) {
+                                    Ok(diff) => {
+                                        state.review_diff = Some(crate::tui::app::ReviewDiffState {
+                                            path: diff.path,
+                                            old_content: Some(diff.old_content),
+                                            new_content: Some(diff.new_content),
+                                            scroll: 0,
+                                            last_error: None,
+                                        });
+                                    }
+                                    Err(e) => {
+                                        state.review_diff = Some(crate::tui::app::ReviewDiffState {
+                                            path,
+                                            old_content: None,
+                                            new_content: None,
+                                            scroll: 0,
+                                            last_error: Some(e),
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+            }
         }
         InputEvent::InputCursorStart => {
-            state.input.move_cursor_start();
+            if state.focus == crate::tui::app::WorkspaceFocus::Input {
+                state.input.move_cursor_start();
+            }
         }
         InputEvent::InputCursorEnd => {
-            state.input.move_cursor_end();
+            if state.focus == crate::tui::app::WorkspaceFocus::Input {
+                state.input.move_cursor_end();
+            }
         }
         InputEvent::AttemptQuit => {
             state.cancel_requested = true;
@@ -810,13 +997,34 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
             if state.is_streaming {
                 let _ = output_tx.try_send(OutputEvent::CancelStream);
                 state.is_streaming = false;
+            } else if state.focus == crate::tui::app::WorkspaceFocus::Workbench
+                && state.workbench_tab == crate::tui::app::WorkbenchTab::Review
+            {
+                state.review_open = false;
+                state.review_diff = None;
             }
         }
         InputEvent::ScrollUp => {
-            state.scroll = state.scroll.saturating_sub(1);
+            match state.focus {
+                crate::tui::app::WorkspaceFocus::Conversation => {
+                    state.scroll = state.scroll.saturating_sub(1);
+                }
+                crate::tui::app::WorkspaceFocus::Activity => {
+                    state.activity_scroll = state.activity_scroll.saturating_add(1);
+                }
+                _ => {}
+            }
         }
         InputEvent::ScrollDown => {
-            state.scroll = state.scroll.saturating_add(1);
+            match state.focus {
+                crate::tui::app::WorkspaceFocus::Conversation => {
+                    state.scroll = state.scroll.saturating_add(1);
+                }
+                crate::tui::app::WorkspaceFocus::Activity => {
+                    state.activity_scroll = state.activity_scroll.saturating_sub(1);
+                }
+                _ => {}
+            }
         }
         InputEvent::ShowCommandPalette => {
             state.show_command_palette = true;
@@ -845,6 +1053,15 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
         InputEvent::NewSession => {
             let _ = output_tx.try_send(OutputEvent::NewSession);
         }
+        InputEvent::ReviewOpen => {
+            state.review_open = true;
+            state.workbench_tab = crate::tui::app::WorkbenchTab::Review;
+            state.focus = crate::tui::app::WorkspaceFocus::Workbench;
+            state.push_activity(crate::tui::app::ActivityKind::Review, "Open review");
+            state.review_generation = state.review_generation.saturating_add(1);
+            state.review_sync_items();
+            state.review_normalize_selection();
+        }
         _ => {}
     }
 }
@@ -871,6 +1088,7 @@ fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, e
         InputEvent::AssistantMessage(msg) => {
             state.add_assistant_message(msg);
             state.loading = false;
+            state.push_activity(crate::tui::app::ActivityKind::Status, "Assistant message");
         }
         InputEvent::StreamAssistantMessage(id, chunk) => {
             state.is_streaming = true;
@@ -884,21 +1102,34 @@ fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, e
             state.add_assistant_message(chunk);
         }
         InputEvent::StartLoadingOperation(op) => {
+            let op_label = format!("{op:?}");
             state.loading_manager.start_operation(op);
             state.loading = true;
+            state.push_activity(
+                crate::tui::app::ActivityKind::Status,
+                format!("Loading: {op_label}"),
+            );
         }
         InputEvent::EndLoadingOperation(op) => {
+            let op_label = format!("{op:?}");
             state.loading_manager.end_operation(op);
             state.loading = state.loading_manager.is_loading();
             state.is_streaming = false;
+            state.push_activity(
+                crate::tui::app::ActivityKind::Status,
+                format!("Done: {op_label}"),
+            );
         }
         InputEvent::Error(msg) => {
             state.add_assistant_message(format!("Error: {}", msg));
             state.loading = false;
             state.is_streaming = false;
+            state.push_activity(crate::tui::app::ActivityKind::Error, msg);
         }
         InputEvent::SetSessions(sessions) => {
             state.sessions = sessions;
+            state.sessions_selected_idx = 0;
+            state.push_activity(crate::tui::app::ActivityKind::Session, "Sessions updated");
         }
         InputEvent::SessionRestored {
             id,
@@ -911,43 +1142,76 @@ fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, e
             state.loading = false;
 
             // Clear transient UI state to prevent leakage between sessions
+            state.pending_approvals.clear();
             state.pending_tool_calls.clear();
             state.approved_tools.clear();
             state.rejected_tools.clear();
-            state.dialog_command = None;
-            state.is_dialog_open = false;
+            state.approval_explanations.clear();
+            state.approval_selected_idx = 0;
+            state.approval_detail_scroll = 0;
             state.is_streaming = false;
             state.streaming_message_id = None;
             state.scroll = 0;
             state.input.clear();
+            state.review_open = false;
+            state.review_filter.clear();
+            state.review_diff = None;
+            state.review_selected_idx = 0;
+            state.review_selected_path = None;
+            state.activity.clear();
+            state.activity_scroll = 0;
+            state.workbench_tab = crate::tui::app::WorkbenchTab::Approvals;
+            state.focus = crate::tui::app::WorkspaceFocus::Input;
+            state.push_activity(crate::tui::app::ActivityKind::Session, "Session restored");
         }
         InputEvent::ShowConfirmationDialog(tc) => {
-            state.dialog_command = Some(tc);
-            state.is_dialog_open = true;
-            state.dialog_selected = 0;
-            state.permission_explanation = None;
+            state.pending_approvals.push(tc.clone());
+            state.approval_selected_idx = state.pending_approvals.len().saturating_sub(1);
+            state.approval_explanations.insert(tc.id.clone(), None);
+            state.approval_normalize_selection();
+            state.workbench_tab = crate::tui::app::WorkbenchTab::Approvals;
+            state.focus = crate::tui::app::WorkspaceFocus::Workbench;
+            state.push_activity(
+                crate::tui::app::ActivityKind::Approval,
+                format!("Approval required: {}", tc.function.name),
+            );
         }
         InputEvent::ShowConfirmationDialogWithExplanation(tc, explanation) => {
             if state.auto_approve && is_low_risk_tool(&tc.function.name) {
                 state.approved_tools.push(tc.clone());
                 let _ = output_tx.try_send(OutputEvent::AcceptTool(tc));
-                state.is_dialog_open = false;
-                state.dialog_command = None;
-                state.permission_explanation = None;
+                state.push_activity(
+                    crate::tui::app::ActivityKind::Approval,
+                    "Auto-approved low risk tool",
+                );
             } else {
-                state.dialog_command = Some(tc);
-                state.is_dialog_open = true;
-                state.dialog_selected = 0;
-                state.permission_explanation = explanation;
+                state.pending_approvals.push(tc.clone());
+                state.approval_selected_idx = state.pending_approvals.len().saturating_sub(1);
+                state.approval_explanations.insert(tc.id.clone(), explanation);
+                state.approval_normalize_selection();
+                state.workbench_tab = crate::tui::app::WorkbenchTab::Approvals;
+                state.focus = crate::tui::app::WorkspaceFocus::Workbench;
+                state.push_activity(
+                    crate::tui::app::ActivityKind::Approval,
+                    format!("Approval required: {}", tc.function.name),
+                );
             }
         }
         InputEvent::RunToolCall(tc) => {
-            state.pending_tool_calls.push(tc);
+            state.pending_tool_calls.push(tc.clone());
+            state.push_activity(
+                crate::tui::app::ActivityKind::Tool,
+                format!("Tool started: {}", tc.function.name),
+            );
         }
         InputEvent::ToolResult(result) => {
             state.pending_tool_calls.retain(|c| c.id != result.call.id);
             state.approved_tools.retain(|c| c.id != result.call.id);
             state.add_assistant_message(result.result);
+            state.push_activity(
+                crate::tui::app::ActivityKind::Tool,
+                format!("Tool result: {}", result.call.function.name),
+            );
         }
         InputEvent::TaskCompleted(result) => {
             let mut content = result.summary.clone();
@@ -977,6 +1241,7 @@ fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, e
             state.add_assistant_message(content);
             state.loading = false;
             state.is_streaming = false;
+            state.push_activity(crate::tui::app::ActivityKind::Status, "Task completed");
         }
         _ => {}
     }
@@ -985,6 +1250,7 @@ fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, e
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tui::types::{FunctionCall, ToolCall};
 
     fn make_state(project_root: std::path::PathBuf, session_id: uuid::Uuid) -> AppState {
         AppState::new(AppStateOptions {
@@ -1051,6 +1317,10 @@ mod tests {
         state.input.set_content("/review");
         handle_input_event(&mut state, &tx, InputEvent::InputSubmitted);
         assert!(state.review_open);
+        assert_eq!(
+            state.workbench_tab,
+            crate::tui::app::WorkbenchTab::Review
+        );
     }
 
     #[test]
@@ -1059,6 +1329,8 @@ mod tests {
         let (tx, _rx) = tokio::sync::mpsc::channel(4);
         let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
         state.review_open = true;
+        state.focus = crate::tui::app::WorkspaceFocus::Workbench;
+        state.workbench_tab = crate::tui::app::WorkbenchTab::Review;
         state.review_diff = Some(crate::tui::app::ReviewDiffState {
             path: "a.txt".to_string(),
             old_content: Some("old".to_string()),
@@ -1077,6 +1349,8 @@ mod tests {
         let (tx, _rx) = tokio::sync::mpsc::channel(4);
         let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
         state.review_open = true;
+        state.focus = crate::tui::app::WorkspaceFocus::Workbench;
+        state.workbench_tab = crate::tui::app::WorkbenchTab::Review;
         state.review_diff = Some(crate::tui::app::ReviewDiffState {
             path: "a.txt".to_string(),
             old_content: Some("a\nb\nc\nd\ne\n".to_string()),
@@ -1086,6 +1360,92 @@ mod tests {
         });
         handle_input_event(&mut state, &tx, InputEvent::PageDown);
         assert!(state.review_diff.as_ref().unwrap().scroll > 0);
+    }
+
+    #[tokio::test]
+    async fn approval_queue_accepts_selected_and_emits_output_event() {
+        let dir = tempfile::tempdir().unwrap();
+        let (tx, mut rx) = tokio::sync::mpsc::channel(4);
+        let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
+
+        let tc1 = ToolCall {
+            id: "tc-1".to_string(),
+            r#type: "function".to_string(),
+            function: FunctionCall {
+                name: "file_write".to_string(),
+                arguments: serde_json::json!({"file_path":"a.txt","content":"x"}).to_string(),
+            },
+            metadata: None,
+        };
+        let tc2 = ToolCall {
+            id: "tc-2".to_string(),
+            r#type: "function".to_string(),
+            function: FunctionCall {
+                name: "file_edit".to_string(),
+                arguments: serde_json::json!({"file_path":"b.txt","old_string":"a","new_string":"b"}).to_string(),
+            },
+            metadata: None,
+        };
+
+        handle_backend_event(
+            &mut state,
+            &tx,
+            InputEvent::ShowConfirmationDialogWithExplanation(tc1.clone(), Some("x".to_string())),
+        );
+        handle_backend_event(
+            &mut state,
+            &tx,
+            InputEvent::ShowConfirmationDialogWithExplanation(tc2.clone(), Some("y".to_string())),
+        );
+
+        assert_eq!(state.pending_approvals.len(), 2);
+        assert_eq!(state.approval_selected_idx, 1);
+        assert_eq!(state.focus, crate::tui::app::WorkspaceFocus::Workbench);
+        assert_eq!(state.workbench_tab, crate::tui::app::WorkbenchTab::Approvals);
+
+        handle_input_event(&mut state, &tx, InputEvent::InputChanged('a'));
+        let ev = rx.recv().await.unwrap();
+        match ev {
+            OutputEvent::AcceptTool(tc) => assert_eq!(tc.id, "tc-2"),
+            _ => panic!("unexpected event"),
+        }
+
+        assert_eq!(state.pending_approvals.len(), 1);
+        assert_eq!(state.pending_approvals[0].id, "tc-1");
+        assert!(state.approved_tools.iter().any(|t| t.id == "tc-2"));
+    }
+
+    #[tokio::test]
+    async fn approval_queue_rejects_selected_and_emits_output_event() {
+        let dir = tempfile::tempdir().unwrap();
+        let (tx, mut rx) = tokio::sync::mpsc::channel(4);
+        let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
+
+        let tc = ToolCall {
+            id: "tc-1".to_string(),
+            r#type: "function".to_string(),
+            function: FunctionCall {
+                name: "file_write".to_string(),
+                arguments: serde_json::json!({"file_path":"a.txt","content":"x"}).to_string(),
+            },
+            metadata: None,
+        };
+
+        handle_backend_event(
+            &mut state,
+            &tx,
+            InputEvent::ShowConfirmationDialogWithExplanation(tc.clone(), None),
+        );
+
+        handle_input_event(&mut state, &tx, InputEvent::InputChanged('r'));
+        let ev = rx.recv().await.unwrap();
+        match ev {
+            OutputEvent::RejectTool(tc, _) => assert_eq!(tc.id, "tc-1"),
+            _ => panic!("unexpected event"),
+        }
+
+        assert!(state.pending_approvals.is_empty());
+        assert!(state.rejected_tools.iter().any(|t| t.id == "tc-1"));
     }
 
     #[tokio::test]
@@ -1107,6 +1467,8 @@ mod tests {
         let mut state = make_state(root.clone(), session_id);
         state.modified_files = vec![file_rel.to_string()];
         state.review_open = true;
+        state.focus = crate::tui::app::WorkspaceFocus::Workbench;
+        state.workbench_tab = crate::tui::app::WorkbenchTab::Review;
         state.review_sync_items();
         state.review_selected_path = Some(file_rel.to_string());
 
@@ -1139,6 +1501,8 @@ mod tests {
         let mut state = make_state(root.clone(), session_id);
         state.modified_files = vec!["a.txt".to_string(), "b.txt".to_string()];
         state.review_open = true;
+        state.focus = crate::tui::app::WorkspaceFocus::Workbench;
+        state.workbench_tab = crate::tui::app::WorkbenchTab::Review;
         state.review_filter = "a".to_string();
         state.review_sync_items();
         state.review_normalize_selection();
@@ -1177,6 +1541,8 @@ mod tests {
         let mut state = make_state(root.clone(), session_id);
         state.modified_files = vec!["a.txt".to_string(), "b.txt".to_string()];
         state.review_open = true;
+        state.focus = crate::tui::app::WorkspaceFocus::Workbench;
+        state.workbench_tab = crate::tui::app::WorkbenchTab::Review;
         state.review_sync_items();
         state.review_normalize_selection();
 

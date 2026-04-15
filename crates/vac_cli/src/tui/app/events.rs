@@ -50,6 +50,7 @@ pub enum InputEvent {
     Up,
     Down,
     Tab,
+    WorkbenchNextTab,
 
     // Control
     Quit,
