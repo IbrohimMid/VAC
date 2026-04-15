@@ -18,7 +18,10 @@ fn truncate_chars(s: &str, max_chars: usize) -> String {
     if s.chars().count() <= max_chars {
         s.to_string()
     } else {
-        s.chars().take(max_chars.saturating_sub(1)).chain(std::iter::once('…')).collect()
+        s.chars()
+            .take(max_chars.saturating_sub(1))
+            .chain(std::iter::once('…'))
+            .collect()
     }
 }
 
@@ -31,10 +34,15 @@ pub fn render_bash_block(block: &BashBlock, width: usize) -> Vec<Line<'static>> 
         Span::styled("┌─ ", Style::default().fg(Color::DarkGray)),
         Span::styled(
             block.language.clone(),
-            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
         ),
         Span::styled(
-            format!(" {}", "─".repeat(width.saturating_sub(block.language.len() + 4))),
+            format!(
+                " {}",
+                "─".repeat(width.saturating_sub(block.language.len() + 4))
+            ),
             Style::default().fg(Color::DarkGray),
         ),
     ]));

@@ -47,6 +47,12 @@ impl KnowledgeTool {
     }
 }
 
+impl Default for KnowledgeTool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[async_trait]
 impl VilTool for KnowledgeTool {
     fn name(&self) -> &str {

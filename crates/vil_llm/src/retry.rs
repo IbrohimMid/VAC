@@ -45,7 +45,10 @@ pub fn parse_retry_delay_from_headers(
 ) -> Option<RetryDelay> {
     if let Some(raw_ms) = find_header(headers, "retry-after-ms") {
         if let Ok(delay_ms) = raw_ms.trim().parse::<u64>() {
-            return Some(RetryDelay { delay_ms, source: RetryDelaySource::RetryAfterMsHeader });
+            return Some(RetryDelay {
+                delay_ms,
+                source: RetryDelaySource::RetryAfterMsHeader,
+            });
         }
     }
 
@@ -94,7 +97,8 @@ pub fn resolve_retry_delay_ms(
 }
 
 fn find_header<'a>(headers: &'a HashMap<String, String>, key: &str) -> Option<&'a str> {
-    headers.iter()
+    headers
+        .iter()
         .find(|(k, _)| k.eq_ignore_ascii_case(key))
         .map(|(_, v)| v.as_str())
 }
@@ -104,7 +108,9 @@ mod tests {
     use super::*;
     use chrono::Duration;
 
-    fn cfg() -> RetryConfig { RetryConfig::default() }
+    fn cfg() -> RetryConfig {
+        RetryConfig::default()
+    }
 
     #[test]
     fn retry_after_ms_takes_precedence() {

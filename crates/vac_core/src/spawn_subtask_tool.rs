@@ -6,8 +6,8 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::info;
 
-use vac_tools::registry::{ToolContext, VilTool};
 use vac_tools::error::ToolError;
+use vac_tools::registry::{ToolContext, VilTool};
 use vil_swarm::{AgentRole, SwarmOrchestrator};
 
 #[derive(Debug, Deserialize)]
@@ -55,7 +55,10 @@ impl SpawnSubtaskTool {
             "monitor" => Ok(AgentRole::Monitor),
             "optimizer" => Ok(AgentRole::Optimizer),
             "documenter" => Ok(AgentRole::Documenter),
-            _ => Err(ToolError::InvalidArguments(format!("Unknown role: {}", role_str))),
+            _ => Err(ToolError::InvalidArguments(format!(
+                "Unknown role: {}",
+                role_str
+            ))),
         }
     }
 }
@@ -110,8 +113,8 @@ impl VilTool for SpawnSubtaskTool {
         args: serde_json::Value,
         context: &ToolContext,
     ) -> Result<serde_json::Value, ToolError> {
-        let input: SpawnSubtaskInput = serde_json::from_value(args)
-            .map_err(|e| ToolError::InvalidArguments(e.to_string()))?;
+        let input: SpawnSubtaskInput =
+            serde_json::from_value(args).map_err(|e| ToolError::InvalidArguments(e.to_string()))?;
 
         let role = Self::parse_role(&input.target_role)?;
         info!(role = ?role, allowed_tools = ?input.allowed_tools, "Spawning subtask");

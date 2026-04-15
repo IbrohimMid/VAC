@@ -1,8 +1,8 @@
 //! Loop control helpers for agent execution loop.
 //! Extracted from orchestrator.rs — generic infra, not VIL semantic policy.
 
-use vil_llm::provider::FinishReason;
 use crate::error::{SwarmError, SwarmResult};
+use vil_llm::provider::FinishReason;
 
 pub const MAX_ITERATIONS: usize = 30;
 
@@ -10,7 +10,8 @@ pub const MAX_ITERATIONS: usize = 30;
 pub fn check_iteration_cap(iteration: usize) -> SwarmResult<()> {
     if iteration >= MAX_ITERATIONS {
         Err(SwarmError::Orchestration(format!(
-            "Agent loop exceeded {} iterations without completing", MAX_ITERATIONS
+            "Agent loop exceeded {} iterations without completing",
+            MAX_ITERATIONS
         )))
     } else {
         Ok(())

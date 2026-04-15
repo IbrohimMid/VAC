@@ -20,7 +20,7 @@ pub fn run_all_passes(module: &IrModule) -> ValidationReport {
     let mut issues = Vec::new();
     let semantic = SemanticModel::from_module(module);
 
-    let scores = vec![
+    let scores = [
         pass_semantic_correctness(&semantic, &mut issues),
         pass_zero_copy_legality(module, &semantic, &mut issues),
         pass_observability(&semantic, module, &mut issues),
@@ -114,11 +114,7 @@ fn pass_zero_copy_legality(
 
 /// Pass 3: Observability completeness.
 /// Network handlers should have observability (tracing instrument or RequestId).
-fn pass_observability(
-    model: &SemanticModel,
-    module: &IrModule,
-    issues: &mut Vec<String>,
-) -> f64 {
+fn pass_observability(model: &SemanticModel, module: &IrModule, issues: &mut Vec<String>) -> f64 {
     let mut score = 1.0;
 
     let uses_tracing = module.uses.iter().any(|u| u.path.contains("tracing"));
@@ -213,18 +209,22 @@ fn pass_tri_lane_consistency(
     issues: &mut Vec<String>,
 ) -> f64 {
     let mut score = 1.0;
-    
+
     for func in &module.functions {
-        if func.vil_attrs.iter().any(|a| a.contains("lane = \"fast\"") || a.contains("fast_lane")) {
+        if func
+            .vil_attrs
+            .iter()
+            .any(|a| a.contains("lane = \"fast\"") || a.contains("fast_lane"))
+        {
             if let Some(body) = &func.body_summary {
-                if body.contains("fs::") || body.contains("reqwest::") || body.contains(".await") {
-                    if body.contains("std::fs") || body.contains("std::thread::sleep") {
-                        issues.push(format!(
-                            "Handler '{}' is marked for the Fast Lane but contains synchronous blocking calls. Use async I/O or the Compute Lane.",
-                            func.name
-                        ));
-                        score *= 0.8;
-                    }
+                if (body.contains("fs::") || body.contains("reqwest::") || body.contains(".await"))
+                    && (body.contains("std::fs") || body.contains("std::thread::sleep"))
+                {
+                    issues.push(format!(
+                        "Handler '{}' is marked for the Fast Lane but contains synchronous blocking calls. Use async I/O or the Compute Lane.",
+                        func.name
+                    ));
+                    score *= 0.8;
                 }
             }
         }
@@ -236,9 +236,11 @@ fn pass_tri_lane_consistency(
 /// Checks that users aren't manually writing code that VIL macros generate (e.g. implementing VilMessage manually).
 fn pass_generated_plumbing(module: &IrModule, issues: &mut Vec<String>) -> f64 {
     let mut score = 1.0;
-    
+
     for imp in &module.impls {
-        if imp.trait_name.as_deref() == Some("VilMessage") || imp.trait_name.as_deref() == Some("VilState") {
+        if imp.trait_name.as_deref() == Some("VilMessage")
+            || imp.trait_name.as_deref() == Some("VilState")
+        {
             issues.push(format!(
                 "Struct '{}' manually implements '{}'. VIL macros (#[vil_message], #[vil_state]) automatically generate this plumbing. Remove the manual impl.",
                 imp.self_type,
@@ -258,7 +260,7 @@ fn pass_semantic_macro_coverage(
     issues: &mut Vec<String>,
 ) -> f64 {
     let mut score = 1.0;
-    
+
     for msg in &model.messages {
         if msg.role != MessageRole::Generic {
             // Find the struct in the module to check its actual attributes

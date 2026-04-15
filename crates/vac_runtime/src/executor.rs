@@ -13,7 +13,7 @@ pub enum OperatingMode {
 }
 
 impl OperatingMode {
-    pub fn from_str(s: &str) -> Self {
+    pub fn parse(s: &str) -> Self {
         match s {
             "suggest-only" => Self::SuggestOnly,
             "patch-proposal" => Self::PatchProposal,
@@ -31,6 +31,14 @@ impl OperatingMode {
     }
 }
 
+impl std::str::FromStr for OperatingMode {
+    type Err = std::convert::Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(Self::parse(s))
+    }
+}
+
 pub struct TaskExecutor {
     pub project_root: PathBuf,
     pub operating_mode: OperatingMode,
@@ -40,7 +48,11 @@ pub struct TaskExecutor {
 
 impl TaskExecutor {
     pub fn new(project_root: PathBuf, mode: OperatingMode) -> Self {
-        Self { project_root, operating_mode: mode, engine: None }
+        Self {
+            project_root,
+            operating_mode: mode,
+            engine: None,
+        }
     }
 
     /// Attach a live VacEngine. Must be called before executing RunTask jobs.
@@ -52,28 +64,37 @@ impl TaskExecutor {
         match &job.kind {
             JobKind::RunTask { description } => {
                 match self.operating_mode {
-                    OperatingMode::MonitorOnly => {
-                        Ok(format!("Monitor-only: would run '{description}' (engine not invoked)"))
-                    }
-                    OperatingMode::SuggestOnly => {
-                        Ok(format!("Suggest-only: task '{description}' noted but not executed"))
-                    }
+                    OperatingMode::MonitorOnly => Ok(format!(
+                        "Monitor-only: would run '{description}' (engine not invoked)"
+                    )),
+                    OperatingMode::SuggestOnly => Ok(format!(
+                        "Suggest-only: task '{description}' noted but not executed"
+                    )),
                     OperatingMode::PatchProposal | OperatingMode::AutoFixLowRisk => {
-                        let engine = self.engine.as_ref()
-                            .ok_or_else(|| anyhow::anyhow!(
+                        let engine = self.engine.as_ref().ok_or_else(|| {
+                            anyhow::anyhow!(
                                 "TaskExecutor has no engine attached — call attach_engine() first"
-                            ))?;
+                            )
+                        })?;
 
                         let mode = self.operating_mode.clone();
-                        let (approval_tx, approval_rx) = tokio::sync::mpsc::unbounded_channel::<vil_swarm::ApprovalResponse>();
-                        
+                        let (approval_tx, approval_rx) =
+                            tokio::sync::mpsc::unbounded_channel::<vil_swarm::ApprovalResponse>();
+
                         // We need an updates channel to listen for ApprovalRequired
-                        let (update_tx, mut update_rx) = tokio::sync::mpsc::unbounded_channel::<vac_core::engine::RuntimeUpdate>();
+                        let (update_tx, mut update_rx) = tokio::sync::mpsc::unbounded_channel::<
+                            vac_core::engine::RuntimeUpdate,
+                        >();
                         let approval_tx_clone = approval_tx.clone();
 
                         tokio::spawn(async move {
                             while let Some(update) = update_rx.recv().await {
-                                if let vac_core::engine::RuntimeUpdate::ApprovalRequired { tool_call_id, tool_name, .. } = update {
+                                if let vac_core::engine::RuntimeUpdate::ApprovalRequired {
+                                    tool_call_id,
+                                    tool_name,
+                                    ..
+                                } = update
+                                {
                                     let approve = match mode {
                                         OperatingMode::PatchProposal => false, // Never auto-approve in PatchProposal
                                         OperatingMode::AutoFixLowRisk => {
@@ -85,13 +106,26 @@ impl TaskExecutor {
                                     let _ = approval_tx_clone.send(vil_swarm::ApprovalResponse {
                                         tool_call_id,
                                         approved: approve,
-                                        reason: if approve { None } else { Some("Headless policy denied this action".to_string()) },
+                                        reason: if approve {
+                                            None
+                                        } else {
+                                            Some("Headless policy denied this action".to_string())
+                                        },
                                     });
                                 }
                             }
                         });
 
-                        let result = engine.lock().await.run_task_with_approvals(description, Some(update_tx), None, Some(approval_rx)).await
+                        let result = engine
+                            .lock()
+                            .await
+                            .run_task_with_approvals(
+                                description,
+                                Some(update_tx),
+                                None,
+                                Some(approval_rx),
+                            )
+                            .await
                             .map_err(|e| anyhow::anyhow!("Engine error: {e}"))?;
                         Ok(format!(
                             "Task completed: {} | modified: {} | tokens: {}",
@@ -103,13 +137,17 @@ impl TaskExecutor {
                 }
             }
             JobKind::DiagnosticSweep => {
-                let cache = self.project_root.join(".vac/cache/vil_lsp_diagnostics.json");
+                let cache = self
+                    .project_root
+                    .join(".vac/cache/vil_lsp_diagnostics.json");
                 if cache.exists() {
                     let content = std::fs::read_to_string(&cache)?;
                     let snap: serde_json::Value = serde_json::from_str(&content)?;
                     let errors = snap["total_errors"].as_u64().unwrap_or(0);
                     let warnings = snap["total_warnings"].as_u64().unwrap_or(0);
-                    Ok(format!("Diagnostic sweep: {errors} errors, {warnings} warnings"))
+                    Ok(format!(
+                        "Diagnostic sweep: {errors} errors, {warnings} warnings"
+                    ))
                 } else {
                     Ok("Diagnostic sweep: no cache found (vil-lsp not running)".to_string())
                 }
@@ -118,7 +156,10 @@ impl TaskExecutor {
                 let books = vac_core::rulebook::RulebookLoader::load_all(&self.project_root, &[]);
                 let result = vac_core::rulebook::validate_rulebooks(&books);
                 if result.is_valid() {
-                    Ok(format!("Rulebook compliance: {} book(s) valid", books.len()))
+                    Ok(format!(
+                        "Rulebook compliance: {} book(s) valid",
+                        books.len()
+                    ))
                 } else {
                     Ok(format!(
                         "Rulebook compliance: {} error(s) — {}",
@@ -129,20 +170,32 @@ impl TaskExecutor {
             }
             JobKind::PatchProposal { files } => {
                 if !self.operating_mode.produces_patches() {
-                    return Ok(format!("Patch proposal skipped (mode: {:?})", self.operating_mode));
+                    return Ok(format!(
+                        "Patch proposal skipped (mode: {:?})",
+                        self.operating_mode
+                    ));
                 }
-                let engine = self.engine.as_ref()
+                let engine = self
+                    .engine
+                    .as_ref()
                     .ok_or_else(|| anyhow::anyhow!("No engine attached for patch proposal"))?;
                 let task = format!("Review and propose patches for: {}", files.join(", "));
-                
+
                 let mode = self.operating_mode.clone();
-                let (approval_tx, approval_rx) = tokio::sync::mpsc::unbounded_channel::<vil_swarm::ApprovalResponse>();
-                let (update_tx, mut update_rx) = tokio::sync::mpsc::unbounded_channel::<vac_core::engine::RuntimeUpdate>();
+                let (approval_tx, approval_rx) =
+                    tokio::sync::mpsc::unbounded_channel::<vil_swarm::ApprovalResponse>();
+                let (update_tx, mut update_rx) =
+                    tokio::sync::mpsc::unbounded_channel::<vac_core::engine::RuntimeUpdate>();
                 let approval_tx_clone = approval_tx.clone();
 
                 tokio::spawn(async move {
                     while let Some(update) = update_rx.recv().await {
-                        if let vac_core::engine::RuntimeUpdate::ApprovalRequired { tool_call_id, tool_name, .. } = update {
+                        if let vac_core::engine::RuntimeUpdate::ApprovalRequired {
+                            tool_call_id,
+                            tool_name,
+                            ..
+                        } = update
+                        {
                             let approve = match mode {
                                 OperatingMode::PatchProposal => false, // Never auto-approve in PatchProposal
                                 OperatingMode::AutoFixLowRisk => is_low_risk_tool(&tool_name),
@@ -151,13 +204,21 @@ impl TaskExecutor {
                             let _ = approval_tx_clone.send(vil_swarm::ApprovalResponse {
                                 tool_call_id,
                                 approved: approve,
-                                reason: if approve { None } else { Some("Headless policy denied this action".to_string()) },
+                                reason: if approve {
+                                    None
+                                } else {
+                                    Some("Headless policy denied this action".to_string())
+                                },
                             });
                         }
                     }
                 });
 
-                let result = engine.lock().await.run_task_with_approvals(&task, Some(update_tx), None, Some(approval_rx)).await
+                let result = engine
+                    .lock()
+                    .await
+                    .run_task_with_approvals(&task, Some(update_tx), None, Some(approval_rx))
+                    .await
                     .map_err(|e| anyhow::anyhow!("Engine error: {e}"))?;
                 Ok(format!(
                     "Patch proposal: {} file(s) modified — {}",
@@ -165,9 +226,9 @@ impl TaskExecutor {
                     result.summary
                 ))
             }
-            JobKind::ManualApproval { tool_name } => {
-                Ok(format!("Manual approval required for {tool_name} (use autopilot controller approval file)"))
-            }
+            JobKind::ToolCall { tool_name, .. } => Ok(format!(
+                "ToolCall job requires autopilot controller to execute {tool_name}"
+            )),
         }
     }
 }
@@ -176,7 +237,15 @@ impl TaskExecutor {
 pub fn is_low_risk_tool(tool_name: &str) -> bool {
     matches!(
         tool_name,
-        "file_read" | "file_write" | "file_edit" | "glob" | "grep" | "search"
-            | "vil_knowledge" | "vil_diagnostics" | "vil_status" | "vil_lsp_query"
+        "file_read"
+            | "file_write"
+            | "file_edit"
+            | "glob"
+            | "grep"
+            | "search"
+            | "vil_knowledge"
+            | "vil_diagnostics"
+            | "vil_status"
+            | "vil_lsp_query"
     )
 }

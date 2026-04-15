@@ -2,8 +2,8 @@
 
 use uuid::Uuid;
 
-use crate::tui::types::*;
 use crate::tui::app::{LoadingOperation, SessionInfo};
+use crate::tui::types::*;
 
 #[derive(Debug)]
 pub enum InputEvent {
@@ -19,8 +19,12 @@ pub enum InputEvent {
     EndLoadingOperation(LoadingOperation),
     Error(String),
     SetSessions(Vec<SessionInfo>),
-    SessionRestored { id: String, title: String, messages: Vec<crate::tui::app::Message> },
-    
+    SessionRestored {
+        id: String,
+        title: String,
+        messages: Vec<crate::tui::app::Message>,
+    },
+
     // Input events
     InputChanged(char),
     InputBackspace,
@@ -37,7 +41,7 @@ pub enum InputEvent {
     InputCursorNextWord,
     CursorLeft,
     CursorRight,
-    
+
     // Navigation
     ScrollUp,
     ScrollDown,
@@ -46,14 +50,14 @@ pub enum InputEvent {
     Up,
     Down,
     Tab,
-    
+
     // Control
     Quit,
     AttemptQuit,
     HandleEsc,
     Resized(u16, u16),
     ToggleMouseCapture,
-    
+
     // Dialog/Approval
     ShowConfirmationDialog(ToolCall),
     ShowConfirmationDialogWithExplanation(ToolCall, Option<String>),
@@ -64,7 +68,7 @@ pub enum InputEvent {
     ToggleApprovalStatus,
     ApproveTool,
     RejectTool,
-    
+
     // Command palette
     ShowCommandPalette,
     HideCommandPalette,
@@ -73,16 +77,16 @@ pub enum InputEvent {
     CommandPaletteUp,
     CommandPaletteDown,
     CommandPaletteSelect,
-    
+
     // Shortcuts
     ShowShortcuts,
     HideShortcuts,
-    
+
     // Session
     RequestSessionList,
     SwitchToSession(String),
     NewSession,
-    
+
     // Additional events from event.rs mapping
     ShowRulebookSwitcher,
     RetryLastToolCall,
@@ -133,7 +137,12 @@ impl InputEvent {
 
 #[derive(Debug)]
 pub enum OutputEvent {
-    UserMessage(String, Option<Vec<ToolCallResult>>, Vec<ContentPart>, Option<usize>),
+    UserMessage(
+        String,
+        Option<Vec<ToolCallResult>>,
+        Vec<ContentPart>,
+        Option<usize>,
+    ),
     AcceptTool(ToolCall),
     RejectTool(ToolCall, bool),
     ListSessions,

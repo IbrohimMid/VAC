@@ -2,7 +2,12 @@
 
 use std::path::{Path, PathBuf};
 
-pub async fn execute(project_root: PathBuf, format: &str, strict: bool, fix: bool) -> anyhow::Result<()> {
+pub async fn execute(
+    project_root: PathBuf,
+    format: &str,
+    strict: bool,
+    fix: bool,
+) -> anyhow::Result<()> {
     if format != "json" {
         println!("🩺 VAC Doctor — checking subsystem readiness\n");
     }
@@ -51,8 +56,17 @@ pub async fn execute(project_root: PathBuf, format: &str, strict: bool, fix: boo
         println!("{}", serde_json::to_string_pretty(&out)?);
     } else {
         for res in &results {
-            let status = if res["ok"].as_bool().unwrap_or(false) { "✓" } else { "✗" };
-            println!("{} {}: {}", status, res["id"].as_str().unwrap_or(""), res["message"].as_str().unwrap_or(""));
+            let status = if res["ok"].as_bool().unwrap_or(false) {
+                "✓"
+            } else {
+                "✗"
+            };
+            println!(
+                "{} {}: {}",
+                status,
+                res["id"].as_str().unwrap_or(""),
+                res["message"].as_str().unwrap_or("")
+            );
             if let Some(fix_msg) = res.get("fix_message").and_then(|v| v.as_str()) {
                 println!("  {}", fix_msg);
             }
@@ -68,7 +82,7 @@ pub async fn execute(project_root: PathBuf, format: &str, strict: bool, fix: boo
     Ok(())
 }
 
-fn check_knowledge(root: &Path, _strict: bool, fix: bool) -> (bool, serde_json::Value) {
+fn check_knowledge(root: &Path, _strict: bool, _fix: bool) -> (bool, serde_json::Value) {
     let corpus_root = if let Ok(env_root) = std::env::var("VIL_KNOWLEDGE_ROOT") {
         let p = PathBuf::from(env_root);
         if p.exists() { Some(p) } else { None }
@@ -80,20 +94,23 @@ fn check_knowledge(root: &Path, _strict: bool, fix: bool) -> (bool, serde_json::
     };
 
     match corpus_root {
-        Some(p) if p.join("patterns").is_dir() => {
-            (true, serde_json::json!({ "id": "knowledge", "ok": true, "message": format!("knowledge corpus reachable: {}", p.display()) }))
-        }
-        Some(p) => {
-            (false, serde_json::json!({ "id": "knowledge", "ok": false, "message": format!("knowledge corpus found but no patterns/ dir: {}", p.display()) }))
-        }
-        None => {
-            (false, serde_json::json!({ 
-                "id": "knowledge", 
-                "ok": false, 
+        Some(p) if p.join("patterns").is_dir() => (
+            true,
+            serde_json::json!({ "id": "knowledge", "ok": true, "message": format!("knowledge corpus reachable: {}", p.display()) }),
+        ),
+        Some(p) => (
+            false,
+            serde_json::json!({ "id": "knowledge", "ok": false, "message": format!("knowledge corpus found but no patterns/ dir: {}", p.display()) }),
+        ),
+        None => (
+            false,
+            serde_json::json!({
+                "id": "knowledge",
+                "ok": false,
                 "message": "knowledge corpus not configured — bootstrap fallback active (not authoritative)",
                 "fix_message": "Fix: set [knowledge] root in .vac/config.toml or VIL_KNOWLEDGE_ROOT env"
-            }))
-        }
+            }),
+        ),
     }
 }
 
@@ -104,16 +121,20 @@ fn check_shm(root: &Path, _strict: bool, fix: bool) -> (bool, serde_json::Value)
     } else {
         let _ = std::fs::create_dir_all(&shm_path); // keep original behavior
     }
-    
+
     let test_file = shm_path.join(".doctor_write_test");
     match std::fs::write(&test_file, b"ok") {
         Ok(_) => {
             let _ = std::fs::remove_file(&test_file);
-            (true, serde_json::json!({ "id": "shm", "ok": true, "message": format!("shm path writable: {}", shm_path.display()) }))
+            (
+                true,
+                serde_json::json!({ "id": "shm", "ok": true, "message": format!("shm path writable: {}", shm_path.display()) }),
+            )
         }
-        Err(_) => {
-            (false, serde_json::json!({ "id": "shm", "ok": false, "message": format!("shm path not writable: {}", shm_path.display()) }))
-        }
+        Err(_) => (
+            false,
+            serde_json::json!({ "id": "shm", "ok": false, "message": format!("shm path not writable: {}", shm_path.display()) }),
+        ),
     }
 }
 
@@ -125,10 +146,16 @@ fn check_trace(root: &Path, _strict: bool, _fix: bool) -> (bool, serde_json::Val
             .map(PathBuf::from)
             .unwrap_or_else(|| root.join(".vac/keys/trace.pem"));
         if !key_path.exists() {
-            return (false, serde_json::json!({ "id": "trace", "ok": false, "message": format!("trace signing enabled but key missing: {}", key_path.display()) }));
+            return (
+                false,
+                serde_json::json!({ "id": "trace", "ok": false, "message": format!("trace signing enabled but key missing: {}", key_path.display()) }),
+            );
         }
     }
-    (true, serde_json::json!({ "id": "trace", "ok": true, "message": "trace config ok" }))
+    (
+        true,
+        serde_json::json!({ "id": "trace", "ok": true, "message": "trace config ok" }),
+    )
 }
 
 fn check_mcp_config(root: &Path, _strict: bool, fix: bool) -> (bool, serde_json::Value) {
@@ -137,20 +164,37 @@ fn check_mcp_config(root: &Path, _strict: bool, fix: bool) -> (bool, serde_json:
         if fix {
             // minimal fix
             let _ = std::fs::write(&config_path, "[mcp_servers]\n");
-            return (true, serde_json::json!({ "id": "mcp_config", "ok": true, "message": "no config — created empty .vac/config.toml" }));
+            return (
+                true,
+                serde_json::json!({ "id": "mcp_config", "ok": true, "message": "no config — created empty .vac/config.toml" }),
+            );
         }
-        return (true, serde_json::json!({ "id": "mcp_config", "ok": true, "message": "no config — MCP not configured" }));
+        return (
+            true,
+            serde_json::json!({ "id": "mcp_config", "ok": true, "message": "no config — MCP not configured" }),
+        );
     }
     let Ok(content) = std::fs::read_to_string(&config_path) else {
-        return (false, serde_json::json!({ "id": "mcp_config", "ok": false, "message": "failed to read .vac/config.toml" }));
+        return (
+            false,
+            serde_json::json!({ "id": "mcp_config", "ok": false, "message": "failed to read .vac/config.toml" }),
+        );
     };
     match content.parse::<toml::Table>() {
-        Err(e) => {
-            (false, serde_json::json!({ "id": "mcp_config", "ok": false, "message": format!(".vac/config.toml parse error: {e}") }))
-        }
+        Err(e) => (
+            false,
+            serde_json::json!({ "id": "mcp_config", "ok": false, "message": format!(".vac/config.toml parse error: {e}") }),
+        ),
         Ok(table) => {
-            let n = table.get("mcp_servers").and_then(|v| v.as_array()).map(|a| a.len()).unwrap_or(0);
-            (true, serde_json::json!({ "id": "mcp_config", "ok": true, "message": format!("config parses ok, {n} MCP server(s) configured") }))
+            let n = table
+                .get("mcp_servers")
+                .and_then(|v| v.as_array())
+                .map(|a| a.len())
+                .unwrap_or(0);
+            (
+                true,
+                serde_json::json!({ "id": "mcp_config", "ok": true, "message": format!("config parses ok, {n} MCP server(s) configured") }),
+            )
         }
     }
 }
@@ -159,33 +203,55 @@ fn check_skills(root: &Path, _strict: bool, _fix: bool) -> (bool, serde_json::Va
     let skills_dir = root.join(".vac/skills");
     let custom = if skills_dir.exists() {
         std::fs::read_dir(&skills_dir)
-            .map(|d| d.flatten().filter(|e| e.path().extension().map(|x| x == "toml").unwrap_or(false)).count())
+            .map(|d| {
+                d.flatten()
+                    .filter(|e| e.path().extension().map(|x| x == "toml").unwrap_or(false))
+                    .count()
+            })
             .unwrap_or(0)
-    } else { 0 };
-    (true, serde_json::json!({ "id": "skills", "ok": true, "message": format!("skills: 4 builtin + {custom} custom") }))
+    } else {
+        0
+    };
+    (
+        true,
+        serde_json::json!({ "id": "skills", "ok": true, "message": format!("skills: 4 builtin + {custom} custom") }),
+    )
 }
 
 fn check_config_contract(root: &Path, _strict: bool, fix: bool) -> (bool, serde_json::Value) {
     let config_path = root.join(".vac/config.toml");
     if !config_path.exists() {
-        return (false, serde_json::json!({ "id": "config_contract", "ok": false, "message": ".vac/config.toml missing — run `vac init`" }));
+        return (
+            false,
+            serde_json::json!({ "id": "config_contract", "ok": false, "message": ".vac/config.toml missing — run `vac init`" }),
+        );
     }
     let content = std::fs::read_to_string(&config_path).unwrap_or_default();
     if content.contains("chunk_size") || content.contains("max_context_tokens") {
         if fix {
-            let fixed = content.replace("chunk_size", "# chunk_size")
-                               .replace("max_context_tokens", "# max_context_tokens");
+            let fixed = content
+                .replace("chunk_size", "# chunk_size")
+                .replace("max_context_tokens", "# max_context_tokens");
             let _ = std::fs::write(&config_path, fixed);
-            return (true, serde_json::json!({ "id": "config_contract", "ok": true, "message": "config drift fixed automatically" }));
+            return (
+                true,
+                serde_json::json!({ "id": "config_contract", "ok": true, "message": "config drift fixed automatically" }),
+            );
         }
-        (false, serde_json::json!({ 
-            "id": "config_contract", 
-            "ok": false, 
-            "message": "config drift: chunk_size/max_context_tokens not in ContextConfig schema",
-            "fix_message": "Fix: remove from [context], use enable_shm/shm_pool_size_mb instead"
-        }))
+        (
+            false,
+            serde_json::json!({
+                "id": "config_contract",
+                "ok": false,
+                "message": "config drift: chunk_size/max_context_tokens not in ContextConfig schema",
+                "fix_message": "Fix: remove from [context], use enable_shm/shm_pool_size_mb instead"
+            }),
+        )
     } else {
-        (true, serde_json::json!({ "id": "config_contract", "ok": true, "message": "config contract ok" }))
+        (
+            true,
+            serde_json::json!({ "id": "config_contract", "ok": true, "message": "config contract ok" }),
+        )
     }
 }
 
@@ -193,7 +259,9 @@ fn read_toml_str(path: &Path, keys: &[&str]) -> Option<String> {
     let content = std::fs::read_to_string(path).ok()?;
     let table = content.parse::<toml::Table>().ok()?;
     let mut current = &toml::Value::Table(table);
-    for key in keys { current = current.get(key)?; }
+    for key in keys {
+        current = current.get(key)?;
+    }
     current.as_str().map(String::from)
 }
 
@@ -201,7 +269,9 @@ fn read_toml_bool(path: &Path, keys: &[&str]) -> Option<bool> {
     let content = std::fs::read_to_string(path).ok()?;
     let table = content.parse::<toml::Table>().ok()?;
     let mut current = &toml::Value::Table(table);
-    for key in keys { current = current.get(key)?; }
+    for key in keys {
+        current = current.get(key)?;
+    }
     current.as_bool()
 }
 
@@ -215,22 +285,34 @@ fn check_vil_lsp(root: &Path, strict: bool, _fix: bool) -> (bool, serde_json::Va
 
     if found {
         if cache_exists {
-            (true, serde_json::json!({ "id": "vil_lsp", "ok": true, "message": format!("vil-lsp binary found: {binary}, diagnostics cache present") }))
+            (
+                true,
+                serde_json::json!({ "id": "vil_lsp", "ok": true, "message": format!("vil-lsp binary found: {binary}, diagnostics cache present") }),
+            )
         } else {
-            (true, serde_json::json!({ "id": "vil_lsp", "ok": true, "message": format!("vil-lsp binary found: {binary} (no diagnostics cache yet — run a task first)") }))
+            (
+                true,
+                serde_json::json!({ "id": "vil_lsp", "ok": true, "message": format!("vil-lsp binary found: {binary} (no diagnostics cache yet — run a task first)") }),
+            )
         }
     } else {
-        let fail_on_unavailable = read_toml_bool(&config_path, &["vil_lsp", "fail_on_unavailable"])
-            .unwrap_or(false);
+        let fail_on_unavailable =
+            read_toml_bool(&config_path, &["vil_lsp", "fail_on_unavailable"]).unwrap_or(false);
         if fail_on_unavailable || strict {
-            (false, serde_json::json!({ "id": "vil_lsp", "ok": false, "message": format!("vil-lsp binary not found: {binary} (strict mode or fail_on_unavailable = true)") }))
+            (
+                false,
+                serde_json::json!({ "id": "vil_lsp", "ok": false, "message": format!("vil-lsp binary not found: {binary} (strict mode or fail_on_unavailable = true)") }),
+            )
         } else {
-            (true, serde_json::json!({ 
-                "id": "vil_lsp", 
-                "ok": true, 
-                "message": format!("vil-lsp binary not found: {binary} (continuing without editor diagnostics)"),
-                "fix_message": "Fix: install vil-lsp or set [vil_lsp] binary_path in .vac/config.toml"
-            }))
+            (
+                true,
+                serde_json::json!({
+                    "id": "vil_lsp",
+                    "ok": true,
+                    "message": format!("vil-lsp binary not found: {binary} (continuing without editor diagnostics)"),
+                    "fix_message": "Fix: install vil-lsp or set [vil_lsp] binary_path in .vac/config.toml"
+                }),
+            )
         }
     }
 }
@@ -249,19 +331,28 @@ fn which_binary(name: &str) -> bool {
 fn check_rulebooks(root: &Path, strict: bool, _fix: bool) -> (bool, serde_json::Value) {
     let books = vac_core::rulebook::RulebookLoader::load_all(root, &[]);
     if books.is_empty() {
-        return (true, serde_json::json!({ "id": "rulebooks", "ok": true, "message": "no rulebooks configured (optional)" }));
+        return (
+            true,
+            serde_json::json!({ "id": "rulebooks", "ok": true, "message": "no rulebooks configured (optional)" }),
+        );
     }
     let result = vac_core::rulebook::validate_rulebooks(&books);
     if result.is_valid() {
-        (true, serde_json::json!({ "id": "rulebooks", "ok": true, "message": format!("{} rulebook(s) valid", books.len()) }))
+        (
+            true,
+            serde_json::json!({ "id": "rulebooks", "ok": true, "message": format!("{} rulebook(s) valid", books.len()) }),
+        )
     } else {
         let errs: Vec<String> = result.errors.iter().map(|e| e.to_string()).collect();
         let ok = !strict;
-        (ok, serde_json::json!({ 
-            "id": "rulebooks", 
-            "ok": ok, 
-            "message": format!("rulebook validation failed for {} rulebooks", books.len()),
-            "errors": errs
-        }))
+        (
+            ok,
+            serde_json::json!({
+                "id": "rulebooks",
+                "ok": ok,
+                "message": format!("rulebook validation failed for {} rulebooks", books.len()),
+                "errors": errs
+            }),
+        )
     }
 }

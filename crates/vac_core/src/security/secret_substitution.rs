@@ -38,7 +38,7 @@ impl SecretSubstitution {
     /// Substitute secrets in text with placeholders
     pub fn substitute(&mut self, text: &str) -> String {
         let detected = self.detector.detect(text);
-        
+
         if detected.is_empty() {
             return text.to_string();
         }
@@ -49,34 +49,35 @@ impl SecretSubstitution {
         for secret in detected {
             // Add text before secret
             result.push_str(&text[last_end..secret.start]);
-            
+
             // Generate placeholder
             self.counter += 1;
             let placeholder = format!("[SECRET_{}]", self.counter);
-            
+
             // Store mapping
-            self.secrets.insert(placeholder.clone(), secret.value.clone());
-            
+            self.secrets
+                .insert(placeholder.clone(), secret.value.clone());
+
             // Add placeholder
             result.push_str(&placeholder);
-            
+
             last_end = secret.end;
         }
 
         // Add remaining text
         result.push_str(&text[last_end..]);
-        
+
         result
     }
 
     /// Restore original secrets from placeholders
     pub fn restore(&self, text: &str) -> String {
         let mut result = text.to_string();
-        
+
         for (placeholder, original) in &self.secrets {
             result = result.replace(placeholder, original);
         }
-        
+
         result
     }
 
@@ -113,14 +114,14 @@ mod tests {
     #[test]
     fn test_substitute_and_restore() {
         let mut sub = SecretSubstitution::new();
-        
+
         let original = "API_KEY=sk_test_1234567890abcdef Server at 192.168.1.1";
         let substituted = sub.substitute(original);
-        
+
         // Should contain placeholders
         assert!(substituted.contains("[SECRET_"));
         assert!(!substituted.contains("192.168.1.1"));
-        
+
         // Restore should give back original
         let restored = sub.restore(&substituted);
         assert!(restored.contains("192.168.1.1"));

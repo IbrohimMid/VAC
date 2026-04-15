@@ -29,7 +29,11 @@ pub async fn execute(project_root: PathBuf, file: PathBuf) -> anyhow::Result<()>
              Available snapshots:\n{}",
             file_str,
             &session.id.to_string()[..8],
-            snapshots.iter().map(|s| format!("  - {s}")).collect::<Vec<_>>().join("\n")
+            snapshots
+                .iter()
+                .map(|s| format!("  - {s}"))
+                .collect::<Vec<_>>()
+                .join("\n")
         );
     }
 

@@ -61,18 +61,18 @@ fn merge_consecutive_same_role(messages: &[Message]) -> Vec<Message> {
             }
 
             // For Assistant messages: merge tool_calls arrays
-            if merged.role == Role::Assistant {
-                if !merged.tool_calls.is_empty() || !next.tool_calls.is_empty() {
-                    // Merge content
-                    if !merged.content.is_empty() && !next.content.is_empty() {
-                        merged.content.push_str("\n\n");
-                    }
-                    merged.content.push_str(&next.content);
-                    // Merge tool_calls
-                    merged.tool_calls.extend(next.tool_calls.clone());
-                    iter.next();
-                    continue;
+            if merged.role == Role::Assistant
+                && (!merged.tool_calls.is_empty() || !next.tool_calls.is_empty())
+            {
+                // Merge content
+                if !merged.content.is_empty() && !next.content.is_empty() {
+                    merged.content.push_str("\n\n");
                 }
+                merged.content.push_str(&next.content);
+                // Merge tool_calls
+                merged.tool_calls.extend(next.tool_calls.clone());
+                iter.next();
+                continue;
             }
 
             // For User/System messages without tool_calls: merge content
@@ -102,7 +102,8 @@ fn drop_orphan_tool_results(messages: &[Message]) -> Vec<Message> {
     }
 
     let mut result = Vec::with_capacity(messages.len());
-    let mut pending_tool_call_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut pending_tool_call_ids: std::collections::HashSet<String> =
+        std::collections::HashSet::new();
 
     for msg in messages {
         match msg.role {
@@ -158,16 +159,12 @@ fn drop_orphan_tool_calls(messages: &[Message]) -> Vec<Message> {
     let mut result = Vec::with_capacity(messages.len());
     for msg in messages {
         result.push(msg.clone());
-        
+
         // If assistant has tool_calls, check for orphans and inject dummy results
         if msg.role == Role::Assistant && !msg.tool_calls.is_empty() {
             for tc in &msg.tool_calls {
                 if !resolved_ids.contains(&tc.id) {
-                    result.push(Message::tool(
-                        &tc.name,
-                        &tc.id,
-                        "TOOL_CALL_CANCELLED",
-                    ));
+                    result.push(Message::tool(&tc.name, &tc.id, "TOOL_CALL_CANCELLED"));
                 }
             }
         }
@@ -351,7 +348,7 @@ mod tests {
         let messages = vec![
             Message::user("First"),
             Message::tool("test", "orphan", "oops"), // Will be dropped
-            Message::user("Second"), // Now consecutive with First
+            Message::user("Second"),                 // Now consecutive with First
         ];
 
         let result = sanitize_messages(&messages, "anthropic");
@@ -363,10 +360,10 @@ mod tests {
     fn test_partial_orphan_tool_calls() {
         // Assistant has 2 tool calls, only 1 has result
         let messages = vec![
-            Message::assistant_with_tool_calls("", vec![
-                tool_call("resolved", "a"),
-                tool_call("orphan", "b"),
-            ]),
+            Message::assistant_with_tool_calls(
+                "",
+                vec![tool_call("resolved", "a"), tool_call("orphan", "b")],
+            ),
             Message::tool("a", "resolved", "ok"),
             Message::user("Next"),
         ];
@@ -377,7 +374,9 @@ mod tests {
         // Assistant keeps ALL tool_calls (not removed)
         assert_eq!(result[0].tool_calls.len(), 2);
         // Check dummy result injected
-        let dummy = result.iter().find(|m| m.role == Role::Tool && m.tool_call_id.as_deref() == Some("orphan"));
+        let dummy = result
+            .iter()
+            .find(|m| m.role == Role::Tool && m.tool_call_id.as_deref() == Some("orphan"));
         assert!(dummy.is_some(), "Should have dummy tool result for orphan");
         assert_eq!(dummy.unwrap().content, "TOOL_CALL_CANCELLED");
     }

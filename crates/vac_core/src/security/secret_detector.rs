@@ -92,7 +92,9 @@ impl SecretDetector {
 
     /// Check if text contains any secrets
     pub fn contains_secrets(&self, text: &str) -> bool {
-        self.patterns.iter().any(|(_, pattern)| pattern.is_match(text))
+        self.patterns
+            .iter()
+            .any(|(_, pattern)| pattern.is_match(text))
     }
 }
 

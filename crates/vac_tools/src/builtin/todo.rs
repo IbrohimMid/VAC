@@ -46,7 +46,7 @@ impl crate::registry::VilTool for TodoTool {
     fn description(&self) -> &'static str {
         "Write or update agent todo list"
     }
-    
+
     fn input_schema(&self) -> serde_json::Value {
         serde_json::json!({
             "type": "object",
@@ -67,16 +67,20 @@ impl crate::registry::VilTool for TodoTool {
             "required": ["todos"]
         })
     }
-    
+
     fn trust_requirement(&self) -> &'static str {
         "agent"
     }
-    
+
     fn risk_level(&self) -> &'static str {
         "safe"
     }
 
-    async fn execute(&self, input: serde_json::Value, _context: &crate::registry::ToolContext) -> Result<serde_json::Value, crate::error::ToolError> {
+    async fn execute(
+        &self,
+        input: serde_json::Value,
+        _context: &crate::registry::ToolContext,
+    ) -> Result<serde_json::Value, crate::error::ToolError> {
         let input: TodoWriteInput = serde_json::from_value(input)?;
         let mut updated_count = 0;
         let mut todos = Vec::new();
@@ -90,16 +94,13 @@ impl crate::registry::VilTool for TodoTool {
             updated_count += 1;
         }
 
-        debug!(
-            updated = updated_count,
-            "Todo write completed"
-        );
+        debug!(updated = updated_count, "Todo write completed");
 
         let output = TodoWriteOutput {
             updated_count,
             todos,
         };
-        
+
         Ok(serde_json::to_value(output)?)
     }
 }

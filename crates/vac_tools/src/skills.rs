@@ -1,8 +1,8 @@
 //! VIL Skills — pre-built workflows for common VIL operations.
 
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
 use std::collections::HashMap;
+use std::path::PathBuf;
 use tracing::{debug, info, warn};
 
 use crate::error::ToolError;
@@ -51,8 +51,9 @@ impl SkillLoader {
         let mut skills = self.builtin_skills.clone();
 
         if self.skills_dir.exists() {
-            let entries = std::fs::read_dir(&self.skills_dir)
-                .map_err(|e| ToolError::ExecutionFailed(format!("Cannot read skills dir: {}", e)))?;
+            let entries = std::fs::read_dir(&self.skills_dir).map_err(|e| {
+                ToolError::ExecutionFailed(format!("Cannot read skills dir: {}", e))
+            })?;
 
             for entry in entries.flatten() {
                 let path = entry.path();
@@ -89,10 +90,12 @@ impl SkillLoader {
     }
 
     fn load_skill_file(path: &std::path::Path) -> Result<Skill, ToolError> {
-        let content = std::fs::read_to_string(path)
-            .map_err(|e| ToolError::ExecutionFailed(format!("Cannot read {}: {}", path.display(), e)))?;
-        toml::from_str(&content)
-            .map_err(|e| ToolError::ExecutionFailed(format!("Invalid TOML in {}: {}", path.display(), e)))
+        let content = std::fs::read_to_string(path).map_err(|e| {
+            ToolError::ExecutionFailed(format!("Cannot read {}: {}", path.display(), e))
+        })?;
+        toml::from_str(&content).map_err(|e| {
+            ToolError::ExecutionFailed(format!("Invalid TOML in {}: {}", path.display(), e))
+        })
     }
 
     fn load_builtin_skills() -> Vec<Skill> {
@@ -347,7 +350,10 @@ pub fn substitute_params(template: &str, params: &HashMap<String, String>) -> St
     result
 }
 
-pub fn substitute_params_json(value: &serde_json::Value, params: &HashMap<String, String>) -> serde_json::Value {
+pub fn substitute_params_json(
+    value: &serde_json::Value,
+    params: &HashMap<String, String>,
+) -> serde_json::Value {
     match value {
         serde_json::Value::String(s) => serde_json::Value::String(substitute_params(s, params)),
         serde_json::Value::Object(map) => {
@@ -357,9 +363,11 @@ pub fn substitute_params_json(value: &serde_json::Value, params: &HashMap<String
             }
             serde_json::Value::Object(new_map)
         }
-        serde_json::Value::Array(arr) => {
-            serde_json::Value::Array(arr.iter().map(|v| substitute_params_json(v, params)).collect())
-        }
+        serde_json::Value::Array(arr) => serde_json::Value::Array(
+            arr.iter()
+                .map(|v| substitute_params_json(v, params))
+                .collect(),
+        ),
         other => other.clone(),
     }
 }

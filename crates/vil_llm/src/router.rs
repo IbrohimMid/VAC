@@ -17,9 +17,9 @@ fn is_retryable(e: &LlmError) -> bool {
         LlmError::Provider { message, .. } => {
             message.contains("429") || message.contains("503") || message.contains("502")
         }
-        LlmError::Request(re) => re.status().map_or(false, |s| {
-            s.as_u16() == 429 || s.as_u16() == 503 || s.as_u16() == 502
-        }),
+        LlmError::Request(re) => re
+            .status()
+            .is_some_and(|s| s.as_u16() == 429 || s.as_u16() == 503 || s.as_u16() == 502),
         _ => false,
     }
 }
@@ -85,7 +85,8 @@ impl LlmRouter {
         for provider_name in &chain {
             if let Some(provider) = self.providers.get(provider_name) {
                 // Sanitize messages per-provider (each provider may have different contract rules)
-                let sanitized_messages = sanitize::sanitize_messages(&request.messages, provider_name);
+                let sanitized_messages =
+                    sanitize::sanitize_messages(&request.messages, provider_name);
                 let sanitized_request = LlmRequest {
                     messages: sanitized_messages,
                     model: request.model.clone(),
@@ -102,7 +103,11 @@ impl LlmRouter {
                         Ok(response) => {
                             let mut budget = self.budget.write().await;
                             budget.add_usage(response.usage.total_tokens);
-                            info!(provider = provider_name, tokens = response.usage.total_tokens, "LLM request completed");
+                            info!(
+                                provider = provider_name,
+                                tokens = response.usage.total_tokens,
+                                "LLM request completed"
+                            );
                             return Ok(response);
                         }
                         Err(e) if is_retryable(&e) && attempt < self.retry_config.max_attempts => {
@@ -122,7 +127,8 @@ impl LlmRouter {
                                 )
                             };
                             warn!(provider = provider_name, attempt, delay_ms = delay.delay_ms, error = %e, "Retrying after delay");
-                            tokio::time::sleep(std::time::Duration::from_millis(delay.delay_ms)).await;
+                            tokio::time::sleep(std::time::Duration::from_millis(delay.delay_ms))
+                                .await;
                         }
                         Err(e) => {
                             warn!(provider = provider_name, error = %e, "Provider failed, trying next");
@@ -147,7 +153,8 @@ impl LlmRouter {
                 })?;
 
         // Sanitize messages for this specific provider
-        let sanitized_messages = sanitize::sanitize_messages(&request.messages, &self.default_provider);
+        let sanitized_messages =
+            sanitize::sanitize_messages(&request.messages, &self.default_provider);
         let sanitized_request = LlmRequest {
             messages: sanitized_messages,
             model: request.model.clone(),

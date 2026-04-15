@@ -28,7 +28,7 @@ impl std::fmt::Display for ProfileName {
 }
 
 impl ProfileName {
-    pub fn from_str(s: &str) -> Self {
+    pub fn parse(s: &str) -> Self {
         match s {
             "strict-vil" | "strict_vil" => Self::StrictVil,
             "migration" => Self::Migration,
@@ -37,6 +37,14 @@ impl ProfileName {
             "default" | "" => Self::Default,
             other => Self::Custom(other.to_string()),
         }
+    }
+}
+
+impl std::str::FromStr for ProfileName {
+    type Err = std::convert::Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(Self::parse(s))
     }
 }
 

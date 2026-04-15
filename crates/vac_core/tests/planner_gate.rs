@@ -1,6 +1,6 @@
 //! Tests for vil_swarm::semantic planner gate.
 
-use vil_swarm::semantic::{evaluate_planner_output, PlannerGateResult, TaskSemanticKind};
+use vil_swarm::semantic::{PlannerGateResult, TaskSemanticKind, evaluate_planner_output};
 
 #[test]
 fn passed_plan_with_knowledge_refs() {
@@ -49,7 +49,10 @@ fn knowledge_gate_fails_for_vil_task_without_refs() {
             assert_eq!(plan.kind, TaskSemanticKind::VilServer);
             assert!(plan.knowledge_refs.is_empty());
         }
-        other => panic!("Expected KnowledgeGateFailed, got {:?}", std::mem::discriminant(&other)),
+        other => panic!(
+            "Expected KnowledgeGateFailed, got {:?}",
+            std::mem::discriminant(&other)
+        ),
     }
 }
 
@@ -73,7 +76,10 @@ fn generic_rust_passes_without_knowledge_refs() {
         PlannerGateResult::Passed(plan) => {
             assert_eq!(plan.kind, TaskSemanticKind::GenericRust);
         }
-        other => panic!("Expected Passed for GenericRust, got {:?}", std::mem::discriminant(&other)),
+        other => panic!(
+            "Expected Passed for GenericRust, got {:?}",
+            std::mem::discriminant(&other)
+        ),
     }
 }
 
@@ -82,7 +88,10 @@ fn parse_failed_on_invalid_json() {
     let output = "I analyzed the task and think we should use ShmSlice but forgot to output JSON";
     match evaluate_planner_output(output) {
         PlannerGateResult::ParseFailed(_) => {}
-        other => panic!("Expected ParseFailed, got {:?}", std::mem::discriminant(&other)),
+        other => panic!(
+            "Expected ParseFailed, got {:?}",
+            std::mem::discriminant(&other)
+        ),
     }
 }
 
@@ -91,6 +100,9 @@ fn parse_failed_on_malformed_json() {
     let output = "```json\n{ invalid json }\n```";
     match evaluate_planner_output(output) {
         PlannerGateResult::ParseFailed(_) => {}
-        other => panic!("Expected ParseFailed, got {:?}", std::mem::discriminant(&other)),
+        other => panic!(
+            "Expected ParseFailed, got {:?}",
+            std::mem::discriminant(&other)
+        ),
     }
 }

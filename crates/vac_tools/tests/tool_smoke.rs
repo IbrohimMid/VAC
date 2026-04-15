@@ -19,7 +19,12 @@ async fn registers_all_builtin_tools() {
     let registry = std::sync::Arc::new(ToolRegistry::new());
     builtin::register_builtin_tools(&registry).await.unwrap();
 
-    let mut names: Vec<_> = registry.list().await.into_iter().map(|tool| tool.name).collect();
+    let mut names: Vec<_> = registry
+        .list()
+        .await
+        .into_iter()
+        .map(|tool| tool.name)
+        .collect();
     names.sort();
 
     assert_eq!(
@@ -187,6 +192,9 @@ async fn smoke_test_git_tool() {
         .await
         .unwrap();
 
-    let status = git.execute(json!({"command": "status"}), &context).await.unwrap();
+    let status = git
+        .execute(json!({"command": "status"}), &context)
+        .await
+        .unwrap();
     assert_eq!(status["success"], true);
 }

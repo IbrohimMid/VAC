@@ -1,9 +1,9 @@
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::path::PathBuf;
 use tracing::{info, warn};
-use serde::{Serialize, Deserialize};
-use chrono::{DateTime, Utc};
 
 use crate::executor::TaskExecutor;
 use crate::jobs::JobStatus;
@@ -69,7 +69,11 @@ pub struct Scheduler {
 }
 
 impl Scheduler {
-    pub fn new(queue: Arc<TaskQueue>, executor: Arc<TaskExecutor>, config: SchedulerConfig) -> Self {
+    pub fn new(
+        queue: Arc<TaskQueue>,
+        executor: Arc<TaskExecutor>,
+        config: SchedulerConfig,
+    ) -> Self {
         let state_file = executor.project_root.join(".vac/autopilot.state");
         Self {
             queue,
@@ -130,7 +134,11 @@ impl Scheduler {
                         poll_interval_secs: config.poll_interval_secs,
                         queue_len,
                         current_job: None,
-                        last_event: if queue_len > 0 { Some(AutopilotEvent::TaskQueued) } else { None },
+                        last_event: if queue_len > 0 {
+                            Some(AutopilotEvent::TaskQueued)
+                        } else {
+                            None
+                        },
                         last_error: None,
                         updated_at: Utc::now(),
                     });
@@ -179,7 +187,9 @@ impl Scheduler {
                             warn!(job_id = %job.id, error = %e, "Job failed");
                             queue.update_job(job).await;
 
-                            let until = Utc::now() + chrono::Duration::from_std(poll_interval).unwrap_or_else(|_| chrono::Duration::seconds(30));
+                            let until = Utc::now()
+                                + chrono::Duration::from_std(poll_interval)
+                                    .unwrap_or_else(|_| chrono::Duration::seconds(30));
                             update_state(&AutopilotStateFile {
                                 state: AutopilotState::Backoff { until },
                                 mode: config.mode.clone(),
@@ -241,7 +251,10 @@ mod tests {
         let v = serde_json::to_value(&sf).unwrap();
         assert_eq!(v.get("state").and_then(|s| s.as_str()), Some("polling"));
         assert_eq!(v.get("mode").and_then(|s| s.as_str()), Some("monitor"));
-        assert_eq!(v.get("poll_interval_secs").and_then(|s| s.as_u64()), Some(5));
+        assert_eq!(
+            v.get("poll_interval_secs").and_then(|s| s.as_u64()),
+            Some(5)
+        );
         assert_eq!(v.get("queue_len").and_then(|s| s.as_u64()), Some(2));
         assert!(v.get("updated_at").is_some());
         assert!(v.get("last_event").is_some());
@@ -277,6 +290,9 @@ mod tests {
         let sf: AutopilotStateFile = serde_json::from_str(&content).unwrap();
         assert_eq!(sf.mode, "monitor");
         assert_eq!(sf.poll_interval_secs, 1);
-        assert!(matches!(sf.state, AutopilotState::Polling | AutopilotState::Idle));
+        assert!(matches!(
+            sf.state,
+            AutopilotState::Polling | AutopilotState::Idle
+        ));
     }
 }

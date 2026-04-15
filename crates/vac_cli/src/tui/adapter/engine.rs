@@ -72,7 +72,10 @@ impl VacEngineAdapter {
         input_rx: mpsc::Receiver<AdapterInputEvent>,
         output_tx: mpsc::Sender<AdapterOutputEvent>,
     ) -> Self {
-        Self { input_rx, output_tx }
+        Self {
+            input_rx,
+            output_tx,
+        }
     }
 
     /// Process incoming events from TUI and forward to VacEngine
@@ -81,23 +84,38 @@ impl VacEngineAdapter {
             match event {
                 AdapterInputEvent::UserMessage(msg) => {
                     // Forward to VacEngine when integrated
-                    let _ = self.output_tx.send(AdapterOutputEvent::AssistantMessage(
-                        format!("VAC received: {}", msg)
-                    )).await;
+                    let _ = self
+                        .output_tx
+                        .send(AdapterOutputEvent::AssistantMessage(format!(
+                            "VAC received: {}",
+                            msg
+                        )))
+                        .await;
                 }
                 AdapterInputEvent::AcceptTool(tc) => {
                     // Forward approval to VacEngine
-                    let _ = self.output_tx.send(AdapterOutputEvent::AssistantMessage(
-                        format!("Tool approved: {}", tc.function.name)
-                    )).await;
+                    let _ = self
+                        .output_tx
+                        .send(AdapterOutputEvent::AssistantMessage(format!(
+                            "Tool approved: {}",
+                            tc.function.name
+                        )))
+                        .await;
                 }
                 AdapterInputEvent::RejectTool(tc, _) => {
-                    let _ = self.output_tx.send(AdapterOutputEvent::AssistantMessage(
-                        format!("Tool rejected: {}", tc.function.name)
-                    )).await;
+                    let _ = self
+                        .output_tx
+                        .send(AdapterOutputEvent::AssistantMessage(format!(
+                            "Tool rejected: {}",
+                            tc.function.name
+                        )))
+                        .await;
                 }
                 AdapterInputEvent::ListSessions => {
-                    let _ = self.output_tx.send(AdapterOutputEvent::SessionsLoaded(vec![])).await;
+                    let _ = self
+                        .output_tx
+                        .send(AdapterOutputEvent::SessionsLoaded(vec![]))
+                        .await;
                 }
                 _ => {}
             }

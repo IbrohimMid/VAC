@@ -8,15 +8,18 @@ use ratatui::text::{Line, Span};
 use regex::Regex;
 use serde_json::Value;
 
-use crate::tui::types::{ToolCall, ToolCallResult, ToolCallResultStatus};
 use crate::tui::services::render_markdown_to_lines_safe;
+use crate::tui::types::{ToolCall, ToolCallResult, ToolCallResultStatus};
 
 /// Truncate a string to max_chars, respecting UTF-8 character boundaries.
 fn truncate_chars(s: &str, max_chars: usize) -> String {
     if s.chars().count() <= max_chars {
         s.to_string()
     } else {
-        s.chars().take(max_chars.saturating_sub(1)).chain(std::iter::once('…')).collect()
+        s.chars()
+            .take(max_chars.saturating_sub(1))
+            .chain(std::iter::once('…'))
+            .collect()
     }
 }
 
@@ -24,14 +27,32 @@ fn truncate_chars(s: &str, max_chars: usize) -> String {
 fn format_json_value(value: &Value) -> String {
     match value {
         Value::Object(obj) => {
-            if obj.is_empty() { return "{}".to_string(); }
-            let mut values = obj.into_iter().map(|(k, v)| (k, format_json_value(v))).collect::<Vec<_>>();
+            if obj.is_empty() {
+                return "{}".to_string();
+            }
+            let mut values = obj
+                .into_iter()
+                .map(|(k, v)| (k, format_json_value(v)))
+                .collect::<Vec<_>>();
             values.sort_by_key(|(_, val)| val.len());
-            values.into_iter().map(|(k, v)| format!("{} = {}", k, v)).collect::<Vec<_>>().join(", ")
+            values
+                .into_iter()
+                .map(|(k, v)| format!("{} = {}", k, v))
+                .collect::<Vec<_>>()
+                .join(", ")
         }
         Value::Array(arr) => {
-            if arr.is_empty() { "[]".to_string() }
-            else { format!("[{}]", arr.iter().map(format_simple_value).collect::<Vec<_>>().join(", ")) }
+            if arr.is_empty() {
+                "[]".to_string()
+            } else {
+                format!(
+                    "[{}]",
+                    arr.iter()
+                        .map(format_simple_value)
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            }
         }
         _ => format_simple_value(value),
     }
@@ -53,16 +74,25 @@ pub fn extract_full_command_arguments(tool_call: &ToolCall) -> String {
     if let Ok(v) = serde_json::from_str::<Value>(args) {
         return format_json_value(&v);
     }
-    let patterns = vec![r#"["']?(\w+)["']?\s*:\s*["']([^"']+)["']"#, r#"(\w+)\s*:\s*([^,}\s]+)"#];
+    let patterns = vec![
+        r#"["']?(\w+)["']?\s*:\s*["']([^"']+)["']"#,
+        r#"(\w+)\s*:\s*([^,}\s]+)"#,
+    ];
     for pattern in patterns {
         if let Ok(re) = Regex::new(pattern) {
             let mut results = Vec::new();
             for caps in re.captures_iter(args) {
                 if caps.len() >= 3 {
-                    results.push(format!("{} = {}", caps.get(1).unwrap().as_str(), caps.get(2).unwrap().as_str()));
+                    results.push(format!(
+                        "{} = {}",
+                        caps.get(1).unwrap().as_str(),
+                        caps.get(2).unwrap().as_str()
+                    ));
                 }
             }
-            if !results.is_empty() { return results.join(", "); }
+            if !results.is_empty() {
+                return results.join(", ");
+            }
         }
     }
     let wrapped = format!("{{{}}}", args);
@@ -70,7 +100,9 @@ pub fn extract_full_command_arguments(tool_call: &ToolCall) -> String {
         return format_json_value(&v);
     }
     let trimmed = args.trim();
-    if !trimmed.is_empty() { return trimmed.to_string(); }
+    if !trimmed.is_empty() {
+        return trimmed.to_string();
+    }
     String::new()
 }
 
@@ -79,7 +111,12 @@ pub fn render_user_message(content: &str, width: usize) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
     lines.push(Line::from(vec![
         Span::styled("▌ ", Style::default().fg(Color::Cyan)),
-        Span::styled("You", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            "You",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
     ]));
     for line in content.lines() {
         let truncated = truncate_chars(line, width);
@@ -161,7 +198,9 @@ pub fn render_assistant_message_with_width(content: &str, width: usize) -> Vec<L
     let mut lines = Vec::new();
     lines.push(Line::from(Span::styled(
         "VAC",
-        Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
+        Style::default()
+            .fg(Color::Green)
+            .add_modifier(Modifier::BOLD),
     )));
 
     let segments = split_content_segments(content);
@@ -177,13 +216,18 @@ pub fn render_assistant_message_with_width(content: &str, width: usize) -> Vec<L
             }
             ContentSegment::Code { language, content } => {
                 if language.is_empty() || matches!(language.as_str(), "bash" | "sh" | "shell") {
-                    let block = super::bash_block::BashBlock { language: "bash".to_string(), content };
+                    let block = super::bash_block::BashBlock {
+                        language: "bash".to_string(),
+                        content,
+                    };
                     lines.extend(render_bash_block(&block, width));
                 } else {
                     let reconstructed = format!("```{}\n{}\n```", language, content);
                     match render_markdown_to_lines_safe(&reconstructed) {
                         Ok(md_lines) => lines.extend(md_lines),
-                        Err(_) => lines.extend(reconstructed.lines().map(|l| Line::raw(l.to_string()))),
+                        Err(_) => {
+                            lines.extend(reconstructed.lines().map(|l| Line::raw(l.to_string())))
+                        }
                     }
                 }
             }
@@ -195,21 +239,24 @@ pub fn render_assistant_message_with_width(content: &str, width: usize) -> Vec<L
 
 /// Render a pending tool call bubble.
 pub fn render_tool_call_pending(tool_call: &ToolCall) -> Vec<Line<'static>> {
-    let mut lines = vec![
-        Line::from(vec![
-            Span::styled("⏳ ", Style::default().fg(Color::Yellow)),
-            Span::styled(
-                tool_call.function.name.clone(),
-                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(" [pending approval]", Style::default().fg(Color::DarkGray)),
-        ]),
-    ];
+    let mut lines = vec![Line::from(vec![
+        Span::styled("⏳ ", Style::default().fg(Color::Yellow)),
+        Span::styled(
+            tool_call.function.name.clone(),
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(" [pending approval]", Style::default().fg(Color::DarkGray)),
+    ])];
     let args = extract_full_command_arguments(tool_call);
     if !args.is_empty() {
         lines.push(Line::from(vec![
             Span::raw("  "),
-            Span::styled(truncate_chars(&args, 100), Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                truncate_chars(&args, 100),
+                Style::default().fg(Color::DarkGray),
+            ),
         ]));
     }
     lines
@@ -222,21 +269,22 @@ pub fn render_tool_result(result: &ToolCallResult) -> Vec<Line<'static>> {
         ToolCallResultStatus::Error => ("✗", Color::Red),
         _ => ("·", Color::Gray),
     };
-    let mut lines = vec![
-        Line::from(vec![
-            Span::styled(format!("{icon} "), Style::default().fg(color)),
-            Span::styled(
-                result.call.function.name.clone(),
-                Style::default().fg(color).add_modifier(Modifier::BOLD),
-            ),
-        ]),
-    ];
-    
+    let mut lines = vec![Line::from(vec![
+        Span::styled(format!("{icon} "), Style::default().fg(color)),
+        Span::styled(
+            result.call.function.name.clone(),
+            Style::default().fg(color).add_modifier(Modifier::BOLD),
+        ),
+    ])];
+
     let args = extract_full_command_arguments(&result.call);
     if !args.is_empty() {
         lines.push(Line::from(vec![
             Span::raw("  "),
-            Span::styled(truncate_chars(&args, 100), Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                truncate_chars(&args, 100),
+                Style::default().fg(Color::DarkGray),
+            ),
         ]));
     }
 
@@ -251,13 +299,21 @@ pub fn render_tool_result(result: &ToolCallResult) -> Vec<Line<'static>> {
     for line in result_lines {
         lines.push(Line::from(vec![
             Span::raw("    "),
-            Span::styled(truncate_chars(line, 100), Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                truncate_chars(line, 100),
+                Style::default().fg(Color::DarkGray),
+            ),
         ]));
     }
     if truncated {
         lines.push(Line::from(vec![
             Span::raw("    "),
-            Span::styled("... (output truncated)", Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC)),
+            Span::styled(
+                "... (output truncated)",
+                Style::default()
+                    .fg(Color::DarkGray)
+                    .add_modifier(Modifier::ITALIC),
+            ),
         ]));
     }
 

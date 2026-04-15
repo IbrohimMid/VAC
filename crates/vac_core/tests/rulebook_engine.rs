@@ -1,11 +1,11 @@
 //! Tests for vac_core::rulebook multi-rulebook engine.
 
-use vac_core::rulebook::{
-    Rulebook, RuleConstraint, RuleScope, RulebookLoader, RulebookMerger,
-    ResolvedRuleContext, validate_rulebooks,
-};
 use std::fs;
 use tempfile::tempdir;
+use vac_core::rulebook::{
+    ResolvedRuleContext, RuleConstraint, RuleScope, Rulebook, RulebookLoader, RulebookMerger,
+    validate_rulebooks,
+};
 
 fn make_constraint(id: &str, severity: &str) -> RuleConstraint {
     RuleConstraint {
@@ -53,12 +53,21 @@ fn merger_keeps_unique_constraints() {
 
 #[test]
 fn validate_detects_vil_core_override() {
-    let books = vec![make_rulebook("bad", 0, vec![
-        make_constraint("vil-no-json-extractor", "warn"), // VIL core rule id
-    ])];
+    let books = vec![make_rulebook(
+        "bad",
+        0,
+        vec![
+            make_constraint("vil-no-json-extractor", "warn"), // VIL core rule id
+        ],
+    )];
     let result = validate_rulebooks(&books);
     assert!(!result.is_valid(), "should detect VIL core override");
-    assert!(result.errors.iter().any(|e| e.contains("vil-no-json-extractor")));
+    assert!(
+        result
+            .errors
+            .iter()
+            .any(|e| e.contains("vil-no-json-extractor"))
+    );
 }
 
 #[test]
@@ -82,13 +91,23 @@ fn resolved_context_filters_by_archetype() {
 
     let c_global = make_constraint("global-rule", "warn");
 
-    let books = vec![make_rulebook("test", 0, vec![c_server, c_pipeline, c_global])];
+    let books = vec![make_rulebook(
+        "test",
+        0,
+        vec![c_server, c_pipeline, c_global],
+    )];
     let ctx = ResolvedRuleContext::build(books, Some("server"));
 
     let ids: Vec<&str> = ctx.constraints.iter().map(|c| c.id.as_str()).collect();
     assert!(ids.contains(&"server-rule"), "server rule should match");
-    assert!(ids.contains(&"global-rule"), "global rule should always match");
-    assert!(!ids.contains(&"pipeline-rule"), "pipeline rule should not match server archetype");
+    assert!(
+        ids.contains(&"global-rule"),
+        "global rule should always match"
+    );
+    assert!(
+        !ids.contains(&"pipeline-rule"),
+        "pipeline rule should not match server archetype"
+    );
 }
 
 #[test]
@@ -96,7 +115,9 @@ fn loader_loads_single_rules_toml() {
     let dir = tempdir().unwrap();
     let vac_dir = dir.path().join(".vac");
     fs::create_dir_all(&vac_dir).unwrap();
-    fs::write(vac_dir.join("rules.toml"), r#"
+    fs::write(
+        vac_dir.join("rules.toml"),
+        r#"
 id = "project-rules"
 name = "Test Rules"
 
@@ -104,7 +125,9 @@ name = "Test Rules"
 id = "no-unwrap"
 description = "Do not use .unwrap() in production"
 severity = "warn"
-"#).unwrap();
+"#,
+    )
+    .unwrap();
 
     let books = RulebookLoader::load_all(dir.path(), &[]);
     assert_eq!(books.len(), 1);
@@ -118,21 +141,29 @@ fn loader_loads_multi_rulebook_dir() {
     let rb_dir = dir.path().join(".vac/rulebooks");
     fs::create_dir_all(&rb_dir).unwrap();
 
-    fs::write(rb_dir.join("team.toml"), r#"
+    fs::write(
+        rb_dir.join("team.toml"),
+        r#"
 id = "team"
 [[constraints]]
 id = "team-rule-1"
 description = "Team rule"
 severity = "warn"
-"#).unwrap();
+"#,
+    )
+    .unwrap();
 
-    fs::write(rb_dir.join("org.toml"), r#"
+    fs::write(
+        rb_dir.join("org.toml"),
+        r#"
 id = "org"
 [[constraints]]
 id = "org-rule-1"
 description = "Org rule"
 severity = "block"
-"#).unwrap();
+"#,
+    )
+    .unwrap();
 
     let books = RulebookLoader::load_all(dir.path(), &[]);
     assert_eq!(books.len(), 2);
@@ -140,12 +171,22 @@ severity = "block"
 
 #[test]
 fn prompt_overlay_includes_blocking_marker() {
-    let books = vec![make_rulebook("test", 0, vec![
-        make_constraint("block-rule", "block"),
-        make_constraint("warn-rule", "warn"),
-    ])];
+    let books = vec![make_rulebook(
+        "test",
+        0,
+        vec![
+            make_constraint("block-rule", "block"),
+            make_constraint("warn-rule", "warn"),
+        ],
+    )];
     let ctx = ResolvedRuleContext::build(books, None);
     let overlay = ctx.to_prompt_overlay().unwrap();
-    assert!(overlay.contains("🔴"), "blocking rule should have red marker");
-    assert!(overlay.contains("⚠️"), "warn rule should have warning marker");
+    assert!(
+        overlay.contains("🔴"),
+        "blocking rule should have red marker"
+    );
+    assert!(
+        overlay.contains("⚠️"),
+        "warn rule should have warning marker"
+    );
 }

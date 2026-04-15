@@ -1,6 +1,7 @@
 use assert_cmd::Command;
 use std::time::{Duration, Instant};
 
+use serde_json::json;
 use vac_runtime::{Job, JobKind, JobStatus};
 
 fn write_autopilot_toml(root: &std::path::Path, mode: &str, poll_interval_secs: u64) {
@@ -16,8 +17,29 @@ fn write_queue(root: &std::path::Path, jobs: Vec<Job>) {
     std::fs::write(root.join(".vac/queue.json"), json).unwrap();
 }
 
+fn write_vac_config_toml(root: &std::path::Path) {
+    std::fs::create_dir_all(root.join(".vac")).unwrap();
+    let content = r#"
+[llm]
+default_provider = "anthropic"
+providers = {}
+
+[tools]
+default_policy = "deny"
+allow = {}
+deny = {}
+
+[memory]
+[context]
+[swarm]
+[trace]
+"#;
+    std::fs::write(root.join(".vac/config.toml"), content.trim_start()).unwrap();
+}
+
 fn read_queue(root: &std::path::Path) -> Vec<Job> {
-    let content = std::fs::read_to_string(root.join(".vac/queue.json")).unwrap_or_else(|_| "[]".to_string());
+    let content =
+        std::fs::read_to_string(root.join(".vac/queue.json")).unwrap_or_else(|_| "[]".to_string());
     serde_json::from_str(&content).unwrap()
 }
 
@@ -50,7 +72,9 @@ fn autopilot_monitor_mode_does_not_execute_job_and_reports_queue() {
 
     run_vac(root, &["autopilot", "up"]).success();
 
-    let state_ok = wait_until(Duration::from_secs(2), || root.join(".vac/autopilot.state").exists());
+    let state_ok = wait_until(Duration::from_secs(2), || {
+        root.join(".vac/autopilot.state").exists()
+    });
     assert!(state_ok);
 
     let queued_ok = wait_until(Duration::from_secs(2), || {
@@ -65,7 +89,10 @@ fn autopilot_monitor_mode_does_not_execute_job_and_reports_queue() {
     let state_content = std::fs::read_to_string(root.join(".vac/autopilot.state")).unwrap();
     let state: vac_runtime::AutopilotStateFile = serde_json::from_str(&state_content).unwrap();
     assert_eq!(state.mode, "monitor");
-    assert!(matches!(state.state, vac_runtime::AutopilotState::Polling | vac_runtime::AutopilotState::Idle));
+    assert!(matches!(
+        state.state,
+        vac_runtime::AutopilotState::Polling | vac_runtime::AutopilotState::Idle
+    ));
     assert_eq!(state.queue_len, 1);
 
     run_vac(root, &["autopilot", "down"]).success();
@@ -103,7 +130,14 @@ fn autopilot_waiting_approval_state_is_observable_and_unblocks_on_file() {
     let root = dir.path();
 
     write_autopilot_toml(root, "auto", 1);
-    let job = Job::new(JobKind::ManualApproval { tool_name: "bash".to_string() });
+    write_vac_config_toml(root);
+    let job = Job::new(JobKind::ToolCall {
+        tool_name: "file_write".to_string(),
+        arguments: json!({
+            "path": "autopilot_approval_test.txt",
+            "content": "hello"
+        }),
+    });
     let id = job.id;
     write_queue(root, vec![job]);
 
@@ -113,7 +147,8 @@ fn autopilot_waiting_approval_state_is_observable_and_unblocks_on_file() {
     let waiting_ok = wait_until(Duration::from_secs(4), || {
         if let Ok(content) = std::fs::read_to_string(root.join(".vac/autopilot.state")) {
             if let Ok(sf) = serde_json::from_str::<vac_runtime::AutopilotStateFile>(&content) {
-                if let vac_runtime::AutopilotState::WaitingApproval { tool_call_id: id } = sf.state {
+                if let vac_runtime::AutopilotState::WaitingApproval { tool_call_id: id } = sf.state
+                {
                     tool_call_id = Some(id);
                     return true;
                 }
@@ -126,7 +161,11 @@ fn autopilot_waiting_approval_state_is_observable_and_unblocks_on_file() {
 
     let approval_path = vac_runtime::approval_file_path(root, &tool_call_id);
     let payload = serde_json::json!({ "approved": true, "reason": "test" });
-    std::fs::write(approval_path, serde_json::to_string_pretty(&payload).unwrap()).unwrap();
+    std::fs::write(
+        approval_path,
+        serde_json::to_string_pretty(&payload).unwrap(),
+    )
+    .unwrap();
 
     let done_ok = wait_until(Duration::from_secs(4), || {
         read_queue(root)
@@ -139,4 +178,3 @@ fn autopilot_waiting_approval_state_is_observable_and_unblocks_on_file() {
 
     run_vac(root, &["autopilot", "down"]).success();
 }
-

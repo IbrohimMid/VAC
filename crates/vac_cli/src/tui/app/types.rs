@@ -6,8 +6,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::tui::types::*;
 use crate::tui::services::textarea::TextArea;
+use crate::tui::types::*;
 
 // ========== Cache Types ==========
 
@@ -38,7 +38,6 @@ pub struct RenderMetrics {
     pub cache_misses: usize,
     pub total_lines: usize,
     pub avg_render_time_us: u64,
-    render_count: u64,
 }
 
 // ========== Helper Types ==========
@@ -71,8 +70,6 @@ pub struct SessionInfo {
     pub updated_at: String,
     pub checkpoints: Vec<String>,
 }
-
-
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum LoadingOperation {
@@ -197,64 +194,64 @@ pub struct AppState {
     // Input state
     pub input: TextArea,
     pub cursor_position: usize,
-    
+
     // Messages
     pub messages: Vec<Message>,
     pub scroll: usize,
-    
+
     // Loading state
     pub loading: bool,
     pub loading_manager: LoadingStateManager,
     pub spinner_frame: usize,
-    
+
     // Session state
     pub session_id: String,
     pub sessions: Vec<SessionInfo>,
     pub session_title: Option<String>,
     pub checkpoint_path: Option<PathBuf>,
-    
+
     // Model state
     pub current_model: Option<Model>,
-    
+
     // Mouse capture
     pub mouse_capture_enabled: bool,
-    
+
     // Dialog state
     pub is_dialog_open: bool,
     pub dialog_command: Option<ToolCall>,
     pub dialog_selected: usize,
     pub dialog_focused: bool,
-    
+
     // Approval state
     pub pending_tool_calls: Vec<ToolCall>,
     pub approved_tools: Vec<ToolCall>,
     pub rejected_tools: Vec<ToolCall>,
-    
+
     // Shell state
     pub shell_popup_visible: bool,
     pub shell_output: String,
-    
+
     // Streaming state
     pub is_streaming: bool,
     pub cancel_requested: bool,
     pub streaming_message_id: Option<Uuid>,
-    
+
     // Command palette
     pub show_command_palette: bool,
     pub command_palette_input: String,
     pub command_palette_selected: usize,
     pub commands: Vec<HelperCommand>,
-    
+
     // Shortcuts popup
     pub show_shortcuts: bool,
     pub shortcuts_mode: ShortcutsPopupMode,
-    
+
     // Diff preview
     pub show_diff_preview: bool,
     pub diff_file_path: Option<String>,
     pub diff_old_content: Option<String>,
     pub diff_new_content: Option<String>,
-    
+
     pub modified_files: Vec<String>,
 
     pub review_open: bool,
@@ -264,7 +261,7 @@ pub struct AppState {
     pub review_items: HashMap<String, ReviewItem>,
     pub review_diff: Option<ReviewDiffState>,
     pub review_generation: u64,
-    
+
     // Permission UX
     pub auto_approve: bool,
     pub permission_explanation: Option<String>,
@@ -300,7 +297,9 @@ impl AppState {
             loading: false,
             loading_manager: LoadingStateManager::new(),
             spinner_frame: 0,
-            session_id: options.session_id.unwrap_or_else(|| Uuid::new_v4().to_string()),
+            session_id: options
+                .session_id
+                .unwrap_or_else(|| Uuid::new_v4().to_string()),
             sessions: Vec::new(),
             session_title: None,
             checkpoint_path: options.checkpoint_path,
@@ -341,19 +340,19 @@ impl AppState {
             project_root: options.project_root,
         }
     }
-    
+
     fn default_commands() -> Vec<HelperCommand> {
         crate::tui::services::helper_block::vac_commands()
     }
-    
+
     pub fn add_user_message(&mut self, content: String) {
         self.messages.push(Message::user(content, None));
     }
-    
+
     pub fn add_assistant_message(&mut self, content: String) {
         self.messages.push(Message::assistant(content));
     }
-    
+
     pub fn filtered_commands(&self) -> Vec<HelperCommand> {
         if self.command_palette_input.is_empty() {
             return self.commands.clone();
@@ -372,11 +371,15 @@ impl AppState {
             keys.insert(path.clone());
         }
 
-        self.review_items.retain(|k, v| keys.contains(k) || v.status != ReviewItemStatus::Pending);
+        self.review_items
+            .retain(|k, v| keys.contains(k) || v.status != ReviewItemStatus::Pending);
 
         for path in &self.modified_files {
             let has_snapshot = session_id
-                .map(|sid| crate::tui::services::review::snapshot_path(&self.project_root, sid, path).exists())
+                .map(|sid| {
+                    crate::tui::services::review::snapshot_path(&self.project_root, sid, path)
+                        .exists()
+                })
                 .unwrap_or(false);
 
             self.review_items

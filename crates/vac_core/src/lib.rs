@@ -1,6 +1,7 @@
 //! VAC Core Engine
 
 pub mod acp;
+pub mod approval;
 pub mod auth;
 pub mod config;
 pub mod detector;
@@ -17,6 +18,9 @@ pub mod spawn_subtask_tool;
 pub mod task;
 
 pub use acp::AcpServer;
+pub use approval::{
+    ApprovalHandle, ApprovalRecord, ApprovalState, ApprovalStateMachine, ApprovalStore,
+};
 pub use auth::{AuthStatus, StoredAuth};
 pub use config::{RulebookConfig, RuntimeConfig, VacConfig, VilLspConfig};
 pub use detector::{VilArchetype, VilProjectProfile};

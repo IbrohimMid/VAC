@@ -27,11 +27,18 @@ pub struct CanonicalCheckResult {
 /// In Strict mode, any legacy term is an error.
 /// In Compat mode, legacy terms produce warnings only.
 pub fn check_terms(content: &str, mode: ValidationMode) -> CanonicalCheckResult {
-    let mut result = CanonicalCheckResult { passed: true, warnings: vec![], errors: vec![] };
+    let mut result = CanonicalCheckResult {
+        passed: true,
+        warnings: vec![],
+        errors: vec![],
+    };
 
     for (legacy, canonical) in LEGACY_TERMS {
         if content.contains(legacy) {
-            let msg = format!("legacy alias '{}' detected; use '{}' instead", legacy, canonical);
+            let msg = format!(
+                "legacy alias '{}' detected; use '{}' instead",
+                legacy, canonical
+            );
             match mode {
                 ValidationMode::Strict => {
                     result.errors.push(msg);
@@ -67,7 +74,10 @@ mod tests {
 
     #[test]
     fn canonical_terms_pass_strict() {
-        let r = check_terms("language: vil-expr\nactivity_type: Rule", ValidationMode::Strict);
+        let r = check_terms(
+            "language: vil-expr\nactivity_type: Rule",
+            ValidationMode::Strict,
+        );
         assert!(r.passed);
         assert!(r.errors.is_empty());
     }

@@ -1,7 +1,7 @@
 //! Secret redaction — prevent leaking sensitive data in traces/checkpoints.
 
-use regex::Regex;
 use once_cell::sync::Lazy;
+use regex::Regex;
 
 static SECRET_PATTERNS: Lazy<Vec<(Regex, &'static str)>> = Lazy::new(|| {
     vec![
@@ -19,11 +19,11 @@ static SECRET_PATTERNS: Lazy<Vec<(Regex, &'static str)>> = Lazy::new(|| {
 /// Redact secrets from text, replacing with [REDACTED].
 pub fn redact_secrets(text: &str) -> String {
     let mut result = text.to_string();
-    
+
     for (pattern, replacement) in SECRET_PATTERNS.iter() {
         result = pattern.replace_all(&result, *replacement).to_string();
     }
-    
+
     result
 }
 

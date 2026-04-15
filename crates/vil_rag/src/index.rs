@@ -28,6 +28,12 @@ pub struct RagIndex {
     model: Arc<RwLock<Option<EmbeddingModel>>>,
 }
 
+impl Default for RagIndex {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RagIndex {
     pub fn new() -> Self {
         Self {
@@ -87,7 +93,11 @@ impl RagIndex {
             .filter(|r| r.score > 0.0)
             .collect();
 
-        results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        results.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         results.truncate(top_k);
 
         Ok(results)

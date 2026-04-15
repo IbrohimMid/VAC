@@ -129,8 +129,8 @@ impl ExternalDiagnosticContext {
 /// Minimal re-export types needed from vac_core to avoid circular deps.
 /// SwarmOrchestrator only needs VilProjectProfile + VilArchetype.
 pub mod vac_core_types {
-    pub use super::VilProjectProfile;
     pub use super::VilArchetype;
+    pub use super::VilProjectProfile;
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -182,7 +182,9 @@ impl SwarmOrchestrator {
             project_profile: None,
             knowledge: None,
             rulebook: None,
-            sandbox_registry: Arc::new(crate::sandbox::SandboxRegistry::with_project_root(std::path::Path::new("."))),
+            sandbox_registry: Arc::new(crate::sandbox::SandboxRegistry::with_project_root(
+                std::path::Path::new("."),
+            )),
             lsp_context: None,
             hook: None,
             privacy_vault,
@@ -239,9 +241,13 @@ impl SwarmOrchestrator {
     ) -> SwarmResult<SubtaskResult> {
         info!(role = ?role, mode = ?spec.mode, "Spawning sandboxed subtask");
 
-        let llm_router = self.llm_router.as_ref()
+        let llm_router = self
+            .llm_router
+            .as_ref()
             .ok_or_else(|| SwarmError::Orchestration("LLM router not initialized".into()))?;
-        let tool_router = self.tool_router.as_ref()
+        let tool_router = self
+            .tool_router
+            .as_ref()
             .ok_or_else(|| SwarmError::Orchestration("Tool router not initialized".into()))?;
 
         let sandbox = self.sandbox_registry.spawn(&spec, task_description).await;
@@ -249,24 +255,41 @@ impl SwarmOrchestrator {
 
         let messages = crate::subagent::build_subagent_messages(&role, task_description);
         let tool_defs = crate::subagent::build_tool_defs(tool_router.registry()).await;
-        let context = crate::subagent::build_sandbox_context(sandbox.overlay_dir.clone(), self.privacy_vault.clone());
+        let context = crate::subagent::build_sandbox_context(
+            sandbox.overlay_dir.clone(),
+            self.privacy_vault.clone(),
+        );
 
         let mut state = crate::run_state::AgentRunState::new(messages, None);
 
-        let result = self.execute_agent_loop(
-            &mut state, tool_defs, None,
-            &context, llm_router, tool_router,
-        ).await;
+        let result = self
+            .execute_agent_loop(
+                &mut state,
+                tool_defs,
+                None,
+                &context,
+                llm_router,
+                tool_router,
+            )
+            .await;
 
         match result {
             Ok(summary) => {
                 let patch = self.sandbox_registry.build_patch(sandbox_id).await;
-                self.sandbox_registry.complete(sandbox_id, patch.clone()).await;
+                self.sandbox_registry
+                    .complete(sandbox_id, patch.clone())
+                    .await;
                 Ok(SubtaskResult {
                     role,
                     summary,
-                    modified_files: patch.as_ref().map(|p| p.modified_files.clone()).unwrap_or(state.modified_files),
-                    created_files: patch.as_ref().map(|p| p.created_files.clone()).unwrap_or(state.created_files),
+                    modified_files: patch
+                        .as_ref()
+                        .map(|p| p.modified_files.clone())
+                        .unwrap_or(state.modified_files),
+                    created_files: patch
+                        .as_ref()
+                        .map(|p| p.created_files.clone())
+                        .unwrap_or(state.created_files),
                     tokens_used: state.total_tokens,
                     success: true,
                     error: None,
@@ -274,7 +297,15 @@ impl SwarmOrchestrator {
             }
             Err(e) => {
                 self.sandbox_registry.fail(sandbox_id, e.to_string()).await;
-                Ok(SubtaskResult { role, summary: String::new(), modified_files: state.modified_files, created_files: state.created_files, tokens_used: state.total_tokens, success: false, error: Some(e.to_string()) })
+                Ok(SubtaskResult {
+                    role,
+                    summary: String::new(),
+                    modified_files: state.modified_files,
+                    created_files: state.created_files,
+                    tokens_used: state.total_tokens,
+                    success: false,
+                    error: Some(e.to_string()),
+                })
             }
         }
     }
@@ -287,9 +318,13 @@ impl SwarmOrchestrator {
     ) -> SwarmResult<SubtaskResult> {
         info!(role = ?role, "Spawning subtask");
 
-        let llm_router = self.llm_router.as_ref()
+        let llm_router = self
+            .llm_router
+            .as_ref()
             .ok_or_else(|| SwarmError::Orchestration("LLM router not initialized".into()))?;
-        let tool_router = self.tool_router.as_ref()
+        let tool_router = self
+            .tool_router
+            .as_ref()
             .ok_or_else(|| SwarmError::Orchestration("Tool router not initialized".into()))?;
 
         // Spawn ephemeral sandbox for subtask isolation
@@ -303,17 +338,22 @@ impl SwarmOrchestrator {
 
         let messages = crate::subagent::build_subagent_messages(&role, task_description);
         let tool_defs = crate::subagent::build_tool_defs(tool_router.registry()).await;
-        let context = crate::subagent::build_parent_context(std::path::PathBuf::from("."), self.privacy_vault.clone());
+        let context = crate::subagent::build_parent_context(
+            std::path::PathBuf::from("."),
+            self.privacy_vault.clone(),
+        );
         let mut state = crate::run_state::AgentRunState::new(messages, None);
 
-        let result = self.execute_agent_loop(
-            &mut state,
-            tool_defs,
-            None,
-            &context,
-            llm_router,
-            tool_router,
-        ).await;
+        let result = self
+            .execute_agent_loop(
+                &mut state,
+                tool_defs,
+                None,
+                &context,
+                llm_router,
+                tool_router,
+            )
+            .await;
 
         match result {
             Ok(summary) => {
@@ -392,31 +432,36 @@ Rules:
         knowledge: Option<&vil_knowledge::KnowledgeBase>,
     ) -> String {
         let archetype_context = match &profile.archetype {
-            VilArchetype::Server =>
+            VilArchetype::Server => {
                 "This is a **VilServer** project.\n\
                 - Handlers: `#[vil_handler(shm)] async fn h(ctx: ServiceCtx, slice: ShmSlice) -> VilResponse<T>`\n\
                 - State: `ctx.state::<T>()` NOT `Extension<T>`\n\
                 - Body: `ShmSlice` + `vil_json::from_slice()` NOT `Json<T>`\n\
                 - Response: `VilResponse::ok(data)` NOT `Json(data)`\n\
-                - Semantic types: `#[vil_state]`, `#[vil_event]`, `#[vil_fault]`, `#[vil_decision]`",
-            VilArchetype::Pipeline =>
+                - Semantic types: `#[vil_state]`, `#[vil_event]`, `#[vil_fault]`, `#[vil_decision]`"
+            }
+            VilArchetype::Pipeline => {
                 "This is a **vil-pipeline** project.\n\
                 - Macro: `vil_workflow! { name, token: ShmToken, instances: [...], routes: [...] }`\n\
                 - Sources: `HttpSourceBuilder::new().url().format(HttpFormat::SSE).dialect(...)`\n\
                 - Token: `ShmToken` for high-throughput, `GenericToken` for simple cases\n\
                 - Routes: `sink.out -> source.in (LoanWrite)`\n\
-                - Semantic types: `#[vil_token]`, `#[vil_stream]`, `#[vil_sink]`",
-            VilArchetype::Plugin =>
+                - Semantic types: `#[vil_token]`, `#[vil_stream]`, `#[vil_sink]`"
+            }
+            VilArchetype::Plugin => {
                 "This is a **VilPlugin** project.\n\
                 - Trait: `impl VilPlugin for T { fn register(&self, ctx: &mut PluginContext) }`\n\
-                - Registration: `ctx.state(...)`, `ctx.endpoint(...)`, `ctx.middleware(...)`",
-            VilArchetype::Hybrid(_) =>
+                - Registration: `ctx.state(...)`, `ctx.endpoint(...)`, `ctx.middleware(...)`"
+            }
+            VilArchetype::Hybrid(_) => {
                 "This is a **Hybrid VIL** project. Apply the correct pattern per component:\n\
                 - Server: ShmSlice + ServiceCtx + VilResponse\n\
                 - Pipeline: vil_workflow! + ShmToken\n\
-                - Plugin: VilPlugin + PluginContext",
-            VilArchetype::Unknown =>
-                "VIL project type not detected. Use vil_knowledge to identify the correct pattern.",
+                - Plugin: VilPlugin + PluginContext"
+            }
+            VilArchetype::Unknown => {
+                "VIL project type not detected. Use vil_knowledge to identify the correct pattern."
+            }
         };
 
         let pattern_context = if let Some(kb) = knowledge {
@@ -433,8 +478,11 @@ Rules:
                 .take(3)
                 .map(|p| format!("- **{}**: {}", p.name, p.description))
                 .collect();
-            if patterns.is_empty() { String::new() }
-            else { format!("\n\n**Pre-loaded VIL patterns:**\n{}", patterns.join("\n")) }
+            if patterns.is_empty() {
+                String::new()
+            } else {
+                format!("\n\n**Pre-loaded VIL patterns:**\n{}", patterns.join("\n"))
+            }
         } else {
             String::new()
         };
@@ -462,7 +510,16 @@ Rules:
         llm_router: &Arc<vil_llm::LlmRouter>,
         tool_router: &Arc<vac_tools::router::ToolRouter>,
     ) -> SwarmResult<String> {
-        self.execute_agent_loop_with_approvals(state, tool_defs, updates, context, llm_router, tool_router, None).await
+        self.execute_agent_loop_with_approvals(
+            state,
+            tool_defs,
+            updates,
+            context,
+            llm_router,
+            tool_router,
+            None,
+        )
+        .await
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -480,28 +537,38 @@ Rules:
             // Step 1: Cancellation check
             if state.is_cancelled() {
                 state.stage = crate::run_state::RunStage::Cancelled;
-                
+
                 let checkpoint_dir = context.working_dir.join(".vac/checkpoints");
                 if let Err(e) = std::fs::create_dir_all(&checkpoint_dir) {
                     warn!(error = %e, "Failed to create checkpoint directory for cancellation");
                 } else {
-                    let checkpoint_path = checkpoint_dir.join(format!("{}_state.json", context.session_id));
-                    if let Err(e) = state.save_checkpoint(&checkpoint_path, Some(context.session_id)) {
+                    let checkpoint_path =
+                        checkpoint_dir.join(format!("{}_state.json", context.session_id));
+                    if let Err(e) =
+                        state.save_checkpoint(&checkpoint_path, Some(context.session_id))
+                    {
                         warn!(error = %e, path = %checkpoint_path.display(), "Failed to save state checkpoint on cancellation");
                     } else {
                         info!(path = %checkpoint_path.display(), "AgentRunState checkpoint saved on cancellation");
                     }
                 }
-                
+
                 return Err(SwarmError::Cancelled);
             }
             // Step 2: Iteration cap check
             if let Err(e) = crate::loop_control::check_iteration_cap(state.iterations) {
-                warn!(iterations = state.iterations, "Max iterations reached, terminating agent loop");
+                warn!(
+                    iterations = state.iterations,
+                    "Max iterations reached, terminating agent loop"
+                );
                 return Err(e);
             }
             state.iterations += 1;
-            state.collector.push(crate::events::AgentEvent::IterationStarted { iteration: state.iterations });
+            state
+                .collector
+                .push(crate::events::AgentEvent::IterationStarted {
+                    iteration: state.iterations,
+                });
             // Step 3: Context reduction
             let prev_boundary = state.trim_boundary;
             let reduced = crate::context_budget::reduce_messages(
@@ -510,10 +577,15 @@ Rules:
                 &mut state.trim_store,
             );
             if state.trim_boundary > prev_boundary {
-                state.collector.context_reduced(state.messages.len(), reduced.len(), state.trim_boundary);
+                state.collector.context_reduced(
+                    state.messages.len(),
+                    reduced.len(),
+                    state.trim_boundary,
+                );
             }
             // Step 4: Build LLM request using LlmMessage canonical path
-            let llm_messages: Vec<vil_llm::models::LlmMessage> = reduced.iter()
+            let llm_messages: Vec<vil_llm::models::LlmMessage> = reduced
+                .iter()
                 .map(vil_llm::models::LlmMessage::from)
                 .collect();
             let request = LlmRequest::from_llm_messages(llm_messages)
@@ -553,10 +625,12 @@ Rules:
                             tx.send(AgentLoopEvent::Status("Preparing final answer".to_string()));
                     }
                     info!("Agent loop completed successfully (Stop reason)");
-                    state.collector.push(crate::events::AgentEvent::LoopCompleted {
-                        total_iterations: state.iterations,
-                        total_tokens: state.total_tokens,
-                    });
+                    state
+                        .collector
+                        .push(crate::events::AgentEvent::LoopCompleted {
+                            total_iterations: state.iterations,
+                            total_tokens: state.total_tokens,
+                        });
                     state.stage = crate::run_state::RunStage::Completed;
                     return Ok(response.content);
                 }
@@ -568,11 +642,13 @@ Rules:
                     ));
 
                     // Classify tools: Data Lane (parallel reads) / Control Lane (serial writes)
-                    let (parallel_reads, serial_writes) = crate::tool_execution::partition_calls(response.tool_calls);
+                    let (parallel_reads, serial_writes) =
+                        crate::tool_execution::partition_calls(response.tool_calls);
 
                     // Step 6: Tool execution via tool_executor module
-                    let all_calls: Vec<_> = parallel_reads.into_iter().chain(serial_writes).collect();
-                    
+                    let all_calls: Vec<_> =
+                        parallel_reads.into_iter().chain(serial_writes).collect();
+
                     // Emit ToolCall events
                     if let Some(tx) = &updates {
                         for call in &all_calls {
@@ -584,22 +660,38 @@ Rules:
                         }
                     }
 
-                    crate::tool_executor::execute_tools(all_calls, state, context, tool_router, &updates, self.hook.as_deref()).await?;
+                    crate::tool_executor::execute_tools(
+                        all_calls,
+                        state,
+                        context,
+                        tool_router,
+                        &updates,
+                        self.hook.as_deref(),
+                    )
+                    .await?;
 
                     // Step 7: Wait for approval responses if any tools require approval
                     if !state.pending_approvals.is_empty() {
                         if let Some(ref mut rx) = approval_rx {
-                            info!(count = state.pending_approvals.len(), "Waiting for approval responses");
+                            info!(
+                                count = state.pending_approvals.len(),
+                                "Waiting for approval responses"
+                            );
                             let approval_timeout = std::time::Duration::from_secs(300); // 5 min max wait
                             while !state.pending_approvals.is_empty() {
                                 let recv_future = rx.recv();
                                 match tokio::time::timeout(approval_timeout, recv_future).await {
                                     Ok(Some(response)) => {
-                                        let pos = state.pending_approvals.iter().position(|p| p.tool_call_id == response.tool_call_id);
+                                        let pos = state
+                                            .pending_approvals
+                                            .iter()
+                                            .position(|p| p.tool_call_id == response.tool_call_id);
                                         if let Some(idx) = pos {
                                             let pending = state.pending_approvals.remove(idx);
                                             if response.approved {
-                                                state.approved_tools.insert(response.tool_call_id.clone());
+                                                state
+                                                    .approved_tools
+                                                    .insert(response.tool_call_id.clone());
                                                 info!(tool = %pending.tool_name, "Tool approved, re-executing");
                                                 let approved_call = vil_llm::provider::ToolCall {
                                                     id: pending.tool_call_id.clone(),
@@ -607,10 +699,18 @@ Rules:
                                                     arguments: pending.arguments.clone(),
                                                 };
                                                 crate::tool_executor::execute_tools(
-                                                    vec![approved_call], state, context, tool_router, &updates, self.hook.as_deref()
-                                                ).await?;
+                                                    vec![approved_call],
+                                                    state,
+                                                    context,
+                                                    tool_router,
+                                                    &updates,
+                                                    self.hook.as_deref(),
+                                                )
+                                                .await?;
                                             } else {
-                                                let reason = response.reason.unwrap_or_else(|| "User rejected".to_string());
+                                                let reason = response
+                                                    .reason
+                                                    .unwrap_or_else(|| "User rejected".to_string());
                                                 info!(tool = %pending.tool_name, reason = %reason, "Tool rejected by user");
                                                 state.messages.push(Message::tool(
                                                     pending.tool_name,
@@ -623,7 +723,9 @@ Rules:
                                         }
                                     }
                                     Ok(None) => {
-                                        warn!("Approval channel closed while waiting for responses");
+                                        warn!(
+                                            "Approval channel closed while waiting for responses"
+                                        );
                                         // Reject all remaining pending approvals
                                         for pending in state.pending_approvals.drain(..) {
                                             state.messages.push(Message::tool(
@@ -635,7 +737,9 @@ Rules:
                                         break;
                                     }
                                     Err(_) => {
-                                        warn!("Approval wait timeout, rejecting remaining pending approvals");
+                                        warn!(
+                                            "Approval wait timeout, rejecting remaining pending approvals"
+                                        );
                                         for pending in state.pending_approvals.drain(..) {
                                             state.messages.push(Message::tool(
                                                 pending.tool_name,
@@ -661,13 +765,20 @@ Rules:
                     }
 
                     if let Some(tx) = &updates {
-                        let _ = tx.send(AgentLoopEvent::Status("Reviewing tool results".to_string()));
+                        let _ =
+                            tx.send(AgentLoopEvent::Status("Reviewing tool results".to_string()));
                     }
                 }
                 vil_llm::provider::FinishReason::MaxTokens => {
                     warn!("Context window limit reached, applying emergency context reduction");
-                    state.trim_boundary = crate::loop_control::emergency_trim_boundary(state.messages.len(), state.trim_boundary);
-                    info!(trim_boundary = state.trim_boundary, "Context budget emergency: trim_boundary advanced");
+                    state.trim_boundary = crate::loop_control::emergency_trim_boundary(
+                        state.messages.len(),
+                        state.trim_boundary,
+                    );
+                    info!(
+                        trim_boundary = state.trim_boundary,
+                        "Context budget emergency: trim_boundary advanced"
+                    );
                 }
                 _ => {
                     warn!(reason = ?response.finish_reason, "Unknown finish reason, terminating loop");
@@ -703,7 +814,7 @@ Rules:
         if let Some(sid) = session_id {
             context = context.with_session_id(sid);
         }
-        
+
         let tool_defs: Vec<ToolDefinition> = tool_router
             .registry()
             .list()
@@ -728,7 +839,7 @@ Rules:
                     tool_router,
                 )
                 .await?;
-            
+
             let strict_mode = std::env::var("VAC_PROFILE")
                 .map(|p| p == "strict-vil" || p == "spec-hardening")
                 .unwrap_or(false);
@@ -739,13 +850,21 @@ Rules:
                     return Err(SwarmError::Orchestration("Planner gate FAILED".into()));
                 }
                 PlannerGateResult::KnowledgeGateFailed(plan) => {
-                    format!("{}\n\n> **WARNING**: Planner did not consult `vil_knowledge`.", plan.to_markdown())
+                    format!(
+                        "{}\n\n> **WARNING**: Planner did not consult `vil_knowledge`.",
+                        plan.to_markdown()
+                    )
                 }
                 PlannerGateResult::ParseFailed(raw) if strict_mode => {
-                    return Err(SwarmError::Orchestration("Planner gate FAILED (ParseFailed)".into()));
+                    return Err(SwarmError::Orchestration(
+                        "Planner gate FAILED (ParseFailed)".into(),
+                    ));
                 }
                 PlannerGateResult::ParseFailed(raw) => {
-                    format!("### Planner Output\n{}\n\n> **WARNING**: Invalid SemanticPlan JSON.", raw)
+                    format!(
+                        "### Planner Output\n{}\n\n> **WARNING**: Invalid SemanticPlan JSON.",
+                        raw
+                    )
                 }
             }
         } else {
@@ -760,13 +879,17 @@ Rules:
             } else {
                 let mut prompt = Self::coder_system_prompt();
                 if let Some(kb) = self.knowledge.as_deref() {
-                    let patterns: Vec<String> = kb.patterns_by_category("patterns")
+                    let patterns: Vec<String> = kb
+                        .patterns_by_category("patterns")
                         .into_iter()
                         .take(3)
                         .map(|p| format!("- **{}**: {}", p.name, p.description))
                         .collect();
                     if !patterns.is_empty() {
-                        prompt.push_str(&format!("\n\n**Pre-loaded VIL patterns:**\n{}", patterns.join("\n")));
+                        prompt.push_str(&format!(
+                            "\n\n**Pre-loaded VIL patterns:**\n{}",
+                            patterns.join("\n")
+                        ));
                     }
                 }
                 prompt
@@ -823,7 +946,8 @@ Rules:
         task_description: &str,
         updates: Option<mpsc::UnboundedSender<AgentLoopEvent>>,
     ) -> SwarmResult<ExecutionResult> {
-        self.agent_loop_with_context(task_description, updates, None, None, None).await
+        self.agent_loop_with_context(task_description, updates, None, None, None)
+            .await
     }
 
     pub async fn agent_loop_with_context(
@@ -834,7 +958,15 @@ Rules:
         project_root: Option<std::path::PathBuf>,
         cancel: Option<tokio_util::sync::CancellationToken>,
     ) -> SwarmResult<ExecutionResult> {
-        self.agent_loop_with_full_context(task_description, updates, session_id, project_root, cancel, None).await
+        self.agent_loop_with_full_context(
+            task_description,
+            updates,
+            session_id,
+            project_root,
+            cancel,
+            None,
+        )
+        .await
     }
 
     pub async fn agent_loop_with_full_context(
@@ -943,13 +1075,17 @@ Rules:
         } else {
             let mut prompt = Self::coder_system_prompt();
             if let Some(kb) = self.knowledge.as_deref() {
-                let patterns: Vec<String> = kb.patterns_by_category("patterns")
+                let patterns: Vec<String> = kb
+                    .patterns_by_category("patterns")
                     .into_iter()
                     .take(3)
                     .map(|p| format!("- **{}**: {}", p.name, p.description))
                     .collect();
                 if !patterns.is_empty() {
-                    prompt.push_str(&format!("\n\n**Pre-loaded VIL patterns:**\n{}", patterns.join("\n")));
+                    prompt.push_str(&format!(
+                        "\n\n**Pre-loaded VIL patterns:**\n{}",
+                        patterns.join("\n")
+                    ));
                 }
             }
             prompt
@@ -1017,5 +1153,3 @@ Rules:
         &self.agents
     }
 }
-
-

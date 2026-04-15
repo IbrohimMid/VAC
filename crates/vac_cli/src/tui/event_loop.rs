@@ -1,21 +1,24 @@
 //! Event Loop Module
 
+use crate::tui::Model;
 use crate::tui::app::{AppState, AppStateOptions, InputEvent, OutputEvent};
 use crate::tui::event::map_crossterm_event_to_input_event;
 use crate::tui::services::helper_block::welcome_messages;
 use crate::tui::terminal::TerminalGuard;
 use crate::tui::view::view;
-use crate::tui::Model;
 use crossterm::{
     event::{EnableBracketedPaste, EnableMouseCapture},
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{
+        Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode,
+        enable_raw_mode,
+    },
 };
-use ratatui::{backend::CrosstermBackend, Terminal};
+use ratatui::{Terminal, backend::CrosstermBackend};
 use std::io;
 use std::process::Command;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::time::interval;
@@ -64,7 +67,9 @@ pub async fn run_tui(
     let mut terminal = Terminal::new(CrosstermBackend::new(std::io::stdout()))?;
 
     // Check for session restore
-    let checkpoint_path = std::env::var("VAC_CHECKPOINT").ok().map(std::path::PathBuf::from);
+    let checkpoint_path = std::env::var("VAC_CHECKPOINT")
+        .ok()
+        .map(std::path::PathBuf::from);
 
     let mut state = AppState::new(AppStateOptions {
         model: model.clone(),
@@ -96,8 +101,9 @@ pub async fn run_tui(
                 continue;
             }
             if crossterm::event::poll(Duration::from_millis(100)).ok()? {
-                if let Some(event) = crossterm::event::read().ok()
-                    .and_then(|e| map_crossterm_event_to_input_event(e))
+                if let Some(event) = crossterm::event::read()
+                    .ok()
+                    .and_then(map_crossterm_event_to_input_event)
                 {
                     if input_tx.blocking_send(event).is_err() {
                         break;
@@ -140,11 +146,7 @@ pub async fn run_tui(
 }
 
 /// Handle input events from user
-fn handle_input_event(
-    state: &mut AppState,
-    output_tx: &Sender<OutputEvent>,
-    event: InputEvent,
-) {
+fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, event: InputEvent) {
     // Handle command palette input first
     if state.show_command_palette {
         match event {
@@ -184,7 +186,11 @@ fn handle_input_event(
                         crate::tui::app::CommandSource::BuiltIn => {
                             if cmd.command == "/clear" {
                                 state.messages.clear();
-                                state.messages.extend(crate::tui::services::helper_block::welcome_messages(None, state));
+                                state.messages.extend(
+                                    crate::tui::services::helper_block::welcome_messages(
+                                        None, state,
+                                    ),
+                                );
                             } else if cmd.command == "/sessions" {
                                 let _ = output_tx.try_send(OutputEvent::ListSessions);
                             } else if cmd.command == "/new" {
@@ -197,13 +203,23 @@ fn handle_input_event(
                                 state.review_normalize_selection();
                             } else {
                                 state.add_user_message(cmd.command.clone());
-                                let _ = output_tx.try_send(OutputEvent::UserMessage(cmd.command, None, vec![], None));
+                                let _ = output_tx.try_send(OutputEvent::UserMessage(
+                                    cmd.command,
+                                    None,
+                                    vec![],
+                                    None,
+                                ));
                             }
                         }
-                        crate::tui::app::CommandSource::BuiltInWithPrompt { prompt_content } |
-                        crate::tui::app::CommandSource::Custom { prompt_content } => {
+                        crate::tui::app::CommandSource::BuiltInWithPrompt { prompt_content }
+                        | crate::tui::app::CommandSource::Custom { prompt_content } => {
                             state.add_user_message(cmd.command.clone());
-                            let _ = output_tx.try_send(OutputEvent::UserMessage(prompt_content, None, vec![], None));
+                            let _ = output_tx.try_send(OutputEvent::UserMessage(
+                                prompt_content,
+                                None,
+                                vec![],
+                                None,
+                            ));
                         }
                     }
                 }
@@ -309,8 +325,15 @@ fn handle_input_event(
                 let prev = state.review_selected_path.clone();
                 state.review_select_by_delta(-1);
                 if state.review_diff.is_some() && prev != state.review_selected_path {
-                    if let (Some(path), Ok(session_id)) = (state.review_selected_path.clone(), uuid::Uuid::parse_str(&state.session_id)) {
-                        match crate::tui::services::review::load_diff(&state.project_root, session_id, &path) {
+                    if let (Some(path), Ok(session_id)) = (
+                        state.review_selected_path.clone(),
+                        uuid::Uuid::parse_str(&state.session_id),
+                    ) {
+                        match crate::tui::services::review::load_diff(
+                            &state.project_root,
+                            session_id,
+                            &path,
+                        ) {
                             Ok(diff) => {
                                 state.review_diff = Some(crate::tui::app::ReviewDiffState {
                                     path: diff.path,
@@ -337,8 +360,15 @@ fn handle_input_event(
                 let prev = state.review_selected_path.clone();
                 state.review_select_by_delta(1);
                 if state.review_diff.is_some() && prev != state.review_selected_path {
-                    if let (Some(path), Ok(session_id)) = (state.review_selected_path.clone(), uuid::Uuid::parse_str(&state.session_id)) {
-                        match crate::tui::services::review::load_diff(&state.project_root, session_id, &path) {
+                    if let (Some(path), Ok(session_id)) = (
+                        state.review_selected_path.clone(),
+                        uuid::Uuid::parse_str(&state.session_id),
+                    ) {
+                        match crate::tui::services::review::load_diff(
+                            &state.project_root,
+                            session_id,
+                            &path,
+                        ) {
                             Ok(diff) => {
                                 state.review_diff = Some(crate::tui::app::ReviewDiffState {
                                     path: diff.path,
@@ -365,8 +395,15 @@ fn handle_input_event(
                 state.review_filter.push(c);
                 state.review_normalize_selection();
                 if state.review_diff.is_some() {
-                    if let (Some(path), Ok(session_id)) = (state.review_selected_path.clone(), uuid::Uuid::parse_str(&state.session_id)) {
-                        match crate::tui::services::review::load_diff(&state.project_root, session_id, &path) {
+                    if let (Some(path), Ok(session_id)) = (
+                        state.review_selected_path.clone(),
+                        uuid::Uuid::parse_str(&state.session_id),
+                    ) {
+                        match crate::tui::services::review::load_diff(
+                            &state.project_root,
+                            session_id,
+                            &path,
+                        ) {
                             Ok(diff) => {
                                 state.review_diff = Some(crate::tui::app::ReviewDiffState {
                                     path: diff.path,
@@ -393,8 +430,15 @@ fn handle_input_event(
                 state.review_filter.pop();
                 state.review_normalize_selection();
                 if state.review_diff.is_some() {
-                    if let (Some(path), Ok(session_id)) = (state.review_selected_path.clone(), uuid::Uuid::parse_str(&state.session_id)) {
-                        match crate::tui::services::review::load_diff(&state.project_root, session_id, &path) {
+                    if let (Some(path), Ok(session_id)) = (
+                        state.review_selected_path.clone(),
+                        uuid::Uuid::parse_str(&state.session_id),
+                    ) {
+                        match crate::tui::services::review::load_diff(
+                            &state.project_root,
+                            session_id,
+                            &path,
+                        ) {
                             Ok(diff) => {
                                 state.review_diff = Some(crate::tui::app::ReviewDiffState {
                                     path: diff.path,
@@ -422,7 +466,11 @@ fn handle_input_event(
                     if state.review_diff.as_ref().map(|d| d.path.as_str()) == Some(path.as_str()) {
                         state.review_diff = None;
                     } else if let Ok(session_id) = uuid::Uuid::parse_str(&state.session_id) {
-                        match crate::tui::services::review::load_diff(&state.project_root, session_id, &path) {
+                        match crate::tui::services::review::load_diff(
+                            &state.project_root,
+                            session_id,
+                            &path,
+                        ) {
                             Ok(diff) => {
                                 state.review_diff = Some(crate::tui::app::ReviewDiffState {
                                     path: diff.path,
@@ -454,8 +502,11 @@ fn handle_input_event(
             InputEvent::PageDown => {
                 if let Some(diff) = &mut state.review_diff {
                     diff.scroll = diff.scroll.saturating_add(10);
-                    if let (Some(old), Some(new)) = (diff.old_content.as_deref(), diff.new_content.as_deref()) {
-                        let total = crate::tui::services::file_diff::render_diff(old, new, 120).len();
+                    if let (Some(old), Some(new)) =
+                        (diff.old_content.as_deref(), diff.new_content.as_deref())
+                    {
+                        let total =
+                            crate::tui::services::file_diff::render_diff(old, new, 120).len();
                         if total > 0 && diff.scroll >= total {
                             diff.scroll = total - 1;
                         }
@@ -467,31 +518,30 @@ fn handle_input_event(
                     return;
                 };
                 let Ok(session_id) = uuid::Uuid::parse_str(&state.session_id) else {
-                    state.add_assistant_message("Invalid session id; cannot restore snapshot.".to_string());
+                    state.add_assistant_message(
+                        "Invalid session id; cannot restore snapshot.".to_string(),
+                    );
                     return;
                 };
 
-                let result = vac_tools::journal::restore_snapshot(&state.project_root, session_id, &path);
+                let result =
+                    vac_tools::journal::restore_snapshot(&state.project_root, session_id, &path);
                 match result {
                     Ok(()) => {
                         state.modified_files.retain(|p| p != &path);
-                        state.review_items
-                            .entry(path.clone())
-                            .and_modify(|it| {
-                                it.status = crate::tui::app::ReviewItemStatus::Restored;
-                                it.last_error = None;
-                                it.dirty_generation = it.dirty_generation.saturating_add(1);
-                            });
+                        state.review_items.entry(path.clone()).and_modify(|it| {
+                            it.status = crate::tui::app::ReviewItemStatus::Restored;
+                            it.last_error = None;
+                            it.dirty_generation = it.dirty_generation.saturating_add(1);
+                        });
                         state.add_assistant_message(format!("Reverted file: {}", path));
                     }
                     Err(e) => {
-                        state.review_items
-                            .entry(path.clone())
-                            .and_modify(|it| {
-                                it.status = crate::tui::app::ReviewItemStatus::Failed;
-                                it.last_error = Some(e.clone());
-                                it.dirty_generation = it.dirty_generation.saturating_add(1);
-                            });
+                        state.review_items.entry(path.clone()).and_modify(|it| {
+                            it.status = crate::tui::app::ReviewItemStatus::Failed;
+                            it.last_error = Some(e.clone());
+                            it.dirty_generation = it.dirty_generation.saturating_add(1);
+                        });
                         state.add_assistant_message(format!("Failed to revert file: {}", path));
                     }
                 }
@@ -511,36 +561,42 @@ fn handle_input_event(
                     return;
                 }
                 let Ok(session_id) = uuid::Uuid::parse_str(&state.session_id) else {
-                    state.add_assistant_message("Invalid session id; cannot restore snapshot.".to_string());
+                    state.add_assistant_message(
+                        "Invalid session id; cannot restore snapshot.".to_string(),
+                    );
                     return;
                 };
 
                 let mut success_count = 0usize;
                 for file in &files {
-                    match vac_tools::journal::restore_snapshot(&state.project_root, session_id, file) {
+                    match vac_tools::journal::restore_snapshot(
+                        &state.project_root,
+                        session_id,
+                        file,
+                    ) {
                         Ok(()) => {
                             success_count += 1;
                             state.modified_files.retain(|p| p != file);
-                            state.review_items
-                                .entry(file.clone())
-                                .and_modify(|it| {
-                                    it.status = crate::tui::app::ReviewItemStatus::Restored;
-                                    it.last_error = None;
-                                    it.dirty_generation = it.dirty_generation.saturating_add(1);
-                                });
+                            state.review_items.entry(file.clone()).and_modify(|it| {
+                                it.status = crate::tui::app::ReviewItemStatus::Restored;
+                                it.last_error = None;
+                                it.dirty_generation = it.dirty_generation.saturating_add(1);
+                            });
                         }
                         Err(e) => {
-                            state.review_items
-                                .entry(file.clone())
-                                .and_modify(|it| {
-                                    it.status = crate::tui::app::ReviewItemStatus::Failed;
-                                    it.last_error = Some(e.clone());
-                                    it.dirty_generation = it.dirty_generation.saturating_add(1);
-                                });
+                            state.review_items.entry(file.clone()).and_modify(|it| {
+                                it.status = crate::tui::app::ReviewItemStatus::Failed;
+                                it.last_error = Some(e.clone());
+                                it.dirty_generation = it.dirty_generation.saturating_add(1);
+                            });
                         }
                     }
                 }
-                state.add_assistant_message(format!("Reverted {}/{} files.", success_count, files.len()));
+                state.add_assistant_message(format!(
+                    "Reverted {}/{} files.",
+                    success_count,
+                    files.len()
+                ));
                 state.review_generation = state.review_generation.saturating_add(1);
                 state.review_sync_items();
                 state.review_normalize_selection();
@@ -552,35 +608,39 @@ fn handle_input_event(
                     return;
                 }
                 let Ok(session_id) = uuid::Uuid::parse_str(&state.session_id) else {
-                    state.add_assistant_message("Invalid session id; cannot restore snapshot.".to_string());
+                    state.add_assistant_message(
+                        "Invalid session id; cannot restore snapshot.".to_string(),
+                    );
                     return;
                 };
 
                 let mut success_count = 0usize;
                 for file in &files {
-                    if vac_tools::journal::restore_snapshot(&state.project_root, session_id, file).is_ok() {
+                    if vac_tools::journal::restore_snapshot(&state.project_root, session_id, file)
+                        .is_ok()
+                    {
                         success_count += 1;
-                        state.review_items
-                            .entry(file.clone())
-                            .and_modify(|it| {
-                                it.status = crate::tui::app::ReviewItemStatus::Restored;
-                                it.last_error = None;
-                                it.dirty_generation = it.dirty_generation.saturating_add(1);
-                            });
+                        state.review_items.entry(file.clone()).and_modify(|it| {
+                            it.status = crate::tui::app::ReviewItemStatus::Restored;
+                            it.last_error = None;
+                            it.dirty_generation = it.dirty_generation.saturating_add(1);
+                        });
                     } else {
-                        state.review_items
-                            .entry(file.clone())
-                            .and_modify(|it| {
-                                it.status = crate::tui::app::ReviewItemStatus::Failed;
-                                it.dirty_generation = it.dirty_generation.saturating_add(1);
-                            });
+                        state.review_items.entry(file.clone()).and_modify(|it| {
+                            it.status = crate::tui::app::ReviewItemStatus::Failed;
+                            it.dirty_generation = it.dirty_generation.saturating_add(1);
+                        });
                     }
                 }
                 state.modified_files.clear();
                 state.review_diff = None;
                 state.review_selected_idx = 0;
                 state.review_selected_path = None;
-                state.add_assistant_message(format!("Reverted {}/{} files.", success_count, files.len()));
+                state.add_assistant_message(format!(
+                    "Reverted {}/{} files.",
+                    success_count,
+                    files.len()
+                ));
                 state.review_generation = state.review_generation.saturating_add(1);
                 state.review_sync_items();
                 state.review_normalize_selection();
@@ -592,18 +652,31 @@ fn handle_input_event(
                 let preferred = std::env::var("VAC_EDITOR")
                     .ok()
                     .filter(|s| !s.trim().is_empty())
-                    .or_else(|| std::env::var("EDITOR").ok().filter(|s| !s.trim().is_empty()))
+                    .or_else(|| {
+                        std::env::var("EDITOR")
+                            .ok()
+                            .filter(|s| !s.trim().is_empty())
+                    })
                     .and_then(|s| s.split_whitespace().next().map(|t| t.to_string()));
 
                 let Some(editor) = crate::tui::services::review::detect_editor(preferred) else {
-                    state.add_assistant_message("No editor available. Set VAC_EDITOR/EDITOR or install nvim/vim/nano.".to_string());
+                    state.add_assistant_message(
+                        "No editor available. Set VAC_EDITOR/EDITOR or install nvim/vim/nano."
+                            .to_string(),
+                    );
                     return;
                 };
 
                 let _ = disable_raw_mode();
                 let _ = execute!(std::io::stdout(), LeaveAlternateScreen);
                 let _ = Command::new(editor).arg(&path).status();
-                let _ = execute!(std::io::stdout(), EnterAlternateScreen, EnableBracketedPaste, EnableMouseCapture, Clear(ClearType::All));
+                let _ = execute!(
+                    std::io::stdout(),
+                    EnterAlternateScreen,
+                    EnableBracketedPaste,
+                    EnableMouseCapture,
+                    Clear(ClearType::All)
+                );
                 let _ = enable_raw_mode();
             }
             _ => {}
@@ -632,19 +705,28 @@ fn handle_input_event(
             if !state.input.is_empty() {
                 let msg = state.input.get_content();
                 state.input.clear();
-                
+
                 if msg.starts_with('/') {
                     let trimmed = msg.trim();
                     let mut parts = trimmed.splitn(2, char::is_whitespace);
                     let cmd_word = parts.next().unwrap_or(trimmed);
                     let cmd_args = parts.next().map(|s| s.trim()).filter(|s| !s.is_empty());
 
-                    if let Some(cmd) = state.commands.iter().find(|c| c.command == cmd_word).cloned() {
+                    if let Some(cmd) = state
+                        .commands
+                        .iter()
+                        .find(|c| c.command == cmd_word)
+                        .cloned()
+                    {
                         match cmd.source {
                             crate::tui::app::CommandSource::BuiltIn => {
                                 if cmd.command == "/clear" {
                                     state.messages.clear();
-                                    state.messages.extend(crate::tui::services::helper_block::welcome_messages(None, state));
+                                    state.messages.extend(
+                                        crate::tui::services::helper_block::welcome_messages(
+                                            None, state,
+                                        ),
+                                    );
                                 } else if cmd.command == "/sessions" {
                                     let _ = output_tx.try_send(OutputEvent::ListSessions);
                                 } else if cmd.command == "/new" {
@@ -652,27 +734,41 @@ fn handle_input_event(
                                 } else if cmd.command == "/review" {
                                     state.add_user_message(trimmed.to_string());
                                     state.review_open = true;
-                                    state.review_generation = state.review_generation.saturating_add(1);
+                                    state.review_generation =
+                                        state.review_generation.saturating_add(1);
                                     state.review_sync_items();
                                     state.review_normalize_selection();
                                 } else {
                                     state.add_user_message(trimmed.to_string());
-                                    let _ = output_tx.try_send(OutputEvent::UserMessage(trimmed.to_string(), None, vec![], None));
+                                    let _ = output_tx.try_send(OutputEvent::UserMessage(
+                                        trimmed.to_string(),
+                                        None,
+                                        vec![],
+                                        None,
+                                    ));
                                 }
                             }
-                            crate::tui::app::CommandSource::BuiltInWithPrompt { prompt_content } |
-                            crate::tui::app::CommandSource::Custom { prompt_content } => {
+                            crate::tui::app::CommandSource::BuiltInWithPrompt {
+                                prompt_content,
+                            }
+                            | crate::tui::app::CommandSource::Custom { prompt_content } => {
                                 state.add_user_message(trimmed.to_string());
                                 let prompt = match cmd_args {
                                     Some(args) => format!("{prompt_content}\n\n{args}"),
                                     None => prompt_content,
                                 };
-                                let _ = output_tx.try_send(OutputEvent::UserMessage(prompt, None, vec![], None));
+                                let _ = output_tx.try_send(OutputEvent::UserMessage(
+                                    prompt,
+                                    None,
+                                    vec![],
+                                    None,
+                                ));
                             }
                         }
                     } else {
                         state.add_user_message(msg.clone());
-                        let _ = output_tx.try_send(OutputEvent::UserMessage(msg, None, vec![], None));
+                        let _ =
+                            output_tx.try_send(OutputEvent::UserMessage(msg, None, vec![], None));
                     }
                 } else {
                     state.add_user_message(msg.clone());
@@ -733,9 +829,14 @@ fn handle_input_event(
         InputEvent::ToggleAutoApprove => {
             state.auto_approve = !state.auto_approve;
             if state.auto_approve {
-                state.add_assistant_message("Permission Mode: AUTO-APPROVE (Low-risk tools will run without confirmation)".to_string());
+                state.add_assistant_message(
+                    "Permission Mode: AUTO-APPROVE (Low-risk tools will run without confirmation)"
+                        .to_string(),
+                );
             } else {
-                state.add_assistant_message("Permission Mode: PROMPT (You will be prompted for tool execution)".to_string());
+                state.add_assistant_message(
+                    "Permission Mode: PROMPT (You will be prompted for tool execution)".to_string(),
+                );
             }
         }
         InputEvent::RequestSessionList => {
@@ -752,8 +853,16 @@ fn handle_input_event(
 fn is_low_risk_tool(tool_name: &str) -> bool {
     matches!(
         tool_name,
-        "file_read" | "file_write" | "file_edit" | "glob" | "grep" | "search"
-            | "vil_knowledge" | "vil_diagnostics" | "vil_status" | "vil_lsp_query"
+        "file_read"
+            | "file_write"
+            | "file_edit"
+            | "glob"
+            | "grep"
+            | "search"
+            | "vil_knowledge"
+            | "vil_diagnostics"
+            | "vil_status"
+            | "vil_lsp_query"
     )
 }
 
@@ -791,12 +900,16 @@ fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, e
         InputEvent::SetSessions(sessions) => {
             state.sessions = sessions;
         }
-        InputEvent::SessionRestored { id, title, messages } => {
+        InputEvent::SessionRestored {
+            id,
+            title,
+            messages,
+        } => {
             state.session_id = id;
             state.session_title = Some(title);
             state.messages = messages;
             state.loading = false;
-            
+
             // Clear transient UI state to prevent leakage between sessions
             state.pending_tool_calls.clear();
             state.approved_tools.clear();
@@ -914,7 +1027,9 @@ mod tests {
             _ => panic!("unexpected event"),
         }
 
-        state.input.set_content("/explain crates/vac_cli/src/tui/event_loop.rs");
+        state
+            .input
+            .set_content("/explain crates/vac_cli/src/tui/event_loop.rs");
         handle_input_event(&mut state, &tx, InputEvent::InputSubmitted);
         let ev = rx.recv().await.unwrap();
         match ev {
@@ -982,7 +1097,11 @@ mod tests {
 
         let file_rel = "a.txt";
         std::fs::write(root.join(file_rel), "new").unwrap();
-        std::fs::write(crate::tui::services::review::snapshot_path(&root, session_id, file_rel), "old").unwrap();
+        std::fs::write(
+            crate::tui::services::review::snapshot_path(&root, session_id, file_rel),
+            "old",
+        )
+        .unwrap();
 
         let (tx, _rx) = tokio::sync::mpsc::channel(4);
         let mut state = make_state(root.clone(), session_id);
@@ -1007,12 +1126,13 @@ mod tests {
         let session_id = uuid::Uuid::new_v4();
         std::fs::create_dir_all(root.join(".vac/backups").join(session_id.to_string())).unwrap();
 
-        for (p, old, new) in [
-            ("a.txt", "old-a", "new-a"),
-            ("b.txt", "old-b", "new-b"),
-        ] {
+        for (p, old, new) in [("a.txt", "old-a", "new-a"), ("b.txt", "old-b", "new-b")] {
             std::fs::write(root.join(p), new).unwrap();
-            std::fs::write(crate::tui::services::review::snapshot_path(&root, session_id, p), old).unwrap();
+            std::fs::write(
+                crate::tui::services::review::snapshot_path(&root, session_id, p),
+                old,
+            )
+            .unwrap();
         }
 
         let (tx, _rx) = tokio::sync::mpsc::channel(4);
@@ -1025,8 +1145,14 @@ mod tests {
 
         handle_input_event(&mut state, &tx, InputEvent::ReviewRevertFiltered);
 
-        assert_eq!(std::fs::read_to_string(root.join("a.txt")).unwrap(), "old-a");
-        assert_eq!(std::fs::read_to_string(root.join("b.txt")).unwrap(), "new-b");
+        assert_eq!(
+            std::fs::read_to_string(root.join("a.txt")).unwrap(),
+            "old-a"
+        );
+        assert_eq!(
+            std::fs::read_to_string(root.join("b.txt")).unwrap(),
+            "new-b"
+        );
         assert!(!state.modified_files.contains(&"a.txt".to_string()));
         assert!(state.modified_files.contains(&"b.txt".to_string()));
     }
@@ -1038,12 +1164,13 @@ mod tests {
         let session_id = uuid::Uuid::new_v4();
         std::fs::create_dir_all(root.join(".vac/backups").join(session_id.to_string())).unwrap();
 
-        for (p, old, new) in [
-            ("a.txt", "old-a", "new-a"),
-            ("b.txt", "old-b", "new-b"),
-        ] {
+        for (p, old, new) in [("a.txt", "old-a", "new-a"), ("b.txt", "old-b", "new-b")] {
             std::fs::write(root.join(p), new).unwrap();
-            std::fs::write(crate::tui::services::review::snapshot_path(&root, session_id, p), old).unwrap();
+            std::fs::write(
+                crate::tui::services::review::snapshot_path(&root, session_id, p),
+                old,
+            )
+            .unwrap();
         }
 
         let (tx, _rx) = tokio::sync::mpsc::channel(4);
@@ -1055,8 +1182,14 @@ mod tests {
 
         handle_input_event(&mut state, &tx, InputEvent::ReviewRevertAll);
 
-        assert_eq!(std::fs::read_to_string(root.join("a.txt")).unwrap(), "old-a");
-        assert_eq!(std::fs::read_to_string(root.join("b.txt")).unwrap(), "old-b");
+        assert_eq!(
+            std::fs::read_to_string(root.join("a.txt")).unwrap(),
+            "old-a"
+        );
+        assert_eq!(
+            std::fs::read_to_string(root.join("b.txt")).unwrap(),
+            "old-b"
+        );
         assert!(state.modified_files.is_empty());
         assert_eq!(
             state.review_items.get("a.txt").unwrap().status,

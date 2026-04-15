@@ -11,7 +11,7 @@ pub mod router;
 pub mod sandbox;
 pub mod skills;
 
-pub use approvals::{ShellApprovalPolicy, ScopePolicy};
+pub use approvals::{ScopePolicy, ShellApprovalPolicy};
 pub use error::ToolError;
 pub use privacy::PrivacyVault;
 pub use registry::{ToolDefinition, ToolRegistry, VilTool};

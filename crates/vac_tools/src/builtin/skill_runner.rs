@@ -71,7 +71,9 @@ impl SkillRunnerTool {
 
 #[async_trait]
 impl VilTool for SkillRunnerTool {
-    fn name(&self) -> &str { "run_skill" }
+    fn name(&self) -> &str {
+        "run_skill"
+    }
 
     fn description(&self) -> &str {
         "Run a pre-built VIL skill workflow. Use action='list' to see available skills, or provide a skill name to execute it. Skills automate common VIL tasks like creating servers, pipelines, plugins, LLM/RAG setup."
@@ -94,38 +96,51 @@ impl VilTool for SkillRunnerTool {
         })
     }
 
-    fn trust_requirement(&self) -> &str { "trusted" }
-    fn risk_level(&self) -> &str { "medium" }
+    fn trust_requirement(&self) -> &str {
+        "trusted"
+    }
+    fn risk_level(&self) -> &str {
+        "medium"
+    }
 
     async fn execute(
         &self,
         args: serde_json::Value,
         context: &ToolContext,
     ) -> Result<serde_json::Value, ToolError> {
-        let input: SkillRunnerInput = serde_json::from_value(args)
-            .map_err(|e| ToolError::InvalidArguments(e.to_string()))?;
+        let input: SkillRunnerInput =
+            serde_json::from_value(args).map_err(|e| ToolError::InvalidArguments(e.to_string()))?;
 
         if input.action == "list" {
             let skills = self.loader.load_skills().await?;
             let output = SkillListOutput {
-                skills: skills.iter().map(|s| SkillInfo {
-                    name: s.name.clone(),
-                    description: s.description.clone(),
-                    category: s.category.clone(),
-                    parameters: s.parameters.iter().map(|p| ParamInfo {
-                        name: p.name.clone(),
-                        description: p.description.clone(),
-                        required: p.required,
-                        default: p.default.clone(),
-                    }).collect(),
-                }).collect(),
+                skills: skills
+                    .iter()
+                    .map(|s| SkillInfo {
+                        name: s.name.clone(),
+                        description: s.description.clone(),
+                        category: s.category.clone(),
+                        parameters: s
+                            .parameters
+                            .iter()
+                            .map(|p| ParamInfo {
+                                name: p.name.clone(),
+                                description: p.description.clone(),
+                                required: p.required,
+                                default: p.default.clone(),
+                            })
+                            .collect(),
+                    })
+                    .collect(),
             };
             return serde_json::to_value(output)
                 .map_err(|e| ToolError::ExecutionFailed(e.to_string()));
         }
 
-        let skill = self.loader.find_skill(&input.action).await
-            .ok_or_else(|| ToolError::NotFound(format!("Skill '{}' not found", input.action)))?;
+        let skill =
+            self.loader.find_skill(&input.action).await.ok_or_else(|| {
+                ToolError::NotFound(format!("Skill '{}' not found", input.action))
+            })?;
 
         info!(skill = %skill.name, steps = skill.steps.len(), "Running skill");
 
@@ -139,9 +154,10 @@ impl VilTool for SkillRunnerTool {
 
         for p in &skill.parameters {
             if p.required && !params.contains_key(&p.name) {
-                return Err(ToolError::InvalidArguments(
-                    format!("Missing required parameter: '{}' ({})", p.name, p.description)
-                ));
+                return Err(ToolError::InvalidArguments(format!(
+                    "Missing required parameter: '{}' ({})",
+                    p.name, p.description
+                )));
             }
         }
 
@@ -151,7 +167,11 @@ impl VilTool for SkillRunnerTool {
 
             let substituted_args = substitute_params_json(&step.arguments, &params);
 
-            match self.registry.execute(&step.tool, substituted_args, context).await {
+            match self
+                .registry
+                .execute(&step.tool, substituted_args, context)
+                .await
+            {
                 Ok(output) => {
                     let preview = output.to_string().chars().take(200).collect::<String>();
                     results.push(StepResult {

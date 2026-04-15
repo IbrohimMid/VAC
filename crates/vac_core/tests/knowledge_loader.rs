@@ -19,7 +19,10 @@ fn bootstrap_is_not_authoritative() {
 fn load_falls_back_to_bootstrap_when_no_corpus() {
     let dir = tempdir().unwrap();
     let kb = KnowledgeBase::load(dir.path());
-    assert!(!kb.is_authoritative, "no corpus configured → not authoritative");
+    assert!(
+        !kb.is_authoritative,
+        "no corpus configured → not authoritative"
+    );
     assert!(!kb.patterns.is_empty(), "fallback must still have patterns");
 }
 
@@ -38,7 +41,10 @@ fn load_from_corpus_with_valid_patterns_dir() {
     let kb = KnowledgeBase::load_from_corpus(dir.path());
     assert!(kb.is_authoritative);
     assert!(kb.corpus_root.is_some());
-    assert!(kb.patterns.contains_key("test_handler"), "pattern should be loaded from corpus");
+    assert!(
+        kb.patterns.contains_key("test_handler"),
+        "pattern should be loaded from corpus"
+    );
 }
 
 #[test]
@@ -56,9 +62,13 @@ fn resolve_corpus_root_from_env() {
     let _guard = ENV_LOCK.lock().unwrap();
     let dir = tempdir().unwrap();
     // SAFETY: test-only env mutation, single-threaded test
-    unsafe { std::env::set_var("VIL_KNOWLEDGE_ROOT", dir.path().to_str().unwrap()); }
+    unsafe {
+        std::env::set_var("VIL_KNOWLEDGE_ROOT", dir.path().to_str().unwrap());
+    }
     let resolved = KnowledgeBase::resolve_corpus_root(std::path::Path::new("."));
-    unsafe { std::env::remove_var("VIL_KNOWLEDGE_ROOT"); }
+    unsafe {
+        std::env::remove_var("VIL_KNOWLEDGE_ROOT");
+    }
     assert_eq!(resolved, Some(dir.path().to_path_buf()));
 }
 
@@ -74,7 +84,8 @@ fn resolve_corpus_root_from_config() {
     fs::write(
         vac_dir.join("config.toml"),
         format!("[knowledge]\nroot = \"{}\"\n", corpus_dir.display()),
-    ).unwrap();
+    )
+    .unwrap();
 
     let resolved = KnowledgeBase::resolve_corpus_root(dir.path());
     assert_eq!(resolved, Some(corpus_dir));

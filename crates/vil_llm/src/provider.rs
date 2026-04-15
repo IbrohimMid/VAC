@@ -106,7 +106,7 @@ impl LlmRequest {
     /// Create from universal LlmMessage format
     pub fn from_llm_messages(messages: Vec<crate::models::LlmMessage>) -> Self {
         Self {
-            messages: messages.iter().map(|m| Message::from(m)).collect(),
+            messages: messages.iter().map(Message::from).collect(),
             model: None,
             max_tokens: None,
             temperature: None,
@@ -117,7 +117,10 @@ impl LlmRequest {
 
     /// Convert to universal LlmMessage format
     pub fn to_llm_messages(&self) -> Vec<crate::models::LlmMessage> {
-        self.messages.iter().map(crate::models::LlmMessage::from).collect()
+        self.messages
+            .iter()
+            .map(crate::models::LlmMessage::from)
+            .collect()
     }
 
     pub fn with_model(mut self, model: &str) -> Self {
@@ -177,9 +180,18 @@ pub struct ToolCall {
 #[derive(Debug, Clone)]
 pub enum StreamChunk {
     Text(String),
-    ToolCallStart { id: String, name: String },
-    ToolCallDelta { id: String, arguments_delta: String },
-    Done { usage: TokenUsage, finish_reason: FinishReason },
+    ToolCallStart {
+        id: String,
+        name: String,
+    },
+    ToolCallDelta {
+        id: String,
+        arguments_delta: String,
+    },
+    Done {
+        usage: TokenUsage,
+        finish_reason: FinishReason,
+    },
     Error(String),
 }
 

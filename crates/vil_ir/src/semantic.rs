@@ -76,7 +76,8 @@ impl SemanticModel {
         // Handlers — prefer explicit vil_handler/vil_endpoint attrs, fall back to public async heuristic
         for f in &module.functions {
             let is_vil_handler = !f.vil_attrs.is_empty();
-            let is_public_async = f.is_async && matches!(f.visibility, crate::types::Visibility::Public);
+            let is_public_async =
+                f.is_async && matches!(f.visibility, crate::types::Visibility::Public);
 
             if !is_vil_handler && !is_public_async {
                 continue;
@@ -87,11 +88,13 @@ impl SemanticModel {
                 .iter()
                 .any(|p| has_type_name(&p.ty, "ShmSlice") || has_type_name(&p.ty, "Bytes"));
             let is_network_handler = is_vil_handler
-                || f.params.iter().any(|p| {
-                    has_type_name(&p.ty, "Request") || has_type_name(&p.ty, "ShmSlice")
-                });
+                || f.params
+                    .iter()
+                    .any(|p| has_type_name(&p.ty, "Request") || has_type_name(&p.ty, "ShmSlice"));
             let observability_present = f.vil_attrs.iter().any(|a| a.contains("instrument"))
-                || f.doc_comment.as_ref().map_or(false, |c| c.contains("instrument"));
+                || f.doc_comment
+                    .as_ref()
+                    .is_some_and(|c| c.contains("instrument"));
 
             handlers.push(HandlerEntity {
                 name: f.name.clone(),

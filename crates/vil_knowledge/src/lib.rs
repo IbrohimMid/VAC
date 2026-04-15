@@ -190,7 +190,9 @@ impl KnowledgeBase {
 
     /// Load from digest cache if corpus hasn't changed.
     fn load_from_cache(corpus_root: &Path, cache_path: &Path) -> Option<Self> {
-        if !cache_path.exists() { return None; }
+        if !cache_path.exists() {
+            return None;
+        }
         let cache_content = std::fs::read_to_string(cache_path).ok()?;
         let cached: serde_json::Value = serde_json::from_str(&cache_content).ok()?;
 
@@ -217,7 +219,10 @@ impl KnowledgeBase {
         if let Some(parent) = cache_path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        std::fs::write(cache_path, serde_json::to_string(&cache).unwrap_or_default())
+        std::fs::write(
+            cache_path,
+            serde_json::to_string(&cache).unwrap_or_default(),
+        )
     }
 
     /// Compute a simple digest of all .md files in the corpus root.
@@ -235,13 +240,18 @@ impl KnowledgeBase {
             let rel = path.strip_prefix(root).ok()?.display().to_string();
             let meta = std::fs::metadata(path).ok()?;
             // Use file size + mtime as cheap digest
-            let mtime = meta.modified().ok()?
-                .duration_since(std::time::UNIX_EPOCH).ok()?
+            let mtime = meta
+                .modified()
+                .ok()?
+                .duration_since(std::time::UNIX_EPOCH)
+                .ok()?
                 .as_secs();
             files.insert(rel, meta.len() ^ (mtime << 32));
         }
 
-        if files.is_empty() { return None; }
+        if files.is_empty() {
+            return None;
+        }
 
         // Simple hash: XOR all values, concatenate sorted keys
         let hash: u64 = files.values().fold(0u64, |acc, &v| acc.wrapping_add(v));
@@ -887,14 +897,13 @@ fn walkdir_md(dir: &Path) -> Vec<CorpusDoc> {
 /// First paragraph after metadata = description.
 /// First fenced code block = code_template.
 fn parse_pattern_doc(doc: &CorpusDoc) -> Option<Pattern> {
-    let name = extract_meta(&doc.content, "name")
-        .or_else(|| {
-            // Derive name from filename
-            std::path::Path::new(&doc.path)
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .map(|s| s.replace('-', "_"))
-        })?;
+    let name = extract_meta(&doc.content, "name").or_else(|| {
+        // Derive name from filename
+        std::path::Path::new(&doc.path)
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .map(|s| s.replace('-', "_"))
+    })?;
 
     let category = extract_meta(&doc.content, "category").unwrap_or_else(|| "general".to_string());
     let when_to_use = extract_meta(&doc.content, "when_to_use").unwrap_or_default();
@@ -1048,7 +1057,12 @@ fn extract_list_under_heading(content: &str, heading: &str) -> Vec<String> {
         if line.starts_with("## ") {
             under = line.trim_start_matches("## ").trim() == heading;
         } else if under && line.trim_start().starts_with("- ") {
-            items.push(line.trim_start().trim_start_matches("- ").trim().to_string());
+            items.push(
+                line.trim_start()
+                    .trim_start_matches("- ")
+                    .trim()
+                    .to_string(),
+            );
         }
     }
     items

@@ -6,8 +6,8 @@
 //! 3. Prompts do NOT contain generic Axum patterns as defaults
 //! 4. Knowledge injection works per archetype
 
-use tempfile::tempdir;
 use std::fs;
+use tempfile::tempdir;
 
 // ── Detector tests ────────────────────────────────────────────────────────────
 
@@ -16,17 +16,26 @@ fn detects_server_archetype_from_constructs() {
     let dir = tempdir().unwrap();
     let src = dir.path().join("src");
     fs::create_dir_all(&src).unwrap();
-    fs::write(src.join("main.rs"), r#"
+    fs::write(
+        src.join("main.rs"),
+        r#"
         use vil_server::prelude::*;
         async fn handler(ctx: ServiceCtx, slice: ShmSlice) -> VilResponse<String> {
             VilResponse::ok("hello".to_string())
         }
-    "#).unwrap();
+    "#,
+    )
+    .unwrap();
 
     let profile = vac_core::VilProjectProfile::detect(dir.path());
     assert!(profile.is_vil_project);
     assert_eq!(profile.archetype, vac_core::VilArchetype::Server);
-    assert!(profile.detected_constructs.iter().any(|c| c == "ShmSlice" || c == "ServiceCtx" || c == "VilResponse"));
+    assert!(
+        profile
+            .detected_constructs
+            .iter()
+            .any(|c| c == "ShmSlice" || c == "ServiceCtx" || c == "VilResponse")
+    );
 }
 
 #[test]
@@ -34,7 +43,9 @@ fn detects_pipeline_archetype_from_constructs() {
     let dir = tempdir().unwrap();
     let src = dir.path().join("src");
     fs::create_dir_all(&src).unwrap();
-    fs::write(src.join("main.rs"), r#"
+    fs::write(
+        src.join("main.rs"),
+        r#"
         use vil_sdk::prelude::*;
         let (_ir, handles) = vil_workflow! {
             name: "Test",
@@ -42,7 +53,9 @@ fn detects_pipeline_archetype_from_constructs() {
             instances: [],
             routes: []
         };
-    "#).unwrap();
+    "#,
+    )
+    .unwrap();
 
     let profile = vac_core::VilProjectProfile::detect(dir.path());
     assert!(profile.is_vil_project);
@@ -54,9 +67,13 @@ fn unknown_archetype_for_non_vil_project() {
     let dir = tempdir().unwrap();
     let src = dir.path().join("src");
     fs::create_dir_all(&src).unwrap();
-    fs::write(src.join("main.rs"), r#"
+    fs::write(
+        src.join("main.rs"),
+        r#"
         fn main() { println!("hello"); }
-    "#).unwrap();
+    "#,
+    )
+    .unwrap();
 
     let profile = vac_core::VilProjectProfile::detect(dir.path());
     assert!(!profile.is_vil_project);
@@ -67,7 +84,7 @@ fn unknown_archetype_for_non_vil_project() {
 
 #[test]
 fn server_prompt_contains_vil_native_terms() {
-    use vil_swarm::{SwarmOrchestrator, VilProjectProfile, VilArchetype};
+    use vil_swarm::{SwarmOrchestrator, VilArchetype, VilProjectProfile};
 
     let profile = VilProjectProfile {
         archetype: VilArchetype::Server,
@@ -85,13 +102,15 @@ fn server_prompt_contains_vil_native_terms() {
     assert!(prompt.contains("vil_handler"), "prompt missing vil_handler");
 
     // Must NOT instruct generic Axum as default
-    assert!(!prompt.contains("Json<T>") || prompt.contains("Forbidden"),
-        "prompt mentions Json<T> without marking it forbidden");
+    assert!(
+        !prompt.contains("Json<T>") || prompt.contains("Forbidden"),
+        "prompt mentions Json<T> without marking it forbidden"
+    );
 }
 
 #[test]
 fn pipeline_prompt_contains_pipeline_terms() {
-    use vil_swarm::{SwarmOrchestrator, VilProjectProfile, VilArchetype};
+    use vil_swarm::{SwarmOrchestrator, VilArchetype, VilProjectProfile};
 
     let profile = VilProjectProfile {
         archetype: VilArchetype::Pipeline,
@@ -102,15 +121,20 @@ fn pipeline_prompt_contains_pipeline_terms() {
 
     let prompt = SwarmOrchestrator::build_vil_coder_prompt_pub(&profile, None);
 
-    assert!(prompt.contains("vil_workflow!"), "prompt missing vil_workflow!");
+    assert!(
+        prompt.contains("vil_workflow!"),
+        "prompt missing vil_workflow!"
+    );
     assert!(prompt.contains("ShmToken"), "prompt missing ShmToken");
-    assert!(prompt.contains("HttpSinkBuilder") || prompt.contains("HttpSourceBuilder"),
-        "prompt missing HTTP sink/source builders");
+    assert!(
+        prompt.contains("HttpSinkBuilder") || prompt.contains("HttpSourceBuilder"),
+        "prompt missing HTTP sink/source builders"
+    );
 }
 
 #[test]
 fn server_prompt_does_not_contain_pipeline_terms_as_primary() {
-    use vil_swarm::{SwarmOrchestrator, VilProjectProfile, VilArchetype};
+    use vil_swarm::{SwarmOrchestrator, VilArchetype, VilProjectProfile};
 
     let profile = VilProjectProfile {
         archetype: VilArchetype::Server,
@@ -125,7 +149,10 @@ fn server_prompt_does_not_contain_pipeline_terms_as_primary() {
     let pipeline_idx = prompt.find("vil_workflow!");
     let server_idx = prompt.find("ShmSlice");
     match (server_idx, pipeline_idx) {
-        (Some(s), Some(p)) => assert!(s < p, "pipeline term appears before server term in server prompt"),
+        (Some(s), Some(p)) => assert!(
+            s < p,
+            "pipeline term appears before server term in server prompt"
+        ),
         (Some(_), None) => {} // pipeline term absent — fine
         _ => panic!("server prompt missing ShmSlice"),
     }
@@ -133,7 +160,7 @@ fn server_prompt_does_not_contain_pipeline_terms_as_primary() {
 
 #[test]
 fn tri_lane_mentioned_in_server_prompt() {
-    use vil_swarm::{SwarmOrchestrator, VilProjectProfile, VilArchetype};
+    use vil_swarm::{SwarmOrchestrator, VilArchetype, VilProjectProfile};
 
     let profile = VilProjectProfile {
         archetype: VilArchetype::Server,
@@ -144,8 +171,10 @@ fn tri_lane_mentioned_in_server_prompt() {
 
     let prompt = SwarmOrchestrator::build_vil_coder_prompt_pub(&profile, None);
     // Tri-Lane awareness should be present (via semantic types or explicit mention)
-    let has_trilane = prompt.contains("Tri-Lane")
-        || prompt.contains("vil_state")
-        || prompt.contains("vil_event");
-    assert!(has_trilane, "server prompt has no Tri-Lane / semantic type awareness");
+    let has_trilane =
+        prompt.contains("Tri-Lane") || prompt.contains("vil_state") || prompt.contains("vil_event");
+    assert!(
+        has_trilane,
+        "server prompt has no Tri-Lane / semantic type awareness"
+    );
 }

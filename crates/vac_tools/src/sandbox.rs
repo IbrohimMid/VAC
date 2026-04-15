@@ -13,12 +13,16 @@ pub fn sanitize_command(command: &str) -> Result<(), ToolError> {
 
     // Block backtick substitution
     if command.contains('`') {
-        return Err(ToolError::WardenBlocked("backtick substitution not allowed".into()));
+        return Err(ToolError::WardenBlocked(
+            "backtick substitution not allowed".into(),
+        ));
     }
 
     // Block $() process substitution
     if command.contains("$(") {
-        return Err(ToolError::WardenBlocked("process substitution $() not allowed".into()));
+        return Err(ToolError::WardenBlocked(
+            "process substitution $() not allowed".into(),
+        ));
     }
 
     // Block command chaining operators (except when properly quoted)

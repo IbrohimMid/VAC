@@ -17,7 +17,11 @@ fn autopilot_status_reads_rich_state_file() {
         "last_error": null,
         "updated_at": Utc::now().to_rfc3339(),
     });
-    std::fs::write(root.join(".vac/autopilot.state"), serde_json::to_string_pretty(&state).unwrap()).unwrap();
+    std::fs::write(
+        root.join(".vac/autopilot.state"),
+        serde_json::to_string_pretty(&state).unwrap(),
+    )
+    .unwrap();
 
     let mut cmd = Command::cargo_bin("vac").unwrap();
     cmd.args([
@@ -32,9 +36,17 @@ fn autopilot_status_reads_rich_state_file() {
     let v: serde_json::Value = serde_json::from_slice(&out).unwrap();
     assert_eq!(v.get("status").and_then(|s| s.as_str()), Some("stopped"));
     let internal = v.get("internal_state").unwrap();
-    assert_eq!(internal.get("state").and_then(|s| s.as_str()), Some("polling"));
-    assert_eq!(internal.get("mode").and_then(|s| s.as_str()), Some("monitor"));
-    assert_eq!(internal.get("poll_interval_secs").and_then(|s| s.as_u64()), Some(3));
+    assert_eq!(
+        internal.get("state").and_then(|s| s.as_str()),
+        Some("polling")
+    );
+    assert_eq!(
+        internal.get("mode").and_then(|s| s.as_str()),
+        Some("monitor")
+    );
+    assert_eq!(
+        internal.get("poll_interval_secs").and_then(|s| s.as_u64()),
+        Some(3)
+    );
     assert_eq!(internal.get("queue_len").and_then(|s| s.as_u64()), Some(5));
 }
-

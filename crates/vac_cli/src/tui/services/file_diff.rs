@@ -8,16 +8,20 @@ use ratatui::text::{Line, Span};
 /// Render a simple diff between old and new content
 pub fn render_diff(old_content: &str, new_content: &str, max_width: usize) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
-    
+
     // Header
-    lines.push(Line::from(vec![
-        Span::styled("--- Old", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)),
-    ]));
-    lines.push(Line::from(vec![
-        Span::styled("+++ New", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
-    ]));
+    lines.push(Line::from(vec![Span::styled(
+        "--- Old",
+        Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+    )]));
+    lines.push(Line::from(vec![Span::styled(
+        "+++ New",
+        Style::default()
+            .fg(Color::Green)
+            .add_modifier(Modifier::BOLD),
+    )]));
     lines.push(Line::from(""));
-    
+
     // Simple line-by-line comparison using `similar`
     let diff = similar::TextDiff::from_lines(old_content, new_content);
 
@@ -39,14 +43,11 @@ pub fn render_diff(old_content: &str, new_content: &str, max_width: usize) -> Ve
                 ]));
             }
             similar::ChangeTag::Equal => {
-                lines.push(Line::from(vec![
-                    Span::raw("  "),
-                    Span::raw(truncated),
-                ]));
+                lines.push(Line::from(vec![Span::raw("  "), Span::raw(truncated)]));
             }
         }
     }
-    
+
     lines
 }
 
@@ -66,16 +67,16 @@ pub fn preview_file_diff(
     max_width: usize,
 ) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
-    
+
     // File header - clone to make 'static
     lines.push(Line::from(vec![
         Span::styled("File: ", Style::default().add_modifier(Modifier::BOLD)),
         Span::styled(file_path.to_string(), Style::default().fg(Color::Cyan)),
     ]));
     lines.push(Line::from(""));
-    
+
     // Diff content
     lines.extend(render_diff(old_content, new_content, max_width));
-    
+
     lines
 }

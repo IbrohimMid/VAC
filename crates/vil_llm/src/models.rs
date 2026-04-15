@@ -3,8 +3,8 @@
 //! Provides a stable intermediate format between internal Message
 //! and provider-specific formats (Anthropic, OpenAI, etc.).
 
-use serde::{Deserialize, Serialize};
 use crate::provider::{Message, Role, ToolCall};
+use serde::{Deserialize, Serialize};
 
 /// Provider-neutral message format.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -29,9 +29,16 @@ pub enum LlmContent {
     #[serde(rename = "text")]
     Text { text: String },
     #[serde(rename = "tool_use")]
-    ToolUse { id: String, name: String, input: serde_json::Value },
+    ToolUse {
+        id: String,
+        name: String,
+        input: serde_json::Value,
+    },
     #[serde(rename = "tool_result")]
-    ToolResult { tool_use_id: String, content: String },
+    ToolResult {
+        tool_use_id: String,
+        content: String,
+    },
 }
 
 impl From<&Message> for LlmMessage {
@@ -47,7 +54,9 @@ impl From<&Message> for LlmMessage {
 
         // Add text content if present
         if !msg.content.is_empty() {
-            content.push(LlmContent::Text { text: msg.content.clone() });
+            content.push(LlmContent::Text {
+                text: msg.content.clone(),
+            });
         }
 
         // Add tool uses for assistant messages
@@ -88,7 +97,9 @@ impl LlmMessage {
         let mut result = serde_json::json!({ "role": role });
 
         // Extract text content
-        let text_content: Vec<String> = self.content.iter()
+        let text_content: Vec<String> = self
+            .content
+            .iter()
             .filter_map(|c| match c {
                 LlmContent::Text { text } => Some(text.clone()),
                 _ => None,
@@ -100,7 +111,9 @@ impl LlmMessage {
         }
 
         // Add tool_calls for assistant
-        let tool_calls: Vec<_> = self.content.iter()
+        let tool_calls: Vec<_> = self
+            .content
+            .iter()
             .filter_map(|c| match c {
                 LlmContent::ToolUse { id, name, input } => Some(serde_json::json!({
                     "id": id,
@@ -137,7 +150,9 @@ impl From<&LlmMessage> for Message {
         };
 
         // Extract text content
-        let text: String = msg.content.iter()
+        let text: String = msg
+            .content
+            .iter()
             .filter_map(|c| match c {
                 LlmContent::Text { text } => Some(text.clone()),
                 _ => None,
@@ -145,7 +160,9 @@ impl From<&LlmMessage> for Message {
             .collect();
 
         // Extract tool calls
-        let tool_calls: Vec<ToolCall> = msg.content.iter()
+        let tool_calls: Vec<ToolCall> = msg
+            .content
+            .iter()
             .filter_map(|c| match c {
                 LlmContent::ToolUse { id, name, input } => Some(ToolCall {
                     id: id.clone(),
@@ -157,11 +174,10 @@ impl From<&LlmMessage> for Message {
             .collect();
 
         // Extract tool_call_id for tool messages
-        let tool_call_id = msg.content.iter()
-            .find_map(|c| match c {
-                LlmContent::ToolResult { tool_use_id, .. } => Some(tool_use_id.clone()),
-                _ => None,
-            });
+        let tool_call_id = msg.content.iter().find_map(|c| match c {
+            LlmContent::ToolResult { tool_use_id, .. } => Some(tool_use_id.clone()),
+            _ => None,
+        });
 
         Message {
             role,

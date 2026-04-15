@@ -82,9 +82,13 @@ fn migrate_legacy(value: serde_json::Value) -> Option<CheckpointEnvelope> {
     }
     let obj = value.as_object()?;
     let messages: Vec<Message> = serde_json::from_value(obj.get("messages")?.clone()).ok()?;
-    let run_id = obj.get("run_id")
+    let run_id = obj
+        .get("run_id")
         .and_then(|v| serde_json::from_value::<Uuid>(v.clone()).ok());
-    let metadata = obj.get("metadata").cloned().unwrap_or_else(|| serde_json::json!({}));
+    let metadata = obj
+        .get("metadata")
+        .cloned()
+        .unwrap_or_else(|| serde_json::json!({}));
     Some(CheckpointEnvelope::new(run_id, messages, metadata))
 }
 
@@ -116,14 +120,17 @@ pub fn list_sessions(checkpoint_dir: &std::path::Path) -> Vec<SessionInfo> {
         for entry in entries.flatten() {
             let checkpoint_path = entry.path();
 
-            if !checkpoint_path.is_file()
-                || checkpoint_path.extension().is_none_or(|e| e != "json")
+            if !checkpoint_path.is_file() || checkpoint_path.extension().is_none_or(|e| e != "json")
             {
                 continue;
             }
 
-            let Ok(metadata) = entry.metadata() else { continue };
-            let Ok(checkpoint) = load_checkpoint_from_file(&checkpoint_path) else { continue };
+            let Ok(metadata) = entry.metadata() else {
+                continue;
+            };
+            let Ok(checkpoint) = load_checkpoint_from_file(&checkpoint_path) else {
+                continue;
+            };
 
             let title = checkpoint
                 .messages
@@ -147,7 +154,9 @@ pub fn list_sessions(checkpoint_dir: &std::path::Path) -> Vec<SessionInfo> {
                     .and_then(|s| Uuid::parse_str(s).ok())
             });
 
-            let Some(session_id) = session_id else { continue };
+            let Some(session_id) = session_id else {
+                continue;
+            };
 
             let (updated_at_display, modified_time) = if let Ok(modified) = metadata.modified() {
                 let display = if let Ok(elapsed) = modified.elapsed() {
@@ -197,7 +206,7 @@ pub struct SessionInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use vil_llm::provider::{Message, Role};
+    use vil_llm::provider::Message;
 
     #[test]
     fn roundtrip_v1() {
@@ -221,7 +230,10 @@ mod tests {
             "run_id": null, "messages": [], "metadata": {}
         });
         let err = deserialize_checkpoint(payload.to_string().as_bytes()).unwrap_err();
-        assert!(err.to_string().contains("unsupported checkpoint version: 2"));
+        assert!(
+            err.to_string()
+                .contains("unsupported checkpoint version: 2")
+        );
     }
 
     #[test]
@@ -256,7 +268,9 @@ mod tests {
         let session_id = Uuid::new_v4();
         let info = SessionInfo {
             session_id,
-            checkpoint_path: std::path::PathBuf::from(format!(".vac/checkpoints/{session_id}.json")),
+            checkpoint_path: std::path::PathBuf::from(format!(
+                ".vac/checkpoints/{session_id}.json"
+            )),
             title: "test".to_string(),
             updated_at: "1 second ago".to_string(),
         };
@@ -271,7 +285,10 @@ mod tests {
             "run_id": null, "messages": [], "metadata": {}
         });
         let err = deserialize_checkpoint(payload.to_string().as_bytes()).unwrap_err();
-        assert!(err.to_string().contains("unsupported checkpoint format: legacy"));
+        assert!(
+            err.to_string()
+                .contains("unsupported checkpoint format: legacy")
+        );
     }
 
     #[test]

@@ -41,7 +41,9 @@ impl McpServer {
     pub async fn start(&self, port: u16) -> Result<(), ToolError> {
         let listener = TcpListener::bind(format!("127.0.0.1:{port}"))
             .await
-            .map_err(|e| ToolError::McpError(format!("Failed to bind MCP server on port {port}: {e}")))?;
+            .map_err(|e| {
+                ToolError::McpError(format!("Failed to bind MCP server on port {port}: {e}"))
+            })?;
 
         {
             let mut state = self.state.write().await;
@@ -114,7 +116,11 @@ impl McpServer {
     }
 }
 
-async fn handle_connection(stream: TcpStream, registry: Arc<ToolRegistry>, project_root: std::path::PathBuf) -> Result<(), ToolError> {
+async fn handle_connection(
+    stream: TcpStream,
+    registry: Arc<ToolRegistry>,
+    project_root: std::path::PathBuf,
+) -> Result<(), ToolError> {
     let (reader, mut writer) = stream.into_split();
     let mut lines = BufReader::new(reader).lines();
 
@@ -168,7 +174,10 @@ async fn dispatch(
                 .get("name")
                 .and_then(|n| n.as_str())
                 .ok_or_else(|| ToolError::McpError("Missing tool name".to_string()))?;
-            let args = params.get("arguments").cloned().unwrap_or(serde_json::json!({}));
+            let args = params
+                .get("arguments")
+                .cloned()
+                .unwrap_or(serde_json::json!({}));
             // Use project_root so MCP-invoked tools have the same working context as engine path
             let context = ToolContext::new(project_root.to_path_buf());
             registry.execute(name, args, &context).await

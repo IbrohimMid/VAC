@@ -8,10 +8,11 @@
 //! Note: these tests require a configured LLM provider (KILO_API_KEY or similar).
 //! They are skipped automatically if no provider is configured.
 
-use std::path::{Path, PathBuf};
 use serde::Deserialize;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct GoldenExpect {
     #[serde(default)]
     modified_files: Vec<String>,
@@ -27,7 +28,9 @@ struct GoldenExpect {
     require_zero_lsp_errors: bool,
 }
 
-fn default_score() -> f64 { 0.0 }
+fn default_score() -> f64 {
+    0.0
+}
 
 /// Check if a live LLM provider is configured.
 fn has_llm_provider() -> bool {
@@ -38,8 +41,10 @@ fn has_llm_provider() -> bool {
 
 fn golden_fixtures_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent().unwrap()
-        .parent().unwrap()
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
         .join("tests/golden")
 }
 
@@ -75,11 +80,7 @@ fn setup_workspace(fixture_dir: &Path) -> tempfile::TempDir {
 }
 
 /// Assert golden expectations against task result and modified file contents.
-fn assert_golden(
-    expect: &GoldenExpect,
-    result: &vac_core::TaskResult,
-    workspace: &Path,
-) {
+fn assert_golden(expect: &GoldenExpect, result: &vac_core::TaskResult, workspace: &Path) {
     // Validation score
     if let Some(score) = result.validation_score {
         assert!(

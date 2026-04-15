@@ -47,8 +47,16 @@ pub struct LspWorkspaceSnapshot {
 
 impl LspWorkspaceSnapshot {
     pub fn rebuild_counts(&mut self) {
-        self.total_errors = self.diagnostics.iter().filter(|d| d.severity == LspSeverity::Error).count();
-        self.total_warnings = self.diagnostics.iter().filter(|d| d.severity == LspSeverity::Warning).count();
+        self.total_errors = self
+            .diagnostics
+            .iter()
+            .filter(|d| d.severity == LspSeverity::Error)
+            .count();
+        self.total_warnings = self
+            .diagnostics
+            .iter()
+            .filter(|d| d.severity == LspSeverity::Warning)
+            .count();
     }
 }
 

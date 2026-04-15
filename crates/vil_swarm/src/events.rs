@@ -31,15 +31,9 @@ pub enum AgentEvent {
         success: bool,
     },
     /// Hook denied a tool call.
-    HookDenied {
-        tool_name: String,
-        reason: String,
-    },
+    HookDenied { tool_name: String, reason: String },
     /// Approval required for a tool call.
-    ApprovalRequired {
-        tool_name: String,
-        summary: String,
-    },
+    ApprovalRequired { tool_name: String, summary: String },
     /// Context budget reduction was applied.
     ContextReduced {
         messages_before: usize,
@@ -47,9 +41,7 @@ pub enum AgentEvent {
         trim_boundary: usize,
     },
     /// Agent loop iteration started.
-    IterationStarted {
-        iteration: usize,
-    },
+    IterationStarted { iteration: usize },
     /// Agent loop completed.
     LoopCompleted {
         total_iterations: usize,
@@ -67,7 +59,10 @@ pub struct EventCollector {
 
 impl EventCollector {
     pub fn new() -> Self {
-        Self { events: Vec::new(), start: Some(Instant::now()) }
+        Self {
+            events: Vec::new(),
+            start: Some(Instant::now()),
+        }
     }
 
     pub fn push(&mut self, event: AgentEvent) {
@@ -100,7 +95,11 @@ mod tests {
         let mut c = EventCollector::new();
         c.context_reduced(20, 12, 8);
         match &c.events[0] {
-            AgentEvent::ContextReduced { messages_before, messages_after, trim_boundary } => {
+            AgentEvent::ContextReduced {
+                messages_before,
+                messages_after,
+                trim_boundary,
+            } => {
                 assert_eq!(*messages_before, 20);
                 assert_eq!(*messages_after, 12);
                 assert_eq!(*trim_boundary, 8);

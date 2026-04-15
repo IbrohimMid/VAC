@@ -55,16 +55,16 @@ impl SandboxSpec {
         if self.denied_tools.contains(&tool_name.to_string()) {
             return false;
         }
-        
+
         // If allowed_tools is empty, allow all (except denied)
         if self.allowed_tools.is_empty() {
             return true;
         }
-        
+
         // Otherwise, must be in allowed list
         self.allowed_tools.contains(&tool_name.to_string())
     }
-    
+
     /// Create a restrictive sandbox spec (read-only tools only).
     pub fn restrictive() -> Self {
         Self {
@@ -123,7 +123,10 @@ pub struct SandboxRegistry {
 
 impl SandboxRegistry {
     pub fn new(base_dir: PathBuf) -> Self {
-        Self { sandboxes: RwLock::new(HashMap::new()), base_dir }
+        Self {
+            sandboxes: RwLock::new(HashMap::new()),
+            base_dir,
+        }
     }
 
     pub fn with_project_root(project_root: &Path) -> Self {
@@ -139,9 +142,7 @@ impl SandboxRegistry {
                 // Use system temp dir for ephemeral
                 std::env::temp_dir().join(format!("vac-sandbox-{id}"))
             }
-            SandboxMode::Persistent => {
-                self.base_dir.join(id.to_string())
-            }
+            SandboxMode::Persistent => self.base_dir.join(id.to_string()),
         };
         let _ = std::fs::create_dir_all(&overlay_dir);
 
@@ -183,7 +184,9 @@ impl SandboxRegistry {
         let mut modified = Vec::new();
         let mut diff_lines = Vec::new();
 
-        let Ok(entries) = std::fs::read_dir(&h.overlay_dir) else { return None };
+        let Ok(entries) = std::fs::read_dir(&h.overlay_dir) else {
+            return None;
+        };
 
         for entry in entries.flatten() {
             let overlay_path = entry.path();
@@ -201,7 +204,8 @@ impl SandboxRegistry {
                     diff_lines.push(format!("--- a/{rel_path}"));
                     diff_lines.push(format!("+++ b/{rel_path}"));
                     // Simple line-level diff
-                    for (i, (orig, new)) in original_content.lines()
+                    for (i, (orig, new)) in original_content
+                        .lines()
                         .zip(overlay_content.lines())
                         .enumerate()
                     {
@@ -214,7 +218,7 @@ impl SandboxRegistry {
                 }
             } else {
                 created.push(rel_path.clone());
-                diff_lines.push(format!("--- /dev/null"));
+                diff_lines.push("--- /dev/null".to_string());
                 diff_lines.push(format!("+++ b/{rel_path}"));
                 for line in overlay_content.lines() {
                     diff_lines.push(format!("+{line}"));
@@ -231,21 +235,28 @@ impl SandboxRegistry {
 
     /// Apply a sandbox patch to the real working directory.
     pub async fn merge_patch(&self, id: Uuid) -> Result<(), String> {
-        let patch = self.build_patch(id).await
+        let patch = self
+            .build_patch(id)
+            .await
             .ok_or_else(|| format!("No patch available for sandbox {id}"))?;
 
         let sandboxes = self.sandboxes.read().await;
-        let h = sandboxes.get(&id)
+        let h = sandboxes
+            .get(&id)
             .ok_or_else(|| format!("Sandbox {id} not found"))?;
 
         // Apply: copy overlay files to working_dir
         let Ok(entries) = std::fs::read_dir(&h.overlay_dir) else {
-            return Err(format!("Cannot read overlay dir: {}", h.overlay_dir.display()));
+            return Err(format!(
+                "Cannot read overlay dir: {}",
+                h.overlay_dir.display()
+            ));
         };
 
         for entry in entries.flatten() {
             let overlay_path = entry.path();
-            let file_name = overlay_path.file_name()
+            let file_name = overlay_path
+                .file_name()
                 .and_then(|n| n.to_str())
                 .unwrap_or("")
                 .to_string();
@@ -280,7 +291,10 @@ impl SandboxRegistry {
     }
 
     pub async fn list_active(&self) -> Vec<SandboxHandle> {
-        self.sandboxes.read().await.values()
+        self.sandboxes
+            .read()
+            .await
+            .values()
             .filter(|h| h.status == SandboxStatus::Active)
             .cloned()
             .collect()

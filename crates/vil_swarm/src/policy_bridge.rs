@@ -35,7 +35,8 @@ pub fn resolve_decision(
 ) -> ExecutionDecision {
     if is_sandboxed && is_risky_in_sandbox(tool_name) {
         return ExecutionDecision::Deny(format!(
-            "tool '{}' is not permitted in sandboxed subagent context", tool_name
+            "tool '{}' is not permitted in sandboxed subagent context",
+            tool_name
         ));
     }
     if needs_approval {
@@ -55,7 +56,10 @@ mod tests {
 
     #[test]
     fn allow_safe_tool() {
-        assert_eq!(resolve_decision("file_read", false, false), ExecutionDecision::Allow);
+        assert_eq!(
+            resolve_decision("file_read", false, false),
+            ExecutionDecision::Allow
+        );
     }
 
     #[test]
@@ -72,6 +76,9 @@ mod tests {
 
     #[test]
     fn allow_read_in_sandbox() {
-        assert_eq!(resolve_decision("file_read", false, true), ExecutionDecision::Allow);
+        assert_eq!(
+            resolve_decision("file_read", false, true),
+            ExecutionDecision::Allow
+        );
     }
 }

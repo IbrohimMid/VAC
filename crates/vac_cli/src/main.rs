@@ -57,9 +57,7 @@ enum Commands {
         resume: bool,
     },
     /// Resume from checkpoint
-    Resume {
-        checkpoint: PathBuf,
-    },
+    Resume { checkpoint: PathBuf },
     /// Restore file to pre-agent state from snapshot journal
     Restore {
         /// File path to restore (relative to project root)
@@ -111,7 +109,10 @@ enum Commands {
 #[derive(Subcommand)]
 enum ConfigAction {
     Show,
-    Set { key: String, value: String },
+    Set {
+        key: String,
+        value: String,
+    },
     AddProvider {
         name: String,
         #[arg(long)]
@@ -207,38 +208,68 @@ async fn main() -> anyhow::Result<()> {
         .unwrap_or_else(|| std::env::current_dir().expect("Failed to get current directory"));
 
     match cli.command {
-        Commands::Doctor { strict, fix } => commands::doctor::execute(project_root, &cli.format, strict, fix).await?,
+        Commands::Doctor { strict, fix } => {
+            commands::doctor::execute(project_root, &cli.format, strict, fix).await?
+        }
         Commands::Init { force } => commands::init::execute(project_root, force).await?,
-        Commands::Run { task, priority, profile, approve, target } => {
+        Commands::Run {
+            task,
+            priority,
+            profile,
+            approve,
+            target,
+        } => {
             commands::run::execute(project_root, task, priority, profile, approve, target).await?;
         }
-        Commands::Interactive { resume } => commands::interactive::execute(project_root, resume).await?,
-        Commands::Resume { checkpoint } => commands::resume::execute(project_root, checkpoint).await?,
+        Commands::Interactive { resume } => {
+            commands::interactive::execute(project_root, resume).await?
+        }
+        Commands::Resume { checkpoint } => {
+            commands::resume::execute(project_root, checkpoint).await?
+        }
         Commands::Restore { file } => commands::restore::execute(project_root, file).await?,
         Commands::Status => commands::status::execute(project_root, &cli.format).await?,
         Commands::Config { action } => commands::config::execute(project_root, action).await?,
         Commands::Auth { action } => commands::auth::execute(action).await?,
-        Commands::Export { output, format, sign } => {
+        Commands::Export {
+            output,
+            format,
+            sign,
+        } => {
             commands::export::execute(project_root, output, format, sign).await?;
         }
         Commands::Rulebook { action } => match action {
             RulebookAction::List => commands::rulebook::execute_list(project_root).await?,
             RulebookAction::Validate => commands::rulebook::execute_validate(project_root).await?,
-            RulebookAction::Apply { path } => commands::rulebook::execute_apply(project_root, path).await?,
+            RulebookAction::Apply { path } => {
+                commands::rulebook::execute_apply(project_root, path).await?
+            }
         },
         Commands::Acp { port } => commands::acp::execute(project_root, port).await?,
         Commands::Runtime { action } => match action {
-            RuntimeAction::Status => commands::runtime::execute_status(project_root, &cli.format).await?,
-            RuntimeAction::Jobs => commands::runtime::execute_jobs(project_root, &cli.format).await?,
+            RuntimeAction::Status => {
+                commands::runtime::execute_status(project_root, &cli.format).await?
+            }
+            RuntimeAction::Jobs => {
+                commands::runtime::execute_jobs(project_root, &cli.format).await?
+            }
             RuntimeAction::Start => commands::runtime::execute_start(project_root).await?,
-            RuntimeAction::Cancel { id } => commands::runtime::execute_cancel(project_root, id).await?,
-            RuntimeAction::Retry { id } => commands::runtime::execute_retry(project_root, id).await?,
-            RuntimeAction::Inspect { id } => commands::runtime::execute_inspect(project_root, id, &cli.format).await?,
+            RuntimeAction::Cancel { id } => {
+                commands::runtime::execute_cancel(project_root, id).await?
+            }
+            RuntimeAction::Retry { id } => {
+                commands::runtime::execute_retry(project_root, id).await?
+            }
+            RuntimeAction::Inspect { id } => {
+                commands::runtime::execute_inspect(project_root, id, &cli.format).await?
+            }
         },
         Commands::Autopilot { action } => match action {
             AutopilotAction::Up => commands::autopilot::execute_up(project_root).await?,
             AutopilotAction::Down => commands::autopilot::execute_down(project_root).await?,
-            AutopilotAction::Status => commands::autopilot::execute_status(project_root, &cli.format).await?,
+            AutopilotAction::Status => {
+                commands::autopilot::execute_status(project_root, &cli.format).await?
+            }
             AutopilotAction::Run => commands::autopilot::execute_run(project_root).await?,
         },
     }

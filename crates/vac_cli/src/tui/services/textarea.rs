@@ -36,7 +36,7 @@ impl TextArea {
 
     pub fn backspace(&mut self) {
         let (row, col) = self.cursor;
-        
+
         if col > 0 {
             // Delete character before cursor
             if let Some(line) = self.lines.get_mut(row) {
@@ -58,7 +58,7 @@ impl TextArea {
 
     pub fn delete(&mut self) {
         let (row, col) = self.cursor;
-        
+
         // Check if we can delete within current line
         if let Some(line) = self.lines.get(row) {
             if col < line.len() {
@@ -67,7 +67,7 @@ impl TextArea {
                 return;
             }
         }
-        
+
         // Merge with next line if at end of line
         if row < self.lines.len() - 1 {
             let next_line = self.lines.remove(row + 1);

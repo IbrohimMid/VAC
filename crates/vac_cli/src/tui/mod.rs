@@ -22,18 +22,16 @@
 
 pub mod adapter;
 pub mod constants;
-pub mod types;
-pub mod terminal;
 pub mod runner;
+pub mod terminal;
+pub mod types;
 
+pub mod event_loop;
 pub mod services;
 pub mod view;
-pub mod event_loop;
 
 // Types
-pub use types::{
-    ContentPart, FunctionCall, Model, ToolCall, ToolCallResult, ToolCallResultStatus,
-};
+pub use types::{ContentPart, FunctionCall, Model, ToolCall, ToolCallResult, ToolCallResultStatus};
 
 pub use adapter::VacEngineAdapter;
 pub use terminal::TerminalGuard;
@@ -44,5 +42,5 @@ mod event;
 
 pub use app::{InputEvent, LoadingOperation, OutputEvent};
 pub use event::map_crossterm_event_to_input_event;
-pub use event_loop::{run_tui, RulebookConfig};
+pub use event_loop::{RulebookConfig, run_tui};
 pub use runner::run_vac_tui;

@@ -13,12 +13,19 @@ pub async fn execute_list(project_root: PathBuf) -> anyhow::Result<()> {
     println!("Loaded {} rulebook(s):\n", books.len());
     for book in &books {
         let constraint_count = book.all_constraints().len();
-        println!("  📋 {} (priority: {}, {} constraints)", book.id, book.priority, constraint_count);
+        println!(
+            "  📋 {} (priority: {}, {} constraints)",
+            book.id, book.priority, constraint_count
+        );
         if let Some(ref name) = book.name {
             println!("     {name}");
         }
         for c in book.all_constraints().iter().take(5) {
-            let marker = if c.severity == "block" { "🔴" } else { "⚠️" };
+            let marker = if c.severity == "block" {
+                "🔴"
+            } else {
+                "⚠️"
+            };
             println!("     {marker} [{}] {}", c.id, c.description);
         }
         if constraint_count > 5 {
@@ -46,7 +53,10 @@ pub async fn execute_validate(project_root: PathBuf) -> anyhow::Result<()> {
         println!("⚠ {warn}");
     }
     if !result.is_valid() {
-        anyhow::bail!("Rulebook validation failed with {} error(s)", result.errors.len());
+        anyhow::bail!(
+            "Rulebook validation failed with {} error(s)",
+            result.errors.len()
+        );
     }
     Ok(())
 }
@@ -59,10 +69,10 @@ pub async fn execute_apply(project_root: PathBuf, path: PathBuf) -> anyhow::Resu
     let content = std::fs::read_to_string(&path)?;
 
     // Parse YAML frontmatter between --- delimiters
-    let rulebook_id = if content.starts_with("---") {
-        let end = content[3..].find("---").map(|i| i + 3);
+    let rulebook_id = if let Some(stripped) = content.strip_prefix("---") {
+        let end = stripped.find("---");
         if let Some(end_idx) = end {
-            let frontmatter = &content[3..end_idx];
+            let frontmatter = &stripped[..end_idx];
             frontmatter
                 .lines()
                 .find_map(|l| l.strip_prefix("id:").map(|v| v.trim().to_string()))
@@ -73,7 +83,10 @@ pub async fn execute_apply(project_root: PathBuf, path: PathBuf) -> anyhow::Resu
         None
     };
 
-    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("rulebook");
+    let stem = path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("rulebook");
     let id = rulebook_id.unwrap_or_else(|| stem.to_string());
 
     let dest_dir = project_root.join(".vac/rulebooks");

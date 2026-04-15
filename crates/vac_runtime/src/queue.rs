@@ -12,7 +12,9 @@ pub struct TaskQueue {
 }
 
 impl Default for TaskQueue {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl TaskQueue {

@@ -1,8 +1,8 @@
 //! Snapshot manifest for file backup/restore operations.
 
+use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
-use anyhow::{Context, Result};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SnapshotManifest {
@@ -40,7 +40,11 @@ impl SnapshotManifest {
                 } else {
                     String::new()
                 };
-                SnapshotFile { original_path: original, backup_path: backup, hash }
+                SnapshotFile {
+                    original_path: original,
+                    backup_path: backup,
+                    hash,
+                }
             })
             .collect();
 
@@ -63,10 +67,8 @@ impl SnapshotManifest {
 
     /// Load manifest from disk.
     pub fn load(manifest_path: &Path) -> Result<Self> {
-        let json = std::fs::read_to_string(manifest_path)
-            .context("Failed to read manifest")?;
-        let manifest: Self = serde_json::from_str(&json)
-            .context("Failed to parse manifest")?;
+        let json = std::fs::read_to_string(manifest_path).context("Failed to read manifest")?;
+        let manifest: Self = serde_json::from_str(&json).context("Failed to parse manifest")?;
         Ok(manifest)
     }
 
@@ -98,7 +100,10 @@ impl SnapshotManifest {
             }
         }
 
-        Ok(RestoreReport { restored_count: restored, failed })
+        Ok(RestoreReport {
+            restored_count: restored,
+            failed,
+        })
     }
 }
 
@@ -131,7 +136,9 @@ fn compute_file_hash(path: &Path) -> Result<String> {
     let mut buffer = [0u8; 8192];
     loop {
         let n = file.read(&mut buffer)?;
-        if n == 0 { break; }
+        if n == 0 {
+            break;
+        }
         hasher.update(&buffer[..n]);
     }
     Ok(hasher.finalize().to_hex().to_string())
@@ -140,14 +147,13 @@ fn compute_file_hash(path: &Path) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write;
 
     #[test]
     fn create_and_restore_snapshot() {
         let temp = tempfile::tempdir().unwrap();
         let original = temp.path().join("original.txt");
         let backup = temp.path().join("backup.txt");
-        
+
         std::fs::write(&original, "original content").unwrap();
         std::fs::write(&backup, "original content").unwrap();
 
@@ -155,7 +161,8 @@ mod tests {
             "test-task".to_string(),
             uuid::Uuid::new_v4(),
             vec![(original.clone(), backup.clone())],
-        ).unwrap();
+        )
+        .unwrap();
 
         // Modify original
         std::fs::write(&original, "modified").unwrap();
@@ -163,23 +170,27 @@ mod tests {
         // Restore
         let report = manifest.restore().unwrap();
         assert_eq!(report.restored_count, 1);
-        assert_eq!(std::fs::read_to_string(&original).unwrap(), "original content");
+        assert_eq!(
+            std::fs::read_to_string(&original).unwrap(),
+            "original content"
+        );
     }
 
     #[test]
     fn save_and_load_manifest() {
         let temp = tempfile::tempdir().unwrap();
         let manifest_dir = temp.path().join("manifests");
-        
+
         let manifest = SnapshotManifest::create_snapshot(
             "test-task".to_string(),
             uuid::Uuid::new_v4(),
             vec![],
-        ).unwrap();
+        )
+        .unwrap();
 
         let path = manifest.save(&manifest_dir).unwrap();
         let loaded = SnapshotManifest::load(&path).unwrap();
-        
+
         assert_eq!(loaded.task_id, "test-task");
     }
 }

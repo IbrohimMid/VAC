@@ -49,7 +49,10 @@ pub async fn execute_up(project_root: PathBuf) -> anyhow::Result<()> {
     std::fs::write(&pid_path, pid.to_string())?;
 
     // Lifecycle event: started
-    append_event(&project_root, &format!("STARTED pid={pid} mode={}", config.mode));
+    append_event(
+        &project_root,
+        &format!("STARTED pid={pid} mode={}", config.mode),
+    );
 
     println!("✓ Autopilot started (PID {pid})");
     println!("  Mode:     {}", config.mode);
@@ -72,7 +75,9 @@ pub async fn execute_run(project_root: PathBuf) -> anyhow::Result<()> {
     {
         let shutdown_tx = shutdown_tx.clone();
         tokio::spawn(async move {
-            if let Ok(mut sigterm) = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            if let Ok(mut sigterm) =
+                tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            {
                 sigterm.recv().await;
                 let _ = shutdown_tx.send(true);
             }
@@ -130,10 +135,13 @@ pub async fn execute_status(project_root: PathBuf, format: &str) -> anyhow::Resu
                     vac_runtime::AutopilotState::WaitingApproval { tool_call_id } => {
                         format!("Waiting approval ({tool_call_id})")
                     }
-                    vac_runtime::AutopilotState::Backoff { until } => format!("Backoff until {until}"),
+                    vac_runtime::AutopilotState::Backoff { until } => {
+                        format!("Backoff until {until}")
+                    }
                     vac_runtime::AutopilotState::Failed { error } => format!("Failed: {error}"),
                 };
-            } else if let Ok(state) = serde_json::from_str::<vac_runtime::AutopilotState>(&content) {
+            } else if let Ok(state) = serde_json::from_str::<vac_runtime::AutopilotState>(&content)
+            {
                 match state {
                     vac_runtime::AutopilotState::Idle => {
                         state_str = "Idle".to_string();
@@ -155,7 +163,12 @@ pub async fn execute_status(project_root: PathBuf, format: &str) -> anyhow::Resu
 
     if !pid_path.exists() {
         if format == "json" {
-            println!("{}", serde_json::to_string_pretty(&serde_json::json!({ "status": "stopped", "internal_state": state_json }))?);
+            println!(
+                "{}",
+                serde_json::to_string_pretty(
+                    &serde_json::json!({ "status": "stopped", "internal_state": state_json })
+                )?
+            );
             return Ok(());
         }
         println!("Autopilot: stopped");
@@ -166,14 +179,17 @@ pub async fn execute_status(project_root: PathBuf, format: &str) -> anyhow::Resu
     if is_running(pid) {
         let config = AutopilotConfig::load(&project_root)?;
         if format == "json" {
-            println!("{}", serde_json::to_string_pretty(&serde_json::json!({
-                "status": "running",
-                "pid": pid,
-                "mode": config.mode,
-                "poll_interval_secs": config.poll_interval_secs,
-                "internal_state": state_json,
-                "log": project_root.join(LOG_FILE).display().to_string()
-            }))?);
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&serde_json::json!({
+                    "status": "running",
+                    "pid": pid,
+                    "mode": config.mode,
+                    "poll_interval_secs": config.poll_interval_secs,
+                    "internal_state": state_json,
+                    "log": project_root.join(LOG_FILE).display().to_string()
+                }))?
+            );
             return Ok(());
         }
         println!("Autopilot: running");
@@ -198,7 +214,12 @@ pub async fn execute_status(project_root: PathBuf, format: &str) -> anyhow::Resu
     } else {
         std::fs::remove_file(&pid_path)?;
         if format == "json" {
-            println!("{}", serde_json::to_string_pretty(&serde_json::json!({ "status": "stopped", "stale_pid_removed": true }))?);
+            println!(
+                "{}",
+                serde_json::to_string_pretty(
+                    &serde_json::json!({ "status": "stopped", "stale_pid_removed": true })
+                )?
+            );
             return Ok(());
         }
         println!("Autopilot: stopped (stale PID removed)");
@@ -206,10 +227,14 @@ pub async fn execute_status(project_root: PathBuf, format: &str) -> anyhow::Resu
     Ok(())
 }
 
-fn append_event(project_root: &PathBuf, event: &str) {
+fn append_event(project_root: &std::path::Path, event: &str) {
     use std::io::Write;
     let log_path = project_root.join(LOG_FILE);
-    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(log_path) {
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(log_path)
+    {
         let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ");
         let _ = writeln!(f, "[{ts}] AUTOPILOT {event}");
     }
@@ -221,11 +246,15 @@ fn is_running(pid: u32) -> bool {
 }
 
 #[cfg(not(unix))]
-fn is_running(_pid: u32) -> bool { false }
+fn is_running(_pid: u32) -> bool {
+    false
+}
 
 #[cfg(unix)]
 fn kill_process(pid: u32) -> anyhow::Result<()> {
-    unsafe { libc::kill(pid as i32, libc::SIGTERM); }
+    unsafe {
+        libc::kill(pid as i32, libc::SIGTERM);
+    }
     Ok(())
 }
 

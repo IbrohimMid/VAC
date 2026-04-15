@@ -1,10 +1,10 @@
 //! `vac runtime` — background task runtime management.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-fn runtime_queue_path(project_root: &PathBuf) -> PathBuf {
+fn runtime_queue_path(project_root: &Path) -> PathBuf {
     project_root.join(".vac/queue.json")
 }
 
@@ -25,7 +25,9 @@ pub async fn execute_status(project_root: PathBuf, format: &str) -> anyhow::Resu
     println!("  operating_mode: {}", config.runtime.operating_mode);
     println!("  max_jobs:       {}", config.runtime.max_concurrent_jobs);
     if !config.runtime.enable {
-        println!("\n  Runtime is disabled. Set [runtime] enable = true in .vac/config.toml to activate.");
+        println!(
+            "\n  Runtime is disabled. Set [runtime] enable = true in .vac/config.toml to activate."
+        );
     }
     Ok(())
 }
@@ -45,9 +47,11 @@ pub async fn execute_jobs(project_root: PathBuf, format: &str) -> anyhow::Result
     }
 
     if !config.runtime.enable {
-        println!("Runtime is disabled. Set [runtime] enable = true in .vac/config.toml to activate.");
+        println!(
+            "Runtime is disabled. Set [runtime] enable = true in .vac/config.toml to activate."
+        );
     }
-    
+
     if jobs.is_empty() {
         println!("No jobs in the queue.");
     } else {
@@ -61,13 +65,22 @@ pub async fn execute_jobs(project_root: PathBuf, format: &str) -> anyhow::Result
                 vac_runtime::JobStatus::Cancelled => "Cancelled",
             };
             let kind_str = match &job.kind {
-                vac_runtime::JobKind::RunTask { description } => format!("RunTask: {}", description),
+                vac_runtime::JobKind::RunTask { description } => {
+                    format!("RunTask: {}", description)
+                }
                 vac_runtime::JobKind::DiagnosticSweep => "DiagnosticSweep".to_string(),
-                vac_runtime::JobKind::RulebookComplianceCheck => "RulebookComplianceCheck".to_string(),
+                vac_runtime::JobKind::RulebookComplianceCheck => {
+                    "RulebookComplianceCheck".to_string()
+                }
                 vac_runtime::JobKind::PatchProposal { .. } => "PatchProposal".to_string(),
-                vac_runtime::JobKind::ManualApproval { tool_name } => format!("ManualApproval: {}", tool_name),
+                vac_runtime::JobKind::ToolCall { tool_name, .. } => {
+                    format!("ToolCall: {}", tool_name)
+                }
             };
-            println!("  [{}] {} ({}) - {:?}", status, job.id, kind_str, job.created_at);
+            println!(
+                "  [{}] {} ({}) - {:?}",
+                status, job.id, kind_str, job.created_at
+            );
         }
     }
     Ok(())
@@ -78,7 +91,10 @@ pub async fn execute_cancel(project_root: PathBuf, id: uuid::Uuid) -> anyhow::Re
     if queue.cancel(id).await {
         println!("Job {} cancelled successfully.", id);
     } else {
-        println!("Failed to cancel job {}. It may not exist, or it is already completed/failed.", id);
+        println!(
+            "Failed to cancel job {}. It may not exist, or it is already completed/failed.",
+            id
+        );
     }
     Ok(())
 }
@@ -88,14 +104,21 @@ pub async fn execute_retry(project_root: PathBuf, id: uuid::Uuid) -> anyhow::Res
     if queue.retry(id).await {
         println!("Job {} queued for retry.", id);
     } else {
-        println!("Failed to retry job {}. It may not exist, or it is not in a failed/cancelled state.", id);
+        println!(
+            "Failed to retry job {}. It may not exist, or it is not in a failed/cancelled state.",
+            id
+        );
     }
     Ok(())
 }
 
-pub async fn execute_inspect(project_root: PathBuf, id: uuid::Uuid, format: &str) -> anyhow::Result<()> {
+pub async fn execute_inspect(
+    project_root: PathBuf,
+    id: uuid::Uuid,
+    format: &str,
+) -> anyhow::Result<()> {
     let queue = vac_runtime::TaskQueue::with_storage(runtime_queue_path(&project_root));
-    
+
     if let Some(job) = queue.get(id).await {
         if format == "json" {
             println!("{}", serde_json::to_string_pretty(&job)?);
@@ -107,13 +130,19 @@ pub async fn execute_inspect(project_root: PathBuf, id: uuid::Uuid, format: &str
                 vac_runtime::JobStatus::Failed(e) => format!("Failed: {}", e),
                 vac_runtime::JobStatus::Cancelled => "Cancelled".to_string(),
             };
-            
+
             let kind_str = match &job.kind {
-                vac_runtime::JobKind::RunTask { description } => format!("RunTask: {}", description),
+                vac_runtime::JobKind::RunTask { description } => {
+                    format!("RunTask: {}", description)
+                }
                 vac_runtime::JobKind::DiagnosticSweep => "DiagnosticSweep".to_string(),
-                vac_runtime::JobKind::RulebookComplianceCheck => "RulebookComplianceCheck".to_string(),
+                vac_runtime::JobKind::RulebookComplianceCheck => {
+                    "RulebookComplianceCheck".to_string()
+                }
                 vac_runtime::JobKind::PatchProposal { .. } => "PatchProposal".to_string(),
-                vac_runtime::JobKind::ManualApproval { tool_name } => format!("ManualApproval: {}", tool_name),
+                vac_runtime::JobKind::ToolCall { tool_name, .. } => {
+                    format!("ToolCall: {}", tool_name)
+                }
             };
 
             println!("Job Inspection: {}", job.id);
@@ -150,7 +179,10 @@ pub async fn execute_start(project_root: PathBuf) -> anyhow::Result<()> {
     println!("🚀 Starting VAC runtime scheduler...");
     println!("   mode: {}", config.runtime.operating_mode);
     println!("   autopilot.mode: {}", autopilot.mode);
-    println!("   autopilot.poll_interval_secs: {}", autopilot.poll_interval_secs);
+    println!(
+        "   autopilot.poll_interval_secs: {}",
+        autopilot.poll_interval_secs
+    );
 
     // Initialize engine
     let mut engine = vac_core::VacEngine::new(project_root.clone()).await?;
@@ -158,11 +190,13 @@ pub async fn execute_start(project_root: PathBuf) -> anyhow::Result<()> {
     let engine = Arc::new(Mutex::new(engine));
 
     // Build executor with engine attached
-    let mode = vac_runtime::OperatingMode::from_str(&config.runtime.operating_mode);
+    let mode = vac_runtime::OperatingMode::parse(&config.runtime.operating_mode);
     let mut executor = vac_runtime::TaskExecutor::new(project_root, mode);
     executor.attach_engine(engine);
 
-    let queue = Arc::new(vac_runtime::TaskQueue::with_storage(runtime_queue_path(&executor.project_root)));
+    let queue = Arc::new(vac_runtime::TaskQueue::with_storage(runtime_queue_path(
+        &executor.project_root,
+    )));
     let scheduler = vac_runtime::Scheduler::new(
         queue.clone(),
         Arc::new(executor),

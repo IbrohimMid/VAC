@@ -201,7 +201,10 @@ impl IrCollector {
                     .map(|s| s.ident.to_string())
                     .collect::<Vec<_>>()
                     .join("::");
-                if VIL_ATTRS.iter().any(|v| name == *v || name.starts_with(&format!("{v}::"))) {
+                if VIL_ATTRS
+                    .iter()
+                    .any(|v| name == *v || name.starts_with(&format!("{v}::")))
+                {
                     Some(name)
                 } else {
                     None

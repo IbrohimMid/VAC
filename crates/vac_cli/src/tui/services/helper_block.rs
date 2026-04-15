@@ -2,7 +2,7 @@
 //!
 //! Provides welcome messages and helper UI elements.
 
-use crate::tui::app::{HelperCommand, CommandSource, Message};
+use crate::tui::app::{CommandSource, HelperCommand, Message};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
@@ -20,20 +20,16 @@ const VAC_LOGO: &str = r#"
 "#;
 
 /// Generate welcome messages for TUI
-pub fn welcome_messages(
-    version: Option<&str>,
-    state: &crate::tui::app::AppState,
-) -> Vec<Message> {
+pub fn welcome_messages(version: Option<&str>, state: &crate::tui::app::AppState) -> Vec<Message> {
     let version_str = version.unwrap_or("unknown");
     let permission_mode = if state.auto_approve {
         "AUTO-APPROVE (Tools will run without confirmation)"
     } else {
         "PROMPT (You will be prompted for tool execution)"
     };
-    
-    vec![
-        Message::assistant(format!(
-            "{}\n\
+
+    vec![Message::assistant(format!(
+        "{}\n\
             ═══════════════════════════════════════\n\
             Vastar Agentic CLI v{}\n\
             Powered by VIL Engine\n\
@@ -45,9 +41,8 @@ pub fn welcome_messages(
             • Esc    - Cancel/Close\n\
             • Up/Down - Scroll\n\n\
             Type your message and press Enter to start.",
-            VAC_LOGO, version_str, permission_mode
-        )),
-    ]
+        VAC_LOGO, version_str, permission_mode
+    ))]
 }
 
 /// Default VAC commands
@@ -177,7 +172,11 @@ fn load_from_directory(
             None => continue,
         };
 
-        if stem.is_empty() || !stem.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+        if stem.is_empty()
+            || !stem
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+        {
             continue;
         }
 

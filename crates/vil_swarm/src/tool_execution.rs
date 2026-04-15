@@ -15,8 +15,8 @@ pub enum ToolLane {
 /// Classify a tool into its execution lane.
 pub fn classify_tool_lane(name: &str) -> ToolLane {
     match name {
-        "file_read" | "glob" | "grep" | "search"
-        | "vil_knowledge" | "vil_diagnostics" | "vil_lsp_query" => ToolLane::Data,
+        "file_read" | "glob" | "grep" | "search" | "vil_knowledge" | "vil_diagnostics"
+        | "vil_lsp_query" => ToolLane::Data,
         _ => ToolLane::Control,
     }
 }
@@ -70,9 +70,21 @@ mod tests {
     fn partition_splits_correctly() {
         use serde_json::json;
         let calls = vec![
-            ToolCall { id: "1".into(), name: "file_read".into(), arguments: json!({}) },
-            ToolCall { id: "2".into(), name: "file_write".into(), arguments: json!({}) },
-            ToolCall { id: "3".into(), name: "glob".into(), arguments: json!({}) },
+            ToolCall {
+                id: "1".into(),
+                name: "file_read".into(),
+                arguments: json!({}),
+            },
+            ToolCall {
+                id: "2".into(),
+                name: "file_write".into(),
+                arguments: json!({}),
+            },
+            ToolCall {
+                id: "3".into(),
+                name: "glob".into(),
+                arguments: json!({}),
+            },
         ];
         let (reads, writes) = partition_calls(calls);
         assert_eq!(reads.len(), 2);

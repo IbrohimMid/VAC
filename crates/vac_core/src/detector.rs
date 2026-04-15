@@ -81,22 +81,31 @@ impl VilProjectProfile {
 
 fn scan_cargo_deps(root: &Path) -> Vec<String> {
     const VIL_CRATES: &[&str] = &[
-        "vil_server", "vil_server_core", "vil_server_web", "vil_server_mesh",
-        "vil_sdk", "vil_workflow", "vil_shm",
-        "vil_llm", "vil_rag", "vil_agent",
-        "vil_log", "vil_metrics",
-        "vil_ir", "vil_knowledge",
+        "vil_server",
+        "vil_server_core",
+        "vil_server_web",
+        "vil_server_mesh",
+        "vil_sdk",
+        "vil_workflow",
+        "vil_shm",
+        "vil_llm",
+        "vil_rag",
+        "vil_agent",
+        "vil_log",
+        "vil_metrics",
+        "vil_ir",
+        "vil_knowledge",
     ];
 
     let mut found = Vec::new();
 
     // Check workspace Cargo.toml and all crate Cargo.tomls
-    let candidates = [
-        root.join("Cargo.toml"),
-    ];
+    let candidates = [root.join("Cargo.toml")];
 
     for path in &candidates {
-        let Ok(content) = std::fs::read_to_string(path) else { continue };
+        let Ok(content) = std::fs::read_to_string(path) else {
+            continue;
+        };
         for crate_name in VIL_CRATES {
             if content.contains(crate_name) && !found.contains(&crate_name.to_string()) {
                 found.push(crate_name.to_string());
@@ -108,7 +117,9 @@ fn scan_cargo_deps(root: &Path) -> Vec<String> {
     if let Ok(entries) = std::fs::read_dir(root.join("crates")) {
         for entry in entries.flatten() {
             let cargo = entry.path().join("Cargo.toml");
-            let Ok(content) = std::fs::read_to_string(&cargo) else { continue };
+            let Ok(content) = std::fs::read_to_string(&cargo) else {
+                continue;
+            };
             for crate_name in VIL_CRATES {
                 if content.contains(crate_name) && !found.contains(&crate_name.to_string()) {
                     found.push(crate_name.to_string());
@@ -122,13 +133,27 @@ fn scan_cargo_deps(root: &Path) -> Vec<String> {
 
 fn scan_source_constructs(root: &Path) -> Vec<String> {
     const VIL_CONSTRUCTS: &[&str] = &[
-        "VilApp", "ServiceProcess", "VilResponse", "ShmSlice", "ServiceCtx",
-        "vil_workflow!", "vil_handler", "vil_endpoint", "vil_app!",
-        "VilPlugin", "PluginContext",
-        "vil_state", "vil_event", "vil_fault", "vil_decision",
-        "HttpSinkBuilder", "HttpSourceBuilder",
-        "ShmToken", "GenericToken",
-        "ExchangeHeap", "VxMeshConfig",
+        "VilApp",
+        "ServiceProcess",
+        "VilResponse",
+        "ShmSlice",
+        "ServiceCtx",
+        "vil_workflow!",
+        "vil_handler",
+        "vil_endpoint",
+        "vil_app!",
+        "VilPlugin",
+        "PluginContext",
+        "vil_state",
+        "vil_event",
+        "vil_fault",
+        "vil_decision",
+        "HttpSinkBuilder",
+        "HttpSourceBuilder",
+        "ShmToken",
+        "GenericToken",
+        "ExchangeHeap",
+        "VxMeshConfig",
     ];
 
     let mut found = Vec::new();
@@ -144,7 +169,9 @@ fn scan_source_constructs(root: &Path) -> Vec<String> {
         });
 
     for entry in walker {
-        let Ok(content) = std::fs::read_to_string(entry.path()) else { continue };
+        let Ok(content) = std::fs::read_to_string(entry.path()) else {
+            continue;
+        };
         for construct in VIL_CONSTRUCTS {
             if content.contains(construct) && !found.contains(&construct.to_string()) {
                 found.push(construct.to_string());
@@ -163,17 +190,28 @@ fn classify_archetype(deps: &[String], constructs: &[String]) -> VilArchetype {
         || constructs.iter().any(|c| {
             matches!(
                 c.as_str(),
-                "VilApp" | "ServiceProcess" | "VilResponse" | "ShmSlice" | "ServiceCtx"
-                    | "vil_handler" | "vil_endpoint"
+                "VilApp"
+                    | "ServiceProcess"
+                    | "VilResponse"
+                    | "ShmSlice"
+                    | "ServiceCtx"
+                    | "vil_handler"
+                    | "vil_endpoint"
             )
         });
 
-    let has_pipeline = deps.iter().any(|d| d.contains("vil_sdk") || d.contains("vil_shm"))
+    let has_pipeline = deps
+        .iter()
+        .any(|d| d.contains("vil_sdk") || d.contains("vil_shm"))
         || constructs.iter().any(|c| {
             matches!(
                 c.as_str(),
-                "vil_workflow!" | "HttpSinkBuilder" | "HttpSourceBuilder"
-                    | "ShmToken" | "GenericToken" | "ExchangeHeap"
+                "vil_workflow!"
+                    | "HttpSinkBuilder"
+                    | "HttpSourceBuilder"
+                    | "ShmToken"
+                    | "GenericToken"
+                    | "ExchangeHeap"
             )
         });
 
@@ -188,9 +226,15 @@ fn classify_archetype(deps: &[String], constructs: &[String]) -> VilArchetype {
         (false, false, false) => VilArchetype::Unknown,
         _ => {
             let mut parts = Vec::new();
-            if has_server { parts.push(VilArchetype::Server); }
-            if has_pipeline { parts.push(VilArchetype::Pipeline); }
-            if has_plugin { parts.push(VilArchetype::Plugin); }
+            if has_server {
+                parts.push(VilArchetype::Server);
+            }
+            if has_pipeline {
+                parts.push(VilArchetype::Pipeline);
+            }
+            if has_plugin {
+                parts.push(VilArchetype::Plugin);
+            }
             VilArchetype::Hybrid(parts)
         }
     }

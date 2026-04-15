@@ -9,7 +9,8 @@ pub const MAX_PASTE_CHAR_COUNT: usize = 1000;
 
 // ========== Error Messages ==========
 pub const EXCEEDED_API_LIMIT_ERROR: &str = "Exceeded API limit";
-pub const EXCEEDED_API_LIMIT_ERROR_MESSAGE: &str = "Exceeded API limit. Please check your configuration.";
+pub const EXCEEDED_API_LIMIT_ERROR_MESSAGE: &str =
+    "Exceeded API limit. Please check your configuration.";
 
 // ========== File Paths ==========
 pub const AUTO_APPROVE_CONFIG_PATH: &str = ".vac/session/auto_approve.json";

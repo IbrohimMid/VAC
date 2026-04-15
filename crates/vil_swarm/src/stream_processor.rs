@@ -2,9 +2,7 @@
 //! Extracted from orchestrator.rs for pipeline clarity.
 
 use tokio::sync::mpsc;
-use vil_llm::provider::{
-    FinishReason, LlmResponse, StreamChunk, TokenUsage, ToolCall,
-};
+use vil_llm::provider::{FinishReason, LlmResponse, StreamChunk, TokenUsage, ToolCall};
 
 use crate::error::{SwarmError, SwarmResult};
 use crate::orchestrator::AgentLoopEvent;
@@ -94,24 +92,36 @@ pub async fn process_stream(
 /// Returns error if stream contains StreamChunk::Error.
 pub async fn collect_text_checked_wrapper(rx: mpsc::Receiver<StreamChunk>) -> SwarmResult<String> {
     use vil_llm::streaming::collect_text_checked;
-    collect_text_checked(rx).await.map_err(|e| SwarmError::Orchestration(e))
+    collect_text_checked(rx)
+        .await
+        .map_err(SwarmError::Orchestration)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use vil_llm::provider::{StreamChunk, TokenUsage, FinishReason};
+    use vil_llm::provider::{FinishReason, StreamChunk, TokenUsage};
 
     #[tokio::test]
     async fn stream_processor_assembles_text() {
         let (tx, rx) = mpsc::channel(10);
-        
-        tx.send(StreamChunk::Text("Hello ".to_string())).await.unwrap();
-        tx.send(StreamChunk::Text("world".to_string())).await.unwrap();
+
+        tx.send(StreamChunk::Text("Hello ".to_string()))
+            .await
+            .unwrap();
+        tx.send(StreamChunk::Text("world".to_string()))
+            .await
+            .unwrap();
         tx.send(StreamChunk::Done {
-            usage: TokenUsage { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+            usage: TokenUsage {
+                prompt_tokens: 10,
+                completion_tokens: 5,
+                total_tokens: 15,
+            },
             finish_reason: FinishReason::Stop,
-        }).await.unwrap();
+        })
+        .await
+        .unwrap();
         drop(tx);
 
         let result = process_stream(rx, &None).await.unwrap();
@@ -122,14 +132,31 @@ mod tests {
     #[tokio::test]
     async fn stream_processor_assembles_tool_calls() {
         let (tx, rx) = mpsc::channel(10);
-        
-        tx.send(StreamChunk::ToolCallStart { id: "1".into(), name: "test".into() }).await.unwrap();
-        tx.send(StreamChunk::ToolCallDelta { id: "1".into(), arguments_delta: "{\"a\":".into() }).await.unwrap();
-        tx.send(StreamChunk::ToolCallDelta { id: "1".into(), arguments_delta: "1}".into() }).await.unwrap();
+
+        tx.send(StreamChunk::ToolCallStart {
+            id: "1".into(),
+            name: "test".into(),
+        })
+        .await
+        .unwrap();
+        tx.send(StreamChunk::ToolCallDelta {
+            id: "1".into(),
+            arguments_delta: "{\"a\":".into(),
+        })
+        .await
+        .unwrap();
+        tx.send(StreamChunk::ToolCallDelta {
+            id: "1".into(),
+            arguments_delta: "1}".into(),
+        })
+        .await
+        .unwrap();
         tx.send(StreamChunk::Done {
             usage: TokenUsage::default(),
             finish_reason: FinishReason::ToolUse,
-        }).await.unwrap();
+        })
+        .await
+        .unwrap();
         drop(tx);
 
         let result = process_stream(rx, &None).await.unwrap();

@@ -5,7 +5,7 @@ use serde::Serialize;
 use std::sync::Arc;
 
 use crate::error::ToolError;
-use crate::registry::{ToolContext, VilTool, ToolRegistry};
+use crate::registry::{ToolContext, ToolRegistry, VilTool};
 
 #[derive(Debug, Serialize)]
 pub struct VilStatusOutput {
@@ -167,7 +167,12 @@ fn count_custom_skills(project_root: &std::path::Path) -> usize {
     std::fs::read_dir(&skills_dir)
         .map(|d| {
             d.flatten()
-                .filter(|e| e.path().extension().map(|ext| ext == "toml").unwrap_or(false))
+                .filter(|e| {
+                    e.path()
+                        .extension()
+                        .map(|ext| ext == "toml")
+                        .unwrap_or(false)
+                })
                 .count()
         })
         .unwrap_or(0)

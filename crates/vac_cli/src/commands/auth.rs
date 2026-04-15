@@ -41,9 +41,30 @@ async fn status() -> anyhow::Result<()> {
     let s = vac_core::auth::auth_status()?;
     println!("VAC Auth Status");
     println!("  storage  : {}", s.config_path.display());
-    println!("  env key  : {}", if s.env_present { "✓ present" } else { "✗ missing" });
-    println!("  saved key: {}", if s.stored_present { "✓ present" } else { "✗ missing" });
-    println!("  effective: {}", if s.effective_present { "✓ ready" } else { "✗ not configured" });
+    println!(
+        "  env key  : {}",
+        if s.env_present {
+            "✓ present"
+        } else {
+            "✗ missing"
+        }
+    );
+    println!(
+        "  saved key: {}",
+        if s.stored_present {
+            "✓ present"
+        } else {
+            "✗ missing"
+        }
+    );
+    println!(
+        "  effective: {}",
+        if s.effective_present {
+            "✓ ready"
+        } else {
+            "✗ not configured"
+        }
+    );
     if let Some(t) = s.updated_at {
         println!("  saved at : {t}");
     }
@@ -144,7 +165,7 @@ fn read_secret() -> anyhow::Result<String> {
 #[cfg(unix)]
 fn read_hidden() -> anyhow::Result<String> {
     // Disable echo via termios, read, re-enable
-    
+
     let stdin_fd = {
         use std::os::unix::io::AsRawFd;
         io::stdin().as_raw_fd()
@@ -166,13 +187,17 @@ fn read_hidden() -> anyhow::Result<String> {
     // Disable echo
     let c_lflag_orig = termios.c_lflag;
     termios.c_lflag = c_lflag_orig & !ECHO_FLAG;
-    unsafe { libc_tcsetattr(stdin_fd, TCSANOW, &termios); }
+    unsafe {
+        libc_tcsetattr(stdin_fd, TCSANOW, &termios);
+    }
 
     let mut s = String::new();
     let result = io::stdin().read_line(&mut s);
 
     // Restore terminal state + print newline
-    unsafe { libc_tcsetattr(stdin_fd, TCSANOW, &saved); }
+    unsafe {
+        libc_tcsetattr(stdin_fd, TCSANOW, &saved);
+    }
     println!();
 
     result?;
@@ -208,8 +233,14 @@ unsafe extern "C" {
 }
 
 #[cfg(unix)]
-unsafe fn libc_tcgetattr(fd: i32, t: *mut libc_termios) -> i32 { unsafe { tcgetattr(fd, t) }}
+unsafe fn libc_tcgetattr(fd: i32, t: *mut libc_termios) -> i32 {
+    unsafe { tcgetattr(fd, t) }
+}
 #[cfg(unix)]
-unsafe fn libc_tcsetattr(fd: i32, a: i32, t: *const libc_termios) -> i32 { unsafe { tcsetattr(fd, a, t) }}
+unsafe fn libc_tcsetattr(fd: i32, a: i32, t: *const libc_termios) -> i32 {
+    unsafe { tcsetattr(fd, a, t) }
+}
 #[cfg(unix)]
-unsafe fn libc_isatty(fd: i32) -> bool { unsafe { isatty(fd) != 0 }}
+unsafe fn libc_isatty(fd: i32) -> bool {
+    unsafe { isatty(fd) != 0 }
+}

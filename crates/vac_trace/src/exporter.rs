@@ -76,8 +76,8 @@ pub fn export_summary(
         .count();
 
     summary.push_str("## Statistics\n\n");
-    summary.push_str(&format!("| Metric | Count |\n"));
-    summary.push_str(&format!("|--------|-------|\n"));
+    summary.push_str("| Metric | Count |\n");
+    summary.push_str("|--------|-------|\n");
     summary.push_str(&format!("| Task Starts | {} |\n", task_starts));
     summary.push_str(&format!("| Task Completions | {} |\n", task_completes));
     summary.push_str(&format!("| Tool Calls | {} |\n", tool_calls));

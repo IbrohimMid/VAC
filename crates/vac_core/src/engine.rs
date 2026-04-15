@@ -1,6 +1,7 @@
 //! VacEngine — the main entry point for all VAC operations.
 
 use crate::{
+    approval::{ApprovalHandle, ApprovalStore},
     auth,
     config::VacConfig,
     error::{VacError, VacResult},
@@ -32,7 +33,8 @@ pub struct VacEngine {
     pub privacy_vault: Arc<RwLock<vac_tools::PrivacyVault>>,
     // The sender channel to approve or reject a tool call for the currently running task.
     // This allows clients to send ApprovalResponse without needing to pass channels around manually.
-    pub active_approval_tx: Arc<tokio::sync::Mutex<Option<mpsc::UnboundedSender<vil_swarm::ApprovalResponse>>>>,
+    pub active_approval_tx:
+        Arc<tokio::sync::Mutex<Option<mpsc::UnboundedSender<vil_swarm::ApprovalResponse>>>>,
 }
 
 impl VacEngine {
@@ -59,6 +61,10 @@ impl VacEngine {
             privacy_vault: Arc::new(RwLock::new(vac_tools::PrivacyVault::new())),
             active_approval_tx: Arc::new(tokio::sync::Mutex::new(None)),
         })
+    }
+
+    pub fn approval_handle(&self) -> ApprovalHandle {
+        ApprovalHandle::new(self.project_root.clone(), self.active_approval_tx.clone())
     }
 
     /// Initialize all subsystems. Called by `vac init`.
@@ -128,15 +134,20 @@ impl VacEngine {
         if let Some(ref mcp_servers) = self.config.mcp_servers {
             info!(count = mcp_servers.len(), "Initializing MCP servers...");
             for server_config in mcp_servers {
-                let client = vac_tools::mcp::McpClient::new(server_config.clone(), registry.clone());
+                let client =
+                    vac_tools::mcp::McpClient::new(server_config.clone(), registry.clone());
                 match client.connect().await {
-                    Ok(()) => {
-                        match client.register_proxy_tools().await {
-                            Ok(count) => info!(name = %server_config.name, tools = count, "MCP server connected"),
-                            Err(e) => warn!(name = %server_config.name, error = %e, "Failed to register MCP tools"),
+                    Ok(()) => match client.register_proxy_tools().await {
+                        Ok(count) => {
+                            info!(name = %server_config.name, tools = count, "MCP server connected")
                         }
+                        Err(e) => {
+                            warn!(name = %server_config.name, error = %e, "Failed to register MCP tools")
+                        }
+                    },
+                    Err(e) => {
+                        warn!(name = %server_config.name, error = %e, "Failed to connect MCP server")
                     }
-                    Err(e) => warn!(name = %server_config.name, error = %e, "Failed to connect MCP server"),
                 }
             }
         }
@@ -226,7 +237,11 @@ impl VacEngine {
             let archetype_str = profile.archetype.to_string();
             let ctx = crate::rulebook::ResolvedRuleContext::build(
                 books,
-                if profile.is_vil_project { Some(&archetype_str) } else { None },
+                if profile.is_vil_project {
+                    Some(&archetype_str)
+                } else {
+                    None
+                },
             );
             if let Some(overlay) = ctx.to_prompt_overlay() {
                 swarm.set_rulebook(overlay);
@@ -241,7 +256,9 @@ impl VacEngine {
             match tokio::time::timeout(
                 std::time::Duration::from_millis(lsp_config.startup_timeout_ms),
                 crate::lsp::service::VilLspService::new(lsp_config, self.project_root.clone()),
-            ).await {
+            )
+            .await
+            {
                 Ok(Ok(svc)) => {
                     if lsp_config.analyze_on_init {
                         let _ = svc.analyze_workspace().await;
@@ -268,7 +285,9 @@ impl VacEngine {
                 }
                 Err(_) => {
                     if lsp_config.fail_on_unavailable {
-                        return Err(VacError::Other(anyhow::anyhow!("vil-lsp startup timed out")));
+                        return Err(VacError::Other(anyhow::anyhow!(
+                            "vil-lsp startup timed out"
+                        )));
                     }
                     warn!("vil-lsp startup timed out; continuing without editor diagnostics");
                 }
@@ -277,8 +296,9 @@ impl VacEngine {
 
         if let Some(ref swarm_arc) = self.swarm {
             let spawn_tool = SpawnSubtaskTool::new(swarm_arc.clone());
-            registry.register(spawn_tool).await
-                .map_err(|e| VacError::Other(anyhow::anyhow!("Spawn tool registration error: {}", e)))?;
+            registry.register(spawn_tool).await.map_err(|e| {
+                VacError::Other(anyhow::anyhow!("Spawn tool registration error: {}", e))
+            })?;
         }
 
         info!("All VAC subsystems initialized successfully.");
@@ -327,7 +347,8 @@ impl VacEngine {
         updates: Option<mpsc::UnboundedSender<RuntimeUpdate>>,
         cancel: Option<tokio_util::sync::CancellationToken>,
     ) -> VacResult<TaskResult> {
-        self.run_task_with_approvals(description, updates, cancel, None).await
+        self.run_task_with_approvals(description, updates, cancel, None)
+            .await
     }
 
     /// Run a task with structured approval support.
@@ -349,7 +370,7 @@ impl VacEngine {
         } else {
             approval_rx
         };
-        
+
         if let Some(app_tx) = active_tx {
             *self.active_approval_tx.lock().await = Some(app_tx);
         }
@@ -371,7 +392,10 @@ impl VacEngine {
             session.tasks.push(task.clone());
         }
 
-        let result = match self.execute_task_pipeline_with_approvals(task, updates.clone(), cancel, final_approval_rx).await {
+        let result = match self
+            .execute_task_pipeline_with_approvals(task, updates.clone(), cancel, final_approval_rx)
+            .await
+        {
             Ok(result) => result,
             Err(e) => {
                 // Check if this is a cancellation
@@ -471,10 +495,15 @@ impl VacEngine {
         let session_id = self.session.read().await.id;
         let project_root = self.project_root.clone();
         let privacy_vault = self.privacy_vault.clone();
+        let approval_store = ApprovalStore::new(project_root.clone());
+        let task_uuid = task_id.0;
+        let session_uuid = session_id;
 
         // Phase 6: inject LSP diagnostic context into swarm before execution
         if let Some(ref lsp) = self.vil_lsp {
-            let ctx = lsp.prompt_context(self.config.vil_lsp.max_prompt_items).await;
+            let ctx = lsp
+                .prompt_context(self.config.vil_lsp.max_prompt_items)
+                .await;
             if !ctx.is_empty() {
                 swarm.set_lsp_prompt_context(vil_swarm::ExternalDiagnosticContext {
                     total_errors: ctx.total_errors,
@@ -563,12 +592,38 @@ impl VacEngine {
                             tool_name,
                             arguments,
                             explanation,
-                        } => Some(RuntimeUpdate::ApprovalRequired {
-                            tool_call_id,
-                            tool_name,
-                            arguments,
-                            explanation,
-                        }),
+                        } => {
+                            let store = approval_store.clone();
+                            let tool_call_id_disk = tool_call_id.clone();
+                            let tool_name_disk = tool_name.clone();
+                            let args_disk = arguments.clone();
+                            let explanation_disk = explanation.clone();
+                            if let Err(e) = tokio::task::spawn_blocking(move || {
+                                store.record_request(
+                                    tool_call_id_disk,
+                                    tool_name_disk,
+                                    args_disk,
+                                    explanation_disk,
+                                    Some(session_uuid),
+                                    Some(task_uuid),
+                                )
+                            })
+                            .await
+                            .map_err(|e| {
+                                VacError::Task(format!("Approval store task failed: {}", e))
+                            })
+                            .and_then(|r| r)
+                            {
+                                warn!(error = %e, "Failed to persist approval request");
+                            }
+
+                            Some(RuntimeUpdate::ApprovalRequired {
+                                tool_call_id,
+                                tool_name,
+                                arguments,
+                                explanation,
+                            })
+                        }
                         vil_swarm::AgentLoopEvent::LlmRequest { .. } => None,
                     };
                     if let Some(up) = update {
@@ -579,15 +634,29 @@ impl VacEngine {
         });
 
         let execution = swarm
-            .agent_loop_with_full_context(&task.description, Some(swarm_tx), Some(session_id), Some(project_root), cancel, approval_rx)
+            .agent_loop_with_full_context(
+                &task.description,
+                Some(swarm_tx),
+                Some(session_id),
+                Some(project_root),
+                cancel,
+                approval_rx,
+            )
             .await?;
 
         info!("Phase 3: Validating...");
         let validation_score = if let Some(ir) = &self.ir_pipeline {
-            tracing::debug!("Running IR validation on {} modified files", execution.modified_files.len());
+            tracing::debug!(
+                "Running IR validation on {} modified files",
+                execution.modified_files.len()
+            );
             match vil_validate::validate_changes(ir, &execution.modified_files) {
                 Ok(report) => {
-                    info!(score = report.score, issues_count = report.issues.len(), "Validation completed");
+                    info!(
+                        score = report.score,
+                        issues_count = report.issues.len(),
+                        "Validation completed"
+                    );
                     for issue in &report.issues {
                         warn!(issue = %issue, "Validation issue detected");
                     }
@@ -622,13 +691,14 @@ impl VacEngine {
                     let _ = tx.send(RuntimeUpdate::LspDiagnostics(snapshot.clone()));
                 }
                 // strict-vil: block if LSP still reports errors on modified files
-                let profile = crate::profile::ProfileOverride::resolve(
-                    &crate::profile::ProfileName::from_str(
-                        &std::env::var("VAC_PROFILE").unwrap_or_default()
-                    )
-                );
+                let profile =
+                    crate::profile::ProfileOverride::resolve(&crate::profile::ProfileName::parse(
+                        &std::env::var("VAC_PROFILE").unwrap_or_default(),
+                    ));
                 if profile.validator_blocks && snapshot.total_errors > 0 {
-                    let post_errors = lsp.diagnostics_for_files(&execution.modified_files).await
+                    let post_errors = lsp
+                        .diagnostics_for_files(&execution.modified_files)
+                        .await
                         .into_iter()
                         .filter(|d| d.severity == crate::lsp::types::LspSeverity::Error)
                         .count();
@@ -701,16 +771,21 @@ impl VacEngine {
     ) -> VacResult<TaskResult> {
         let checkpoint_dir = self.project_root.join(".vac/checkpoints");
         let state_path = checkpoint_dir.join(format!("{}_state.json", session_id));
-        
+
         if !state_path.exists() {
-            return Err(VacError::Config(format!("State checkpoint not found at {}", state_path.display())));
+            return Err(VacError::Config(format!(
+                "State checkpoint not found at {}",
+                state_path.display()
+            )));
         }
 
         let mut state = vil_swarm::run_state::AgentRunState::from_checkpoint(&state_path)
             .map_err(|e| VacError::Config(format!("Failed to load state: {}", e)))?;
 
         // Re-hydrate session in memory
-        if let Ok(Some(session_disk)) = crate::session::Session::load(&self.project_root, session_id) {
+        if let Ok(Some(session_disk)) =
+            crate::session::Session::load(&self.project_root, session_id)
+        {
             let mut session = self.session.write().await;
             session.id = session_id;
             session.metadata = session_disk.metadata;
@@ -725,49 +800,63 @@ impl VacEngine {
             .write()
             .await;
 
-        let task_desc = state.messages.iter()
+        let task_desc = state
+            .messages
+            .iter()
             .find(|m| matches!(m.role, vil_llm::provider::Role::User))
             .map(|m| m.content.clone())
             .unwrap_or_else(|| "Resumed task".to_string());
 
-        let task = Task::new(&task_desc);
-        let task_id = task.id;
-
         let trace_handle = self.trace_recorder.clone();
         let update_tx = updates.clone();
-        let (swarm_tx, mut swarm_rx) = tokio::sync::mpsc::unbounded_channel::<vil_swarm::AgentLoopEvent>();
+        let (swarm_tx, mut swarm_rx) =
+            tokio::sync::mpsc::unbounded_channel::<vil_swarm::AgentLoopEvent>();
         let project_root = self.project_root.clone();
         let privacy_vault = self.privacy_vault.clone();
 
         tokio::spawn(async move {
             while let Some(event) = swarm_rx.recv().await {
                 if let Some(ref recorder) = trace_handle {
-                    match recorder.lock() {
-                        Ok(mut rec) => {
-                            match &event {
-                                vil_swarm::AgentLoopEvent::LlmRequest { provider, model, message_count } => {
-                                    rec.record_llm_request(provider, model, *message_count);
-                                }
-                                vil_swarm::AgentLoopEvent::ToolCall { id: _, name, arguments } => {
-                                    rec.record_tool_call(name, arguments);
-                                }
-                                vil_swarm::AgentLoopEvent::ToolResult { id: _, name, content, success } => {
-                                    rec.record_tool_result(name, content, *success);
-                                }
-                                vil_swarm::AgentLoopEvent::ModelResponse { provider, model } => {
-                                    rec.record_llm_response(provider, model);
-                                }
-                                _ => {}
+                    if let Ok(mut rec) = recorder.lock() {
+                        match &event {
+                            vil_swarm::AgentLoopEvent::LlmRequest {
+                                provider,
+                                model,
+                                message_count,
+                            } => {
+                                rec.record_llm_request(provider, model, *message_count);
                             }
-                            let _ = rec.flush();
+                            vil_swarm::AgentLoopEvent::ToolCall {
+                                id: _,
+                                name,
+                                arguments,
+                            } => {
+                                rec.record_tool_call(name, arguments);
+                            }
+                            vil_swarm::AgentLoopEvent::ToolResult {
+                                id: _,
+                                name,
+                                content,
+                                success,
+                            } => {
+                                rec.record_tool_result(name, content, *success);
+                            }
+                            vil_swarm::AgentLoopEvent::ModelResponse { provider, model } => {
+                                rec.record_llm_response(provider, model);
+                            }
+                            _ => {}
                         }
-                        Err(_) => {}
+                        let _ = rec.flush();
                     }
                 }
                 if let Some(ref tx) = update_tx {
                     let update = match event {
-                        vil_swarm::AgentLoopEvent::Status(message) => Some(RuntimeUpdate::Status(message)),
-                        vil_swarm::AgentLoopEvent::ModelResponse { provider, model } => Some(RuntimeUpdate::ModelInfo { provider, model }),
+                        vil_swarm::AgentLoopEvent::Status(message) => {
+                            Some(RuntimeUpdate::Status(message))
+                        }
+                        vil_swarm::AgentLoopEvent::ModelResponse { provider, model } => {
+                            Some(RuntimeUpdate::ModelInfo { provider, model })
+                        }
                         vil_swarm::AgentLoopEvent::AssistantChunk(chunk) => {
                             let restored = {
                                 let vault = privacy_vault.read().await;
@@ -775,9 +864,37 @@ impl VacEngine {
                             };
                             Some(RuntimeUpdate::AssistantChunk(restored))
                         }
-                        vil_swarm::AgentLoopEvent::ToolCall { id, name, arguments } => Some(RuntimeUpdate::ToolCall { id, name, arguments }),
-                        vil_swarm::AgentLoopEvent::ToolResult { id, name, content, success } => Some(RuntimeUpdate::ToolResult { id, name, content, success }),
-                        vil_swarm::AgentLoopEvent::ApprovalRequired { tool_call_id, tool_name, arguments, explanation } => Some(RuntimeUpdate::ApprovalRequired { tool_call_id, tool_name, arguments, explanation }),
+                        vil_swarm::AgentLoopEvent::ToolCall {
+                            id,
+                            name,
+                            arguments,
+                        } => Some(RuntimeUpdate::ToolCall {
+                            id,
+                            name,
+                            arguments,
+                        }),
+                        vil_swarm::AgentLoopEvent::ToolResult {
+                            id,
+                            name,
+                            content,
+                            success,
+                        } => Some(RuntimeUpdate::ToolResult {
+                            id,
+                            name,
+                            content,
+                            success,
+                        }),
+                        vil_swarm::AgentLoopEvent::ApprovalRequired {
+                            tool_call_id,
+                            tool_name,
+                            arguments,
+                            explanation,
+                        } => Some(RuntimeUpdate::ApprovalRequired {
+                            tool_call_id,
+                            tool_name,
+                            arguments,
+                            explanation,
+                        }),
                         vil_swarm::AgentLoopEvent::LlmRequest { .. } => None,
                     };
                     if let Some(up) = update {
@@ -801,19 +918,17 @@ impl VacEngine {
             .await;
 
         let task_result = match result {
-            Ok(exec_res) => {
-                TaskResult {
-                    task_id: crate::task::TaskId(uuid::Uuid::new_v4()),
-                    status: crate::task::TaskStatus::Completed,
-                    summary: exec_res.summary,
-                    modified_files: exec_res.modified_files,
-                    created_files: exec_res.created_files,
-                    total_tokens_used: exec_res.total_tokens_used,
-                    agent_contributions: vec![],
-                    elapsed_ms: 0,
-                    validation_score: None,
-                }
-            }
+            Ok(exec_res) => TaskResult {
+                task_id: crate::task::TaskId(uuid::Uuid::new_v4()),
+                status: crate::task::TaskStatus::Completed,
+                summary: exec_res.summary,
+                modified_files: exec_res.modified_files,
+                created_files: exec_res.created_files,
+                total_tokens_used: exec_res.total_tokens_used,
+                agent_contributions: vec![],
+                elapsed_ms: 0,
+                validation_score: None,
+            },
             Err(e) => {
                 let _ = state.save_checkpoint(&state_path, Some(session_id));
                 TaskResult {
@@ -874,7 +989,8 @@ impl VacEngine {
     /// Load a specific session by ID, swapping the current session in memory.
     /// This ensures transcript, history, and engine state are synchronized.
     pub async fn load_session(&mut self, session_id: uuid::Uuid) -> VacResult<()> {
-        let session_path = self.project_root
+        let session_path = self
+            .project_root
             .join(".vac/sessions")
             .join(format!("{}.json", session_id));
 
@@ -913,34 +1029,16 @@ impl VacEngine {
 
     /// Approve a pending tool call for the currently running task.
     pub async fn approve_tool_call(&self, tool_call_id: String) -> VacResult<()> {
-        let mut tx_guard = self.active_approval_tx.lock().await;
-        if let Some(tx) = &*tx_guard {
-            tx.send(vil_swarm::ApprovalResponse {
-                tool_call_id,
-                approved: true,
-                reason: None,
-            })
-            .map_err(|e| VacError::Task(format!("Failed to send approval: {}", e)))?;
-        } else {
-            return Err(VacError::Task("No active task requires approval".to_string()));
-        }
-        Ok(())
+        self.approval_handle().approve(tool_call_id).await
     }
 
     /// Reject a pending tool call for the currently running task.
-    pub async fn reject_tool_call(&self, tool_call_id: String) -> VacResult<()> {
-        let mut tx_guard = self.active_approval_tx.lock().await;
-        if let Some(tx) = &*tx_guard {
-            tx.send(vil_swarm::ApprovalResponse {
-                tool_call_id,
-                approved: false,
-                reason: None,
-            })
-            .map_err(|e| VacError::Task(format!("Failed to send rejection: {}", e)))?;
-        } else {
-            return Err(VacError::Task("No active task requires approval".to_string()));
-        }
-        Ok(())
+    pub async fn reject_tool_call(
+        &self,
+        tool_call_id: String,
+        reason: Option<String>,
+    ) -> VacResult<()> {
+        self.approval_handle().reject(tool_call_id, reason).await
     }
 }
 
@@ -1034,24 +1132,28 @@ mod tests {
     async fn test_engine_injects_privacy_vault() {
         let temp_dir = tempfile::tempdir().unwrap();
         let project_root = temp_dir.path().to_path_buf();
-        
+
         // Write minimal config so init won't fail
-        std::fs::write(project_root.join("vac.toml"), r#"
+        std::fs::write(
+            project_root.join("vac.toml"),
+            r#"
 [llm]
 default_provider = "anthropic"
 [llm.providers.anthropic]
 api_key_env = "ANTHROPIC_API_KEY"
 model = "claude-3-5-sonnet-20241022"
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let mut engine = VacEngine::new(project_root.clone()).await.unwrap();
-        
+
         // Disable things that require real setup
         engine.config.vil_lsp.enable = false;
         engine.config.trace.enable = false;
-        
+
         engine.init().await.unwrap();
-        
+
         let swarm_arc = engine.swarm.clone().expect("Swarm should be initialized");
         let swarm = swarm_arc.read().await;
 
@@ -1061,4 +1163,3 @@ model = "claude-3-5-sonnet-20241022"
         );
     }
 }
-

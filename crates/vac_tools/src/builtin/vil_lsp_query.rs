@@ -35,16 +35,22 @@ struct LspQueryOutput {
 pub struct VilLspQueryTool;
 
 impl VilLspQueryTool {
-    pub fn new() -> Self { Self }
+    pub fn new() -> Self {
+        Self
+    }
 }
 
 impl Default for VilLspQueryTool {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[async_trait]
 impl VilTool for VilLspQueryTool {
-    fn name(&self) -> &str { "vil_lsp_query" }
+    fn name(&self) -> &str {
+        "vil_lsp_query"
+    }
 
     fn description(&self) -> &str {
         "Query vil-lsp for semantic navigation: definition, references, hover, document_symbols, \
@@ -78,16 +84,20 @@ impl VilTool for VilLspQueryTool {
         })
     }
 
-    fn trust_requirement(&self) -> &str { "safe" }
-    fn risk_level(&self) -> &str { "safe" }
+    fn trust_requirement(&self) -> &str {
+        "safe"
+    }
+    fn risk_level(&self) -> &str {
+        "safe"
+    }
 
     async fn execute(
         &self,
         args: serde_json::Value,
         context: &ToolContext,
     ) -> Result<serde_json::Value, ToolError> {
-        let input: LspQueryInput = serde_json::from_value(args)
-            .map_err(|e| ToolError::InvalidArguments(e.to_string()))?;
+        let input: LspQueryInput =
+            serde_json::from_value(args).map_err(|e| ToolError::InvalidArguments(e.to_string()))?;
 
         let abs_file = if std::path::Path::new(&input.file).is_absolute() {
             std::path::PathBuf::from(&input.file)
@@ -98,22 +108,28 @@ impl VilTool for VilLspQueryTool {
         let result = match input.action.as_str() {
             "diagnostics" => {
                 // Read from cache file
-                let cache = context.working_dir.join(".vac/cache/vil_lsp_diagnostics.json");
+                let cache = context
+                    .working_dir
+                    .join(".vac/cache/vil_lsp_diagnostics.json");
                 if cache.exists() {
                     let content = std::fs::read_to_string(&cache)
                         .map_err(|e| ToolError::ExecutionFailed(e.to_string()))?;
                     let snap: serde_json::Value = serde_json::from_str(&content)
                         .map_err(|e| ToolError::ExecutionFailed(e.to_string()))?;
                     // Filter by file if specified
-                    let diags = snap["diagnostics"].as_array()
-                        .map(|arr| arr.iter()
-                            .filter(|d| {
-                                d["file_path"].as_str()
-                                    .map(|p| p.contains(&input.file))
-                                    .unwrap_or(false)
-                            })
-                            .cloned()
-                            .collect::<Vec<_>>())
+                    let diags = snap["diagnostics"]
+                        .as_array()
+                        .map(|arr| {
+                            arr.iter()
+                                .filter(|d| {
+                                    d["file_path"]
+                                        .as_str()
+                                        .map(|p| p.contains(&input.file))
+                                        .unwrap_or(false)
+                                })
+                                .cloned()
+                                .collect::<Vec<_>>()
+                        })
                         .unwrap_or_default();
                     serde_json::json!({ "diagnostics": diags, "total": diags.len() })
                 } else {
@@ -136,7 +152,9 @@ impl VilTool for VilLspQueryTool {
                 })
             }
             other => {
-                return Err(ToolError::InvalidArguments(format!("Unknown action: {other}")));
+                return Err(ToolError::InvalidArguments(format!(
+                    "Unknown action: {other}"
+                )));
             }
         };
 

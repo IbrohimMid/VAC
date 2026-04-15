@@ -27,8 +27,14 @@ pub struct AuthStatus {
 fn config_dir() -> VacResult<PathBuf> {
     dirs_next::config_dir()
         .map(|dir| dir.join(APP_DIR))
-        .or_else(|| std::env::var("HOME").ok().map(|home| PathBuf::from(home).join(".config").join(APP_DIR)))
-        .ok_or_else(|| VacError::Config("Could not determine config directory for VAC auth".to_string()))
+        .or_else(|| {
+            std::env::var("HOME")
+                .ok()
+                .map(|home| PathBuf::from(home).join(".config").join(APP_DIR))
+        })
+        .ok_or_else(|| {
+            VacError::Config("Could not determine config directory for VAC auth".to_string())
+        })
 }
 
 pub fn auth_file_path() -> VacResult<PathBuf> {

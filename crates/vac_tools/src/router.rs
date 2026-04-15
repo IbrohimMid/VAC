@@ -134,6 +134,12 @@ impl VilTrustPolicyAdapter {
     }
 }
 
+impl Default for VilTrustPolicyAdapter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[async_trait]
 impl PolicyEngine for VilTrustPolicyAdapter {
     async fn decide(
@@ -264,7 +270,10 @@ impl ToolRouter {
                     let privacy = context.privacy.read().await;
                     privacy.restore_value(args)
                 };
-                let result = self.registry.execute(tool_name, restored_args, context).await;
+                let result = self
+                    .registry
+                    .execute(tool_name, restored_args, context)
+                    .await;
                 // Substitute secrets in result
                 match result {
                     Ok(v) => {
@@ -288,7 +297,10 @@ impl ToolRouter {
             let privacy = context.privacy.read().await;
             privacy.restore_value(args)
         };
-        let result = self.registry.execute(tool_name, restored_args, context).await;
+        let result = self
+            .registry
+            .execute(tool_name, restored_args, context)
+            .await;
         // Substitute secrets in result
         match result {
             Ok(v) => {
@@ -417,8 +429,12 @@ mod tests {
             _context: &ToolContext,
         ) -> Result<serde_json::Value, ToolError> {
             // Verify that the args have been correctly restored from alias to the actual secret
-            assert_eq!(args, json!("192.168.1.1"), "Args were not restored correctly");
-            
+            assert_eq!(
+                args,
+                json!("192.168.1.1"),
+                "Args were not restored correctly"
+            );
+
             // Return a new secret that should be substituted by the router before returning
             Ok(json!("sk-abcdefghijklmnopqrstuvwxyz1234567890"))
         }
@@ -456,7 +472,7 @@ mod tests {
         let router = ToolRouter::new(registry, policy);
 
         let context = ToolContext::new(std::path::PathBuf::from("."));
-        
+
         let alias = {
             let mut privacy = context.privacy.write().await;
             privacy.substitute("192.168.1.1")
@@ -466,7 +482,10 @@ mod tests {
         assert_ne!(alias, "192.168.1.1");
         assert!(alias.starts_with("SECRET_"));
 
-        let result = router.route("privacy_mock_tool", json!(alias), &context).await.unwrap();
+        let result = router
+            .route("privacy_mock_tool", json!(alias), &context)
+            .await
+            .unwrap();
 
         // Ensure the result has been substituted
         assert_ne!(result, json!("sk-abcdefghijklmnopqrstuvwxyz1234567890"));
@@ -484,7 +503,7 @@ mod tests {
         let router = ToolRouter::new(registry, policy);
 
         let context = ToolContext::new(std::path::PathBuf::from("."));
-        
+
         let alias = {
             let mut privacy = context.privacy.write().await;
             privacy.substitute("192.168.1.1")
@@ -493,7 +512,10 @@ mod tests {
         assert_ne!(alias, "192.168.1.1");
         assert!(alias.starts_with("SECRET_"));
 
-        let result = router.route_approved("privacy_mock_tool", json!(alias), &context).await.unwrap();
+        let result = router
+            .route_approved("privacy_mock_tool", json!(alias), &context)
+            .await
+            .unwrap();
 
         // Ensure the result has been substituted
         assert_ne!(result, json!("sk-abcdefghijklmnopqrstuvwxyz1234567890"));

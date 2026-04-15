@@ -59,7 +59,7 @@ impl VacEnvelope {
     /// Sign the envelope with COSE_Sign1 using Ed25519 via coset library.
     /// Uses proper coset builder pattern for correct COSE structure.
     pub fn sign(&self, keypair: &SigningKeyPair) -> TraceResult<Vec<u8>> {
-        use coset::{iana, CborSerializable, CoseSign1Builder, HeaderBuilder};
+        use coset::{CborSerializable, CoseSign1Builder, HeaderBuilder, iana};
 
         let payload = self.to_cbor()?;
 

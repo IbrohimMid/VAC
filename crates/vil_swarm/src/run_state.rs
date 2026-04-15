@@ -2,8 +2,8 @@
 //! Extracted from orchestrator.rs to formalize the control-plane state contract.
 
 use crate::events::EventCollector;
-use vil_llm::provider::{Message, ToolCall};
 use vac_tools::approvals::PendingApproval;
+use vil_llm::provider::{Message, ToolCall};
 
 /// Consolidated mutable state for a single agent loop execution.
 ///
@@ -99,7 +99,11 @@ impl AgentRunState {
     }
 
     /// Save checkpoint to file.
-    pub fn save_checkpoint(&self, path: &std::path::Path, run_id: Option<uuid::Uuid>) -> Result<(), crate::checkpoint::CheckpointError> {
+    pub fn save_checkpoint(
+        &self,
+        path: &std::path::Path,
+        run_id: Option<uuid::Uuid>,
+    ) -> Result<(), crate::checkpoint::CheckpointError> {
         let metadata = serde_json::json!({
             "stage": self.stage.to_string(),
             "iterations": self.iterations,
@@ -113,20 +117,24 @@ impl AgentRunState {
             "last_execution_status": self.last_execution_status,
             "trim_store": serde_json::to_value(&self.trim_store.0).unwrap_or_default(),
         });
-        let envelope = crate::checkpoint::CheckpointEnvelope::new(run_id, self.messages.clone(), metadata);
+        let envelope =
+            crate::checkpoint::CheckpointEnvelope::new(run_id, self.messages.clone(), metadata);
         crate::checkpoint::save_checkpoint_to_file(path, &envelope)
     }
 
     /// Load checkpoint from file and restore state.
-    pub fn from_checkpoint(path: &std::path::Path) -> Result<Self, crate::checkpoint::CheckpointError> {
+    pub fn from_checkpoint(
+        path: &std::path::Path,
+    ) -> Result<Self, crate::checkpoint::CheckpointError> {
         let envelope = crate::checkpoint::load_checkpoint_from_file(path)?;
         let Some(metadata) = envelope.metadata.as_object() else {
             return Err(crate::checkpoint::CheckpointError::InvalidPayload(
-                serde_json::from_str::<serde_json::Value>("{}").unwrap_err()
+                serde_json::from_str::<serde_json::Value>("{}").unwrap_err(),
             ));
         };
 
-        let stage = metadata.get("stage")
+        let stage = metadata
+            .get("stage")
             .and_then(|v| v.as_str())
             .and_then(|s| match s {
                 "planner" => Some(RunStage::Planner),
@@ -140,13 +148,24 @@ impl AgentRunState {
 
         Ok(Self {
             messages: envelope.messages,
-            trim_boundary: metadata.get("trim_boundary").and_then(|v| v.as_u64()).unwrap_or(0) as usize,
-            total_tokens: metadata.get("total_tokens").and_then(|v| v.as_u64()).unwrap_or(0),
-            iterations: metadata.get("iterations").and_then(|v| v.as_u64()).unwrap_or(0) as usize,
-            modified_files: metadata.get("modified_files")
+            trim_boundary: metadata
+                .get("trim_boundary")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0) as usize,
+            total_tokens: metadata
+                .get("total_tokens")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0),
+            iterations: metadata
+                .get("iterations")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0) as usize,
+            modified_files: metadata
+                .get("modified_files")
                 .and_then(|v| serde_json::from_value(v.clone()).ok())
                 .unwrap_or_default(),
-            created_files: metadata.get("created_files")
+            created_files: metadata
+                .get("created_files")
                 .and_then(|v| serde_json::from_value(v.clone()).ok())
                 .unwrap_or_default(),
             stage,
@@ -164,13 +183,15 @@ impl AgentRunState {
                 .get("approved_tools")
                 .and_then(|v| serde_json::from_value(v.clone()).ok())
                 .unwrap_or_default(),
-            last_execution_status: metadata.get("last_execution_status")
+            last_execution_status: metadata
+                .get("last_execution_status")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string()),
             trim_store: crate::context_budget::TrimStore(
-                metadata.get("trim_store")
+                metadata
+                    .get("trim_store")
                     .and_then(|v| serde_json::from_value(v.clone()).ok())
-                    .unwrap_or_default()
+                    .unwrap_or_default(),
             ),
         })
     }
@@ -198,7 +219,10 @@ mod tests {
     #[test]
     fn new_state_has_sensible_defaults() {
         let state = AgentRunState::new(
-            vec![Message::system("sys".to_string()), Message::user("task".to_string())],
+            vec![
+                Message::system("sys".to_string()),
+                Message::user("task".to_string()),
+            ],
             None,
         );
         assert_eq!(state.trim_boundary, 0);
@@ -241,10 +265,7 @@ mod tests {
 
     #[test]
     fn checkpoint_roundtrip() {
-        let mut state = AgentRunState::new(
-            vec![Message::user("test task".to_string())],
-            None,
-        );
+        let mut state = AgentRunState::new(vec![Message::user("test task".to_string())], None);
         state.iterations = 5;
         state.total_tokens = 1000;
         state.record_modified("src/main.rs".to_string());
@@ -265,15 +286,12 @@ mod tests {
 
     #[test]
     fn checkpoint_roundtrip_with_approved_tools() {
-        let mut state = AgentRunState::new(
-            vec![Message::user("test task".to_string())],
-            None,
-        );
+        let mut state = AgentRunState::new(vec![Message::user("test task".to_string())], None);
         state.iterations = 5;
         state.total_tokens = 1000;
         state.record_modified("src/main.rs".to_string());
         state.stage = RunStage::Coder;
-        
+
         let mut approved = std::collections::HashSet::new();
         approved.insert("bash_command".to_string());
         approved.insert("write_file".to_string());

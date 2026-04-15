@@ -81,9 +81,10 @@ impl ShellApprovalPolicy {
     pub fn is_denied(&self, command: &str) -> Option<String> {
         if let Some(ScopePolicy::Deny) = self.evaluate(command) {
             let scopes = parse_command_scopes(command);
-            let matched = scopes.iter().rev().find(|s| {
-                self.rules.get(*s) == Some(&ScopePolicy::Deny)
-            });
+            let matched = scopes
+                .iter()
+                .rev()
+                .find(|s| self.rules.get(*s) == Some(&ScopePolicy::Deny));
             return Some(format!(
                 "denied by scope `{}`",
                 matched.cloned().unwrap_or_else(|| "bash".to_string())

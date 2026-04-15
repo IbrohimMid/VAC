@@ -32,7 +32,7 @@ impl Default for PluginConfig {
 }
 
 /// VIL System Metrics Plugin.
-/// 
+///
 /// This plugin provides:
 /// - Background metrics collection
 /// - In-memory metrics history

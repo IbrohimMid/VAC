@@ -58,7 +58,9 @@ impl Session {
 
     /// Load a specific session by ID from disk.
     pub fn load(project_root: &Path, id: Uuid) -> crate::error::VacResult<Option<Self>> {
-        let path = project_root.join(".vac/sessions").join(format!("{}.json", id));
+        let path = project_root
+            .join(".vac/sessions")
+            .join(format!("{}.json", id));
         if !path.exists() {
             return Ok(None);
         }

@@ -4,11 +4,14 @@ use anyhow::Result;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tokio::sync::{mpsc, Mutex};
-use vac_core::engine::VacEngine;
+use tokio::sync::{Mutex, mpsc};
 use vac_core::RuntimeUpdate;
+use vac_core::engine::VacEngine;
 
-use super::{run_tui, InputEvent, OutputEvent, ToolCall, FunctionCall, ToolCallResult, ToolCallResultStatus, LoadingOperation};
+use super::{
+    FunctionCall, InputEvent, LoadingOperation, OutputEvent, ToolCall, ToolCallResult,
+    ToolCallResultStatus, run_tui,
+};
 
 /// Shared handle to the active task's update channel for structured approval routing.
 type ActiveUpdateTx = Arc<Mutex<Option<mpsc::UnboundedSender<RuntimeUpdate>>>>;
@@ -36,7 +39,11 @@ async fn handle_runtime_update(
                 .send(InputEvent::StreamAssistantMessage(stream_uuid, chunk))
                 .await;
         }
-        RuntimeUpdate::ToolCall { id, name, arguments } => {
+        RuntimeUpdate::ToolCall {
+            id,
+            name,
+            arguments,
+        } => {
             let tool_call = ToolCall {
                 id: id.clone(),
                 r#type: "function".to_string(),
@@ -47,9 +54,16 @@ async fn handle_runtime_update(
                 metadata: None,
             };
             active_tools.insert(id.clone(), tool_call.clone());
-            let _ = input_tx_inner.send(InputEvent::RunToolCall(tool_call)).await;
+            let _ = input_tx_inner
+                .send(InputEvent::RunToolCall(tool_call))
+                .await;
         }
-        RuntimeUpdate::ToolResult { id, name, content, success } => {
+        RuntimeUpdate::ToolResult {
+            id,
+            name,
+            content,
+            success,
+        } => {
             let status = if success {
                 ToolCallResultStatus::Success
             } else {
@@ -77,17 +91,32 @@ async fn handle_runtime_update(
                 result: result_preview,
                 status,
             };
-            let _ = input_tx_inner.send(InputEvent::ToolResult(tool_result)).await;
+            let _ = input_tx_inner
+                .send(InputEvent::ToolResult(tool_result))
+                .await;
         }
         RuntimeUpdate::Completed(result) => {
-            let _ = input_tx_inner.send(InputEvent::EndLoadingOperation(LoadingOperation::LlmRequest)).await;
+            let _ = input_tx_inner
+                .send(InputEvent::EndLoadingOperation(
+                    LoadingOperation::LlmRequest,
+                ))
+                .await;
             let _ = input_tx_inner.send(InputEvent::TaskCompleted(result)).await;
         }
         RuntimeUpdate::Failed(err) => {
-            let _ = input_tx_inner.send(InputEvent::EndLoadingOperation(LoadingOperation::LlmRequest)).await;
+            let _ = input_tx_inner
+                .send(InputEvent::EndLoadingOperation(
+                    LoadingOperation::LlmRequest,
+                ))
+                .await;
             let _ = input_tx_inner.send(InputEvent::Error(err)).await;
         }
-        RuntimeUpdate::ApprovalRequired { tool_call_id, tool_name, arguments, explanation } => {
+        RuntimeUpdate::ApprovalRequired {
+            tool_call_id,
+            tool_name,
+            arguments,
+            explanation,
+        } => {
             let tool_call = ToolCall {
                 id: tool_call_id,
                 r#type: "function".to_string(),
@@ -97,7 +126,12 @@ async fn handle_runtime_update(
                 },
                 metadata: None,
             };
-            let _ = input_tx_inner.send(InputEvent::ShowConfirmationDialogWithExplanation(tool_call, explanation)).await;
+            let _ = input_tx_inner
+                .send(InputEvent::ShowConfirmationDialogWithExplanation(
+                    tool_call,
+                    explanation,
+                ))
+                .await;
         }
         _ => {}
     }
@@ -107,11 +141,11 @@ async fn handle_runtime_update(
 pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
     // Initialize VacEngine
     let mut engine = VacEngine::new(project_root.clone()).await?;
-    
+
     // Initialize engine (load tools, policies, etc.)
     engine.init().await?;
     let session_id = engine.session_id().await.to_string();
-    
+
     let engine = Arc::new(Mutex::new(engine));
 
     // Create channels
@@ -140,11 +174,16 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                     let active_tx = active_update_tx_clone.clone();
                     let active_approval = active_approval_tx_clone.clone();
 
-                    let _ = input_tx.send(InputEvent::StartLoadingOperation(LoadingOperation::LlmRequest)).await;
+                    let _ = input_tx
+                        .send(InputEvent::StartLoadingOperation(
+                            LoadingOperation::LlmRequest,
+                        ))
+                        .await;
 
                     tokio::spawn(async move {
                         let (update_tx, mut update_rx) = mpsc::unbounded_channel::<RuntimeUpdate>();
-                        let (approval_tx, approval_rx) = mpsc::unbounded_channel::<vil_swarm::ApprovalResponse>();
+                        let (approval_tx, approval_rx) =
+                            mpsc::unbounded_channel::<vil_swarm::ApprovalResponse>();
                         let input_tx_inner = input_tx.clone();
                         let stream_uuid = uuid::Uuid::new_v4();
 
@@ -155,12 +194,20 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                         tokio::spawn(async move {
                             let mut active_tools: HashMap<String, ToolCall> = HashMap::new();
                             while let Some(update) = update_rx.recv().await {
-                                handle_runtime_update(update, &input_tx_inner, stream_uuid, &mut active_tools).await;
+                                handle_runtime_update(
+                                    update,
+                                    &input_tx_inner,
+                                    stream_uuid,
+                                    &mut active_tools,
+                                )
+                                .await;
                             }
                         });
 
                         let mut eng = engine.lock().await;
-                        let _ = eng.run_task_with_approvals(&msg, Some(update_tx), None, Some(approval_rx)).await;
+                        let _ = eng
+                            .run_task_with_approvals(&msg, Some(update_tx), None, Some(approval_rx))
+                            .await;
 
                         // Clear active channels when task completes
                         *active_tx.lock().await = None;
@@ -199,8 +246,12 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                     let msg = format!("Execute command: {}", cmd);
                     let engine = engine_clone.clone();
                     let input_tx = input_tx_clone.clone();
-                    
-                    let _ = input_tx.send(InputEvent::StartLoadingOperation(LoadingOperation::LlmRequest)).await;
+
+                    let _ = input_tx
+                        .send(InputEvent::StartLoadingOperation(
+                            LoadingOperation::LlmRequest,
+                        ))
+                        .await;
 
                     tokio::spawn(async move {
                         let (update_tx, mut update_rx) = mpsc::unbounded_channel::<RuntimeUpdate>();
@@ -210,7 +261,13 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                         tokio::spawn(async move {
                             let mut active_tools: HashMap<String, ToolCall> = HashMap::new();
                             while let Some(update) = update_rx.recv().await {
-                                handle_runtime_update(update, &input_tx_inner, stream_uuid, &mut active_tools).await;
+                                handle_runtime_update(
+                                    update,
+                                    &input_tx_inner,
+                                    stream_uuid,
+                                    &mut active_tools,
+                                )
+                                .await;
                             }
                         });
 
@@ -221,13 +278,18 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                 OutputEvent::ListSessions => {
                     let eng = engine_clone.lock().await;
                     if let Ok(sessions) = eng.list_sessions().await {
-                        let session_infos = sessions.into_iter().map(|s| crate::tui::app::SessionInfo {
-                            id: s.id.to_string(),
-                            title: format!("Session {}", &s.id.to_string()[..8]),
-                            updated_at: s.updated_at.to_rfc3339(),
-                            checkpoints: vec![],
-                        }).collect();
-                        let _ = input_tx_clone.send(InputEvent::SetSessions(session_infos)).await;
+                        let session_infos = sessions
+                            .into_iter()
+                            .map(|s| crate::tui::app::SessionInfo {
+                                id: s.id.to_string(),
+                                title: format!("Session {}", &s.id.to_string()[..8]),
+                                updated_at: s.updated_at.to_rfc3339(),
+                                checkpoints: vec![],
+                            })
+                            .collect();
+                        let _ = input_tx_clone
+                            .send(InputEvent::SetSessions(session_infos))
+                            .await;
                     } else {
                         let _ = input_tx_clone.send(InputEvent::SetSessions(vec![])).await;
                     }
@@ -237,11 +299,13 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                     if let Ok(status) = eng.status().await {
                         let mut current_session = eng.session().write().await;
                         *current_session = vac_core::session::Session::new(status.project_root);
-                        let _ = input_tx_clone.send(InputEvent::SessionRestored {
-                            id: current_session.id.to_string(),
-                            title: "New Session".to_string(),
-                            messages: vec![],
-                        }).await;
+                        let _ = input_tx_clone
+                            .send(InputEvent::SessionRestored {
+                                id: current_session.id.to_string(),
+                                title: "New Session".to_string(),
+                                messages: vec![],
+                            })
+                            .await;
                     }
                 }
                 OutputEvent::ResumeSession(id) => {
@@ -251,9 +315,12 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                         let approval_tx_clone = active_approval_tx_clone.clone();
 
                         tokio::spawn(async move {
-                            let (update_tx, mut update_rx) = tokio::sync::mpsc::unbounded_channel::<RuntimeUpdate>();
-                            let (approval_tx, approval_rx) = tokio::sync::mpsc::unbounded_channel::<vil_swarm::ApprovalResponse>();
-                            
+                            let (update_tx, mut update_rx) =
+                                tokio::sync::mpsc::unbounded_channel::<RuntimeUpdate>();
+                            let (approval_tx, approval_rx) = tokio::sync::mpsc::unbounded_channel::<
+                                vil_swarm::ApprovalResponse,
+                            >();
+
                             {
                                 let mut active_approval = approval_tx_clone.lock().await;
                                 *active_approval = Some(approval_tx);
@@ -265,12 +332,20 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                             tokio::spawn(async move {
                                 let mut active_tools: HashMap<String, ToolCall> = HashMap::new();
                                 while let Some(update) = update_rx.recv().await {
-                                    handle_runtime_update(update, &input_tx_inner, stream_uuid, &mut active_tools).await;
+                                    handle_runtime_update(
+                                        update,
+                                        &input_tx_inner,
+                                        stream_uuid,
+                                        &mut active_tools,
+                                    )
+                                    .await;
                                 }
                             });
 
                             let mut eng = engine.lock().await;
-                            let _ = eng.resume_run_state(uuid, Some(update_tx), None, Some(approval_rx)).await;
+                            let _ = eng
+                                .resume_run_state(uuid, Some(update_tx), None, Some(approval_rx))
+                                .await;
 
                             {
                                 let mut active_approval = approval_tx_clone.lock().await;
@@ -287,7 +362,9 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
     // Handle session restore if requested
     if resume {
         if let Ok(Some(session)) = vac_core::session::Session::load_latest(&project_root) {
-            let _ = output_tx.send(OutputEvent::ResumeSession(session.id.to_string())).await;
+            let _ = output_tx
+                .send(OutputEvent::ResumeSession(session.id.to_string()))
+                .await;
         }
     }
 
@@ -314,8 +391,8 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
         vec![],
         None,
         project_root,
-    ).await?;
-
+    )
+    .await?;
 
     Ok(())
 }

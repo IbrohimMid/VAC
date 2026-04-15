@@ -8,6 +8,7 @@ use crate::error::ToolError;
 use crate::registry::{ToolContext, VilTool};
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct ThinkInput {
     thought_summary: String,
     details: Option<String>,
@@ -32,9 +33,17 @@ impl SequentialThinkTool {
     }
 }
 
+impl Default for SequentialThinkTool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[async_trait]
 impl VilTool for SequentialThinkTool {
-    fn name(&self) -> &str { "sequential_think" }
+    fn name(&self) -> &str {
+        "sequential_think"
+    }
 
     fn description(&self) -> &str {
         "Record a structured reasoning step. Use this before complex actions to decompose problems, plan approaches, and document your thinking. The thought is logged for audit but does not consume significant tokens."
@@ -61,18 +70,25 @@ impl VilTool for SequentialThinkTool {
         })
     }
 
-    fn trust_requirement(&self) -> &str { "safe" }
-    fn risk_level(&self) -> &str { "safe" }
+    fn trust_requirement(&self) -> &str {
+        "safe"
+    }
+    fn risk_level(&self) -> &str {
+        "safe"
+    }
 
     async fn execute(
         &self,
         args: serde_json::Value,
         _context: &ToolContext,
     ) -> Result<serde_json::Value, ToolError> {
-        let input: ThinkInput = serde_json::from_value(args)
-            .map_err(|e| ToolError::InvalidArguments(e.to_string()))?;
+        let input: ThinkInput =
+            serde_json::from_value(args).map_err(|e| ToolError::InvalidArguments(e.to_string()))?;
 
-        let thought_id = self.thought_counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+        let thought_id = self
+            .thought_counter
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+            + 1;
 
         debug!(
             thought_id = thought_id,

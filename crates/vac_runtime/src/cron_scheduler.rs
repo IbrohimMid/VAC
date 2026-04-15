@@ -1,12 +1,12 @@
 //! Cron scheduler — schedules jobs based on cron expressions.
 
-use std::str::FromStr;
-use std::sync::Arc;
-use cron::Schedule;
-use serde::{Deserialize, Serialize};
-use tracing::{info, warn};
 use crate::jobs::{Job, JobKind, JobTrigger};
 use crate::queue::TaskQueue;
+use cron::Schedule;
+use serde::{Deserialize, Serialize};
+use std::str::FromStr;
+use std::sync::Arc;
+use tracing::{info, warn};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CronEntry {
@@ -45,8 +45,10 @@ impl CronScheduler {
                     };
                     let delay = (next - now).to_std().unwrap_or_default();
                     tokio::time::sleep(delay).await;
-                    let job = Job::new(JobKind::RunTask { description: task.clone() })
-                        .with_trigger(JobTrigger::Cron(expr.clone()));
+                    let job = Job::new(JobKind::RunTask {
+                        description: task.clone(),
+                    })
+                    .with_trigger(JobTrigger::Cron(expr.clone()));
                     info!(task = %task, "Cron job fired");
                     queue.enqueue(job).await;
                 }

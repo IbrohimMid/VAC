@@ -68,22 +68,25 @@ impl ShmArena {
 
     pub async fn allocate(&self, size: usize) -> ContextResult<Allocation> {
         let mut free_list = self.free_list.write().await;
-        
-        if let Some(pos) = free_list.iter().position(|&(_, free_size)| free_size >= size) {
+
+        if let Some(pos) = free_list
+            .iter()
+            .position(|&(_, free_size)| free_size >= size)
+        {
             let (offset, _) = free_list[pos];
             let allocation = Allocation { offset, size };
-            
+
             free_list[pos] = (offset + size, free_list[pos].1 - size);
             if free_list[pos].1 == 0 {
                 free_list.remove(pos);
             }
-            
+
             let mut allocs = self.allocations.write().await;
             let mut next_id = self.next_id.write().await;
             let id = *next_id;
             *next_id += 1;
             allocs.insert(id, allocation.clone());
-            
+
             Ok(allocation)
         } else {
             Err(ContextError::ShmFull)
@@ -92,25 +95,25 @@ impl ShmArena {
 
     pub async fn allocate_and_write(&self, data: &[u8]) -> ContextResult<Allocation> {
         let allocation = self.allocate(data.len()).await?;
-        
+
         let mut mmap = self.mmap.write().await;
         mmap[allocation.offset..allocation.offset + data.len()].copy_from_slice(data);
-        
+
         Ok(allocation)
     }
 
     pub async fn free(&self, offset: usize) -> ContextResult<()> {
         let mut allocs = self.allocations.write().await;
         let mut free_list = self.free_list.write().await;
-        
+
         let allocation = allocs
             .iter()
             .find(|(_, a)| a.offset == offset)
             .map(|(_, a)| a.clone())
             .ok_or_else(|| ContextError::OutOfBounds("Invalid allocation offset".to_string()))?;
-        
+
         allocs.retain(|_, a| a.offset != offset);
-        
+
         let mut inserted = false;
         for (i, (free_offset, _)) in free_list.iter_mut().enumerate() {
             if *free_offset > allocation.offset {
@@ -122,11 +125,11 @@ impl ShmArena {
         if !inserted {
             free_list.push((allocation.offset, allocation.size));
         }
-        
+
         free_list.sort_by_key(|(o, _)| *o);
-        
+
         self.coalesce_free_list().await;
-        
+
         Ok(())
     }
 
@@ -135,12 +138,12 @@ impl ShmArena {
         if free_list.len() < 2 {
             return;
         }
-        
+
         let mut i = 0;
         while i < free_list.len() - 1 {
             let (off1, size1) = free_list[i];
             let (off2, size2) = free_list[i + 1];
-            
+
             if off1 + size1 == off2 {
                 free_list[i] = (off1, size1 + size2);
                 free_list.remove(i + 1);
@@ -179,8 +182,7 @@ impl ShmArena {
 
     pub async fn read_string(&self, offset: usize, len: usize) -> ContextResult<String> {
         let bytes = self.read(offset, len).await?;
-        String::from_utf8(bytes)
-            .map_err(|e| ContextError::Retrieval(e.to_string()))
+        String::from_utf8(bytes).map_err(|e| ContextError::Retrieval(e.to_string()))
     }
 
     pub fn as_ptr(&self) -> *const u8 {

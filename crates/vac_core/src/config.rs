@@ -336,8 +336,12 @@ pub struct VilLspConfig {
 fn default_vil_lsp_binary() -> std::path::PathBuf {
     std::path::PathBuf::from("vil-lsp")
 }
-fn default_lsp_timeout_ms() -> u64 { 3000 }
-fn default_max_prompt_items() -> usize { 8 }
+fn default_lsp_timeout_ms() -> u64 {
+    3000
+}
+fn default_max_prompt_items() -> usize {
+    8
+}
 
 impl Default for VilLspConfig {
     fn default() -> Self {
@@ -374,7 +378,11 @@ impl Default for RulebookConfig {
             .unwrap_or_default();
         Self {
             enable: true,
-            paths: if global_path.as_os_str().is_empty() { vec![] } else { vec![global_path] },
+            paths: if global_path.as_os_str().is_empty() {
+                vec![]
+            } else {
+                vec![global_path]
+            },
             fail_on_invalid: false,
         }
     }
@@ -392,8 +400,12 @@ pub struct RuntimeConfig {
     pub max_concurrent_jobs: usize,
 }
 
-fn default_operating_mode() -> String { "monitor-only".to_string() }
-fn default_max_concurrent_jobs() -> usize { 2 }
+fn default_operating_mode() -> String {
+    "monitor-only".to_string()
+}
+fn default_max_concurrent_jobs() -> usize {
+    2
+}
 
 impl Default for RuntimeConfig {
     fn default() -> Self {
@@ -419,9 +431,15 @@ pub struct AutopilotConfig {
     pub mode: String,
 }
 
-fn default_poll_interval() -> u64 { 30 }
-fn default_max_concurrent() -> usize { 1 }
-fn default_autopilot_mode() -> String { "monitor".to_string() }
+fn default_poll_interval() -> u64 {
+    30
+}
+fn default_max_concurrent() -> usize {
+    1
+}
+fn default_autopilot_mode() -> String {
+    "monitor".to_string()
+}
 
 impl Default for AutopilotConfig {
     fn default() -> Self {

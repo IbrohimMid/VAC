@@ -29,7 +29,9 @@ pub async fn execute(
         .ok_or_else(|| anyhow::anyhow!("No session found. Run a task first."))?;
 
     // Load trace records if available
-    let trace_path = project_root.join(".vac/traces").join(format!("{}.json", session.id));
+    let trace_path = project_root
+        .join(".vac/traces")
+        .join(format!("{}.json", session.id));
     let records = if trace_path.exists() {
         let content = std::fs::read_to_string(&trace_path)?;
         serde_json::from_str::<Vec<vac_trace::recorder::TraceRecord>>(&content)?
@@ -53,7 +55,8 @@ pub async fn execute(
                 &output_path,
                 sign,
                 None,
-            ).map_err(|e| anyhow::anyhow!("Failed to export VAC CBOR: {}", e))?;
+            )
+            .map_err(|e| anyhow::anyhow!("Failed to export VAC CBOR: {}", e))?;
             println!("   ✓ Exported as VAC CBOR");
         }
         "opencode-json" => {

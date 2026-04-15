@@ -10,9 +10,8 @@
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
-    use vil_swarm::run_state::{AgentRunState, RunStage};
     use vil_llm::provider::Message;
+    use vil_swarm::run_state::{AgentRunState, RunStage};
 
     #[test]
     fn golden_flow_checkpoint_resume() {
@@ -34,8 +33,12 @@ mod tests {
         state.stage = RunStage::Coder;
 
         // Add some conversation history
-        state.messages.push(Message::assistant("I'll create the project structure".to_string()));
-        state.messages.push(Message::user("Add error handling".to_string()));
+        state.messages.push(Message::assistant(
+            "I'll create the project structure".to_string(),
+        ));
+        state
+            .messages
+            .push(Message::user("Add error handling".to_string()));
 
         // Save checkpoint
         let checkpoint_path = std::env::temp_dir().join("golden_flow_checkpoint.json");

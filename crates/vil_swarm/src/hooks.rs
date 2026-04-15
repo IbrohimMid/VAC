@@ -45,10 +45,7 @@ impl AgentHook for NoOpHook {
 }
 
 /// Run before_tool_call through an optional hook. Returns Allow if no hook.
-pub fn run_before_hook(
-    hook: Option<&dyn AgentHook>,
-    call: &ToolCall,
-) -> HookDecision {
+pub fn run_before_hook(hook: Option<&dyn AgentHook>, call: &ToolCall) -> HookDecision {
     match hook {
         Some(h) => h.before_tool_call(&ToolCallCtx {
             tool_name: &call.name,
@@ -74,20 +71,32 @@ mod tests {
 
     #[test]
     fn noop_hook_allows_all() {
-        let call = ToolCall { id: "1".into(), name: "bash".into(), arguments: json!({}) };
+        let call = ToolCall {
+            id: "1".into(),
+            name: "bash".into(),
+            arguments: json!({}),
+        };
         assert_eq!(run_before_hook(Some(&NoOpHook), &call), HookDecision::Allow);
     }
 
     #[test]
     fn deny_hook_blocks_call() {
-        let call = ToolCall { id: "1".into(), name: "bash".into(), arguments: json!({}) };
+        let call = ToolCall {
+            id: "1".into(),
+            name: "bash".into(),
+            arguments: json!({}),
+        };
         let result = run_before_hook(Some(&DenyAllHook), &call);
         assert!(matches!(result, HookDecision::Deny(_)));
     }
 
     #[test]
     fn no_hook_installed_allows() {
-        let call = ToolCall { id: "1".into(), name: "bash".into(), arguments: json!({}) };
+        let call = ToolCall {
+            id: "1".into(),
+            name: "bash".into(),
+            arguments: json!({}),
+        };
         assert_eq!(run_before_hook(None, &call), HookDecision::Allow);
     }
 }

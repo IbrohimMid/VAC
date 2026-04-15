@@ -20,8 +20,12 @@ struct DiagInput {
     max_results: usize,
 }
 
-fn default_severity() -> String { "all".to_string() }
-fn default_max() -> usize { 20 }
+fn default_severity() -> String {
+    "all".to_string()
+}
+fn default_max() -> usize {
+    20
+}
 
 #[derive(Debug, Serialize)]
 struct DiagOutput {
@@ -43,16 +47,22 @@ struct DiagItem {
 pub struct VilDiagnosticsTool;
 
 impl VilDiagnosticsTool {
-    pub fn new() -> Self { Self }
+    pub fn new() -> Self {
+        Self
+    }
 }
 
 impl Default for VilDiagnosticsTool {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[async_trait]
 impl VilTool for VilDiagnosticsTool {
-    fn name(&self) -> &str { "vil_diagnostics" }
+    fn name(&self) -> &str {
+        "vil_diagnostics"
+    }
 
     fn description(&self) -> &str {
         "Read latest vil-lsp diagnostics collected by VAC. Use this before editing VIL code \
@@ -74,18 +84,24 @@ impl VilTool for VilDiagnosticsTool {
         })
     }
 
-    fn trust_requirement(&self) -> &str { "safe" }
-    fn risk_level(&self) -> &str { "safe" }
+    fn trust_requirement(&self) -> &str {
+        "safe"
+    }
+    fn risk_level(&self) -> &str {
+        "safe"
+    }
 
     async fn execute(
         &self,
         args: serde_json::Value,
         context: &ToolContext,
     ) -> Result<serde_json::Value, ToolError> {
-        let input: DiagInput = serde_json::from_value(args)
-            .map_err(|e| ToolError::InvalidArguments(e.to_string()))?;
+        let input: DiagInput =
+            serde_json::from_value(args).map_err(|e| ToolError::InvalidArguments(e.to_string()))?;
 
-        let cache_path = context.working_dir.join(".vac/cache/vil_lsp_diagnostics.json");
+        let cache_path = context
+            .working_dir
+            .join(".vac/cache/vil_lsp_diagnostics.json");
 
         if !cache_path.exists() {
             return Ok(serde_json::to_value(DiagOutput {
@@ -111,7 +127,9 @@ impl VilTool for VilDiagnosticsTool {
             .iter()
             .filter_map(|d| {
                 let file = d["file_path"].as_str()?.to_string();
-                let severity = format!("{:?}", d["severity"]).to_lowercase().replace('"', "");
+                let severity = format!("{:?}", d["severity"])
+                    .to_lowercase()
+                    .replace('"', "");
                 let message = d["message"].as_str()?.to_string();
                 let line = d["range"]["start_line"].as_u64().unwrap_or(0) as u32;
                 let code = d["code"].as_str().map(String::from);
@@ -130,7 +148,13 @@ impl VilTool for VilDiagnosticsTool {
                     _ => {}
                 }
 
-                Some(DiagItem { file, severity, message, line, code })
+                Some(DiagItem {
+                    file,
+                    severity,
+                    message,
+                    line,
+                    code,
+                })
             })
             .collect();
 

@@ -37,9 +37,13 @@ impl VilLspClient {
             .spawn()
             .map_err(|e| anyhow::anyhow!("Failed to spawn vil-lsp at {}: {e}", binary.display()))?;
 
-        let stdin = child.stdin.take()
+        let stdin = child
+            .stdin
+            .take()
             .ok_or_else(|| anyhow::anyhow!("vil-lsp process has no stdin — check binary path"))?;
-        let stdout = child.stdout.take()
+        let stdout = child
+            .stdout
+            .take()
             .ok_or_else(|| anyhow::anyhow!("vil-lsp process has no stdout — check binary path"))?;
 
         let stdin = Arc::new(Mutex::new(stdin));
@@ -85,7 +89,9 @@ impl VilLspClient {
                 };
 
                 // Only care about publishDiagnostics notifications
-                if msg.get("method").and_then(|m| m.as_str()) == Some("textDocument/publishDiagnostics") {
+                if msg.get("method").and_then(|m| m.as_str())
+                    == Some("textDocument/publishDiagnostics")
+                {
                     if let Some(params) = msg.get("params") {
                         if let Some((uri, raw_diags)) = parse_publish_diagnostics(params) {
                             let path = uri_to_path(&uri);
@@ -101,13 +107,22 @@ impl VilLspClient {
             }
         });
 
-        let client = Self { stdin, _child: child, next_id, diagnostics_tx: diag_tx };
+        let client = Self {
+            stdin,
+            _child: child,
+            next_id,
+            diagnostics_tx: diag_tx,
+        };
 
         // Initialize
         let root_uri = path_to_uri(root);
         let id = client.next_id.fetch_add(1, Ordering::SeqCst);
-        client.send_request(&initialize_request(id, &root_uri)).await?;
-        client.send_notification(&initialized_notification()).await?;
+        client
+            .send_request(&initialize_request(id, &root_uri))
+            .await?;
+        client
+            .send_notification(&initialized_notification())
+            .await?;
         info!(root = %root.display(), "vil-lsp initialized");
 
         Ok(client)
@@ -115,13 +130,15 @@ impl VilLspClient {
 
     pub async fn open_file(&self, path: &Path, text: String) -> anyhow::Result<()> {
         let uri = path_to_uri(path);
-        self.send_notification(&did_open_notification(&uri, &text)).await
+        self.send_notification(&did_open_notification(&uri, &text))
+            .await
     }
 
     pub async fn change_file(&self, path: &Path, text: String) -> anyhow::Result<()> {
         let uri = path_to_uri(path);
         let version = self.next_id.fetch_add(1, Ordering::SeqCst) as i32;
-        self.send_notification(&did_change_notification(&uri, &text, version)).await
+        self.send_notification(&did_change_notification(&uri, &text, version))
+            .await
     }
 
     /// Send a request and wait for the response (with timeout).
@@ -162,7 +179,8 @@ impl VilLspClient {
 
 fn parse_diagnostic(d: &serde_json::Value, file_path: &std::path::Path) -> Option<LspDiagnostic> {
     let message = d.get("message")?.as_str()?.to_string();
-    let severity = d.get("severity")
+    let severity = d
+        .get("severity")
         .and_then(|s| s.as_u64())
         .map(|n| LspSeverity::from_lsp_code(n as u32))
         .unwrap_or(LspSeverity::Warning);

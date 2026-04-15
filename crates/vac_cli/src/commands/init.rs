@@ -25,6 +25,7 @@ pub async fn execute(project_root: PathBuf, force: bool) -> anyhow::Result<()> {
     std::fs::create_dir_all(vac_dir.join("traces"))?;
     std::fs::create_dir_all(vac_dir.join("cache"))?;
     std::fs::create_dir_all(vac_dir.join("skills"))?;
+    std::fs::create_dir_all(vac_dir.join("approvals"))?;
 
     // Create default config if not exists
     let config_path = vac_dir.join("config.toml");

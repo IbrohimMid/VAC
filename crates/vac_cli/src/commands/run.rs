@@ -21,9 +21,7 @@ pub async fn execute(
             deny: std::collections::HashMap::new(),
         };
 
-        let adapter = std::sync::Arc::new(
-            vac_tools::router::DefaultPolicyEngine::new(config_stub)
-        );
+        let adapter = std::sync::Arc::new(vac_tools::router::DefaultPolicyEngine::new(config_stub));
         engine.init_with_policy(Some(adapter)).await?;
     } else {
         engine.init_with_policy(None).await?;
@@ -36,7 +34,7 @@ pub async fn execute(
         _ => Priority::Normal,
     };
 
-    let profile_name = ProfileName::from_str(&profile);
+    let profile_name = ProfileName::parse(&profile);
     let profile_override = ProfileOverride::resolve(&profile_name);
 
     println!("🤖 Running task: {}", task_description);
@@ -57,23 +55,30 @@ pub async fn execute(
         println!("   Targets: {}", targets.join(", "));
     }
 
-    let (update_tx, mut update_rx) = tokio::sync::mpsc::unbounded_channel::<vac_core::engine::RuntimeUpdate>();
-    let (approval_tx, approval_rx) = tokio::sync::mpsc::unbounded_channel::<vil_swarm::ApprovalResponse>();
+    let (update_tx, mut update_rx) =
+        tokio::sync::mpsc::unbounded_channel::<vac_core::engine::RuntimeUpdate>();
+    let approvals = engine.approval_handle();
 
     // If auto-approve is enabled, tools shouldn't require approval anyway (policy="allow").
     tokio::spawn(async move {
         while let Some(update) = update_rx.recv().await {
             match update {
                 vac_core::engine::RuntimeUpdate::Status(msg) => println!("⏳ {}", msg),
-                vac_core::engine::RuntimeUpdate::ToolCall { name, .. } => println!("🛠️  Calling: {}", name),
-                vac_core::engine::RuntimeUpdate::ApprovalRequired { tool_call_id, tool_name, .. } => {
+                vac_core::engine::RuntimeUpdate::ToolCall { name, .. } => {
+                    println!("🛠️  Calling: {}", name)
+                }
+                vac_core::engine::RuntimeUpdate::ApprovalRequired {
+                    tool_call_id,
+                    tool_name,
+                    ..
+                } => {
                     if approve {
                         println!("\n[!] Unexpected approval required for: {}", tool_name);
                         continue;
                     }
-                    
+
                     println!("\n[!] Tool requires approval: {}", tool_name);
-                    
+
                     // Prompt user for approval interactively
                     use std::io::Write;
                     print!("Approve? [Y/n]: ");
@@ -82,18 +87,17 @@ pub async fn execute(
                     if std::io::stdin().read_line(&mut input).is_ok() {
                         let input = input.trim().to_lowercase();
                         let approved = input.is_empty() || input == "y" || input == "yes";
-                        let _ = approval_tx.send(vil_swarm::ApprovalResponse {
-                            tool_call_id,
-                            approved,
-                            reason: if approved { None } else { Some("Rejected by user via CLI".to_string()) },
-                        });
+                        if approved {
+                            let _ = approvals.approve(tool_call_id).await;
+                        } else {
+                            let _ = approvals
+                                .reject(tool_call_id, Some("Rejected by user via CLI".to_string()))
+                                .await;
+                        }
                     } else {
-                        // If reading fails, reject by default
-                        let _ = approval_tx.send(vil_swarm::ApprovalResponse {
-                            tool_call_id,
-                            approved: false,
-                            reason: Some("Input read error".to_string()),
-                        });
+                        let _ = approvals
+                            .reject(tool_call_id, Some("Input read error".to_string()))
+                            .await;
                     }
                 }
                 _ => {}
@@ -101,7 +105,9 @@ pub async fn execute(
         }
     });
 
-    let result = engine.run_task_with_approvals(&task_description, Some(update_tx), None, Some(approval_rx)).await?;
+    let result = engine
+        .run_task_with_approvals(&task_description, Some(update_tx), None, None)
+        .await?;
 
     println!("\n{}", "=".repeat(60));
     match &result.status {
@@ -114,16 +120,23 @@ pub async fn execute(
 
     if !result.modified_files.is_empty() {
         println!("\n📝 Modified files:");
-        for file in &result.modified_files { println!("   • {}", file); }
+        for file in &result.modified_files {
+            println!("   • {}", file);
+        }
     }
     if !result.created_files.is_empty() {
         println!("\n✨ Created files:");
-        for file in &result.created_files { println!("   • {}", file); }
+        for file in &result.created_files {
+            println!("   • {}", file);
+        }
     }
     if let Some(score) = result.validation_score {
         println!("\n🎯 IR Validation Score: {:.1}%", score * 100.0);
     }
-    println!("\n⏱️  Elapsed: {}ms | Tokens: {}", result.elapsed_ms, result.total_tokens_used);
+    println!(
+        "\n⏱️  Elapsed: {}ms | Tokens: {}",
+        result.elapsed_ms, result.total_tokens_used
+    );
 
     Ok(())
 }

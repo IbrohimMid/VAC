@@ -65,7 +65,11 @@ analyze_after_edit = true
 #[test]
 fn init_config_template_parses_to_vac_config() {
     let result = toml::from_str::<VacConfig>(INIT_CONFIG_TEMPLATE);
-    assert!(result.is_ok(), "init config template must parse: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "init config template must parse: {:?}",
+        result.err()
+    );
 }
 
 #[test]
@@ -74,7 +78,11 @@ fn default_vac_config_is_valid() {
     // Serialize and re-parse to ensure round-trip
     let serialized = toml::to_string(&config).expect("VacConfig must serialize");
     let reparsed = toml::from_str::<VacConfig>(&serialized);
-    assert!(reparsed.is_ok(), "VacConfig round-trip must succeed: {:?}", reparsed.err());
+    assert!(
+        reparsed.is_ok(),
+        "VacConfig round-trip must succeed: {:?}",
+        reparsed.err()
+    );
 }
 
 #[test]
@@ -97,6 +105,9 @@ fn rulebook_config_defaults_are_sane() {
 #[test]
 fn runtime_config_defaults_are_sane() {
     let config = VacConfig::default();
-    assert!(!config.runtime.enable, "runtime should be disabled by default");
+    assert!(
+        !config.runtime.enable,
+        "runtime should be disabled by default"
+    );
     assert_eq!(config.runtime.operating_mode, "monitor-only");
 }

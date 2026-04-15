@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -9,21 +10,16 @@ pub enum JobKind {
     DiagnosticSweep,
     RulebookComplianceCheck,
     PatchProposal { files: Vec<String> },
-    ManualApproval { tool_name: String },
+    ToolCall { tool_name: String, arguments: Value },
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum JobTrigger {
+    #[default]
     OneShot,
     Cron(String),
     FileWatch(String),
-}
-
-impl Default for JobTrigger {
-    fn default() -> Self {
-        Self::OneShot
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -78,7 +74,7 @@ impl Job {
             JobKind::DiagnosticSweep => "DiagnosticSweep".to_string(),
             JobKind::RulebookComplianceCheck => "RulebookComplianceCheck".to_string(),
             JobKind::PatchProposal { .. } => "PatchProposal".to_string(),
-            JobKind::ManualApproval { tool_name } => format!("ManualApproval: {}", tool_name),
+            JobKind::ToolCall { tool_name, .. } => format!("ToolCall: {}", tool_name),
         }
     }
 }

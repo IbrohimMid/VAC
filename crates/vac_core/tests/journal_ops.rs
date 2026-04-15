@@ -2,7 +2,7 @@
 
 use tempfile::tempdir;
 use uuid::Uuid;
-use vac_tools::journal::{snapshot_before_write, list_snapshots, restore_snapshot};
+use vac_tools::journal::{list_snapshots, restore_snapshot, snapshot_before_write};
 
 #[test]
 fn snapshot_new_file_returns_none() {
@@ -35,7 +35,11 @@ fn list_snapshots_returns_original_paths() {
     snapshot_before_write(dir.path(), session_id, "lib.rs");
 
     let snapshots = list_snapshots(dir.path(), session_id);
-    assert!(snapshots.contains(&"lib.rs".to_string()), "should list lib.rs: {:?}", snapshots);
+    assert!(
+        snapshots.contains(&"lib.rs".to_string()),
+        "should list lib.rs: {:?}",
+        snapshots
+    );
 }
 
 #[test]
@@ -65,5 +69,8 @@ fn restore_nonexistent_snapshot_returns_error() {
     let dir = tempdir().unwrap();
     let session_id = Uuid::new_v4();
     let result = restore_snapshot(dir.path(), session_id, "ghost.rs");
-    assert!(result.is_err(), "restoring non-existent snapshot should fail");
+    assert!(
+        result.is_err(),
+        "restoring non-existent snapshot should fail"
+    );
 }

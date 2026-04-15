@@ -44,7 +44,9 @@ pub fn snapshot_before_write(
 
 /// List all snapshots for a session.
 pub fn list_snapshots(working_dir: &Path, session_id: Uuid) -> Vec<String> {
-    let backup_dir = working_dir.join(".vac/backups").join(session_id.to_string());
+    let backup_dir = working_dir
+        .join(".vac/backups")
+        .join(session_id.to_string());
     if !backup_dir.exists() {
         return vec![];
     }
@@ -52,11 +54,7 @@ pub fn list_snapshots(working_dir: &Path, session_id: Uuid) -> Vec<String> {
         .map(|d| {
             d.flatten()
                 .filter_map(|e| e.file_name().into_string().ok())
-                .map(|name| {
-                    name.trim_end_matches(".bak")
-                        .replace("__", "/")
-                        .to_string()
-                })
+                .map(|name| name.trim_end_matches(".bak").replace("__", "/").to_string())
                 .collect()
         })
         .unwrap_or_default()
@@ -68,12 +66,16 @@ pub fn restore_snapshot(
     session_id: Uuid,
     file_path: &str,
 ) -> Result<(), String> {
-    let backup_dir = working_dir.join(".vac/backups").join(session_id.to_string());
+    let backup_dir = working_dir
+        .join(".vac/backups")
+        .join(session_id.to_string());
     let safe_name = format!("{}.bak", file_path.replace(['/', '\\'], "__"));
     let snapshot_path = backup_dir.join(&safe_name);
 
     if !snapshot_path.exists() {
-        return Err(format!("No snapshot found for '{file_path}' in session {session_id}"));
+        return Err(format!(
+            "No snapshot found for '{file_path}' in session {session_id}"
+        ));
     }
 
     let abs_path = if Path::new(file_path).is_absolute() {

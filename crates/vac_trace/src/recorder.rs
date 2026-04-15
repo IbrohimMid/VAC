@@ -185,18 +185,34 @@ impl TraceRecorder {
     }
 
     pub fn record_sandbox_created(&mut self, id: &str, mode: &str) {
-        self.record(RecordType::SandboxCreated, None, serde_json::json!({ "id": id, "mode": mode }));
+        self.record(
+            RecordType::SandboxCreated,
+            None,
+            serde_json::json!({ "id": id, "mode": mode }),
+        );
     }
 
     pub fn record_sandbox_destroyed(&mut self, id: &str) {
-        self.record(RecordType::SandboxDestroyed, None, serde_json::json!({ "id": id }));
+        self.record(
+            RecordType::SandboxDestroyed,
+            None,
+            serde_json::json!({ "id": id }),
+        );
     }
 
     pub fn record_patch_proposed(&mut self, id: &str, files_count: usize) {
-        self.record(RecordType::PatchProposed, None, serde_json::json!({ "sandbox_id": id, "files": files_count }));
+        self.record(
+            RecordType::PatchProposed,
+            None,
+            serde_json::json!({ "sandbox_id": id, "files": files_count }),
+        );
     }
 
     pub fn record_patch_merged(&mut self, id: &str) {
-        self.record(RecordType::PatchMerged, None, serde_json::json!({ "sandbox_id": id }));
+        self.record(
+            RecordType::PatchMerged,
+            None,
+            serde_json::json!({ "sandbox_id": id }),
+        );
     }
 }

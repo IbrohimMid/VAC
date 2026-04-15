@@ -33,14 +33,11 @@ pub trait VilTool: Send + Sync {
     ) -> Result<serde_json::Value, ToolError>;
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum AgentZone {
+    #[default]
     ParentAgent,
     SandboxedSubagent,
-}
-
-impl Default for AgentZone {
-    fn default() -> Self { Self::ParentAgent }
 }
 
 #[derive(Clone)]

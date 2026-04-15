@@ -28,7 +28,9 @@ pub enum RuleScope {
 impl RuleScope {
     pub fn matches_archetype(&self, archetype: Option<&str>) -> bool {
         match self {
-            Self::Archetype(a) => archetype.map(|arch| arch.contains(a.as_str())).unwrap_or(false),
+            Self::Archetype(a) => archetype
+                .map(|arch| arch.contains(a.as_str()))
+                .unwrap_or(false),
             _ => true, // non-archetype scopes always match
         }
     }
@@ -47,7 +49,9 @@ pub struct RuleConstraint {
     pub scope: Option<RuleScope>,
 }
 
-fn default_severity() -> String { "warn".to_string() }
+fn default_severity() -> String {
+    "warn".to_string()
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Rulebook {
@@ -72,7 +76,8 @@ pub struct Rulebook {
 impl Rulebook {
     /// Collect all constraints from all sections.
     pub fn all_constraints(&self) -> Vec<&RuleConstraint> {
-        self.constraints.iter()
+        self.constraints
+            .iter()
             .chain(self.conventions.iter())
             .chain(self.acceptance_gates.iter())
             .chain(self.policies.iter())
@@ -125,12 +130,19 @@ impl RulebookLoader {
     }
 
     fn load_dir(dir: &Path) -> Vec<Rulebook> {
-        if !dir.is_dir() { return vec![]; }
-        let Ok(entries) = std::fs::read_dir(dir) else { return vec![]; };
-        entries.flatten()
+        if !dir.is_dir() {
+            return vec![];
+        }
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return vec![];
+        };
+        entries
+            .flatten()
             .filter(|e| e.path().extension().map(|x| x == "toml").unwrap_or(false))
             .filter_map(|e| {
-                let id = e.path().file_stem()
+                let id = e
+                    .path()
+                    .file_stem()
                     .and_then(|s| s.to_str())
                     .unwrap_or("unknown")
                     .to_string();
@@ -179,9 +191,16 @@ impl RulebookMerger {
 
 /// VIL core rule ids that must never be overridden by rulebooks.
 const VIL_CORE_RULE_IDS: &[&str] = &[
-    "vil-shm-slice", "vil-service-ctx", "vil-response", "vil-handler",
-    "vil-state-macro", "vil-event-macro", "vil-fault-macro", "vil-decision-macro",
-    "vil-no-json-extractor", "vil-no-extension-extractor",
+    "vil-shm-slice",
+    "vil-service-ctx",
+    "vil-response",
+    "vil-handler",
+    "vil-state-macro",
+    "vil-event-macro",
+    "vil-fault-macro",
+    "vil-decision-macro",
+    "vil-no-json-extractor",
+    "vil-no-extension-extractor",
 ];
 
 #[derive(Debug)]
@@ -191,7 +210,9 @@ pub struct RulebookValidationResult {
 }
 
 impl RulebookValidationResult {
-    pub fn is_valid(&self) -> bool { self.errors.is_empty() }
+    pub fn is_valid(&self) -> bool {
+        self.errors.is_empty()
+    }
 }
 
 pub fn validate_rulebooks(books: &[Rulebook]) -> RulebookValidationResult {
@@ -233,9 +254,11 @@ pub struct ResolvedRuleContext {
 impl ResolvedRuleContext {
     pub fn build(books: Vec<Rulebook>, archetype: Option<&str>) -> Self {
         let all = RulebookMerger::merge(books);
-        let constraints = all.into_iter()
+        let constraints = all
+            .into_iter()
             .filter(|c| {
-                c.scope.as_ref()
+                c.scope
+                    .as_ref()
                     .map(|s| s.matches_archetype(archetype))
                     .unwrap_or(true)
             })
@@ -248,14 +271,20 @@ impl ResolvedRuleContext {
     }
 
     pub fn to_prompt_overlay(&self) -> Option<String> {
-        if self.constraints.is_empty() { return None; }
+        if self.constraints.is_empty() {
+            return None;
+        }
 
         let mut lines = vec![
             "\n---\n**Team/Repo Rules (overlay — VIL semantics take precedence):**".to_string(),
         ];
 
         for c in &self.constraints {
-            let marker = if c.severity == "block" { "🔴" } else { "⚠️" };
+            let marker = if c.severity == "block" {
+                "🔴"
+            } else {
+                "⚠️"
+            };
             lines.push(format!("{} [{}] {}", marker, c.id, c.description));
         }
 
@@ -263,7 +292,10 @@ impl ResolvedRuleContext {
     }
 
     pub fn blocking_constraints(&self) -> Vec<&RuleConstraint> {
-        self.constraints.iter().filter(|c| c.severity == "block").collect()
+        self.constraints
+            .iter()
+            .filter(|c| c.severity == "block")
+            .collect()
     }
 }
 
@@ -271,9 +303,9 @@ impl ResolvedRuleContext {
 
 fn expand_tilde(path: &Path) -> PathBuf {
     let s = path.to_string_lossy();
-    if s.starts_with("~/") {
+    if let Some(stripped) = s.strip_prefix("~/") {
         if let Ok(home) = std::env::var("HOME") {
-            return PathBuf::from(home).join(&s[2..]);
+            return PathBuf::from(home).join(stripped);
         }
     }
     path.to_path_buf()
@@ -284,6 +316,8 @@ fn expand_tilde(path: &Path) -> PathBuf {
 /// Load single rulebook (backward compat with Phase P2.3 API).
 pub fn load_single(project_root: &Path) -> Option<ResolvedRuleContext> {
     let books = RulebookLoader::load_all(project_root, &[]);
-    if books.is_empty() { return None; }
+    if books.is_empty() {
+        return None;
+    }
     Some(ResolvedRuleContext::build(books, None))
 }

@@ -13,9 +13,8 @@ const KEEP_LAST_N_ASSISTANT: usize = 3;
 const TRIMMED_PLACEHOLDER: &str = "[trimmed older context]";
 
 /// Global tokenizer using cl100k_base (Claude/GPT-4 compatible)
-static TOKENIZER: Lazy<tiktoken_rs::CoreBPE> = Lazy::new(|| {
-    tiktoken_rs::cl100k_base().expect("cl100k_base BPE initialization failed")
-});
+static TOKENIZER: Lazy<tiktoken_rs::CoreBPE> =
+    Lazy::new(|| tiktoken_rs::cl100k_base().expect("cl100k_base BPE initialization failed"));
 
 /// Stores original message content before trimming for potential restoration.
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
@@ -83,7 +82,11 @@ pub fn estimate_tokens(messages: &[Message]) -> u64 {
 ///
 /// `trim_boundary` tracks the highest trimmed index across turns (cache stability).
 /// `store` preserves original content for potential restoration.
-pub fn reduce_messages(mut messages: Vec<Message>, trim_boundary: &mut usize, store: &mut TrimStore) -> Vec<Message> {
+pub fn reduce_messages(
+    mut messages: Vec<Message>,
+    trim_boundary: &mut usize,
+    store: &mut TrimStore,
+) -> Vec<Message> {
     let available = DEFAULT_CONTEXT_WINDOW.saturating_sub(MAX_OUTPUT_TOKENS);
     let threshold = (available as f64 * 0.90) as u64;
     let trim_target = (threshold as f64 * TRIM_HEADROOM) as u64;
@@ -116,12 +119,12 @@ pub fn reduce_messages(mut messages: Vec<Message>, trim_boundary: &mut usize, st
     let prev_clamped = (*trim_boundary).min(len);
     let mut new_boundary = *trim_boundary;
 
-    for i in prev_clamped..len {
-        if matches!(messages[i].role, Role::Assistant | Role::Tool)
+    for (i, msg) in messages.iter_mut().enumerate().take(len).skip(prev_clamped) {
+        if matches!(msg.role, Role::Assistant | Role::Tool)
             && !preserved_assistant.contains(&i)
             && Some(i) != latest_user_idx
         {
-            store.trim_one(i, &mut messages[i]);
+            store.trim_one(i, msg);
             new_boundary = new_boundary.max(i + 1);
         }
     }
@@ -154,7 +157,13 @@ mod tests {
     use vil_llm::provider::ToolCall;
 
     fn msg(role: Role, content: &str) -> Message {
-        Message { role, content: content.into(), name: None, tool_call_id: None, tool_calls: vec![] }
+        Message {
+            role,
+            content: content.into(),
+            name: None,
+            tool_call_id: None,
+            tool_calls: vec![],
+        }
     }
 
     fn tool_msg(content: &str) -> Message {
@@ -245,7 +254,8 @@ mod tests {
         let reduced = reduce_messages(messages, &mut boundary, &mut store);
 
         // At least some old assistant/tool messages should be trimmed.
-        let trimmed_count = reduced.iter()
+        let trimmed_count = reduced
+            .iter()
             .filter(|m| m.content == TRIMMED_PLACEHOLDER)
             .count();
         assert!(trimmed_count > 0);

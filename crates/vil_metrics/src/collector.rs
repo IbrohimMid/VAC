@@ -1,7 +1,9 @@
 //! Metrics collector implementation.
 
 use super::error::MetricsError;
-use super::metrics::{CpuMetrics, DiskInfo, DiskMetrics, NetworkInterface, NetworkMetrics, SystemSnapshot};
+use super::metrics::{
+    CpuMetrics, DiskInfo, DiskMetrics, NetworkInterface, NetworkMetrics, SystemSnapshot,
+};
 use chrono::Utc;
 use std::sync::Arc;
 use sysinfo::{Disks, Networks, System};
@@ -166,9 +168,7 @@ impl MetricsCollector {
     /// Collect network metrics.
     async fn collect_network(&self) -> Result<NetworkMetrics, MetricsError> {
         if !self.config.network_tracking {
-            return Ok(NetworkMetrics {
-                interfaces: vec![],
-            });
+            return Ok(NetworkMetrics { interfaces: vec![] });
         }
 
         let networks = self.networks.read().await;

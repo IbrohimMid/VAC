@@ -22,9 +22,7 @@ pub enum McpTransport {
         args: Vec<String>,
     },
     #[serde(rename = "sse")]
-    Sse {
-        url: String,
-    },
+    Sse { url: String },
 }
 
 #[derive(Debug, Serialize)]

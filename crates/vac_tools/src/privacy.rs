@@ -23,7 +23,10 @@ fn patterns() -> &'static Patterns {
         aws_key: Regex::new(r"AKIA[0-9A-Z]{16}").unwrap(),
         api_key: Regex::new(r"sk-[A-Za-z0-9]{20,}").unwrap(),
         bearer: Regex::new(r"(?i)Bearer\s+([A-Za-z0-9\-._~+/]+=*)").unwrap(),
-        ip: Regex::new(r"\b(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\b").unwrap(),
+        ip: Regex::new(
+            r"\b(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\b",
+        )
+        .unwrap(),
         aws_account: Regex::new(r"\b\d{12}\b").unwrap(),
     })
 }
@@ -57,11 +60,15 @@ impl PrivacyVault {
         let mut out = text.to_string();
         out = p
             .aws_key
-            .replace_all(&out, |caps: &regex::Captures| self.alias("AWS_KEY", &caps[0]))
+            .replace_all(&out, |caps: &regex::Captures| {
+                self.alias("AWS_KEY", &caps[0])
+            })
             .into_owned();
         out = p
             .api_key
-            .replace_all(&out, |caps: &regex::Captures| self.alias("API_KEY", &caps[0]))
+            .replace_all(&out, |caps: &regex::Captures| {
+                self.alias("API_KEY", &caps[0])
+            })
             .into_owned();
         out = p
             .bearer
@@ -72,12 +79,13 @@ impl PrivacyVault {
             .into_owned();
         out = p
             .aws_account
-            .replace_all(&out, |caps: &regex::Captures| self.alias("AWS_ACCOUNT_ID", &caps[0]))
+            .replace_all(&out, |caps: &regex::Captures| {
+                self.alias("AWS_ACCOUNT_ID", &caps[0])
+            })
             .into_owned();
-        out = p
-            .ip
-            .replace_all(&out, |caps: &regex::Captures| self.alias("IP", &caps[0]))
-            .into_owned();
+        out =
+            p.ip.replace_all(&out, |caps: &regex::Captures| self.alias("IP", &caps[0]))
+                .into_owned();
         out
     }
 
@@ -95,9 +103,11 @@ impl PrivacyVault {
             Value::Array(arr) => {
                 Value::Array(arr.into_iter().map(|x| self.substitute_value(x)).collect())
             }
-            Value::Object(obj) => {
-                Value::Object(obj.into_iter().map(|(k, v)| (k, self.substitute_value(v))).collect())
-            }
+            Value::Object(obj) => Value::Object(
+                obj.into_iter()
+                    .map(|(k, v)| (k, self.substitute_value(v)))
+                    .collect(),
+            ),
             other => other,
         }
     }
@@ -108,9 +118,11 @@ impl PrivacyVault {
             Value::Array(arr) => {
                 Value::Array(arr.into_iter().map(|x| self.restore_value(x)).collect())
             }
-            Value::Object(obj) => {
-                Value::Object(obj.into_iter().map(|(k, v)| (k, self.restore_value(v))).collect())
-            }
+            Value::Object(obj) => Value::Object(
+                obj.into_iter()
+                    .map(|(k, v)| (k, self.restore_value(v)))
+                    .collect(),
+            ),
             other => other,
         }
     }

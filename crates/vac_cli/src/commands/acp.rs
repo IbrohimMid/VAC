@@ -38,14 +38,15 @@ pub async fn execute(project_root: PathBuf, port: u16) -> anyhow::Result<()> {
             });
 
             // Create approval channels for this task
-            let (approval_tx, approval_rx) = tokio::sync::mpsc::unbounded_channel::<vil_swarm::ApprovalResponse>();
-            
+            let (approval_tx, approval_rx) =
+                tokio::sync::mpsc::unbounded_channel::<vil_swarm::ApprovalResponse>();
+
             // We drop approval_tx immediately so that if a tool requires approval,
             // vil_swarm receives a closed channel and auto-rejects the tool instead of hanging.
-            // This ensures a consistent permission mode (respecting "ask" policy) 
+            // This ensures a consistent permission mode (respecting "ask" policy)
             // even when the entrypoint (ACP) cannot prompt the user interactively.
             drop(approval_tx);
-            
+
             let result = engine
                 .write()
                 .await
@@ -78,7 +79,10 @@ pub async fn execute(project_root: PathBuf, port: u16) -> anyhow::Result<()> {
         rx
     });
 
-    server.start(port, handler).await.map_err(|e| anyhow::anyhow!(e))?;
+    server
+        .start(port, handler)
+        .await
+        .map_err(|e| anyhow::anyhow!(e))?;
     println!("✓ ACP server ready on port {port}");
 
     tokio::signal::ctrl_c().await?;

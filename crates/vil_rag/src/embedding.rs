@@ -23,7 +23,7 @@ impl EmbeddingModel {
     }
 
     pub fn embed_batch(&self, texts: &[&str]) -> RagResult<Vec<Vec<f32>>> {
-        let texts: Vec<&str> = texts.iter().map(|s| *s).collect();
+        let texts: Vec<&str> = texts.to_vec();
         Ok(self.model.embed(texts, None)?)
     }
 }

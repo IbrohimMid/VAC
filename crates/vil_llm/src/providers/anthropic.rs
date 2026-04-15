@@ -118,7 +118,8 @@ impl AnthropicProvider {
     }
 
     fn map_tools(tools: &[ToolDefinition]) -> Vec<OpenAiToolDefinition> {
-        tools.iter()
+        tools
+            .iter()
             .map(|tool| OpenAiToolDefinition {
                 type_: "function".to_string(),
                 function: OpenAiFunctionDefinition {
@@ -154,7 +155,11 @@ impl AnthropicProvider {
 
         debug!(model = %request.model, "Sending request to Kilo Gateway");
 
-        let endpoint = format!("{}{}", self.base_url.trim_end_matches('/'), API_ENDPOINT_PATH);
+        let endpoint = format!(
+            "{}{}",
+            self.base_url.trim_end_matches('/'),
+            API_ENDPOINT_PATH
+        );
         let response = self
             .http_client
             .post(&endpoint)
@@ -215,11 +220,12 @@ impl LlmProvider for AnthropicProvider {
             .unwrap_or_default()
             .into_iter()
             .map(|call| {
-                let arguments = serde_json::from_str(&call.function.arguments).unwrap_or_else(
-                    |_| serde_json::json!({
-                        "raw": call.function.arguments
-                    }),
-                );
+                let arguments =
+                    serde_json::from_str(&call.function.arguments).unwrap_or_else(|_| {
+                        serde_json::json!({
+                            "raw": call.function.arguments
+                        })
+                    });
                 ToolCall {
                     id: call.id,
                     name: call.function.name,
@@ -259,7 +265,11 @@ impl LlmProvider for AnthropicProvider {
 
         let body = serde_json::to_string(&stream_request)
             .map_err(|e| LlmError::Other(anyhow::anyhow!("Serialize: {}", e)))?;
-        let endpoint = format!("{}{}", self.base_url.trim_end_matches('/'), API_ENDPOINT_PATH);
+        let endpoint = format!(
+            "{}{}",
+            self.base_url.trim_end_matches('/'),
+            API_ENDPOINT_PATH
+        );
         let response = self
             .http_client
             .post(&endpoint)
@@ -303,24 +313,42 @@ impl LlmProvider for AnthropicProvider {
                         continue;
                     }
                     let data = line.strip_prefix("data: ").unwrap_or(&line);
-                    let Ok(val) = serde_json::from_str::<serde_json::Value>(data) else { continue };
+                    let Ok(val) = serde_json::from_str::<serde_json::Value>(data) else {
+                        continue;
+                    };
 
                     // Accumulate usage if present
                     if let Some(u) = val.get("usage") {
-                        usage.prompt_tokens = u.get("prompt_tokens").and_then(|v| v.as_u64()).unwrap_or(usage.prompt_tokens);
-                        usage.completion_tokens = u.get("completion_tokens").and_then(|v| v.as_u64()).unwrap_or(usage.completion_tokens);
-                        usage.total_tokens = u.get("total_tokens").and_then(|v| v.as_u64()).unwrap_or(usage.total_tokens);
+                        usage.prompt_tokens = u
+                            .get("prompt_tokens")
+                            .and_then(|v| v.as_u64())
+                            .unwrap_or(usage.prompt_tokens);
+                        usage.completion_tokens = u
+                            .get("completion_tokens")
+                            .and_then(|v| v.as_u64())
+                            .unwrap_or(usage.completion_tokens);
+                        usage.total_tokens = u
+                            .get("total_tokens")
+                            .and_then(|v| v.as_u64())
+                            .unwrap_or(usage.total_tokens);
                     }
 
-                    let Some(choices) = val.get("choices").and_then(|c| c.as_array()) else { continue };
-                    let Some(choice) = choices.first() else { continue };
+                    let Some(choices) = val.get("choices").and_then(|c| c.as_array()) else {
+                        continue;
+                    };
+                    let Some(choice) = choices.first() else {
+                        continue;
+                    };
 
                     // Parse finish_reason if present
                     if let Some(fr) = choice.get("finish_reason").and_then(|v| v.as_str()) {
                         finish_reason = Self::finish_reason(Some(fr));
                     }
 
-                    let delta = match choice.get("delta") { Some(d) => d, None => continue };
+                    let delta = match choice.get("delta") {
+                        Some(d) => d,
+                        None => continue,
+                    };
 
                     // Text delta
                     if let Some(text) = delta.get("content").and_then(|c| c.as_str()) {
@@ -332,29 +360,55 @@ impl LlmProvider for AnthropicProvider {
                     // Tool call deltas
                     if let Some(tcs) = delta.get("tool_calls").and_then(|t| t.as_array()) {
                         for tc in tcs {
-                            let id = tc.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                            let name = tc.get("function").and_then(|f| f.get("name")).and_then(|v| v.as_str()).unwrap_or("").to_string();
-                            let args_delta = tc.get("function").and_then(|f| f.get("arguments")).and_then(|v| v.as_str()).unwrap_or("").to_string();
+                            let id = tc
+                                .get("id")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string();
+                            let name = tc
+                                .get("function")
+                                .and_then(|f| f.get("name"))
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string();
+                            let args_delta = tc
+                                .get("function")
+                                .and_then(|f| f.get("arguments"))
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string();
 
                             if !name.is_empty() {
-                                let _ = tx.send(StreamChunk::ToolCallStart { id: id.clone(), name }).await;
+                                let _ = tx
+                                    .send(StreamChunk::ToolCallStart {
+                                        id: id.clone(),
+                                        name,
+                                    })
+                                    .await;
                             }
                             if !args_delta.is_empty() {
-                                let _ = tx.send(StreamChunk::ToolCallDelta { id, arguments_delta: args_delta }).await;
+                                let _ = tx
+                                    .send(StreamChunk::ToolCallDelta {
+                                        id,
+                                        arguments_delta: args_delta,
+                                    })
+                                    .await;
                             }
                         }
                     }
                 }
             }
 
-            let _ = tx.send(StreamChunk::Done {
-                usage: TokenUsage {
-                    prompt_tokens: usage.prompt_tokens,
-                    completion_tokens: usage.completion_tokens,
-                    total_tokens: usage.total_tokens,
-                },
-                finish_reason,
-            }).await;
+            let _ = tx
+                .send(StreamChunk::Done {
+                    usage: TokenUsage {
+                        prompt_tokens: usage.prompt_tokens,
+                        completion_tokens: usage.completion_tokens,
+                        total_tokens: usage.total_tokens,
+                    },
+                    finish_reason,
+                })
+                .await;
         });
 
         Ok(rx)

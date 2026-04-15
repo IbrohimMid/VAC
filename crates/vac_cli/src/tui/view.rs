@@ -2,11 +2,11 @@
 
 use crate::tui::app::AppState;
 use ratatui::{
+    Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap},
-    Frame,
 };
 
 /// Main view function
@@ -57,8 +57,8 @@ pub fn view(f: &mut Frame, state: &mut AppState) {
 }
 
 fn render_messages(f: &mut Frame, state: &mut AppState, area: Rect) {
-    use crate::tui::services::message::{render_user_message, render_assistant_message_with_width};
     use crate::tui::services::message::render_tool_call_pending;
+    use crate::tui::services::message::{render_assistant_message_with_width, render_user_message};
 
     let width = area.width.saturating_sub(2) as usize; // account for border
     let mut lines: Vec<Line> = Vec::new();
@@ -167,7 +167,9 @@ fn render_command_palette(f: &mut Frame, state: &mut AppState) {
         .enumerate()
         .map(|(i, cmd)| {
             let style = if i == state.command_palette_selected {
-                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD)
             } else {
                 Style::default()
             };
@@ -179,8 +181,7 @@ fn render_command_palette(f: &mut Frame, state: &mut AppState) {
         })
         .collect();
 
-    let list = List::new(items)
-        .block(Block::default().borders(Borders::ALL).title("Commands"));
+    let list = List::new(items).block(Block::default().borders(Borders::ALL).title("Commands"));
     f.render_widget(list, chunks[1]);
 }
 
@@ -195,23 +196,38 @@ fn render_approval_dialog(f: &mut Frame, state: &mut AppState) {
 
     // Tool call info
     let mut lines = Vec::new();
-    
+
     // Approval Queue View
-    let queue_info = format!("Queue: {} pending | {} approved | {} rejected", 
-        state.pending_tool_calls.len(), state.approved_tools.len(), state.rejected_tools.len());
+    let queue_info = format!(
+        "Queue: {} pending | {} approved | {} rejected",
+        state.pending_tool_calls.len(),
+        state.approved_tools.len(),
+        state.rejected_tools.len()
+    );
     lines.push(Line::styled(queue_info, Style::default().fg(Color::Cyan)));
     lines.push(Line::from(""));
 
     // Permission Mode & Explainability
     if state.auto_approve {
-        lines.push(Line::styled("Permission Mode: AUTO-APPROVE (Ctrl+A to toggle)", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)));
+        lines.push(Line::styled(
+            "Permission Mode: AUTO-APPROVE (Ctrl+A to toggle)",
+            Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+        ));
     } else {
-        lines.push(Line::styled("Permission Mode: MANUAL (Ctrl+A to toggle)", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)));
+        lines.push(Line::styled(
+            "Permission Mode: MANUAL (Ctrl+A to toggle)",
+            Style::default()
+                .fg(Color::Green)
+                .add_modifier(Modifier::BOLD),
+        ));
     }
-    
+
     if let Some(reason) = &state.permission_explanation {
         lines.push(Line::from(""));
-        lines.push(Line::styled("Why is permission needed?", Style::default().add_modifier(Modifier::BOLD)));
+        lines.push(Line::styled(
+            "Why is permission needed?",
+            Style::default().add_modifier(Modifier::BOLD),
+        ));
         lines.push(Line::styled(reason, Style::default().fg(Color::DarkGray)));
     }
     lines.push(Line::from(""));
@@ -251,16 +267,14 @@ fn render_approval_dialog(f: &mut Frame, state: &mut AppState) {
             } else {
                 lines.push(Line::from(args.to_string()));
             }
+        } else if let Ok(v) = serde_json::from_str::<serde_json::Value>(args) {
+            let formatted = serde_json::to_string_pretty(&v).unwrap_or_else(|_| args.to_string());
+            for line in formatted.lines() {
+                lines.push(Line::from(line.to_string()));
+            }
         } else {
-            if let Ok(v) = serde_json::from_str::<serde_json::Value>(args) {
-                let formatted = serde_json::to_string_pretty(&v).unwrap_or_else(|_| args.to_string());
-                for line in formatted.lines() {
-                    lines.push(Line::from(line.to_string()));
-                }
-            } else {
-                for line in args.lines() {
-                    lines.push(Line::from(line.to_string()));
-                }
+            for line in args.lines() {
+                lines.push(Line::from(line.to_string()));
             }
         }
     } else {
@@ -268,12 +282,16 @@ fn render_approval_dialog(f: &mut Frame, state: &mut AppState) {
     }
 
     let info = Paragraph::new(lines)
-        .block(Block::default().borders(Borders::ALL).title("Approve Tool?"))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Approve Tool?"),
+        )
         .wrap(Wrap { trim: false });
     f.render_widget(info, chunks[0]);
 
     // Buttons
-    let buttons = vec![
+    let buttons = [
         ("Approve (Enter)", state.dialog_selected == 0),
         ("Reject (r)", state.dialog_selected == 1),
         ("Close & Reject (Esc)", state.dialog_selected == 2),
@@ -282,15 +300,16 @@ fn render_approval_dialog(f: &mut Frame, state: &mut AppState) {
         .iter()
         .map(|(text, selected)| {
             let style = if *selected {
-                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD)
             } else {
                 Style::default()
             };
             ListItem::new(Line::styled(*text, style))
         })
         .collect();
-    let list = List::new(button_items)
-        .block(Block::default().borders(Borders::ALL));
+    let list = List::new(button_items).block(Block::default().borders(Borders::ALL));
     f.render_widget(list, chunks[1]);
 }
 
@@ -317,8 +336,11 @@ fn render_shortcuts(f: &mut Frame, _state: &mut AppState) {
         .iter()
         .map(|s| ListItem::new(Line::raw(*s)))
         .collect();
-    let list = List::new(items)
-        .block(Block::default().borders(Borders::ALL).title("Shortcuts (Esc to close)"));
+    let list = List::new(items).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title("Shortcuts (Esc to close)"),
+    );
     f.render_widget(list, area);
 }
 
@@ -336,7 +358,10 @@ fn render_review_workstation(f: &mut Frame, state: &mut AppState) {
         .split(area);
 
     let header = {
-        let title = format!("Review Workstation ({})", state.review_filtered_paths().len());
+        let title = format!(
+            "Review Workstation ({})",
+            state.review_filtered_paths().len()
+        );
         let search_text = if state.review_filter.is_empty() {
             vec![
                 Span::styled("Filter: ", Style::default().fg(Color::Cyan)),
@@ -345,7 +370,10 @@ fn render_review_workstation(f: &mut Frame, state: &mut AppState) {
         } else {
             vec![
                 Span::styled("Filter: ", Style::default().fg(Color::Cyan)),
-                Span::styled(&state.review_filter, Style::default().add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    &state.review_filter,
+                    Style::default().add_modifier(Modifier::BOLD),
+                ),
             ]
         };
         Paragraph::new(Line::from(search_text))
@@ -365,7 +393,9 @@ fn render_review_workstation(f: &mut Frame, state: &mut AppState) {
         .map(|(idx, path)| {
             let is_selected = idx == state.review_selected_idx;
             let style = if is_selected {
-                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD)
             } else {
                 Style::default().fg(Color::White)
             };
@@ -373,9 +403,15 @@ fn render_review_workstation(f: &mut Frame, state: &mut AppState) {
             let (status_span, snap_span) = match state.review_items.get(path) {
                 Some(it) => {
                     let status = match it.status {
-                        crate::tui::app::ReviewItemStatus::Pending => Span::styled("• ", Style::default().fg(Color::DarkGray)),
-                        crate::tui::app::ReviewItemStatus::Restored => Span::styled("✓ ", Style::default().fg(Color::Green)),
-                        crate::tui::app::ReviewItemStatus::Failed => Span::styled("! ", Style::default().fg(Color::Red)),
+                        crate::tui::app::ReviewItemStatus::Pending => {
+                            Span::styled("• ", Style::default().fg(Color::DarkGray))
+                        }
+                        crate::tui::app::ReviewItemStatus::Restored => {
+                            Span::styled("✓ ", Style::default().fg(Color::Green))
+                        }
+                        crate::tui::app::ReviewItemStatus::Failed => {
+                            Span::styled("! ", Style::default().fg(Color::Red))
+                        }
                     };
                     let snap = if it.has_snapshot {
                         Span::styled("S ", Style::default().fg(Color::Cyan))
@@ -418,7 +454,10 @@ fn render_review_workstation(f: &mut Frame, state: &mut AppState) {
                 diff_height,
             )
         } else if let Some(err) = &diff.last_error {
-            vec![Line::from(Span::styled(err.clone(), Style::default().fg(Color::Red)))]
+            vec![Line::from(Span::styled(
+                err.clone(),
+                Style::default().fg(Color::Red),
+            ))]
         } else {
             vec![Line::raw("No diff loaded.")]
         }
@@ -426,9 +465,14 @@ fn render_review_workstation(f: &mut Frame, state: &mut AppState) {
         && let Some(it) = state.review_items.get(&path)
         && let Some(err) = &it.last_error
     {
-        vec![Line::from(Span::styled(err.clone(), Style::default().fg(Color::Red)))]
+        vec![Line::from(Span::styled(
+            err.clone(),
+            Style::default().fg(Color::Red),
+        ))]
     } else {
-        vec![Line::raw("Enter: toggle diff • PageUp/PageDown: scroll diff")]
+        vec![Line::raw(
+            "Enter: toggle diff • PageUp/PageDown: scroll diff",
+        )]
     };
 
     let diff = Paragraph::new(diff_lines)
@@ -454,19 +498,23 @@ fn render_review_workstation(f: &mut Frame, state: &mut AppState) {
         Span::styled("Esc", Style::default().fg(Color::Cyan)),
         Span::styled(": Close", Style::default().fg(Color::DarkGray)),
     ];
-    let footer = Paragraph::new(Line::from(footer_text)).alignment(ratatui::layout::Alignment::Left);
+    let footer =
+        Paragraph::new(Line::from(footer_text)).alignment(ratatui::layout::Alignment::Left);
     f.render_widget(footer, chunks[2]);
 }
 
 fn render_side_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
     let mut lines = Vec::new();
-    
+
     // Add run-state metadata
     lines.push(Line::from(vec![
-        Span::styled("Session ID: ", Style::default().add_modifier(Modifier::BOLD)),
+        Span::styled(
+            "Session ID: ",
+            Style::default().add_modifier(Modifier::BOLD),
+        ),
         Span::raw(&state.session_id[..8]),
     ]));
-    
+
     if let Some(title) = &state.session_title {
         lines.push(Line::from(vec![
             Span::styled("Title: ", Style::default().add_modifier(Modifier::BOLD)),
@@ -475,10 +523,16 @@ fn render_side_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
     }
 
     lines.push(Line::from(""));
-    lines.push(Line::from(Span::styled("Active Tools:", Style::default().add_modifier(Modifier::BOLD))));
-    
+    lines.push(Line::from(Span::styled(
+        "Active Tools:",
+        Style::default().add_modifier(Modifier::BOLD),
+    )));
+
     if state.pending_tool_calls.is_empty() && state.approved_tools.is_empty() {
-        lines.push(Line::from(Span::styled("  None", Style::default().fg(Color::DarkGray))));
+        lines.push(Line::from(Span::styled(
+            "  None",
+            Style::default().fg(Color::DarkGray),
+        )));
     } else {
         for call in &state.pending_tool_calls {
             lines.push(Line::from(vec![
@@ -494,11 +548,13 @@ fn render_side_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
         }
     }
 
-    let widget = Paragraph::new(lines)
-        .block(Block::default().borders(Borders::ALL).title("Status & Tools"));
+    let widget = Paragraph::new(lines).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title("Status & Tools"),
+    );
     f.render_widget(widget, area);
 }
-
 
 fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
     let popup_layout = Layout::default()

@@ -1,16 +1,16 @@
 //! File watcher — triggers jobs on file system changes.
 
+use crate::jobs::{Job, JobKind, JobTrigger};
+use crate::queue::TaskQueue;
+use anyhow::Result;
+use notify::{Event, EventKind, RecursiveMode, Watcher};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use anyhow::Result;
-use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
-use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 use tracing::{info, warn};
-use crate::jobs::{Job, JobKind, JobTrigger};
-use crate::queue::TaskQueue;
 
 fn default_debounce_ms() -> u64 {
     500
@@ -74,10 +74,15 @@ impl FileWatcher {
                 let now = Instant::now();
                 let key = format!("{}:{}", path.display(), task);
                 let debounce = Duration::from_millis(debounce_ms);
-                if last_fire.get(&key).map_or(true, |t| now.duration_since(*t) >= debounce) {
+                if last_fire
+                    .get(&key)
+                    .is_none_or(|t| now.duration_since(*t) >= debounce)
+                {
                     last_fire.insert(key, now);
-                    let job = Job::new(JobKind::RunTask { description: task.clone() })
-                        .with_trigger(JobTrigger::FileWatch(path.display().to_string()));
+                    let job = Job::new(JobKind::RunTask {
+                        description: task.clone(),
+                    })
+                    .with_trigger(JobTrigger::FileWatch(path.display().to_string()));
                     info!(path = %path.display(), task = %task, "File-watch fired");
                     queue.enqueue(job).await;
                 }

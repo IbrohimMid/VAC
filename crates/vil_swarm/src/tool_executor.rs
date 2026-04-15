@@ -32,7 +32,9 @@ pub async fn execute_tools(
             let is_approved = state.approved_tools.contains(&call.id);
             async move {
                 let res = if is_approved {
-                    router.route_approved(&call.name, call.arguments.clone(), &ctx).await
+                    router
+                        .route_approved(&call.name, call.arguments.clone(), &ctx)
+                        .await
                 } else {
                     router.route(&call.name, call.arguments.clone(), &ctx).await
                 };
@@ -45,7 +47,8 @@ pub async fn execute_tools(
         for (call, result) in results {
             match result {
                 Ok(result_value) => {
-                    let result_str = serde_json::to_string(&result_value).unwrap_or_else(|_| "[]".to_string());
+                    let result_str =
+                        serde_json::to_string(&result_value).unwrap_or_else(|_| "[]".to_string());
                     if let Some(tx) = updates {
                         let _ = tx.send(AgentLoopEvent::ToolResult {
                             id: call.id.clone(),
@@ -54,7 +57,11 @@ pub async fn execute_tools(
                             success: true,
                         });
                     }
-                    state.messages.push(Message::tool(call.name.clone(), call.id.clone(), result_str));
+                    state.messages.push(Message::tool(
+                        call.name.clone(),
+                        call.id.clone(),
+                        result_str,
+                    ));
                 }
                 Err(e) => {
                     error!(tool = %call.name, error = %e, "Parallel tool failed");
@@ -66,7 +73,11 @@ pub async fn execute_tools(
                             success: false,
                         });
                     }
-                    state.messages.push(Message::tool(call.name.clone(), call.id.clone(), format!("Error: {}", e)));
+                    state.messages.push(Message::tool(
+                        call.name.clone(),
+                        call.id.clone(),
+                        format!("Error: {}", e),
+                    ));
                 }
             }
         }
@@ -76,7 +87,9 @@ pub async fn execute_tools(
     if !writes.is_empty() {
         info!(count = writes.len(), "Executing serial writes");
         for call in writes {
-            if let crate::hooks::HookDecision::Deny(reason) = crate::hooks::run_before_hook(hook, &call) {
+            if let crate::hooks::HookDecision::Deny(reason) =
+                crate::hooks::run_before_hook(hook, &call)
+            {
                 warn!(tool = %call.name, reason = %reason, "Tool denied by hook");
                 if let Some(tx) = updates {
                     let _ = tx.send(AgentLoopEvent::ToolResult {
@@ -86,25 +99,36 @@ pub async fn execute_tools(
                         success: false,
                     });
                 }
-                state.messages.push(Message::tool(call.name, call.id, format!("Denied: {}", reason)));
+                state.messages.push(Message::tool(
+                    call.name,
+                    call.id,
+                    format!("Denied: {}", reason),
+                ));
                 continue;
             }
 
             if let Some(tx) = updates {
-                let _ = tx.send(AgentLoopEvent::Status(crate::tool_execution::status_for_tool(&call.name)));
+                let _ = tx.send(AgentLoopEvent::Status(
+                    crate::tool_execution::status_for_tool(&call.name),
+                ));
             }
 
             let is_approved = state.approved_tools.contains(&call.id);
             let route_res = if is_approved {
-                tool_router.route_approved(&call.name, call.arguments.clone(), context).await
+                tool_router
+                    .route_approved(&call.name, call.arguments.clone(), context)
+                    .await
             } else {
-                tool_router.route(&call.name, call.arguments.clone(), context).await
+                tool_router
+                    .route(&call.name, call.arguments.clone(), context)
+                    .await
             };
 
             match route_res {
                 Ok(result_value) => {
-                    let result_str = serde_json::to_string(&result_value).unwrap_or_else(|_| "[]".to_string());
-                    
+                    let result_str =
+                        serde_json::to_string(&result_value).unwrap_or_else(|_| "[]".to_string());
+
                     if call.name == "file_write" || call.name == "file_edit" {
                         let path_arg = match call.name.as_str() {
                             "file_write" => call.arguments.get("path"),
@@ -113,9 +137,13 @@ pub async fn execute_tools(
                         };
                         if let Some(path_value) = path_arg {
                             if let Ok(path) = serde_json::from_value::<String>(path_value.clone()) {
-                                let is_create = call.name == "file_write" && result_str.contains("\"created\":true");
-                                if is_create { state.record_created(path); } 
-                                else { state.record_modified(path); }
+                                let is_create = call.name == "file_write"
+                                    && result_str.contains("\"created\":true");
+                                if is_create {
+                                    state.record_created(path);
+                                } else {
+                                    state.record_modified(path);
+                                }
                             }
                         }
                     }
@@ -128,25 +156,34 @@ pub async fn execute_tools(
                             success: true,
                         });
                     }
-                    state.messages.push(Message { role: Role::Tool, content: result_str, name: Some(call.name), tool_call_id: Some(call.id), tool_calls: vec![] });
+                    state.messages.push(Message {
+                        role: Role::Tool,
+                        content: result_str,
+                        name: Some(call.name),
+                        tool_call_id: Some(call.id),
+                        tool_calls: vec![],
+                    });
                 }
                 Err(e) => {
                     if matches!(e, vac_tools::error::ToolError::ApprovalRequired(_)) {
                         // Extract explanation from error if available
-                        let explanation = if let vac_tools::error::ToolError::ApprovalRequired(reason) = &e {
-                            Some(reason.clone())
-                        } else {
-                            None
-                        };
+                        let explanation =
+                            if let vac_tools::error::ToolError::ApprovalRequired(reason) = &e {
+                                Some(reason.clone())
+                            } else {
+                                None
+                            };
 
-                        state.pending_approvals.push(vac_tools::approvals::PendingApproval {
-                            tool_call_id: call.id.clone(),
-                            tool_name: call.name.clone(),
-                            scope: call.name.clone(),
-                            arguments: call.arguments.clone(),
-                        });
+                        state
+                            .pending_approvals
+                            .push(vac_tools::approvals::PendingApproval {
+                                tool_call_id: call.id.clone(),
+                                tool_name: call.name.clone(),
+                                scope: call.name.clone(),
+                                arguments: call.arguments.clone(),
+                            });
                         warn!(tool = %call.name, "Tool requires approval, added to pending_approvals");
-                        
+
                         if let Some(tx) = updates {
                             let _ = tx.send(AgentLoopEvent::ApprovalRequired {
                                 tool_call_id: call.id.clone(),
@@ -155,8 +192,12 @@ pub async fn execute_tools(
                                 explanation,
                             });
                         }
-                        
-                        state.messages.push(Message::tool(call.name.clone(), call.id.clone(), format!("⏳ Waiting for approval")));
+
+                        state.messages.push(Message::tool(
+                            call.name.clone(),
+                            call.id.clone(),
+                            "⏳ Waiting for approval".to_string(),
+                        ));
                     } else {
                         error!(tool = %call.name, error = %e, "Serial tool failed");
                         if let Some(tx) = updates {
@@ -167,7 +208,11 @@ pub async fn execute_tools(
                                 success: false,
                             });
                         }
-                        state.messages.push(Message::tool(call.name, call.id, format!("Error: {}", e)));
+                        state.messages.push(Message::tool(
+                            call.name,
+                            call.id,
+                            format!("Error: {}", e),
+                        ));
                     }
                 }
             }
@@ -175,9 +220,12 @@ pub async fn execute_tools(
     }
 
     state.active_tool_calls.clear();
-    
+
     if !state.pending_approvals.is_empty() {
-        state.last_execution_status = Some(format!("waiting for approval: {} tool(s)", state.pending_approvals.len()));
+        state.last_execution_status = Some(format!(
+            "waiting for approval: {} tool(s)",
+            state.pending_approvals.len()
+        ));
     } else {
         state.last_execution_status = Some("completed".to_string());
     }

@@ -50,7 +50,8 @@ impl VilLspService {
             &project_root,
             &config.arguments,
             diag_tx,
-        ).await?;
+        )
+        .await?;
 
         Ok(Self {
             client: Arc::new(client),
@@ -72,10 +73,17 @@ impl VilLspService {
 
     /// Open specific files to refresh their diagnostics.
     pub async fn analyze_files(&self, files: &[String]) -> anyhow::Result<()> {
-        let paths: Vec<PathBuf> = files.iter().map(|f| {
-            let p = PathBuf::from(f);
-            if p.is_absolute() { p } else { self.project_root.join(f) }
-        }).collect();
+        let paths: Vec<PathBuf> = files
+            .iter()
+            .map(|f| {
+                let p = PathBuf::from(f);
+                if p.is_absolute() {
+                    p
+                } else {
+                    self.project_root.join(f)
+                }
+            })
+            .collect();
         self.open_files_batch(&paths).await?;
         tokio::time::sleep(std::time::Duration::from_millis(300)).await;
         Ok(())
@@ -87,11 +95,15 @@ impl VilLspService {
 
     pub async fn prompt_context(&self, max_items: usize) -> LspPromptContext {
         let snap = self.snapshot.read().await;
-        let top_findings: Vec<String> = snap.diagnostics.iter()
+        let top_findings: Vec<String> = snap
+            .diagnostics
+            .iter()
             .filter(|d| matches!(d.severity, LspSeverity::Error | LspSeverity::Warning))
             .take(max_items)
             .map(|d| {
-                let file = d.file_path.file_name()
+                let file = d
+                    .file_path
+                    .file_name()
                     .and_then(|n| n.to_str())
                     .unwrap_or("?");
                 format!("{}: {}", file, d.message)
@@ -107,7 +119,8 @@ impl VilLspService {
 
     pub async fn diagnostics_for_files(&self, files: &[String]) -> Vec<LspDiagnostic> {
         let snap = self.snapshot.read().await;
-        snap.diagnostics.iter()
+        snap.diagnostics
+            .iter()
             .filter(|d| {
                 files.iter().any(|f| {
                     let p = PathBuf::from(f);
@@ -196,14 +209,20 @@ impl VilLspService {
         const PER_FILE_TIMEOUT_MS: u64 = 500;
 
         for path in paths.iter().take(MAX_FILES) {
-            let Ok(text) = std::fs::read_to_string(path) else { continue };
+            let Ok(text) = std::fs::read_to_string(path) else {
+                continue;
+            };
             let open_fut = self.client.open_file(path, text);
             match tokio::time::timeout(
                 std::time::Duration::from_millis(PER_FILE_TIMEOUT_MS),
                 open_fut,
-            ).await {
+            )
+            .await
+            {
                 Ok(Ok(())) => {}
-                Ok(Err(e)) => tracing::debug!(file = %path.display(), error = %e, "LSP open_file error"),
+                Ok(Err(e)) => {
+                    tracing::debug!(file = %path.display(), error = %e, "LSP open_file error")
+                }
                 Err(_) => tracing::debug!(file = %path.display(), "LSP open_file timeout"),
             }
         }

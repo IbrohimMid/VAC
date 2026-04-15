@@ -83,11 +83,20 @@ pub fn did_change_notification(uri: &str, text: &str, version: i32) -> JsonRpcNo
 }
 
 pub fn shutdown_request(id: u64) -> JsonRpcRequest {
-    JsonRpcRequest { jsonrpc: "2.0", id, method: "shutdown", params: None }
+    JsonRpcRequest {
+        jsonrpc: "2.0",
+        id,
+        method: "shutdown",
+        params: None,
+    }
 }
 
 pub fn exit_notification() -> JsonRpcNotification {
-    JsonRpcNotification { jsonrpc: "2.0", method: "exit", params: None }
+    JsonRpcNotification {
+        jsonrpc: "2.0",
+        method: "exit",
+        params: None,
+    }
 }
 
 /// Parse a `textDocument/publishDiagnostics` params value into (uri, diagnostics).

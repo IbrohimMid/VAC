@@ -1,6 +1,6 @@
+use ratatui::text::Line;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use ratatui::text::Line;
 use uuid::Uuid;
 
 #[derive(Debug, Clone)]
@@ -18,7 +18,11 @@ pub fn snapshot_path(project_root: &Path, session_id: Uuid, file_path: &str) -> 
         .join(safe_name)
 }
 
-pub fn load_diff(_project_root: &Path, _session_id: Uuid, _file_path: &str) -> Result<DiffData, String> {
+pub fn load_diff(
+    _project_root: &Path,
+    _session_id: Uuid,
+    _file_path: &str,
+) -> Result<DiffData, String> {
     let abs_path = if Path::new(_file_path).is_absolute() {
         PathBuf::from(_file_path)
     } else {
@@ -84,11 +88,7 @@ pub fn render_diff_viewport(
     if height == 0 {
         return vec![];
     }
-    lines
-        .into_iter()
-        .skip(scroll)
-        .take(height)
-        .collect()
+    lines.into_iter().skip(scroll).take(height).collect()
 }
 
 #[cfg(test)]
@@ -109,7 +109,8 @@ mod tests {
     fn load_diff_reads_snapshot_when_present() {
         let dir = tempfile::tempdir().unwrap();
         let session_id = uuid::Uuid::new_v4();
-        std::fs::create_dir_all(dir.path().join(".vac/backups").join(session_id.to_string())).unwrap();
+        std::fs::create_dir_all(dir.path().join(".vac/backups").join(session_id.to_string()))
+            .unwrap();
         std::fs::write(snapshot_path(dir.path(), session_id, "a.txt"), "old").unwrap();
         std::fs::write(dir.path().join("a.txt"), "new").unwrap();
         let diff = load_diff(dir.path(), session_id, "a.txt").unwrap();

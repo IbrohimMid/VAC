@@ -31,6 +31,7 @@ fn default_timeout_secs() -> u64 {
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 struct ShellSession {
     child: Child,
     id: String,
@@ -39,6 +40,7 @@ struct ShellSession {
 
 #[derive(Debug, Default)]
 pub struct BashTool {
+    #[allow(dead_code)]
     sessions: Arc<DashMap<String, ShellSession>>,
 }
 
@@ -116,7 +118,8 @@ impl VilTool for BashTool {
         if let Some(reason) = policy.is_denied(&input.command) {
             warn!(command = %input.command, reason = %reason, "Bash command denied by scope policy");
             return Err(ToolError::PermissionDenied(format!(
-                "Command `{}` {}", input.command, reason
+                "Command `{}` {}",
+                input.command, reason
             )));
         }
 
