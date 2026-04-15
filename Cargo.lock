@@ -4652,6 +4652,7 @@ dependencies = [
  "shlex",
  "similar",
  "syntect",
+ "tempfile",
  "textwrap",
  "tokio",
  "tokio-util",

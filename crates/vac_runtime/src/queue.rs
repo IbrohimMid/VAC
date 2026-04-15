@@ -33,9 +33,10 @@ impl TaskQueue {
         if path.exists() {
             if let Ok(content) = std::fs::read_to_string(&path) {
                 if let Ok(jobs) = serde_json::from_str::<Vec<Job>>(&content) {
-                    let mut q = queue.jobs.blocking_write();
-                    for job in jobs {
-                        q.push_back(job);
+                    if let Ok(mut q) = queue.jobs.try_write() {
+                        for job in jobs {
+                            q.push_back(job);
+                        }
                     }
                 }
             }
@@ -133,5 +134,26 @@ impl TaskQueue {
 
     pub async fn is_empty(&self) -> bool {
         self.jobs.read().await.is_empty()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::jobs::{Job, JobKind};
+
+    #[tokio::test]
+    async fn with_storage_persists_across_restarts() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("queue.json");
+
+        let queue = TaskQueue::with_storage(path.clone());
+        let job = Job::new(JobKind::DiagnosticSweep);
+        let id = job.id;
+        queue.enqueue(job).await;
+
+        let queue2 = TaskQueue::with_storage(path);
+        let jobs = queue2.list().await;
+        assert!(jobs.iter().any(|j| j.id == id));
     }
 }

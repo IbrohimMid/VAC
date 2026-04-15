@@ -306,18 +306,116 @@ fn handle_input_event(
                 state.review_normalize_selection();
             }
             InputEvent::ReviewUp | InputEvent::Up | InputEvent::ScrollUp => {
+                let prev = state.review_selected_path.clone();
                 state.review_select_by_delta(-1);
+                if state.review_diff.is_some() && prev != state.review_selected_path {
+                    if let (Some(path), Ok(session_id)) = (state.review_selected_path.clone(), uuid::Uuid::parse_str(&state.session_id)) {
+                        match crate::tui::services::review::load_diff(&state.project_root, session_id, &path) {
+                            Ok(diff) => {
+                                state.review_diff = Some(crate::tui::app::ReviewDiffState {
+                                    path: diff.path,
+                                    old_content: Some(diff.old_content),
+                                    new_content: Some(diff.new_content),
+                                    scroll: 0,
+                                    last_error: None,
+                                });
+                            }
+                            Err(e) => {
+                                state.review_diff = Some(crate::tui::app::ReviewDiffState {
+                                    path,
+                                    old_content: None,
+                                    new_content: None,
+                                    scroll: 0,
+                                    last_error: Some(e),
+                                });
+                            }
+                        }
+                    }
+                }
             }
             InputEvent::ReviewDown | InputEvent::Down | InputEvent::ScrollDown => {
+                let prev = state.review_selected_path.clone();
                 state.review_select_by_delta(1);
+                if state.review_diff.is_some() && prev != state.review_selected_path {
+                    if let (Some(path), Ok(session_id)) = (state.review_selected_path.clone(), uuid::Uuid::parse_str(&state.session_id)) {
+                        match crate::tui::services::review::load_diff(&state.project_root, session_id, &path) {
+                            Ok(diff) => {
+                                state.review_diff = Some(crate::tui::app::ReviewDiffState {
+                                    path: diff.path,
+                                    old_content: Some(diff.old_content),
+                                    new_content: Some(diff.new_content),
+                                    scroll: 0,
+                                    last_error: None,
+                                });
+                            }
+                            Err(e) => {
+                                state.review_diff = Some(crate::tui::app::ReviewDiffState {
+                                    path,
+                                    old_content: None,
+                                    new_content: None,
+                                    scroll: 0,
+                                    last_error: Some(e),
+                                });
+                            }
+                        }
+                    }
+                }
             }
             InputEvent::ReviewFilterInput(c) | InputEvent::InputChanged(c) => {
                 state.review_filter.push(c);
                 state.review_normalize_selection();
+                if state.review_diff.is_some() {
+                    if let (Some(path), Ok(session_id)) = (state.review_selected_path.clone(), uuid::Uuid::parse_str(&state.session_id)) {
+                        match crate::tui::services::review::load_diff(&state.project_root, session_id, &path) {
+                            Ok(diff) => {
+                                state.review_diff = Some(crate::tui::app::ReviewDiffState {
+                                    path: diff.path,
+                                    old_content: Some(diff.old_content),
+                                    new_content: Some(diff.new_content),
+                                    scroll: 0,
+                                    last_error: None,
+                                });
+                            }
+                            Err(e) => {
+                                state.review_diff = Some(crate::tui::app::ReviewDiffState {
+                                    path,
+                                    old_content: None,
+                                    new_content: None,
+                                    scroll: 0,
+                                    last_error: Some(e),
+                                });
+                            }
+                        }
+                    }
+                }
             }
             InputEvent::ReviewFilterBackspace | InputEvent::InputBackspace => {
                 state.review_filter.pop();
                 state.review_normalize_selection();
+                if state.review_diff.is_some() {
+                    if let (Some(path), Ok(session_id)) = (state.review_selected_path.clone(), uuid::Uuid::parse_str(&state.session_id)) {
+                        match crate::tui::services::review::load_diff(&state.project_root, session_id, &path) {
+                            Ok(diff) => {
+                                state.review_diff = Some(crate::tui::app::ReviewDiffState {
+                                    path: diff.path,
+                                    old_content: Some(diff.old_content),
+                                    new_content: Some(diff.new_content),
+                                    scroll: 0,
+                                    last_error: None,
+                                });
+                            }
+                            Err(e) => {
+                                state.review_diff = Some(crate::tui::app::ReviewDiffState {
+                                    path,
+                                    old_content: None,
+                                    new_content: None,
+                                    scroll: 0,
+                                    last_error: Some(e),
+                                });
+                            }
+                        }
+                    }
+                }
             }
             InputEvent::ReviewToggleDiff | InputEvent::InputSubmitted => {
                 if let Some(path) = state.review_selected_path.clone() {
@@ -347,6 +445,23 @@ fn handle_input_event(
                     }
                 }
             }
+            InputEvent::PageUp => {
+                if let Some(diff) = &mut state.review_diff {
+                    let step = 10usize;
+                    diff.scroll = diff.scroll.saturating_sub(step);
+                }
+            }
+            InputEvent::PageDown => {
+                if let Some(diff) = &mut state.review_diff {
+                    diff.scroll = diff.scroll.saturating_add(10);
+                    if let (Some(old), Some(new)) = (diff.old_content.as_deref(), diff.new_content.as_deref()) {
+                        let total = crate::tui::services::file_diff::render_diff(old, new, 120).len();
+                        if total > 0 && diff.scroll >= total {
+                            diff.scroll = total - 1;
+                        }
+                    }
+                }
+            }
             InputEvent::ReviewRevertSelected | InputEvent::FileChangesRevertFile => {
                 let Some(path) = state.review_selected_path.clone() else {
                     return;
@@ -360,7 +475,13 @@ fn handle_input_event(
                 match result {
                     Ok(()) => {
                         state.modified_files.retain(|p| p != &path);
-                        state.review_items.remove(&path);
+                        state.review_items
+                            .entry(path.clone())
+                            .and_modify(|it| {
+                                it.status = crate::tui::app::ReviewItemStatus::Restored;
+                                it.last_error = None;
+                                it.dirty_generation = it.dirty_generation.saturating_add(1);
+                            });
                         state.add_assistant_message(format!("Reverted file: {}", path));
                     }
                     Err(e) => {
@@ -379,8 +500,12 @@ fn handle_input_event(
                 state.review_sync_items();
                 state.review_normalize_selection();
             }
-            InputEvent::ReviewRevertFiltered | InputEvent::ToggleSidePanel => {
-                let files = state.review_filtered_paths();
+            InputEvent::ReviewRevertFiltered => {
+                let files: Vec<String> = state
+                    .review_filtered_paths()
+                    .into_iter()
+                    .filter(|p| state.modified_files.contains(p))
+                    .collect();
                 if files.is_empty() {
                     state.add_assistant_message("No files to revert.".to_string());
                     return;
@@ -396,7 +521,13 @@ fn handle_input_event(
                         Ok(()) => {
                             success_count += 1;
                             state.modified_files.retain(|p| p != file);
-                            state.review_items.remove(file);
+                            state.review_items
+                                .entry(file.clone())
+                                .and_modify(|it| {
+                                    it.status = crate::tui::app::ReviewItemStatus::Restored;
+                                    it.last_error = None;
+                                    it.dirty_generation = it.dirty_generation.saturating_add(1);
+                                });
                         }
                         Err(e) => {
                             state.review_items
@@ -429,6 +560,13 @@ fn handle_input_event(
                 for file in &files {
                     if vac_tools::journal::restore_snapshot(&state.project_root, session_id, file).is_ok() {
                         success_count += 1;
+                        state.review_items
+                            .entry(file.clone())
+                            .and_modify(|it| {
+                                it.status = crate::tui::app::ReviewItemStatus::Restored;
+                                it.last_error = None;
+                                it.dirty_generation = it.dirty_generation.saturating_add(1);
+                            });
                     } else {
                         state.review_items
                             .entry(file.clone())
@@ -439,27 +577,26 @@ fn handle_input_event(
                     }
                 }
                 state.modified_files.clear();
-                state.review_items.clear();
                 state.review_diff = None;
                 state.review_selected_idx = 0;
                 state.review_selected_path = None;
                 state.add_assistant_message(format!("Reverted {}/{} files.", success_count, files.len()));
+                state.review_generation = state.review_generation.saturating_add(1);
+                state.review_sync_items();
+                state.review_normalize_selection();
             }
             InputEvent::ReviewOpenEditor | InputEvent::FileChangesOpenEditor => {
                 let Some(path) = state.review_selected_path.clone() else {
                     return;
                 };
-                let editor = std::env::var("VAC_EDITOR")
+                let preferred = std::env::var("VAC_EDITOR")
                     .ok()
-                    .and_then(|s| if s.trim().is_empty() { None } else { Some(s) })
-                    .or_else(|| {
-                        std::env::var("EDITOR")
-                            .ok()
-                            .and_then(|s| if s.trim().is_empty() { None } else { Some(s) })
-                    });
+                    .filter(|s| !s.trim().is_empty())
+                    .or_else(|| std::env::var("EDITOR").ok().filter(|s| !s.trim().is_empty()))
+                    .and_then(|s| s.split_whitespace().next().map(|t| t.to_string()));
 
-                let Some(editor) = editor else {
-                    state.add_assistant_message("No editor configured. Set VAC_EDITOR or EDITOR.".to_string());
+                let Some(editor) = crate::tui::services::review::detect_editor(preferred) else {
+                    state.add_assistant_message("No editor available. Set VAC_EDITOR/EDITOR or install nvim/vim/nano.".to_string());
                     return;
                 };
 
@@ -810,5 +947,205 @@ fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, e
             state.is_streaming = false;
         }
         _ => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_state(project_root: std::path::PathBuf, session_id: uuid::Uuid) -> AppState {
+        AppState::new(AppStateOptions {
+            model: None,
+            session_id: Some(session_id.to_string()),
+            checkpoint_path: Some(project_root.join(".vac/checkpoints")),
+            project_root,
+        })
+    }
+
+    #[test]
+    fn review_selection_normalizes_when_filter_excludes_selected() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
+        state.modified_files = vec!["a.txt".to_string(), "b.txt".to_string()];
+        state.review_open = true;
+        state.review_selected_path = Some("b.txt".to_string());
+        state.review_filter = "a".to_string();
+        state.review_sync_items();
+        state.review_normalize_selection();
+        assert_eq!(state.review_selected_path, Some("a.txt".to_string()));
+        assert_eq!(state.review_selected_idx, 0);
+    }
+
+    #[tokio::test]
+    async fn slash_semantics_fix_and_explain_send_prompt_with_args() {
+        let dir = tempfile::tempdir().unwrap();
+        let (tx, mut rx) = tokio::sync::mpsc::channel(4);
+        let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
+
+        state.input.set_content("/fix cargo clippy");
+        handle_input_event(&mut state, &tx, InputEvent::InputSubmitted);
+        let ev = rx.recv().await.unwrap();
+        match ev {
+            OutputEvent::UserMessage(prompt, _, _, _) => {
+                assert!(prompt.contains("Fix linter/build errors"));
+                assert!(prompt.contains("cargo clippy"));
+                assert!(!prompt.trim_start().starts_with("/fix"));
+            }
+            _ => panic!("unexpected event"),
+        }
+
+        state.input.set_content("/explain crates/vac_cli/src/tui/event_loop.rs");
+        handle_input_event(&mut state, &tx, InputEvent::InputSubmitted);
+        let ev = rx.recv().await.unwrap();
+        match ev {
+            OutputEvent::UserMessage(prompt, _, _, _) => {
+                assert!(prompt.contains("Explain the relevant code or concept"));
+                assert!(prompt.contains("crates/vac_cli/src/tui/event_loop.rs"));
+                assert!(!prompt.trim_start().starts_with("/explain"));
+            }
+            _ => panic!("unexpected event"),
+        }
+    }
+
+    #[test]
+    fn slash_review_opens_workstation_instead_of_sending_literal() {
+        let dir = tempfile::tempdir().unwrap();
+        let (tx, _rx) = tokio::sync::mpsc::channel(4);
+        let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
+        state.modified_files = vec!["a.txt".to_string()];
+        state.input.set_content("/review");
+        handle_input_event(&mut state, &tx, InputEvent::InputSubmitted);
+        assert!(state.review_open);
+    }
+
+    #[test]
+    fn review_open_close_transitions_clear_diff() {
+        let dir = tempfile::tempdir().unwrap();
+        let (tx, _rx) = tokio::sync::mpsc::channel(4);
+        let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
+        state.review_open = true;
+        state.review_diff = Some(crate::tui::app::ReviewDiffState {
+            path: "a.txt".to_string(),
+            old_content: Some("old".to_string()),
+            new_content: Some("new".to_string()),
+            scroll: 0,
+            last_error: None,
+        });
+        handle_input_event(&mut state, &tx, InputEvent::ReviewClose);
+        assert!(!state.review_open);
+        assert!(state.review_diff.is_none());
+    }
+
+    #[test]
+    fn diff_scroll_state_changes_on_page_down() {
+        let dir = tempfile::tempdir().unwrap();
+        let (tx, _rx) = tokio::sync::mpsc::channel(4);
+        let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
+        state.review_open = true;
+        state.review_diff = Some(crate::tui::app::ReviewDiffState {
+            path: "a.txt".to_string(),
+            old_content: Some("a\nb\nc\nd\ne\n".to_string()),
+            new_content: Some("a\nb\nX\nd\ne\n".to_string()),
+            scroll: 0,
+            last_error: None,
+        });
+        handle_input_event(&mut state, &tx, InputEvent::PageDown);
+        assert!(state.review_diff.as_ref().unwrap().scroll > 0);
+    }
+
+    #[tokio::test]
+    async fn revert_selected_updates_status_and_working_tree() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().to_path_buf();
+        let session_id = uuid::Uuid::new_v4();
+        std::fs::create_dir_all(root.join(".vac/backups").join(session_id.to_string())).unwrap();
+
+        let file_rel = "a.txt";
+        std::fs::write(root.join(file_rel), "new").unwrap();
+        std::fs::write(crate::tui::services::review::snapshot_path(&root, session_id, file_rel), "old").unwrap();
+
+        let (tx, _rx) = tokio::sync::mpsc::channel(4);
+        let mut state = make_state(root.clone(), session_id);
+        state.modified_files = vec![file_rel.to_string()];
+        state.review_open = true;
+        state.review_sync_items();
+        state.review_selected_path = Some(file_rel.to_string());
+
+        handle_input_event(&mut state, &tx, InputEvent::ReviewRevertSelected);
+
+        let content = std::fs::read_to_string(root.join(file_rel)).unwrap();
+        assert_eq!(content, "old");
+        assert!(!state.modified_files.contains(&file_rel.to_string()));
+        let it = state.review_items.get(file_rel).unwrap();
+        assert_eq!(it.status, crate::tui::app::ReviewItemStatus::Restored);
+    }
+
+    #[tokio::test]
+    async fn revert_filtered_only_affects_filtered_modified_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().to_path_buf();
+        let session_id = uuid::Uuid::new_v4();
+        std::fs::create_dir_all(root.join(".vac/backups").join(session_id.to_string())).unwrap();
+
+        for (p, old, new) in [
+            ("a.txt", "old-a", "new-a"),
+            ("b.txt", "old-b", "new-b"),
+        ] {
+            std::fs::write(root.join(p), new).unwrap();
+            std::fs::write(crate::tui::services::review::snapshot_path(&root, session_id, p), old).unwrap();
+        }
+
+        let (tx, _rx) = tokio::sync::mpsc::channel(4);
+        let mut state = make_state(root.clone(), session_id);
+        state.modified_files = vec!["a.txt".to_string(), "b.txt".to_string()];
+        state.review_open = true;
+        state.review_filter = "a".to_string();
+        state.review_sync_items();
+        state.review_normalize_selection();
+
+        handle_input_event(&mut state, &tx, InputEvent::ReviewRevertFiltered);
+
+        assert_eq!(std::fs::read_to_string(root.join("a.txt")).unwrap(), "old-a");
+        assert_eq!(std::fs::read_to_string(root.join("b.txt")).unwrap(), "new-b");
+        assert!(!state.modified_files.contains(&"a.txt".to_string()));
+        assert!(state.modified_files.contains(&"b.txt".to_string()));
+    }
+
+    #[tokio::test]
+    async fn revert_all_clears_modified_files_and_marks_status() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().to_path_buf();
+        let session_id = uuid::Uuid::new_v4();
+        std::fs::create_dir_all(root.join(".vac/backups").join(session_id.to_string())).unwrap();
+
+        for (p, old, new) in [
+            ("a.txt", "old-a", "new-a"),
+            ("b.txt", "old-b", "new-b"),
+        ] {
+            std::fs::write(root.join(p), new).unwrap();
+            std::fs::write(crate::tui::services::review::snapshot_path(&root, session_id, p), old).unwrap();
+        }
+
+        let (tx, _rx) = tokio::sync::mpsc::channel(4);
+        let mut state = make_state(root.clone(), session_id);
+        state.modified_files = vec!["a.txt".to_string(), "b.txt".to_string()];
+        state.review_open = true;
+        state.review_sync_items();
+        state.review_normalize_selection();
+
+        handle_input_event(&mut state, &tx, InputEvent::ReviewRevertAll);
+
+        assert_eq!(std::fs::read_to_string(root.join("a.txt")).unwrap(), "old-a");
+        assert_eq!(std::fs::read_to_string(root.join("b.txt")).unwrap(), "old-b");
+        assert!(state.modified_files.is_empty());
+        assert_eq!(
+            state.review_items.get("a.txt").unwrap().status,
+            crate::tui::app::ReviewItemStatus::Restored
+        );
+        assert_eq!(
+            state.review_items.get("b.txt").unwrap().status,
+            crate::tui::app::ReviewItemStatus::Restored
+        );
     }
 }

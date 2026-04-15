@@ -78,7 +78,7 @@ pub fn map_crossterm_event_to_input_event(event: Event) -> Option<InputEvent> {
                     Some(InputEvent::InputCursorStart)
                 }
                 KeyCode::Char('y') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                    Some(InputEvent::ToggleSidePanel)
+                    Some(InputEvent::ReviewRevertFiltered)
                 }
 
                 KeyCode::Char('m') if key.modifiers.contains(KeyModifiers::CONTROL) => {

@@ -75,25 +75,49 @@ pub async fn execute_status(project_root: PathBuf, format: &str) -> anyhow::Resu
     let pid_path = project_root.join(PID_FILE);
     let state_path = project_root.join(".vac/autopilot.state");
 
-    let mut state_json = serde_json::json!({ "state": "Unknown" });
+    let mut state_json = serde_json::json!({ "state": "unknown" });
     let mut state_str = "Unknown".to_string();
+    let mut state_mode: Option<String> = None;
+    let mut state_poll_interval: Option<u64> = None;
+    let mut state_queue_len: Option<usize> = None;
+    let mut state_last_error: Option<String> = None;
 
     if state_path.exists() {
         if let Ok(content) = std::fs::read_to_string(&state_path) {
-            if let Ok(state) = serde_json::from_str::<vac_runtime::AutopilotState>(&content) {
+            if let Ok(sf) = serde_json::from_str::<vac_runtime::AutopilotStateFile>(&content) {
+                state_mode = Some(sf.mode.clone());
+                state_poll_interval = Some(sf.poll_interval_secs);
+                state_queue_len = Some(sf.queue_len);
+                state_last_error = sf.last_error.clone();
+                state_json = serde_json::to_value(&sf)?;
+
+                state_str = match &sf.state {
+                    vac_runtime::AutopilotState::Idle => "Idle".to_string(),
+                    vac_runtime::AutopilotState::Polling => "Polling".to_string(),
+                    vac_runtime::AutopilotState::Executing { job_id, kind } => {
+                        format!("Executing job {} ({})", job_id, kind)
+                    }
+                    vac_runtime::AutopilotState::WaitingApproval { tool_call_id } => {
+                        format!("Waiting approval ({tool_call_id})")
+                    }
+                    vac_runtime::AutopilotState::Backoff { until } => format!("Backoff until {until}"),
+                    vac_runtime::AutopilotState::Failed { error } => format!("Failed: {error}"),
+                };
+            } else if let Ok(state) = serde_json::from_str::<vac_runtime::AutopilotState>(&content) {
                 match state {
                     vac_runtime::AutopilotState::Idle => {
-                        state_str = "Idle (Waiting for jobs)".to_string();
-                        state_json = serde_json::json!({ "state": "Idle" });
+                        state_str = "Idle".to_string();
+                        state_json = serde_json::json!({ "state": "idle" });
                     }
                     vac_runtime::AutopilotState::Executing { job_id, kind } => {
                         state_str = format!("Executing job {} ({})", job_id, kind);
                         state_json = serde_json::json!({
-                            "state": "Executing",
+                            "state": "executing",
                             "job_id": job_id,
                             "kind": kind
                         });
                     }
+                    _ => {}
                 }
             }
         }
@@ -116,6 +140,7 @@ pub async fn execute_status(project_root: PathBuf, format: &str) -> anyhow::Resu
                 "status": "running",
                 "pid": pid,
                 "mode": config.mode,
+                "poll_interval_secs": config.poll_interval_secs,
                 "internal_state": state_json,
                 "log": project_root.join(LOG_FILE).display().to_string()
             }))?);
@@ -124,7 +149,21 @@ pub async fn execute_status(project_root: PathBuf, format: &str) -> anyhow::Resu
         println!("Autopilot: running");
         println!("  PID:    {pid}");
         println!("  Mode:   {}", config.mode);
+        if let Some(mode) = state_mode {
+            println!("  State Mode: {mode}");
+        }
+        if let Some(interval) = state_poll_interval {
+            println!("  Poll:   {interval}s");
+        } else {
+            println!("  Poll:   {}s", config.poll_interval_secs);
+        }
+        if let Some(len) = state_queue_len {
+            println!("  Queue:  {len}");
+        }
         println!("  State:  {}", state_str);
+        if let Some(err) = state_last_error {
+            println!("  Error:  {err}");
+        }
         println!("  Log:    {}", project_root.join(LOG_FILE).display());
     } else {
         std::fs::remove_file(&pid_path)?;

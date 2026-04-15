@@ -313,6 +313,7 @@ fn render_shortcuts(f: &mut Frame, _state: &mut AppState) {
         "Ctrl+Y - Revert filtered (Review)",
         "Ctrl+Z - Revert all (Review)",
         "Ctrl+N - Open in editor (Review)",
+        "PageUp/PageDown - Scroll diff (Review)",
         "Ctrl+G - Open review workstation",
         "Ctrl+O - Toggle auto-approve",
     ];
@@ -485,19 +486,38 @@ fn render_review_workstation(f: &mut Frame, state: &mut AppState) {
     let list = List::new(items).block(Block::default().borders(Borders::ALL).title("Files"));
     f.render_widget(list, body[0]);
 
+    let diff_height = body[1].height.saturating_sub(2) as usize;
+    let diff_title = if let Some(path) = &state.review_selected_path {
+        format!("Diff: {path}")
+    } else {
+        "Diff".to_string()
+    };
+
     let diff_lines: Vec<Line> = if let Some(diff) = &state.review_diff {
         if let (Some(old), Some(new)) = (diff.old_content.as_deref(), diff.new_content.as_deref()) {
-            crate::tui::services::file_diff::render_diff(old, new, body[1].width as usize)
+            crate::tui::services::review::render_diff_viewport(
+                old,
+                new,
+                body[1].width as usize,
+                diff.scroll,
+                diff_height,
+            )
         } else if let Some(err) = &diff.last_error {
             vec![Line::from(Span::styled(err.clone(), Style::default().fg(Color::Red)))]
         } else {
             vec![Line::raw("No diff loaded.")]
         }
+    } else if let Some(path) = state.review_selected_path.clone()
+        && let Some(it) = state.review_items.get(&path)
+        && let Some(err) = &it.last_error
+    {
+        vec![Line::from(Span::styled(err.clone(), Style::default().fg(Color::Red)))]
     } else {
-        vec![Line::raw("Press Enter to toggle diff.")]
+        vec![Line::raw("Enter: toggle diff • PageUp/PageDown: scroll diff")]
     };
+
     let diff = Paragraph::new(diff_lines)
-        .block(Block::default().borders(Borders::ALL).title("Diff"))
+        .block(Block::default().borders(Borders::ALL).title(diff_title))
         .wrap(Wrap { trim: false });
     f.render_widget(diff, body[1]);
 
@@ -506,6 +526,8 @@ fn render_review_workstation(f: &mut Frame, state: &mut AppState) {
         Span::styled(": Select  ", Style::default().fg(Color::DarkGray)),
         Span::styled("Enter", Style::default().fg(Color::Cyan)),
         Span::styled(": Diff  ", Style::default().fg(Color::DarkGray)),
+        Span::styled("PgUp/PgDn", Style::default().fg(Color::Cyan)),
+        Span::styled(": Scroll  ", Style::default().fg(Color::DarkGray)),
         Span::styled("Ctrl+x", Style::default().fg(Color::Cyan)),
         Span::styled(": Revert selected  ", Style::default().fg(Color::DarkGray)),
         Span::styled("Ctrl+y", Style::default().fg(Color::Cyan)),

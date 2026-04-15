@@ -381,7 +381,7 @@ impl AppState {
             keys.insert(path.clone());
         }
 
-        self.review_items.retain(|k, _| keys.contains(k));
+        self.review_items.retain(|k, v| keys.contains(k) || v.status != ReviewItemStatus::Pending);
 
         for path in &self.modified_files {
             let has_snapshot = session_id
@@ -390,7 +390,11 @@ impl AppState {
 
             self.review_items
                 .entry(path.clone())
-                .and_modify(|it| it.has_snapshot = has_snapshot)
+                .and_modify(|it| {
+                    it.has_snapshot = has_snapshot;
+                    it.status = ReviewItemStatus::Pending;
+                    it.last_error = None;
+                })
                 .or_insert_with(|| ReviewItem {
                     path: path.clone(),
                     status: ReviewItemStatus::Pending,
@@ -403,8 +407,26 @@ impl AppState {
 
     pub fn review_filtered_paths(&self) -> Vec<String> {
         let filter = self.review_filter.trim().to_lowercase();
-        self.modified_files
-            .iter()
+        let mut ordered: Vec<String> = vec![];
+        let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+        for p in &self.modified_files {
+            if seen.insert(p.clone()) {
+                ordered.push(p.clone());
+            }
+        }
+
+        let mut extra: Vec<String> = self
+            .review_items
+            .keys()
+            .filter(|k| !seen.contains(*k))
+            .cloned()
+            .collect();
+        extra.sort();
+        ordered.extend(extra);
+
+        ordered
+            .into_iter()
             .filter(|p| {
                 if filter.is_empty() {
                     true
@@ -412,7 +434,6 @@ impl AppState {
                     p.to_lowercase().contains(&filter)
                 }
             })
-            .cloned()
             .collect()
     }
 

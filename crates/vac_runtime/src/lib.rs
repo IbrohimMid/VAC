@@ -9,5 +9,5 @@ pub use cron_scheduler::{CronEntry, CronScheduler};
 pub use executor::{OperatingMode, TaskExecutor};
 pub use jobs::{Job, JobKind, JobStatus, JobTrigger};
 pub use queue::TaskQueue;
-pub use scheduler::{Scheduler, AutopilotState};
+pub use scheduler::{Scheduler, AutopilotEvent, AutopilotState, AutopilotStateFile, SchedulerConfig};
 pub use watcher::{FileWatcher, WatchEntry};

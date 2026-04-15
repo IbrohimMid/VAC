@@ -143,8 +143,12 @@ pub async fn execute_start(project_root: PathBuf) -> anyhow::Result<()> {
         anyhow::bail!("Runtime is disabled. Set [runtime] enable = true in .vac/config.toml");
     }
 
+    let autopilot = vac_core::config::AutopilotConfig::load(&project_root)?;
+
     println!("🚀 Starting VAC runtime scheduler...");
     println!("   mode: {}", config.runtime.operating_mode);
+    println!("   autopilot.mode: {}", autopilot.mode);
+    println!("   autopilot.poll_interval_secs: {}", autopilot.poll_interval_secs);
 
     // Initialize engine
     let mut engine = vac_core::VacEngine::new(project_root.clone()).await?;
@@ -157,7 +161,14 @@ pub async fn execute_start(project_root: PathBuf) -> anyhow::Result<()> {
     executor.attach_engine(engine);
 
     let queue = Arc::new(vac_runtime::TaskQueue::with_storage(runtime_queue_path(&executor.project_root)));
-    let scheduler = vac_runtime::Scheduler::new(queue.clone(), Arc::new(executor));
+    let scheduler = vac_runtime::Scheduler::new(
+        queue.clone(),
+        Arc::new(executor),
+        vac_runtime::SchedulerConfig {
+            mode: autopilot.mode,
+            poll_interval_secs: autopilot.poll_interval_secs,
+        },
+    );
     scheduler.start();
 
     println!("✓ Scheduler running. Press Ctrl+C to stop.");
