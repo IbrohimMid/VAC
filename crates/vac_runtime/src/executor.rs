@@ -59,12 +59,39 @@ impl TaskExecutor {
                         Ok(format!("Suggest-only: task '{description}' noted but not executed"))
                     }
                     OperatingMode::PatchProposal | OperatingMode::AutoFixLowRisk => {
-                        // Delegate to real engine
                         let engine = self.engine.as_ref()
                             .ok_or_else(|| anyhow::anyhow!(
                                 "TaskExecutor has no engine attached — call attach_engine() first"
                             ))?;
-                        let result = engine.lock().await.run_task(description).await
+
+                        let mode = self.operating_mode.clone();
+                        let (approval_tx, approval_rx) = tokio::sync::mpsc::unbounded_channel::<vil_swarm::ApprovalResponse>();
+                        
+                        // We need an updates channel to listen for ApprovalRequired
+                        let (update_tx, mut update_rx) = tokio::sync::mpsc::unbounded_channel::<vac_core::engine::RuntimeUpdate>();
+                        let approval_tx_clone = approval_tx.clone();
+
+                        tokio::spawn(async move {
+                            while let Some(update) = update_rx.recv().await {
+                                if let vac_core::engine::RuntimeUpdate::ApprovalRequired { tool_call_id, tool_name, .. } = update {
+                                    let approve = match mode {
+                                        OperatingMode::PatchProposal => false, // Never auto-approve in PatchProposal
+                                        OperatingMode::AutoFixLowRisk => {
+                                            // Only approve if it's a low risk tool
+                                            is_low_risk_tool(&tool_name)
+                                        }
+                                        _ => false,
+                                    };
+                                    let _ = approval_tx_clone.send(vil_swarm::ApprovalResponse {
+                                        tool_call_id,
+                                        approved: approve,
+                                        reason: if approve { None } else { Some("Headless policy denied this action".to_string()) },
+                                    });
+                                }
+                            }
+                        });
+
+                        let result = engine.lock().await.run_task_with_approvals(description, Some(update_tx), None, Some(approval_rx)).await
                             .map_err(|e| anyhow::anyhow!("Engine error: {e}"))?;
                         Ok(format!(
                             "Task completed: {} | modified: {} | tokens: {}",

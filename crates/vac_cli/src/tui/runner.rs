@@ -282,45 +282,32 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                 }
                 OutputEvent::ResumeSession(id) => {
                     if let Ok(uuid) = uuid::Uuid::parse_str(&id) {
-                        let mut eng = engine_clone.lock().await;
-                        if let Ok(_) = eng.load_session(uuid).await {
-                            let session = eng.session().read().await;
-                            let mut messages = Vec::new();
-                            for task in &session.tasks {
-                                messages.push(crate::tui::app::Message {
-                                    id: task.id.0,
-                                    role: "user".to_string(),
-                                    content: task.description.clone(),
-                                    tool_calls: None,
-                                });
-                                if let Some(result) = session.results.get(&task.id) {
-                                    let mut content = result.summary.clone();
-                                    if !result.modified_files.is_empty() {
-                                        content.push_str("\n\n**Modified Files**:\n");
-                                        for file in &result.modified_files {
-                                            content.push_str(&format!("- `{}`\n", file));
-                                        }
-                                    }
-                                    if !result.created_files.is_empty() {
-                                        content.push_str("\n**Created Files**:\n");
-                                        for file in &result.created_files {
-                                            content.push_str(&format!("- `{}`\n", file));
-                                        }
-                                    }
-                                    messages.push(crate::tui::app::Message {
-                                        id: uuid::Uuid::new_v4(),
-                                        role: "assistant".to_string(),
-                                        content,
-                                        tool_calls: None,
-                                    });
-                                }
+                        let engine = engine_clone.clone();
+                        let input_tx = input_tx_clone.clone();
+                        let approval_tx_clone = active_approval_tx_clone.clone();
+
+                        tokio::spawn(async move {
+                            let (update_tx, mut update_rx) = tokio::sync::mpsc::unbounded_channel::<RuntimeUpdate>();
+                            let (approval_tx, approval_rx) = tokio::sync::mpsc::unbounded_channel::<vil_swarm::ApprovalResponse>();
+                            
+                            {
+                                let mut active_approval = approval_tx_clone.lock().await;
+                                *active_approval = Some(approval_tx);
                             }
-                            let _ = input_tx_clone.send(InputEvent::SessionRestored {
-                                id: id.clone(),
-                                title: format!("Session {}", &id[..8]),
-                                messages,
-                            }).await;
-                        }
+
+                            let input_tx_inner = input_tx.clone();
+                            let stream_uuid = uuid::Uuid::new_v4();
+
+                            tokio::spawn(async move {
+                                let mut active_tools: HashMap<String, ToolCall> = HashMap::new();
+                                while let Some(update) = update_rx.recv().await {
+                                    handle_runtime_update(update, &input_tx_inner, stream_uuid, &mut active_tools).await;
+                                }
+                            });
+
+                            let mut eng = engine.lock().await;
+                            let _ = eng.resume_run_state(uuid, Some(update_tx), None, Some(approval_rx)).await;
+                        });
                     }
                 }
                 _ => {}

@@ -399,11 +399,12 @@ Rules:
                 - Response: `VilResponse::ok(data)` NOT `Json(data)`\n\
                 - Semantic types: `#[vil_state]`, `#[vil_event]`, `#[vil_fault]`, `#[vil_decision]`",
             VilArchetype::Pipeline =>
-                "This is a **SDK_PIPELINE** project.\n\
+                "This is a **vil-pipeline** project.\n\
                 - Macro: `vil_workflow! { name, token: ShmToken, instances: [...], routes: [...] }`\n\
                 - Sources: `HttpSourceBuilder::new().url().format(HttpFormat::SSE).dialect(...)`\n\
                 - Token: `ShmToken` for high-throughput, `GenericToken` for simple cases\n\
-                - Routes: `sink.out -> source.in (LoanWrite)`",
+                - Routes: `sink.out -> source.in (LoanWrite)`\n\
+                - Semantic types: `#[vil_token]`, `#[vil_stream]`, `#[vil_sink]`",
             VilArchetype::Plugin =>
                 "This is a **VilPlugin** project.\n\
                 - Trait: `impl VilPlugin for T { fn register(&self, ctx: &mut PluginContext) }`\n\
@@ -673,6 +674,147 @@ Rules:
                 }
             }
         }
+    }
+
+    pub async fn resume_agent_loop(
+        &mut self,
+        state: &mut crate::run_state::AgentRunState,
+        task_description: &str,
+        updates: Option<mpsc::UnboundedSender<AgentLoopEvent>>,
+        session_id: Option<uuid::Uuid>,
+        project_root: Option<std::path::PathBuf>,
+        approval_rx: Option<mpsc::UnboundedReceiver<ApprovalResponse>>,
+    ) -> SwarmResult<ExecutionResult> {
+        info!(task = %task_description, "Resuming Semantic VIL-native agent loop");
+
+        let llm_router = self
+            .llm_router
+            .as_ref()
+            .ok_or_else(|| SwarmError::Orchestration("LLM router not initialized".into()))?;
+        let tool_router = self
+            .tool_router
+            .as_ref()
+            .ok_or_else(|| SwarmError::Orchestration("Tool router not initialized".into()))?;
+
+        let root = project_root.unwrap_or_else(|| std::path::PathBuf::from("."));
+        let mut context = ToolContext::new(root);
+        context.privacy = self.privacy_vault.clone();
+        if let Some(sid) = session_id {
+            context = context.with_session_id(sid);
+        }
+        
+        let tool_defs: Vec<ToolDefinition> = tool_router
+            .registry()
+            .list()
+            .await
+            .into_iter()
+            .map(|tool| ToolDefinition {
+                name: tool.name,
+                description: tool.description,
+                input_schema: tool.input_schema,
+            })
+            .collect();
+
+        // Resume Planner if it was interrupted
+        let plan_context = if state.stage == crate::run_state::RunStage::Planner {
+            let plan_output = self
+                .execute_agent_loop(
+                    state,
+                    tool_defs.clone(),
+                    updates.clone(),
+                    &context,
+                    llm_router,
+                    tool_router,
+                )
+                .await?;
+            
+            let strict_mode = std::env::var("VAC_PROFILE")
+                .map(|p| p == "strict-vil" || p == "spec-hardening")
+                .unwrap_or(false);
+
+            match evaluate_planner_output(&plan_output) {
+                PlannerGateResult::Passed(plan) => plan.to_markdown(),
+                PlannerGateResult::KnowledgeGateFailed(plan) if strict_mode => {
+                    return Err(SwarmError::Orchestration("Planner gate FAILED".into()));
+                }
+                PlannerGateResult::KnowledgeGateFailed(plan) => {
+                    format!("{}\n\n> **WARNING**: Planner did not consult `vil_knowledge`.", plan.to_markdown())
+                }
+                PlannerGateResult::ParseFailed(raw) if strict_mode => {
+                    return Err(SwarmError::Orchestration("Planner gate FAILED (ParseFailed)".into()));
+                }
+                PlannerGateResult::ParseFailed(raw) => {
+                    format!("### Planner Output\n{}\n\n> **WARNING**: Invalid SemanticPlan JSON.", raw)
+                }
+            }
+        } else {
+            // It was interrupted in Coder stage, we don't have plan_context, but state already contains coder messages.
+            String::new()
+        };
+
+        // If it just finished planner, we need to transition to Coder stage.
+        if state.stage == crate::run_state::RunStage::Planner {
+            let mut coder_prompt = if let Some(ref profile) = self.project_profile {
+                Self::build_vil_coder_prompt(profile, self.knowledge.as_deref())
+            } else {
+                let mut prompt = Self::coder_system_prompt();
+                if let Some(kb) = self.knowledge.as_deref() {
+                    let patterns: Vec<String> = kb.patterns_by_category("patterns")
+                        .into_iter()
+                        .take(3)
+                        .map(|p| format!("- **{}**: {}", p.name, p.description))
+                        .collect();
+                    if !patterns.is_empty() {
+                        prompt.push_str(&format!("\n\n**Pre-loaded VIL patterns:**\n{}", patterns.join("\n")));
+                    }
+                }
+                prompt
+            };
+
+            if let Some(ref lsp) = self.lsp_context {
+                if !lsp.is_empty() {
+                    coder_prompt.push_str(&format!(
+                        "\n\n---\n**vil-lsp diagnostics** ({} errors, {} warnings):\n{}\nFix these before writing new code.",
+                        lsp.total_errors,
+                        lsp.total_warnings,
+                        lsp.top_findings.iter().map(|f| format!("- {f}")).collect::<Vec<_>>().join("\n")
+                    ));
+                }
+            }
+            if let Some(ref rb) = self.rulebook {
+                coder_prompt.push_str("\n\n---\n**Rulebook Constraints:**\n");
+                coder_prompt.push_str(rb);
+            }
+
+            state.messages = vec![
+                Message::system(coder_prompt),
+                Message::user(format!("Task: {}\n\n{}", task_description, plan_context)),
+            ];
+            state.trim_boundary = 0;
+            state.iterations = 0;
+            state.stage = crate::run_state::RunStage::Coder;
+        }
+
+        // Now run the Coder stage (or resume if it was already in Coder)
+        let final_output = self
+            .execute_agent_loop_with_approvals(
+                state,
+                tool_defs,
+                updates,
+                &context,
+                llm_router,
+                tool_router,
+                approval_rx,
+            )
+            .await?;
+
+        Ok(ExecutionResult {
+            summary: final_output,
+            total_tokens_used: state.total_tokens,
+            modified_files: state.modified_files.clone(),
+            created_files: state.created_files.clone(),
+            agent_contributions: Vec::new(),
+        })
     }
 
     pub async fn agent_loop_with_events(

@@ -11,6 +11,7 @@ description = "VAC Runtime — background task queue, scheduler, and autonomous 
 vac_core = { workspace = true }
 vac_tools = { workspace = true }
 vac_trace = { workspace = true }
+vil_swarm = { workspace = true }
 
 tokio = { workspace = true }
 serde = { workspace = true }

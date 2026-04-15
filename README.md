@@ -47,7 +47,7 @@ VAC is built on a modular Rust-based architecture divided into the VIL (Vastar I
 
 ## 🌟 New to VAC?
 
-If you are a new user, please check out our **[Onboarding Guide](docs/onboarding.md)** first! It covers everything from installation, configuring `vac.toml` (API keys and providers), to understanding the core commands (`vac init`, `vac run`, `vac interactive`, `vac autopilot`).
+If you are a new user, please check out our **[Onboarding Guide](docs/onboarding.md)** first! It covers everything from installation, configuring `vac.toml` (API keys and providers), to understanding the core commands (`vac init`, `vac run`, `vac interactive`, `vac autopilot up|down|status`).
 
 ---
 

@@ -83,9 +83,18 @@ vac init
 
 ### `vac run`
 Menjalankan agen untuk mengerjakan satu tugas atau instruksi secara langsung dari terminal. VAC akan membaca instruksi, merencanakan eksekusi, memanggil *tools*, dan menyelesaikan tugas secara otonom.
+
+Anda dapat menggunakan flag `--approve` untuk menyetujui semua operasi secara otomatis (Headless Mode) tanpa meminta konfirmasi dari Anda:
 ```bash
-vac run "Tambahkan error handling pada modul authentikasi"
+vac run "Tambahkan error handling pada modul authentikasi" --approve
 ```
+
+### `vac resume`
+Memulihkan (*resume*) status dari sesi yang tertunda atau terhenti. Jika Anda menjalankan ini tanpa UI interaktif, agen akan melanjutkan eksekusi di latar belakang:
+```bash
+vac resume <session-id>
+```
+Sangat disarankan untuk melanjutkan sesi melalui menu Resume di dalam `vac interactive` agar Anda tetap bisa memantau *tools* dan memberikan persetujuan (*approval*).
 
 ### `vac interactive`
 Membuka *Terminal User Interface* (TUI) interaktif. Ini adalah **mode yang sangat direkomendasikan** karena menyediakan antarmuka visual untuk melihat *streaming* pemikiran agen, *progress* eksekusi, serta memberikan persetujuan (*approval*) secara langsung jika agen ingin mengeksekusi perintah bash atau operasi file yang berisiko tinggi.
@@ -93,10 +102,17 @@ Membuka *Terminal User Interface* (TUI) interaktif. Ini adalah **mode yang sanga
 vac interactive
 ```
 
-### `vac autopilot`
-Menjalankan *daemon* autopilot di latar belakang. Pada mode ini, VAC akan memonitor sistem (misalnya perubahan file, *cron jobs*, atau antrean tugas) dan secara otomatis merespons serta mengerjakan tugas-tugas tanpa intervensi manual berkelanjutan.
+### `vac autopilot up|down|status`
+Mengelola *daemon* autopilot di latar belakang. Mode ini memungkinkan VAC memonitor sistem (perubahan file, *cron jobs*, atau antrean tugas) secara otomatis.
 ```bash
-vac autopilot
+# Menjalankan autopilot
+vac autopilot up
+
+# Melihat status
+vac autopilot status
+
+# Menghentikan autopilot
+vac autopilot down
 ```
 
 ---

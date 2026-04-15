@@ -109,11 +109,15 @@ impl VilTrustPolicyAdapter {
         }
     }
 
-    pub fn with_engine(engine: vil_trust::PolicyEngine) -> Self {
+    pub fn with_all(
+        engine: vil_trust::PolicyEngine,
+        registry: Arc<ToolRegistry>,
+        config: ToolConfigStub,
+    ) -> Self {
         Self {
             engine,
-            registry: None,
-            config: None,
+            registry: Some(registry),
+            config: Some(Arc::new(config)),
         }
     }
 

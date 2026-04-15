@@ -18,41 +18,32 @@ pub fn render_diff(old_content: &str, new_content: &str, max_width: usize) -> Ve
     ]));
     lines.push(Line::from(""));
     
-    // Simple line-by-line comparison
-    let old_lines: Vec<&str> = old_content.lines().collect();
-    let new_lines: Vec<&str> = new_content.lines().collect();
-    
-    let max_lines = old_lines.len().max(new_lines.len());
-    
-    for i in 0..max_lines {
-        let old_line = old_lines.get(i).copied().unwrap_or("");
-        let new_line = new_lines.get(i).copied().unwrap_or("");
-        
-        if old_line != new_line {
-            // Show removed line
-            if !old_line.is_empty() {
-                let truncated = truncate_line(old_line, max_width.saturating_sub(2));
+    // Simple line-by-line comparison using `similar`
+    let diff = similar::TextDiff::from_lines(old_content, new_content);
+
+    for change in diff.iter_all_changes() {
+        let line = change.value();
+        let truncated = truncate_line(line.trim_end_matches('\n'), max_width.saturating_sub(2));
+
+        match change.tag() {
+            similar::ChangeTag::Delete => {
                 lines.push(Line::from(vec![
                     Span::styled("- ", Style::default().fg(Color::Red)),
                     Span::styled(truncated, Style::default().fg(Color::Red)),
                 ]));
             }
-            
-            // Show added line
-            if !new_line.is_empty() {
-                let truncated = truncate_line(new_line, max_width.saturating_sub(2));
+            similar::ChangeTag::Insert => {
                 lines.push(Line::from(vec![
                     Span::styled("+ ", Style::default().fg(Color::Green)),
                     Span::styled(truncated, Style::default().fg(Color::Green)),
                 ]));
             }
-        } else if !old_line.is_empty() {
-            // Context line (unchanged)
-            let truncated = truncate_line(old_line, max_width.saturating_sub(2));
-            lines.push(Line::from(vec![
-                Span::raw("  "),
-                Span::raw(truncated),
-            ]));
+            similar::ChangeTag::Equal => {
+                lines.push(Line::from(vec![
+                    Span::raw("  "),
+                    Span::raw(truncated),
+                ]));
+            }
         }
     }
     

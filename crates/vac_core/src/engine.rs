@@ -706,7 +706,152 @@ impl VacEngine {
         }
     }
 
-    /// Get engine status information.
+    /// Resumes execution of a previously saved session.
+    pub async fn resume_run_state(
+        &mut self,
+        session_id: uuid::Uuid,
+        updates: Option<tokio::sync::mpsc::UnboundedSender<RuntimeUpdate>>,
+        cancel: Option<tokio_util::sync::CancellationToken>,
+        approval_rx: Option<tokio::sync::mpsc::UnboundedReceiver<vil_swarm::ApprovalResponse>>,
+    ) -> VacResult<TaskResult> {
+        let checkpoint_dir = self.project_root.join(".vac/checkpoints");
+        let state_path = checkpoint_dir.join(format!("{}_state.json", session_id));
+        
+        if !state_path.exists() {
+            return Err(VacError::Config(format!("State checkpoint not found at {}", state_path.display())));
+        }
+
+        let mut state = vil_swarm::run_state::AgentRunState::from_checkpoint(&state_path)
+            .map_err(|e| VacError::Config(format!("Failed to load state: {}", e)))?;
+
+        // Re-hydrate session in memory
+        let session_path = checkpoint_dir.join(format!("{}.json", session_id));
+        if session_path.exists() {
+            if let Ok(envelope) = vil_swarm::checkpoint::load_checkpoint_from_file(&session_path) {
+                let mut session = self.session.write().await;
+                session.id = session_id;
+                if let Some(completed) = envelope.metadata.get("completed_tasks").and_then(|v| v.as_u64()) {
+                    session.metadata.total_tasks_completed = completed as usize;
+                }
+            }
+        }
+
+        let mut swarm = self
+            .swarm
+            .as_ref()
+            .ok_or_else(|| VacError::Task("Swarm not initialized. Run `vac init` first.".into()))?
+            .write()
+            .await;
+
+        let task_desc = state.messages.iter()
+            .find(|m| matches!(m.role, vil_llm::provider::Role::User))
+            .map(|m| m.content.clone())
+            .unwrap_or_else(|| "Resumed task".to_string());
+
+        let task = Task::new(&task_desc);
+        let task_id = task.id;
+
+        let trace_handle = self.trace_recorder.clone();
+        let update_tx = updates.clone();
+        let (swarm_tx, mut swarm_rx) = tokio::sync::mpsc::unbounded_channel::<vil_swarm::AgentLoopEvent>();
+        let project_root = self.project_root.clone();
+        let privacy_vault = self.privacy_vault.clone();
+
+        tokio::spawn(async move {
+            while let Some(event) = swarm_rx.recv().await {
+                if let Some(ref recorder) = trace_handle {
+                    match recorder.lock() {
+                        Ok(mut rec) => {
+                            match &event {
+                                vil_swarm::AgentLoopEvent::LlmRequest { provider, model, message_count } => {
+                                    rec.record_llm_request(provider, model, *message_count);
+                                }
+                                vil_swarm::AgentLoopEvent::ToolCall { id: _, name, arguments } => {
+                                    rec.record_tool_call(name, arguments);
+                                }
+                                vil_swarm::AgentLoopEvent::ToolResult { id: _, name, content, success } => {
+                                    rec.record_tool_result(name, content, *success);
+                                }
+                                vil_swarm::AgentLoopEvent::ModelResponse { provider, model } => {
+                                    rec.record_llm_response(provider, model);
+                                }
+                                _ => {}
+                            }
+                            let _ = rec.flush();
+                        }
+                        Err(_) => {}
+                    }
+                }
+                if let Some(ref tx) = update_tx {
+                    let update = match event {
+                        vil_swarm::AgentLoopEvent::Status(message) => Some(RuntimeUpdate::Status(message)),
+                        vil_swarm::AgentLoopEvent::ModelResponse { provider, model } => Some(RuntimeUpdate::ModelInfo { provider, model }),
+                        vil_swarm::AgentLoopEvent::AssistantChunk(chunk) => {
+                            let restored = {
+                                let vault = privacy_vault.read().await;
+                                vault.restore(&chunk)
+                            };
+                            Some(RuntimeUpdate::AssistantChunk(restored))
+                        }
+                        vil_swarm::AgentLoopEvent::ToolCall { id, name, arguments } => Some(RuntimeUpdate::ToolCall { id, name, arguments }),
+                        vil_swarm::AgentLoopEvent::ToolResult { id, name, content, success } => Some(RuntimeUpdate::ToolResult { id, name, content, success }),
+                        vil_swarm::AgentLoopEvent::ApprovalRequired { tool_call_id, tool_name, arguments } => Some(RuntimeUpdate::ApprovalRequired { tool_call_id, tool_name, arguments }),
+                        vil_swarm::AgentLoopEvent::LlmRequest { .. } => None,
+                    };
+                    if let Some(up) = update {
+                        let _ = tx.send(up);
+                    }
+                }
+            }
+        });
+
+        state.cancel = cancel.clone();
+
+        let result = swarm
+            .resume_agent_loop(
+                &mut state,
+                &task_desc,
+                Some(swarm_tx),
+                Some(session_id),
+                Some(project_root),
+                approval_rx,
+            )
+            .await;
+
+        let task_result = match result {
+            Ok(exec_res) => {
+                TaskResult {
+                    task_id: crate::task::TaskId(uuid::Uuid::new_v4()),
+                    status: crate::task::TaskStatus::Completed,
+                    summary: exec_res.summary,
+                    modified_files: exec_res.modified_files,
+                    created_files: exec_res.created_files,
+                    total_tokens_used: exec_res.total_tokens_used,
+                    agent_contributions: vec![],
+                    elapsed_ms: 0,
+                    validation_score: None,
+                }
+            }
+            Err(e) => {
+                let _ = state.save_checkpoint(&state_path, Some(session_id));
+                TaskResult {
+                    task_id: crate::task::TaskId(uuid::Uuid::new_v4()),
+                    status: crate::task::TaskStatus::Failed(e.to_string()),
+                    summary: format!("Failed: {}", e),
+                    modified_files: state.modified_files.clone(),
+                    created_files: state.created_files.clone(),
+                    total_tokens_used: state.total_tokens,
+                    agent_contributions: vec![],
+                    elapsed_ms: 0,
+                    validation_score: None,
+                }
+            }
+        };
+
+        self.save_checkpoint(&task_result).await;
+
+        Ok(task_result)
+    }
     pub async fn status(&self) -> VacResult<EngineStatus> {
         let session = self.session.read().await;
         Ok(EngineStatus {

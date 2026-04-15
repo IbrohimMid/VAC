@@ -25,6 +25,9 @@ pub fn run_all_passes(module: &IrModule) -> ValidationReport {
         pass_zero_copy_legality(module, &semantic, &mut issues),
         pass_observability(&semantic, module, &mut issues),
         pass_vil_way_compliance(module, &mut issues),
+        pass_tri_lane_consistency(module, &semantic, &mut issues),
+        pass_generated_plumbing(module, &mut issues),
+        pass_semantic_macro_coverage(&semantic, module, &mut issues),
     ];
 
     let score = scores.iter().sum::<f64>() / scores.len() as f64;
@@ -200,4 +203,76 @@ fn has_type_name(ty: &TypeRef, target: &str) -> bool {
         return true;
     }
     ty.generics.iter().any(|g| has_type_name(g, target))
+}
+
+/// Pass 5: Tri-Lane consistency.
+/// Checks that handlers routing to different lanes don't accidentally block the fast lane.
+fn pass_tri_lane_consistency(
+    module: &IrModule,
+    _model: &SemanticModel,
+    issues: &mut Vec<String>,
+) -> f64 {
+    let mut score = 1.0;
+    
+    for func in &module.functions {
+        if func.vil_attrs.iter().any(|a| a.contains("lane = \"fast\"") || a.contains("fast_lane")) {
+            if let Some(body) = &func.body_summary {
+                if body.contains("fs::") || body.contains("reqwest::") || body.contains(".await") {
+                    if body.contains("std::fs") || body.contains("std::thread::sleep") {
+                        issues.push(format!(
+                            "Handler '{}' is marked for the Fast Lane but contains synchronous blocking calls. Use async I/O or the Compute Lane.",
+                            func.name
+                        ));
+                        score *= 0.8;
+                    }
+                }
+            }
+        }
+    }
+    score
+}
+
+/// Pass 6: Generated Plumbing.
+/// Checks that users aren't manually writing code that VIL macros generate (e.g. implementing VilMessage manually).
+fn pass_generated_plumbing(module: &IrModule, issues: &mut Vec<String>) -> f64 {
+    let mut score = 1.0;
+    
+    for imp in &module.impls {
+        if imp.trait_name.as_deref() == Some("VilMessage") || imp.trait_name.as_deref() == Some("VilState") {
+            issues.push(format!(
+                "Struct '{}' manually implements '{}'. VIL macros (#[vil_message], #[vil_state]) automatically generate this plumbing. Remove the manual impl.",
+                imp.self_type,
+                imp.trait_name.as_ref().unwrap()
+            ));
+            score *= 0.8;
+        }
+    }
+    score
+}
+
+/// Pass 7: Semantic Macro Coverage.
+/// Ensures structs have explicit VIL macros rather than relying solely on naming heuristics.
+fn pass_semantic_macro_coverage(
+    model: &SemanticModel,
+    module: &IrModule,
+    issues: &mut Vec<String>,
+) -> f64 {
+    let mut score = 1.0;
+    
+    for msg in &model.messages {
+        if msg.role != MessageRole::Generic {
+            // Find the struct in the module to check its actual attributes
+            if let Some(s) = module.structs.iter().find(|s| s.name == msg.name) {
+                let has_vil_attr = s.vil_attrs.iter().any(|a| a.starts_with("vil_"));
+                if !has_vil_attr {
+                    issues.push(format!(
+                        "Struct '{}' is inferred as '{:?}' by name, but lacks explicit semantic macros (e.g., #[vil_state], #[vil_event]). Explicit macros are required for VIL-native execution.",
+                        s.name, msg.role
+                    ));
+                    score *= 0.9;
+                }
+            }
+        }
+    }
+    score
 }

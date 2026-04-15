@@ -39,16 +39,11 @@ struct BestPracticeResult {
     rationale: String,
 }
 
-pub struct KnowledgeTool {
-    knowledge: vil_knowledge::KnowledgeBase,
-}
+pub struct KnowledgeTool {}
 
 impl KnowledgeTool {
     pub fn new() -> Self {
-        let project_root = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-        Self {
-            knowledge: vil_knowledge::KnowledgeBase::load(&project_root),
-        }
+        Self {}
     }
 }
 
@@ -59,7 +54,7 @@ impl VilTool for KnowledgeTool {
     }
 
     fn description(&self) -> &str {
-        "Search VIL pattern library, code templates, and best practices. Use this to find VIL-specific patterns for server handlers (VX_APP), streaming pipelines (SDK_PIPELINE), plugins (LLM, RAG, Agent), configuration, and more."
+        "Search VIL pattern library, code templates, and best practices. Use this to find VIL-specific patterns for VilServer handlers, streaming pipelines, plugins, configuration, and more."
     }
 
     fn input_schema(&self) -> serde_json::Value {
@@ -68,7 +63,7 @@ impl VilTool for KnowledgeTool {
             "properties": {
                 "query": {
                     "type": "string",
-                    "description": "Search query for VIL patterns (e.g., 'create server', 'pipeline streaming', 'rag plugin', 'sidecar python')"
+                    "description": "Search query for VIL patterns (e.g., 'create VilServer', 'pipeline streaming', 'rag plugin', 'sidecar python')"
                 },
                 "category": {
                     "type": "string",
@@ -95,7 +90,7 @@ impl VilTool for KnowledgeTool {
     async fn execute(
         &self,
         args: serde_json::Value,
-        _context: &ToolContext,
+        context: &ToolContext,
     ) -> Result<serde_json::Value, ToolError> {
         let input: KnowledgeInput =
             serde_json::from_value(args).map_err(|e| ToolError::InvalidArguments(e.to_string()))?;
@@ -104,11 +99,13 @@ impl VilTool for KnowledgeTool {
 
         debug!(query = %input.query, category = ?input.category, "Searching VIL knowledge base");
 
+        let knowledge = vil_knowledge::KnowledgeBase::load(&context.working_dir);
+
         // Search patterns
         let mut patterns: Vec<&vil_knowledge::Pattern> = if let Some(ref cat) = input.category {
-            self.knowledge.patterns_by_category(cat)
+            knowledge.patterns_by_category(cat)
         } else {
-            self.knowledge.search_patterns(&input.query)
+            knowledge.search_patterns(&input.query)
         };
 
         // If category filter + query, further filter by query relevance
@@ -127,7 +124,7 @@ impl VilTool for KnowledgeTool {
 
         // Search best practices
         let best_practices: Vec<&vil_knowledge::BestPractice> =
-            self.knowledge.search_best_practices(&input.query);
+            knowledge.search_best_practices(&input.query);
 
         let total_found = patterns.len() + best_practices.len();
 

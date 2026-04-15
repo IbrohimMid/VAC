@@ -8,11 +8,26 @@ pub async fn execute(
     task_description: String,
     priority: String,
     profile: String,
-    _require_approval: bool,
+    approve: bool,
     targets: Vec<String>,
 ) -> anyhow::Result<()> {
     let mut engine = vac_core::VacEngine::new(project_root).await?;
-    engine.init().await?;
+
+    if approve {
+        // Build a policy engine that explicitly allows all tools
+        let config_stub = vac_tools::router::ToolConfigStub {
+            default_policy: "allow".into(),
+            allow: std::collections::HashMap::new(),
+            deny: std::collections::HashMap::new(),
+        };
+
+        let adapter = std::sync::Arc::new(
+            vac_tools::router::DefaultPolicyEngine::new(config_stub)
+        );
+        engine.init_with_policy(Some(adapter)).await?;
+    } else {
+        engine.init_with_policy(None).await?;
+    }
 
     let priority = match priority.to_lowercase().as_str() {
         "low" => Priority::Low,
@@ -25,6 +40,9 @@ pub async fn execute(
     let profile_override = ProfileOverride::resolve(&profile_name);
 
     println!("🤖 Running task: {}", task_description);
+    if approve {
+        println!("⚠️  Auto-approval enabled: Tools will run without confirmation.");
+    }
     println!("   Priority: {:?} | Profile: {}", priority, profile_name);
     if profile_override.planner_gate {
         println!("   ⚡ Planner gate: ENFORCED");
@@ -37,7 +55,36 @@ pub async fn execute(
         println!("   Targets: {}", targets.join(", "));
     }
 
-    let result = engine.run_task(&task_description).await?;
+    let (update_tx, mut update_rx) = tokio::sync::mpsc::unbounded_channel::<vac_core::engine::RuntimeUpdate>();
+    
+    // If --approve is set, we use an interactive approval channel.
+    // In a real CLI, this would need a TUI or stdin prompt.
+    // For now, we wire it to a dummy channel that auto-rejects if not interactive.
+    let (approval_tx, approval_rx) = tokio::sync::mpsc::unbounded_channel::<vil_swarm::ApprovalResponse>();
+    let _ = approval_tx; // Keep for future stdin-to-channel wiring
+
+    tokio::spawn(async move {
+        while let Some(update) = update_rx.recv().await {
+            match update {
+                vac_core::engine::RuntimeUpdate::Status(msg) => println!("⏳ {}", msg),
+                vac_core::engine::RuntimeUpdate::ToolCall { name, .. } => println!("🛠️  Calling: {}", name),
+                vac_core::engine::RuntimeUpdate::ApprovalRequired { tool_name, .. } => {
+                    if !approve {
+                        println!("🛡️  Tool '{}' requires approval but --approve is not set. Auto-rejecting.", tool_name);
+                    } else {
+                        println!("🛡️  Tool '{}' requires approval. (Interactive approval in 'vac run' is coming soon, use 'vac interactive' for now)", tool_name);
+                    }
+                }
+                _ => {}
+            }
+        }
+    });
+
+    let result = if approve {
+        engine.run_task_with_approvals(&task_description, Some(update_tx), None, Some(approval_rx)).await?
+    } else {
+        engine.run_task_with_updates(&task_description, Some(update_tx)).await?
+    };
 
     println!("\n{}", "=".repeat(60));
     match &result.status {
