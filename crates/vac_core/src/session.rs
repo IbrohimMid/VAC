@@ -56,6 +56,17 @@ impl Session {
         Ok(())
     }
 
+    /// Load a specific session by ID from disk.
+    pub fn load(project_root: &Path, id: Uuid) -> crate::error::VacResult<Option<Self>> {
+        let path = project_root.join(".vac/sessions").join(format!("{}.json", id));
+        if !path.exists() {
+            return Ok(None);
+        }
+        let content = std::fs::read_to_string(&path)?;
+        let session = serde_json::from_str(&content)?;
+        Ok(Some(session))
+    }
+
     /// Load the most recent session from disk.
     pub fn load_latest(project_root: &Path) -> crate::error::VacResult<Option<Self>> {
         let session_dir = project_root.join(".vac/sessions");

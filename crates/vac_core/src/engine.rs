@@ -690,14 +690,12 @@ impl VacEngine {
             .map_err(|e| VacError::Config(format!("Failed to load state: {}", e)))?;
 
         // Re-hydrate session in memory
-        if let Ok(Some(session_disk)) = crate::session::Session::load_latest(&self.project_root) {
-            if session_disk.id == session_id {
-                let mut session = self.session.write().await;
-                session.id = session_id;
-                session.metadata = session_disk.metadata;
-                session.tasks = session_disk.tasks;
-                session.results = session_disk.results;
-            }
+        if let Ok(Some(session_disk)) = crate::session::Session::load(&self.project_root, session_id) {
+            let mut session = self.session.write().await;
+            session.id = session_id;
+            session.metadata = session_disk.metadata;
+            session.tasks = session_disk.tasks;
+            session.results = session_disk.results;
         }
 
         let mut swarm = self
