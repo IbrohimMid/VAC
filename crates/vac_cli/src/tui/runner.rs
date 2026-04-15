@@ -16,6 +16,79 @@ use super::{
 /// Shared handle to the active task's update channel for structured approval routing.
 type ActiveUpdateTx = Arc<Mutex<Option<mpsc::UnboundedSender<RuntimeUpdate>>>>;
 
+async fn resume_session_into_tui(
+    engine: Arc<Mutex<VacEngine>>,
+    active_update_tx: ActiveUpdateTx,
+    input_tx: mpsc::Sender<InputEvent>,
+    id: String,
+) {
+    let uuid = match uuid::Uuid::parse_str(&id) {
+        Ok(u) => u,
+        Err(e) => {
+            let _ = input_tx
+                .send(InputEvent::Error(format!("Invalid session id: {e}")))
+                .await;
+            return;
+        }
+    };
+
+    let project_root = {
+        let eng = engine.lock().await;
+        match eng.status().await {
+            Ok(status) => status.project_root,
+            Err(e) => {
+                let _ = input_tx
+                    .send(InputEvent::Error(format!("Failed to read engine status: {e}")))
+                    .await;
+                return;
+            }
+        }
+    };
+
+    let title = match vac_core::session::Session::load(&project_root, uuid) {
+        Ok(Some(s)) => format!("Session {}", &s.id.to_string()[..8]),
+        _ => format!("Session {}", &id[..id.len().min(8)]),
+    };
+
+    let _ = input_tx
+        .send(InputEvent::SessionRestored {
+            id: id.clone(),
+            title,
+            messages: vec![],
+        })
+        .await;
+
+    tokio::spawn(async move {
+        let (update_tx, mut update_rx) =
+            tokio::sync::mpsc::unbounded_channel::<RuntimeUpdate>();
+        let input_tx_inner = input_tx.clone();
+        let stream_uuid = uuid::Uuid::new_v4();
+
+        *active_update_tx.lock().await = Some(update_tx.clone());
+
+        tokio::spawn(async move {
+            let mut active_tools: HashMap<String, ToolCall> = HashMap::new();
+            while let Some(update) = update_rx.recv().await {
+                handle_runtime_update(update, &input_tx_inner, stream_uuid, &mut active_tools)
+                    .await;
+            }
+        });
+
+        let result = {
+            let mut eng = engine.lock().await;
+            eng.resume_run_state(uuid, Some(update_tx), None, None).await
+        };
+
+        *active_update_tx.lock().await = None;
+
+        if let Err(e) = result {
+            let _ = input_tx
+                .send(InputEvent::Error(format!("Failed to resume session: {e}")))
+                .await;
+        }
+    });
+}
+
 async fn resolve_tool_approval(
     approvals: &vac_core::ApprovalHandle,
     tool_call_id: String,
@@ -298,36 +371,22 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                     }
                 }
                 OutputEvent::ResumeSession(id) => {
-                    if let Ok(uuid) = uuid::Uuid::parse_str(&id) {
-                        let engine = engine_clone.clone();
-                        let input_tx = input_tx_clone.clone();
-
-                        tokio::spawn(async move {
-                            let (update_tx, mut update_rx) =
-                                tokio::sync::mpsc::unbounded_channel::<RuntimeUpdate>();
-
-                            let input_tx_inner = input_tx.clone();
-                            let stream_uuid = uuid::Uuid::new_v4();
-
-                            tokio::spawn(async move {
-                                let mut active_tools: HashMap<String, ToolCall> = HashMap::new();
-                                while let Some(update) = update_rx.recv().await {
-                                    handle_runtime_update(
-                                        update,
-                                        &input_tx_inner,
-                                        stream_uuid,
-                                        &mut active_tools,
-                                    )
-                                    .await;
-                                }
-                            });
-
-                            let mut eng = engine.lock().await;
-                            let _ = eng
-                                .resume_run_state(uuid, Some(update_tx), None, None)
-                                .await;
-                        });
-                    }
+                    resume_session_into_tui(
+                        engine_clone.clone(),
+                        active_update_tx_clone.clone(),
+                        input_tx_clone.clone(),
+                        id,
+                    )
+                    .await;
+                }
+                OutputEvent::SwitchToSession(id) => {
+                    resume_session_into_tui(
+                        engine_clone.clone(),
+                        active_update_tx_clone.clone(),
+                        input_tx_clone.clone(),
+                        id,
+                    )
+                    .await;
                 }
                 _ => {}
             }
@@ -370,4 +429,62 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
     .await?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::time::timeout;
+
+    #[tokio::test]
+    async fn switch_to_session_invalid_uuid_emits_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = VacEngine::new(dir.path().to_path_buf()).await.unwrap();
+        let engine = Arc::new(Mutex::new(engine));
+        let active_update_tx: ActiveUpdateTx = Arc::new(Mutex::new(None));
+
+        let (input_tx, mut input_rx) = mpsc::channel::<InputEvent>(8);
+        resume_session_into_tui(
+            engine,
+            active_update_tx,
+            input_tx,
+            "not-a-uuid".to_string(),
+        )
+        .await;
+
+        let ev = timeout(std::time::Duration::from_secs(1), input_rx.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        match ev {
+            InputEvent::Error(msg) => assert!(msg.contains("Invalid session id")),
+            _ => panic!("unexpected event"),
+        }
+    }
+
+    #[tokio::test]
+    async fn switch_to_session_emits_session_restored() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().to_path_buf();
+        let mut engine = VacEngine::new(root.clone()).await.unwrap();
+        engine.init().await.unwrap();
+        let engine = Arc::new(Mutex::new(engine));
+        let active_update_tx: ActiveUpdateTx = Arc::new(Mutex::new(None));
+
+        let session = vac_core::session::Session::new(root.clone());
+        let id = session.id.to_string();
+        session.save().unwrap();
+
+        let (input_tx, mut input_rx) = mpsc::channel::<InputEvent>(16);
+        resume_session_into_tui(engine, active_update_tx, input_tx, id.clone()).await;
+
+        let first = timeout(std::time::Duration::from_secs(1), input_rx.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        match first {
+            InputEvent::SessionRestored { id: got, .. } => assert_eq!(got, id),
+            _ => panic!("unexpected first event"),
+        }
+    }
 }

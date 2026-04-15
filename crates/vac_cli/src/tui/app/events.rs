@@ -62,13 +62,6 @@ pub enum InputEvent {
     // Dialog/Approval
     ShowConfirmationDialog(ToolCall),
     ShowConfirmationDialogWithExplanation(ToolCall, Option<String>),
-    DialogUp,
-    DialogDown,
-    DialogSelect,
-    DialogCancel,
-    ToggleApprovalStatus,
-    ApproveTool,
-    RejectTool,
 
     // Command palette
     ShowCommandPalette,
@@ -85,7 +78,6 @@ pub enum InputEvent {
 
     // Session
     RequestSessionList,
-    SwitchToSession(String),
     NewSession,
 
     // Additional events from event.rs mapping
