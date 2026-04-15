@@ -478,6 +478,19 @@ Rules:
             // Step 1: Cancellation check
             if state.is_cancelled() {
                 state.stage = crate::run_state::RunStage::Cancelled;
+                
+                let checkpoint_dir = context.working_dir.join(".vac/checkpoints");
+                if let Err(e) = std::fs::create_dir_all(&checkpoint_dir) {
+                    warn!(error = %e, "Failed to create checkpoint directory for cancellation");
+                } else {
+                    let checkpoint_path = checkpoint_dir.join(format!("{}_state.json", context.session_id));
+                    if let Err(e) = state.save_checkpoint(&checkpoint_path, Some(context.session_id)) {
+                        warn!(error = %e, path = %checkpoint_path.display(), "Failed to save state checkpoint on cancellation");
+                    } else {
+                        info!(path = %checkpoint_path.display(), "AgentRunState checkpoint saved on cancellation");
+                    }
+                }
+                
                 return Err(SwarmError::Cancelled);
             }
             // Step 2: Iteration cap check
@@ -782,27 +795,39 @@ Rules:
         };
 
         // STAGE 2: CODER — use archetype-aware prompt if profile is available
-        let coder_prompt = if let Some(ref profile) = self.project_profile {
-            let mut prompt = Self::build_vil_coder_prompt(profile, self.knowledge.as_deref());
-            // LSP diagnostics injected AFTER VIL knowledge, BEFORE rulebook
-            if let Some(ref lsp) = self.lsp_context {
-                if !lsp.is_empty() {
-                    prompt.push_str(&format!(
-                        "\n\n---\n**vil-lsp diagnostics** ({} errors, {} warnings):\n{}\nFix these before writing new code.",
-                        lsp.total_errors,
-                        lsp.total_warnings,
-                        lsp.top_findings.iter().map(|f| format!("- {f}")).collect::<Vec<_>>().join("\n")
-                    ));
+        let mut coder_prompt = if let Some(ref profile) = self.project_profile {
+            Self::build_vil_coder_prompt(profile, self.knowledge.as_deref())
+        } else {
+            let mut prompt = Self::coder_system_prompt();
+            if let Some(kb) = self.knowledge.as_deref() {
+                let patterns: Vec<String> = kb.patterns_by_category("patterns")
+                    .into_iter()
+                    .take(3)
+                    .map(|p| format!("- **{}**: {}", p.name, p.description))
+                    .collect();
+                if !patterns.is_empty() {
+                    prompt.push_str(&format!("\n\n**Pre-loaded VIL patterns:**\n{}", patterns.join("\n")));
                 }
             }
-            // Rulebook overlay appended AFTER VIL knowledge — never overrides VIL semantics
-            if let Some(ref rb) = self.rulebook {
-                prompt.push_str(rb);
-            }
             prompt
-        } else {
-            Self::coder_system_prompt()
         };
+
+        // LSP diagnostics injected AFTER VIL knowledge, BEFORE rulebook
+        if let Some(ref lsp) = self.lsp_context {
+            if !lsp.is_empty() {
+                coder_prompt.push_str(&format!(
+                    "\n\n---\n**vil-lsp diagnostics** ({} errors, {} warnings):\n{}\nFix these before writing new code.",
+                    lsp.total_errors,
+                    lsp.total_warnings,
+                    lsp.top_findings.iter().map(|f| format!("- {f}")).collect::<Vec<_>>().join("\n")
+                ));
+            }
+        }
+        // Rulebook overlay appended AFTER VIL knowledge — never overrides VIL semantics
+        if let Some(ref rb) = self.rulebook {
+            coder_prompt.push_str("\n\n---\n**Rulebook Constraints:**\n");
+            coder_prompt.push_str(rb);
+        }
 
         // Reset state for coder stage — keep tokens/files, replace messages
         let coder_messages = vec![

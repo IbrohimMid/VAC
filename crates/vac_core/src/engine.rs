@@ -564,15 +564,28 @@ impl VacEngine {
 
         info!("Phase 3: Validating...");
         let validation_score = if let Some(ir) = &self.ir_pipeline {
-            let report = vil_validate::validate_changes(ir, &execution.modified_files)?;
-            if let Some(ref tx) = updates {
-                let _ = tx.send(RuntimeUpdate::ValidationResult {
-                    score: report.score,
-                    issues: report.issues.clone(),
-                });
+            tracing::debug!("Running IR validation on {} modified files", execution.modified_files.len());
+            match vil_validate::validate_changes(ir, &execution.modified_files) {
+                Ok(report) => {
+                    info!(score = report.score, issues_count = report.issues.len(), "Validation completed");
+                    for issue in &report.issues {
+                        warn!(issue = %issue, "Validation issue detected");
+                    }
+                    if let Some(ref tx) = updates {
+                        let _ = tx.send(RuntimeUpdate::ValidationResult {
+                            score: report.score,
+                            issues: report.issues.clone(),
+                        });
+                    }
+                    Some(report.score)
+                }
+                Err(e) => {
+                    error!(error = %e, "Validation pipeline failed");
+                    return Err(e.into());
+                }
             }
-            Some(report.score)
         } else {
+            tracing::debug!("Validation skipped: IR pipeline not available");
             None
         };
 

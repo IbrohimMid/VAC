@@ -1,0 +1,4 @@
+- [x] Wave 4C: Implementasi pembatalan (*cancellation*), *planning loop*, dan penyimpanan *state* (*resumability*) yang aman telah berhasil, dan diuji dengan simulasi pembatalan sesi.
+- [x] Wave 4D: *Semantic Differentiation* terintegrasi; agen memvalidasi perubahan kode menggunakan `vil_ir` dan `rulebook`.
+- [x] Wave 4E: *Product Hardening* selesai; agen dapat dijalankan dalam mode *headless/autopilot* dengan lancar.
+- [x] Dokumentasi operasional (*onboarding*, instalasi, dan konfigurasi) tersedia dan diperbarui sesuai implementasi Wave 4 akhir.
