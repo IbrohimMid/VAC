@@ -1,8 +1,11 @@
 //! Tests for vil_knowledge corpus loader and fallback behavior.
 
 use std::fs;
+use std::sync::Mutex;
 use tempfile::tempdir;
 use vil_knowledge::KnowledgeBase;
+
+static ENV_LOCK: Mutex<()> = Mutex::new(());
 
 #[test]
 fn bootstrap_is_not_authoritative() {
@@ -50,6 +53,7 @@ fn load_from_corpus_falls_back_when_empty() {
 
 #[test]
 fn resolve_corpus_root_from_env() {
+    let _guard = ENV_LOCK.lock().unwrap();
     let dir = tempdir().unwrap();
     // SAFETY: test-only env mutation, single-threaded test
     unsafe { std::env::set_var("VIL_KNOWLEDGE_ROOT", dir.path().to_str().unwrap()); }
@@ -60,6 +64,7 @@ fn resolve_corpus_root_from_env() {
 
 #[test]
 fn resolve_corpus_root_from_config() {
+    let _guard = ENV_LOCK.lock().unwrap();
     let dir = tempdir().unwrap();
     let corpus_dir = dir.path().join("corpus");
     fs::create_dir_all(&corpus_dir).unwrap();

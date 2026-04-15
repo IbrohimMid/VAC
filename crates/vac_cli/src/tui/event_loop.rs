@@ -42,6 +42,7 @@ pub async fn run_tui(
     _current_profile_name: String,
     _rulebook_config: Option<RulebookConfig>,
     model: Option<Model>,
+    session_id: Option<String>,
     _editor_command: Option<String>,
     _auth_display_info: (Option<String>, Option<String>, Option<String>),
     _init_prompt_content: Option<String>,
@@ -66,7 +67,7 @@ pub async fn run_tui(
 
     let mut state = AppState::new(AppStateOptions {
         model: model.clone(),
-        session_id: None,
+        session_id,
         checkpoint_path: checkpoint_path.clone(),
         project_root,
     });
@@ -116,7 +117,7 @@ pub async fn run_tui(
 
         // Handle backend events
         while let Ok(event) = input_rx.try_recv() {
-            handle_backend_event(&mut state, event);
+            handle_backend_event(&mut state, &output_tx, event);
         }
 
         // Update spinner
@@ -187,6 +188,11 @@ fn handle_input_event(
                                 let _ = output_tx.try_send(OutputEvent::ListSessions);
                             } else if cmd.command == "/new" {
                                 let _ = output_tx.try_send(OutputEvent::NewSession);
+                            } else if cmd.command == "/review" {
+                                state.add_user_message(cmd.command.clone());
+                                state.show_file_changes_popup = true;
+                                state.file_changes_selected = 0;
+                                state.file_changes_search.clear();
                             } else {
                                 state.add_user_message(cmd.command.clone());
                                 let _ = output_tx.try_send(OutputEvent::UserMessage(cmd.command, None, vec![], None));
@@ -384,8 +390,12 @@ fn handle_input_event(
                 state.input.clear();
                 
                 if msg.starts_with('/') {
-                    let cmd_name = msg.trim().to_string();
-                    if let Some(cmd) = state.commands.iter().find(|c| c.command == cmd_name).cloned() {
+                    let trimmed = msg.trim();
+                    let mut parts = trimmed.splitn(2, char::is_whitespace);
+                    let cmd_word = parts.next().unwrap_or(trimmed);
+                    let cmd_args = parts.next().map(|s| s.trim()).filter(|s| !s.is_empty());
+
+                    if let Some(cmd) = state.commands.iter().find(|c| c.command == cmd_word).cloned() {
                         match cmd.source {
                             crate::tui::app::CommandSource::BuiltIn => {
                                 if cmd.command == "/clear" {
@@ -395,15 +405,24 @@ fn handle_input_event(
                                     let _ = output_tx.try_send(OutputEvent::ListSessions);
                                 } else if cmd.command == "/new" {
                                     let _ = output_tx.try_send(OutputEvent::NewSession);
+                                } else if cmd.command == "/review" {
+                                    state.add_user_message(trimmed.to_string());
+                                    state.show_file_changes_popup = true;
+                                    state.file_changes_selected = 0;
+                                    state.file_changes_search.clear();
                                 } else {
-                                    state.add_user_message(cmd.command.clone());
-                                    let _ = output_tx.try_send(OutputEvent::UserMessage(cmd.command, None, vec![], None));
+                                    state.add_user_message(trimmed.to_string());
+                                    let _ = output_tx.try_send(OutputEvent::UserMessage(trimmed.to_string(), None, vec![], None));
                                 }
                             }
                             crate::tui::app::CommandSource::BuiltInWithPrompt { prompt_content } |
                             crate::tui::app::CommandSource::Custom { prompt_content } => {
-                                state.add_user_message(cmd.command.clone());
-                                let _ = output_tx.try_send(OutputEvent::UserMessage(prompt_content, None, vec![], None));
+                                state.add_user_message(trimmed.to_string());
+                                let prompt = match cmd_args {
+                                    Some(args) => format!("{prompt_content}\n\n{args}"),
+                                    None => prompt_content,
+                                };
+                                let _ = output_tx.try_send(OutputEvent::UserMessage(prompt, None, vec![], None));
                             }
                         }
                     } else {
@@ -474,7 +493,7 @@ fn handle_input_event(
         InputEvent::ToggleAutoApprove => {
             state.auto_approve = !state.auto_approve;
             if state.auto_approve {
-                state.add_assistant_message("Permission Mode: AUTO-APPROVE (Tools will run without confirmation)".to_string());
+                state.add_assistant_message("Permission Mode: AUTO-APPROVE (Low-risk tools will run without confirmation)".to_string());
             } else {
                 state.add_assistant_message("Permission Mode: PROMPT (You will be prompted for tool execution)".to_string());
             }
@@ -490,7 +509,15 @@ fn handle_input_event(
 }
 
 /// Handle backend events
-fn handle_backend_event(state: &mut AppState, event: InputEvent) {
+fn is_low_risk_tool(tool_name: &str) -> bool {
+    matches!(
+        tool_name,
+        "file_read" | "file_write" | "file_edit" | "glob" | "grep" | "search"
+            | "vil_knowledge" | "vil_diagnostics" | "vil_status" | "vil_lsp_query"
+    )
+}
+
+fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, event: InputEvent) {
     match event {
         InputEvent::AssistantMessage(msg) => {
             state.add_assistant_message(msg);
@@ -548,10 +575,18 @@ fn handle_backend_event(state: &mut AppState, event: InputEvent) {
             state.permission_explanation = None;
         }
         InputEvent::ShowConfirmationDialogWithExplanation(tc, explanation) => {
-            state.dialog_command = Some(tc);
-            state.is_dialog_open = true;
-            state.dialog_selected = 0;
-            state.permission_explanation = explanation;
+            if state.auto_approve && is_low_risk_tool(&tc.function.name) {
+                state.approved_tools.push(tc.clone());
+                let _ = output_tx.try_send(OutputEvent::AcceptTool(tc));
+                state.is_dialog_open = false;
+                state.dialog_command = None;
+                state.permission_explanation = None;
+            } else {
+                state.dialog_command = Some(tc);
+                state.is_dialog_open = true;
+                state.dialog_selected = 0;
+                state.permission_explanation = explanation;
+            }
         }
         InputEvent::RunToolCall(tc) => {
             state.pending_tool_calls.push(tc);

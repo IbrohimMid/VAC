@@ -115,12 +115,16 @@ pub fn vac_commands() -> Vec<HelperCommand> {
         HelperCommand {
             command: "/fix".to_string(),
             description: "Fix linter/build errors".to_string(),
-            source: CommandSource::BuiltIn,
+            source: CommandSource::BuiltInWithPrompt {
+                prompt_content: "Fix linter/build errors in this repo. If needed, run the appropriate checks and apply minimal safe changes.".to_string(),
+            },
         },
         HelperCommand {
             command: "/explain".to_string(),
             description: "Explain code or concepts".to_string(),
-            source: CommandSource::BuiltIn,
+            source: CommandSource::BuiltInWithPrompt {
+                prompt_content: "Explain the relevant code or concept. Ask for the specific file/path and what to explain if unclear.".to_string(),
+            },
         },
     ];
 

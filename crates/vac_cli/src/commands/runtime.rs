@@ -4,6 +4,10 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+fn runtime_queue_path(project_root: &PathBuf) -> PathBuf {
+    project_root.join(".vac/queue.json")
+}
+
 pub async fn execute_status(project_root: PathBuf, format: &str) -> anyhow::Result<()> {
     let config = vac_core::VacConfig::load_with_fallback(&project_root)?;
     if format == "json" {
@@ -28,8 +32,7 @@ pub async fn execute_status(project_root: PathBuf, format: &str) -> anyhow::Resu
 
 pub async fn execute_jobs(project_root: PathBuf, format: &str) -> anyhow::Result<()> {
     let config = vac_core::VacConfig::load_with_fallback(&project_root)?;
-    let queue_path = project_root.join(".vac/queue.json");
-    let queue = vac_runtime::TaskQueue::with_storage(queue_path);
+    let queue = vac_runtime::TaskQueue::with_storage(runtime_queue_path(&project_root));
     let jobs = queue.list().await;
 
     if format == "json" {
@@ -70,8 +73,7 @@ pub async fn execute_jobs(project_root: PathBuf, format: &str) -> anyhow::Result
 }
 
 pub async fn execute_cancel(project_root: PathBuf, id: uuid::Uuid) -> anyhow::Result<()> {
-    let queue_path = project_root.join(".vac/queue.json");
-    let queue = vac_runtime::TaskQueue::with_storage(queue_path);
+    let queue = vac_runtime::TaskQueue::with_storage(runtime_queue_path(&project_root));
     if queue.cancel(id).await {
         println!("Job {} cancelled successfully.", id);
     } else {
@@ -81,8 +83,7 @@ pub async fn execute_cancel(project_root: PathBuf, id: uuid::Uuid) -> anyhow::Re
 }
 
 pub async fn execute_retry(project_root: PathBuf, id: uuid::Uuid) -> anyhow::Result<()> {
-    let queue_path = project_root.join(".vac/queue.json");
-    let queue = vac_runtime::TaskQueue::with_storage(queue_path);
+    let queue = vac_runtime::TaskQueue::with_storage(runtime_queue_path(&project_root));
     if queue.retry(id).await {
         println!("Job {} queued for retry.", id);
     } else {
@@ -92,8 +93,7 @@ pub async fn execute_retry(project_root: PathBuf, id: uuid::Uuid) -> anyhow::Res
 }
 
 pub async fn execute_inspect(project_root: PathBuf, id: uuid::Uuid, format: &str) -> anyhow::Result<()> {
-    let queue_path = project_root.join(".vac/queue.json");
-    let queue = vac_runtime::TaskQueue::with_storage(queue_path);
+    let queue = vac_runtime::TaskQueue::with_storage(runtime_queue_path(&project_root));
     
     if let Some(job) = queue.get(id).await {
         if format == "json" {
@@ -156,7 +156,7 @@ pub async fn execute_start(project_root: PathBuf) -> anyhow::Result<()> {
     let mut executor = vac_runtime::TaskExecutor::new(project_root, mode);
     executor.attach_engine(engine);
 
-    let queue = Arc::new(vac_runtime::TaskQueue::new());
+    let queue = Arc::new(vac_runtime::TaskQueue::with_storage(runtime_queue_path(&executor.project_root)));
     let scheduler = vac_runtime::Scheduler::new(queue.clone(), Arc::new(executor));
     scheduler.start();
 

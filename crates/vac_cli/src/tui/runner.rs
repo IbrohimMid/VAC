@@ -110,6 +110,7 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
     
     // Initialize engine (load tools, policies, etc.)
     engine.init().await?;
+    let session_id = engine.session_id().await.to_string();
     
     let engine = Arc::new(Mutex::new(engine));
 
@@ -167,15 +168,31 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                     });
                 }
                 OutputEvent::AcceptTool(tc) => {
-                    let mut lock = engine_clone.lock().await;
-                    if let Err(e) = lock.approve_tool_call(tc.id.clone()).await {
-                        log::error!("Failed to approve tool call {}: {}", tc.id, e);
+                    let tx = active_approval_tx_clone.lock().await.clone();
+                    if let Some(tx) = tx {
+                        if let Err(e) = tx.send(vil_swarm::ApprovalResponse {
+                            tool_call_id: tc.id.clone(),
+                            approved: true,
+                            reason: None,
+                        }) {
+                            log::error!("Failed to send approval for tool call {}: {}", tc.id, e);
+                        }
+                    } else {
+                        log::error!("No active approval channel for tool call {}", tc.id);
                     }
                 }
                 OutputEvent::RejectTool(tc, _) => {
-                    let mut lock = engine_clone.lock().await;
-                    if let Err(e) = lock.reject_tool_call(tc.id.clone()).await {
-                        log::error!("Failed to reject tool call {}: {}", tc.id, e);
+                    let tx = active_approval_tx_clone.lock().await.clone();
+                    if let Some(tx) = tx {
+                        if let Err(e) = tx.send(vil_swarm::ApprovalResponse {
+                            tool_call_id: tc.id.clone(),
+                            approved: false,
+                            reason: None,
+                        }) {
+                            log::error!("Failed to send rejection for tool call {}: {}", tc.id, e);
+                        }
+                    } else {
+                        log::error!("No active approval channel for tool call {}", tc.id);
                     }
                 }
                 OutputEvent::ExecuteCommand(cmd) => {
@@ -254,6 +271,11 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
 
                             let mut eng = engine.lock().await;
                             let _ = eng.resume_run_state(uuid, Some(update_tx), None, Some(approval_rx)).await;
+
+                            {
+                                let mut active_approval = approval_tx_clone.lock().await;
+                                *active_approval = None;
+                            }
                         });
                     }
                 }
@@ -284,6 +306,7 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
         "default".to_string(),
         None,
         None,
+        Some(session_id),
         None,
         (None, None, None),
         None,
@@ -292,6 +315,7 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
         None,
         project_root,
     ).await?;
+
 
     Ok(())
 }
