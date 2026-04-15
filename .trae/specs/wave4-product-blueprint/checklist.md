@@ -1,0 +1,4 @@
+- [x] Dokumen *Capability Matrix* yang terperinci untuk *Target Parity Minimum*, *Target Surpass*, dan *Intentional Differences* telah diselesaikan.
+- [x] *Milestone* Eksekusi Wave 4 (4A hingga 4E) telah didefinisikan dengan *gate* penerimaan (PASS / PARTIAL / BLOCKER).
+- [x] Pemetaan antara *gate* penerimaan dengan persyaratan pengujian (*hard proof test*, *smoke test*) dan dokumentasi pendukung telah dibuat.
+- [x] *Backlog* pengembangan telah diprioritaskan (*must-have before claim*, *competitive parity*, *differentiation*).
