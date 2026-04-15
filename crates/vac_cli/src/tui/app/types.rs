@@ -165,6 +165,31 @@ impl Message {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum ReviewItemStatus {
+    Pending,
+    Restored,
+    Failed,
+}
+
+#[derive(Debug, Clone)]
+pub struct ReviewItem {
+    pub path: String,
+    pub status: ReviewItemStatus,
+    pub has_snapshot: bool,
+    pub last_error: Option<String>,
+    pub dirty_generation: u64,
+}
+
+#[derive(Debug, Clone)]
+pub struct ReviewDiffState {
+    pub path: String,
+    pub old_content: Option<String>,
+    pub new_content: Option<String>,
+    pub scroll: usize,
+    pub last_error: Option<String>,
+}
+
 // ========== AppState ==========
 
 /// Main application state for TUI
@@ -236,6 +261,14 @@ pub struct AppState {
     pub file_changes_scroll: usize,
     pub file_changes_selected: usize,
     pub modified_files: Vec<String>,
+
+    pub review_open: bool,
+    pub review_filter: String,
+    pub review_selected_idx: usize,
+    pub review_selected_path: Option<String>,
+    pub review_items: HashMap<String, ReviewItem>,
+    pub review_diff: Option<ReviewDiffState>,
+    pub review_generation: u64,
     
     // Permission UX
     pub auto_approve: bool,
@@ -305,6 +338,13 @@ impl AppState {
             file_changes_scroll: 0,
             file_changes_selected: 0,
             modified_files: Vec::new(),
+            review_open: false,
+            review_filter: String::new(),
+            review_selected_idx: 0,
+            review_selected_path: None,
+            review_items: HashMap::new(),
+            review_diff: None,
+            review_generation: 0,
             auto_approve: false,
             permission_explanation: None,
             project_root: options.project_root,
