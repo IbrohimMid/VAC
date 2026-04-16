@@ -1076,7 +1076,8 @@ mod tests {
         state.show_file_search = true;
         state.file_search_results = vec!["src/main.rs".to_string()];
         state.show_changeset = true;
-        state.modified_files = vec!["src/main.rs".to_string()];
+        state.changeset_store.file_modified("src/main.rs".to_string(), "agent".to_string(), false);
+        state.modified_files = state.changeset_store.modified_files();
 
         terminal.draw(|f| view(f, &mut state)).unwrap();
     }

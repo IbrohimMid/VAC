@@ -467,13 +467,13 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
         };
 
         if state.changeset_selected_path.is_none() {
+            let active = state.changeset_store.active_entries();
             state.changeset_selected_idx = state
                 .changeset_selected_idx
-                .min(state.modified_files.len().saturating_sub(1));
-            state.changeset_selected_path = state
-                .modified_files
+                .min(active.len().saturating_sub(1));
+            state.changeset_selected_path = active
                 .get(state.changeset_selected_idx)
-                .cloned();
+                .map(|e| e.path.clone());
             if let Some(path) = state.changeset_selected_path.clone() {
                 state.changeset_diff = Some(load_diff(state, &path));
             }
@@ -488,28 +488,28 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                 state.changeset_diff = None;
             }
             InputEvent::Up => {
-                if !state.modified_files.is_empty() {
+                let active = state.changeset_store.active_entries();
+                if !active.is_empty() {
                     state.changeset_selected_idx =
                         state.changeset_selected_idx.saturating_sub(1);
                     state.changeset_diff_scroll = 0;
-                    state.changeset_selected_path = state
-                        .modified_files
+                    state.changeset_selected_path = active
                         .get(state.changeset_selected_idx)
-                        .cloned();
+                        .map(|e| e.path.clone());
                     if let Some(path) = state.changeset_selected_path.clone() {
                         state.changeset_diff = Some(load_diff(state, &path));
                     }
                 }
             }
             InputEvent::Down => {
-                if !state.modified_files.is_empty() {
+                let active = state.changeset_store.active_entries();
+                if !active.is_empty() {
                     state.changeset_selected_idx = (state.changeset_selected_idx + 1)
-                        .min(state.modified_files.len().saturating_sub(1));
+                        .min(active.len().saturating_sub(1));
                     state.changeset_diff_scroll = 0;
-                    state.changeset_selected_path = state
-                        .modified_files
+                    state.changeset_selected_path = active
                         .get(state.changeset_selected_idx)
-                        .cloned();
+                        .map(|e| e.path.clone());
                     if let Some(path) = state.changeset_selected_path.clone() {
                         state.changeset_diff = Some(load_diff(state, &path));
                     }
@@ -1816,7 +1816,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let (tx, _rx) = tokio::sync::mpsc::channel(4);
         let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
-        state.modified_files = vec!["a.txt".to_string()];
+        state.changeset_store.file_modified("a.txt".to_string(), "agent".to_string(), false);
+        state.modified_files = state.changeset_store.modified_files();
         state.input.set_content("/review");
         handle_input_event(&mut state, &tx, InputEvent::InputSubmitted);
         assert!(state.review_open);

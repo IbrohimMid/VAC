@@ -56,7 +56,7 @@ pub fn revert_selected(ctx: &mut HandlerContext) -> HandlerResult {
     match vac_tools::journal::restore_snapshot(&ctx.state.project_root, session_id, &path) {
         Ok(()) => {
             ctx.state.changeset_store.revert_success(&path);
-            ctx.state.modified_files.retain(|p| p != &path);
+            ctx.state.modified_files = ctx.state.changeset_store.modified_files();
             ctx.state.review_items.entry(path.clone()).and_modify(|it| {
                 it.status = ReviewItemStatus::Restored;
                 it.last_error = None;
@@ -93,7 +93,7 @@ pub fn revert_filtered(ctx: &mut HandlerContext) -> HandlerResult {
         .state
         .review_filtered_paths()
         .into_iter()
-        .filter(|p| ctx.state.modified_files.contains(p))
+        .filter(|p| ctx.state.changeset_store.active_entries().iter().any(|e| &e.path == p))
         .collect();
 
     if files.is_empty() {
@@ -114,7 +114,6 @@ pub fn revert_filtered(ctx: &mut HandlerContext) -> HandlerResult {
             Ok(()) => {
                 success_count += 1;
                 ctx.state.changeset_store.revert_success(file);
-                ctx.state.modified_files.retain(|p| p != file);
                 ctx.state.review_items.entry(file.clone()).and_modify(|it| {
                     it.status = ReviewItemStatus::Restored;
                     it.last_error = None;
@@ -131,6 +130,7 @@ pub fn revert_filtered(ctx: &mut HandlerContext) -> HandlerResult {
             }
         }
     }
+    ctx.state.modified_files = ctx.state.changeset_store.modified_files();
 
     ctx.state.add_assistant_message(format!(
         "Reverted {}/{} files.",
@@ -149,7 +149,7 @@ pub fn revert_filtered(ctx: &mut HandlerContext) -> HandlerResult {
 
 /// Revert all modified files.
 pub fn revert_all(ctx: &mut HandlerContext) -> HandlerResult {
-    let files = ctx.state.modified_files.clone();
+    let files = ctx.state.changeset_store.modified_files();
     if files.is_empty() {
         ctx.state
             .add_assistant_message("No files to revert.".to_string());
@@ -185,7 +185,7 @@ pub fn revert_all(ctx: &mut HandlerContext) -> HandlerResult {
         }
     }
 
-    ctx.state.modified_files.clear();
+    ctx.state.modified_files = ctx.state.changeset_store.modified_files();
     ctx.state.review_diff = None;
     ctx.state.review_selected_idx = 0;
     ctx.state.review_selected_path = None;
