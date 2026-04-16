@@ -423,7 +423,7 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                             }
                             'r' => {
                                 let mut ctx = HandlerContext::new(state, output_tx);
-                                let _ = approval::reject_current(&mut ctx);
+                                let _ = approval::begin_reject_current(&mut ctx);
                             }
                             _ => {}
                         }
@@ -850,6 +850,7 @@ fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, e
             state.approval_explanations.clear();
             state.approval_selected_idx = 0;
             state.approval_detail_scroll = 0;
+            state.reject_reason_input = None;
             state.is_streaming = false;
             state.streaming_message_id = None;
             state.scroll = 0;
@@ -1162,6 +1163,8 @@ mod tests {
         );
 
         handle_input_event(&mut state, &tx, InputEvent::InputChanged('r'));
+        // 'r' now shows reason prompt - confirm with Enter to reject
+        handle_input_event(&mut state, &tx, InputEvent::InputSubmitted);
         let ev = rx.recv().await.unwrap();
         match ev {
             OutputEvent::RejectTool(tc, _, _) => assert_eq!(tc.id, "tc-1"),

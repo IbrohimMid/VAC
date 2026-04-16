@@ -106,14 +106,6 @@ pub fn begin_reject_current(ctx: &mut HandlerContext) -> HandlerResult {
     Ok(())
 }
 
-/// Activate reject reason prompt for all tools.
-pub fn begin_reject_all(ctx: &mut HandlerContext) -> HandlerResult {
-    if !ctx.state.pending_approvals.is_empty() {
-        ctx.state.reject_reason_input = Some(String::new());
-    }
-    Ok(())
-}
-
 /// Append char to reject reason input.
 pub fn reason_input_push(ctx: &mut HandlerContext, c: char) -> HandlerResult {
     if let Some(r) = &mut ctx.state.reject_reason_input {
@@ -167,12 +159,6 @@ pub fn confirm_reject_all(ctx: &mut HandlerContext) -> HandlerResult {
     }
     ctx.state.approval_selected_idx = 0;
     ctx.state.toasts.push(Toast::error("All tools rejected".to_string()));
-    Ok(())
-}
-
-/// Cancel reject reason prompt without rejecting.
-pub fn cancel_reject_reason(ctx: &mut HandlerContext) -> HandlerResult {
-    ctx.state.reject_reason_input = None;
     Ok(())
 }
 
