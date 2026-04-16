@@ -2,6 +2,7 @@
 
 use crate::error::{LlmError, LlmResult};
 use crate::provider::{LlmProvider, LlmRequest, LlmResponse, StreamChunk};
+use crate::rulebook_hook::RulebookContext;
 use crate::sanitize;
 use crate::token_budget::TokenBudget;
 use std::collections::HashMap;
@@ -28,6 +29,12 @@ pub struct LlmRouter {
     providers: HashMap<String, Arc<dyn LlmProvider>>,
     default_provider: String,
     fallback_chain: Vec<String>,
+    /// Per-tool provider overrides: tool name -> provider name.
+    /// Consulted after the rulebook, before falling back to `default_provider`.
+    tool_routing_map: HashMap<String, String>,
+    /// Rulebook hook consulted before `tool_routing_map`. Defaults to a stub
+    /// that always returns `None` (no override).
+    rulebook: RulebookContext,
     budget: Arc<RwLock<TokenBudget>>,
     retry_config: crate::retry::RetryConfig,
 }
@@ -38,6 +45,8 @@ impl LlmRouter {
             providers: HashMap::new(),
             default_provider: default_provider.to_string(),
             fallback_chain: vec![],
+            tool_routing_map: HashMap::new(),
+            rulebook: RulebookContext::empty(),
             budget: Arc::new(RwLock::new(TokenBudget::new(budget_limit))),
             retry_config: crate::retry::RetryConfig::default(),
         }
@@ -46,6 +55,34 @@ impl LlmRouter {
     pub fn with_retry_config(mut self, config: crate::retry::RetryConfig) -> Self {
         self.retry_config = config;
         self
+    }
+
+    /// Configure the per-tool provider routing map. Overwrites any existing map.
+    pub fn set_tool_routing(&mut self, map: HashMap<String, String>) {
+        self.tool_routing_map = map;
+    }
+
+    /// Install a rulebook context (e.g. wired from the future rulebook unit).
+    pub fn set_rulebook(&mut self, rulebook: RulebookContext) {
+        self.rulebook = rulebook;
+    }
+
+    /// Resolve the provider name for a given tool. Priority order:
+    /// 1. Rulebook preference (if any)
+    /// 2. Static `tool_routing_map` entry
+    /// 3. `default_provider`
+    ///
+    /// This only *names* the provider; it does not verify the provider is
+    /// registered. Callers that need a registered provider should check
+    /// `self.providers.contains_key(&name)` and fall back accordingly.
+    pub fn route_for_tool(&self, tool_name: &str) -> String {
+        if let Some(model) = self.rulebook.preferred_model(tool_name) {
+            return model;
+        }
+        if let Some(provider) = self.tool_routing_map.get(tool_name) {
+            return provider.clone();
+        }
+        self.default_provider.clone()
     }
 
     pub fn add_provider(&mut self, provider: Arc<dyn LlmProvider>) {
@@ -170,5 +207,72 @@ impl LlmRouter {
     pub async fn token_usage(&self) -> (u64, u64) {
         let budget = self.budget.read().await;
         (budget.used(), budget.limit())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn router() -> LlmRouter {
+        LlmRouter::new("default_prov", 1_000)
+    }
+
+    #[test]
+    fn route_for_tool_falls_back_to_default_when_no_map_no_rulebook() {
+        let r = router();
+        assert_eq!(r.route_for_tool("Grep"), "default_prov");
+    }
+
+    #[test]
+    fn route_for_tool_uses_map_when_set() {
+        let mut r = router();
+        let mut map = HashMap::new();
+        map.insert("Grep".to_string(), "cheap_prov".to_string());
+        map.insert("Plan".to_string(), "reasoning_prov".to_string());
+        r.set_tool_routing(map);
+
+        assert_eq!(r.route_for_tool("Grep"), "cheap_prov");
+        assert_eq!(r.route_for_tool("Plan"), "reasoning_prov");
+        // Miss → default
+        assert_eq!(r.route_for_tool("Unknown"), "default_prov");
+    }
+
+    #[test]
+    fn route_for_tool_rulebook_wins_over_map() {
+        let mut r = router();
+        let mut map = HashMap::new();
+        map.insert("Grep".to_string(), "cheap_prov".to_string());
+        r.set_tool_routing(map);
+
+        // Rulebook says Grep → rulebook_prov; should win over map entry.
+        r.set_rulebook(RulebookContext::new(|tool| {
+            if tool == "Grep" {
+                Some("rulebook_prov".to_string())
+            } else {
+                None
+            }
+        }));
+
+        assert_eq!(r.route_for_tool("Grep"), "rulebook_prov");
+    }
+
+    #[test]
+    fn route_for_tool_rulebook_miss_falls_through_to_map() {
+        let mut r = router();
+        let mut map = HashMap::new();
+        map.insert("Plan".to_string(), "reasoning_prov".to_string());
+        r.set_tool_routing(map);
+        r.set_rulebook(RulebookContext::new(|_tool| None));
+
+        assert_eq!(r.route_for_tool("Plan"), "reasoning_prov");
+        assert_eq!(r.route_for_tool("Other"), "default_prov");
+    }
+
+    #[test]
+    fn route_for_tool_rulebook_miss_and_map_miss_falls_through_to_default() {
+        let mut r = router();
+        r.set_rulebook(RulebookContext::new(|_tool| None));
+        assert_eq!(r.route_for_tool("Anything"), "default_prov");
     }
 }

@@ -305,11 +305,13 @@ impl LlmProvider for AnthropicProvider {
         }
 
         tokio::spawn(async move {
+            use crate::streaming::ToolCallAssembler;
             use futures::StreamExt;
             let mut stream = response.bytes_stream();
             let mut buf = String::new();
             let mut usage = OpenAiUsage::default();
             let mut finish_reason = crate::provider::FinishReason::Stop;
+            let mut assembler = ToolCallAssembler::new();
 
             while let Some(chunk) = stream.next().await {
                 let bytes = match chunk {
@@ -374,7 +376,10 @@ impl LlmProvider for AnthropicProvider {
                         }
                     }
 
-                    // Tool call deltas
+                    // Tool call deltas: feed through the assembler so upstream
+                    // consumers never see half-parsed JSON. ToolCallStart/Delta
+                    // are still emitted for low-level/debug consumers, but the
+                    // authoritative result is ToolCallComplete on stream end.
                     if let Some(tcs) = delta.get("tool_calls").and_then(|t| t.as_array()) {
                         for tc in tcs {
                             let id = tc
@@ -395,6 +400,12 @@ impl LlmProvider for AnthropicProvider {
                                 .unwrap_or("")
                                 .to_string();
 
+                            // Register with the assembler whenever we have an id,
+                            // regardless of whether this delta carried a name —
+                            // `start` safely skips overwriting with an empty name.
+                            if !id.is_empty() {
+                                assembler.start(&id, &name);
+                            }
                             if !name.is_empty() {
                                 let _ = tx
                                     .send(StreamChunk::ToolCallStart {
@@ -404,6 +415,7 @@ impl LlmProvider for AnthropicProvider {
                                     .await;
                             }
                             if !args_delta.is_empty() {
+                                assembler.push_delta(&id, &args_delta);
                                 let _ = tx
                                     .send(StreamChunk::ToolCallDelta {
                                         id,
@@ -414,6 +426,13 @@ impl LlmProvider for AnthropicProvider {
                         }
                     }
                 }
+            }
+
+            // Drain the assembler: the OpenAI-wire stream has no explicit
+            // ContentBlockStop per tool, so finalize all outstanding partials
+            // here and emit one ToolCallComplete per tool in announcement order.
+            for finalized in assembler.finalize_all() {
+                let _ = tx.send(StreamChunk::ToolCallComplete(finalized)).await;
             }
 
             let _ = tx
