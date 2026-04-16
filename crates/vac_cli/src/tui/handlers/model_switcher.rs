@@ -49,9 +49,12 @@ pub fn select_prev(ctx: &mut HandlerContext) -> HandlerResult {
 pub fn submit_selected(ctx: &mut HandlerContext) -> HandlerResult {
     let filtered = ctx.state.model_switcher_filtered();
     if let Some(selected) = filtered.get(ctx.state.model_switcher_selected_idx).cloned() {
-        let _ = ctx
-            .output_tx
-            .try_send(OutputEvent::SwitchToModel(selected));
+        ctx.state.current_model = Some(selected.clone());
+        let _ = ctx.output_tx.try_send(OutputEvent::SwitchToModel(selected.clone()));
+        ctx.state.push_activity(
+            crate::tui::app::ActivityKind::Status,
+            format!("Model switched: {}", selected.name),
+        );
         close(ctx)?;
     }
     Ok(())

@@ -10,7 +10,7 @@ pub fn open(ctx: &mut HandlerContext) -> HandlerResult {
     ctx.state.changeset_diff_scroll = 0;
 
     // Load diff for first entry if available
-    let entries = ctx.state.changeset_store.entries();
+    let entries = ctx.state.changeset_store.active_entries();
     if let Some(entry) = entries.first() {
         if let Ok(session_id) = uuid::Uuid::parse_str(&ctx.state.session_id) {
             match review::load_diff(&ctx.state.project_root, session_id, &entry.path) {
@@ -52,7 +52,7 @@ pub fn close(ctx: &mut HandlerContext) -> HandlerResult {
 
 /// Select next file in changeset.
 pub fn select_next(ctx: &mut HandlerContext) -> HandlerResult {
-    let entries = ctx.state.changeset_store.entries();
+    let entries = ctx.state.changeset_store.active_entries();
     if !entries.is_empty() {
         ctx.state.changeset_selected_idx = (ctx.state.changeset_selected_idx + 1)
             .min(entries.len().saturating_sub(1));
@@ -82,7 +82,7 @@ pub fn scroll_up(ctx: &mut HandlerContext) -> HandlerResult {
 
 /// Load diff for currently selected file.
 fn load_diff_for_selected(ctx: &mut HandlerContext) -> HandlerResult {
-    let entries = ctx.state.changeset_store.entries();
+    let entries = ctx.state.changeset_store.active_entries();
     if let Some(entry) = entries.get(ctx.state.changeset_selected_idx) {
         if let Ok(session_id) = uuid::Uuid::parse_str(&ctx.state.session_id) {
             match review::load_diff(&ctx.state.project_root, session_id, &entry.path) {

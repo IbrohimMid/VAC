@@ -60,10 +60,10 @@ pub fn insert_selected(ctx: &mut HandlerContext) -> HandlerResult {
         .file_search_results
         .get(ctx.state.file_search_selected_idx)
     {
-        ctx.state.input.insert_str(path);
-        ctx.state
-            .toasts
-            .push(Toast::info(format!("Inserted: {}", path)));
+        let path = path.clone();
+        ctx.state.input.insert_str(&path);
+        ctx.state.focus = crate::tui::app::WorkspaceFocus::Input;
+        ctx.state.toasts.push(Toast::info(format!("Inserted: {}", path)));
         close(ctx)?;
     }
     Ok(())

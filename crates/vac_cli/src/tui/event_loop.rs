@@ -756,46 +756,12 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                     crate::tui::app::WorkbenchTab::Approvals => {
                         match c {
                             'a' => {
-                                if let Some(tc) = state
-                                    .pending_approvals
-                                    .get(state.approval_selected_idx)
-                                    .cloned()
-                                {
-                                    state.pending_approvals.retain(|t| t.id != tc.id);
-                                    state.approval_explanations.remove(&tc.id);
-                                    state.approved_tools.push(tc.clone());
-                                    state.approval_normalize_selection();
-                                    let tool_name = tc.function.name.clone();
-                                    let _ = output_tx.try_send(OutputEvent::AcceptTool(tc));
-                                    state.push_activity(
-                                        crate::tui::app::ActivityKind::Approval,
-                                        format!("Approved: {}", tool_name),
-                                    );
-                                    state.toasts.push(crate::tui::services::Toast::success(
-                                        format!("Approved: {}", tool_name),
-                                    ));
-                                }
+                                let mut ctx = HandlerContext::new(state, output_tx);
+                                let _ = approval::approve_current(&mut ctx);
                             }
                             'r' => {
-                                if let Some(tc) = state
-                                    .pending_approvals
-                                    .get(state.approval_selected_idx)
-                                    .cloned()
-                                {
-                                    state.pending_approvals.retain(|t| t.id != tc.id);
-                                    state.approval_explanations.remove(&tc.id);
-                                    state.rejected_tools.push(tc.clone());
-                                    state.approval_normalize_selection();
-                                    let tool_name = tc.function.name.clone();
-                                    let _ = output_tx.try_send(OutputEvent::RejectTool(tc, false));
-                                    state.push_activity(
-                                        crate::tui::app::ActivityKind::Approval,
-                                        format!("Rejected: {}", tool_name),
-                                    );
-                                    state.toasts.push(crate::tui::services::Toast::error(
-                                        format!("Rejected: {}", tool_name),
-                                    ));
-                                }
+                                let mut ctx = HandlerContext::new(state, output_tx);
+                                let _ = approval::reject_current(&mut ctx);
                             }
                             _ => {}
                         }
@@ -1082,20 +1048,14 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
         }
         InputEvent::HandleEsc => {
             if state.show_model_switcher {
-                state.show_model_switcher = false;
-                state.model_switcher_filter.clear();
-                state.model_switcher_selected_idx = 0;
+                let mut ctx = HandlerContext::new(state, output_tx);
+                let _ = model_switcher::close(&mut ctx);
             } else if state.show_file_search {
-                state.show_file_search = false;
-                state.file_search_query.clear();
-                state.file_search_selected_idx = 0;
-                state.file_search_results.clear();
+                let mut ctx = HandlerContext::new(state, output_tx);
+                let _ = file_search::close(&mut ctx);
             } else if state.show_changeset {
-                state.show_changeset = false;
-                state.changeset_selected_idx = 0;
-                state.changeset_diff_scroll = 0;
-                state.changeset_selected_path = None;
-                state.changeset_diff = None;
+                let mut ctx = HandlerContext::new(state, output_tx);
+                let _ = changeset_handler::close(&mut ctx);
             } else if state.is_streaming {
                 let _ = output_tx.try_send(OutputEvent::CancelStream);
                 state.is_streaming = false;
