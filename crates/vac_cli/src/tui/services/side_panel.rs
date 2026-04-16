@@ -28,12 +28,19 @@ pub fn render_side_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
     let runtime_collapsed = state.side_panel_section_collapsed.contains(&SidePanelSection::Runtime);
     let changeset_collapsed = state.side_panel_section_collapsed.contains(&SidePanelSection::Changeset);
     let vil_status_collapsed = state.side_panel_section_collapsed.contains(&SidePanelSection::VilStatus);
+    let mcp_collapsed = state.side_panel_section_collapsed.contains(&SidePanelSection::Mcp);
 
     let collapsed_height = 1;
     let context_height = if context_collapsed { collapsed_height } else { 5 };
     let runtime_height = if runtime_collapsed { collapsed_height } else { 6 };
     let changeset_height = if changeset_collapsed { collapsed_height } else { 10 };
-    let vil_status_height = if vil_status_collapsed { collapsed_height } else { 6 };
+    let vil_issues_count = state.vil_status.validation_issues.len().min(3);
+    let vil_status_lines = if state.vil_status.profile.is_some() { 4 } else { 3 };
+    let vil_status_height = if vil_status_collapsed { collapsed_height } else { (vil_status_lines + vil_issues_count + if state.vil_status.validation_issues.len() > 3 { 1 } else { 0 }) as u16 };
+    let mcp_lines = state.mcp_server_states.iter().map(|(_, s)| {
+        if matches!(s, vac_tools::mcp::McpConnectionState::Unreachable(_)) { 2 } else { 1 }
+    }).sum::<u16>();
+    let mcp_height = if mcp_collapsed { collapsed_height } else { (mcp_lines + 2).max(3) };
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -42,14 +49,29 @@ pub fn render_side_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
             Constraint::Length(runtime_height),
             Constraint::Length(changeset_height),
             Constraint::Length(vil_status_height),
+            Constraint::Length(mcp_height),
             Constraint::Min(0),
         ])
         .split(padded_area);
+
+    state.side_panel_header_areas.clear();
+    let sections = [
+        (SidePanelSection::Context, chunks[0]),
+        (SidePanelSection::Runtime, chunks[1]),
+        (SidePanelSection::Changeset, chunks[2]),
+        (SidePanelSection::VilStatus, chunks[3]),
+        (SidePanelSection::Mcp, chunks[4]),
+    ];
+    for (sec, mut rect) in sections {
+        rect.height = 1;
+        state.side_panel_header_areas.insert(sec, rect);
+    }
 
     render_context_section(f, state, chunks[0], context_collapsed);
     render_runtime_section(f, state, chunks[1], runtime_collapsed);
     render_changeset_section(f, state, chunks[2], changeset_collapsed);
     render_vil_status_section(f, state, chunks[3], vil_status_collapsed);
+    render_mcp_section(f, state, chunks[4], mcp_collapsed);
 }
 
 fn render_context_section(f: &mut Frame, state: &AppState, area: Rect, collapsed: bool) {
@@ -84,6 +106,49 @@ fn render_context_section(f: &mut Frame, state: &AppState, area: Rect, collapsed
         Span::styled("    Auto-Approve: ", Style::default().fg(Color::DarkGray)),
         Span::styled(auto, Style::default().fg(auto_color)),
     ]));
+
+    f.render_widget(Paragraph::new(lines), area);
+}
+
+fn render_mcp_section(f: &mut Frame, state: &AppState, area: Rect, collapsed: bool) {
+    let collapse_indicator = if collapsed { "▸" } else { "▾" };
+    let connected = state.mcp_server_states.values().filter(|s| s.is_connected()).count();
+    let total = state.mcp_server_states.len();
+    let header = Line::from(Span::styled(
+        format!("  {} MCP Servers ({}/{})", collapse_indicator, connected, total),
+        Style::default().add_modifier(Modifier::BOLD),
+    ));
+
+    if collapsed {
+        f.render_widget(Paragraph::new(vec![header]), area);
+        return;
+    }
+
+    let mut lines = vec![header];
+
+    if total == 0 {
+        lines.push(Line::styled("    No MCP servers", Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC)));
+    } else {
+        for (name, conn_state) in &state.mcp_server_states {
+            let (status, color) = if conn_state.is_connected() {
+                ("✅", Color::Green)
+            } else {
+                ("❌", Color::Red)
+            };
+            lines.push(Line::from(vec![
+                Span::raw("    "),
+                Span::styled(status, Style::default().fg(color)),
+                Span::raw(" "),
+                Span::styled(name.clone(), Style::default().fg(Color::Yellow)),
+            ]));
+            if let vac_tools::mcp::McpConnectionState::Unreachable(reason) = conn_state {
+                lines.push(Line::from(vec![
+                    Span::raw("      "),
+                    Span::styled(reason.clone(), Style::default().fg(Color::DarkGray)),
+                ]));
+            }
+        }
+    }
 
     f.render_widget(Paragraph::new(lines), area);
 }
@@ -133,6 +198,26 @@ fn render_vil_status_section(f: &mut Frame, state: &AppState, area: Rect, collap
         Span::styled("    Issues: ", Style::default().fg(Color::DarkGray)),
         Span::styled(issues_count.to_string(), Style::default().fg(issues_color)),
     ]));
+
+    if issues_count > 0 {
+        let max_issues = 3;
+        for issue in state.vil_status.validation_issues.iter().take(max_issues) {
+            let mut text = issue.clone();
+            if text.len() > 30 {
+                text.truncate(27);
+                text.push_str("...");
+            }
+            lines.push(Line::from(vec![
+                Span::styled("      • ", Style::default().fg(Color::DarkGray)),
+                Span::styled(text, Style::default().fg(Color::Yellow)),
+            ]));
+        }
+        if issues_count > max_issues {
+            lines.push(Line::from(vec![
+                Span::styled(format!("      ... and {} more", issues_count - max_issues), Style::default().fg(Color::DarkGray)),
+            ]));
+        }
+    }
 
     f.render_widget(Paragraph::new(lines), area);
 }

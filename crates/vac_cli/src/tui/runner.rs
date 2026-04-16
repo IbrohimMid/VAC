@@ -341,46 +341,46 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                             .await;
                     }
                 }
-                OutputEvent::ExecuteCommand(cmd) => {
+                OutputEvent::ExecuteCommand(cmd, active_isolation_mode) => {
                     let input_tx = input_tx_clone.clone();
                     let (cols, rows) = crossterm::terminal::size().unwrap_or((120, 32));
                     let rows = rows.saturating_sub(8).max(8);
                     let cols = cols.saturating_sub(4).max(40);
                     let shell_spec =
                         match vac_core::VacConfig::load_with_fallback(&runtime_project_root) {
-                            Ok(config)
-                                if config.runtime.execution_environment
-                                    == vac_core::ExecutionEnvironment::IsolatedInteractive =>
-                            {
-                                let isolation = vac_runtime::IsolationManager::new(
-                                    runtime_project_root.clone(),
-                                    config.runtime.clone(),
-                                );
-                                match isolation.build_interactive_shell_spec() {
-                                    Ok(spec) => Some(spec),
-                                    Err(err) => {
-                                        let _ = input_tx
-                                            .send(InputEvent::ShellError(format!(
-                                                "Failed to prepare isolated shell: {err}"
-                                            )))
-                                            .await;
-                                        continue;
+                            Ok(mut config) => {
+                                if let Ok(env_mode) = serde_json::from_str::<vac_core::ExecutionEnvironment>(&format!("\"{}\"", active_isolation_mode)) {
+                                    config.runtime.execution_environment = env_mode;
+                                }
+                                
+                                if config.runtime.execution_environment == vac_core::ExecutionEnvironment::IsolatedInteractive {
+                                    let isolation = vac_runtime::IsolationManager::new(
+                                        runtime_project_root.clone(),
+                                        config.runtime.clone(),
+                                    );
+                                    match isolation.build_interactive_shell_spec() {
+                                        Ok(spec) => Some(spec),
+                                        Err(err) => {
+                                            let _ = input_tx
+                                                .send(InputEvent::ShellError(format!(
+                                                    "Failed to prepare isolated shell: {err}"
+                                                )))
+                                                .await;
+                                            continue;
+                                        }
                                     }
+                                } else if config.runtime.execution_environment == vac_core::ExecutionEnvironment::IsolatedBatch {
+                                    let _ = input_tx
+                                        .send(InputEvent::ShellError(
+                                            "Shell is disabled for execution_environment=isolated_batch"
+                                                .to_string(),
+                                        ))
+                                        .await;
+                                    continue;
+                                } else {
+                                    None
                                 }
                             }
-                            Ok(config)
-                                if config.runtime.execution_environment
-                                    == vac_core::ExecutionEnvironment::IsolatedBatch =>
-                            {
-                                let _ = input_tx
-                                .send(InputEvent::ShellError(
-                                    "Shell is disabled for execution_environment=isolated_batch"
-                                        .to_string(),
-                                ))
-                                .await;
-                                continue;
-                            }
-                            Ok(_) => None,
                             Err(err) => {
                                 let _ = input_tx
                                     .send(InputEvent::ShellError(format!(

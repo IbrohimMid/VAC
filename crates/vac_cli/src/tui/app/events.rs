@@ -125,6 +125,7 @@ pub enum InputEvent {
     ToggleAutoApprove,
     ToggleSidePanel,
     AutoApproveCurrentTool,
+    ShowIsolationSwitcher,
     ShowProfileSwitcher,
     ShowMessageActionPopup,
     HandleCtrlZ,
@@ -190,5 +191,5 @@ pub enum OutputEvent {
     ResumeSession(String),
     SendToolResult(ToolCallResult, bool, Vec<ToolCall>),
     CancelStream,
-    ExecuteCommand(String),
+    ExecuteCommand(String, String), // command, active_isolation_mode
 }
