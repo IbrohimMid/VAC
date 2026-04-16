@@ -365,11 +365,21 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                     if let Ok(sessions) = eng.list_sessions().await {
                         let session_infos = sessions
                             .into_iter()
-                            .map(|s| crate::tui::app::SessionInfo {
-                                id: s.id.to_string(),
-                                title: format!("Session {}", &s.id.to_string()[..8]),
-                                updated_at: s.updated_at.to_rfc3339(),
-                                checkpoints: vec![],
+                            .map(|s| {
+                                let id_str = s.id.to_string();
+                                let has_checkpoint = std::path::Path::new(".vac/checkpoints")
+                                    .join(format!("{}_state.json", id_str))
+                                    .exists();
+                                let last_activity = s.updated_at.format("%Y-%m-%d %H:%M").to_string();
+                                crate::tui::app::SessionInfo {
+                                    id: id_str.clone(),
+                                    title: format!("Session {}", &id_str[..8]),
+                                    updated_at: s.updated_at.to_rfc3339(),
+                                    checkpoints: vec![],
+                                    message_count: s.tasks.len(),
+                                    last_activity,
+                                    has_checkpoint,
+                                }
                             })
                             .collect();
                         let _ = input_tx_clone

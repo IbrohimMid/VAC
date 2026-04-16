@@ -1917,6 +1917,60 @@ mod tests {
         assert!(matches!(rx.try_recv().unwrap(), OutputEvent::RejectTool(_, _, _)));
     }
 
+    // ── Branch 6C behavioral tests ──────────────────────────────────────────
+
+    #[test]
+    fn session_info_enriched_fields_populated() {
+        let s = crate::tui::app::SessionInfo {
+            id: "abc123".to_string(),
+            title: "Test Session".to_string(),
+            updated_at: "2026-04-16T09:00:00Z".to_string(),
+            checkpoints: vec![],
+            message_count: 5,
+            last_activity: "2026-04-16 09:00".to_string(),
+            has_checkpoint: true,
+        };
+        assert_eq!(s.message_count, 5);
+        assert_eq!(s.last_activity, "2026-04-16 09:00");
+        assert!(s.has_checkpoint);
+    }
+
+    #[test]
+    fn set_sessions_event_populates_enriched_fields() {
+        let dir = tempfile::tempdir().unwrap();
+        let (tx, _rx) = tokio::sync::mpsc::channel(4);
+        let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
+
+        let sessions = vec![
+            crate::tui::app::SessionInfo {
+                id: "s1".to_string(),
+                title: "Session 1".to_string(),
+                updated_at: "2026-04-16T09:00:00Z".to_string(),
+                checkpoints: vec![],
+                message_count: 3,
+                last_activity: "2026-04-16 09:00".to_string(),
+                has_checkpoint: false,
+            },
+            crate::tui::app::SessionInfo {
+                id: "s2".to_string(),
+                title: "Session 2".to_string(),
+                updated_at: "2026-04-16T10:00:00Z".to_string(),
+                checkpoints: vec![],
+                message_count: 7,
+                last_activity: "2026-04-16 10:00".to_string(),
+                has_checkpoint: true,
+            },
+        ];
+
+        handle_backend_event(&mut state, &tx, InputEvent::SetSessions(sessions));
+
+        assert_eq!(state.sessions.len(), 2);
+        assert_eq!(state.sessions[0].message_count, 3);
+        assert!(!state.sessions[0].has_checkpoint);
+        assert_eq!(state.sessions[1].message_count, 7);
+        assert!(state.sessions[1].has_checkpoint);
+    }
+
     // ── Branch 6B behavioral tests ──────────────────────────────────────────
 
     #[test]

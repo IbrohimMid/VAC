@@ -71,6 +71,9 @@ pub struct SessionInfo {
     pub id: String,
     pub updated_at: String,
     pub checkpoints: Vec<String>,
+    pub message_count: usize,
+    pub last_activity: String,
+    pub has_checkpoint: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

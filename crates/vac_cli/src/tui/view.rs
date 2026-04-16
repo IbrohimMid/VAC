@@ -800,21 +800,28 @@ fn render_sessions_pane(f: &mut Frame, state: &mut AppState, area: Rect) {
         .map(|(idx, s)| {
             let sel = idx == state.sessions_selected_idx;
             let style = if sel {
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD)
+                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
             } else {
                 Style::default()
             };
+            let checkpoint_icon = if s.has_checkpoint { "●" } else { "○" };
             ListItem::new(Line::from(vec![
-                Span::styled(&s.updated_at, Style::default().fg(Color::DarkGray)),
+                Span::styled(checkpoint_icon, Style::default().fg(if s.has_checkpoint { Color::Green } else { Color::DarkGray })),
+                Span::raw(" "),
+                Span::styled(&s.last_activity, Style::default().fg(Color::DarkGray)),
                 Span::raw(" "),
                 Span::styled(&s.title, style),
+                Span::styled(
+                    format!(" ({}t)", s.message_count),
+                    Style::default().fg(Color::DarkGray),
+                ),
             ]))
         })
         .collect();
 
-    let list = List::new(items).block(Block::default().borders(Borders::ALL).title("Sessions"));
+    let list = List::new(items).block(Block::default().borders(Borders::ALL).title(
+        format!("Sessions ({})", state.sessions.len()),
+    ));
     f.render_widget(list, body[0]);
 
     let mut lines: Vec<Line> = Vec::new();
@@ -825,22 +832,36 @@ fn render_sessions_pane(f: &mut Frame, state: &mut AppState, area: Rect) {
         ]));
         lines.push(Line::from(vec![
             Span::styled("ID: ", Style::default().add_modifier(Modifier::BOLD)),
-            Span::raw(sel.id.clone()),
+            Span::raw(sel.id.chars().take(16).collect::<String>()),
         ]));
         lines.push(Line::from(vec![
-            Span::styled("Updated: ", Style::default().add_modifier(Modifier::BOLD)),
-            Span::raw(sel.updated_at.clone()),
+            Span::styled("Last active: ", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(sel.last_activity.clone()),
         ]));
         lines.push(Line::from(vec![
-            Span::styled("Checkpoints: ", Style::default().add_modifier(Modifier::BOLD)),
-            Span::raw(format!("{}", sel.checkpoints.len())),
+            Span::styled("Tasks: ", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(sel.message_count.to_string()),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled("Checkpoint: ", Style::default().add_modifier(Modifier::BOLD)),
+            if sel.has_checkpoint {
+                Span::styled("available ●", Style::default().fg(Color::Green))
+            } else {
+                Span::styled("none ○", Style::default().fg(Color::DarkGray))
+            },
         ]));
         if !sel.checkpoints.is_empty() {
             lines.push(Line::raw(""));
-            for cp in sel.checkpoints.iter().take(6) {
-                lines.push(Line::raw(cp.clone()));
+            lines.push(Line::styled("Checkpoints:", Style::default().add_modifier(Modifier::BOLD)));
+            for cp in sel.checkpoints.iter().take(4) {
+                lines.push(Line::from(vec![
+                    Span::styled("  ", Style::default()),
+                    Span::raw(cp.clone()),
+                ]));
             }
         }
+        lines.push(Line::raw(""));
+        lines.push(Line::styled("Enter: restore  r: resume checkpoint", Style::default().fg(Color::DarkGray)));
     } else {
         lines.push(Line::styled(
             "No sessions loaded (/sessions)",
@@ -1010,6 +1031,8 @@ fn render_footer(f: &mut Frame, state: &mut AppState, area: Rect) {
                 Span::styled(": select  ", Style::default().fg(Color::DarkGray)),
                 Span::styled("Enter", Style::default().fg(Color::Cyan)),
                 Span::styled(": restore  ", Style::default().fg(Color::DarkGray)),
+                Span::styled("r", Style::default().fg(Color::Cyan)),
+                Span::styled(": resume checkpoint  ", Style::default().fg(Color::DarkGray)),
                 Span::styled("Ctrl+Tab", Style::default().fg(Color::Cyan)),
                 Span::styled(": next tab", Style::default().fg(Color::DarkGray)),
             ],
