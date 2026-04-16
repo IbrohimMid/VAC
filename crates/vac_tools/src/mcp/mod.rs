@@ -5,19 +5,26 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum McpConnectionState {
+pub enum McpConnectionStatus {
     Connected,
     Unreachable(String),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct McpConnectionState {
+    pub status: McpConnectionStatus,
+    pub trust_class: Option<McpTrustClass>,
+    pub allowed_in_modes: Vec<String>,
+}
+
 impl McpConnectionState {
     pub fn is_connected(&self) -> bool {
-        matches!(self, Self::Connected)
+        matches!(self.status, McpConnectionStatus::Connected)
     }
 }
 
 pub async fn probe_mcp_server(config: &McpServerConfig) -> McpConnectionState {
-    match &config.transport {
+    let status = match &config.transport {
         McpTransport::Stdio { command, .. } => {
             // Check if command exists in PATH or is an absolute path
             let exists = if std::path::Path::new(command).is_absolute() {
@@ -29,9 +36,9 @@ pub async fn probe_mcp_server(config: &McpServerConfig) -> McpConnectionState {
             };
 
             if exists {
-                McpConnectionState::Connected
+                McpConnectionStatus::Connected
             } else {
-                McpConnectionState::Unreachable(format!("Command '{}' not found in PATH", command))
+                McpConnectionStatus::Unreachable(format!("Command '{}' not found in PATH", command))
             }
         }
         McpTransport::Sse { url } => {
@@ -44,12 +51,18 @@ pub async fn probe_mcp_server(config: &McpServerConfig) -> McpConnectionState {
                 Ok(resp) if resp.status().is_success() || resp.status().is_redirection() || resp.status() == reqwest::StatusCode::METHOD_NOT_ALLOWED => {
                     // Some SSE endpoints might not support HEAD and return 405 Method Not Allowed,
                     // but reaching the endpoint means it's connected.
-                    McpConnectionState::Connected
+                    McpConnectionStatus::Connected
                 }
-                Ok(resp) => McpConnectionState::Unreachable(format!("HTTP error: {}", resp.status())),
-                Err(e) => McpConnectionState::Unreachable(format!("Connection failed: {}", e)),
+                Ok(resp) => McpConnectionStatus::Unreachable(format!("HTTP error: {}", resp.status())),
+                Err(e) => McpConnectionStatus::Unreachable(format!("Connection failed: {}", e)),
             }
         }
+    };
+    
+    McpConnectionState {
+        status,
+        trust_class: config.trust_class,
+        allowed_in_modes: config.allowed_in_modes.clone(),
     }
 }
 

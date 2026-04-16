@@ -130,7 +130,7 @@ pub async fn status(project_root: &Path) -> Result<()> {
         };
         
         println!("    {} [{}]", server.name, status_badge);
-        if let vac_tools::mcp::McpConnectionState::Unreachable(reason) = state {
+        if let vac_tools::mcp::McpConnectionStatus::Unreachable(reason) = state.status {
             println!("      Reason: {}", reason);
         }
     }

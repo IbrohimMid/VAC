@@ -7,7 +7,34 @@ pub async fn execute(
     format: &str,
     strict: bool,
     fix: bool,
+    interactive: bool,
 ) -> anyhow::Result<()> {
+    if interactive {
+        println!("🩺 Welcome to VAC Doctor Interactive Setup Wizard");
+        println!("==================================================");
+        
+        // Interactive prompt for LLM provider
+        println!("What is your primary LLM provider? [anthropic/openai/local] (default: anthropic): ");
+        let mut provider = String::new();
+        std::io::stdin().read_line(&mut provider)?;
+        let provider = provider.trim();
+        let provider = if provider.is_empty() { "anthropic" } else { provider };
+        
+        let config_path = project_root.join(".vac/config.toml");
+        if !config_path.exists() {
+            println!("No config found. Run `vac init` first.");
+            return Ok(());
+        }
+        
+        let content = std::fs::read_to_string(&config_path)?;
+        let new_content = content.replace("default_provider = \"anthropic\"", &format!("default_provider = \"{}\"", provider));
+        std::fs::write(&config_path, new_content)?;
+        println!("✓ Updated default provider to {}", provider);
+        
+        // Run checks
+        println!("\nRunning diagnostics...");
+    }
+
     if format != "json" {
         println!("🩺 VAC Doctor — checking subsystem readiness\n");
     }
@@ -200,7 +227,7 @@ async fn check_mcp_config(root: &Path, _strict: bool, fix: bool) -> (bool, serde
     let mut messages = Vec::new();
     for server in &servers {
         let state = vac_tools::mcp::probe_mcp_server(server).await;
-        if matches!(state, vac_tools::mcp::McpConnectionState::Connected) {
+        if matches!(state.status, vac_tools::mcp::McpConnectionStatus::Connected) {
             reachable += 1;
         } else {
             messages.push(format!("{} unreachable", server.name));
@@ -324,7 +351,7 @@ fn check_config_contract(root: &Path, _strict: bool, fix: bool) -> (bool, serde_
     }
 }
 
-fn read_toml_str(path: &Path, keys: &[&str]) -> Option<String> {
+pub fn read_toml_str(path: &Path, keys: &[&str]) -> Option<String> {
     let content = std::fs::read_to_string(path).ok()?;
     let table = content.parse::<toml::Table>().ok()?;
     let mut current = &toml::Value::Table(table);
@@ -334,7 +361,7 @@ fn read_toml_str(path: &Path, keys: &[&str]) -> Option<String> {
     current.as_str().map(String::from)
 }
 
-fn read_toml_bool(path: &Path, keys: &[&str]) -> Option<bool> {
+pub fn read_toml_bool(path: &Path, keys: &[&str]) -> Option<bool> {
     let content = std::fs::read_to_string(path).ok()?;
     let table = content.parse::<toml::Table>().ok()?;
     let mut current = &toml::Value::Table(table);

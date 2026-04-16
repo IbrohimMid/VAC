@@ -11,12 +11,27 @@ use crate::tui::app::AppState;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MessageAction {
     CopyMessage,
+    CopyCode,
+    Regenerate,
     RevertToMessage,
+    RepairVilContract,
+    ExplainPlumbing,
+    AuditZeroCopy,
+    DiffIrChange,
 }
 
 impl MessageAction {
     pub fn all() -> Vec<Self> {
-        vec![Self::CopyMessage, Self::RevertToMessage]
+        vec![
+            Self::CopyMessage,
+            Self::CopyCode,
+            Self::Regenerate,
+            Self::RevertToMessage,
+            Self::RepairVilContract,
+            Self::ExplainPlumbing,
+            Self::AuditZeroCopy,
+            Self::DiffIrChange,
+        ]
     }
 }
 
@@ -26,7 +41,7 @@ pub fn render_message_action_popup(f: &mut Frame, state: &AppState) {
     }
 
     let popup_width: u16 = 50;
-    let popup_height: u16 = 7;
+    let popup_height: u16 = 11;
 
     let terminal_area = f.area();
     let x = (terminal_area.width.saturating_sub(popup_width)) / 2;
@@ -74,7 +89,13 @@ pub fn render_message_action_popup(f: &mut Frame, state: &AppState) {
 
         let (highlight_word, rest_text) = match action {
             MessageAction::CopyMessage => ("Copy", " message text to clipboard"),
+            MessageAction::CopyCode => ("Copy Code", " extract code blocks to clipboard"),
+            MessageAction::Regenerate => ("Regenerate", " discard this and retry"),
             MessageAction::RevertToMessage => ("Revert", " undo messages and file changes"),
+            MessageAction::RepairVilContract => ("Repair VIL Contract", " auto-generate fixes for VIL rules"),
+            MessageAction::ExplainPlumbing => ("Explain Plumbing", " explain generated VIL plumbing"),
+            MessageAction::AuditZeroCopy => ("Audit Zero-Copy", " detect zero-copy risks in handler"),
+            MessageAction::DiffIrChange => ("Diff IR Change", " view semantic IR-significant diff"),
         };
 
         let available_width = (inner_area.width as usize).saturating_sub(2);

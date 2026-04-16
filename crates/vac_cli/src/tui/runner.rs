@@ -349,41 +349,84 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                     let shell_spec =
                         match vac_core::VacConfig::load_with_fallback(&runtime_project_root) {
                             Ok(mut config) => {
-                                if let Ok(env_mode) = serde_json::from_str::<vac_core::ExecutionEnvironment>(&format!("\"{}\"", active_isolation_mode)) {
+                                // Auto-detect interactive vs batch
+                                let is_interactive = cmd.is_empty();
+                                
+                                let mut env_mode_str = active_isolation_mode.as_str();
+                                if active_isolation_mode.starts_with("isolated") {
+                                    if is_interactive {
+                                        env_mode_str = "isolated_interactive";
+                                    } else {
+                                        env_mode_str = "isolated_batch";
+                                    }
+                                }
+
+                                if let Ok(env_mode) = serde_json::from_str::<vac_core::ExecutionEnvironment>(&format!("\"{}\"", env_mode_str)) {
                                     config.runtime.execution_environment = env_mode;
                                 }
+
+                                // Handle default mount presets
+                                if active_isolation_mode.contains("(Rust)") {
+                                    config.runtime.mount_presets.push(vac_core::config::MountPreset::Rust);
+                                } else if active_isolation_mode.contains("(Node)") {
+                                    config.runtime.mount_presets.push(vac_core::config::MountPreset::Node);
+                                } else if active_isolation_mode.contains("(Python)") {
+                                    config.runtime.mount_presets.push(vac_core::config::MountPreset::Python);
+                                }
                                 
-                                if config.runtime.execution_environment == vac_core::ExecutionEnvironment::IsolatedInteractive {
+                                if config.runtime.execution_environment == vac_core::ExecutionEnvironment::IsolatedInteractive || config.runtime.execution_environment == vac_core::ExecutionEnvironment::IsolatedBatch {
                                     let isolation = vac_runtime::IsolationManager::new(
                                         runtime_project_root.clone(),
                                         config.runtime.clone(),
                                     );
-                                    match isolation.build_interactive_shell_spec() {
-                                        Ok(spec) => Some(spec),
-                                        Err(err) => {
-                                            let _ = input_tx
-                                                .send(InputEvent::ShellError(format!(
-                                                    "Failed to prepare isolated shell: {err}"
-                                                )))
-                                                .await;
-                                            continue;
+                                    
+                                    if is_interactive {
+                                        match isolation.build_interactive_shell_spec() {
+                                            Ok(spec) => Some(spec),
+                                            Err(err) => {
+                                                let _ = input_tx
+                                                    .send(InputEvent::ShellError("system".to_string(), format!(
+                                                        "Failed to prepare isolated shell: {err}"
+                                                    )))
+                                                    .await;
+                                                continue;
+                                            }
+                                        }
+                                    } else {
+                                        let env = std::collections::HashMap::new();
+                                        match isolation.build_container_command(
+                                            std::path::Path::new("sh"),
+                                            &["-c".to_string(), cmd.clone()],
+                                            true,
+                                            &env,
+                                        ) {
+                                            Ok(command) => {
+                                                let program = command.get_program().to_string_lossy().to_string();
+                                                let args = command.get_args().map(|a| a.to_string_lossy().to_string()).collect();
+                                                Some(vac_runtime::IsolationLaunchSpec {
+                                                    program,
+                                                    args,
+                                                    cwd: runtime_project_root.clone(),
+                                                    env,
+                                                })
+                                            }
+                                            Err(err) => {
+                                                let _ = input_tx
+                                                    .send(InputEvent::ShellError("system".to_string(), format!(
+                                                        "Failed to build batch command: {err}"
+                                                    )))
+                                                    .await;
+                                                continue;
+                                            }
                                         }
                                     }
-                                } else if config.runtime.execution_environment == vac_core::ExecutionEnvironment::IsolatedBatch {
-                                    let _ = input_tx
-                                        .send(InputEvent::ShellError(
-                                            "Shell is disabled for execution_environment=isolated_batch"
-                                                .to_string(),
-                                        ))
-                                        .await;
-                                    continue;
                                 } else {
                                     None
                                 }
                             }
                             Err(err) => {
                                 let _ = input_tx
-                                    .send(InputEvent::ShellError(format!(
+                                    .send(InputEvent::ShellError("system".to_string(), format!(
                                         "Failed to load runtime config for shell: {err}"
                                     )))
                                     .await;
@@ -400,24 +443,24 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                             tokio::spawn(async move {
                                 while let Some(event) = shell_rx.recv().await {
                                     match event {
-                                        crate::tui::services::ShellEvent::Output(text) => {
+                                        crate::tui::services::ShellEvent::Output(id, text) => {
                                             let _ = input_tx_inner
-                                                .send(InputEvent::ShellOutput(text))
+                                                .send(InputEvent::ShellOutput(id, text))
                                                 .await;
                                         }
-                                        crate::tui::services::ShellEvent::Error(text) => {
+                                        crate::tui::services::ShellEvent::Error(id, text) => {
                                             let _ = input_tx_inner
-                                                .send(InputEvent::ShellError(text))
+                                                .send(InputEvent::ShellError(id, text))
                                                 .await;
                                         }
-                                        crate::tui::services::ShellEvent::Completed(code) => {
+                                        crate::tui::services::ShellEvent::Completed(id, code) => {
                                             let _ = input_tx_inner
-                                                .send(InputEvent::ShellCompleted(code))
+                                                .send(InputEvent::ShellCompleted(id, code))
                                                 .await;
                                         }
-                                        crate::tui::services::ShellEvent::WaitingForInput => {
+                                        crate::tui::services::ShellEvent::WaitingForInput(id) => {
                                             let _ = input_tx_inner
-                                                .send(InputEvent::ShellWaitingForInput)
+                                                .send(InputEvent::ShellWaitingForInput(id))
                                                 .await;
                                         }
                                     }
@@ -436,7 +479,7 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                         }
                         Err(err_msg) => {
                             let _ = input_tx
-                                .send(InputEvent::ShellError(format!(
+                                .send(InputEvent::ShellError("system".to_string(), format!(
                                     "Failed to start shell: {err_msg}"
                                 )))
                                 .await;
@@ -616,6 +659,40 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
         let _ = input_tx
             .send(InputEvent::AvailableModelsLoaded(models))
             .await;
+    }
+
+    // Run environment startup checks
+    fn read_toml_str(path: &std::path::Path, keys: &[&str]) -> Option<String> {
+        let content = std::fs::read_to_string(path).ok()?;
+        let table = content.parse::<toml::Table>().ok()?;
+        let mut current = &toml::Value::Table(table);
+        for key in keys {
+            current = current.get(key)?;
+        }
+        current.as_str().map(String::from)
+    }
+
+    let corpus_root = if let Ok(env_root) = std::env::var("VIL_KNOWLEDGE_ROOT") {
+        let p = std::path::PathBuf::from(env_root);
+        if p.exists() { Some(p) } else { None }
+    } else {
+        let config_path = project_root.join(".vac/config.toml");
+        read_toml_str(&config_path, &["knowledge", "root"])
+            .map(std::path::PathBuf::from)
+            .filter(|p| p.exists())
+    };
+
+    if corpus_root.is_none() {
+        let _ = input_tx.send(InputEvent::ShowToast(crate::tui::services::Toast::info(
+            "VIL Knowledge missing. Using bootstrap fallback.".to_string(),
+        ))).await;
+    }
+
+    let config = vac_core::VacConfig::load_with_fallback(&project_root).unwrap_or_default();
+    if config.mcp_servers.as_ref().map_or(true, |s| s.is_empty()) {
+        let _ = input_tx.send(InputEvent::ShowToast(crate::tui::services::Toast::info(
+            "No MCP servers configured.".to_string(),
+        ))).await;
     }
 
     run_tui(

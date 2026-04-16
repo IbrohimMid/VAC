@@ -1,4 +1,51 @@
 use crate::tui::{app::AppState, services::detect_term::ThemeColors, app::CommandSource};
+use nucleo_matcher::{
+    pattern::{CaseMatching, Normalization, Pattern},
+    Config, Matcher,
+};
+use std::cmp::Reverse;
+
+pub fn filter_helpers_sync(state: &mut AppState) {
+    let input = state.input.lines.join("");
+    if !input.starts_with('/') {
+        state.filtered_helpers.clear();
+        state.show_helper_dropdown = false;
+        return;
+    }
+
+    let query = input.trim_start_matches('/');
+    if query.is_empty() {
+        // Sort by recency/frequency when query is empty
+        let mut cmds = state.commands.clone();
+        cmds.sort_by_key(|c| {
+            let freq = state.recent_commands.frequencies.get(&c.command).copied().unwrap_or(0);
+            let recent_idx = state.recent_commands.history.iter().position(|h| h == &c.command).unwrap_or(usize::MAX);
+            (Reverse(freq), recent_idx)
+        });
+        state.filtered_helpers = cmds;
+        return;
+    }
+
+    let mut matcher = Matcher::new(Config::DEFAULT);
+    let pattern = Pattern::parse(query, CaseMatching::Ignore, Normalization::Smart);
+
+    let mut matches = Vec::new();
+    let mut buf = Vec::new();
+    for cmd in &state.commands {
+        let text = format!("{} {}", cmd.command, cmd.description);
+        let utf32 = nucleo_matcher::Utf32Str::new(&text, &mut buf);
+        if let Some(score) = pattern.score(utf32, &mut matcher) {
+            matches.push((score, cmd.clone()));
+        }
+    }
+
+    matches.sort_by_key(|(score, cmd)| {
+        let freq = state.recent_commands.frequencies.get(&cmd.command).copied().unwrap_or(0);
+        (Reverse(*score), Reverse(freq))
+    });
+
+    state.filtered_helpers = matches.into_iter().map(|(_, cmd)| cmd).collect();
+}
 use ratatui::{
     Frame,
     layout::Rect,

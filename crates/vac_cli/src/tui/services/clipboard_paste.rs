@@ -1,8 +1,42 @@
-use crate::services::handlers::find_image_file_by_name;
 use image::ImageFormat;
 use log;
 use std::path::PathBuf;
 use tempfile::Builder;
+
+/// Search common directories for an image file matching the given name (with various extensions)
+pub fn find_image_file_by_name(name: &str) -> Option<PathBuf> {
+    // Common image extensions to try
+    const IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "gif", "webp", "bmp", "tiff", "tif"];
+
+    // Common directories to search (Desktop, Downloads, Documents, Pictures)
+    let common_dirs = [
+        std::env::var("HOME")
+            .ok()
+            .map(|h| PathBuf::from(&h).join("Desktop")),
+        std::env::var("HOME")
+            .ok()
+            .map(|h| PathBuf::from(&h).join("Downloads")),
+        std::env::var("HOME")
+            .ok()
+            .map(|h| PathBuf::from(&h).join("Documents")),
+        std::env::var("HOME")
+            .ok()
+            .map(|h| PathBuf::from(&h).join("Pictures")),
+        // Also try current directory
+        std::env::current_dir().ok(),
+    ];
+
+    for dir_opt in common_dirs.iter().flatten() {
+        for ext in IMAGE_EXTENSIONS {
+            let candidate = dir_opt.join(format!("{}.{}", name, ext));
+            if candidate.exists() && candidate.is_file() {
+                return Some(candidate);
+            }
+        }
+    }
+
+    None
+}
 
 /// Errors that can occur while reading or materializing a clipboard image.
 #[derive(Debug)]

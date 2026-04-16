@@ -25,17 +25,19 @@ pub enum InputEvent {
     SetSessions(Vec<SessionInfo>),
     SetRuntimeJobs(Vec<vac_runtime::Job>),
     SetRuntimeState(Option<vac_runtime::AutopilotStateFile>),
+    FileIndexReady(Vec<String>),
     McpConnected { name: String, tools: usize },
     McpFailed { name: String, error: String },
     McpServerState(String, vac_tools::mcp::McpConnectionState),
     VilStatusUpdated(crate::tui::app::VilStatusSnapshot),
     ChangesetUpdated,
     IsolationBoundary { action: String, environment: String },
+    // Shell events
     ShellStarted(crate::tui::services::ShellCommand),
-    ShellOutput(String),
-    ShellError(String),
-    ShellCompleted(i32),
-    ShellWaitingForInput,
+    ShellOutput(String, String), // command_id, text
+    ShellError(String, String), // command_id, text
+    ShellCompleted(String, i32), // command_id, code
+    ShellWaitingForInput(String), // command_id
     SessionRestored {
         id: String,
         title: String,
@@ -158,11 +160,12 @@ impl InputEvent {
                 | InputEvent::SetSessions(_)
                 | InputEvent::SetRuntimeJobs(_)
                 | InputEvent::SetRuntimeState(_)
+                | InputEvent::FileIndexReady(_)
                 | InputEvent::ShellStarted(_)
-                | InputEvent::ShellOutput(_)
-                | InputEvent::ShellError(_)
-                | InputEvent::ShellCompleted(_)
-                | InputEvent::ShellWaitingForInput
+                | InputEvent::ShellOutput(_, _)
+                | InputEvent::ShellError(_, _)
+                | InputEvent::ShellCompleted(_, _)
+                | InputEvent::ShellWaitingForInput(_)
                 | InputEvent::McpServerState(_, _)
                 | InputEvent::SessionRestored { .. }
                 | InputEvent::AddUserMessage(_)
@@ -192,4 +195,6 @@ pub enum OutputEvent {
     SendToolResult(ToolCallResult, bool, Vec<ToolCall>),
     CancelStream,
     ExecuteCommand(String, String), // command, active_isolation_mode
+    RetryMessage(uuid::Uuid),
+    RevertToMessage(uuid::Uuid),
 }

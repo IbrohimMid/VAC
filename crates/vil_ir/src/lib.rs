@@ -1,6 +1,7 @@
 //! VIL IR Pipeline
 
 pub mod analysis;
+pub mod diff;
 pub mod error;
 pub mod parser;
 pub mod pipeline;

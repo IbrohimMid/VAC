@@ -1,7 +1,7 @@
 //! App Module
 
-mod events;
-mod types;
+pub mod events;
+pub mod types;
 
 pub use events::{InputEvent, OutputEvent};
 pub use types::*;

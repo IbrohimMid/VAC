@@ -176,6 +176,18 @@ impl PolicyEngine for VilTrustPolicyAdapter {
             classify_tool_risk(tool_name)
         };
 
+        if tool_name == "file_edit" || tool_name == "file_write" {
+            if let Some(file_path) = args.get("file_path").and_then(|v| v.as_str()) {
+                let abs_path = context.working_dir.join(file_path);
+                if let Ok(content) = std::fs::read_to_string(&abs_path) {
+                    if content.contains("#[vil_") {
+                        let warning = format!("⚠️ WARNING: Modifying VIL-generated plumbing in `{}`. Are you sure?", file_path);
+                        return PolicyDecision::NeedsApproval(warning);
+                    }
+                }
+            }
+        }
+
         let request = vil_trust::PolicyRequest {
             tool_name: tool_name.to_string(),
             agent_id: context.session_id.to_string(),

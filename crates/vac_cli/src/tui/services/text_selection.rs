@@ -6,9 +6,79 @@
 //! - Clipboard operations: copy selected text to system clipboard
 //! - Highlight rendering: applies selection highlighting to visible lines
 
-use crate::app::AppState;
+use crate::tui::app::AppState;
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
+
+/// Handle mouse drag start - begins text selection in message area
+pub fn handle_drag_start(state: &mut AppState, col: u16, row: u16) {
+    let message_area_height = state.message_area_height as usize;
+    let row_in_message_area = (row as usize).saturating_sub(state.message_area_y as usize);
+
+    if row < state.message_area_y || row_in_message_area >= message_area_height {
+        state.selection_state = SelectionState::default();
+        return;
+    }
+
+    let absolute_line = state.scroll + row_in_message_area.saturating_sub(1); // -1 for border
+    let rel_col = col.saturating_sub(1); // -1 for border
+
+    state.selection_state = SelectionState {
+        active: true,
+        start_line: Some(absolute_line),
+        start_col: Some(rel_col),
+        end_line: Some(absolute_line),
+        end_col: Some(rel_col),
+    };
+}
+
+/// Handle mouse drag - updates selection in message area
+pub fn handle_drag(state: &mut AppState, col: u16, row: u16) {
+    if !state.selection_state.active {
+        return;
+    }
+
+    let message_area_height = state.message_area_height as usize;
+    let row_in_message_area = (row as usize).saturating_sub(state.message_area_y as usize);
+    let clamped_row = row_in_message_area.min(message_area_height.saturating_sub(2)); // -2 for borders
+
+    let absolute_line = state.scroll + clamped_row.saturating_sub(1);
+    let rel_col = col.saturating_sub(1);
+
+    state.selection_state.end_line = Some(absolute_line);
+    state.selection_state.end_col = Some(rel_col);
+}
+
+/// Handle mouse drag end - copies to clipboard
+pub fn handle_drag_end(state: &mut AppState, col: u16, row: u16) {
+    if !state.selection_state.active {
+        return;
+    }
+
+    handle_drag(state, col, row);
+
+    let is_just_click = match (
+        &state.selection_state.start_line,
+        &state.selection_state.start_col,
+        &state.selection_state.end_line,
+        &state.selection_state.end_col,
+    ) {
+        (Some(sl), Some(sc), Some(el), Some(ec)) => sl == el && sc == ec,
+        _ => false,
+    };
+
+    if is_just_click {
+        state.selection_state = SelectionState::default();
+        return;
+    }
+
+    let selected_text = extract_selected_text(state);
+    if !selected_text.is_empty() {
+        if let Err(e) = copy_to_clipboard(&selected_text) {
+            log::warn!("Failed to copy to clipboard: {}", e);
+        }
+    }
+}
 
 /// Characters that are considered borders/decorations and should be excluded from selection
 /// NOTE: We only exclude Unicode box-drawing characters, NOT ASCII '|', '-', '+'
@@ -238,20 +308,28 @@ fn extract_selected_text_from_lines(selection: &SelectionState, cached_lines: &[
 
 /// Extract selected text from the assembled lines cache (main message area)
 pub fn extract_selected_text(state: &AppState) -> String {
-    let Some((_, cached_lines, _)) = &state.assembled_lines_cache else {
+    if !state.selection_state.active {
+        return String::new();
+    }
+
+    let Some((_, _, cached_lines)) = &state.assembled_lines_cache else {
         return String::new();
     };
 
-    extract_selected_text_from_lines(&state.selection, cached_lines)
+    extract_selected_text_from_lines(&state.selection_state, cached_lines)
 }
 
 /// Extract selected text from the collapsed message lines cache (fullscreen popup)
 pub fn extract_selected_text_from_collapsed(state: &AppState) -> String {
+    if !state.selection_state.active {
+        return String::new();
+    }
+
     let Some((_, _, cached_lines)) = &state.collapsed_message_lines_cache else {
         return String::new();
     };
 
-    extract_selected_text_from_lines(&state.selection, cached_lines)
+    extract_selected_text_from_lines(&state.selection_state, cached_lines)
 }
 
 /// Calculate display width of a line

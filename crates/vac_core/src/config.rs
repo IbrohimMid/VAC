@@ -269,11 +269,33 @@ impl VacConfig {
 
 impl Default for VacConfig {
     fn default() -> Self {
+        let mut default_providers = HashMap::new();
+        default_providers.insert(
+            "anthropic".to_string(),
+            LlmProviderConfig {
+                api_key_env: "ANTHROPIC_API_KEY".to_string(),
+                model: "claude-3-7-sonnet-20250219".to_string(),
+                base_url: None,
+                max_tokens: default_max_tokens(),
+                temperature: default_temperature(),
+            },
+        );
+        default_providers.insert(
+            "openai".to_string(),
+            LlmProviderConfig {
+                api_key_env: "OPENAI_API_KEY".to_string(),
+                model: "gpt-4o".to_string(),
+                base_url: None,
+                max_tokens: default_max_tokens(),
+                temperature: default_temperature(),
+            },
+        );
+
         Self {
             llm: LlmConfig {
                 default_provider: "anthropic".into(),
-                providers: HashMap::new(),
-                fallback_chain: vec![],
+                providers: default_providers,
+                fallback_chain: vec!["anthropic".to_string(), "openai".to_string()],
                 max_tokens_per_task: 0,
             },
             tools: ToolConfig {
