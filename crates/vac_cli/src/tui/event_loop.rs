@@ -1095,11 +1095,50 @@ fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, e
             );
         }
         InputEvent::SetRuntimeState(snapshot) => {
+            // Detect significant state changes for activity logging
+            let prev_state = state.runtime_state_snapshot.as_ref().map(|s| &s.state);
+            let new_state = snapshot.as_ref().map(|s| &s.state);
+            
+            if let (Some(prev), Some(new)) = (prev_state, new_state) {
+                match new {
+                    vac_runtime::AutopilotState::WaitingApproval { tool_call_id } => {
+                        if !matches!(prev, vac_runtime::AutopilotState::WaitingApproval { .. }) {
+                            state.push_activity(
+                                crate::tui::app::ActivityKind::Approval,
+                                format!("Runtime waiting for approval: {}", &tool_call_id[..8]),
+                            );
+                        }
+                    }
+                    vac_runtime::AutopilotState::Backoff { until } => {
+                        if !matches!(prev, vac_runtime::AutopilotState::Backoff { .. }) {
+                            state.push_activity(
+                                crate::tui::app::ActivityKind::Status,
+                                format!("Runtime entered backoff until {}", until.format("%H:%M:%S")),
+                            );
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            
+            // Detect execution environment changes
+            if let Some(new_snapshot) = &snapshot {
+                if let Some(prev_snapshot) = &state.runtime_state_snapshot {
+                    if prev_snapshot.execution_environment != new_snapshot.execution_environment {
+                        let env_name = match new_snapshot.execution_environment {
+                            vac_core::ExecutionEnvironment::Host => "host",
+                            vac_core::ExecutionEnvironment::IsolatedBatch => "isolated-batch",
+                            vac_core::ExecutionEnvironment::IsolatedInteractive => "isolated-interactive",
+                        };
+                        state.push_activity(
+                            crate::tui::app::ActivityKind::Status,
+                            format!("Execution environment switched to {}", env_name),
+                        );
+                    }
+                }
+            }
+            
             state.runtime_state_snapshot = snapshot;
-            state.push_activity(
-                crate::tui::app::ActivityKind::Status,
-                "Runtime state updated",
-            );
         }
         InputEvent::ShellStarted(shell) => {
             state.active_shell_command = Some(shell.clone());

@@ -289,6 +289,38 @@ fn render_header(f: &mut Frame, state: &mut AppState, area: Rect) {
             Style::default().fg(Color::Cyan),
         ));
     }
+    
+    // Runtime visibility badges
+    if let Some(snapshot) = &state.runtime_state_snapshot {
+        spans.push(Span::raw("  "));
+        let (exec_label, exec_color) = match snapshot.execution_environment {
+            vac_core::ExecutionEnvironment::Host => ("host", Color::Yellow),
+            vac_core::ExecutionEnvironment::IsolatedBatch => ("isolated-batch", Color::Green),
+            vac_core::ExecutionEnvironment::IsolatedInteractive => ("isolated-interactive", Color::Cyan),
+        };
+        spans.push(Span::styled(
+            format!("exec:{}", exec_label),
+            Style::default().fg(exec_color).add_modifier(Modifier::BOLD),
+        ));
+        
+        spans.push(Span::raw("  "));
+        spans.push(Span::styled(
+            format!("intent:{}", snapshot.task_intent_mode),
+            Style::default().fg(Color::Cyan),
+        ));
+        
+        spans.push(Span::raw("  "));
+        let env_color = if snapshot.environment_mode.contains("trusted-networked") {
+            Color::Red
+        } else {
+            Color::Green
+        };
+        spans.push(Span::styled(
+            format!("env:{}", snapshot.environment_mode),
+            Style::default().fg(env_color),
+        ));
+    }
+    
     spans.push(Span::raw("  "));
     spans.push(Span::styled(
         format!(
