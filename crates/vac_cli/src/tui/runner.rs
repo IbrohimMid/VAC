@@ -307,9 +307,9 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                         log::error!("Failed to approve tool call {}: {}", tc.id, e);
                     }
                 }
-                OutputEvent::RejectTool(tc, _) => {
+                OutputEvent::RejectTool(tc, _, reason) => {
                     if let Err(e) =
-                        resolve_tool_approval(&approvals, tc.id.clone(), false, None).await
+                        resolve_tool_approval(&approvals, tc.id.clone(), false, reason).await
                     {
                         log::error!("Failed to reject tool call {}: {}", tc.id, e);
                     }

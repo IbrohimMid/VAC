@@ -22,7 +22,7 @@ pub enum AdapterInputEvent {
     /// Tool call accepted
     AcceptTool(ToolCall),
     /// Tool call rejected
-    RejectTool(ToolCall, bool),
+    RejectTool(ToolCall, bool, Option<String>),
     /// Request session list
     ListSessions,
     /// Switch to session
@@ -102,7 +102,7 @@ impl VacEngineAdapter {
                         )))
                         .await;
                 }
-                AdapterInputEvent::RejectTool(tc, _) => {
+                AdapterInputEvent::RejectTool(tc, _, _) => {
                     let _ = self
                         .output_tx
                         .send(AdapterOutputEvent::AssistantMessage(format!(

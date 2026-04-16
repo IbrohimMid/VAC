@@ -87,6 +87,12 @@ pub fn map_crossterm_event_to_input_event(event: Event) -> Option<InputEvent> {
                 KeyCode::Char('M') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                     Some(InputEvent::RejectCurrentTool)
                 }
+                KeyCode::Char('a') if key.modifiers.contains(KeyModifiers::ALT) => {
+                    Some(InputEvent::ApproveAll)
+                }
+                KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::ALT) => {
+                    Some(InputEvent::RejectAll)
+                }
                 KeyCode::Char('f') if key.modifiers.contains(KeyModifiers::ALT) => {
                     Some(InputEvent::InputCursorNextWord)
                 }

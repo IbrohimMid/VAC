@@ -68,7 +68,7 @@ pub fn reject_current(ctx: &mut HandlerContext) -> HandlerResult {
         ctx.state.approval_normalize_selection();
 
         let tool_name = tc.function.name.clone();
-        let _ = ctx.output_tx.try_send(OutputEvent::RejectTool(tc, false));
+        let _ = ctx.output_tx.try_send(OutputEvent::RejectTool(tc, false, None));
         ctx.state.push_activity(
             ActivityKind::Approval,
             format!("Rejected: {}", tool_name),
@@ -77,6 +77,102 @@ pub fn reject_current(ctx: &mut HandlerContext) -> HandlerResult {
             .toasts
             .push(Toast::error(format!("Rejected: {}", tool_name)));
     }
+    Ok(())
+}
+
+/// Approve all pending tools at once.
+pub fn approve_all(ctx: &mut HandlerContext) -> HandlerResult {
+    let tools: Vec<_> = ctx.state.pending_approvals.drain(..).collect();
+    if tools.is_empty() {
+        return Ok(());
+    }
+    for tc in tools {
+        ctx.state.approval_explanations.remove(&tc.id);
+        let tool_name = tc.function.name.clone();
+        let _ = ctx.output_tx.try_send(OutputEvent::AcceptTool(tc.clone()));
+        ctx.state.approved_tools.push(tc);
+        ctx.state.push_activity(ActivityKind::Approval, format!("Approved: {}", tool_name));
+    }
+    ctx.state.approval_selected_idx = 0;
+    ctx.state.toasts.push(Toast::success("All tools approved".to_string()));
+    Ok(())
+}
+
+/// Activate reject reason prompt for current tool.
+pub fn begin_reject_current(ctx: &mut HandlerContext) -> HandlerResult {
+    if !ctx.state.pending_approvals.is_empty() {
+        ctx.state.reject_reason_input = Some(String::new());
+    }
+    Ok(())
+}
+
+/// Activate reject reason prompt for all tools.
+pub fn begin_reject_all(ctx: &mut HandlerContext) -> HandlerResult {
+    if !ctx.state.pending_approvals.is_empty() {
+        ctx.state.reject_reason_input = Some(String::new());
+    }
+    Ok(())
+}
+
+/// Append char to reject reason input.
+pub fn reason_input_push(ctx: &mut HandlerContext, c: char) -> HandlerResult {
+    if let Some(r) = &mut ctx.state.reject_reason_input {
+        r.push(c);
+    }
+    Ok(())
+}
+
+/// Delete last char from reject reason input.
+pub fn reason_input_pop(ctx: &mut HandlerContext) -> HandlerResult {
+    if let Some(r) = &mut ctx.state.reject_reason_input {
+        r.pop();
+    }
+    Ok(())
+}
+
+/// Confirm reason and reject current tool.
+pub fn confirm_reject_current(ctx: &mut HandlerContext) -> HandlerResult {
+    let reason = ctx.state.reject_reason_input.take();
+    if let Some(tc) = ctx
+        .state
+        .pending_approvals
+        .get(ctx.state.approval_selected_idx)
+        .cloned()
+    {
+        ctx.state.pending_approvals.retain(|t| t.id != tc.id);
+        ctx.state.approval_explanations.remove(&tc.id);
+        ctx.state.rejected_tools.push(tc.clone());
+        ctx.state.approval_normalize_selection();
+        let tool_name = tc.function.name.clone();
+        let _ = ctx.output_tx.try_send(OutputEvent::RejectTool(tc, false, reason));
+        ctx.state.push_activity(ActivityKind::Approval, format!("Rejected: {}", tool_name));
+        ctx.state.toasts.push(Toast::error(format!("Rejected: {}", tool_name)));
+    }
+    Ok(())
+}
+
+/// Confirm reason and reject all pending tools.
+pub fn confirm_reject_all(ctx: &mut HandlerContext) -> HandlerResult {
+    let reason = ctx.state.reject_reason_input.take();
+    let tools: Vec<_> = ctx.state.pending_approvals.drain(..).collect();
+    if tools.is_empty() {
+        return Ok(());
+    }
+    for tc in tools {
+        ctx.state.approval_explanations.remove(&tc.id);
+        let tool_name = tc.function.name.clone();
+        let _ = ctx.output_tx.try_send(OutputEvent::RejectTool(tc.clone(), false, reason.clone()));
+        ctx.state.rejected_tools.push(tc);
+        ctx.state.push_activity(ActivityKind::Approval, format!("Rejected: {}", tool_name));
+    }
+    ctx.state.approval_selected_idx = 0;
+    ctx.state.toasts.push(Toast::error("All tools rejected".to_string()));
+    Ok(())
+}
+
+/// Cancel reject reason prompt without rejecting.
+pub fn cancel_reject_reason(ctx: &mut HandlerContext) -> HandlerResult {
+    ctx.state.reject_reason_input = None;
     Ok(())
 }
 

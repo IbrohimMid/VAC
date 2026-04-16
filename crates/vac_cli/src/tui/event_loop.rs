@@ -150,6 +150,29 @@ pub async fn run_tui(
 
 /// Handle input events from user
 fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, event: InputEvent) {
+    // Reject reason prompt intercepts all input when active
+    if state.reject_reason_input.is_some() {
+        let mut ctx = HandlerContext::new(state, output_tx);
+        match event {
+            InputEvent::InputSubmitted => {
+                let _ = approval::confirm_reject_current(&mut ctx);
+            }
+            InputEvent::HandleEsc => {
+                // Esc = skip reason, reject without reason
+                ctx.state.reject_reason_input = None;
+                let _ = approval::reject_current(&mut ctx);
+            }
+            InputEvent::InputChanged(c) => {
+                let _ = approval::reason_input_push(&mut ctx, c);
+            }
+            InputEvent::InputBackspace => {
+                let _ = approval::reason_input_pop(&mut ctx);
+            }
+            _ => {}
+        }
+        return;
+    }
+
     // Handle command palette input first
     if state.show_command_palette {
         match event {
@@ -649,7 +672,15 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
         }
         InputEvent::RejectCurrentTool => {
             let mut ctx = HandlerContext::new(state, output_tx);
-            let _ = approval::reject_current(&mut ctx);
+            let _ = approval::begin_reject_current(&mut ctx);
+        }
+        InputEvent::ApproveAll => {
+            let mut ctx = HandlerContext::new(state, output_tx);
+            let _ = approval::approve_all(&mut ctx);
+        }
+        InputEvent::RejectAll => {
+            let mut ctx = HandlerContext::new(state, output_tx);
+            let _ = approval::confirm_reject_all(&mut ctx);
         }
         InputEvent::ScrollUp => {
             match state.focus {
@@ -1133,7 +1164,7 @@ mod tests {
         handle_input_event(&mut state, &tx, InputEvent::InputChanged('r'));
         let ev = rx.recv().await.unwrap();
         match ev {
-            OutputEvent::RejectTool(tc, _) => assert_eq!(tc.id, "tc-1"),
+            OutputEvent::RejectTool(tc, _, _) => assert_eq!(tc.id, "tc-1"),
             _ => panic!("unexpected event"),
         }
 
@@ -1265,8 +1296,15 @@ mod tests {
             metadata: None,
         });
         
-        // Trigger Ctrl+Shift+M (RejectCurrentTool)
+        // Trigger Ctrl+Shift+M (RejectCurrentTool) - now shows reason prompt
         handle_input_event(&mut state, &tx, InputEvent::RejectCurrentTool);
+        
+        // Reason prompt should be active
+        assert!(state.reject_reason_input.is_some());
+        assert_eq!(state.pending_approvals.len(), 1); // not yet rejected
+        
+        // Confirm with Enter (no reason typed)
+        handle_input_event(&mut state, &tx, InputEvent::InputSubmitted);
         
         // Verify rejection processed
         assert_eq!(state.pending_approvals.len(), 0);
@@ -1275,7 +1313,7 @@ mod tests {
         
         // Verify output event sent
         let output = rx.try_recv().unwrap();
-        assert!(matches!(output, OutputEvent::RejectTool(_, _)));
+        assert!(matches!(output, OutputEvent::RejectTool(_, _, _)));
     }
 
     #[tokio::test]
@@ -1784,9 +1822,122 @@ mod tests {
             metadata: None,
         });
         handle_input_event(&mut state, &tx, InputEvent::RejectCurrentTool);
+        // Reason prompt active - not yet rejected
+        assert!(state.reject_reason_input.is_some());
+        // Confirm with Enter
+        handle_input_event(&mut state, &tx, InputEvent::InputSubmitted);
         assert_eq!(state.pending_approvals.len(), 0);
         assert_eq!(state.rejected_tools.len(), 1);
-        assert!(matches!(rx.try_recv().unwrap(), OutputEvent::RejectTool(_, _)));
+        assert!(matches!(rx.try_recv().unwrap(), OutputEvent::RejectTool(_, _, _)));
+    }
+
+    // ── Branch 6A behavioral tests ──────────────────────────────────────────
+
+    #[tokio::test]
+    async fn approve_all_clears_all_pending() {
+        let dir = tempfile::tempdir().unwrap();
+        let (tx, mut rx) = tokio::sync::mpsc::channel(8);
+        let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
+        for i in 0..3 {
+            state.pending_approvals.push(ToolCall {
+                id: format!("tc-{}", i),
+                r#type: "function".to_string(),
+                function: FunctionCall { name: "tool".to_string(), arguments: "{}".to_string() },
+                metadata: None,
+            });
+        }
+        handle_input_event(&mut state, &tx, InputEvent::ApproveAll);
+        assert_eq!(state.pending_approvals.len(), 0);
+        assert_eq!(state.approved_tools.len(), 3);
+        // 3 AcceptTool events emitted
+        for _ in 0..3 {
+            assert!(matches!(rx.try_recv().unwrap(), OutputEvent::AcceptTool(_)));
+        }
+    }
+
+    #[tokio::test]
+    async fn reject_all_clears_all_pending_immediately() {
+        let dir = tempfile::tempdir().unwrap();
+        let (tx, mut rx) = tokio::sync::mpsc::channel(8);
+        let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
+        for i in 0..3 {
+            state.pending_approvals.push(ToolCall {
+                id: format!("tc-{}", i),
+                r#type: "function".to_string(),
+                function: FunctionCall { name: "tool".to_string(), arguments: "{}".to_string() },
+                metadata: None,
+            });
+        }
+        handle_input_event(&mut state, &tx, InputEvent::RejectAll);
+        assert_eq!(state.pending_approvals.len(), 0);
+        assert_eq!(state.rejected_tools.len(), 3);
+        for _ in 0..3 {
+            assert!(matches!(rx.try_recv().unwrap(), OutputEvent::RejectTool(_, _, _)));
+        }
+    }
+
+    #[tokio::test]
+    async fn reject_current_shows_reason_prompt_then_confirms() {
+        let dir = tempfile::tempdir().unwrap();
+        let (tx, mut rx) = tokio::sync::mpsc::channel(4);
+        let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
+        state.pending_approvals.push(ToolCall {
+            id: "tc-reason".to_string(),
+            r#type: "function".to_string(),
+            function: FunctionCall { name: "tool".to_string(), arguments: "{}".to_string() },
+            metadata: None,
+        });
+
+        // Trigger reject - shows prompt
+        handle_input_event(&mut state, &tx, InputEvent::RejectCurrentTool);
+        assert!(state.reject_reason_input.is_some());
+        assert_eq!(state.pending_approvals.len(), 1); // not yet rejected
+
+        // Type reason
+        handle_input_event(&mut state, &tx, InputEvent::InputChanged('t'));
+        handle_input_event(&mut state, &tx, InputEvent::InputChanged('o'));
+        handle_input_event(&mut state, &tx, InputEvent::InputChanged('o'));
+        assert_eq!(state.reject_reason_input.as_deref(), Some("too"));
+
+        // Confirm
+        handle_input_event(&mut state, &tx, InputEvent::InputSubmitted);
+        assert!(state.reject_reason_input.is_none());
+        assert_eq!(state.pending_approvals.len(), 0);
+        assert_eq!(state.rejected_tools.len(), 1);
+
+        // Reason passed in event
+        if let OutputEvent::RejectTool(_, _, reason) = rx.try_recv().unwrap() {
+            assert_eq!(reason, Some("too".to_string()));
+        } else {
+            panic!("expected RejectTool");
+        }
+    }
+
+    #[tokio::test]
+    async fn reject_reason_esc_rejects_without_reason() {
+        let dir = tempfile::tempdir().unwrap();
+        let (tx, mut rx) = tokio::sync::mpsc::channel(4);
+        let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
+        state.pending_approvals.push(ToolCall {
+            id: "tc-esc".to_string(),
+            r#type: "function".to_string(),
+            function: FunctionCall { name: "tool".to_string(), arguments: "{}".to_string() },
+            metadata: None,
+        });
+
+        handle_input_event(&mut state, &tx, InputEvent::RejectCurrentTool);
+        assert!(state.reject_reason_input.is_some());
+
+        // Esc = skip reason, reject without reason
+        handle_input_event(&mut state, &tx, InputEvent::HandleEsc);
+        assert!(state.reject_reason_input.is_none());
+        assert_eq!(state.pending_approvals.len(), 0);
+
+        if let OutputEvent::RejectTool(_, _, reason) = rx.try_recv().unwrap() {
+            assert_eq!(reason, None);
+        } else {
+            panic!("expected RejectTool");
+        }
     }
 
     // ── Branch 5B behavioral tests ──────────────────────────────────────────

@@ -280,6 +280,7 @@ pub struct AppState {
     pub approval_selected_idx: usize,
     pub approval_detail_scroll: usize,
     pub approval_explanations: HashMap<String, Option<String>>,
+    pub reject_reason_input: Option<String>, // Some(_) = reason prompt active
 
     // Shell state
     pub shell_popup_visible: bool,
@@ -386,6 +387,7 @@ impl AppState {
             approval_selected_idx: 0,
             approval_detail_scroll: 0,
             approval_explanations: HashMap::new(),
+            reject_reason_input: None,
             shell_popup_visible: false,
             shell_output: String::new(),
             is_streaming: false,

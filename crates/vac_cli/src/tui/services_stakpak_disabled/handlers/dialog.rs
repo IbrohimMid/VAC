@@ -185,7 +185,7 @@ pub fn handle_esc(
         if let Some(tool_call) = &tool_call_opt {
             let _ = channels
                 .output_tx
-                .try_send(OutputEvent::RejectTool(tool_call.clone(), should_stop));
+                .try_send(OutputEvent::RejectTool(tool_call.clone(), should_stop, None));
 
             let tool_name = strip_tool_name(&tool_call.function.name);
             if is_foreground_command_tool(tool_name) {

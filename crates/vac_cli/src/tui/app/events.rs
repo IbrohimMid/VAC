@@ -67,6 +67,8 @@ pub enum InputEvent {
     ShowConfirmationDialog(ToolCall),
     ShowConfirmationDialogWithExplanation(ToolCall, Option<String>),
     RejectCurrentTool,
+    ApproveAll,
+    RejectAll,
 
     // Popups
     ShowModelSwitcher,
@@ -150,7 +152,7 @@ pub enum OutputEvent {
         Option<usize>,
     ),
     AcceptTool(ToolCall),
-    RejectTool(ToolCall, bool),
+    RejectTool(ToolCall, bool, Option<String>),
     SwitchToModel(Model),
     ListSessions,
     SwitchToSession(String),

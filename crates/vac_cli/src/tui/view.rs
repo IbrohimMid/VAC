@@ -851,6 +851,19 @@ fn render_sessions_pane(f: &mut Frame, state: &mut AppState, area: Rect) {
 }
 
 fn render_footer(f: &mut Frame, state: &mut AppState, area: Rect) {
+    // Reject reason prompt takes priority
+    if let Some(reason) = &state.reject_reason_input {
+        let hints = vec![
+            Span::styled("REJECT REASON ", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)),
+            Span::raw(reason.as_str()),
+            Span::styled("█", Style::default().fg(Color::Yellow)),
+            Span::styled("  Enter: confirm  Esc: skip", Style::default().fg(Color::DarkGray)),
+        ];
+        let widget = Paragraph::new(Line::from(hints)).wrap(Wrap { trim: true });
+        f.render_widget(widget, area);
+        return;
+    }
+
     if !state.pending_approvals.is_empty() {
         let idx = state
             .approval_selected_idx
@@ -871,6 +884,10 @@ fn render_footer(f: &mut Frame, state: &mut AppState, area: Rect) {
             Span::styled(": approve  ", Style::default().fg(Color::DarkGray)),
             Span::styled("Ctrl+Shift+M", Style::default().fg(Color::Cyan)),
             Span::styled(": reject  ", Style::default().fg(Color::DarkGray)),
+            Span::styled("Alt+A", Style::default().fg(Color::Cyan)),
+            Span::styled(": approve-all  ", Style::default().fg(Color::DarkGray)),
+            Span::styled("Alt+R", Style::default().fg(Color::Cyan)),
+            Span::styled(": reject-all  ", Style::default().fg(Color::DarkGray)),
             Span::styled("Ctrl+Tab", Style::default().fg(Color::Cyan)),
             Span::styled(": tabs", Style::default().fg(Color::DarkGray)),
         ];
