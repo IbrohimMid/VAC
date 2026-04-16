@@ -233,3 +233,99 @@ fn load_diff_for_selected(ctx: &mut HandlerContext) -> HandlerResult {
     }
     Ok(())
 }
+
+/// Push a char to the review filter and refresh selection/diff.
+pub fn filter_push(ctx: &mut HandlerContext, c: char) -> HandlerResult {
+    ctx.state.review_filter.push(c);
+    ctx.state.review_normalize_selection();
+    if ctx.state.review_diff.is_some() {
+        load_diff_for_selected(ctx)?;
+    }
+    Ok(())
+}
+
+/// Pop last char from review filter and refresh selection/diff.
+pub fn filter_pop(ctx: &mut HandlerContext) -> HandlerResult {
+    ctx.state.review_filter.pop();
+    ctx.state.review_normalize_selection();
+    if ctx.state.review_diff.is_some() {
+        load_diff_for_selected(ctx)?;
+    }
+    Ok(())
+}
+
+/// Toggle diff for selected file (load if not loaded, clear if already loaded).
+pub fn toggle_diff(ctx: &mut HandlerContext) -> HandlerResult {
+    let Some(path) = ctx.state.review_selected_path.clone() else {
+        return Ok(());
+    };
+    if ctx.state.review_diff.as_ref().map(|d| d.path.as_str()) == Some(path.as_str()) {
+        ctx.state.review_diff = None;
+    } else {
+        load_diff_for_selected(ctx)?;
+    }
+    Ok(())
+}
+
+/// Scroll diff up by `step` lines.
+pub fn scroll_up(ctx: &mut HandlerContext, step: usize) -> HandlerResult {
+    if let Some(diff) = &mut ctx.state.review_diff {
+        diff.scroll = diff.scroll.saturating_sub(step);
+    }
+    Ok(())
+}
+
+/// Scroll diff down by `step` lines.
+pub fn scroll_down(ctx: &mut HandlerContext, step: usize) -> HandlerResult {
+    if let Some(diff) = &mut ctx.state.review_diff {
+        diff.scroll = diff.scroll.saturating_add(step);
+        if let (Some(old), Some(new)) = (diff.old_content.as_deref(), diff.new_content.as_deref()) {
+            let total = crate::tui::services::file_diff::render_diff(old, new, 120).len();
+            if total > 0 && diff.scroll >= total {
+                diff.scroll = total - 1;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Open selected file in external editor.
+pub fn open_editor(ctx: &mut HandlerContext) -> HandlerResult {
+    use crossterm::{
+        execute,
+        terminal::{Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
+        event::{EnableBracketedPaste, EnableMouseCapture},
+    };
+
+    let Some(path) = ctx.state.review_selected_path.clone() else {
+        return Ok(());
+    };
+
+    let preferred = std::env::var("VAC_EDITOR")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| std::env::var("EDITOR").ok().filter(|s| !s.trim().is_empty()))
+        .and_then(|s| s.split_whitespace().next().map(|t| t.to_string()));
+
+    let Some(editor) = review::detect_editor(preferred) else {
+        ctx.state.add_assistant_message(
+            "No editor available. Set VAC_EDITOR/EDITOR or install nvim/vim/nano.".to_string(),
+        );
+        return Ok(());
+    };
+
+    ctx.state.push_activity(ActivityKind::Review, format!("Open editor: {path}"));
+
+    let _ = disable_raw_mode();
+    let _ = execute!(std::io::stdout(), LeaveAlternateScreen);
+    let _ = std::process::Command::new(editor).arg(&path).status();
+    let _ = execute!(
+        std::io::stdout(),
+        EnterAlternateScreen,
+        EnableBracketedPaste,
+        EnableMouseCapture,
+        Clear(ClearType::All)
+    );
+    let _ = enable_raw_mode();
+    Ok(())
+}
