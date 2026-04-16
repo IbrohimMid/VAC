@@ -331,6 +331,12 @@ pub struct AppState {
     pub file_search_selected_idx: usize,
     pub file_search_results: Vec<String>,
 
+    // Inline @ file picker
+    pub at_trigger_active: bool,
+    pub at_query: String,
+    pub at_results: Vec<String>,
+    pub at_selected_idx: usize,
+
     pub show_changeset: bool,
     pub changeset_selected_idx: usize,
     pub changeset_diff_scroll: usize,
@@ -422,6 +428,10 @@ impl AppState {
             file_search_query: String::new(),
             file_search_selected_idx: 0,
             file_search_results: Vec::new(),
+            at_trigger_active: false,
+            at_query: String::new(),
+            at_results: Vec::new(),
+            at_selected_idx: 0,
             show_changeset: false,
             changeset_selected_idx: 0,
             changeset_diff_scroll: 0,

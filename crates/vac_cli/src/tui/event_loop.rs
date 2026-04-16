@@ -173,6 +173,57 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
         return;
     }
 
+    // @ inline file picker intercepts Up/Down/Enter/Esc when active
+    if state.at_trigger_active && state.focus == crate::tui::app::WorkspaceFocus::Input {
+        match event {
+            InputEvent::Up => {
+                state.at_selected_idx = state.at_selected_idx.saturating_sub(1);
+                return;
+            }
+            InputEvent::Down => {
+                if !state.at_results.is_empty() {
+                    state.at_selected_idx = (state.at_selected_idx + 1)
+                        .min(state.at_results.len().saturating_sub(1));
+                }
+                return;
+            }
+            InputEvent::InputSubmitted => {
+                // Insert selected path: replace @query with path
+                if let Some(path) = state.at_results.get(state.at_selected_idx).cloned() {
+                    // Remove @query from input, insert path
+                    let remove_len = state.at_query.len() + 1; // +1 for '@'
+                    for _ in 0..remove_len {
+                        state.input.backspace();
+                    }
+                    state.input.insert_str(&path);
+                    state.input.input(' '); // trailing space
+                }
+                state.at_trigger_active = false;
+                state.at_query.clear();
+                state.at_results.clear();
+                state.at_selected_idx = 0;
+                return;
+            }
+            InputEvent::HandleEsc => {
+                state.at_trigger_active = false;
+                state.at_query.clear();
+                state.at_results.clear();
+                state.at_selected_idx = 0;
+                return;
+            }
+            InputEvent::InputChanged(' ') => {
+                // Space deactivates picker, char goes to input normally
+                state.at_trigger_active = false;
+                state.at_query.clear();
+                state.at_results.clear();
+                state.at_selected_idx = 0;
+                state.input.input(' ');
+                return;
+            }
+            _ => {} // other keys fall through to normal handling
+        }
+    }
+
     // Handle command palette input first
     if state.show_command_palette {
         match event {
@@ -412,7 +463,25 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
         InputEvent::InputChanged(c) => {
             match state.focus {
                 crate::tui::app::WorkspaceFocus::Input => {
-                    state.input.input(c);
+                    if c == '@' && !state.at_trigger_active {
+                        // Activate inline @ picker
+                        state.at_trigger_active = true;
+                        state.at_query = String::new();
+                        state.at_selected_idx = 0;
+                        if state.all_files.is_empty() {
+                            state.all_files = crate::tui::services::build_file_index(&state.project_root);
+                        }
+                        state.at_results = crate::tui::services::fuzzy_search_files("", &state.all_files, 8);
+                        state.input.input(c);
+                    } else if state.at_trigger_active {
+                        // Update query with new char
+                        state.at_query.push(c);
+                        state.at_selected_idx = 0;
+                        state.at_results = crate::tui::services::fuzzy_search_files(&state.at_query, &state.all_files, 8);
+                        state.input.input(c);
+                    } else {
+                        state.input.input(c);
+                    }
                 }
                 crate::tui::app::WorkspaceFocus::Workbench => match state.workbench_tab {
                     crate::tui::app::WorkbenchTab::Approvals => {
@@ -441,6 +510,16 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
         }
         InputEvent::InputBackspace => {
             if state.focus == crate::tui::app::WorkspaceFocus::Input {
+                if state.at_trigger_active {
+                    if state.at_query.is_empty() {
+                        // Backspace deleted the '@' - deactivate
+                        state.at_trigger_active = false;
+                        state.at_results.clear();
+                    } else {
+                        state.at_query.pop();
+                        state.at_results = crate::tui::services::fuzzy_search_files(&state.at_query, &state.all_files, 8);
+                    }
+                }
                 state.input.backspace();
             }
         }
@@ -851,6 +930,9 @@ fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, e
             state.approval_selected_idx = 0;
             state.approval_detail_scroll = 0;
             state.reject_reason_input = None;
+            state.at_trigger_active = false;
+            state.at_query.clear();
+            state.at_results.clear();
             state.is_streaming = false;
             state.streaming_message_id = None;
             state.scroll = 0;
@@ -1832,6 +1914,107 @@ mod tests {
         assert_eq!(state.pending_approvals.len(), 0);
         assert_eq!(state.rejected_tools.len(), 1);
         assert!(matches!(rx.try_recv().unwrap(), OutputEvent::RejectTool(_, _, _)));
+    }
+
+    // ── Branch 6B behavioral tests ──────────────────────────────────────────
+
+    #[test]
+    fn at_trigger_activates_on_at_char() {
+        let dir = tempfile::tempdir().unwrap();
+        let (tx, _rx) = tokio::sync::mpsc::channel(4);
+        let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
+        state.focus = crate::tui::app::WorkspaceFocus::Input;
+
+        handle_input_event(&mut state, &tx, InputEvent::InputChanged('@'));
+
+        assert!(state.at_trigger_active);
+        assert!(state.at_query.is_empty());
+    }
+
+    #[test]
+    fn at_trigger_updates_query_on_subsequent_chars() {
+        let dir = tempfile::tempdir().unwrap();
+        let (tx, _rx) = tokio::sync::mpsc::channel(4);
+        let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
+        state.focus = crate::tui::app::WorkspaceFocus::Input;
+
+        handle_input_event(&mut state, &tx, InputEvent::InputChanged('@'));
+        handle_input_event(&mut state, &tx, InputEvent::InputChanged('s'));
+        handle_input_event(&mut state, &tx, InputEvent::InputChanged('r'));
+        handle_input_event(&mut state, &tx, InputEvent::InputChanged('c'));
+
+        assert!(state.at_trigger_active);
+        assert_eq!(state.at_query, "src");
+    }
+
+    #[test]
+    fn at_trigger_deactivates_on_esc() {
+        let dir = tempfile::tempdir().unwrap();
+        let (tx, _rx) = tokio::sync::mpsc::channel(4);
+        let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
+        state.focus = crate::tui::app::WorkspaceFocus::Input;
+        state.at_trigger_active = true;
+        state.at_query = "src".to_string();
+
+        handle_input_event(&mut state, &tx, InputEvent::HandleEsc);
+
+        assert!(!state.at_trigger_active);
+        assert!(state.at_query.is_empty());
+    }
+
+    #[test]
+    fn at_trigger_deactivates_on_space() {
+        let dir = tempfile::tempdir().unwrap();
+        let (tx, _rx) = tokio::sync::mpsc::channel(4);
+        let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
+        state.focus = crate::tui::app::WorkspaceFocus::Input;
+        state.at_trigger_active = true;
+        state.at_query = "src".to_string();
+
+        handle_input_event(&mut state, &tx, InputEvent::InputChanged(' '));
+
+        assert!(!state.at_trigger_active);
+    }
+
+    #[test]
+    fn at_trigger_backspace_pops_query() {
+        let dir = tempfile::tempdir().unwrap();
+        let (tx, _rx) = tokio::sync::mpsc::channel(4);
+        let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
+        state.focus = crate::tui::app::WorkspaceFocus::Input;
+        state.at_trigger_active = true;
+        state.at_query = "sr".to_string();
+
+        handle_input_event(&mut state, &tx, InputEvent::InputBackspace);
+        assert_eq!(state.at_query, "s");
+        assert!(state.at_trigger_active);
+
+        // Backspace on empty query deactivates
+        handle_input_event(&mut state, &tx, InputEvent::InputBackspace);
+        handle_input_event(&mut state, &tx, InputEvent::InputBackspace); // removes '@'
+        assert!(!state.at_trigger_active);
+    }
+
+    #[test]
+    fn at_trigger_enter_inserts_selected_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let (tx, _rx) = tokio::sync::mpsc::channel(4);
+        let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
+        state.focus = crate::tui::app::WorkspaceFocus::Input;
+        state.at_trigger_active = true;
+        state.at_query = "src".to_string();
+        state.at_results = vec!["src/main.rs".to_string(), "src/lib.rs".to_string()];
+        state.at_selected_idx = 0;
+        // Simulate @src already in input
+        state.input.insert_str("@src");
+
+        handle_input_event(&mut state, &tx, InputEvent::InputSubmitted);
+
+        assert!(!state.at_trigger_active);
+        assert!(state.at_query.is_empty());
+        // Input should contain the path
+        let content = state.input.get_content();
+        assert!(content.contains("src/main.rs"));
     }
 
     // ── Branch 6A behavioral tests ──────────────────────────────────────────

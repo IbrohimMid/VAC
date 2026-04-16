@@ -44,6 +44,10 @@ pub fn view(f: &mut Frame, state: &mut AppState) {
     if !state.toasts.is_empty() {
         render_toast(f, state);
     }
+
+    if state.at_trigger_active && !state.at_results.is_empty() {
+        render_at_dropdown(f, state);
+    }
 }
 
 fn render_model_switcher(f: &mut Frame, state: &mut AppState) {
@@ -848,6 +852,49 @@ fn render_sessions_pane(f: &mut Frame, state: &mut AppState, area: Rect) {
         .block(Block::default().borders(Borders::ALL).title("Detail"))
         .wrap(Wrap { trim: true });
     f.render_widget(detail, body[1]);
+}
+
+fn render_at_dropdown(f: &mut Frame, state: &mut AppState) {
+    let area = f.area();
+    let count = state.at_results.len().min(8) as u16;
+    if count == 0 {
+        return;
+    }
+    // Position: bottom-left of screen, above footer, width = 50% of screen
+    let width = (area.width / 2).max(30).min(area.width.saturating_sub(2));
+    let height = count + 2; // border
+    let x = area.x + 1;
+    let y = area.y + area.height.saturating_sub(height + 2); // above footer
+
+    let rect = Rect { x, y, width, height };
+    f.render_widget(Clear, rect);
+
+    let items: Vec<ListItem> = state
+        .at_results
+        .iter()
+        .enumerate()
+        .map(|(i, path)| {
+            let style = if i == state.at_selected_idx {
+                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+            } else {
+                Style::default()
+            };
+            ListItem::new(Line::from(Span::styled(path.clone(), style)))
+        })
+        .collect();
+
+    let query_hint = if state.at_query.is_empty() {
+        "@".to_string()
+    } else {
+        format!("@{}", state.at_query)
+    };
+
+    let list = List::new(items).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title(Span::styled(query_hint, Style::default().fg(Color::Cyan))),
+    );
+    f.render_widget(list, rect);
 }
 
 fn render_footer(f: &mut Frame, state: &mut AppState, area: Rect) {
