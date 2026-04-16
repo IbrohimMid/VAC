@@ -104,6 +104,11 @@ enum Commands {
         #[command(subcommand)]
         action: IsolationAction,
     },
+    /// Model Context Protocol (MCP) server management
+    Mcp {
+        #[command(subcommand)]
+        action: McpAction,
+    },
     /// Autopilot daemon — 24/7 autonomous runtime with VIL policy enforcement
     Autopilot {
         #[command(subcommand)]
@@ -191,6 +196,14 @@ enum IsolationAction {
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         command: Vec<String>,
     },
+}
+
+#[derive(Subcommand)]
+enum McpAction {
+    /// List all configured MCP servers with trust badges
+    List,
+    /// Show MCP status summary
+    Status,
 }
 
 #[derive(Subcommand)]
@@ -293,6 +306,10 @@ async fn main() -> anyhow::Result<()> {
             IsolationAction::Run { tty, command } => {
                 commands::isolation::execute_run(project_root, command, tty).await?
             }
+        },
+        Commands::Mcp { action } => match action {
+            McpAction::List => commands::mcp::list(&project_root)?,
+            McpAction::Status => commands::mcp::status(&project_root)?,
         },
         Commands::Autopilot { action } => match action {
             AutopilotAction::Up => commands::autopilot::execute_up(project_root).await?,
