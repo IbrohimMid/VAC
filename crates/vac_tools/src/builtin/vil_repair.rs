@@ -218,26 +218,63 @@ impl VilTool for VilRepairTool {
         let input: RepairInput =
             serde_json::from_value(args).map_err(|e| ToolError::InvalidArguments(e.to_string()))?;
 
-        validate_path_within_root(&context.working_dir, &input.file)?;
+        let abs_path = validate_path_within_root(&context.working_dir, &input.file)?;
 
+        // Parse the module for real repair analysis
+        let module = vil_ir::parser::parse_file(&abs_path)
+            .map_err(|e| ToolError::ExecutionFailed(format!("Failed to parse file: {e}")))?;
+        let source = std::fs::read_to_string(&abs_path)
+            .map_err(|e| ToolError::ExecutionFailed(format!("Failed to read file: {e}")))?;
+
+        // Run real repair engine (3 deterministic patterns)
+        let plan = vil_ir::refactor::generate_repair_plan(&module, &source, &input.file);
+
+        // Also run validation for the score
         let pipeline = vil_ir::IrPipeline::new(&context.working_dir)
             .map_err(|e| ToolError::ExecutionFailed(format!("Failed to build IR pipeline: {e}")))?;
-
         let files = vec![input.file.clone()];
         let report = vil_validate::validate_changes(&pipeline, &files)
             .map_err(|e| ToolError::ExecutionFailed(format!("Validation failed: {e}")))?;
 
-        let planned_repairs: Vec<PlannedRepair> =
-            report.issues.iter().filter_map(|i| issue_to_repair(i)).collect();
+        // Merge: real repair actions from engine + heuristic fallbacks for unmatched issues
+        let mut planned_repairs: Vec<PlannedRepair> = plan
+            .repairs
+            .iter()
+            .map(|r| PlannedRepair {
+                issue: r.description.clone(),
+                severity: r.severity.clone(),
+                suggested_fix: format!(
+                    "Line {}: replace cols {}..{} with `{}`",
+                    r.edit.line, r.edit.col_start, r.edit.col_end, r.edit.new_text.trim()
+                ),
+                rationale: format!("Repair pattern: {}", r.pattern),
+            })
+            .collect();
 
+        // Add heuristic fallbacks for issues not covered by the 3 patterns
+        for issue in &report.issues {
+            if let Some(fallback) = issue_to_repair(issue) {
+                // Avoid duplicating issues already covered by the engine
+                let dominated = planned_repairs.iter().any(|r| {
+                    r.issue.contains(&fallback.issue[..fallback.issue.len().min(40)])
+                });
+                if !dominated {
+                    planned_repairs.push(fallback);
+                }
+            }
+        }
+
+        let engine_repair_count = plan.repairs.len();
         let output = RepairOutput {
             file: input.file,
             dry_run: true,
             overall_score: report.score,
             planned_repairs,
-            note: "Dry-run mode: repairs are suggestions only. Edit execution engine \
-                is planned for a future release."
-                .into(),
+            note: format!(
+                "Engine produced {} concrete repair(s) (zero_copy, observability, semantic_macro). \
+                Remaining suggestions are heuristic. Use file_edit to apply.",
+                engine_repair_count
+            ),
         };
 
         serde_json::to_value(output).map_err(|e| ToolError::ExecutionFailed(e.to_string()))

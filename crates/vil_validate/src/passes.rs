@@ -2,9 +2,12 @@
 //!
 //! Pass order (per RULES.md):
 //!   1. Semantic correctness (SemanticModel-based)
-//!   2. Zero-copy legality
+//!   2. Zero-copy legality (AST-level generic walking)
 //!   3. Observability completeness
 //!   4. VIL Way compliance (forbidden constructs)
+//!   5. Tri-Lane consistency (body_calls analysis)
+//!   6. Generated Plumbing (manual impl + duplicate macro detection)
+//!   7. Semantic Macro Coverage
 
 use vil_ir::semantic::{BoundaryType, MessageRole, SemanticModel};
 use vil_ir::types::{IrModule, TypeRef};
@@ -40,7 +43,6 @@ fn pass_semantic_correctness(model: &SemanticModel, issues: &mut Vec<String>) ->
     let mut score = 1.0;
 
     for handler in &model.handlers {
-        // Network boundary handlers must be zero-copy eligible (ShmSlice or Bytes)
         if handler.boundary == BoundaryType::Network && !handler.zero_copy_eligible {
             issues.push(format!(
                 "Handler '{}' is on Network boundary but is not zero-copy eligible. \
@@ -52,7 +54,6 @@ fn pass_semantic_correctness(model: &SemanticModel, issues: &mut Vec<String>) ->
     }
 
     for msg in &model.messages {
-        // Generic role on a message that looks like it should be semantic
         if msg.role == MessageRole::Generic {
             let name_lower = msg.name.to_lowercase();
             let looks_semantic = name_lower.contains("event")
@@ -76,8 +77,9 @@ fn pass_semantic_correctness(model: &SemanticModel, issues: &mut Vec<String>) ->
     score
 }
 
-/// Pass 2: Zero-copy legality.
-/// Network-boundary handlers must not take String/Vec on the hot path.
+/// Pass 2: Zero-copy legality (UPGRADED — walks generics).
+/// Network-boundary handlers must not take owned-bytes types anywhere in their param tree.
+/// Catches: `String`, `Vec<u8>`, `Result<String, E>`, `Option<Vec<u8>>`, etc.
 fn pass_zero_copy_legality(
     module: &IrModule,
     model: &SemanticModel,
@@ -85,7 +87,6 @@ fn pass_zero_copy_legality(
 ) -> f64 {
     let mut score = 1.0;
 
-    // Build a set of network handler names for fast lookup
     let network_handlers: std::collections::HashSet<&str> = model
         .handlers
         .iter()
@@ -98,18 +99,54 @@ fn pass_zero_copy_legality(
             continue;
         }
         for param in &func.params {
-            if param.ty.name == "String" || param.ty.name == "Vec" {
+            if param.is_self {
+                continue;
+            }
+            // Walk the full type tree for owned-bytes types
+            if contains_owned_bytes_type(&param.ty) {
+                let type_desc = format_type_path(&param.ty);
                 issues.push(format!(
-                    "Handler '{}' takes '{}' on a Network boundary — this copies data. \
+                    "Handler '{}' param '{}' contains owned-bytes type '{}' on a Network boundary — this copies data. \
                     Use ShmSlice or Bytes for zero-copy body extraction.",
-                    func.name, param.ty.name
+                    func.name, param.name, type_desc
                 ));
                 score *= 0.85;
+            }
+        }
+        // Also check return type for zero-copy violations
+        if let Some(ret) = &func.return_type {
+            if contains_owned_bytes_type(ret) && !ret.is_result {
+                let type_desc = format_type_path(ret);
+                issues.push(format!(
+                    "Handler '{}' returns owned-bytes type '{}' on Network boundary. \
+                    Consider VilResponse for zero-copy response serialization.",
+                    func.name, type_desc
+                ));
+                score *= 0.9;
             }
         }
     }
 
     score
+}
+
+/// Recursively check if a TypeRef contains owned-bytes types (String, Vec<u8>).
+fn contains_owned_bytes_type(ty: &TypeRef) -> bool {
+    if ty.name == "String" || ty.name == "Vec" {
+        return true;
+    }
+    // Walk into generics: Option<String>, Result<Vec<u8>, E>, etc.
+    ty.generics.iter().any(|g| contains_owned_bytes_type(g))
+}
+
+/// Format a TypeRef as a readable path for error messages.
+fn format_type_path(ty: &TypeRef) -> String {
+    if ty.generics.is_empty() {
+        ty.name.clone()
+    } else {
+        let inner: Vec<String> = ty.generics.iter().map(format_type_path).collect();
+        format!("{}<{}>", ty.name, inner.join(", "))
+    }
 }
 
 /// Pass 3: Observability completeness.
@@ -138,7 +175,6 @@ fn pass_observability(model: &SemanticModel, module: &IrModule, issues: &mut Vec
         score *= 0.85;
     }
 
-    // Handlers without observability_present get a lighter penalty
     for handler in &model.handlers {
         if handler.boundary == BoundaryType::Network && !handler.observability_present {
             issues.push(format!(
@@ -201,8 +237,9 @@ fn has_type_name(ty: &TypeRef, target: &str) -> bool {
     ty.generics.iter().any(|g| has_type_name(g, target))
 }
 
-/// Pass 5: Tri-Lane consistency.
+/// Pass 5: Tri-Lane consistency (UPGRADED — uses body_calls).
 /// Checks that handlers routing to different lanes don't accidentally block the fast lane.
+/// Uses parsed `body_calls` from the function body instead of substring matching.
 fn pass_tri_lane_consistency(
     module: &IrModule,
     _model: &SemanticModel,
@@ -210,45 +247,102 @@ fn pass_tri_lane_consistency(
 ) -> f64 {
     let mut score = 1.0;
 
+    // Blocking call patterns that must not appear in fast-lane handlers
+    const BLOCKING_CALLS: &[&str] = &[
+        "std::fs::",
+        "std::thread::sleep",
+        "reqwest::blocking::",
+        "std::net::",
+        "std::io::",
+    ];
+
     for func in &module.functions {
-        if func
+        let is_fast_lane = func
             .vil_attrs
             .iter()
-            .any(|a| a.contains("lane = \"fast\"") || a.contains("fast_lane"))
-        {
-            if let Some(body) = &func.body_summary {
-                if (body.contains("fs::") || body.contains("reqwest::") || body.contains(".await"))
-                    && (body.contains("std::fs") || body.contains("std::thread::sleep"))
-                {
-                    issues.push(format!(
-                        "Handler '{}' is marked for the Fast Lane but contains synchronous blocking calls. Use async I/O or the Compute Lane.",
-                        func.name
-                    ));
-                    score *= 0.8;
-                }
+            .any(|a| a.contains("lane = \"fast\"") || a.contains("fast_lane"));
+
+        if !is_fast_lane {
+            continue;
+        }
+
+        // Check body_calls (from AST-level extraction in parser)
+        for call in &func.body_calls {
+            if BLOCKING_CALLS.iter().any(|b| call.starts_with(b)) {
+                issues.push(format!(
+                    "Handler '{}' is marked for the Fast Lane but calls '{}' which is blocking. \
+                    Use async I/O or move to the Compute Lane.",
+                    func.name, call
+                ));
+                score *= 0.8;
+            }
+        }
+
+        // Fallback: also check body_summary for patterns not caught by body_calls
+        if let Some(body) = &func.body_summary {
+            if body.contains("std :: thread :: sleep") && !func.body_calls.iter().any(|c| c.contains("thread::sleep")) {
+                issues.push(format!(
+                    "Handler '{}' uses std::thread::sleep in the Fast Lane. Use tokio::time::sleep instead.",
+                    func.name
+                ));
+                score *= 0.8;
             }
         }
     }
     score
 }
 
-/// Pass 6: Generated Plumbing.
-/// Checks that users aren't manually writing code that VIL macros generate (e.g. implementing VilMessage manually).
+/// Pass 6: Generated Plumbing (UPGRADED — detects encode/decode methods + duplicate macros).
+/// Checks that users aren't manually writing code that VIL macros generate.
 fn pass_generated_plumbing(module: &IrModule, issues: &mut Vec<String>) -> f64 {
     let mut score = 1.0;
 
     for imp in &module.impls {
-        if imp.trait_name.as_deref() == Some("VilMessage")
-            || imp.trait_name.as_deref() == Some("VilState")
-        {
-            issues.push(format!(
-                "Struct '{}' manually implements '{}'. VIL macros (#[vil_message], #[vil_state]) automatically generate this plumbing. Remove the manual impl.",
-                imp.self_type,
+        let trait_name = match imp.trait_name.as_deref() {
+            Some("VilMessage") | Some("VilState") | Some("VilEvent") => {
                 imp.trait_name.as_ref().unwrap()
+            }
+            _ => continue,
+        };
+
+        // Check if the impl has encode/decode methods (indicates hand-written plumbing)
+        let has_encode = imp.methods.iter().any(|m| m.name == "encode" || m.name == "decode");
+        let severity = if has_encode { "high" } else { "medium" };
+
+        issues.push(format!(
+            "Struct '{}' manually implements '{}' ({} — {}). \
+            VIL macros (#[vil_message], #[vil_state]) automatically generate this plumbing. Remove the manual impl.",
+            imp.self_type,
+            trait_name,
+            if has_encode { "includes encode/decode methods" } else { "trait impl only" },
+            severity
+        ));
+        score *= 0.8;
+    }
+
+    // Detect structs that have both a #[vil_state] attr AND a manual VilState impl (duplicate)
+    for s in &module.structs {
+        let has_vil_attr = s.vil_attrs.iter().any(|a| a == "vil_state" || a == "vil_event" || a == "vil_message");
+        if !has_vil_attr {
+            continue;
+        }
+        let has_manual_impl = module.impls.iter().any(|imp| {
+            imp.self_type == s.name
+                && imp
+                    .trait_name
+                    .as_deref()
+                    .is_some_and(|t| t == "VilState" || t == "VilEvent" || t == "VilMessage")
+        });
+        if has_manual_impl {
+            issues.push(format!(
+                "Struct '{}' has BOTH a VIL macro attribute AND a manual trait impl. \
+                This is a conflict — remove the manual impl and let the macro generate it.",
+                s.name
             ));
-            score *= 0.8;
+            score *= 0.7;
         }
     }
+
     score
 }
 
@@ -263,7 +357,6 @@ fn pass_semantic_macro_coverage(
 
     for msg in &model.messages {
         if msg.role != MessageRole::Generic {
-            // Find the struct in the module to check its actual attributes
             if let Some(s) = module.structs.iter().find(|s| s.name == msg.name) {
                 let has_vil_attr = s.vil_attrs.iter().any(|a| a.starts_with("vil_"));
                 if !has_vil_attr {

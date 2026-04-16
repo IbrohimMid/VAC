@@ -30,6 +30,9 @@ pub struct IrFunction {
     pub return_type: Option<TypeRef>,
     pub where_clauses: Vec<WhereClause>,
     pub body_summary: Option<String>,
+    /// Call paths found in the function body (e.g. "std::fs::read", "reqwest::blocking::get").
+    #[serde(default)]
+    pub body_calls: Vec<String>,
     pub doc_comment: Option<String>,
     pub line_span: (usize, usize),
     /// VIL-specific attributes detected on this function (e.g. ["vil_handler", "vil_handler::shm"])

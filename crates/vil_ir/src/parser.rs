@@ -3,6 +3,7 @@
 use crate::error::{IrError, IrResult};
 use crate::types::*;
 use std::path::Path;
+use quote::ToTokens;
 use syn::{self, visit::Visit};
 
 /// Parse a single Rust source file into IR.
@@ -23,7 +24,46 @@ pub fn parse_source(source: &str, file_name: &str) -> IrResult<IrModule> {
     let mut collector = IrCollector::new(file_name);
     collector.visit_file(&syntax);
 
-    Ok(collector.into_module())
+    let mut module = collector.into_module();
+    populate_line_spans(&mut module, source);
+    Ok(module)
+}
+
+/// Post-process: populate line_span for functions and structs by searching source text.
+fn populate_line_spans(module: &mut IrModule, source: &str) {
+    let lines: Vec<&str> = source.lines().collect();
+
+    for func in &mut module.functions {
+        let pattern = format!("fn {}", func.name);
+        for (i, line) in lines.iter().enumerate() {
+            if line.contains(&pattern) {
+                let start = i + 1; // 1-based
+                // Find the matching closing brace by counting braces
+                let mut depth = 0i32;
+                let mut end = start;
+                for (j, l) in lines.iter().enumerate().skip(i) {
+                    depth += l.chars().filter(|c| *c == '{').count() as i32;
+                    depth -= l.chars().filter(|c| *c == '}').count() as i32;
+                    if depth <= 0 && j > i {
+                        end = j + 1; // 1-based
+                        break;
+                    }
+                }
+                func.line_span = (start, end);
+                break;
+            }
+        }
+    }
+
+    for s in &mut module.structs {
+        let pattern = format!("struct {}", s.name);
+        for (i, line) in lines.iter().enumerate() {
+            if line.contains(&pattern) {
+                s.line_span = (i + 1, i + 1); // 1-based, single line for struct declaration
+                break;
+            }
+        }
+    }
 }
 
 /// AST visitor that collects IR representations.
@@ -213,6 +253,34 @@ impl IrCollector {
             .collect()
     }
 
+    /// Extract call paths from a function body block.
+    /// Looks for path expressions that look like function calls (e.g. `std::fs::read`, `reqwest::blocking::get`).
+    fn extract_call_paths(block: &syn::Block) -> Vec<String> {
+        use quote::ToTokens;
+        let body_str = block.to_token_stream().to_string();
+
+        // Known blocking/dangerous call path patterns
+        const PATTERNS: &[&str] = &[
+            "std :: fs ::",
+            "std :: thread :: sleep",
+            "reqwest :: blocking ::",
+            "std :: io ::",
+            "std :: net ::",
+            "tokio :: fs ::",
+            "tracing ::",
+        ];
+
+        let mut calls = Vec::new();
+        for pattern in PATTERNS {
+            if body_str.contains(pattern) {
+                // Normalize spacing from token stream
+                calls.push(pattern.replace(" :: ", "::").replace(" ", ""));
+            }
+        }
+        calls.dedup();
+        calls
+    }
+
     fn extract_derives(attrs: &[syn::Attribute]) -> Vec<String> {
         attrs
             .iter()
@@ -288,9 +356,13 @@ impl<'ast> Visit<'ast> for IrCollector {
                 syn::ReturnType::Type(_, ty) => Some(Self::extract_type(ty)),
             },
             where_clauses: Vec::new(),
-            body_summary: None,
+            body_summary: {
+                let body_str = node.block.to_token_stream().to_string();
+                if body_str.len() > 2 { Some(body_str) } else { None }
+            },
+            body_calls: Self::extract_call_paths(&node.block),
             doc_comment: Self::extract_doc_comment(&node.attrs),
-            line_span: (0, 0),
+            line_span: (0, 0), // Populated by post-processing below
             vil_attrs: Self::extract_vil_attrs(&node.attrs),
         };
         self.functions.push(func);
@@ -314,7 +386,7 @@ impl<'ast> Visit<'ast> for IrCollector {
                 .collect(),
             derives: Self::extract_derives(&node.attrs),
             doc_comment: Self::extract_doc_comment(&node.attrs),
-            line_span: (0, 0),
+            line_span: (0, 0), // Populated by post-processing below
             vil_attrs: Self::extract_vil_attrs(&node.attrs),
         };
         self.structs.push(s);

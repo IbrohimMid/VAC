@@ -31,8 +31,12 @@
 pub mod approval;
 pub mod changeset;
 pub mod file_search;
+pub mod isolation_switcher;
+pub mod message_action;
 pub mod model_switcher;
+pub mod profile_switcher;
 pub mod review;
+pub mod rulebook_switcher;
 
 use crate::tui::app::{AppState, OutputEvent};
 use tokio::sync::mpsc::Sender;

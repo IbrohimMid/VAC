@@ -5,7 +5,8 @@ use crate::tui::app::{AppState, AppStateOptions, InputEvent, OutputEvent};
 use crate::tui::event::map_crossterm_event_to_input_event;
 use crate::tui::handlers::HandlerContext;
 use crate::tui::handlers::{
-    approval, changeset as changeset_handler, file_search, model_switcher, review as review_handler,
+    approval, changeset as changeset_handler, file_search, isolation_switcher, message_action,
+    model_switcher, profile_switcher, review as review_handler, rulebook_switcher,
 };
 use crate::tui::services::helper_block::welcome_messages;
 use crate::tui::terminal::TerminalGuard;
@@ -498,207 +499,26 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
     }
 
     if state.show_isolation_switcher {
-        match event {
-            InputEvent::HandleEsc => {
-                state.show_isolation_switcher = false;
-            }
-            InputEvent::Up => {
-                if state.isolation_switcher_selected > 0 {
-                    state.isolation_switcher_selected -= 1;
-                }
-            }
-            InputEvent::Down => {
-                let max = state.isolation_modes.len().saturating_sub(1);
-                if state.isolation_switcher_selected < max {
-                    state.isolation_switcher_selected += 1;
-                }
-            }
-            InputEvent::InputSubmitted => {
-                if let Some(p) = state.isolation_modes.get(state.isolation_switcher_selected) {
-                    state.active_isolation_mode = p.clone();
-                }
-                state.show_isolation_switcher = false;
-            }
-            _ => {}
-        }
+        let mut ctx = HandlerContext::new(state, output_tx);
+        let _ = isolation_switcher::handle_event(&mut ctx, event);
         return;
     }
 
     if state.show_profile_switcher {
-        match event {
-            InputEvent::HandleEsc => {
-                state.show_profile_switcher = false;
-            }
-            InputEvent::InputChanged(c) => {
-                state.profile_search_input.push(c);
-            }
-            InputEvent::InputBackspace => {
-                state.profile_search_input.pop();
-            }
-            InputEvent::Up => {
-                if state.profile_switcher_selected > 0 {
-                    state.profile_switcher_selected -= 1;
-                }
-            }
-            InputEvent::Down => {
-                let max = state.profile_switcher_filtered().len().saturating_sub(1);
-                if state.profile_switcher_selected < max {
-                    state.profile_switcher_selected += 1;
-                }
-            }
-            InputEvent::InputSubmitted => {
-                let filtered = state.profile_switcher_filtered();
-                if let Some(p) = filtered.get(state.profile_switcher_selected) {
-                    state.active_profile = p.clone();
-                    let _ = output_tx.try_send(OutputEvent::SwitchProfile(p.clone()));
-                }
-                state.show_profile_switcher = false;
-            }
-            _ => {}
-        }
+        let mut ctx = HandlerContext::new(state, output_tx);
+        let _ = profile_switcher::handle_event(&mut ctx, event);
         return;
     }
 
     if state.show_rulebook_switcher {
-        match event {
-            InputEvent::HandleEsc => {
-                state.show_rulebook_switcher = false;
-            }
-            InputEvent::InputChanged(c) => {
-                if c == ' ' {
-                    let filtered = state.rulebook_switcher_filtered();
-                    if let Some(r) = filtered.get(state.rulebook_switcher_selected) {
-                        if state.selected_rulebooks.contains(&r.id) {
-                            state.selected_rulebooks.remove(&r.id);
-                        } else {
-                            state.selected_rulebooks.insert(r.id.clone());
-                        }
-                    }
-                } else {
-                    state.rulebook_search_input.push(c);
-                }
-            }
-            InputEvent::InputBackspace => {
-                state.rulebook_search_input.pop();
-            }
-            InputEvent::Up => {
-                if state.rulebook_switcher_selected > 0 {
-                    state.rulebook_switcher_selected -= 1;
-                }
-            }
-            InputEvent::Down => {
-                let max = state.rulebook_switcher_filtered().len().saturating_sub(1);
-                if state.rulebook_switcher_selected < max {
-                    state.rulebook_switcher_selected += 1;
-                }
-            }
-            InputEvent::InputSubmitted => {
-                let selected: Vec<String> = state.selected_rulebooks.iter().cloned().collect();
-                let _ = output_tx.try_send(OutputEvent::ApplyRulebooks(selected));
-                state.show_rulebook_switcher = false;
-            }
-            _ => {}
-        }
+        let mut ctx = HandlerContext::new(state, output_tx);
+        let _ = rulebook_switcher::handle_event(&mut ctx, event);
         return;
     }
 
     if state.show_message_action_popup {
-        match event {
-            InputEvent::HandleEsc => {
-                state.show_message_action_popup = false;
-            }
-            InputEvent::Up => {
-                if state.message_action_popup_selected > 0 {
-                    state.message_action_popup_selected -= 1;
-                } else {
-                    let num_actions = crate::tui::services::message_action_popup::MessageAction::all().len();
-                    state.message_action_popup_selected = num_actions.saturating_sub(1);
-                }
-            }
-            InputEvent::Down => {
-                let num_actions = crate::tui::services::message_action_popup::MessageAction::all().len();
-                if num_actions > 0 {
-                    state.message_action_popup_selected = (state.message_action_popup_selected + 1) % num_actions;
-                }
-            }
-            InputEvent::InputSubmitted => {
-                let actions = crate::tui::services::message_action_popup::MessageAction::all();
-                if let Some(action) = actions.get(state.message_action_popup_selected) {
-                    match action {
-                        crate::tui::services::message_action_popup::MessageAction::CopyMessage => {
-                            if let Some(msg_id) = state.message_action_target_id {
-                                if let Some(msg) = state.messages.iter().find(|m| m.id == msg_id) {
-                                    if let Err(e) = crate::tui::services::clipboard_paste::copy_to_clipboard(&msg.content) {
-                                        log::warn!("Failed to copy message: {}", e);
-                                    }
-                                }
-                            }
-                        }
-                        crate::tui::services::message_action_popup::MessageAction::CopyCode => {
-                            if let Some(msg_id) = state.message_action_target_id {
-                                if let Some(msg) = state.messages.iter().find(|m| m.id == msg_id) {
-                                    let mut code = String::new();
-                                    let mut in_block = false;
-                                    for line in msg.content.lines() {
-                                        if line.starts_with("```") {
-                                            in_block = !in_block;
-                                        } else if in_block {
-                                            code.push_str(line);
-                                            code.push('\n');
-                                        }
-                                    }
-                                    if !code.is_empty() {
-                                        if let Err(e) = crate::tui::services::clipboard_paste::copy_to_clipboard(&code) {
-                                            log::warn!("Failed to copy code: {}", e);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        crate::tui::services::message_action_popup::MessageAction::Regenerate => {
-                            if let Some(msg_id) = state.message_action_target_id {
-                                if let Some(msg) = state.messages.iter().find(|m| m.id == msg_id) {
-                                    if msg.role == "user" {
-                                        state.input.clear();
-                                        for line in msg.content.lines() {
-                                            state.input.insert_str(line);
-                                            state.input.newline();
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        crate::tui::services::message_action_popup::MessageAction::RevertToMessage => {
-                            if let Some(msg_id) = state.message_action_target_id {
-                                let _ = output_tx.try_send(OutputEvent::RevertToMessage(msg_id));
-                            }
-                        }
-                        crate::tui::services::message_action_popup::MessageAction::RepairVilContract => {
-                            let text = "Use the `vil_repair` tool to analyze VIL contract violations and suggest fixes. Then apply the suggested repairs.";
-                            state.add_user_message(text.to_string());
-                            let _ = output_tx.try_send(OutputEvent::UserMessage(text.to_string(), None, vec![], None));
-                        }
-                        crate::tui::services::message_action_popup::MessageAction::ExplainPlumbing => {
-                            let text = "Use the `vil_plumbing` tool to list and explain all VIL-generated plumbing (#[vil_*] attributes) in the current context.";
-                            state.add_user_message(text.to_string());
-                            let _ = output_tx.try_send(OutputEvent::UserMessage(text.to_string(), None, vec![], None));
-                        }
-                        crate::tui::services::message_action_popup::MessageAction::AuditZeroCopy => {
-                            let text = "Use the `vil_audit` tool with pass_filter=\"zero_copy\" to detect zero-copy risks in the handlers.";
-                            state.add_user_message(text.to_string());
-                            let _ = output_tx.try_send(OutputEvent::UserMessage(text.to_string(), None, vec![], None));
-                        }
-                        crate::tui::services::message_action_popup::MessageAction::DiffIrChange => {
-                            let text = "Use the `vil_ir_diff` tool to show IR-significant changes and semantic diff for recently modified files.";
-                            state.add_user_message(text.to_string());
-                            let _ = output_tx.try_send(OutputEvent::UserMessage(text.to_string(), None, vec![], None));
-                        }
-                    }
-                }
-                state.show_message_action_popup = false;
-            }
-            _ => {}
-        }
+        let mut ctx = HandlerContext::new(state, output_tx);
+        let _ = message_action::handle_event(&mut ctx, event);
         return;
     }
 
