@@ -49,22 +49,7 @@ impl Drop for TempFile {
     }
 }
 
-/// Validate that a file path is within the project root (no traversal).
-fn validate_path_within_root(
-    working_dir: &std::path::Path,
-    file: &str,
-) -> Result<std::path::PathBuf, ToolError> {
-    let abs_path = working_dir.join(file);
-    let canonical = abs_path.canonicalize().map_err(|_| {
-        ToolError::ExecutionFailed(format!("File not found: {}", file))
-    })?;
-    if !canonical.starts_with(working_dir) {
-        return Err(ToolError::ExecutionFailed(
-            "Path traversal denied: file must be within project root".into(),
-        ));
-    }
-    Ok(canonical)
-}
+use crate::security::validate_path_within_root;
 
 /// Validate that a git revision string contains only safe characters.
 fn validate_rev(rev: &str) -> Result<(), ToolError> {

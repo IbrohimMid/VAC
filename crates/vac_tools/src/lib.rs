@@ -9,6 +9,7 @@ pub mod privacy;
 pub mod registry;
 pub mod router;
 pub mod sandbox;
+pub mod security;
 pub mod skills;
 
 pub use approvals::{ScopePolicy, ShellApprovalPolicy};

@@ -102,9 +102,9 @@ fn pass_zero_copy_legality(
             if param.is_self {
                 continue;
             }
-            // Walk the full type tree for owned-bytes types
-            if contains_owned_bytes_type(&param.ty) {
-                let type_desc = format_type_path(&param.ty);
+            // Walk the full type tree for owned-bytes types (String, Vec<u8>)
+            if param.ty.contains_owned_bytes() {
+                let type_desc = param.ty.display_path();
                 issues.push(format!(
                     "Handler '{}' param '{}' contains owned-bytes type '{}' on a Network boundary — this copies data. \
                     Use ShmSlice or Bytes for zero-copy body extraction.",
@@ -115,8 +115,8 @@ fn pass_zero_copy_legality(
         }
         // Also check return type for zero-copy violations
         if let Some(ret) = &func.return_type {
-            if contains_owned_bytes_type(ret) && !ret.is_result {
-                let type_desc = format_type_path(ret);
+            if ret.contains_owned_bytes() && !ret.is_result {
+                let type_desc = ret.display_path();
                 issues.push(format!(
                     "Handler '{}' returns owned-bytes type '{}' on Network boundary. \
                     Consider VilResponse for zero-copy response serialization.",
@@ -128,25 +128,6 @@ fn pass_zero_copy_legality(
     }
 
     score
-}
-
-/// Recursively check if a TypeRef contains owned-bytes types (String, Vec<u8>).
-fn contains_owned_bytes_type(ty: &TypeRef) -> bool {
-    if ty.name == "String" || ty.name == "Vec" {
-        return true;
-    }
-    // Walk into generics: Option<String>, Result<Vec<u8>, E>, etc.
-    ty.generics.iter().any(|g| contains_owned_bytes_type(g))
-}
-
-/// Format a TypeRef as a readable path for error messages.
-fn format_type_path(ty: &TypeRef) -> String {
-    if ty.generics.is_empty() {
-        ty.name.clone()
-    } else {
-        let inner: Vec<String> = ty.generics.iter().map(format_type_path).collect();
-        format!("{}<{}>", ty.name, inner.join(", "))
-    }
 }
 
 /// Pass 3: Observability completeness.

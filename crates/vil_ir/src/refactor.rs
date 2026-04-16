@@ -97,9 +97,7 @@ pub fn repair_zero_copy(module: &IrModule, source: &str) -> Vec<RepairAction> {
             if param.is_self {
                 continue;
             }
-            let is_owned_bytes = param.ty.name == "String"
-                || param.ty.name == "Vec"
-                || contains_owned_bytes(&param.ty);
+            let is_owned_bytes = param.ty.contains_owned_bytes();
 
             if !is_owned_bytes {
                 continue;
@@ -317,10 +315,3 @@ pub fn generate_repair_plan(module: &IrModule, source: &str, file_path: &str) ->
     }
 }
 
-/// Check if a TypeRef contains owned byte types (String, Vec<u8>) in generics.
-fn contains_owned_bytes(ty: &crate::types::TypeRef) -> bool {
-    if ty.name == "String" || ty.name == "Vec" {
-        return true;
-    }
-    ty.generics.iter().any(|g| contains_owned_bytes(g))
-}

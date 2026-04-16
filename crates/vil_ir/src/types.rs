@@ -141,6 +141,34 @@ pub struct TypeRef {
     pub is_result: bool,
 }
 
+impl TypeRef {
+    /// Check if this type or any of its generics contain owned-bytes types
+    /// (String, Vec<u8>) that violate zero-copy on network boundaries.
+    pub fn contains_owned_bytes(&self) -> bool {
+        if self.name == "String" {
+            return true;
+        }
+        // Only flag Vec<u8>, not Vec<Endpoint> etc.
+        if self.name == "Vec" {
+            return self
+                .generics
+                .first()
+                .map_or(true, |g| g.name == "u8"); // bare Vec without generics = assume bytes
+        }
+        self.generics.iter().any(|g| g.contains_owned_bytes())
+    }
+
+    /// Format as a readable type path for error messages.
+    pub fn display_path(&self) -> String {
+        if self.generics.is_empty() {
+            self.name.clone()
+        } else {
+            let inner: Vec<String> = self.generics.iter().map(|g| g.display_path()).collect();
+            format!("{}<{}>", self.name, inner.join(", "))
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StructField {
     pub name: Option<String>,
