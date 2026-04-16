@@ -566,6 +566,9 @@ fn activity_icon(kind: ActivityKind) -> &'static str {
         ActivityKind::Review => "Δ",
         ActivityKind::Session => "⎇",
         ActivityKind::Error => "!",
+        ActivityKind::Mcp => "🔌",
+        ActivityKind::Isolation => "🛡",
+        ActivityKind::Shell => "⚡",
     }
 }
 

@@ -1158,7 +1158,7 @@ fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, e
             state.shell_last_error = None;
             state.shell_output.clear();
             state.push_activity(
-                crate::tui::app::ActivityKind::Status,
+                crate::tui::app::ActivityKind::Shell,
                 format!("Shell started: {}", shell.command),
             );
         }
@@ -1173,19 +1173,41 @@ fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, e
                 .shell_output
                 .push_str(&format!("[shell error] {text}\n"));
             state.shell_last_error = Some(text.clone());
-            state.push_activity(crate::tui::app::ActivityKind::Error, text);
+            state.push_activity(
+                crate::tui::app::ActivityKind::Shell,
+                format!("Shell error: {}", text),
+            );
         }
         InputEvent::ShellCompleted(code) => {
             state.shell_exit_code = Some(code);
             state.shell_waiting_for_input = false;
             state.active_shell_command = None;
+            let status = if code == 0 { "success" } else { "failed" };
             state.push_activity(
-                crate::tui::app::ActivityKind::Status,
-                format!("Shell completed with exit code {}", code),
+                crate::tui::app::ActivityKind::Shell,
+                format!("Shell {} (exit code {})", status, code),
             );
         }
         InputEvent::ShellWaitingForInput => {
             state.shell_waiting_for_input = true;
+        }
+        InputEvent::McpConnected { name, tools } => {
+            state.push_activity(
+                crate::tui::app::ActivityKind::Mcp,
+                format!("MCP server '{}' connected ({} tools)", name, tools),
+            );
+        }
+        InputEvent::McpFailed { name, error } => {
+            state.push_activity(
+                crate::tui::app::ActivityKind::Mcp,
+                format!("MCP server '{}' failed: {}", name, error),
+            );
+        }
+        InputEvent::IsolationBoundary { action, environment } => {
+            state.push_activity(
+                crate::tui::app::ActivityKind::Isolation,
+                format!("Isolation: {} in {}", action, environment),
+            );
         }
         InputEvent::SessionRestored {
             id,

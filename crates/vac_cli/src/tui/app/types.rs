@@ -141,6 +141,9 @@ pub enum ActivityKind {
     Review,
     Session,
     Error,
+    Mcp,
+    Isolation,
+    Shell,
 }
 
 #[derive(Debug, Clone)]
