@@ -202,6 +202,46 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
         return;
     }
 
+    if state.show_helper_dropdown && state.focus == crate::tui::app::WorkspaceFocus::Input {
+        match event {
+            InputEvent::Up => {
+                if state.helper_selected > 0 {
+                    state.helper_selected -= 1;
+                    if state.helper_selected < state.helper_scroll {
+                        state.helper_scroll = state.helper_selected;
+                    }
+                }
+                return;
+            }
+            InputEvent::Down => {
+                if !state.filtered_helpers.is_empty() {
+                    let max_idx = state.filtered_helpers.len().saturating_sub(1);
+                    if state.helper_selected < max_idx {
+                        state.helper_selected += 1;
+                        if state.helper_selected >= state.helper_scroll + 5 {
+                            state.helper_scroll = state.helper_selected.saturating_sub(4);
+                        }
+                    }
+                }
+                return;
+            }
+            InputEvent::InputSubmitted => {
+                if let Some(cmd) = state.filtered_helpers.get(state.helper_selected).cloned() {
+                    state.input.set_content(&cmd.command);
+                    state.input.move_cursor_end();
+                    state.input.input(' '); // add trailing space
+                }
+                state.show_helper_dropdown = false;
+                return;
+            }
+            InputEvent::HandleEsc => {
+                state.show_helper_dropdown = false;
+                return;
+            }
+            _ => {}
+        }
+    }
+
     // @ inline file picker intercepts Up/Down/Enter/Esc when active
     if state.at_trigger_active && state.focus == crate::tui::app::WorkspaceFocus::Input {
         match event {
@@ -309,7 +349,7 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                             } else if cmd.command == "/shell" {
                                 state.add_user_message(cmd.command.clone());
                                 let _ =
-                                    output_tx.try_send(OutputEvent::ExecuteCommand(String::new()));
+                                        output_tx.try_send(OutputEvent::ExecuteCommand(String::new(), state.active_isolation_mode.clone()));
                             } else if cmd.command == "/shell-focus" {
                                 if state.active_shell_command.is_some() {
                                     state.shell_popup_visible = true;
@@ -378,6 +418,33 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
         match event {
             InputEvent::HandleEsc | InputEvent::HideShortcuts => {
                 state.show_shortcuts = false;
+            }
+            _ => {}
+        }
+        return;
+    }
+
+    if state.show_isolation_switcher {
+        match event {
+            InputEvent::HandleEsc => {
+                state.show_isolation_switcher = false;
+            }
+            InputEvent::Up => {
+                if state.isolation_switcher_selected > 0 {
+                    state.isolation_switcher_selected -= 1;
+                }
+            }
+            InputEvent::Down => {
+                let max = state.isolation_modes.len().saturating_sub(1);
+                if state.isolation_switcher_selected < max {
+                    state.isolation_switcher_selected += 1;
+                }
+            }
+            InputEvent::InputSubmitted => {
+                if let Some(p) = state.isolation_modes.get(state.isolation_switcher_selected) {
+                    state.active_isolation_mode = p.clone();
+                }
+                state.show_isolation_switcher = false;
             }
             _ => {}
         }
@@ -635,6 +702,10 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
             state.show_profile_switcher = true;
             state.profile_search_input.clear();
         }
+        InputEvent::ShowIsolationSwitcher => {
+            state.show_isolation_switcher = true;
+            state.isolation_switcher_selected = 0;
+        }
         InputEvent::ShowRulebookSwitcher => {
             state.show_rulebook_switcher = true;
             state.rulebook_search_input.clear();
@@ -649,8 +720,24 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
             state.side_panel_visible = !state.side_panel_visible;
         }
         InputEvent::MouseDragStart(col, row) => {
-            // Header is row 0
-            if row == 0 {
+            let mut clicked_section = None;
+            if state.side_panel_visible {
+                for (sec, rect) in &state.side_panel_header_areas {
+                    if col >= rect.x && col < rect.x + rect.width && row >= rect.y && row < rect.y + rect.height {
+                        clicked_section = Some(*sec);
+                        break;
+                    }
+                }
+            }
+
+            if let Some(sec) = clicked_section {
+                if state.side_panel_section_collapsed.contains(&sec) {
+                    state.side_panel_section_collapsed.remove(&sec);
+                } else {
+                    state.side_panel_section_collapsed.insert(sec);
+                }
+            } else if row == 0 {
+                // Header is row 0
                 // Approximate badge location: we just check if it's right side (col > width - 40)
                 // The exact x depends on terminal width, but let's toggle side panel for clicks on header
                 // specifically around VIL badge
@@ -676,7 +763,29 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
         InputEvent::InputChanged(c) => {
             match state.focus {
                 crate::tui::app::WorkspaceFocus::Input => {
-                    if c == '@' && !state.at_trigger_active {
+                    if c == '/' && state.input.lines.join("").trim().is_empty() {
+                        state.show_helper_dropdown = true;
+                        state.filtered_helpers = state.commands.clone();
+                        state.helper_selected = 0;
+                        state.helper_scroll = 0;
+                        state.input.input(c);
+                    } else if state.show_helper_dropdown {
+                        state.input.input(c);
+                        let query = state.input.lines.join("");
+                        let query = query.trim_start_matches('/');
+                        state.filtered_helpers = state
+                            .commands
+                            .iter()
+                            .filter(|cmd| {
+                                query.is_empty()
+                                    || cmd.command.contains(query)
+                                    || cmd.description.to_lowercase().contains(&query.to_lowercase())
+                            })
+                            .cloned()
+                            .collect();
+                        state.helper_selected = 0;
+                        state.helper_scroll = 0;
+                    } else if c == '@' && !state.at_trigger_active {
                         // Activate inline @ picker
                         state.at_trigger_active = true;
                         state.at_query = String::new();
@@ -766,7 +875,28 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
         }
         InputEvent::InputBackspace => {
             if state.focus == crate::tui::app::WorkspaceFocus::Input {
-                if state.at_trigger_active {
+                if state.show_helper_dropdown {
+                    state.input.backspace();
+                    let query = state.input.lines.join("");
+                    if !query.starts_with('/') {
+                        state.show_helper_dropdown = false;
+                        state.filtered_helpers.clear();
+                    } else {
+                        let query = query.trim_start_matches('/');
+                        state.filtered_helpers = state
+                            .commands
+                            .iter()
+                            .filter(|cmd| {
+                                query.is_empty()
+                                    || cmd.command.contains(query)
+                                    || cmd.description.to_lowercase().contains(&query.to_lowercase())
+                            })
+                            .cloned()
+                            .collect();
+                        state.helper_selected = 0;
+                        state.helper_scroll = 0;
+                    }
+                } else if state.at_trigger_active {
                     if state.at_query.is_empty() {
                         state.at_trigger_active = false;
                         state.at_results.clear();
@@ -780,8 +910,10 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                             8,
                         );
                     }
+                    state.input.backspace();
+                } else {
+                    state.input.backspace();
                 }
-                state.input.backspace();
             }
         }
         InputEvent::InputDelete => {
@@ -881,7 +1013,7 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                                     state.add_user_message(trimmed.to_string());
                                     let shell_cmd = cmd_args.unwrap_or_default().to_string();
                                     let _ =
-                                        output_tx.try_send(OutputEvent::ExecuteCommand(shell_cmd));
+                                        output_tx.try_send(OutputEvent::ExecuteCommand(shell_cmd, state.active_isolation_mode.clone()));
                                 } else if cmd.command == "/shell-focus" {
                                     state.shell_popup_visible =
                                         state.active_shell_command.is_some();

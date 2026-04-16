@@ -74,6 +74,9 @@ pub fn map_crossterm_event_to_input_event(event: Event) -> Option<InputEvent> {
                 KeyCode::Char('w') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                     Some(InputEvent::InputDeleteWord)
                 }
+                KeyCode::Char('x') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    Some(InputEvent::ShowIsolationSwitcher)
+                }
                 KeyCode::Char('o') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                     Some(InputEvent::ShowProfileSwitcher)
                 }

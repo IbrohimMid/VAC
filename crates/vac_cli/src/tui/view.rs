@@ -33,6 +33,10 @@ pub fn view(f: &mut Frame, state: &mut AppState) {
         render_shortcuts(f, state);
     }
 
+    if state.show_isolation_switcher {
+        crate::tui::services::isolation_switcher::render_isolation_switcher(f, state);
+    }
+
     if state.show_profile_switcher {
         crate::tui::services::profile_switcher::render_profile_switcher(f, state);
     }
@@ -65,7 +69,23 @@ pub fn view(f: &mut Frame, state: &mut AppState) {
         render_toast(f, state);
     }
 
-    if state.at_trigger_active && !state.at_results.is_empty() {
+    if state.show_helper_dropdown {
+        let area = f.area();
+        let width = (area.width / 2).max(40).min(area.width.saturating_sub(2));
+        let count = state.filtered_helpers.len().min(5) as u16;
+        let height = count + 2; // + borders or arrows
+        let x = area.x + 1;
+        let y = area.y + area.height.saturating_sub(height + 2); // above footer
+        
+        let rect = Rect {
+            x,
+            y,
+            width,
+            height,
+        };
+        f.render_widget(Clear, rect);
+        crate::tui::services::helper_dropdown::render_file_search_dropdown(f, state, rect);
+    } else if state.at_trigger_active && !state.at_results.is_empty() {
         render_at_dropdown(f, state);
     }
 }
@@ -307,7 +327,13 @@ fn render_header(f: &mut Frame, state: &mut AppState, area: Rect) {
         ));
     }
     
-    spans.push(Span::raw("  "));
+    spans.push(Span::raw(" | "));
+    spans.push(Span::styled(
+        format!("env:{}", state.active_isolation_mode),
+        Style::default().fg(Color::Cyan),
+    ));
+
+    spans.push(Span::raw(" | "));
     spans.push(Span::styled(
         format!("prof:{}", state.active_profile),
         Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),

@@ -259,6 +259,7 @@ pub enum SidePanelSection {
     Runtime,
     Changeset,
     VilStatus,
+    Mcp,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -274,6 +275,7 @@ pub struct AppState {
     pub side_panel_visible: bool,
     pub side_panel_width: u16,
     pub side_panel_section_collapsed: std::collections::HashSet<SidePanelSection>,
+    pub side_panel_header_areas: std::collections::HashMap<SidePanelSection, ratatui::layout::Rect>,
 
     // Input state
     pub input: TextArea,
@@ -333,11 +335,21 @@ pub struct AppState {
     pub command_palette_selected: usize,
     pub commands: Vec<HelperCommand>,
 
+    // Helper Dropdown
+    pub show_helper_dropdown: bool,
+    pub helper_scroll: usize,
+    pub helper_selected: usize,
+    pub filtered_helpers: Vec<HelperCommand>,
+
     // Shortcuts popup
     pub show_shortcuts: bool,
     pub shortcuts_mode: ShortcutsPopupMode,
 
-    // Profile & Rulebook Switcher
+    // Isolation Switcher
+    pub show_isolation_switcher: bool,
+    pub isolation_switcher_selected: usize,
+    pub isolation_modes: Vec<String>,
+    pub active_isolation_mode: String,
     pub show_profile_switcher: bool,
     pub profile_switcher_selected: usize,
     pub profile_search_input: String,
@@ -442,6 +454,7 @@ impl AppState {
             side_panel_visible: false,
             side_panel_width: 30,
             side_panel_section_collapsed: std::collections::HashSet::new(),
+            side_panel_header_areas: std::collections::HashMap::new(),
             input: TextArea::new(),
             cursor_position: 0,
             focus: WorkspaceFocus::Input,
@@ -482,8 +495,20 @@ impl AppState {
             command_palette_input: String::new(),
             command_palette_selected: 0,
             commands: Self::default_commands(),
+            show_helper_dropdown: false,
+            helper_scroll: 0,
+            helper_selected: 0,
+            filtered_helpers: Vec::new(),
             show_shortcuts: false,
             shortcuts_mode: ShortcutsPopupMode::default(),
+            show_isolation_switcher: false,
+            isolation_switcher_selected: 0,
+            isolation_modes: vec![
+                "host".to_string(),
+                "isolated_interactive".to_string(),
+                "isolated_batch".to_string(),
+            ],
+            active_isolation_mode: "host".to_string(),
             show_profile_switcher: false,
             profile_switcher_selected: 0,
             profile_search_input: String::new(),
