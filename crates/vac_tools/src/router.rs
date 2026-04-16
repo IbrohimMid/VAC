@@ -218,7 +218,8 @@ impl PolicyEngine for VilTrustPolicyAdapter {
 fn classify_tool_risk(tool_name: &str) -> RiskLevel {
     match tool_name {
         // Safe: read-only operations
-        "file_read" | "glob" | "grep" | "search" | "todo_write" | "task_done" | "vil_knowledge" => {
+        "file_read" | "glob" | "grep" | "search" | "todo_write" | "task_done" | "vil_knowledge"
+        | "vil_ir_diff" | "vil_audit" | "vil_plumbing" | "vil_repair" => {
             RiskLevel::Safe
         }
         // NeedsApproval: write operations
@@ -402,6 +403,10 @@ impl ToolRouter {
                 | "vil_knowledge"
                 | "vil_status"
                 | "vil_lsp_query"
+                | "vil_ir_diff"
+                | "vil_audit"
+                | "vil_plumbing"
+                | "vil_repair"
         )
     }
 }

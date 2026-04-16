@@ -126,12 +126,21 @@ pub async fn run_tui(
         
         let config = vac_core::VacConfig::load_with_fallback(&bg_project_root).unwrap_or_default();
         let semantic_mode = config.memory.enable_semantic;
-        
+
+        let active_rulebook = {
+            let books = vac_core::rulebook::RulebookLoader::load_all(&bg_project_root, &config.rulebook.paths);
+            if books.is_empty() {
+                None
+            } else {
+                Some(books.iter().map(|b| b.id.clone()).collect::<Vec<_>>().join(", "))
+            }
+        };
+
         let snapshot = crate::tui::app::VilStatusSnapshot {
             profile: Some(profile),
             validation_score: 1.0,
             validation_issues: vec![],
-            active_rulebook: None,
+            active_rulebook,
             semantic_mode,
             ir_generation_active,
             ir_metadata_files,
@@ -662,22 +671,22 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                             }
                         }
                         crate::tui::services::message_action_popup::MessageAction::RepairVilContract => {
-                            let text = "Please repair VIL contract violations and generate fixes for my code.";
+                            let text = "Use the `vil_repair` tool to analyze VIL contract violations and suggest fixes. Then apply the suggested repairs.";
                             state.add_user_message(text.to_string());
                             let _ = output_tx.try_send(OutputEvent::UserMessage(text.to_string(), None, vec![], None));
                         }
                         crate::tui::services::message_action_popup::MessageAction::ExplainPlumbing => {
-                            let text = "Explain the generated VIL plumbing and semantic macros in the current context.";
+                            let text = "Use the `vil_plumbing` tool to list and explain all VIL-generated plumbing (#[vil_*] attributes) in the current context.";
                             state.add_user_message(text.to_string());
                             let _ = output_tx.try_send(OutputEvent::UserMessage(text.to_string(), None, vec![], None));
                         }
                         crate::tui::services::message_action_popup::MessageAction::AuditZeroCopy => {
-                            let text = "Audit the handlers for zero-copy risks and semantic violations.";
+                            let text = "Use the `vil_audit` tool with pass_filter=\"zero_copy\" to detect zero-copy risks in the handlers.";
                             state.add_user_message(text.to_string());
                             let _ = output_tx.try_send(OutputEvent::UserMessage(text.to_string(), None, vec![], None));
                         }
                         crate::tui::services::message_action_popup::MessageAction::DiffIrChange => {
-                            let text = "Show me the IR-significant changes and semantic diff for recent modifications.";
+                            let text = "Use the `vil_ir_diff` tool to show IR-significant changes and semantic diff for recently modified files.";
                             state.add_user_message(text.to_string());
                             let _ = output_tx.try_send(OutputEvent::UserMessage(text.to_string(), None, vec![], None));
                         }
@@ -887,6 +896,14 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
         }
         InputEvent::MouseDragEnd(col, row) => {
             crate::tui::services::text_selection::handle_drag_end(state, col, row);
+        }
+        InputEvent::MouseRightClick(_col, row) => {
+            // Resolve which message the click landed on and open popup for it
+            if let Some(msg_id) = message_at_row(state, row) {
+                state.show_message_action_popup = true;
+                state.message_action_popup_selected = 0;
+                state.message_action_target_id = Some(msg_id);
+            }
         }
         InputEvent::Tab => {
             state.focus = state.focus.next();
@@ -1481,6 +1498,32 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
 }
 
 /// Handle backend events
+/// Resolve a screen row to the message ID at that position.
+/// Uses the assembled_lines_cache and per_message_cache to map
+/// rendered line indices back to messages.
+fn message_at_row(state: &AppState, row: u16) -> Option<uuid::Uuid> {
+    // Convert screen row to line index in the rendered message list
+    let row_in_area = (row as usize)
+        .checked_sub(state.message_area_y as usize)?
+        .checked_sub(1)?; // border
+    let line_idx = row_in_area + state.scroll;
+
+    // Walk messages and accumulate line counts from per_message_cache
+    let mut cumulative = 0usize;
+    for msg in &state.messages {
+        let msg_lines = state
+            .per_message_cache
+            .get(&msg.id)
+            .map(|c| c.rendered_lines.len() + 1) // +1 for spacing line
+            .unwrap_or(1);
+        if line_idx < cumulative + msg_lines {
+            return Some(msg.id);
+        }
+        cumulative += msg_lines;
+    }
+    None
+}
+
 fn is_low_risk_tool(tool_name: &str) -> bool {
     matches!(
         tool_name,
@@ -1494,6 +1537,10 @@ fn is_low_risk_tool(tool_name: &str) -> bool {
             | "vil_diagnostics"
             | "vil_status"
             | "vil_lsp_query"
+            | "vil_ir_diff"
+            | "vil_audit"
+            | "vil_plumbing"
+            | "vil_repair"
     )
 }
 
@@ -1725,12 +1772,21 @@ fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, e
                             
                             let config = vac_core::VacConfig::load_with_fallback(&project_root).unwrap_or_default();
                             let semantic_mode = config.memory.enable_semantic;
-                            
+
+                            let active_rulebook = {
+                                let books = vac_core::rulebook::RulebookLoader::load_all(&project_root, &config.rulebook.paths);
+                                if books.is_empty() {
+                                    None
+                                } else {
+                                    Some(books.iter().map(|b| b.id.clone()).collect::<Vec<_>>().join(", "))
+                                }
+                            };
+
                             let snapshot = crate::tui::app::VilStatusSnapshot {
                                 profile: Some(profile),
                                 validation_score: report.score,
                                 validation_issues: report.issues,
-                                active_rulebook: None, // Will update next
+                                active_rulebook,
                                 semantic_mode,
                                 ir_generation_active: true,
                                 ir_metadata_files,

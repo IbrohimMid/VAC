@@ -138,6 +138,7 @@ pub enum InputEvent {
     MouseDrag(u16, u16),
     MouseDragEnd(u16, u16),
     MouseMove(u16, u16),
+    MouseRightClick(u16, u16),
     TaskCompleted(vac_core::task::TaskResult),
 }
 

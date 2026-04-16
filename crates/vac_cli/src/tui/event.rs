@@ -212,6 +212,9 @@ pub fn map_crossterm_event_to_input_event(event: Event) -> Option<InputEvent> {
             MouseEventKind::Up(crossterm::event::MouseButton::Left) => {
                 Some(InputEvent::MouseDragEnd(me.column, me.row))
             }
+            MouseEventKind::Down(crossterm::event::MouseButton::Right) => {
+                Some(InputEvent::MouseRightClick(me.column, me.row))
+            }
             MouseEventKind::Moved => Some(InputEvent::MouseMove(me.column, me.row)),
             _ => None,
         },

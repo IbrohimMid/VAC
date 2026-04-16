@@ -4756,6 +4756,7 @@ dependencies = [
  "vil_knowledge",
  "vil_rag",
  "vil_trust",
+ "vil_validate",
  "walkdir",
 ]
 

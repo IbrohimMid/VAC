@@ -10,6 +10,7 @@ description = "VAC Tools — tool registry, execution, MCP bridge, and sandbox"
 [dependencies]
 vil_knowledge = { workspace = true }
 vil_ir = { workspace = true }
+vil_validate = { workspace = true }
 vil_trust = { workspace = true }
 vil_rag = { workspace = true }
 vil_context = { workspace = true }
