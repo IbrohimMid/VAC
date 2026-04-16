@@ -395,6 +395,14 @@ impl Default for RulebookConfig {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum MountPreset {
+    Rust,
+    Node,
+    Python,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RuntimeConfig {
     /// Enable background task runtime
@@ -414,6 +422,8 @@ pub struct RuntimeConfig {
     pub container_image: Option<String>,
     #[serde(default)]
     pub allowed_mounts: Vec<String>,
+    #[serde(default)]
+    pub mount_presets: Vec<MountPreset>,
     #[serde(default)]
     pub allowed_env: Vec<String>,
     #[serde(default)]
@@ -462,6 +472,7 @@ impl Default for RuntimeConfig {
             container_runtime: None,
             container_image: None,
             allowed_mounts: vec![],
+            mount_presets: vec![],
             allowed_env: vec![],
             network_policy: NetworkPolicy::Inherit,
             max_concurrent_jobs: default_max_concurrent_jobs(),

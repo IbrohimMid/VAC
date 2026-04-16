@@ -4667,7 +4667,9 @@ dependencies = [
  "vac_runtime",
  "vac_tools",
  "vac_trace",
+ "vil_ir",
  "vil_swarm",
+ "vil_validate",
  "vt100",
 ]
 

@@ -4,6 +4,55 @@ pub mod server;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum McpConnectionState {
+    Connected,
+    Unreachable(String),
+}
+
+impl McpConnectionState {
+    pub fn is_connected(&self) -> bool {
+        matches!(self, Self::Connected)
+    }
+}
+
+pub async fn probe_mcp_server(config: &McpServerConfig) -> McpConnectionState {
+    match &config.transport {
+        McpTransport::Stdio { command, .. } => {
+            // Check if command exists in PATH or is an absolute path
+            let exists = if std::path::Path::new(command).is_absolute() {
+                std::path::Path::new(command).exists()
+            } else if let Some(paths) = std::env::var_os("PATH") {
+                std::env::split_paths(&paths).any(|dir| dir.join(command).is_file())
+            } else {
+                false
+            };
+
+            if exists {
+                McpConnectionState::Connected
+            } else {
+                McpConnectionState::Unreachable(format!("Command '{}' not found in PATH", command))
+            }
+        }
+        McpTransport::Sse { url } => {
+            let client = reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(3))
+                .build()
+                .unwrap_or_default();
+            
+            match client.head(url).send().await {
+                Ok(resp) if resp.status().is_success() || resp.status().is_redirection() || resp.status() == reqwest::StatusCode::METHOD_NOT_ALLOWED => {
+                    // Some SSE endpoints might not support HEAD and return 405 Method Not Allowed,
+                    // but reaching the endpoint means it's connected.
+                    McpConnectionState::Connected
+                }
+                Ok(resp) => McpConnectionState::Unreachable(format!("HTTP error: {}", resp.status())),
+                Err(e) => McpConnectionState::Unreachable(format!("Connection failed: {}", e)),
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct McpServerConfig {
     pub name: String,

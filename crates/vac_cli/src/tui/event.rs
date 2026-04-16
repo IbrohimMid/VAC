@@ -16,7 +16,7 @@ pub fn map_crossterm_event_to_input_event(event: Event) -> Option<InputEvent> {
                 }
                 KeyCode::Char('k') => {
                     if key.modifiers.contains(KeyModifiers::CONTROL) {
-                        Some(InputEvent::ShowRulebookSwitcher)
+                        Some(InputEvent::RetryLastToolCall)
                     } else if key.modifiers.contains(KeyModifiers::ALT) {
                         Some(InputEvent::ScrollUp)
                     } else {
@@ -33,7 +33,7 @@ pub fn map_crossterm_event_to_input_event(event: Event) -> Option<InputEvent> {
                     }
                 }
                 KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                    Some(InputEvent::RetryLastToolCall)
+                    Some(InputEvent::ShowRulebookSwitcher)
                 }
                 KeyCode::Char('t') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                     Some(InputEvent::ToggleCollapsedMessages)
@@ -43,6 +43,9 @@ pub fn map_crossterm_event_to_input_event(event: Event) -> Option<InputEvent> {
                 }
                 KeyCode::Char('p') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                     Some(InputEvent::ShowCommandPalette)
+                }
+                KeyCode::Char('e') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    Some(InputEvent::ShowMessageActionPopup)
                 }
                 KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                     Some(InputEvent::HandleCtrlS)
@@ -57,7 +60,7 @@ pub fn map_crossterm_event_to_input_event(event: Event) -> Option<InputEvent> {
                     Some(InputEvent::ReviewRevertSelected)
                 }
                 KeyCode::Char('z') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                    Some(InputEvent::ReviewRevertAll)
+                    Some(InputEvent::HandleCtrlZ)
                 }
                 KeyCode::Char('n') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                     Some(InputEvent::ReviewOpenEditor)
@@ -72,7 +75,7 @@ pub fn map_crossterm_event_to_input_event(event: Event) -> Option<InputEvent> {
                     Some(InputEvent::InputDeleteWord)
                 }
                 KeyCode::Char('o') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                    Some(InputEvent::ToggleAutoApprove)
+                    Some(InputEvent::ShowProfileSwitcher)
                 }
                 KeyCode::Char('a') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                     Some(InputEvent::InputCursorStart)
@@ -100,10 +103,10 @@ pub fn map_crossterm_event_to_input_event(event: Event) -> Option<InputEvent> {
                     Some(InputEvent::InputCursorPrevWord)
                 }
                 KeyCode::Char('f') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                    Some(InputEvent::ShowProfileSwitcher)
+                    Some(InputEvent::ToggleAutoApprove)
                 }
                 KeyCode::Char('b') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                    Some(InputEvent::CursorLeft)
+                    Some(InputEvent::ToggleSidePanel)
                 }
                 KeyCode::Char('<') if key.modifiers.contains(KeyModifiers::ALT) => {
                     Some(InputEvent::InputCursorPrevWord)
