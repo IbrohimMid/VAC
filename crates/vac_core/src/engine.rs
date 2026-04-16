@@ -153,12 +153,26 @@ impl VacEngine {
         if let Some(ref mcp_servers) = self.config.mcp_servers {
             info!(count = mcp_servers.len(), "Initializing MCP servers...");
             for server_config in mcp_servers {
+                if !server_config.is_allowed_in_mode(&self.config.runtime.environment_mode) {
+                    info!(
+                        name = %server_config.name,
+                        environment_mode = %self.config.runtime.environment_mode,
+                        "Skipping MCP server outside allowed_in_modes"
+                    );
+                    continue;
+                }
+
                 let client =
                     vac_tools::mcp::McpClient::new(server_config.clone(), registry.clone());
                 match client.connect().await {
                     Ok(()) => match client.register_proxy_tools().await {
                         Ok(count) => {
-                            info!(name = %server_config.name, tools = count, "MCP server connected")
+                            info!(
+                                name = %server_config.name,
+                                trust = server_config.effective_trust_class().as_label(),
+                                tools = count,
+                                "MCP server connected"
+                            )
                         }
                         Err(e) => {
                             warn!(name = %server_config.name, error = %e, "Failed to register MCP tools")

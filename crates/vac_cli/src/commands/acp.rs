@@ -19,24 +19,23 @@ pub async fn execute(project_root: PathBuf, port: u16) -> anyhow::Result<()> {
 
     let server = vac_core::AcpServer::new(&project_root);
 
-    let approval_handler: vac_core::acp::ApprovalHandler = Arc::new(move |tool_call_id,
-                                                                      approved,
-                                                                      feedback| {
-        let approvals = approvals.clone();
-        Box::pin(async move {
-            if approved {
-                approvals
-                    .approve(tool_call_id)
-                    .await
-                    .map_err(|e| e.to_string())
-            } else {
-                approvals
-                    .reject(tool_call_id, feedback)
-                    .await
-                    .map_err(|e| e.to_string())
-            }
-        })
-    });
+    let approval_handler: vac_core::acp::ApprovalHandler =
+        Arc::new(move |tool_call_id, approved, feedback| {
+            let approvals = approvals.clone();
+            Box::pin(async move {
+                if approved {
+                    approvals
+                        .approve(tool_call_id)
+                        .await
+                        .map_err(|e| e.to_string())
+                } else {
+                    approvals
+                        .reject(tool_call_id, feedback)
+                        .await
+                        .map_err(|e| e.to_string())
+                }
+            })
+        });
 
     // Task handler: delegates to VacEngine, streams RuntimeUpdate as ACP events
     let handler: vac_core::acp::TaskHandler = Arc::new(move |task, _session_id| {

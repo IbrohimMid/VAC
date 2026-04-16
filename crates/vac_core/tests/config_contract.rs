@@ -109,5 +109,27 @@ fn runtime_config_defaults_are_sane() {
         !config.runtime.enable,
         "runtime should be disabled by default"
     );
-    assert_eq!(config.runtime.operating_mode, "monitor-only");
+    assert_eq!(config.runtime.task_intent_mode, "monitor-only");
+    assert_eq!(config.runtime.environment_mode, "host");
+    assert_eq!(
+        config.runtime.execution_environment,
+        vac_core::ExecutionEnvironment::Host
+    );
+}
+
+#[test]
+fn isolated_runtime_requires_container_image() {
+    let mut config = VacConfig::default();
+    config.runtime.environment_mode = "isolated".to_string();
+    config.runtime.execution_environment = vac_core::ExecutionEnvironment::IsolatedInteractive;
+    config.runtime.container_image = None;
+    assert!(config.validate().is_err());
+}
+
+#[test]
+fn conflicting_network_policy_is_rejected() {
+    let mut config = VacConfig::default();
+    config.runtime.environment_mode = "trusted-networked".to_string();
+    config.runtime.network_policy = vac_core::NetworkPolicy::RestrictedOffline;
+    assert!(config.validate().is_err());
 }

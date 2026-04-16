@@ -151,6 +151,24 @@ output_path = ".vac/traces"
 enable_signing = false
 
 # =============================================================================
+# Runtime & Isolation
+# =============================================================================
+
+[runtime]
+enable = false
+task_intent_mode = "monitor-only"
+environment_mode = "host"
+execution_environment = "host"
+network_policy = "inherit"
+max_concurrent_jobs = 2
+
+# Optional isolation settings for production/operator use:
+# container_runtime = "docker"
+# container_image = "ghcr.io/your-org/vac-runtime:latest"
+# allowed_mounts = ["."]
+# allowed_env = ["KILO_API_KEY"]
+
+# =============================================================================
 # MCP Servers (Optional)
 # =============================================================================
 # Example MCP server configurations:
@@ -159,6 +177,18 @@ enable_signing = false
 # transport.type = "stdio"
 # transport.command = "npx"
 # transport.args = ["-y", "@modelcontextprotocol/server-filesystem", "/"]
+#
+# [[mcp_servers]]
+# name = "remote-knowledge"
+# transport.type = "sse"
+# transport.url = "https://mcp.example.com"
+# trust_class = "remote_verified"
+# allowed_in_modes = ["trusted-networked"]
+#
+# [mcp_servers.tls]
+# ca_file = "/etc/ssl/custom-ca.pem"
+# server_name = "mcp.example.com"
+
 
 # =============================================================================
 # Skills Directory

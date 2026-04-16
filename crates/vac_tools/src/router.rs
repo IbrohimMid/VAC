@@ -242,6 +242,22 @@ impl ToolRouter {
         args: serde_json::Value,
         context: &ToolContext,
     ) -> Result<serde_json::Value, ToolError> {
+        if let Some(definition) = self.registry.get_definition(tool_name).await
+            && let Some(reason) = environment_mode_denial_reason(
+                &context.environment_mode,
+                &definition.trust_requirement,
+                tool_name,
+            )
+        {
+            warn!(
+                tool = %tool_name,
+                environment_mode = %context.environment_mode,
+                trust_requirement = %definition.trust_requirement,
+                "Tool denied by environment mode"
+            );
+            return Err(ToolError::PermissionDenied(reason));
+        }
+
         let decision = self.policy.decide(tool_name, &args, context).await;
 
         match decision {
@@ -375,6 +391,27 @@ impl ToolRouter {
                 | "vil_status"
                 | "vil_lsp_query"
         )
+    }
+}
+
+fn environment_mode_denial_reason(
+    environment_mode: &str,
+    trust_requirement: &str,
+    tool_name: &str,
+) -> Option<String> {
+    let is_mcp_remote_verified = trust_requirement == "mcp-remote-verified";
+    let is_mcp_remote_untrusted = trust_requirement == "mcp-remote-untrusted";
+
+    match environment_mode {
+        "restricted-offline" if is_mcp_remote_verified || is_mcp_remote_untrusted => Some(format!(
+            "Tool '{}' denied in restricted-offline mode: remote MCP tools are disabled",
+            tool_name
+        )),
+        "isolated" | "trusted-networked" if is_mcp_remote_untrusted => Some(format!(
+            "Tool '{}' denied in {} mode: untrusted remote MCP tools are disabled",
+            tool_name, environment_mode
+        )),
+        _ => None,
     }
 }
 
@@ -520,5 +557,63 @@ mod tests {
         // Ensure the result has been substituted
         assert_ne!(result, json!("sk-abcdefghijklmnopqrstuvwxyz1234567890"));
         assert!(result.as_str().unwrap().starts_with("SECRET_API_KEY_"));
+    }
+
+    #[tokio::test]
+    async fn restricted_offline_denies_remote_verified_mcp_tool() {
+        struct RemoteVerifiedTool;
+
+        #[async_trait]
+        impl VilTool for RemoteVerifiedTool {
+            fn name(&self) -> &str {
+                "remote_verified_tool"
+            }
+
+            fn description(&self) -> &str {
+                "remote verified"
+            }
+
+            fn input_schema(&self) -> serde_json::Value {
+                json!({})
+            }
+
+            fn trust_requirement(&self) -> &str {
+                "mcp-remote-verified"
+            }
+
+            fn risk_level(&self) -> &str {
+                "safe"
+            }
+
+            async fn execute(
+                &self,
+                _args: serde_json::Value,
+                _context: &ToolContext,
+            ) -> Result<serde_json::Value, ToolError> {
+                Ok(json!({"ok": true}))
+            }
+        }
+
+        let registry = Arc::new(ToolRegistry::new());
+        registry.register(RemoteVerifiedTool).await.unwrap();
+
+        let mut config = ToolConfigStub::default();
+        config
+            .allow
+            .insert("remote_verified_tool".to_string(), true);
+        let router = ToolRouter::new(registry, Arc::new(DefaultPolicyEngine::new(config)));
+
+        let context = ToolContext::new(std::path::PathBuf::from("."))
+            .with_environment_mode("restricted-offline");
+        let result = router
+            .route("remote_verified_tool", json!({}), &context)
+            .await;
+
+        match result {
+            Err(ToolError::PermissionDenied(reason)) => {
+                assert!(reason.contains("restricted-offline"));
+            }
+            other => panic!("expected restricted-offline denial, got {:?}", other),
+        }
     }
 }

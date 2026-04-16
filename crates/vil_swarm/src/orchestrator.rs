@@ -609,7 +609,10 @@ Rules:
                 let _ = tx.send(AgentLoopEvent::Status("Thinking".to_string()));
                 let _ = tx.send(AgentLoopEvent::LlmRequest {
                     provider: "kilo".to_string(),
-                    model: request.model.clone().unwrap_or_else(|| "default".to_string()),
+                    model: request
+                        .model
+                        .clone()
+                        .unwrap_or_else(|| "default".to_string()),
                     message_count: reduced.len(),
                 });
             }

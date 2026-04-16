@@ -14,7 +14,11 @@ use ratatui::{
 pub fn view(f: &mut Frame, state: &mut AppState) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(1), Constraint::Min(1), Constraint::Length(1)])
+        .constraints([
+            Constraint::Length(1),
+            Constraint::Min(1),
+            Constraint::Length(1),
+        ])
         .split(f.area());
 
     render_header(f, state, chunks[0]);
@@ -41,6 +45,10 @@ pub fn view(f: &mut Frame, state: &mut AppState) {
         render_changeset(f, state);
     }
 
+    if state.shell_popup_visible {
+        render_shell_popup(f, state);
+    }
+
     if !state.toasts.is_empty() {
         render_toast(f, state);
     }
@@ -63,7 +71,11 @@ fn render_model_switcher(f: &mut Frame, state: &mut AppState) {
         Span::styled("Filter ", Style::default().fg(Color::DarkGray)),
         Span::raw(&state.model_switcher_filter),
     ]))
-    .block(Block::default().borders(Borders::ALL).title("Model Switcher"));
+    .block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title("Model Switcher"),
+    );
     f.render_widget(input, chunks[0]);
 
     let models = state.model_switcher_filtered();
@@ -79,7 +91,10 @@ fn render_model_switcher(f: &mut Frame, state: &mut AppState) {
                 Style::default()
             };
             ListItem::new(Line::from(vec![
-                Span::styled(format!("{}  ", m.provider), Style::default().fg(Color::DarkGray)),
+                Span::styled(
+                    format!("{}  ", m.provider),
+                    Style::default().fg(Color::DarkGray),
+                ),
                 Span::styled(m.name.clone(), style),
             ]))
         })
@@ -87,7 +102,11 @@ fn render_model_switcher(f: &mut Frame, state: &mut AppState) {
 
     let list = List::new(items)
         .block(Block::default().borders(Borders::ALL).title("Models"))
-        .highlight_style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD));
+        .highlight_style(
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        );
     f.render_widget(list, chunks[1]);
 }
 
@@ -125,7 +144,11 @@ fn render_file_search(f: &mut Frame, state: &mut AppState) {
 
     let list = List::new(items)
         .block(Block::default().borders(Borders::ALL).title("Files"))
-        .highlight_style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD));
+        .highlight_style(
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        );
     f.render_widget(list, chunks[1]);
 }
 
@@ -174,7 +197,11 @@ fn render_changeset(f: &mut Frame, state: &mut AppState) {
 
     let list = List::new(items)
         .block(Block::default().borders(Borders::ALL).title("Changeset"))
-        .highlight_style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD));
+        .highlight_style(
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        );
     f.render_widget(list, body[0]);
 
     let width = body[1].width.saturating_sub(2) as usize;
@@ -187,10 +214,7 @@ fn render_changeset(f: &mut Frame, state: &mut AppState) {
             ));
         } else if let (Some(old), Some(new)) = (&diff.old_content, &diff.new_content) {
             lines.extend(crate::tui::services::preview_file_diff(
-                &diff.path,
-                old,
-                new,
-                width,
+                &diff.path, old, new, width,
             ));
         } else {
             lines.push(Line::styled(
@@ -232,11 +256,20 @@ fn render_toast(f: &mut Frame, state: &mut AppState) {
     };
     let fg = Color::Black;
 
-    let rect = Rect { x, y, width, height };
+    let rect = Rect {
+        x,
+        y,
+        width,
+        height,
+    };
     f.render_widget(Clear, rect);
     let widget = Paragraph::new(Line::from(Span::raw(toast.message.clone())))
         .style(Style::default().bg(bg).fg(fg).add_modifier(Modifier::BOLD))
-        .block(Block::default().borders(Borders::ALL).style(Style::default().bg(bg).fg(fg)))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .style(Style::default().bg(bg).fg(fg)),
+        )
         .wrap(Wrap { trim: true });
     f.render_widget(widget, rect);
 }
@@ -251,7 +284,10 @@ fn render_header(f: &mut Frame, state: &mut AppState, area: Rect) {
     ));
     if let Some(title) = &state.session_title {
         spans.push(Span::raw("  "));
-        spans.push(Span::styled(title.clone(), Style::default().fg(Color::Cyan)));
+        spans.push(Span::styled(
+            title.clone(),
+            Style::default().fg(Color::Cyan),
+        ));
     }
     spans.push(Span::raw("  "));
     spans.push(Span::styled(
@@ -275,7 +311,9 @@ fn render_header(f: &mut Frame, state: &mut AppState, area: Rect) {
         if state.auto_approve {
             Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
         } else {
-            Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)
+            Style::default()
+                .fg(Color::Green)
+                .add_modifier(Modifier::BOLD)
         },
     ));
     spans.push(Span::raw("  "));
@@ -324,7 +362,9 @@ fn render_workspace(f: &mut Frame, state: &mut AppState, area: Rect) {
 
 fn focus_style(focused: bool) -> Style {
     if focused {
-        Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+        Style::default()
+            .fg(Color::Yellow)
+            .add_modifier(Modifier::BOLD)
     } else {
         Style::default()
     }
@@ -358,14 +398,10 @@ fn render_messages(f: &mut Frame, state: &mut AppState, area: Rect) {
     }
 
     let widget = Paragraph::new(lines)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(Span::styled(
-                    "Conversation",
-                    focus_style(state.focus == WorkspaceFocus::Conversation),
-                )),
-        )
+        .block(Block::default().borders(Borders::ALL).title(Span::styled(
+            "Conversation",
+            focus_style(state.focus == WorkspaceFocus::Conversation),
+        )))
         .wrap(Wrap { trim: false })
         .scroll((state.scroll as u16, 0));
     f.render_widget(widget, area);
@@ -385,18 +421,15 @@ fn render_input(f: &mut Frame, state: &mut AppState, area: Rect) {
     }
 
     let widget = Paragraph::new(lines)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(Span::styled(
-                    "Input",
-                    focus_style(state.focus == WorkspaceFocus::Input),
-                )),
-        )
+        .block(Block::default().borders(Borders::ALL).title(Span::styled(
+            "Input",
+            focus_style(state.focus == WorkspaceFocus::Input),
+        )))
         .wrap(Wrap { trim: false });
     f.render_widget(widget, area);
 
-    if state.focus == WorkspaceFocus::Input && !state.show_command_palette && !state.show_shortcuts {
+    if state.focus == WorkspaceFocus::Input && !state.show_command_palette && !state.show_shortcuts
+    {
         let (row, col) = state.input.cursor;
         let cy = area.y + 1 + (row as u16).min(area.height.saturating_sub(3));
         let cx = area.x + 1 + (col as u16).min(area.width.saturating_sub(3));
@@ -424,10 +457,7 @@ fn render_operator_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
             Style::default().fg(Color::Magenta),
         ));
     } else {
-        lines.push(Line::styled(
-            "idle",
-            Style::default().fg(Color::DarkGray),
-        ));
+        lines.push(Line::styled("idle", Style::default().fg(Color::DarkGray)));
     }
 
     lines.push(Line::from(vec![
@@ -447,6 +477,24 @@ fn render_operator_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
             Style::default().fg(Color::Cyan),
         ),
     ]));
+
+    if state.active_shell_command.is_some() || !state.shell_output.trim().is_empty() {
+        let shell_state = if state.active_shell_command.is_some() {
+            if state.shell_backgrounded {
+                "background"
+            } else {
+                "active"
+            }
+        } else if let Some(code) = state.shell_exit_code {
+            if code == 0 { "completed" } else { "failed" }
+        } else {
+            "idle"
+        };
+        lines.push(Line::from(vec![
+            Span::styled("shell ", Style::default().fg(Color::DarkGray)),
+            Span::styled(shell_state, Style::default().fg(Color::Cyan)),
+        ]));
+    }
 
     if !state.shell_output.trim().is_empty() {
         let last = state
@@ -515,12 +563,10 @@ fn render_activity_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
     }
 
     let widget = Paragraph::new(lines)
-        .block(
-            Block::default().borders(Borders::ALL).title(Span::styled(
-                "Activity",
-                focus_style(state.focus == WorkspaceFocus::Activity),
-            )),
-        )
+        .block(Block::default().borders(Borders::ALL).title(Span::styled(
+            "Activity",
+            focus_style(state.focus == WorkspaceFocus::Activity),
+        )))
         .wrap(Wrap { trim: true });
     f.render_widget(widget, area);
 }
@@ -535,11 +581,13 @@ fn render_workbench_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
         format!("Approvals ({})", state.pending_approvals.len()),
         format!("Review ({})", state.changeset_store.active_entries().len()),
         format!("Sessions ({})", state.sessions.len()),
+        format!("Runtime ({})", state.runtime_jobs.len()),
     ];
     let idx = match state.workbench_tab {
         WorkbenchTab::Approvals => 0,
         WorkbenchTab::Review => 1,
         WorkbenchTab::Sessions => 2,
+        WorkbenchTab::Runtime => 3,
     };
 
     let tabs = Tabs::new(tabs)
@@ -548,13 +596,18 @@ fn render_workbench_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
             "Workbench",
             focus_style(state.focus == WorkspaceFocus::Workbench),
         )))
-        .highlight_style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD));
+        .highlight_style(
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        );
     f.render_widget(tabs, chunks[0]);
 
     match state.workbench_tab {
         WorkbenchTab::Approvals => render_approvals_workbench(f, state, chunks[1]),
         WorkbenchTab::Review => render_review_pane(f, state, chunks[1]),
         WorkbenchTab::Sessions => render_sessions_pane(f, state, chunks[1]),
+        WorkbenchTab::Runtime => render_runtime_pane(f, state, chunks[1]),
     }
 }
 
@@ -597,13 +650,20 @@ fn render_approvals_workbench(f: &mut Frame, state: &mut AppState, area: Rect) {
         ]));
         lines.push(Line::raw(""));
 
-        if let Some(expl) = state.approval_explanations.get(&tc.id).and_then(|v| v.clone()) {
+        if let Some(expl) = state
+            .approval_explanations
+            .get(&tc.id)
+            .and_then(|v| v.clone())
+        {
             lines.push(Line::styled(
                 "Explanation",
                 Style::default().add_modifier(Modifier::BOLD),
             ));
             for l in expl.lines() {
-                lines.push(Line::styled(l.to_string(), Style::default().fg(Color::DarkGray)));
+                lines.push(Line::styled(
+                    l.to_string(),
+                    Style::default().fg(Color::DarkGray),
+                ));
             }
             lines.push(Line::raw(""));
         }
@@ -664,6 +724,57 @@ fn render_approvals_workbench(f: &mut Frame, state: &mut AppState, area: Rect) {
     f.render_widget(detail, body[1]);
 }
 
+fn render_shell_popup(f: &mut Frame, state: &mut AppState) {
+    let area = centered_rect(80, 55, f.area());
+    f.render_widget(Clear, area);
+
+    let title = if let Some(shell) = &state.active_shell_command {
+        if state.shell_waiting_for_input {
+            format!("Shell [{}] waiting for input", shell.command)
+        } else {
+            format!("Shell [{}] active", shell.command)
+        }
+    } else if let Some(code) = state.shell_exit_code {
+        format!("Shell completed (exit {code})")
+    } else {
+        "Shell".to_string()
+    };
+
+    let mut lines: Vec<Line> = Vec::new();
+    let content: Vec<&str> = state.shell_output.lines().collect();
+    let max_lines = area.height.saturating_sub(4) as usize;
+    let start = content.len().saturating_sub(max_lines);
+    for line in content.into_iter().skip(start) {
+        lines.push(Line::raw(line.to_string()));
+    }
+
+    if lines.is_empty() {
+        lines.push(Line::styled(
+            "Shell session started. Use the input box and press Enter to send input.",
+            Style::default().fg(Color::DarkGray),
+        ));
+    }
+
+    if let Some(err) = &state.shell_last_error {
+        lines.push(Line::raw(""));
+        lines.push(Line::styled(
+            format!("Last error: {err}"),
+            Style::default().fg(Color::Red),
+        ));
+    }
+
+    lines.push(Line::raw(""));
+    lines.push(Line::styled(
+        "Esc: background  /shell-focus: refocus  /shell-kill: terminate",
+        Style::default().fg(Color::DarkGray),
+    ));
+
+    let widget = Paragraph::new(lines)
+        .block(Block::default().borders(Borders::ALL).title(title))
+        .wrap(Wrap { trim: false });
+    f.render_widget(widget, area);
+}
+
 fn render_review_pane(f: &mut Frame, state: &mut AppState, area: Rect) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -686,7 +797,8 @@ fn render_review_pane(f: &mut Frame, state: &mut AppState, area: Rect) {
         ])
     };
 
-    let header = Paragraph::new(filter_line).block(Block::default().borders(Borders::ALL).title(title));
+    let header =
+        Paragraph::new(filter_line).block(Block::default().borders(Borders::ALL).title(title));
     f.render_widget(header, chunks[0]);
 
     let body = Layout::default()
@@ -800,13 +912,22 @@ fn render_sessions_pane(f: &mut Frame, state: &mut AppState, area: Rect) {
         .map(|(idx, s)| {
             let sel = idx == state.sessions_selected_idx;
             let style = if sel {
-                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD)
             } else {
                 Style::default()
             };
             let checkpoint_icon = if s.has_checkpoint { "●" } else { "○" };
             ListItem::new(Line::from(vec![
-                Span::styled(checkpoint_icon, Style::default().fg(if s.has_checkpoint { Color::Green } else { Color::DarkGray })),
+                Span::styled(
+                    checkpoint_icon,
+                    Style::default().fg(if s.has_checkpoint {
+                        Color::Green
+                    } else {
+                        Color::DarkGray
+                    }),
+                ),
                 Span::raw(" "),
                 Span::styled(&s.last_activity, Style::default().fg(Color::DarkGray)),
                 Span::raw(" "),
@@ -819,9 +940,11 @@ fn render_sessions_pane(f: &mut Frame, state: &mut AppState, area: Rect) {
         })
         .collect();
 
-    let list = List::new(items).block(Block::default().borders(Borders::ALL).title(
-        format!("Sessions ({})", state.sessions.len()),
-    ));
+    let list = List::new(items).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title(format!("Sessions ({})", state.sessions.len())),
+    );
     f.render_widget(list, body[0]);
 
     let mut lines: Vec<Line> = Vec::new();
@@ -835,7 +958,10 @@ fn render_sessions_pane(f: &mut Frame, state: &mut AppState, area: Rect) {
             Span::raw(sel.id.chars().take(16).collect::<String>()),
         ]));
         lines.push(Line::from(vec![
-            Span::styled("Last active: ", Style::default().add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "Last active: ",
+                Style::default().add_modifier(Modifier::BOLD),
+            ),
             Span::raw(sel.last_activity.clone()),
         ]));
         lines.push(Line::from(vec![
@@ -843,7 +969,10 @@ fn render_sessions_pane(f: &mut Frame, state: &mut AppState, area: Rect) {
             Span::raw(sel.task_count.to_string()),
         ]));
         lines.push(Line::from(vec![
-            Span::styled("Checkpoint: ", Style::default().add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "Checkpoint: ",
+                Style::default().add_modifier(Modifier::BOLD),
+            ),
             if sel.has_checkpoint {
                 Span::styled("available ●", Style::default().fg(Color::Green))
             } else {
@@ -852,7 +981,10 @@ fn render_sessions_pane(f: &mut Frame, state: &mut AppState, area: Rect) {
         ]));
         if !sel.checkpoints.is_empty() {
             lines.push(Line::raw(""));
-            lines.push(Line::styled("Checkpoints:", Style::default().add_modifier(Modifier::BOLD)));
+            lines.push(Line::styled(
+                "Checkpoints:",
+                Style::default().add_modifier(Modifier::BOLD),
+            ));
             for cp in sel.checkpoints.iter().take(4) {
                 lines.push(Line::from(vec![
                     Span::styled("  ", Style::default()),
@@ -861,7 +993,10 @@ fn render_sessions_pane(f: &mut Frame, state: &mut AppState, area: Rect) {
             }
         }
         lines.push(Line::raw(""));
-        lines.push(Line::styled("Enter: restore  r: resume checkpoint", Style::default().fg(Color::DarkGray)));
+        lines.push(Line::styled(
+            "Enter: restore  r: resume checkpoint",
+            Style::default().fg(Color::DarkGray),
+        ));
     } else {
         lines.push(Line::styled(
             "No sessions loaded (/sessions)",
@@ -872,6 +1007,218 @@ fn render_sessions_pane(f: &mut Frame, state: &mut AppState, area: Rect) {
     let detail = Paragraph::new(lines)
         .block(Block::default().borders(Borders::ALL).title("Detail"))
         .wrap(Wrap { trim: true });
+    f.render_widget(detail, body[1]);
+}
+
+fn render_runtime_pane(f: &mut Frame, state: &mut AppState, area: Rect) {
+    let body = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(46), Constraint::Percentage(54)])
+        .split(area);
+
+    let mut queued = 0usize;
+    let mut running = 0usize;
+    let mut completed = 0usize;
+    let mut failed = 0usize;
+    let mut cancelled = 0usize;
+    for job in &state.runtime_jobs {
+        match &job.status {
+            vac_runtime::JobStatus::Queued => queued += 1,
+            vac_runtime::JobStatus::Running => running += 1,
+            vac_runtime::JobStatus::Completed => completed += 1,
+            vac_runtime::JobStatus::Failed(_) => failed += 1,
+            vac_runtime::JobStatus::Cancelled => cancelled += 1,
+        }
+    }
+
+    let items: Vec<ListItem> = state
+        .runtime_jobs
+        .iter()
+        .enumerate()
+        .map(|(idx, job)| {
+            let selected = idx == state.runtime_selected_idx;
+            let style = if selected {
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default()
+            };
+            let status = match &job.status {
+                vac_runtime::JobStatus::Queued => {
+                    Span::styled("Q", Style::default().fg(Color::DarkGray))
+                }
+                vac_runtime::JobStatus::Running => {
+                    Span::styled("R", Style::default().fg(Color::Cyan))
+                }
+                vac_runtime::JobStatus::Completed => {
+                    Span::styled("C", Style::default().fg(Color::Green))
+                }
+                vac_runtime::JobStatus::Failed(_) => {
+                    Span::styled("F", Style::default().fg(Color::Red))
+                }
+                vac_runtime::JobStatus::Cancelled => {
+                    Span::styled("X", Style::default().fg(Color::Yellow))
+                }
+            };
+            ListItem::new(Line::from(vec![
+                status,
+                Span::raw(" "),
+                Span::styled(
+                    job.id.to_string().chars().take(8).collect::<String>(),
+                    Style::default().fg(Color::DarkGray),
+                ),
+                Span::raw(" "),
+                Span::styled(job.kind_name(), style),
+            ]))
+        })
+        .collect();
+
+    let list = List::new(items).block(Block::default().borders(Borders::ALL).title("Jobs"));
+    f.render_widget(list, body[0]);
+
+    let mut lines: Vec<Line> = Vec::new();
+    lines.push(Line::from(vec![
+        Span::styled("Jobs: ", Style::default().add_modifier(Modifier::BOLD)),
+        Span::styled(format!("Q {queued}"), Style::default().fg(Color::DarkGray)),
+        Span::raw("  "),
+        Span::styled(format!("R {running}"), Style::default().fg(Color::Cyan)),
+        Span::raw("  "),
+        Span::styled(format!("C {completed}"), Style::default().fg(Color::Green)),
+        Span::raw("  "),
+        Span::styled(format!("F {failed}"), Style::default().fg(Color::Red)),
+        Span::raw("  "),
+        Span::styled(format!("X {cancelled}"), Style::default().fg(Color::Yellow)),
+    ]));
+    lines.push(Line::raw(""));
+
+    if let Some(snapshot) = &state.runtime_state_snapshot {
+        lines.push(Line::from(vec![
+            Span::styled("Autopilot: ", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(snapshot.mode.clone()),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled("Intent: ", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(snapshot.task_intent_mode.clone()),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled(
+                "Environment: ",
+                Style::default().add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(snapshot.environment_mode.clone()),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled("Execution: ", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(format!("{:?}", snapshot.execution_environment)),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled("Queue: ", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(snapshot.queue_len.to_string()),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled("State: ", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(format!("{:?}", snapshot.state)),
+        ]));
+        if let Some(err) = &snapshot.last_error {
+            lines.push(Line::from(vec![
+                Span::styled(
+                    "Last error: ",
+                    Style::default().add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(err.clone(), Style::default().fg(Color::Red)),
+            ]));
+        }
+        if let Some(job_id) = snapshot.current_job {
+            lines.push(Line::from(vec![
+                Span::styled(
+                    "Current job: ",
+                    Style::default().add_modifier(Modifier::BOLD),
+                ),
+                Span::raw(job_id.to_string()),
+            ]));
+        }
+        lines.push(Line::from(vec![
+            Span::styled("Updated: ", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(
+                snapshot
+                    .updated_at
+                    .format("%Y-%m-%d %H:%M:%S UTC")
+                    .to_string(),
+            ),
+        ]));
+        match &snapshot.state {
+            vac_runtime::AutopilotState::WaitingApproval { tool_call_id } => {
+                lines.push(Line::from(vec![
+                    Span::styled("Approval: ", Style::default().add_modifier(Modifier::BOLD)),
+                    Span::styled(tool_call_id.clone(), Style::default().fg(Color::Yellow)),
+                ]));
+            }
+            vac_runtime::AutopilotState::Backoff { until } => {
+                lines.push(Line::from(vec![
+                    Span::styled(
+                        "Backoff until: ",
+                        Style::default().add_modifier(Modifier::BOLD),
+                    ),
+                    Span::styled(
+                        until.format("%Y-%m-%d %H:%M:%S UTC").to_string(),
+                        Style::default().fg(Color::Yellow),
+                    ),
+                ]));
+            }
+            _ => {}
+        }
+        lines.push(Line::raw(""));
+    }
+
+    if let Some(job) = state.runtime_jobs.get(state.runtime_selected_idx) {
+        lines.push(Line::from(vec![
+            Span::styled("Job: ", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(job.id.to_string()),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled("Kind: ", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(job.kind_name()),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled("Status: ", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(match &job.status {
+                vac_runtime::JobStatus::Queued => "Queued".to_string(),
+                vac_runtime::JobStatus::Running => "Running".to_string(),
+                vac_runtime::JobStatus::Completed => "Completed".to_string(),
+                vac_runtime::JobStatus::Failed(err) => format!("Failed: {err}"),
+                vac_runtime::JobStatus::Cancelled => "Cancelled".to_string(),
+            }),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled("Retries: ", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(format!("{}/{}", job.retry_count, job.max_retries)),
+        ]));
+        if let Some(summary) = &job.result_summary {
+            lines.push(Line::raw(""));
+            lines.push(Line::styled(
+                "Summary",
+                Style::default().add_modifier(Modifier::BOLD),
+            ));
+            for line in summary.lines() {
+                lines.push(Line::raw(line.to_string()));
+            }
+        }
+    } else {
+        lines.push(Line::styled(
+            "No runtime jobs loaded. Press r to refresh.",
+            Style::default().fg(Color::DarkGray),
+        ));
+    }
+
+    let detail = Paragraph::new(lines)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Runtime Detail"),
+        )
+        .wrap(Wrap { trim: false })
+        .scroll((state.runtime_detail_scroll as u16, 0));
     f.render_widget(detail, body[1]);
 }
 
@@ -887,7 +1234,12 @@ fn render_at_dropdown(f: &mut Frame, state: &mut AppState) {
     let x = area.x + 1;
     let y = area.y + area.height.saturating_sub(height + 2); // above footer
 
-    let rect = Rect { x, y, width, height };
+    let rect = Rect {
+        x,
+        y,
+        width,
+        height,
+    };
     f.render_widget(Clear, rect);
 
     let items: Vec<ListItem> = state
@@ -895,9 +1247,14 @@ fn render_at_dropdown(f: &mut Frame, state: &mut AppState) {
         .iter()
         .enumerate()
         .map(|(i, path)| {
-            let selected = i == state.at_selected_idx.min(state.at_results.len().saturating_sub(1));
+            let selected = i
+                == state
+                    .at_selected_idx
+                    .min(state.at_results.len().saturating_sub(1));
             let style = if selected {
-                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD)
             } else {
                 Style::default()
             };
@@ -923,10 +1280,16 @@ fn render_footer(f: &mut Frame, state: &mut AppState, area: Rect) {
     // Reject reason prompt takes priority
     if let Some(reason) = &state.reject_reason_input {
         let hints = vec![
-            Span::styled("REJECT REASON ", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "REJECT REASON ",
+                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+            ),
             Span::raw(reason.as_str()),
             Span::styled("█", Style::default().fg(Color::Yellow)),
-            Span::styled("  Enter: confirm  Esc: skip", Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                "  Enter: confirm  Esc: skip",
+                Style::default().fg(Color::DarkGray),
+            ),
         ];
         let widget = Paragraph::new(Line::from(hints)).wrap(Wrap { trim: true });
         f.render_widget(widget, area);
@@ -935,9 +1298,41 @@ fn render_footer(f: &mut Frame, state: &mut AppState, area: Rect) {
 
     if state.at_trigger_active {
         let hints = vec![
-            Span::styled("@ FILE ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "@ FILE ",
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::styled(&state.at_query, Style::default().fg(Color::White)),
-            Span::styled("  ↑↓: select  Enter: insert  Esc: cancel", Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                "  ↑↓: select  Enter: insert  Esc: cancel",
+                Style::default().fg(Color::DarkGray),
+            ),
+        ];
+        let widget = Paragraph::new(Line::from(hints)).wrap(Wrap { trim: true });
+        f.render_widget(widget, area);
+        return;
+    }
+
+    if state.shell_popup_visible && state.active_shell_command.is_some() {
+        let hints = vec![
+            Span::styled(
+                "SHELL ",
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                "Input box sends to PTY  ",
+                Style::default().fg(Color::DarkGray),
+            ),
+            Span::styled("Enter", Style::default().fg(Color::Cyan)),
+            Span::styled(": send input  ", Style::default().fg(Color::DarkGray)),
+            Span::styled("Esc", Style::default().fg(Color::Cyan)),
+            Span::styled(": background  ", Style::default().fg(Color::DarkGray)),
+            Span::styled("/shell-kill", Style::default().fg(Color::Cyan)),
+            Span::styled(": terminate", Style::default().fg(Color::DarkGray)),
         ];
         let widget = Paragraph::new(Line::from(hints)).wrap(Wrap { trim: true });
         f.render_widget(widget, area);
@@ -953,7 +1348,10 @@ fn render_footer(f: &mut Frame, state: &mut AppState, area: Rect) {
             .map(crate::tui::services::approval_preview)
             .unwrap_or_else(|| "approval".to_string());
         let hints = vec![
-            Span::styled("APPROVAL ", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "APPROVAL ",
+                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+            ),
             Span::styled(
                 format!("[{}/{}] ", idx + 1, state.pending_approvals.len()),
                 Style::default().fg(Color::Yellow),
@@ -1032,7 +1430,22 @@ fn render_footer(f: &mut Frame, state: &mut AppState, area: Rect) {
                 Span::styled("Enter", Style::default().fg(Color::Cyan)),
                 Span::styled(": restore  ", Style::default().fg(Color::DarkGray)),
                 Span::styled("r", Style::default().fg(Color::Cyan)),
-                Span::styled(": resume checkpoint  ", Style::default().fg(Color::DarkGray)),
+                Span::styled(
+                    ": resume checkpoint  ",
+                    Style::default().fg(Color::DarkGray),
+                ),
+                Span::styled("Ctrl+Tab", Style::default().fg(Color::Cyan)),
+                Span::styled(": next tab", Style::default().fg(Color::DarkGray)),
+            ],
+            WorkbenchTab::Runtime => vec![
+                Span::styled("↑/↓", Style::default().fg(Color::Cyan)),
+                Span::styled(": select  ", Style::default().fg(Color::DarkGray)),
+                Span::styled("r", Style::default().fg(Color::Cyan)),
+                Span::styled(": refresh  ", Style::default().fg(Color::DarkGray)),
+                Span::styled("c", Style::default().fg(Color::Cyan)),
+                Span::styled(": cancel  ", Style::default().fg(Color::DarkGray)),
+                Span::styled("t", Style::default().fg(Color::Cyan)),
+                Span::styled(": retry  ", Style::default().fg(Color::DarkGray)),
                 Span::styled("Ctrl+Tab", Style::default().fg(Color::Cyan)),
                 Span::styled(": next tab", Style::default().fg(Color::DarkGray)),
             ],
@@ -1143,8 +1556,8 @@ fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
 mod tests {
     use super::*;
     use crate::tui::app::AppStateOptions;
-    use ratatui::backend::TestBackend;
     use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
 
     #[test]
     fn view_smoke_renders() {
@@ -1177,7 +1590,9 @@ mod tests {
         state.show_file_search = true;
         state.file_search_results = vec!["src/main.rs".to_string()];
         state.show_changeset = true;
-        state.changeset_store.file_modified("src/main.rs".to_string(), "agent".to_string(), false);
+        state
+            .changeset_store
+            .file_modified("src/main.rs".to_string(), "agent".to_string(), false);
         state.modified_files = state.changeset_store.modified_files();
 
         terminal.draw(|f| view(f, &mut state)).unwrap();

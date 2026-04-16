@@ -22,7 +22,9 @@ pub use approval::{
     ApprovalHandle, ApprovalRecord, ApprovalState, ApprovalStateMachine, ApprovalStore,
 };
 pub use auth::{AuthStatus, StoredAuth};
-pub use config::{RulebookConfig, RuntimeConfig, VacConfig, VilLspConfig};
+pub use config::{
+    ExecutionEnvironment, NetworkPolicy, RulebookConfig, RuntimeConfig, VacConfig, VilLspConfig,
+};
 pub use detector::{VilArchetype, VilProjectProfile};
 pub use engine::{EngineStatus, RuntimeUpdate, TaskHistoryEntry, VacEngine};
 pub use error::VacError;

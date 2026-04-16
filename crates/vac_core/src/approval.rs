@@ -297,10 +297,7 @@ pub struct ApprovalHandle {
 }
 
 impl ApprovalHandle {
-    pub fn new(
-        project_root: PathBuf,
-        active: ActiveApprovalRegistry,
-    ) -> Self {
+    pub fn new(project_root: PathBuf, active: ActiveApprovalRegistry) -> Self {
         Self {
             active,
             store: ApprovalStore::new(project_root),
@@ -431,7 +428,13 @@ impl ActiveApprovalRegistry {
     ) {
         {
             let mut map = self.inner.lock().await;
-            map.insert(task_id, ActiveApprovalEntry { session_id, tx: tx.clone() });
+            map.insert(
+                task_id,
+                ActiveApprovalEntry {
+                    session_id,
+                    tx: tx.clone(),
+                },
+            );
         }
 
         let registry = self.clone();

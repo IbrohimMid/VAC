@@ -1,7 +1,7 @@
 //! File search handler for fuzzy file navigation.
 
 use super::{HandlerContext, HandlerResult};
-use crate::tui::services::{build_file_index, fuzzy_search_files, Toast};
+use crate::tui::services::{Toast, build_file_index, fuzzy_search_files};
 
 /// Open file search popup.
 pub fn open(ctx: &mut HandlerContext) -> HandlerResult {
@@ -30,8 +30,7 @@ pub fn update_query(ctx: &mut HandlerContext, query: String) -> HandlerResult {
     if query.is_empty() {
         ctx.state.file_search_results.clear();
     } else {
-        ctx.state.file_search_results =
-            fuzzy_search_files(&query, &ctx.state.all_files, 50);
+        ctx.state.file_search_results = fuzzy_search_files(&query, &ctx.state.all_files, 50);
     }
     ctx.state.file_search_selected_idx = 0;
     Ok(())
@@ -48,8 +47,7 @@ pub fn select_next(ctx: &mut HandlerContext) -> HandlerResult {
 
 /// Select previous result.
 pub fn select_prev(ctx: &mut HandlerContext) -> HandlerResult {
-    ctx.state.file_search_selected_idx =
-        ctx.state.file_search_selected_idx.saturating_sub(1);
+    ctx.state.file_search_selected_idx = ctx.state.file_search_selected_idx.saturating_sub(1);
     Ok(())
 }
 
@@ -63,12 +61,13 @@ pub fn insert_selected(ctx: &mut HandlerContext) -> HandlerResult {
         let path = path.clone();
         ctx.state.input.insert_str(&path);
         ctx.state.focus = crate::tui::app::WorkspaceFocus::Input;
-        ctx.state.toasts.push(Toast::info(format!("Inserted: {}", path)));
+        ctx.state
+            .toasts
+            .push(Toast::info(format!("Inserted: {}", path)));
         close(ctx)?;
     }
     Ok(())
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -76,7 +75,11 @@ mod tests {
     use crate::tui::app::{AppState, AppStateOptions, OutputEvent};
     use tokio::sync::mpsc;
 
-    fn create_test_context() -> (AppState, mpsc::Sender<OutputEvent>, mpsc::Receiver<OutputEvent>) {
+    fn create_test_context() -> (
+        AppState,
+        mpsc::Sender<OutputEvent>,
+        mpsc::Receiver<OutputEvent>,
+    ) {
         let state = AppState::new(AppStateOptions {
             model: None,
             session_id: Some(uuid::Uuid::new_v4().to_string()),
@@ -91,7 +94,7 @@ mod tests {
     fn test_open_file_search() {
         let (mut state, tx, _rx) = create_test_context();
         let mut ctx = HandlerContext::new(&mut state, &tx);
-        
+
         assert!(open(&mut ctx).is_ok());
         assert!(ctx.state.show_file_search);
         assert_eq!(ctx.state.file_search_selected_idx, 0);
@@ -101,10 +104,10 @@ mod tests {
     fn test_close_file_search() {
         let (mut state, tx, _rx) = create_test_context();
         let mut ctx = HandlerContext::new(&mut state, &tx);
-        
+
         ctx.state.show_file_search = true;
         ctx.state.file_search_query = "test".to_string();
-        
+
         assert!(close(&mut ctx).is_ok());
         assert!(!ctx.state.show_file_search);
         assert!(ctx.state.file_search_query.is_empty());
@@ -114,7 +117,7 @@ mod tests {
     fn test_update_query() {
         let (mut state, tx, _rx) = create_test_context();
         let mut ctx = HandlerContext::new(&mut state, &tx);
-        
+
         assert!(update_query(&mut ctx, "main.rs".to_string()).is_ok());
         assert_eq!(ctx.state.file_search_query, "main.rs");
         assert_eq!(ctx.state.file_search_selected_idx, 0);

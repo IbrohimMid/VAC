@@ -60,8 +60,7 @@ async fn acp_approve_flow_end_to_end() {
     let store = vac_core::ApprovalStore::new(root.clone());
     let store_for_handler = store.clone();
 
-    let task_handler: vac_core::acp::TaskHandler =
-        std::sync::Arc::new(move |_task, session_id| {
+    let task_handler: vac_core::acp::TaskHandler = std::sync::Arc::new(move |_task, session_id| {
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
         let registry = registry.clone();
         let store = store_for_handler.clone();
@@ -111,24 +110,23 @@ async fn acp_approve_flow_end_to_end() {
         rx
     });
 
-    let approval_handler: vac_core::acp::ApprovalHandler = std::sync::Arc::new(move |tool_call_id,
-                                                                               approved,
-                                                                               feedback| {
-        let approvals = approvals.clone();
-        Box::pin(async move {
-            if approved {
-                approvals
-                    .approve(tool_call_id)
-                    .await
-                    .map_err(|e| e.to_string())
-            } else {
-                approvals
-                    .reject(tool_call_id, feedback)
-                    .await
-                    .map_err(|e| e.to_string())
-            }
-        })
-    });
+    let approval_handler: vac_core::acp::ApprovalHandler =
+        std::sync::Arc::new(move |tool_call_id, approved, feedback| {
+            let approvals = approvals.clone();
+            Box::pin(async move {
+                if approved {
+                    approvals
+                        .approve(tool_call_id)
+                        .await
+                        .map_err(|e| e.to_string())
+                } else {
+                    approvals
+                        .reject(tool_call_id, feedback)
+                        .await
+                        .map_err(|e| e.to_string())
+                }
+            })
+        });
 
     let port = pick_unused_port();
     let server = vac_core::AcpServer::new(&root);
@@ -137,13 +135,17 @@ async fn acp_approve_flow_end_to_end() {
         .await
         .unwrap();
 
-    let stream = TcpStream::connect(format!("127.0.0.1:{port}")).await.unwrap();
+    let stream = TcpStream::connect(format!("127.0.0.1:{port}"))
+        .await
+        .unwrap();
     let (reader, mut writer) = stream.into_split();
     let mut reader = BufReader::new(reader);
 
     send_req(&mut writer, "1", "session/create", json!({})).await;
-    let created = recv_until(&mut reader, 2000, |m| m.get("event") == Some(&json!("session_created")))
-        .await;
+    let created = recv_until(&mut reader, 2000, |m| {
+        m.get("event") == Some(&json!("session_created"))
+    })
+    .await;
     let session_id = created["data"]["session_id"].as_str().unwrap().to_string();
 
     send_req(
@@ -162,7 +164,10 @@ async fn acp_approve_flow_end_to_end() {
                 == Some("approval_required")
     })
     .await;
-    let tool_call_id = approval_required["data"]["data"]["id"].as_str().unwrap().to_string();
+    let tool_call_id = approval_required["data"]["data"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
 
     send_req(
         &mut writer,
@@ -184,7 +189,8 @@ async fn acp_approve_flow_end_to_end() {
             saw_resolved = true;
         }
         if msg.get("event") == Some(&json!("update"))
-            && msg.get("data")
+            && msg
+                .get("data")
                 .and_then(|d| d.get("event"))
                 .and_then(|e| e.as_str())
                 == Some("tool_result")
@@ -192,7 +198,8 @@ async fn acp_approve_flow_end_to_end() {
             saw_tool_result = true;
         }
         if msg.get("event") == Some(&json!("update"))
-            && msg.get("data")
+            && msg
+                .get("data")
                 .and_then(|d| d.get("event"))
                 .and_then(|e| e.as_str())
                 == Some("completed")
@@ -221,8 +228,7 @@ async fn acp_reject_flow_is_symmetric_and_blocks_tool_execution() {
     let store = vac_core::ApprovalStore::new(root.clone());
     let store_for_handler = store.clone();
 
-    let task_handler: vac_core::acp::TaskHandler =
-        std::sync::Arc::new(move |_task, session_id| {
+    let task_handler: vac_core::acp::TaskHandler = std::sync::Arc::new(move |_task, session_id| {
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
         let registry = registry.clone();
         let store = store_for_handler.clone();
@@ -268,24 +274,23 @@ async fn acp_reject_flow_is_symmetric_and_blocks_tool_execution() {
         rx
     });
 
-    let approval_handler: vac_core::acp::ApprovalHandler = std::sync::Arc::new(move |tool_call_id,
-                                                                               approved,
-                                                                               feedback| {
-        let approvals = approvals.clone();
-        Box::pin(async move {
-            if approved {
-                approvals
-                    .approve(tool_call_id)
-                    .await
-                    .map_err(|e| e.to_string())
-            } else {
-                approvals
-                    .reject(tool_call_id, feedback)
-                    .await
-                    .map_err(|e| e.to_string())
-            }
-        })
-    });
+    let approval_handler: vac_core::acp::ApprovalHandler =
+        std::sync::Arc::new(move |tool_call_id, approved, feedback| {
+            let approvals = approvals.clone();
+            Box::pin(async move {
+                if approved {
+                    approvals
+                        .approve(tool_call_id)
+                        .await
+                        .map_err(|e| e.to_string())
+                } else {
+                    approvals
+                        .reject(tool_call_id, feedback)
+                        .await
+                        .map_err(|e| e.to_string())
+                }
+            })
+        });
 
     let port = pick_unused_port();
     let server = vac_core::AcpServer::new(&root);
@@ -294,13 +299,17 @@ async fn acp_reject_flow_is_symmetric_and_blocks_tool_execution() {
         .await
         .unwrap();
 
-    let stream = TcpStream::connect(format!("127.0.0.1:{port}")).await.unwrap();
+    let stream = TcpStream::connect(format!("127.0.0.1:{port}"))
+        .await
+        .unwrap();
     let (reader, mut writer) = stream.into_split();
     let mut reader = BufReader::new(reader);
 
     send_req(&mut writer, "1", "session/create", json!({})).await;
-    let created = recv_until(&mut reader, 2000, |m| m.get("event") == Some(&json!("session_created")))
-        .await;
+    let created = recv_until(&mut reader, 2000, |m| {
+        m.get("event") == Some(&json!("session_created"))
+    })
+    .await;
     let session_id = created["data"]["session_id"].as_str().unwrap().to_string();
 
     send_req(
@@ -319,7 +328,10 @@ async fn acp_reject_flow_is_symmetric_and_blocks_tool_execution() {
                 == Some("approval_required")
     })
     .await;
-    let tool_call_id = approval_required["data"]["data"]["id"].as_str().unwrap().to_string();
+    let tool_call_id = approval_required["data"]["data"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
 
     send_req(
         &mut writer,
@@ -340,7 +352,8 @@ async fn acp_reject_flow_is_symmetric_and_blocks_tool_execution() {
             saw_resolved = true;
         }
         if msg.get("event") == Some(&json!("update"))
-            && msg.get("data")
+            && msg
+                .get("data")
                 .and_then(|d| d.get("event"))
                 .and_then(|e| e.as_str())
                 == Some("completed")
@@ -359,7 +372,8 @@ async fn acp_reject_flow_is_symmetric_and_blocks_tool_execution() {
         loop {
             let msg = recv_line(&mut reader).await;
             if msg.get("event") == Some(&json!("update"))
-                && msg.get("data")
+                && msg
+                    .get("data")
                     .and_then(|d| d.get("event"))
                     .and_then(|e| e.as_str())
                     == Some("tool_result")
@@ -385,8 +399,7 @@ async fn acp_stale_or_wrong_target_approval_errors_and_does_not_mutate_state() {
     let store = vac_core::ApprovalStore::new(root.clone());
     let store_for_handler = store.clone();
 
-    let task_handler: vac_core::acp::TaskHandler =
-        std::sync::Arc::new(move |_task, session_id| {
+    let task_handler: vac_core::acp::TaskHandler = std::sync::Arc::new(move |_task, session_id| {
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
         let registry = registry.clone();
         let store = store_for_handler.clone();
@@ -430,24 +443,23 @@ async fn acp_stale_or_wrong_target_approval_errors_and_does_not_mutate_state() {
         rx
     });
 
-    let approval_handler: vac_core::acp::ApprovalHandler = std::sync::Arc::new(move |tool_call_id,
-                                                                               approved,
-                                                                               feedback| {
-        let approvals = approvals.clone();
-        Box::pin(async move {
-            if approved {
-                approvals
-                    .approve(tool_call_id)
-                    .await
-                    .map_err(|e| e.to_string())
-            } else {
-                approvals
-                    .reject(tool_call_id, feedback)
-                    .await
-                    .map_err(|e| e.to_string())
-            }
-        })
-    });
+    let approval_handler: vac_core::acp::ApprovalHandler =
+        std::sync::Arc::new(move |tool_call_id, approved, feedback| {
+            let approvals = approvals.clone();
+            Box::pin(async move {
+                if approved {
+                    approvals
+                        .approve(tool_call_id)
+                        .await
+                        .map_err(|e| e.to_string())
+                } else {
+                    approvals
+                        .reject(tool_call_id, feedback)
+                        .await
+                        .map_err(|e| e.to_string())
+                }
+            })
+        });
 
     let port = pick_unused_port();
     let server = vac_core::AcpServer::new(&root);
@@ -456,13 +468,17 @@ async fn acp_stale_or_wrong_target_approval_errors_and_does_not_mutate_state() {
         .await
         .unwrap();
 
-    let stream = TcpStream::connect(format!("127.0.0.1:{port}")).await.unwrap();
+    let stream = TcpStream::connect(format!("127.0.0.1:{port}"))
+        .await
+        .unwrap();
     let (reader, mut writer) = stream.into_split();
     let mut reader = BufReader::new(reader);
 
     send_req(&mut writer, "1", "session/create", json!({})).await;
-    let created = recv_until(&mut reader, 2000, |m| m.get("event") == Some(&json!("session_created")))
-        .await;
+    let created = recv_until(&mut reader, 2000, |m| {
+        m.get("event") == Some(&json!("session_created"))
+    })
+    .await;
     let session_id = created["data"]["session_id"].as_str().unwrap().to_string();
 
     send_req(
@@ -481,7 +497,10 @@ async fn acp_stale_or_wrong_target_approval_errors_and_does_not_mutate_state() {
                 == Some("approval_required")
     })
     .await;
-    let tool_call_id = approval_required["data"]["data"]["id"].as_str().unwrap().to_string();
+    let tool_call_id = approval_required["data"]["data"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
 
     recv_until(&mut reader, 2000, |m| {
         m.get("event") == Some(&json!("update"))
@@ -572,24 +591,23 @@ async fn acp_overlap_two_pending_approvals_do_not_cross_routes() {
         rx
     });
 
-    let approval_handler: vac_core::acp::ApprovalHandler = std::sync::Arc::new(move |tool_call_id,
-                                                                               approved,
-                                                                               feedback| {
-        let approvals = approvals.clone();
-        Box::pin(async move {
-            if approved {
-                approvals
-                    .approve(tool_call_id)
-                    .await
-                    .map_err(|e| e.to_string())
-            } else {
-                approvals
-                    .reject(tool_call_id, feedback)
-                    .await
-                    .map_err(|e| e.to_string())
-            }
-        })
-    });
+    let approval_handler: vac_core::acp::ApprovalHandler =
+        std::sync::Arc::new(move |tool_call_id, approved, feedback| {
+            let approvals = approvals.clone();
+            Box::pin(async move {
+                if approved {
+                    approvals
+                        .approve(tool_call_id)
+                        .await
+                        .map_err(|e| e.to_string())
+                } else {
+                    approvals
+                        .reject(tool_call_id, feedback)
+                        .await
+                        .map_err(|e| e.to_string())
+                }
+            })
+        });
 
     let port = pick_unused_port();
     let server = vac_core::AcpServer::new(&root);
@@ -598,13 +616,17 @@ async fn acp_overlap_two_pending_approvals_do_not_cross_routes() {
         .await
         .unwrap();
 
-    let stream = TcpStream::connect(format!("127.0.0.1:{port}")).await.unwrap();
+    let stream = TcpStream::connect(format!("127.0.0.1:{port}"))
+        .await
+        .unwrap();
     let (reader, mut writer) = stream.into_split();
     let mut reader = BufReader::new(reader);
 
     send_req(&mut writer, "1", "session/create", json!({})).await;
-    let created = recv_until(&mut reader, 2000, |m| m.get("event") == Some(&json!("session_created")))
-        .await;
+    let created = recv_until(&mut reader, 2000, |m| {
+        m.get("event") == Some(&json!("session_created"))
+    })
+    .await;
     let session_id = created["data"]["session_id"].as_str().unwrap().to_string();
 
     send_req(
@@ -630,7 +652,10 @@ async fn acp_overlap_two_pending_approvals_do_not_cross_routes() {
                 == Some("approval_required")
     })
     .await;
-    let tool_a = approval_a["data"]["data"]["id"].as_str().unwrap().to_string();
+    let tool_a = approval_a["data"]["data"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
 
     let approval_b = recv_until(&mut reader, 4000, |m| {
         m.get("event") == Some(&json!("update"))
@@ -645,7 +670,10 @@ async fn acp_overlap_two_pending_approvals_do_not_cross_routes() {
                 != Some(&tool_a)
     })
     .await;
-    let tool_b = approval_b["data"]["data"]["id"].as_str().unwrap().to_string();
+    let tool_b = approval_b["data"]["data"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
 
     send_req(
         &mut writer,
@@ -662,7 +690,8 @@ async fn acp_overlap_two_pending_approvals_do_not_cross_routes() {
             .await
             .unwrap();
         if msg.get("event") == Some(&json!("update"))
-            && msg.get("data")
+            && msg
+                .get("data")
                 .and_then(|d| d.get("event"))
                 .and_then(|e| e.as_str())
                 == Some("completed")
@@ -691,7 +720,8 @@ async fn acp_overlap_two_pending_approvals_do_not_cross_routes() {
             .await
             .unwrap();
         if msg.get("event") == Some(&json!("update"))
-            && msg.get("data")
+            && msg
+                .get("data")
                 .and_then(|d| d.get("event"))
                 .and_then(|e| e.as_str())
                 == Some("completed")

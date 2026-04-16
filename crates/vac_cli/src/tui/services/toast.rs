@@ -47,4 +47,3 @@ impl Toast {
         self.created_at.elapsed() > self.duration
     }
 }
-

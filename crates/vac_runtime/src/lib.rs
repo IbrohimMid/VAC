@@ -1,6 +1,7 @@
 pub mod autopilot;
 pub mod cron_scheduler;
 pub mod executor;
+pub mod isolation;
 pub mod jobs;
 pub mod queue;
 pub mod scheduler;
@@ -8,7 +9,10 @@ pub mod watcher;
 
 pub use autopilot::AutopilotController;
 pub use cron_scheduler::{CronEntry, CronScheduler};
-pub use executor::{OperatingMode, TaskExecutor};
+pub use executor::{
+    EnvironmentMode, ExecutionEnvironmentMode, OperatingMode, TaskExecutor, TaskIntentMode,
+};
+pub use isolation::{ISOLATION_LOG_FILE, IsolationLaunchSpec, IsolationManager};
 pub use jobs::{Job, JobKind, JobStatus, JobTrigger};
 pub use queue::TaskQueue;
 pub use scheduler::{

@@ -8,13 +8,34 @@ fn runtime_queue_path(project_root: &Path) -> PathBuf {
     project_root.join(".vac/queue.json")
 }
 
+pub async fn load_jobs(project_root: &Path) -> Vec<vac_runtime::Job> {
+    vac_runtime::TaskQueue::with_storage(runtime_queue_path(project_root))
+        .list()
+        .await
+}
+
+pub fn load_autopilot_state(project_root: &Path) -> Option<vac_runtime::AutopilotStateFile> {
+    let path = project_root.join(".vac/autopilot.state");
+    let content = std::fs::read_to_string(path).ok()?;
+    serde_json::from_str(&content).ok()
+}
+
 pub async fn execute_status(project_root: PathBuf, format: &str) -> anyhow::Result<()> {
     let config = vac_core::VacConfig::load_with_fallback(&project_root)?;
+    let isolation =
+        vac_runtime::IsolationManager::new(project_root.clone(), config.runtime.clone());
     if format == "json" {
         let status = serde_json::json!({
             "enabled": config.runtime.enable,
-            "operating_mode": config.runtime.operating_mode,
+            "task_intent_mode": config.runtime.task_intent_mode,
+            "environment_mode": config.runtime.environment_mode,
+            "execution_environment": config.runtime.execution_environment,
+            "network_policy": config.runtime.network_policy,
+            "shell_execution_mode": config.runtime.shell_execution_mode(),
+            "write_capability": config.runtime.write_capability(),
+            "allowed_mcp_classes": config.runtime.allowed_mcp_classes(),
             "max_jobs": config.runtime.max_concurrent_jobs,
+            "isolation": isolation.status_json(),
         });
         println!("{}", serde_json::to_string_pretty(&status)?);
         return Ok(());
@@ -22,8 +43,34 @@ pub async fn execute_status(project_root: PathBuf, format: &str) -> anyhow::Resu
 
     println!("VAC Runtime Status");
     println!("  enabled:        {}", config.runtime.enable);
-    println!("  operating_mode: {}", config.runtime.operating_mode);
+    println!("  task_intent:    {}", config.runtime.task_intent_mode);
+    println!("  environment:    {}", config.runtime.environment_mode);
+    println!(
+        "  execution:      {:?}",
+        config.runtime.execution_environment
+    );
+    println!("  network:        {:?}", config.runtime.network_policy);
+    println!(
+        "  shell:          {}",
+        config.runtime.shell_execution_mode()
+    );
+    println!("  writes:         {}", config.runtime.write_capability());
+    println!(
+        "  mcp:            {}",
+        config.runtime.allowed_mcp_classes().join(", ")
+    );
     println!("  max_jobs:       {}", config.runtime.max_concurrent_jobs);
+    if isolation.is_isolated() {
+        println!("  container:      {}", isolation.container_runtime());
+        println!(
+            "  image:          {}",
+            config
+                .runtime
+                .container_image
+                .as_deref()
+                .unwrap_or("<unset>")
+        );
+    }
     if !config.runtime.enable {
         println!(
             "\n  Runtime is disabled. Set [runtime] enable = true in .vac/config.toml to activate."
@@ -34,13 +81,14 @@ pub async fn execute_status(project_root: PathBuf, format: &str) -> anyhow::Resu
 
 pub async fn execute_jobs(project_root: PathBuf, format: &str) -> anyhow::Result<()> {
     let config = vac_core::VacConfig::load_with_fallback(&project_root)?;
-    let queue = vac_runtime::TaskQueue::with_storage(runtime_queue_path(&project_root));
-    let jobs = queue.list().await;
+    let jobs = load_jobs(&project_root).await;
+    let state = load_autopilot_state(&project_root);
 
     if format == "json" {
         let jobs_json = serde_json::json!({
             "enabled": config.runtime.enable,
-            "jobs": jobs
+            "jobs": jobs,
+            "state": state,
         });
         println!("{}", serde_json::to_string_pretty(&jobs_json)?);
         return Ok(());
@@ -82,6 +130,12 @@ pub async fn execute_jobs(project_root: PathBuf, format: &str) -> anyhow::Result
                 status, job.id, kind_str, job.created_at
             );
         }
+    }
+    if let Some(state) = state {
+        println!("\nAutopilot State:");
+        println!("  mode:   {}", state.mode);
+        println!("  queue:  {}", state.queue_len);
+        println!("  state:  {:?}", state.state);
     }
     Ok(())
 }
@@ -174,10 +228,33 @@ pub async fn execute_start(project_root: PathBuf) -> anyhow::Result<()> {
         anyhow::bail!("Runtime is disabled. Set [runtime] enable = true in .vac/config.toml");
     }
 
+    if should_wrap_in_isolation(&config.runtime) {
+        let exe = std::env::current_exe()?;
+        let isolation =
+            vac_runtime::IsolationManager::new(project_root.clone(), config.runtime.clone());
+        let tty = matches!(
+            config.runtime.execution_environment,
+            vac_core::ExecutionEnvironment::IsolatedInteractive
+        );
+        let args = vec![
+            "--project".to_string(),
+            project_root.display().to_string(),
+            "runtime".to_string(),
+            "start".to_string(),
+        ];
+        let code = isolation.run_foreground(&exe, &args, tty, std::collections::HashMap::new())?;
+        if code != 0 {
+            anyhow::bail!("Isolated runtime exited with code {code}");
+        }
+        return Ok(());
+    }
+
     let autopilot = vac_core::config::AutopilotConfig::load(&project_root)?;
 
     println!("🚀 Starting VAC runtime scheduler...");
-    println!("   mode: {}", config.runtime.operating_mode);
+    println!("   task_intent: {}", config.runtime.task_intent_mode);
+    println!("   environment: {}", config.runtime.environment_mode);
+    println!("   execution: {:?}", config.runtime.execution_environment);
     println!("   autopilot.mode: {}", autopilot.mode);
     println!(
         "   autopilot.poll_interval_secs: {}",
@@ -190,8 +267,14 @@ pub async fn execute_start(project_root: PathBuf) -> anyhow::Result<()> {
     let engine = Arc::new(Mutex::new(engine));
 
     // Build executor with engine attached
-    let mode = vac_runtime::OperatingMode::parse(&config.runtime.operating_mode);
-    let mut executor = vac_runtime::TaskExecutor::new(project_root, mode);
+    let mode = vac_runtime::OperatingMode::parse(config.runtime.operating_mode());
+    let environment_mode = vac_runtime::EnvironmentMode::parse(&config.runtime.environment_mode);
+    let mut executor = vac_runtime::TaskExecutor::new_with_modes(
+        project_root,
+        mode,
+        environment_mode,
+        config.runtime.execution_environment,
+    );
     executor.attach_engine(engine);
 
     let queue = Arc::new(vac_runtime::TaskQueue::with_storage(runtime_queue_path(
@@ -212,4 +295,9 @@ pub async fn execute_start(project_root: PathBuf) -> anyhow::Result<()> {
     scheduler.stop();
     println!("\n✓ Runtime stopped.");
     Ok(())
+}
+
+fn should_wrap_in_isolation(runtime: &vac_core::RuntimeConfig) -> bool {
+    runtime.execution_environment != vac_core::ExecutionEnvironment::Host
+        && std::env::var("VAC_SKIP_ISOLATION_WRAPPER").ok().as_deref() != Some("1")
 }

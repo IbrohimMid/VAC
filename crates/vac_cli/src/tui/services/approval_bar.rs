@@ -55,4 +55,3 @@ fn is_path_key(k: &str) -> bool {
             | "source_path"
     )
 }
-

@@ -29,12 +29,13 @@ VAC is built on a modular Rust-based architecture divided into the VIL (Vastar I
 - **Rich Checkpoint & Run-State**: Maintains a comprehensive `AgentRunState` that tracks active tool calls, modified files, execution stages, and token usage, enabling reliable session resumption.
 - **MCP Integration**: Connects seamlessly with Model Context Protocol servers to access external tools and knowledge bases.
 - **Built-in Runtime Jobs**: Supports `Cron`, `FileWatch`, and `OneShot` background tasks.
+- **Isolation & Trust Posture**: Supports host vs containerized execution environments, runtime isolation logs, and MCP trust classes for local, verified remote, and untrusted remote servers.
 
 ## ⚠️ Known Limitations
 
 - **Complex GUI Automation**: VAC currently focuses on codebase manipulation and CLI tooling; it does not interact directly with graphical user interfaces.
 - **Context Window Exhaustion**: Very large codebase refactors in a single pass may exhaust the LLM context window. It is recommended to break down massive tasks into smaller, focused sub-tasks.
-- **Interactive Terminal Prompts**: VAC tools do not fully support interactive terminal prompts (e.g., commands requiring manual user input via stdin) without explicit configuration.
+- **Interactive Terminal Prompts**: Operator shell/PTy is available in the TUI, but production automation should still prefer non-interactive command flows where possible.
 
 ## 🔒 Security & Privacy Note
 
@@ -47,7 +48,7 @@ VAC is built on a modular Rust-based architecture divided into the VIL (Vastar I
 
 ## 🌟 New to VAC?
 
-If you are a new user, please check out our **[Onboarding Guide](docs/onboarding.md)** first! It covers everything from installation, configuring `vac.toml` (API keys and providers), to understanding the core commands (`vac init`, `vac run`, `vac interactive`, `vac autopilot up|down|status`).
+If you are a new user, please check out our **[Onboarding Guide](docs/onboarding.md)** first! It covers everything from installation, configuring `vac.toml` (API keys and providers), to understanding the core commands (`vac init`, `vac run`, `vac interactive`, `vac runtime ...`, `vac isolation ...`, `vac autopilot up|down|status`).
 
 ---
 
@@ -79,3 +80,4 @@ vac interactive
 For full documentation and advanced usage, visit: [https://vastar.id/docs/vac](https://vastar.id/docs/vac)
 
 - [Arsitektur Privasi dan Kontrak Eksekusi](docs/privacy_architecture.md)
+- [Runtime Operating Guide](docs/runtime_operating_guide.md)

@@ -7,8 +7,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::tui::services::textarea::TextArea;
+use crate::tui::services::ShellCommand;
 use crate::tui::services::Toast;
+use crate::tui::services::textarea::TextArea;
 use crate::tui::types::*;
 
 // ========== Cache Types ==========
@@ -118,6 +119,7 @@ pub enum WorkbenchTab {
     Approvals,
     Review,
     Sessions,
+    Runtime,
 }
 
 impl WorkbenchTab {
@@ -125,7 +127,8 @@ impl WorkbenchTab {
         match self {
             Self::Approvals => Self::Review,
             Self::Review => Self::Sessions,
-            Self::Sessions => Self::Approvals,
+            Self::Sessions => Self::Runtime,
+            Self::Runtime => Self::Approvals,
         }
     }
 }
@@ -288,6 +291,11 @@ pub struct AppState {
     // Shell state
     pub shell_popup_visible: bool,
     pub shell_output: String,
+    pub active_shell_command: Option<ShellCommand>,
+    pub shell_waiting_for_input: bool,
+    pub shell_backgrounded: bool,
+    pub shell_exit_code: Option<i32>,
+    pub shell_last_error: Option<String>,
 
     // Streaming state
     pub is_streaming: bool,
@@ -317,6 +325,11 @@ pub struct AppState {
     pub review_generation: u64,
 
     pub sessions_selected_idx: usize,
+    pub runtime_jobs: Vec<vac_runtime::Job>,
+    pub runtime_selected_idx: usize,
+    pub runtime_filter: String,
+    pub runtime_detail_scroll: usize,
+    pub runtime_state_snapshot: Option<vac_runtime::AutopilotStateFile>,
 
     pub activity: Vec<ActivityItem>,
     pub activity_scroll: usize,
@@ -399,6 +412,11 @@ impl AppState {
             reject_reason_input: None,
             shell_popup_visible: false,
             shell_output: String::new(),
+            active_shell_command: None,
+            shell_waiting_for_input: false,
+            shell_backgrounded: false,
+            shell_exit_code: None,
+            shell_last_error: None,
             is_streaming: false,
             cancel_requested: false,
             streaming_message_id: None,
@@ -419,6 +437,11 @@ impl AppState {
             review_diff: None,
             review_generation: 0,
             sessions_selected_idx: 0,
+            runtime_jobs: Vec::new(),
+            runtime_selected_idx: 0,
+            runtime_filter: String::new(),
+            runtime_detail_scroll: 0,
+            runtime_state_snapshot: None,
             activity: Vec::new(),
             activity_scroll: 0,
             toasts: Vec::new(),
@@ -481,7 +504,11 @@ impl AppState {
             })
             .cloned()
             .collect::<Vec<_>>();
-        out.sort_by(|a, b| a.provider.cmp(&b.provider).then_with(|| a.name.cmp(&b.name)));
+        out.sort_by(|a, b| {
+            a.provider
+                .cmp(&b.provider)
+                .then_with(|| a.name.cmp(&b.name))
+        });
         out
     }
 

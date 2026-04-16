@@ -60,6 +60,20 @@ grep = true
 search = true
 task_done = true
 todo_write = true
+
+[runtime]
+enable = false
+task_intent_mode = "monitor-only"
+environment_mode = "host"
+execution_environment = "host"
+network_policy = "inherit"
+max_concurrent_jobs = 2
+
+# Optional production/operator isolation:
+# container_runtime = "docker"
+# container_image = "ghcr.io/your-org/vac-runtime:latest"
+# allowed_mounts = ["."]
+# allowed_env = ["ANTHROPIC_API_KEY", "OPENAI_API_KEY"]
 ```
 
 ### Mengatur API Keys
@@ -114,6 +128,35 @@ vac autopilot status
 # Menghentikan autopilot
 vac autopilot down
 ```
+
+### `vac runtime status|jobs|inspect|cancel|retry`
+Melihat runtime/operator plane secara langsung dari CLI. Surface ini menampilkan *task intent mode*, *environment mode*, execution boundary, antrean job, dan state autopilot.
+```bash
+vac runtime status
+vac runtime jobs
+vac runtime inspect <job-id>
+vac runtime cancel <job-id>
+vac runtime retry <job-id>
+```
+
+### `vac isolation status|logs|run`
+Memeriksa isolation boundary dan menjalankan command di container runtime ketika `execution_environment` diset ke mode isolated.
+```bash
+vac isolation status
+vac isolation logs
+vac isolation run -- bash -lc "pwd && ls"
+```
+
+### Surface Operator TUI
+Di `vac interactive`, workbench sekarang mencakup tab `Runtime` dan shell operator PTY:
+
+- `/runtime` membuka tab runtime jobs
+- `/shell <cmd>` menjalankan shell interaktif
+- `/shell-bg` membackground shell
+- `/shell-focus` memfokuskan kembali shell
+- `/shell-kill` menghentikan shell
+
+Jika `execution_environment = "isolated_interactive"`, shell TUI akan berjalan di dalam container boundary, bukan host shell.
 
 ---
 

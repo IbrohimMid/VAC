@@ -3,16 +3,17 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use crate::jobs::{Job, JobKind};
+use vac_core::config::ExecutionEnvironment;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum OperatingMode {
+pub enum TaskIntentMode {
     MonitorOnly,
     SuggestOnly,
     PatchProposal,
     AutoFixLowRisk,
 }
 
-impl OperatingMode {
+impl TaskIntentMode {
     pub fn parse(s: &str) -> Self {
         match s {
             "suggest-only" => Self::SuggestOnly,
@@ -29,9 +30,18 @@ impl OperatingMode {
     pub fn produces_patches(&self) -> bool {
         matches!(self, Self::PatchProposal | Self::AutoFixLowRisk)
     }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::MonitorOnly => "monitor-only",
+            Self::SuggestOnly => "suggest-only",
+            Self::PatchProposal => "patch-proposal",
+            Self::AutoFixLowRisk => "auto-fix-low-risk",
+        }
+    }
 }
 
-impl std::str::FromStr for OperatingMode {
+impl std::str::FromStr for TaskIntentMode {
     type Err = std::convert::Infallible;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -39,18 +49,67 @@ impl std::str::FromStr for OperatingMode {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EnvironmentMode {
+    Host,
+    Isolated,
+    TrustedNetworked,
+    RestrictedOffline,
+}
+
+impl EnvironmentMode {
+    pub fn parse(s: &str) -> Self {
+        match s {
+            "isolated" => Self::Isolated,
+            "trusted-networked" => Self::TrustedNetworked,
+            "restricted-offline" => Self::RestrictedOffline,
+            _ => Self::Host,
+        }
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Host => "host",
+            Self::Isolated => "isolated",
+            Self::TrustedNetworked => "trusted-networked",
+            Self::RestrictedOffline => "restricted-offline",
+        }
+    }
+}
+
+pub type OperatingMode = TaskIntentMode;
+pub type ExecutionEnvironmentMode = ExecutionEnvironment;
+
 pub struct TaskExecutor {
     pub project_root: PathBuf,
-    pub operating_mode: OperatingMode,
+    pub task_intent_mode: TaskIntentMode,
+    pub environment_mode: EnvironmentMode,
+    pub execution_environment: ExecutionEnvironment,
     /// Live engine handle — None until attach_engine() is called.
     engine: Option<Arc<Mutex<vac_core::VacEngine>>>,
 }
 
 impl TaskExecutor {
     pub fn new(project_root: PathBuf, mode: OperatingMode) -> Self {
+        Self::new_with_modes(
+            project_root,
+            mode,
+            EnvironmentMode::Host,
+            ExecutionEnvironment::Host,
+        )
+    }
+
+    pub fn new_with_modes(
+        project_root: PathBuf,
+        task_intent_mode: TaskIntentMode,
+        environment_mode: EnvironmentMode,
+        execution_environment: ExecutionEnvironment,
+    ) -> Self {
         Self {
             project_root,
-            operating_mode: mode,
+            task_intent_mode,
+            environment_mode,
+            execution_environment,
             engine: None,
         }
     }
@@ -63,21 +122,21 @@ impl TaskExecutor {
     pub async fn execute(&self, job: &Job) -> anyhow::Result<String> {
         match &job.kind {
             JobKind::RunTask { description } => {
-                match self.operating_mode {
-                    OperatingMode::MonitorOnly => Ok(format!(
+                match self.task_intent_mode {
+                    TaskIntentMode::MonitorOnly => Ok(format!(
                         "Monitor-only: would run '{description}' (engine not invoked)"
                     )),
-                    OperatingMode::SuggestOnly => Ok(format!(
+                    TaskIntentMode::SuggestOnly => Ok(format!(
                         "Suggest-only: task '{description}' noted but not executed"
                     )),
-                    OperatingMode::PatchProposal | OperatingMode::AutoFixLowRisk => {
+                    TaskIntentMode::PatchProposal | TaskIntentMode::AutoFixLowRisk => {
                         let engine = self.engine.as_ref().ok_or_else(|| {
                             anyhow::anyhow!(
                                 "TaskExecutor has no engine attached — call attach_engine() first"
                             )
                         })?;
 
-                        let mode = self.operating_mode.clone();
+                        let mode = self.task_intent_mode.clone();
                         let approvals = engine.lock().await.approval_handle();
 
                         // We need an updates channel to listen for ApprovalRequired
@@ -95,8 +154,8 @@ impl TaskExecutor {
                                 } = update
                                 {
                                     let approve = match mode {
-                                        OperatingMode::PatchProposal => false,
-                                        OperatingMode::AutoFixLowRisk => {
+                                        TaskIntentMode::PatchProposal => false,
+                                        TaskIntentMode::AutoFixLowRisk => {
                                             is_low_risk_tool(&tool_name)
                                         }
                                         _ => false,
@@ -107,7 +166,10 @@ impl TaskExecutor {
                                         let _ = approvals_clone
                                             .reject(
                                                 tool_call_id,
-                                                Some("Headless policy denied this action".to_string()),
+                                                Some(
+                                                    "Headless policy denied this action"
+                                                        .to_string(),
+                                                ),
                                             )
                                             .await;
                                     }
@@ -118,12 +180,7 @@ impl TaskExecutor {
                         let result = engine
                             .lock()
                             .await
-                            .run_task_with_approvals(
-                                description,
-                                Some(update_tx),
-                                None,
-                                None,
-                            )
+                            .run_task_with_approvals(description, Some(update_tx), None, None)
                             .await
                             .map_err(|e| anyhow::anyhow!("Engine error: {e}"))?;
                         Ok(format!(
@@ -168,10 +225,10 @@ impl TaskExecutor {
                 }
             }
             JobKind::PatchProposal { files } => {
-                if !self.operating_mode.produces_patches() {
+                if !self.task_intent_mode.produces_patches() {
                     return Ok(format!(
                         "Patch proposal skipped (mode: {:?})",
-                        self.operating_mode
+                        self.task_intent_mode
                     ));
                 }
                 let engine = self
@@ -180,7 +237,7 @@ impl TaskExecutor {
                     .ok_or_else(|| anyhow::anyhow!("No engine attached for patch proposal"))?;
                 let task = format!("Review and propose patches for: {}", files.join(", "));
 
-                let mode = self.operating_mode.clone();
+                let mode = self.task_intent_mode.clone();
                 let approvals = engine.lock().await.approval_handle();
                 let (update_tx, mut update_rx) =
                     tokio::sync::mpsc::unbounded_channel::<vac_core::engine::RuntimeUpdate>();
@@ -195,8 +252,8 @@ impl TaskExecutor {
                         } = update
                         {
                             let approve = match mode {
-                                OperatingMode::PatchProposal => false,
-                                OperatingMode::AutoFixLowRisk => is_low_risk_tool(&tool_name),
+                                TaskIntentMode::PatchProposal => false,
+                                TaskIntentMode::AutoFixLowRisk => is_low_risk_tool(&tool_name),
                                 _ => false,
                             };
                             if approve {

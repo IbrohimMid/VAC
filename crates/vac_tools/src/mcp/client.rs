@@ -1,12 +1,17 @@
 //! MCP Client — connects to external MCP servers via stdio or SSE transport.
 
+use reqwest::{Certificate, Identity};
+use std::fs;
 use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, Command};
 use tokio::sync::Mutex;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
-use super::{JsonRpcRequest, JsonRpcResponse, McpServerConfig, McpToolDef, McpTransport};
+use super::{
+    JsonRpcRequest, JsonRpcResponse, McpServerConfig, McpTlsConfig, McpToolDef, McpTransport,
+    McpTrustClass,
+};
 use crate::error::ToolError;
 use crate::registry::ToolRegistry;
 use crate::registry::{ToolContext, VilTool};
@@ -43,7 +48,13 @@ impl McpClient {
     }
 
     pub async fn connect(&self) -> Result<(), ToolError> {
-        info!(name = %self.config.name, "Connecting to MCP server");
+        self.validate_config()?;
+        let trust_class = self.config.effective_trust_class();
+        info!(
+            name = %self.config.name,
+            trust = trust_class.as_label(),
+            "Connecting to MCP server"
+        );
 
         let conn = match &self.config.transport {
             McpTransport::Stdio { command, args } => {
@@ -78,7 +89,7 @@ impl McpClient {
             }
             McpTransport::Sse { url } => McpConnection::Sse {
                 base_url: url.clone(),
-                http: reqwest::Client::new(),
+                http: self.build_sse_client(url, trust_class)?,
             },
         };
 
@@ -154,6 +165,11 @@ impl McpClient {
         let tools = self.list_tools().await?;
         let count = tools.len();
         let prefix = &self.config.name;
+        let trust_requirement = self
+            .config
+            .effective_trust_class()
+            .proxy_trust_requirement()
+            .to_string();
 
         for tool_def in tools {
             let prefixed_name = format!("{}_{}", prefix, tool_def.name);
@@ -164,6 +180,7 @@ impl McpClient {
                 tool_schema: tool_def
                     .input_schema
                     .unwrap_or(serde_json::json!({"type": "object"})),
+                trust_requirement: trust_requirement.clone(),
                 client_connection: self.connection.clone(),
                 request_id: self.request_id.clone(),
             };
@@ -296,6 +313,175 @@ impl McpClient {
         }
         Ok(())
     }
+
+    fn validate_config(&self) -> Result<(), ToolError> {
+        let trust_class = self.config.effective_trust_class();
+
+        match (&self.config.transport, trust_class) {
+            (McpTransport::Stdio { .. }, McpTrustClass::LocalTrusted) => Ok(()),
+            (McpTransport::Stdio { .. }, other) => Err(ToolError::McpError(format!(
+                "stdio MCP server '{}' cannot use trust class {:?}",
+                self.config.name, other
+            ))),
+            (McpTransport::Sse { url }, trust_class) => {
+                let parsed = reqwest::Url::parse(url).map_err(|e| {
+                    ToolError::McpError(format!("Invalid MCP URL for '{}': {e}", self.config.name))
+                })?;
+                let host = parsed.host_str().unwrap_or_default();
+                let is_localhost = matches!(host, "localhost" | "127.0.0.1" | "::1");
+
+                if trust_class == McpTrustClass::LocalTrusted && !is_localhost {
+                    return Err(ToolError::McpError(format!(
+                        "SSE MCP server '{}' uses LocalTrusted but host '{host}' is not local",
+                        self.config.name
+                    )));
+                }
+
+                if trust_class == McpTrustClass::RemoteVerified && parsed.scheme() != "https" {
+                    return Err(ToolError::McpError(format!(
+                        "RemoteVerified MCP server '{}' must use https",
+                        self.config.name
+                    )));
+                }
+
+                if let Some(tls) = &self.config.tls {
+                    self.validate_tls_config(host, tls)?;
+                } else if trust_class == McpTrustClass::RemoteVerified {
+                    warn!(
+                        name = %self.config.name,
+                        "RemoteVerified MCP server has no explicit TLS overrides; using system roots"
+                    );
+                }
+
+                Ok(())
+            }
+        }
+    }
+
+    fn validate_tls_config(&self, host: &str, tls: &McpTlsConfig) -> Result<(), ToolError> {
+        if let Some(server_name) = &tls.server_name
+            && server_name != host
+        {
+            return Err(ToolError::McpError(format!(
+                "MCP server '{}' server_name '{}' does not match URL host '{}'",
+                self.config.name, server_name, host
+            )));
+        }
+
+        if tls.require_mtls && (tls.client_cert_file.is_none() || tls.client_key_file.is_none()) {
+            return Err(ToolError::McpError(format!(
+                "MCP server '{}' requires mTLS but client cert/key is missing",
+                self.config.name
+            )));
+        }
+
+        Ok(())
+    }
+
+    fn build_sse_client(
+        &self,
+        _url: &str,
+        _trust_class: McpTrustClass,
+    ) -> Result<reqwest::Client, ToolError> {
+        let mut builder = reqwest::Client::builder();
+
+        if let Some(tls) = &self.config.tls {
+            if let Some(ca_file) = &tls.ca_file {
+                let pem = fs::read(ca_file).map_err(|e| {
+                    ToolError::McpError(format!(
+                        "Failed to read CA file for MCP server '{}': {e}",
+                        self.config.name
+                    ))
+                })?;
+                let cert = Certificate::from_pem(&pem).map_err(|e| {
+                    ToolError::McpError(format!(
+                        "Failed to parse CA file for MCP server '{}': {e}",
+                        self.config.name
+                    ))
+                })?;
+                builder = builder.add_root_certificate(cert);
+            }
+
+            if let (Some(cert_file), Some(key_file)) = (&tls.client_cert_file, &tls.client_key_file)
+            {
+                let mut pem = fs::read(cert_file).map_err(|e| {
+                    ToolError::McpError(format!(
+                        "Failed to read client cert for MCP server '{}': {e}",
+                        self.config.name
+                    ))
+                })?;
+                let key = fs::read(key_file).map_err(|e| {
+                    ToolError::McpError(format!(
+                        "Failed to read client key for MCP server '{}': {e}",
+                        self.config.name
+                    ))
+                })?;
+                pem.extend(key);
+                let identity = Identity::from_pem(&pem).map_err(|e| {
+                    ToolError::McpError(format!(
+                        "Failed to parse client identity for MCP server '{}': {e}",
+                        self.config.name
+                    ))
+                })?;
+                builder = builder.identity(identity);
+            }
+        }
+
+        builder.build().map_err(|e| {
+            ToolError::McpError(format!(
+                "Failed to build HTTP client for MCP server '{}': {e}",
+                self.config.name
+            ))
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    fn registry() -> Arc<ToolRegistry> {
+        Arc::new(ToolRegistry::new())
+    }
+
+    #[test]
+    fn remote_verified_requires_https() {
+        let client = McpClient::new(
+            McpServerConfig {
+                name: "remote".to_string(),
+                transport: McpTransport::Sse {
+                    url: "http://example.com/mcp".to_string(),
+                },
+                env: HashMap::new(),
+                trust_class: Some(McpTrustClass::RemoteVerified),
+                tls: None,
+                approval_policy: None,
+                allowed_in_modes: vec![],
+            },
+            registry(),
+        );
+        assert!(client.validate_config().is_err());
+    }
+
+    #[test]
+    fn local_trusted_remote_host_is_rejected() {
+        let client = McpClient::new(
+            McpServerConfig {
+                name: "remote".to_string(),
+                transport: McpTransport::Sse {
+                    url: "https://example.com/mcp".to_string(),
+                },
+                env: HashMap::new(),
+                trust_class: Some(McpTrustClass::LocalTrusted),
+                tls: None,
+                approval_policy: None,
+                allowed_in_modes: vec![],
+            },
+            registry(),
+        );
+        assert!(client.validate_config().is_err());
+    }
 }
 
 struct McpProxyTool {
@@ -303,6 +489,7 @@ struct McpProxyTool {
     tool_name: String,
     tool_description: String,
     tool_schema: serde_json::Value,
+    trust_requirement: String,
     client_connection: Arc<Mutex<Option<McpConnection>>>,
     request_id: Arc<Mutex<u64>>,
 }
@@ -319,7 +506,7 @@ impl VilTool for McpProxyTool {
         self.tool_schema.clone()
     }
     fn trust_requirement(&self) -> &str {
-        "trusted"
+        &self.trust_requirement
     }
     fn risk_level(&self) -> &str {
         "medium"

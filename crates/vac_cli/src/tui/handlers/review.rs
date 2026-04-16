@@ -93,7 +93,13 @@ pub fn revert_filtered(ctx: &mut HandlerContext) -> HandlerResult {
         .state
         .review_filtered_paths()
         .into_iter()
-        .filter(|p| ctx.state.changeset_store.active_entries().iter().any(|e| &e.path == p))
+        .filter(|p| {
+            ctx.state
+                .changeset_store
+                .active_entries()
+                .iter()
+                .any(|e| &e.path == p)
+        })
         .collect();
 
     if files.is_empty() {
@@ -132,11 +138,8 @@ pub fn revert_filtered(ctx: &mut HandlerContext) -> HandlerResult {
     }
     ctx.state.modified_files = ctx.state.changeset_store.modified_files();
 
-    ctx.state.add_assistant_message(format!(
-        "Reverted {}/{} files.",
-        success_count,
-        files.len()
-    ));
+    ctx.state
+        .add_assistant_message(format!("Reverted {}/{} files.", success_count, files.len()));
     ctx.state.push_activity(
         ActivityKind::Review,
         format!("Reverted filtered: {success_count}/{}", files.len()),
@@ -189,11 +192,8 @@ pub fn revert_all(ctx: &mut HandlerContext) -> HandlerResult {
     ctx.state.review_diff = None;
     ctx.state.review_selected_idx = 0;
     ctx.state.review_selected_path = None;
-    ctx.state.add_assistant_message(format!(
-        "Reverted {}/{} files.",
-        success_count,
-        files.len()
-    ));
+    ctx.state
+        .add_assistant_message(format!("Reverted {}/{} files.", success_count, files.len()));
     ctx.state.push_activity(
         ActivityKind::Review,
         format!("Reverted all: {success_count}/{}", files.len()),
@@ -292,9 +292,12 @@ pub fn scroll_down(ctx: &mut HandlerContext, step: usize) -> HandlerResult {
 /// Open selected file in external editor.
 pub fn open_editor(ctx: &mut HandlerContext) -> HandlerResult {
     use crossterm::{
-        execute,
-        terminal::{Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
         event::{EnableBracketedPaste, EnableMouseCapture},
+        execute,
+        terminal::{
+            Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode,
+            enable_raw_mode,
+        },
     };
 
     let Some(path) = ctx.state.review_selected_path.clone() else {
@@ -304,7 +307,11 @@ pub fn open_editor(ctx: &mut HandlerContext) -> HandlerResult {
     let preferred = std::env::var("VAC_EDITOR")
         .ok()
         .filter(|s| !s.trim().is_empty())
-        .or_else(|| std::env::var("EDITOR").ok().filter(|s| !s.trim().is_empty()))
+        .or_else(|| {
+            std::env::var("EDITOR")
+                .ok()
+                .filter(|s| !s.trim().is_empty())
+        })
         .and_then(|s| s.split_whitespace().next().map(|t| t.to_string()));
 
     let Some(editor) = review::detect_editor(preferred) else {
@@ -314,7 +321,8 @@ pub fn open_editor(ctx: &mut HandlerContext) -> HandlerResult {
         return Ok(());
     };
 
-    ctx.state.push_activity(ActivityKind::Review, format!("Open editor: {path}"));
+    ctx.state
+        .push_activity(ActivityKind::Review, format!("Open editor: {path}"));
 
     let _ = disable_raw_mode();
     let _ = execute!(std::io::stdout(), LeaveAlternateScreen);

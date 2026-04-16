@@ -18,7 +18,9 @@ pub fn build_file_index(project_root: &Path) -> Vec<String> {
 
     for entry in walker {
         let Ok(entry) = entry else { continue };
-        let Some(ft) = entry.file_type() else { continue };
+        let Some(ft) = entry.file_type() else {
+            continue;
+        };
         if !ft.is_file() {
             continue;
         }
@@ -52,7 +54,11 @@ pub fn fuzzy_search_files(query: &str, files: &[String], max_matches: usize) -> 
         Normalization::Smart,
         AtomKind::Fuzzy,
     );
-    let mut best = BestMatchesList::new(max_matches, pattern, Matcher::new(nucleo_matcher::Config::DEFAULT));
+    let mut best = BestMatchesList::new(
+        max_matches,
+        pattern,
+        Matcher::new(nucleo_matcher::Config::DEFAULT),
+    );
     for f in files {
         best.insert(f);
     }
@@ -86,7 +92,7 @@ impl BestMatchesList {
                 self.binary_heap
                     .push(Reverse((score, file_path.to_string())));
             } else if let Some(min_element) = self.binary_heap.peek()
-                && score > min_element.0 .0
+                && score > min_element.0.0
             {
                 self.binary_heap.pop();
                 self.binary_heap
@@ -105,10 +111,6 @@ impl BestMatchesList {
             std::cmp::Ordering::Equal => a.1.cmp(&b.1),
             other => other,
         });
-        sorted_matches
-            .into_iter()
-            .map(|(_, path)| path)
-            .collect()
+        sorted_matches.into_iter().map(|(_, path)| path).collect()
     }
 }
-

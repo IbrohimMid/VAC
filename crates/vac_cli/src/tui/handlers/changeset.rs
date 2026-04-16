@@ -54,8 +54,8 @@ pub fn close(ctx: &mut HandlerContext) -> HandlerResult {
 pub fn select_next(ctx: &mut HandlerContext) -> HandlerResult {
     let entries = ctx.state.changeset_store.active_entries();
     if !entries.is_empty() {
-        ctx.state.changeset_selected_idx = (ctx.state.changeset_selected_idx + 1)
-            .min(entries.len().saturating_sub(1));
+        ctx.state.changeset_selected_idx =
+            (ctx.state.changeset_selected_idx + 1).min(entries.len().saturating_sub(1));
         load_diff_for_selected(ctx)?;
     }
     Ok(())

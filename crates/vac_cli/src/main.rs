@@ -99,6 +99,11 @@ enum Commands {
         #[command(subcommand)]
         action: RuntimeAction,
     },
+    /// Execution boundary and isolation management
+    Isolation {
+        #[command(subcommand)]
+        action: IsolationAction,
+    },
     /// Autopilot daemon — 24/7 autonomous runtime with VIL policy enforcement
     Autopilot {
         #[command(subcommand)]
@@ -169,6 +174,22 @@ enum RuntimeAction {
     Inspect {
         /// The UUID of the job to inspect
         id: uuid::Uuid,
+    },
+}
+
+#[derive(Subcommand)]
+enum IsolationAction {
+    /// Show effective isolation configuration
+    Status,
+    /// Print isolation log
+    Logs,
+    /// Run a command inside the configured isolated environment
+    Run {
+        /// Force TTY on or off. If omitted, VAC infers from execution_environment.
+        #[arg(long)]
+        tty: Option<bool>,
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        command: Vec<String>,
     },
 }
 
@@ -262,6 +283,15 @@ async fn main() -> anyhow::Result<()> {
             }
             RuntimeAction::Inspect { id } => {
                 commands::runtime::execute_inspect(project_root, id, &cli.format).await?
+            }
+        },
+        Commands::Isolation { action } => match action {
+            IsolationAction::Status => {
+                commands::isolation::execute_status(project_root, &cli.format).await?
+            }
+            IsolationAction::Logs => commands::isolation::execute_logs(project_root).await?,
+            IsolationAction::Run { tty, command } => {
+                commands::isolation::execute_run(project_root, command, tty).await?
             }
         },
         Commands::Autopilot { action } => match action {

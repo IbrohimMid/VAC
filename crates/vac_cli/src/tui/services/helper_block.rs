@@ -74,6 +74,26 @@ pub fn vac_commands() -> Vec<HelperCommand> {
             description: "Show runtime status".to_string(),
             source: CommandSource::BuiltIn,
         },
+        HelperCommand {
+            command: "/shell".to_string(),
+            description: "Run interactive shell command".to_string(),
+            source: CommandSource::BuiltIn,
+        },
+        HelperCommand {
+            command: "/shell-focus".to_string(),
+            description: "Refocus background shell".to_string(),
+            source: CommandSource::BuiltIn,
+        },
+        HelperCommand {
+            command: "/shell-bg".to_string(),
+            description: "Background active shell".to_string(),
+            source: CommandSource::BuiltIn,
+        },
+        HelperCommand {
+            command: "/shell-kill".to_string(),
+            description: "Terminate active shell".to_string(),
+            source: CommandSource::BuiltIn,
+        },
         // Session commands
         HelperCommand {
             command: "/clear".to_string(),

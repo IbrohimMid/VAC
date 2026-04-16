@@ -16,6 +16,17 @@ use super::{
 /// Shared handle to the active task's update channel for structured approval routing.
 type ActiveUpdateTx = Arc<Mutex<Option<mpsc::UnboundedSender<RuntimeUpdate>>>>;
 
+async fn load_runtime_jobs(project_root: &std::path::Path) -> Vec<vac_runtime::Job> {
+    vac_runtime::TaskQueue::with_storage(project_root.join(".vac/queue.json"))
+        .list()
+        .await
+}
+
+fn load_runtime_state(project_root: &std::path::Path) -> Option<vac_runtime::AutopilotStateFile> {
+    let content = std::fs::read_to_string(project_root.join(".vac/autopilot.state")).ok()?;
+    serde_json::from_str(&content).ok()
+}
+
 async fn resume_session_into_tui(
     engine: Arc<Mutex<VacEngine>>,
     active_update_tx: ActiveUpdateTx,
@@ -38,7 +49,9 @@ async fn resume_session_into_tui(
             Ok(status) => status.project_root,
             Err(e) => {
                 let _ = input_tx
-                    .send(InputEvent::Error(format!("Failed to read engine status: {e}")))
+                    .send(InputEvent::Error(format!(
+                        "Failed to read engine status: {e}"
+                    )))
                     .await;
                 return;
             }
@@ -59,8 +72,7 @@ async fn resume_session_into_tui(
         .await;
 
     tokio::spawn(async move {
-        let (update_tx, mut update_rx) =
-            tokio::sync::mpsc::unbounded_channel::<RuntimeUpdate>();
+        let (update_tx, mut update_rx) = tokio::sync::mpsc::unbounded_channel::<RuntimeUpdate>();
         let input_tx_inner = input_tx.clone();
         let stream_uuid = uuid::Uuid::new_v4();
 
@@ -76,7 +88,8 @@ async fn resume_session_into_tui(
 
         let result = {
             let mut eng = engine.lock().await;
-            eng.resume_run_state(uuid, Some(update_tx), None, None).await
+            eng.resume_run_state(uuid, Some(update_tx), None, None)
+                .await
         };
 
         *active_update_tx.lock().await = None;
@@ -255,6 +268,7 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
     let input_tx_clone = input_tx.clone();
     let active_update_tx_clone = active_update_tx.clone();
     let approvals = approvals.clone();
+    let runtime_project_root = project_root.clone();
     tokio::spawn(async move {
         while let Some(event) = output_rx.recv().await {
             match event {
@@ -328,37 +342,106 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                     }
                 }
                 OutputEvent::ExecuteCommand(cmd) => {
-                    let msg = format!("Execute command: {}", cmd);
-                    let engine = engine_clone.clone();
                     let input_tx = input_tx_clone.clone();
-
-                    let _ = input_tx
-                        .send(InputEvent::StartLoadingOperation(
-                            LoadingOperation::LlmRequest,
-                        ))
-                        .await;
-
-                    tokio::spawn(async move {
-                        let (update_tx, mut update_rx) = mpsc::unbounded_channel::<RuntimeUpdate>();
-                        let input_tx_inner = input_tx.clone();
-                        let stream_uuid = uuid::Uuid::new_v4();
-
-                        tokio::spawn(async move {
-                            let mut active_tools: HashMap<String, ToolCall> = HashMap::new();
-                            while let Some(update) = update_rx.recv().await {
-                                handle_runtime_update(
-                                    update,
-                                    &input_tx_inner,
-                                    stream_uuid,
-                                    &mut active_tools,
-                                )
-                                .await;
+                    let (cols, rows) = crossterm::terminal::size().unwrap_or((120, 32));
+                    let rows = rows.saturating_sub(8).max(8);
+                    let cols = cols.saturating_sub(4).max(40);
+                    let shell_spec =
+                        match vac_core::VacConfig::load_with_fallback(&runtime_project_root) {
+                            Ok(config)
+                                if config.runtime.execution_environment
+                                    == vac_core::ExecutionEnvironment::IsolatedInteractive =>
+                            {
+                                let isolation = vac_runtime::IsolationManager::new(
+                                    runtime_project_root.clone(),
+                                    config.runtime.clone(),
+                                );
+                                match isolation.build_interactive_shell_spec() {
+                                    Ok(spec) => Some(spec),
+                                    Err(err) => {
+                                        let _ = input_tx
+                                            .send(InputEvent::ShellError(format!(
+                                                "Failed to prepare isolated shell: {err}"
+                                            )))
+                                            .await;
+                                        continue;
+                                    }
+                                }
                             }
-                        });
+                            Ok(config)
+                                if config.runtime.execution_environment
+                                    == vac_core::ExecutionEnvironment::IsolatedBatch =>
+                            {
+                                let _ = input_tx
+                                .send(InputEvent::ShellError(
+                                    "Shell is disabled for execution_environment=isolated_batch"
+                                        .to_string(),
+                                ))
+                                .await;
+                                continue;
+                            }
+                            Ok(_) => None,
+                            Err(err) => {
+                                let _ = input_tx
+                                    .send(InputEvent::ShellError(format!(
+                                        "Failed to load runtime config for shell: {err}"
+                                    )))
+                                    .await;
+                                continue;
+                            }
+                        };
 
-                        let mut eng = engine.lock().await;
-                        let _ = eng.run_task_with_updates(&msg, Some(update_tx)).await;
-                    });
+                    let shell_result = crate::tui::services::run_pty_command(
+                        cmd.clone(),
+                        shell_spec,
+                        {
+                            let (shell_tx, mut shell_rx) = tokio::sync::mpsc::channel(100);
+                            let input_tx_inner = input_tx.clone();
+                            tokio::spawn(async move {
+                                while let Some(event) = shell_rx.recv().await {
+                                    match event {
+                                        crate::tui::services::ShellEvent::Output(text) => {
+                                            let _ = input_tx_inner
+                                                .send(InputEvent::ShellOutput(text))
+                                                .await;
+                                        }
+                                        crate::tui::services::ShellEvent::Error(text) => {
+                                            let _ = input_tx_inner
+                                                .send(InputEvent::ShellError(text))
+                                                .await;
+                                        }
+                                        crate::tui::services::ShellEvent::Completed(code) => {
+                                            let _ = input_tx_inner
+                                                .send(InputEvent::ShellCompleted(code))
+                                                .await;
+                                        }
+                                        crate::tui::services::ShellEvent::WaitingForInput => {
+                                            let _ = input_tx_inner
+                                                .send(InputEvent::ShellWaitingForInput)
+                                                .await;
+                                        }
+                                    }
+                                }
+                            });
+                            shell_tx
+                        },
+                        rows,
+                        cols,
+                    )
+                    .map_err(|err| err.to_string());
+
+                    match shell_result {
+                        Ok(shell) => {
+                            let _ = input_tx.send(InputEvent::ShellStarted(shell)).await;
+                        }
+                        Err(err_msg) => {
+                            let _ = input_tx
+                                .send(InputEvent::ShellError(format!(
+                                    "Failed to start shell: {err_msg}"
+                                )))
+                                .await;
+                        }
+                    }
                 }
                 OutputEvent::ListSessions => {
                     let eng = engine_clone.lock().await;
@@ -368,7 +451,8 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                             .map(|s| {
                                 let id_str = s.id.to_string();
                                 let checkpoint_dir = std::path::Path::new(".vac/checkpoints");
-                                let state_file = checkpoint_dir.join(format!("{}_state.json", id_str));
+                                let state_file =
+                                    checkpoint_dir.join(format!("{}_state.json", id_str));
                                 let has_checkpoint = state_file.exists();
                                 // Collect checkpoint files for this session (sorted newest first)
                                 let checkpoints: Vec<String> = if checkpoint_dir.exists() {
@@ -377,9 +461,7 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                                         .flatten()
                                         .flatten()
                                         .filter(|e| {
-                                            e.file_name()
-                                                .to_string_lossy()
-                                                .starts_with(&id_str)
+                                            e.file_name().to_string_lossy().starts_with(&id_str)
                                         })
                                         .filter_map(|e| {
                                             let name = e.file_name().to_string_lossy().to_string();
@@ -392,7 +474,8 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                                 } else {
                                     vec![]
                                 };
-                                let last_activity = s.updated_at.format("%Y-%m-%d %H:%M").to_string();
+                                let last_activity =
+                                    s.updated_at.format("%Y-%m-%d %H:%M").to_string();
                                 crate::tui::app::SessionInfo {
                                     id: id_str.clone(),
                                     title: format!("Session {}", &id_str[..8]),
@@ -410,6 +493,52 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                     } else {
                         let _ = input_tx_clone.send(InputEvent::SetSessions(vec![])).await;
                     }
+                }
+                OutputEvent::ListRuntimeJobs => {
+                    let jobs = load_runtime_jobs(&runtime_project_root).await;
+                    let _ = input_tx_clone.send(InputEvent::SetRuntimeJobs(jobs)).await;
+                }
+                OutputEvent::LoadRuntimeState => {
+                    let snapshot = load_runtime_state(&runtime_project_root);
+                    let _ = input_tx_clone
+                        .send(InputEvent::SetRuntimeState(snapshot))
+                        .await;
+                }
+                OutputEvent::CancelRuntimeJob(id) => {
+                    let queue = vac_runtime::TaskQueue::with_storage(
+                        runtime_project_root.join(".vac/queue.json"),
+                    );
+                    let cancelled = queue.cancel(id).await;
+                    let toast = if cancelled {
+                        crate::tui::services::Toast::success(format!("Cancelled job {}", id))
+                    } else {
+                        crate::tui::services::Toast::error(format!("Failed to cancel job {}", id))
+                    };
+                    let jobs = load_runtime_jobs(&runtime_project_root).await;
+                    let snapshot = load_runtime_state(&runtime_project_root);
+                    let _ = input_tx_clone.send(InputEvent::SetRuntimeJobs(jobs)).await;
+                    let _ = input_tx_clone
+                        .send(InputEvent::SetRuntimeState(snapshot))
+                        .await;
+                    let _ = input_tx_clone.send(InputEvent::ShowToast(toast)).await;
+                }
+                OutputEvent::RetryRuntimeJob(id) => {
+                    let queue = vac_runtime::TaskQueue::with_storage(
+                        runtime_project_root.join(".vac/queue.json"),
+                    );
+                    let retried = queue.retry(id).await;
+                    let toast = if retried {
+                        crate::tui::services::Toast::success(format!("Retried job {}", id))
+                    } else {
+                        crate::tui::services::Toast::error(format!("Failed to retry job {}", id))
+                    };
+                    let jobs = load_runtime_jobs(&runtime_project_root).await;
+                    let snapshot = load_runtime_state(&runtime_project_root);
+                    let _ = input_tx_clone.send(InputEvent::SetRuntimeJobs(jobs)).await;
+                    let _ = input_tx_clone
+                        .send(InputEvent::SetRuntimeState(snapshot))
+                        .await;
+                    let _ = input_tx_clone.send(InputEvent::ShowToast(toast)).await;
                 }
                 OutputEvent::NewSession => {
                     let eng = engine_clone.lock().await;
@@ -516,13 +645,7 @@ mod tests {
         let active_update_tx: ActiveUpdateTx = Arc::new(Mutex::new(None));
 
         let (input_tx, mut input_rx) = mpsc::channel::<InputEvent>(8);
-        resume_session_into_tui(
-            engine,
-            active_update_tx,
-            input_tx,
-            "not-a-uuid".to_string(),
-        )
-        .await;
+        resume_session_into_tui(engine, active_update_tx, input_tx, "not-a-uuid".to_string()).await;
 
         let ev = timeout(std::time::Duration::from_secs(1), input_rx.recv())
             .await

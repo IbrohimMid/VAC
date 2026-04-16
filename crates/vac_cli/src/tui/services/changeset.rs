@@ -118,7 +118,8 @@ impl ChangesetStore {
             entry.last_error = None;
         } else {
             // Create entry if file not tracked yet (edge case: manual revert)
-            let mut entry = ChangesetEntry::new(path.to_string(), FileState::Reverted, "manual".to_string());
+            let mut entry =
+                ChangesetEntry::new(path.to_string(), FileState::Reverted, "manual".to_string());
             entry.dirty_generation = self.generation;
             self.entries.push(entry);
         }
@@ -134,7 +135,11 @@ impl ChangesetStore {
             entry.last_error = Some(error);
         } else {
             // Create entry if file not tracked yet (edge case: manual revert)
-            let mut entry = ChangesetEntry::new(path.to_string(), FileState::FailedRestore, "manual".to_string());
+            let mut entry = ChangesetEntry::new(
+                path.to_string(),
+                FileState::FailedRestore,
+                "manual".to_string(),
+            );
             entry.dirty_generation = self.generation;
             entry.last_error = Some(error);
             self.entries.push(entry);
@@ -150,7 +155,12 @@ impl ChangesetStore {
     pub fn active_entries(&self) -> Vec<&ChangesetEntry> {
         self.entries
             .iter()
-            .filter(|e| matches!(e.state, FileState::Created | FileState::Modified | FileState::Removed))
+            .filter(|e| {
+                matches!(
+                    e.state,
+                    FileState::Created | FileState::Modified | FileState::Removed
+                )
+            })
             .collect()
     }
 
@@ -158,7 +168,9 @@ impl ChangesetStore {
     pub fn reviewable_entries(&self) -> Vec<&ChangesetEntry> {
         self.entries
             .iter()
-            .filter(|e| e.has_snapshot && matches!(e.state, FileState::Created | FileState::Modified))
+            .filter(|e| {
+                e.has_snapshot && matches!(e.state, FileState::Created | FileState::Modified)
+            })
             .collect()
     }
 
@@ -195,7 +207,6 @@ pub fn build_changeset(modified_files: &[String]) -> Vec<ChangesetEntry> {
         .collect()
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -204,7 +215,7 @@ mod tests {
     fn test_file_created() {
         let mut store = ChangesetStore::new();
         store.file_created("src/main.rs".to_string(), "agent".to_string());
-        
+
         let entries = store.entries();
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].path, "src/main.rs");
@@ -216,7 +227,7 @@ mod tests {
     fn test_file_modified() {
         let mut store = ChangesetStore::new();
         store.file_modified("src/lib.rs".to_string(), "agent".to_string(), true);
-        
+
         let entries = store.entries();
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].path, "src/lib.rs");
@@ -229,7 +240,7 @@ mod tests {
         let mut store = ChangesetStore::new();
         store.file_created("test.rs".to_string(), "agent".to_string());
         store.file_modified("test.rs".to_string(), "agent".to_string(), true);
-        
+
         let entries = store.entries();
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].state, FileState::Created);
@@ -240,7 +251,7 @@ mod tests {
         let mut store = ChangesetStore::new();
         store.file_modified("test.rs".to_string(), "agent".to_string(), true);
         store.revert_success("test.rs");
-        
+
         let entries = store.entries();
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].state, FileState::Reverted);
@@ -252,7 +263,7 @@ mod tests {
         let mut store = ChangesetStore::new();
         store.file_modified("test.rs".to_string(), "agent".to_string(), true);
         store.revert_failed("test.rs", "Permission denied".to_string());
-        
+
         let entries = store.entries();
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].state, FileState::FailedRestore);
@@ -263,7 +274,7 @@ mod tests {
     fn test_file_removed() {
         let mut store = ChangesetStore::new();
         store.file_removed("old.rs".to_string(), "agent".to_string());
-        
+
         let entries = store.entries();
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].state, FileState::Removed);
@@ -277,7 +288,7 @@ mod tests {
         store.file_removed("c.rs".to_string(), "agent".to_string());
         store.file_modified("d.rs".to_string(), "agent".to_string(), false);
         store.revert_success("d.rs");
-        
+
         let modified = store.modified_files();
         assert_eq!(modified.len(), 2);
         assert!(modified.contains(&"a.rs".to_string()));
@@ -288,13 +299,13 @@ mod tests {
     fn test_generation_increments() {
         let mut store = ChangesetStore::new();
         assert_eq!(store.generation, 0);
-        
+
         store.file_created("a.rs".to_string(), "agent".to_string());
         assert_eq!(store.generation, 1);
-        
+
         store.file_modified("b.rs".to_string(), "agent".to_string(), true);
         assert_eq!(store.generation, 2);
-        
+
         store.revert_success("a.rs");
         assert_eq!(store.generation, 3);
     }
@@ -304,7 +315,7 @@ mod tests {
         let mut store = ChangesetStore::new();
         store.file_created("a.rs".to_string(), "agent".to_string());
         store.file_modified("b.rs".to_string(), "agent".to_string(), true);
-        
+
         store.clear();
         assert_eq!(store.entries().len(), 0);
         assert_eq!(store.generation, 0);
@@ -314,7 +325,7 @@ mod tests {
     fn test_revert_success_creates_entry_if_not_tracked() {
         let mut store = ChangesetStore::new();
         store.revert_success("untracked.rs");
-        
+
         let entries = store.entries();
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].path, "untracked.rs");
@@ -326,7 +337,7 @@ mod tests {
     fn test_revert_failed_creates_entry_if_not_tracked() {
         let mut store = ChangesetStore::new();
         store.revert_failed("untracked.rs", "File not found".to_string());
-        
+
         let entries = store.entries();
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].path, "untracked.rs");

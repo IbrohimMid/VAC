@@ -23,6 +23,13 @@ pub enum InputEvent {
     AvailableModelsLoaded(Vec<Model>),
     ShowToast(Toast),
     SetSessions(Vec<SessionInfo>),
+    SetRuntimeJobs(Vec<vac_runtime::Job>),
+    SetRuntimeState(Option<vac_runtime::AutopilotStateFile>),
+    ShellStarted(crate::tui::services::ShellCommand),
+    ShellOutput(String),
+    ShellError(String),
+    ShellCompleted(i32),
+    ShellWaitingForInput,
     SessionRestored {
         id: String,
         title: String,
@@ -113,6 +120,9 @@ pub enum InputEvent {
     ToggleSidePanel,
     AutoApproveCurrentTool,
     ShowProfileSwitcher,
+    BackgroundShell,
+    FocusShell,
+    ShellKill,
     MouseDragStart(u16, u16),
     MouseDrag(u16, u16),
     MouseDragEnd(u16, u16),
@@ -137,6 +147,13 @@ impl InputEvent {
                 | InputEvent::AvailableModelsLoaded(_)
                 | InputEvent::ShowToast(_)
                 | InputEvent::SetSessions(_)
+                | InputEvent::SetRuntimeJobs(_)
+                | InputEvent::SetRuntimeState(_)
+                | InputEvent::ShellStarted(_)
+                | InputEvent::ShellOutput(_)
+                | InputEvent::ShellError(_)
+                | InputEvent::ShellCompleted(_)
+                | InputEvent::ShellWaitingForInput
                 | InputEvent::SessionRestored { .. }
                 | InputEvent::AddUserMessage(_)
         )
@@ -155,6 +172,10 @@ pub enum OutputEvent {
     RejectTool(ToolCall, bool, Option<String>),
     SwitchToModel(Model),
     ListSessions,
+    ListRuntimeJobs,
+    LoadRuntimeState,
+    CancelRuntimeJob(uuid::Uuid),
+    RetryRuntimeJob(uuid::Uuid),
     SwitchToSession(String),
     NewSession,
     ResumeSession(String),

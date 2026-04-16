@@ -43,10 +43,8 @@ pub fn approve_current(ctx: &mut HandlerContext) -> HandlerResult {
 
         let tool_name = tc.function.name.clone();
         let _ = ctx.output_tx.try_send(OutputEvent::AcceptTool(tc));
-        ctx.state.push_activity(
-            ActivityKind::Approval,
-            format!("Approved: {}", tool_name),
-        );
+        ctx.state
+            .push_activity(ActivityKind::Approval, format!("Approved: {}", tool_name));
         ctx.state
             .toasts
             .push(Toast::success(format!("Approved: {}", tool_name)));
@@ -68,11 +66,11 @@ pub fn reject_current(ctx: &mut HandlerContext) -> HandlerResult {
         ctx.state.approval_normalize_selection();
 
         let tool_name = tc.function.name.clone();
-        let _ = ctx.output_tx.try_send(OutputEvent::RejectTool(tc, false, None));
-        ctx.state.push_activity(
-            ActivityKind::Approval,
-            format!("Rejected: {}", tool_name),
-        );
+        let _ = ctx
+            .output_tx
+            .try_send(OutputEvent::RejectTool(tc, false, None));
+        ctx.state
+            .push_activity(ActivityKind::Approval, format!("Rejected: {}", tool_name));
         ctx.state
             .toasts
             .push(Toast::error(format!("Rejected: {}", tool_name)));
@@ -91,10 +89,13 @@ pub fn approve_all(ctx: &mut HandlerContext) -> HandlerResult {
         let tool_name = tc.function.name.clone();
         let _ = ctx.output_tx.try_send(OutputEvent::AcceptTool(tc.clone()));
         ctx.state.approved_tools.push(tc);
-        ctx.state.push_activity(ActivityKind::Approval, format!("Approved: {}", tool_name));
+        ctx.state
+            .push_activity(ActivityKind::Approval, format!("Approved: {}", tool_name));
     }
     ctx.state.approval_selected_idx = 0;
-    ctx.state.toasts.push(Toast::success("All tools approved".to_string()));
+    ctx.state
+        .toasts
+        .push(Toast::success("All tools approved".to_string()));
     Ok(())
 }
 
@@ -136,9 +137,14 @@ pub fn confirm_reject_current(ctx: &mut HandlerContext) -> HandlerResult {
         ctx.state.rejected_tools.push(tc.clone());
         ctx.state.approval_normalize_selection();
         let tool_name = tc.function.name.clone();
-        let _ = ctx.output_tx.try_send(OutputEvent::RejectTool(tc, false, reason));
-        ctx.state.push_activity(ActivityKind::Approval, format!("Rejected: {}", tool_name));
-        ctx.state.toasts.push(Toast::error(format!("Rejected: {}", tool_name)));
+        let _ = ctx
+            .output_tx
+            .try_send(OutputEvent::RejectTool(tc, false, reason));
+        ctx.state
+            .push_activity(ActivityKind::Approval, format!("Rejected: {}", tool_name));
+        ctx.state
+            .toasts
+            .push(Toast::error(format!("Rejected: {}", tool_name)));
     }
     Ok(())
 }
@@ -153,12 +159,17 @@ pub fn confirm_reject_all(ctx: &mut HandlerContext) -> HandlerResult {
     for tc in tools {
         ctx.state.approval_explanations.remove(&tc.id);
         let tool_name = tc.function.name.clone();
-        let _ = ctx.output_tx.try_send(OutputEvent::RejectTool(tc.clone(), false, reason.clone()));
+        let _ = ctx
+            .output_tx
+            .try_send(OutputEvent::RejectTool(tc.clone(), false, reason.clone()));
         ctx.state.rejected_tools.push(tc);
-        ctx.state.push_activity(ActivityKind::Approval, format!("Rejected: {}", tool_name));
+        ctx.state
+            .push_activity(ActivityKind::Approval, format!("Rejected: {}", tool_name));
     }
     ctx.state.approval_selected_idx = 0;
-    ctx.state.toasts.push(Toast::error("All tools rejected".to_string()));
+    ctx.state
+        .toasts
+        .push(Toast::error("All tools rejected".to_string()));
     Ok(())
 }
 
@@ -176,14 +187,17 @@ pub fn toggle_auto_approve(ctx: &mut HandlerContext) -> HandlerResult {
     Ok(())
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::tui::app::{AppState, AppStateOptions, OutputEvent};
     use tokio::sync::mpsc;
 
-    fn create_test_context() -> (AppState, mpsc::Sender<OutputEvent>, mpsc::Receiver<OutputEvent>) {
+    fn create_test_context() -> (
+        AppState,
+        mpsc::Sender<OutputEvent>,
+        mpsc::Receiver<OutputEvent>,
+    ) {
         let state = AppState::new(AppStateOptions {
             model: None,
             session_id: Some(uuid::Uuid::new_v4().to_string()),
@@ -198,9 +212,12 @@ mod tests {
     fn test_open_approval() {
         let (mut state, tx, _rx) = create_test_context();
         let mut ctx = HandlerContext::new(&mut state, &tx);
-        
+
         assert!(open(&mut ctx).is_ok());
-        assert_eq!(ctx.state.workbench_tab, crate::tui::app::WorkbenchTab::Approvals);
+        assert_eq!(
+            ctx.state.workbench_tab,
+            crate::tui::app::WorkbenchTab::Approvals
+        );
         assert_eq!(ctx.state.focus, crate::tui::app::WorkspaceFocus::Workbench);
     }
 
@@ -208,11 +225,11 @@ mod tests {
     fn test_toggle_auto_approve() {
         let (mut state, tx, _rx) = create_test_context();
         let mut ctx = HandlerContext::new(&mut state, &tx);
-        
+
         let initial = ctx.state.auto_approve;
         assert!(toggle_auto_approve(&mut ctx).is_ok());
         assert_eq!(ctx.state.auto_approve, !initial);
-        
+
         assert!(toggle_auto_approve(&mut ctx).is_ok());
         assert_eq!(ctx.state.auto_approve, initial);
     }
@@ -221,7 +238,7 @@ mod tests {
     fn test_select_next_empty_queue() {
         let (mut state, tx, _rx) = create_test_context();
         let mut ctx = HandlerContext::new(&mut state, &tx);
-        
+
         assert!(select_next(&mut ctx).is_ok());
         assert_eq!(ctx.state.approval_selected_idx, 0);
     }

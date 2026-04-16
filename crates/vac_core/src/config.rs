@@ -237,6 +237,7 @@ impl VacConfig {
             .map_err(|e| crate::VacError::Config(format!("Failed to read config: {e}")))?;
         let config: Self = toml::from_str(&content)
             .map_err(|e| crate::VacError::Config(format!("Failed to parse config: {e}")))?;
+        config.validate()?;
         Ok(config)
     }
 
@@ -256,7 +257,13 @@ impl VacConfig {
             }
         }
 
-        Ok(Self::default().resolve_relative_paths(project_root))
+        let config = Self::default();
+        config.validate()?;
+        Ok(config.resolve_relative_paths(project_root))
+    }
+
+    pub fn validate(&self) -> crate::error::VacResult<()> {
+        self.runtime.validate()
     }
 }
 
@@ -394,15 +401,53 @@ pub struct RuntimeConfig {
     #[serde(default)]
     pub enable: bool,
     /// "monitor-only" | "suggest-only" | "patch-proposal" | "auto-fix-low-risk"
-    #[serde(default = "default_operating_mode")]
-    pub operating_mode: String,
+    #[serde(default = "default_task_intent_mode", alias = "operating_mode")]
+    pub task_intent_mode: String,
+    /// "host" | "isolated" | "trusted-networked" | "restricted-offline"
+    #[serde(default = "default_environment_mode")]
+    pub environment_mode: String,
+    #[serde(default)]
+    pub execution_environment: ExecutionEnvironment,
+    #[serde(default)]
+    pub container_runtime: Option<String>,
+    #[serde(default)]
+    pub container_image: Option<String>,
+    #[serde(default)]
+    pub allowed_mounts: Vec<String>,
+    #[serde(default)]
+    pub allowed_env: Vec<String>,
+    #[serde(default)]
+    pub network_policy: NetworkPolicy,
     #[serde(default = "default_max_concurrent_jobs")]
     pub max_concurrent_jobs: usize,
 }
 
-fn default_operating_mode() -> String {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ExecutionEnvironment {
+    #[default]
+    Host,
+    IsolatedInteractive,
+    IsolatedBatch,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum NetworkPolicy {
+    #[default]
+    Inherit,
+    RestrictedOffline,
+    TrustedNetworked,
+}
+
+fn default_task_intent_mode() -> String {
     "monitor-only".to_string()
 }
+
+fn default_environment_mode() -> String {
+    "host".to_string()
+}
+
 fn default_max_concurrent_jobs() -> usize {
     2
 }
@@ -411,8 +456,107 @@ impl Default for RuntimeConfig {
     fn default() -> Self {
         Self {
             enable: false,
-            operating_mode: default_operating_mode(),
+            task_intent_mode: default_task_intent_mode(),
+            environment_mode: default_environment_mode(),
+            execution_environment: ExecutionEnvironment::Host,
+            container_runtime: None,
+            container_image: None,
+            allowed_mounts: vec![],
+            allowed_env: vec![],
+            network_policy: NetworkPolicy::Inherit,
             max_concurrent_jobs: default_max_concurrent_jobs(),
+        }
+    }
+}
+
+impl RuntimeConfig {
+    pub fn operating_mode(&self) -> &str {
+        &self.task_intent_mode
+    }
+
+    pub fn validate(&self) -> crate::error::VacResult<()> {
+        if !matches!(
+            self.task_intent_mode.as_str(),
+            "monitor-only" | "suggest-only" | "patch-proposal" | "auto-fix-low-risk"
+        ) {
+            return Err(crate::VacError::Config(format!(
+                "Invalid runtime.task_intent_mode '{}'. Expected one of: monitor-only, suggest-only, patch-proposal, auto-fix-low-risk",
+                self.task_intent_mode
+            )));
+        }
+
+        if !matches!(
+            self.environment_mode.as_str(),
+            "host" | "isolated" | "trusted-networked" | "restricted-offline"
+        ) {
+            return Err(crate::VacError::Config(format!(
+                "Invalid runtime.environment_mode '{}'. Expected one of: host, isolated, trusted-networked, restricted-offline",
+                self.environment_mode
+            )));
+        }
+
+        if self.environment_mode == "isolated"
+            && self.execution_environment == ExecutionEnvironment::Host
+        {
+            return Err(crate::VacError::Config(
+                "runtime.environment_mode='isolated' requires execution_environment to be isolated_interactive or isolated_batch".to_string(),
+            ));
+        }
+
+        if self.execution_environment != ExecutionEnvironment::Host
+            && self
+                .container_image
+                .as_deref()
+                .unwrap_or_default()
+                .trim()
+                .is_empty()
+        {
+            return Err(crate::VacError::Config(
+                "runtime.container_image must be set when execution_environment is isolated"
+                    .to_string(),
+            ));
+        }
+
+        if self.environment_mode == "trusted-networked"
+            && self.network_policy == NetworkPolicy::RestrictedOffline
+        {
+            return Err(crate::VacError::Config(
+                "runtime.environment_mode='trusted-networked' cannot be combined with network_policy='restricted_offline'".to_string(),
+            ));
+        }
+
+        if self.environment_mode == "restricted-offline"
+            && self.network_policy == NetworkPolicy::TrustedNetworked
+        {
+            return Err(crate::VacError::Config(
+                "runtime.environment_mode='restricted-offline' cannot be combined with network_policy='trusted_networked'".to_string(),
+            ));
+        }
+
+        Ok(())
+    }
+
+    pub fn allowed_mcp_classes(&self) -> Vec<&'static str> {
+        match self.environment_mode.as_str() {
+            "restricted-offline" => vec!["local-trusted"],
+            "isolated" | "trusted-networked" => vec!["local-trusted", "remote-verified"],
+            _ => vec!["local-trusted", "remote-verified", "remote-untrusted"],
+        }
+    }
+
+    pub fn shell_execution_mode(&self) -> &'static str {
+        match self.execution_environment {
+            ExecutionEnvironment::Host => "host-shell",
+            ExecutionEnvironment::IsolatedInteractive => "isolated-shell",
+            ExecutionEnvironment::IsolatedBatch => "batch-only",
+        }
+    }
+
+    pub fn write_capability(&self) -> &'static str {
+        match self.task_intent_mode.as_str() {
+            "auto-fix-low-risk" => "auto-write-low-risk",
+            "patch-proposal" => "patch-proposal-only",
+            _ => "no-auto-write",
         }
     }
 }

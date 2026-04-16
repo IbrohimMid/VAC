@@ -4,7 +4,9 @@ use crate::tui::Model;
 use crate::tui::app::{AppState, AppStateOptions, InputEvent, OutputEvent};
 use crate::tui::event::map_crossterm_event_to_input_event;
 use crate::tui::handlers::HandlerContext;
-use crate::tui::handlers::{approval, changeset as changeset_handler, file_search, model_switcher, review as review_handler};
+use crate::tui::handlers::{
+    approval, changeset as changeset_handler, file_search, model_switcher, review as review_handler,
+};
 use crate::tui::services::helper_block::welcome_messages;
 use crate::tui::terminal::TerminalGuard;
 use crate::tui::view::view;
@@ -182,8 +184,8 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
             }
             InputEvent::Down => {
                 if !state.at_results.is_empty() {
-                    state.at_selected_idx = (state.at_selected_idx + 1)
-                        .min(state.at_results.len().saturating_sub(1));
+                    state.at_selected_idx =
+                        (state.at_selected_idx + 1).min(state.at_results.len().saturating_sub(1));
                 }
                 return;
             }
@@ -272,6 +274,29 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                                 state.workbench_tab = crate::tui::app::WorkbenchTab::Sessions;
                                 state.focus = crate::tui::app::WorkspaceFocus::Workbench;
                                 let _ = output_tx.try_send(OutputEvent::ListSessions);
+                            } else if cmd.command == "/runtime" {
+                                state.workbench_tab = crate::tui::app::WorkbenchTab::Runtime;
+                                state.focus = crate::tui::app::WorkspaceFocus::Workbench;
+                                let _ = output_tx.try_send(OutputEvent::ListRuntimeJobs);
+                                let _ = output_tx.try_send(OutputEvent::LoadRuntimeState);
+                            } else if cmd.command == "/shell" {
+                                state.add_user_message(cmd.command.clone());
+                                let _ =
+                                    output_tx.try_send(OutputEvent::ExecuteCommand(String::new()));
+                            } else if cmd.command == "/shell-focus" {
+                                if state.active_shell_command.is_some() {
+                                    state.shell_popup_visible = true;
+                                    state.shell_backgrounded = false;
+                                }
+                            } else if cmd.command == "/shell-bg" {
+                                if state.active_shell_command.is_some() {
+                                    state.shell_popup_visible = false;
+                                    state.shell_backgrounded = true;
+                                }
+                            } else if cmd.command == "/shell-kill" {
+                                if let Some(shell) = state.active_shell_command.clone() {
+                                    let _ = shell.kill();
+                                }
                             } else if cmd.command == "/new" {
                                 let _ = output_tx.try_send(OutputEvent::NewSession);
                             } else if cmd.command == "/review" {
@@ -335,7 +360,9 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
     if state.show_model_switcher {
         let mut ctx = HandlerContext::new(state, output_tx);
         match event {
-            InputEvent::HandleEsc => { let _ = model_switcher::close(&mut ctx); }
+            InputEvent::HandleEsc => {
+                let _ = model_switcher::close(&mut ctx);
+            }
             InputEvent::InputChanged(c) => {
                 let mut f = ctx.state.model_switcher_filter.clone();
                 f.push(c);
@@ -346,9 +373,15 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                 f.pop();
                 let _ = model_switcher::update_filter(&mut ctx, f);
             }
-            InputEvent::Up => { let _ = model_switcher::select_prev(&mut ctx); }
-            InputEvent::Down => { let _ = model_switcher::select_next(&mut ctx); }
-            InputEvent::InputSubmitted => { let _ = model_switcher::submit_selected(&mut ctx); }
+            InputEvent::Up => {
+                let _ = model_switcher::select_prev(&mut ctx);
+            }
+            InputEvent::Down => {
+                let _ = model_switcher::select_next(&mut ctx);
+            }
+            InputEvent::InputSubmitted => {
+                let _ = model_switcher::submit_selected(&mut ctx);
+            }
             _ => {}
         }
         return;
@@ -367,7 +400,9 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
             ctx.state.file_search_selected_idx = ctx.state.file_search_selected_idx.min(max);
         }
         match event {
-            InputEvent::HandleEsc => { let _ = file_search::close(&mut ctx); }
+            InputEvent::HandleEsc => {
+                let _ = file_search::close(&mut ctx);
+            }
             InputEvent::InputChanged(c) => {
                 let mut q = ctx.state.file_search_query.clone();
                 q.push(c);
@@ -378,9 +413,15 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                 q.pop();
                 let _ = file_search::update_query(&mut ctx, q);
             }
-            InputEvent::Up => { let _ = file_search::select_prev(&mut ctx); }
-            InputEvent::Down => { let _ = file_search::select_next(&mut ctx); }
-            InputEvent::InputSubmitted => { let _ = file_search::insert_selected(&mut ctx); }
+            InputEvent::Up => {
+                let _ = file_search::select_prev(&mut ctx);
+            }
+            InputEvent::Down => {
+                let _ = file_search::select_next(&mut ctx);
+            }
+            InputEvent::InputSubmitted => {
+                let _ = file_search::insert_selected(&mut ctx);
+            }
             _ => {}
         }
         return;
@@ -389,11 +430,21 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
     if state.show_changeset {
         let mut ctx = HandlerContext::new(state, output_tx);
         match event {
-            InputEvent::HandleEsc => { let _ = changeset_handler::close(&mut ctx); }
-            InputEvent::Up => { let _ = changeset_handler::select_prev(&mut ctx); }
-            InputEvent::Down => { let _ = changeset_handler::select_next(&mut ctx); }
-            InputEvent::ScrollUp => { let _ = changeset_handler::scroll_up(&mut ctx); }
-            InputEvent::ScrollDown => { let _ = changeset_handler::scroll_down(&mut ctx); }
+            InputEvent::HandleEsc => {
+                let _ = changeset_handler::close(&mut ctx);
+            }
+            InputEvent::Up => {
+                let _ = changeset_handler::select_prev(&mut ctx);
+            }
+            InputEvent::Down => {
+                let _ = changeset_handler::select_next(&mut ctx);
+            }
+            InputEvent::ScrollUp => {
+                let _ = changeset_handler::scroll_up(&mut ctx);
+            }
+            InputEvent::ScrollDown => {
+                let _ = changeset_handler::scroll_down(&mut ctx);
+            }
             _ => {}
         }
         return;
@@ -459,6 +510,10 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                 state.focus = crate::tui::app::WorkspaceFocus::Workbench;
             }
             state.workbench_tab = state.workbench_tab.next();
+            if state.workbench_tab == crate::tui::app::WorkbenchTab::Runtime {
+                let _ = output_tx.try_send(OutputEvent::ListRuntimeJobs);
+                let _ = output_tx.try_send(OutputEvent::LoadRuntimeState);
+            }
         }
         InputEvent::InputChanged(c) => {
             match state.focus {
@@ -469,43 +524,53 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                         state.at_query = String::new();
                         state.at_selected_idx = 0;
                         if state.all_files.is_empty() {
-                            state.all_files = crate::tui::services::build_file_index(&state.project_root);
+                            state.all_files =
+                                crate::tui::services::build_file_index(&state.project_root);
                         }
-                        state.at_results = crate::tui::services::fuzzy_search_files("", &state.all_files, 8);
+                        state.at_results =
+                            crate::tui::services::fuzzy_search_files("", &state.all_files, 8);
                         state.input.input(c);
                     } else if state.at_trigger_active {
                         // Update query with new char
                         state.at_query.push(c);
                         state.at_selected_idx = 0;
-                        state.at_results = crate::tui::services::fuzzy_search_files(&state.at_query, &state.all_files, 8);
+                        state.at_results = crate::tui::services::fuzzy_search_files(
+                            &state.at_query,
+                            &state.all_files,
+                            8,
+                        );
                         state.input.input(c);
                     } else {
                         state.input.input(c);
                     }
                 }
                 crate::tui::app::WorkspaceFocus::Workbench => match state.workbench_tab {
-                    crate::tui::app::WorkbenchTab::Approvals => {
-                        match c {
-                            'a' => {
-                                let mut ctx = HandlerContext::new(state, output_tx);
-                                let _ = approval::approve_current(&mut ctx);
-                            }
-                            'r' => {
-                                let mut ctx = HandlerContext::new(state, output_tx);
-                                let _ = approval::begin_reject_current(&mut ctx);
-                            }
-                            _ => {}
+                    crate::tui::app::WorkbenchTab::Approvals => match c {
+                        'a' => {
+                            let mut ctx = HandlerContext::new(state, output_tx);
+                            let _ = approval::approve_current(&mut ctx);
                         }
-                    }
+                        'r' => {
+                            let mut ctx = HandlerContext::new(state, output_tx);
+                            let _ = approval::begin_reject_current(&mut ctx);
+                        }
+                        _ => {}
+                    },
                     crate::tui::app::WorkbenchTab::Review => {}
                     crate::tui::app::WorkbenchTab::Sessions => {
                         if c == 'r' {
-                            if let Some(sel) = state.sessions.get(state.sessions_selected_idx).cloned() {
+                            if let Some(sel) =
+                                state.sessions.get(state.sessions_selected_idx).cloned()
+                            {
                                 if sel.has_checkpoint {
-                                    let _ = output_tx.try_send(OutputEvent::ResumeSession(sel.id.clone()));
+                                    let _ = output_tx
+                                        .try_send(OutputEvent::ResumeSession(sel.id.clone()));
                                     state.push_activity(
                                         crate::tui::app::ActivityKind::Session,
-                                        format!("Resuming checkpoint: {}", &sel.id[..8.min(sel.id.len())]),
+                                        format!(
+                                            "Resuming checkpoint: {}",
+                                            &sel.id[..8.min(sel.id.len())]
+                                        ),
                                     );
                                 } else {
                                     state.toasts.push(crate::tui::services::Toast::info(
@@ -515,6 +580,23 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                             }
                         }
                     }
+                    crate::tui::app::WorkbenchTab::Runtime => match c {
+                        'r' => {
+                            let _ = output_tx.try_send(OutputEvent::ListRuntimeJobs);
+                            let _ = output_tx.try_send(OutputEvent::LoadRuntimeState);
+                        }
+                        'c' => {
+                            if let Some(job) = state.runtime_jobs.get(state.runtime_selected_idx) {
+                                let _ = output_tx.try_send(OutputEvent::CancelRuntimeJob(job.id));
+                            }
+                        }
+                        't' => {
+                            if let Some(job) = state.runtime_jobs.get(state.runtime_selected_idx) {
+                                let _ = output_tx.try_send(OutputEvent::RetryRuntimeJob(job.id));
+                            }
+                        }
+                        _ => {}
+                    },
                 },
                 _ => {}
             }
@@ -534,7 +616,11 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                     } else {
                         state.at_query.pop();
                         state.at_selected_idx = 0;
-                        state.at_results = crate::tui::services::fuzzy_search_files(&state.at_query, &state.all_files, 8);
+                        state.at_results = crate::tui::services::fuzzy_search_files(
+                            &state.at_query,
+                            &state.all_files,
+                            8,
+                        );
                     }
                 }
                 state.input.backspace();
@@ -551,6 +637,28 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
             }
         }
         InputEvent::InputSubmitted => {
+            if state.focus == crate::tui::app::WorkspaceFocus::Input
+                && state.shell_popup_visible
+                && state.active_shell_command.is_some()
+            {
+                let text = state.input.get_content();
+                let payload = if text.is_empty() {
+                    "\n".to_string()
+                } else {
+                    format!("{text}\n")
+                };
+                if let Some(shell) = state.active_shell_command.clone() {
+                    shell.send_input(payload);
+                    state.input.clear();
+                    state.shell_waiting_for_input = false;
+                    state.push_activity(
+                        crate::tui::app::ActivityKind::Status,
+                        "Sent input to shell",
+                    );
+                }
+                return;
+            }
+
             if state.focus == crate::tui::app::WorkspaceFocus::Workbench
                 && state.workbench_tab == crate::tui::app::WorkbenchTab::Approvals
             {
@@ -602,6 +710,29 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                                     state.workbench_tab = crate::tui::app::WorkbenchTab::Sessions;
                                     state.focus = crate::tui::app::WorkspaceFocus::Workbench;
                                     let _ = output_tx.try_send(OutputEvent::ListSessions);
+                                } else if cmd.command == "/runtime" {
+                                    state.workbench_tab = crate::tui::app::WorkbenchTab::Runtime;
+                                    state.focus = crate::tui::app::WorkspaceFocus::Workbench;
+                                    let _ = output_tx.try_send(OutputEvent::ListRuntimeJobs);
+                                    let _ = output_tx.try_send(OutputEvent::LoadRuntimeState);
+                                } else if cmd.command == "/shell" {
+                                    state.add_user_message(trimmed.to_string());
+                                    let shell_cmd = cmd_args.unwrap_or_default().to_string();
+                                    let _ =
+                                        output_tx.try_send(OutputEvent::ExecuteCommand(shell_cmd));
+                                } else if cmd.command == "/shell-focus" {
+                                    state.shell_popup_visible =
+                                        state.active_shell_command.is_some();
+                                    state.shell_backgrounded = false;
+                                } else if cmd.command == "/shell-bg" {
+                                    if state.active_shell_command.is_some() {
+                                        state.shell_popup_visible = false;
+                                        state.shell_backgrounded = true;
+                                    }
+                                } else if cmd.command == "/shell-kill" {
+                                    if let Some(shell) = state.active_shell_command.clone() {
+                                        let _ = shell.kill();
+                                    }
                                 } else if cmd.command == "/new" {
                                     let _ = output_tx.try_send(OutputEvent::NewSession);
                                 } else if cmd.command == "/review" {
@@ -677,58 +808,64 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                 state.input.move_cursor_right();
             }
         }
-        InputEvent::Up => {
-            match state.focus {
-                crate::tui::app::WorkspaceFocus::Input => state.input.move_cursor_up(),
-                crate::tui::app::WorkspaceFocus::Conversation => {
-                    state.scroll = state.scroll.saturating_sub(1);
+        InputEvent::Up => match state.focus {
+            crate::tui::app::WorkspaceFocus::Input => state.input.move_cursor_up(),
+            crate::tui::app::WorkspaceFocus::Conversation => {
+                state.scroll = state.scroll.saturating_sub(1);
+            }
+            crate::tui::app::WorkspaceFocus::Activity => {
+                state.activity_scroll = state.activity_scroll.saturating_add(1);
+            }
+            crate::tui::app::WorkspaceFocus::Workbench => match state.workbench_tab {
+                crate::tui::app::WorkbenchTab::Approvals => {
+                    state.approval_selected_idx = state.approval_selected_idx.saturating_sub(1);
+                    state.approval_detail_scroll = 0;
                 }
-                crate::tui::app::WorkspaceFocus::Activity => {
-                    state.activity_scroll = state.activity_scroll.saturating_add(1);
+                crate::tui::app::WorkbenchTab::Sessions => {
+                    state.sessions_selected_idx = state.sessions_selected_idx.saturating_sub(1);
                 }
-                crate::tui::app::WorkspaceFocus::Workbench => match state.workbench_tab {
-                    crate::tui::app::WorkbenchTab::Approvals => {
-                        state.approval_selected_idx = state.approval_selected_idx.saturating_sub(1);
+                crate::tui::app::WorkbenchTab::Runtime => {
+                    state.runtime_selected_idx = state.runtime_selected_idx.saturating_sub(1);
+                    state.runtime_detail_scroll = 0;
+                }
+                crate::tui::app::WorkbenchTab::Review => {
+                    let mut ctx = HandlerContext::new(state, output_tx);
+                    let _ = review_handler::select_prev(&mut ctx);
+                }
+            },
+        },
+        InputEvent::Down => match state.focus {
+            crate::tui::app::WorkspaceFocus::Input => state.input.move_cursor_down(),
+            crate::tui::app::WorkspaceFocus::Conversation => {
+                state.scroll = state.scroll.saturating_add(1);
+            }
+            crate::tui::app::WorkspaceFocus::Activity => {
+                state.activity_scroll = state.activity_scroll.saturating_sub(1);
+            }
+            crate::tui::app::WorkspaceFocus::Workbench => match state.workbench_tab {
+                crate::tui::app::WorkbenchTab::Approvals => {
+                    if state.approval_selected_idx + 1 < state.pending_approvals.len() {
+                        state.approval_selected_idx += 1;
                         state.approval_detail_scroll = 0;
                     }
-                    crate::tui::app::WorkbenchTab::Sessions => {
-                        state.sessions_selected_idx = state.sessions_selected_idx.saturating_sub(1);
-                    }
-                    crate::tui::app::WorkbenchTab::Review => {
-                        let mut ctx = HandlerContext::new(state, output_tx);
-                        let _ = review_handler::select_prev(&mut ctx);
-                    }
-                },
-            }
-        }
-        InputEvent::Down => {
-            match state.focus {
-                crate::tui::app::WorkspaceFocus::Input => state.input.move_cursor_down(),
-                crate::tui::app::WorkspaceFocus::Conversation => {
-                    state.scroll = state.scroll.saturating_add(1);
                 }
-                crate::tui::app::WorkspaceFocus::Activity => {
-                    state.activity_scroll = state.activity_scroll.saturating_sub(1);
+                crate::tui::app::WorkbenchTab::Sessions => {
+                    if state.sessions_selected_idx + 1 < state.sessions.len() {
+                        state.sessions_selected_idx += 1;
+                    }
                 }
-                crate::tui::app::WorkspaceFocus::Workbench => match state.workbench_tab {
-                    crate::tui::app::WorkbenchTab::Approvals => {
-                        if state.approval_selected_idx + 1 < state.pending_approvals.len() {
-                            state.approval_selected_idx += 1;
-                            state.approval_detail_scroll = 0;
-                        }
+                crate::tui::app::WorkbenchTab::Runtime => {
+                    if state.runtime_selected_idx + 1 < state.runtime_jobs.len() {
+                        state.runtime_selected_idx += 1;
+                        state.runtime_detail_scroll = 0;
                     }
-                    crate::tui::app::WorkbenchTab::Sessions => {
-                        if state.sessions_selected_idx + 1 < state.sessions.len() {
-                            state.sessions_selected_idx += 1;
-                        }
-                    }
-                    crate::tui::app::WorkbenchTab::Review => {
-                        let mut ctx = HandlerContext::new(state, output_tx);
-                        let _ = review_handler::select_next(&mut ctx);
-                    }
-                },
-            }
-        }
+                }
+                crate::tui::app::WorkbenchTab::Review => {
+                    let mut ctx = HandlerContext::new(state, output_tx);
+                    let _ = review_handler::select_next(&mut ctx);
+                }
+            },
+        },
         InputEvent::InputCursorStart => {
             if state.focus == crate::tui::app::WorkspaceFocus::Input {
                 state.input.move_cursor_start();
@@ -752,6 +889,9 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
             } else if state.show_changeset {
                 let mut ctx = HandlerContext::new(state, output_tx);
                 let _ = changeset_handler::close(&mut ctx);
+            } else if state.shell_popup_visible && state.active_shell_command.is_some() {
+                state.shell_popup_visible = false;
+                state.shell_backgrounded = true;
             } else if state.is_streaming {
                 let _ = output_tx.try_send(OutputEvent::CancelStream);
                 state.is_streaming = false;
@@ -760,6 +900,24 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
             {
                 state.review_open = false;
                 state.review_diff = None;
+            }
+        }
+        InputEvent::BackgroundShell => {
+            if state.active_shell_command.is_some() {
+                state.shell_popup_visible = false;
+                state.shell_backgrounded = true;
+            }
+        }
+        InputEvent::FocusShell => {
+            if state.active_shell_command.is_some() {
+                state.shell_popup_visible = true;
+                state.shell_backgrounded = false;
+            }
+        }
+        InputEvent::ShellKill => {
+            if let Some(shell) = state.active_shell_command.clone() {
+                let _ = shell.kill();
+                state.shell_waiting_for_input = false;
             }
         }
         InputEvent::AutoApproveCurrentTool => {
@@ -778,28 +936,24 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
             let mut ctx = HandlerContext::new(state, output_tx);
             let _ = approval::confirm_reject_all(&mut ctx);
         }
-        InputEvent::ScrollUp => {
-            match state.focus {
-                crate::tui::app::WorkspaceFocus::Conversation => {
-                    state.scroll = state.scroll.saturating_sub(1);
-                }
-                crate::tui::app::WorkspaceFocus::Activity => {
-                    state.activity_scroll = state.activity_scroll.saturating_add(1);
-                }
-                _ => {}
+        InputEvent::ScrollUp => match state.focus {
+            crate::tui::app::WorkspaceFocus::Conversation => {
+                state.scroll = state.scroll.saturating_sub(1);
             }
-        }
-        InputEvent::ScrollDown => {
-            match state.focus {
-                crate::tui::app::WorkspaceFocus::Conversation => {
-                    state.scroll = state.scroll.saturating_add(1);
-                }
-                crate::tui::app::WorkspaceFocus::Activity => {
-                    state.activity_scroll = state.activity_scroll.saturating_sub(1);
-                }
-                _ => {}
+            crate::tui::app::WorkspaceFocus::Activity => {
+                state.activity_scroll = state.activity_scroll.saturating_add(1);
             }
-        }
+            _ => {}
+        },
+        InputEvent::ScrollDown => match state.focus {
+            crate::tui::app::WorkspaceFocus::Conversation => {
+                state.scroll = state.scroll.saturating_add(1);
+            }
+            crate::tui::app::WorkspaceFocus::Activity => {
+                state.activity_scroll = state.activity_scroll.saturating_sub(1);
+            }
+            _ => {}
+        },
         InputEvent::ShowCommandPalette => {
             state.show_command_palette = true;
             state.command_palette_input.clear();
@@ -903,7 +1057,9 @@ fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, e
         }
         InputEvent::Error(msg) => {
             state.add_assistant_message(format!("Error: {}", msg));
-            state.toasts.push(crate::tui::services::Toast::error(msg.clone()));
+            state
+                .toasts
+                .push(crate::tui::services::Toast::error(msg.clone()));
             if state.toasts.len() > 3 {
                 state.toasts.drain(0..state.toasts.len().saturating_sub(3));
             }
@@ -927,6 +1083,61 @@ fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, e
             state.sessions = sessions;
             state.sessions_selected_idx = 0;
             state.push_activity(crate::tui::app::ActivityKind::Session, "Sessions updated");
+        }
+        InputEvent::SetRuntimeJobs(jobs) => {
+            state.runtime_jobs = jobs;
+            if state.runtime_selected_idx >= state.runtime_jobs.len() {
+                state.runtime_selected_idx = state.runtime_jobs.len().saturating_sub(1);
+            }
+            state.push_activity(
+                crate::tui::app::ActivityKind::Status,
+                "Runtime jobs updated",
+            );
+        }
+        InputEvent::SetRuntimeState(snapshot) => {
+            state.runtime_state_snapshot = snapshot;
+            state.push_activity(
+                crate::tui::app::ActivityKind::Status,
+                "Runtime state updated",
+            );
+        }
+        InputEvent::ShellStarted(shell) => {
+            state.active_shell_command = Some(shell.clone());
+            state.shell_popup_visible = true;
+            state.shell_backgrounded = false;
+            state.shell_waiting_for_input = false;
+            state.shell_exit_code = None;
+            state.shell_last_error = None;
+            state.shell_output.clear();
+            state.push_activity(
+                crate::tui::app::ActivityKind::Status,
+                format!("Shell started: {}", shell.command),
+            );
+        }
+        InputEvent::ShellOutput(text) => {
+            state.shell_output.push_str(&text);
+        }
+        InputEvent::ShellError(text) => {
+            if !state.shell_output.ends_with('\n') && !state.shell_output.is_empty() {
+                state.shell_output.push('\n');
+            }
+            state
+                .shell_output
+                .push_str(&format!("[shell error] {text}\n"));
+            state.shell_last_error = Some(text.clone());
+            state.push_activity(crate::tui::app::ActivityKind::Error, text);
+        }
+        InputEvent::ShellCompleted(code) => {
+            state.shell_exit_code = Some(code);
+            state.shell_waiting_for_input = false;
+            state.active_shell_command = None;
+            state.push_activity(
+                crate::tui::app::ActivityKind::Status,
+                format!("Shell completed with exit code {}", code),
+            );
+        }
+        InputEvent::ShellWaitingForInput => {
+            state.shell_waiting_for_input = true;
         }
         InputEvent::SessionRestored {
             id,
@@ -959,6 +1170,18 @@ fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, e
             state.review_diff = None;
             state.review_selected_idx = 0;
             state.review_selected_path = None;
+            state.active_shell_command = None;
+            state.shell_popup_visible = false;
+            state.shell_output.clear();
+            state.shell_waiting_for_input = false;
+            state.shell_backgrounded = false;
+            state.shell_exit_code = None;
+            state.shell_last_error = None;
+            state.runtime_jobs.clear();
+            state.runtime_selected_idx = 0;
+            state.runtime_filter.clear();
+            state.runtime_detail_scroll = 0;
+            state.runtime_state_snapshot = None;
             state.activity.clear();
             state.activity_scroll = 0;
             state.toasts.clear();
@@ -1003,7 +1226,9 @@ fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, e
             } else {
                 state.pending_approvals.push(tc.clone());
                 state.approval_selected_idx = state.pending_approvals.len().saturating_sub(1);
-                state.approval_explanations.insert(tc.id.clone(), explanation);
+                state
+                    .approval_explanations
+                    .insert(tc.id.clone(), explanation);
                 state.approval_normalize_selection();
                 state.workbench_tab = crate::tui::app::WorkbenchTab::Approvals;
                 state.focus = crate::tui::app::WorkspaceFocus::Workbench;
@@ -1035,21 +1260,18 @@ fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, e
                 content.push_str("\n\n**Modified Files**:\n");
                 for file in &result.modified_files {
                     content.push_str(&format!("- `{}`\n", file));
-                    state.changeset_store.file_modified(
-                        file.clone(),
-                        "agent".to_string(),
-                        true,
-                    );
+                    state
+                        .changeset_store
+                        .file_modified(file.clone(), "agent".to_string(), true);
                 }
             }
             if !result.created_files.is_empty() {
                 content.push_str("\n**Created Files**:\n");
                 for file in &result.created_files {
                     content.push_str(&format!("- `{}`\n", file));
-                    state.changeset_store.file_created(
-                        file.clone(),
-                        "agent".to_string(),
-                    );
+                    state
+                        .changeset_store
+                        .file_created(file.clone(), "agent".to_string());
                 }
             }
             // Sync derived view from store (single source of truth)
@@ -1086,8 +1308,12 @@ mod tests {
     fn review_selection_normalizes_when_filter_excludes_selected() {
         let dir = tempfile::tempdir().unwrap();
         let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
-        state.changeset_store.file_modified("a.txt".to_string(), "agent".to_string(), false);
-        state.changeset_store.file_modified("b.txt".to_string(), "agent".to_string(), false);
+        state
+            .changeset_store
+            .file_modified("a.txt".to_string(), "agent".to_string(), false);
+        state
+            .changeset_store
+            .file_modified("b.txt".to_string(), "agent".to_string(), false);
         state.modified_files = state.changeset_store.modified_files();
         state.review_open = true;
         state.review_selected_path = Some("b.txt".to_string());
@@ -1136,15 +1362,14 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let (tx, _rx) = tokio::sync::mpsc::channel(4);
         let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
-        state.changeset_store.file_modified("a.txt".to_string(), "agent".to_string(), false);
+        state
+            .changeset_store
+            .file_modified("a.txt".to_string(), "agent".to_string(), false);
         state.modified_files = state.changeset_store.modified_files();
         state.input.set_content("/review");
         handle_input_event(&mut state, &tx, InputEvent::InputSubmitted);
         assert!(state.review_open);
-        assert_eq!(
-            state.workbench_tab,
-            crate::tui::app::WorkbenchTab::Review
-        );
+        assert_eq!(state.workbench_tab, crate::tui::app::WorkbenchTab::Review);
     }
 
     #[test]
@@ -1206,7 +1431,9 @@ mod tests {
             r#type: "function".to_string(),
             function: FunctionCall {
                 name: "file_edit".to_string(),
-                arguments: serde_json::json!({"file_path":"b.txt","old_string":"a","new_string":"b"}).to_string(),
+                arguments:
+                    serde_json::json!({"file_path":"b.txt","old_string":"a","new_string":"b"})
+                        .to_string(),
             },
             metadata: None,
         };
@@ -1225,7 +1452,10 @@ mod tests {
         assert_eq!(state.pending_approvals.len(), 2);
         assert_eq!(state.approval_selected_idx, 1);
         assert_eq!(state.focus, crate::tui::app::WorkspaceFocus::Workbench);
-        assert_eq!(state.workbench_tab, crate::tui::app::WorkbenchTab::Approvals);
+        assert_eq!(
+            state.workbench_tab,
+            crate::tui::app::WorkbenchTab::Approvals
+        );
 
         handle_input_event(&mut state, &tx, InputEvent::InputChanged('a'));
         let ev = rx.recv().await.unwrap();
@@ -1291,7 +1521,9 @@ mod tests {
 
         let (tx, _rx) = tokio::sync::mpsc::channel(4);
         let mut state = make_state(root.clone(), session_id);
-        state.changeset_store.file_modified(file_rel.to_string(), "agent".to_string(), true);
+        state
+            .changeset_store
+            .file_modified(file_rel.to_string(), "agent".to_string(), true);
         state.modified_files = state.changeset_store.modified_files();
         state.review_open = true;
         state.focus = crate::tui::app::WorkspaceFocus::Workbench;
@@ -1326,8 +1558,12 @@ mod tests {
 
         let (tx, _rx) = tokio::sync::mpsc::channel(4);
         let mut state = make_state(root.clone(), session_id);
-        state.changeset_store.file_modified("a.txt".to_string(), "agent".to_string(), true);
-        state.changeset_store.file_modified("b.txt".to_string(), "agent".to_string(), true);
+        state
+            .changeset_store
+            .file_modified("a.txt".to_string(), "agent".to_string(), true);
+        state
+            .changeset_store
+            .file_modified("b.txt".to_string(), "agent".to_string(), true);
         state.modified_files = state.changeset_store.modified_files();
         state.review_open = true;
         state.focus = crate::tui::app::WorkspaceFocus::Workbench;
@@ -1350,13 +1586,12 @@ mod tests {
         assert!(state.modified_files.contains(&"b.txt".to_string()));
     }
 
-
     #[tokio::test]
     async fn global_approval_hotkey_ctrl_m_approves_current() {
         let dir = tempfile::tempdir().unwrap();
         let (tx, mut rx) = tokio::sync::mpsc::channel(4);
         let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
-        
+
         // Add pending approval
         state.pending_approvals.push(ToolCall {
             id: "tc-1".to_string(),
@@ -1367,15 +1602,15 @@ mod tests {
             },
             metadata: None,
         });
-        
+
         // Trigger Ctrl+M (AutoApproveCurrentTool)
         handle_input_event(&mut state, &tx, InputEvent::AutoApproveCurrentTool);
-        
+
         // Verify approval processed
         assert_eq!(state.pending_approvals.len(), 0);
         assert_eq!(state.approved_tools.len(), 1);
         assert_eq!(state.approved_tools[0].id, "tc-1");
-        
+
         // Verify output event sent
         let output = rx.try_recv().unwrap();
         assert!(matches!(output, OutputEvent::AcceptTool(_)));
@@ -1386,7 +1621,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let (tx, mut rx) = tokio::sync::mpsc::channel(4);
         let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
-        
+
         // Add pending approval
         state.pending_approvals.push(ToolCall {
             id: "tc-2".to_string(),
@@ -1397,22 +1632,22 @@ mod tests {
             },
             metadata: None,
         });
-        
+
         // Trigger Ctrl+Shift+M (RejectCurrentTool) - now shows reason prompt
         handle_input_event(&mut state, &tx, InputEvent::RejectCurrentTool);
-        
+
         // Reason prompt should be active
         assert!(state.reject_reason_input.is_some());
         assert_eq!(state.pending_approvals.len(), 1); // not yet rejected
-        
+
         // Confirm with Enter (no reason typed)
         handle_input_event(&mut state, &tx, InputEvent::InputSubmitted);
-        
+
         // Verify rejection processed
         assert_eq!(state.pending_approvals.len(), 0);
         assert_eq!(state.rejected_tools.len(), 1);
         assert_eq!(state.rejected_tools[0].id, "tc-2");
-        
+
         // Verify output event sent
         let output = rx.try_recv().unwrap();
         assert!(matches!(output, OutputEvent::RejectTool(_, _, _)));
@@ -1423,14 +1658,14 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let (tx, _rx) = tokio::sync::mpsc::channel(4);
         let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
-        
+
         // No pending approvals
         assert_eq!(state.pending_approvals.len(), 0);
-        
+
         // Trigger hotkeys - should not panic
         handle_input_event(&mut state, &tx, InputEvent::AutoApproveCurrentTool);
         handle_input_event(&mut state, &tx, InputEvent::RejectCurrentTool);
-        
+
         // State unchanged
         assert_eq!(state.approved_tools.len(), 0);
         assert_eq!(state.rejected_tools.len(), 0);
@@ -1441,7 +1676,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let (_tx, _rx) = tokio::sync::mpsc::channel::<OutputEvent>(4);
         let state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
-        
+
         // Verify /model command exists
         let commands = state.commands;
         assert!(commands.iter().any(|c| c.command == "/model"));
@@ -1452,7 +1687,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let (_tx, _rx) = tokio::sync::mpsc::channel::<OutputEvent>(4);
         let state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
-        
+
         // Verify /files command exists
         let commands = state.commands;
         assert!(commands.iter().any(|c| c.command == "/files"));
@@ -1463,7 +1698,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let (_tx, _rx) = tokio::sync::mpsc::channel::<OutputEvent>(4);
         let state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
-        
+
         // Verify /changes command exists
         let commands = state.commands;
         assert!(commands.iter().any(|c| c.command == "/changes"));
@@ -1473,7 +1708,7 @@ mod tests {
     fn footer_approval_bar_shows_when_pending_approvals() {
         let dir = tempfile::tempdir().unwrap();
         let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
-        
+
         // Add pending approval
         state.pending_approvals.push(ToolCall {
             id: "tc-1".to_string(),
@@ -1484,7 +1719,7 @@ mod tests {
             },
             metadata: None,
         });
-        
+
         // Footer should show approval bar (verified by view rendering logic)
         assert!(!state.pending_approvals.is_empty());
         assert_eq!(state.approval_selected_idx, 0);
@@ -1494,7 +1729,7 @@ mod tests {
     fn footer_approval_bar_hidden_when_no_pending() {
         let dir = tempfile::tempdir().unwrap();
         let state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
-        
+
         // No pending approvals
         assert!(state.pending_approvals.is_empty());
         // Footer should show normal hints (verified by view rendering logic)
@@ -1504,7 +1739,7 @@ mod tests {
     fn footer_approval_bar_shows_correct_index() {
         let dir = tempfile::tempdir().unwrap();
         let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
-        
+
         // Add multiple pending approvals
         for i in 0..3 {
             state.pending_approvals.push(ToolCall {
@@ -1517,10 +1752,10 @@ mod tests {
                 metadata: None,
             });
         }
-        
+
         // Select second approval
         state.approval_selected_idx = 1;
-        
+
         // Verify index
         assert_eq!(state.approval_selected_idx, 1);
         assert_eq!(state.pending_approvals.len(), 3);
@@ -1531,14 +1766,14 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let (tx, _rx) = tokio::sync::mpsc::channel(4);
         let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
-        
+
         // Set popup states
         state.show_model_switcher = true;
         state.show_file_search = true;
         state.show_changeset = true;
         state.model_switcher_filter = "test".to_string();
         state.file_search_query = "query".to_string();
-        
+
         // Trigger session restore
         handle_backend_event(
             &mut state,
@@ -1549,7 +1784,7 @@ mod tests {
                 messages: vec![],
             },
         );
-        
+
         // Verify all popup states cleared
         assert!(!state.show_model_switcher);
         assert!(!state.show_file_search);
@@ -1563,12 +1798,16 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let (tx, _rx) = tokio::sync::mpsc::channel(4);
         let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
-        
+
         // Add changeset entries
-        state.changeset_store.file_created("a.rs".to_string(), "agent".to_string());
-        state.changeset_store.file_modified("b.rs".to_string(), "agent".to_string(), true);
+        state
+            .changeset_store
+            .file_created("a.rs".to_string(), "agent".to_string());
+        state
+            .changeset_store
+            .file_modified("b.rs".to_string(), "agent".to_string(), true);
         assert_eq!(state.changeset_store.entries().len(), 2);
-        
+
         // Trigger session restore
         handle_backend_event(
             &mut state,
@@ -1579,7 +1818,7 @@ mod tests {
                 messages: vec![],
             },
         );
-        
+
         // Verify changeset cleared
         assert_eq!(state.changeset_store.entries().len(), 0);
     }
@@ -1589,7 +1828,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let (tx, _rx) = tokio::sync::mpsc::channel(4);
         let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
-        
+
         // Add approval state
         state.pending_approvals.push(ToolCall {
             id: "tc-1".to_string(),
@@ -1609,7 +1848,7 @@ mod tests {
             },
             metadata: None,
         });
-        
+
         // Trigger session restore
         handle_backend_event(
             &mut state,
@@ -1620,7 +1859,7 @@ mod tests {
                 messages: vec![],
             },
         );
-        
+
         // Verify approval state cleared
         assert_eq!(state.pending_approvals.len(), 0);
         assert_eq!(state.approved_tools.len(), 0);
@@ -1631,17 +1870,17 @@ mod tests {
     fn command_palette_filters_commands_correctly() {
         let dir = tempfile::tempdir().unwrap();
         let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
-        
+
         // Empty filter shows all commands
         state.command_palette_input = "".to_string();
         let all = state.filtered_commands();
         assert!(!all.is_empty());
-        
+
         // Filter by prefix
         state.command_palette_input = "/model".to_string();
         let filtered = state.filtered_commands();
         assert!(filtered.iter().any(|c| c.command == "/model"));
-        
+
         // Non-matching filter
         state.command_palette_input = "/nonexistent".to_string();
         let empty = state.filtered_commands();
@@ -1652,15 +1891,15 @@ mod tests {
     fn command_palette_selection_stays_within_bounds() {
         let dir = tempfile::tempdir().unwrap();
         let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
-        
+
         state.command_palette_input = "".to_string();
         let commands = state.filtered_commands();
-        
+
         // Selection should not exceed command count
         if !commands.is_empty() {
             state.command_palette_selected = 0;
             assert_eq!(state.command_palette_selected, 0);
-            
+
             state.command_palette_selected = commands.len() - 1;
             assert_eq!(state.command_palette_selected, commands.len() - 1);
         }
@@ -1669,9 +1908,9 @@ mod tests {
     #[tokio::test]
     async fn command_palette_dispatch_does_not_send_literal_slash() {
         let dir = tempfile::tempdir().unwrap();
-        let (tx, mut rx) = tokio::sync::mpsc::channel::<OutputEvent>(4);
+        let (_tx, mut rx) = tokio::sync::mpsc::channel::<OutputEvent>(4);
         let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
-        
+
         // Execute /review command
         state.show_command_palette = true;
         let filtered = state.filtered_commands();
@@ -1681,11 +1920,11 @@ mod tests {
             state.review_open = true;
             state.show_command_palette = false;
         }
-        
+
         // Verify review opened, not sent as literal message
         assert!(state.review_open);
         assert!(!state.show_command_palette);
-        
+
         // No output event should be sent for /review
         assert!(rx.try_recv().is_err());
     }
@@ -1707,8 +1946,12 @@ mod tests {
 
         let (tx, _rx) = tokio::sync::mpsc::channel(4);
         let mut state = make_state(root.clone(), session_id);
-        state.changeset_store.file_modified("a.txt".to_string(), "agent".to_string(), true);
-        state.changeset_store.file_modified("b.txt".to_string(), "agent".to_string(), true);
+        state
+            .changeset_store
+            .file_modified("a.txt".to_string(), "agent".to_string(), true);
+        state
+            .changeset_store
+            .file_modified("b.txt".to_string(), "agent".to_string(), true);
         state.modified_files = state.changeset_store.modified_files();
         state.review_open = true;
         state.focus = crate::tui::app::WorkspaceFocus::Workbench;
@@ -1744,8 +1987,12 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
 
-        state.changeset_store.file_modified("a.rs".to_string(), "agent".to_string(), true);
-        state.changeset_store.file_created("b.rs".to_string(), "agent".to_string());
+        state
+            .changeset_store
+            .file_modified("a.rs".to_string(), "agent".to_string(), true);
+        state
+            .changeset_store
+            .file_created("b.rs".to_string(), "agent".to_string());
         state.modified_files = state.changeset_store.modified_files();
 
         // modified_files must equal store's derived view
@@ -1758,9 +2005,15 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
 
-        state.changeset_store.file_modified("x.rs".to_string(), "agent".to_string(), true);
-        state.changeset_store.file_created("y.rs".to_string(), "agent".to_string());
-        state.changeset_store.file_modified("z.rs".to_string(), "agent".to_string(), true);
+        state
+            .changeset_store
+            .file_modified("x.rs".to_string(), "agent".to_string(), true);
+        state
+            .changeset_store
+            .file_created("y.rs".to_string(), "agent".to_string());
+        state
+            .changeset_store
+            .file_modified("z.rs".to_string(), "agent".to_string(), true);
         state.changeset_store.revert_success("z.rs"); // reverted: not active
 
         let active = state.changeset_store.active_entries().len();
@@ -1801,7 +2054,9 @@ mod tests {
         let (tx, _rx) = tokio::sync::mpsc::channel(4);
         let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
 
-        state.changeset_store.file_modified("a.rs".to_string(), "agent".to_string(), true);
+        state
+            .changeset_store
+            .file_modified("a.rs".to_string(), "agent".to_string(), true);
         state.modified_files = state.changeset_store.modified_files();
         assert_eq!(state.modified_files.len(), 1);
 
@@ -1903,7 +2158,10 @@ mod tests {
         state.pending_approvals.push(ToolCall {
             id: "tc-h".to_string(),
             r#type: "function".to_string(),
-            function: FunctionCall { name: "write_file".to_string(), arguments: "{}".to_string() },
+            function: FunctionCall {
+                name: "write_file".to_string(),
+                arguments: "{}".to_string(),
+            },
             metadata: None,
         });
         handle_input_event(&mut state, &tx, InputEvent::AutoApproveCurrentTool);
@@ -1920,7 +2178,10 @@ mod tests {
         state.pending_approvals.push(ToolCall {
             id: "tc-r".to_string(),
             r#type: "function".to_string(),
-            function: FunctionCall { name: "delete_file".to_string(), arguments: "{}".to_string() },
+            function: FunctionCall {
+                name: "delete_file".to_string(),
+                arguments: "{}".to_string(),
+            },
             metadata: None,
         });
         handle_input_event(&mut state, &tx, InputEvent::RejectCurrentTool);
@@ -1930,7 +2191,10 @@ mod tests {
         handle_input_event(&mut state, &tx, InputEvent::InputSubmitted);
         assert_eq!(state.pending_approvals.len(), 0);
         assert_eq!(state.rejected_tools.len(), 1);
-        assert!(matches!(rx.try_recv().unwrap(), OutputEvent::RejectTool(_, _, _)));
+        assert!(matches!(
+            rx.try_recv().unwrap(),
+            OutputEvent::RejectTool(_, _, _)
+        ));
     }
 
     // ── Branch 6C behavioral tests ──────────────────────────────────────────
@@ -2149,7 +2413,10 @@ mod tests {
             state.pending_approvals.push(ToolCall {
                 id: format!("tc-{}", i),
                 r#type: "function".to_string(),
-                function: FunctionCall { name: "tool".to_string(), arguments: "{}".to_string() },
+                function: FunctionCall {
+                    name: "tool".to_string(),
+                    arguments: "{}".to_string(),
+                },
                 metadata: None,
             });
         }
@@ -2171,7 +2438,10 @@ mod tests {
             state.pending_approvals.push(ToolCall {
                 id: format!("tc-{}", i),
                 r#type: "function".to_string(),
-                function: FunctionCall { name: "tool".to_string(), arguments: "{}".to_string() },
+                function: FunctionCall {
+                    name: "tool".to_string(),
+                    arguments: "{}".to_string(),
+                },
                 metadata: None,
             });
         }
@@ -2179,7 +2449,10 @@ mod tests {
         assert_eq!(state.pending_approvals.len(), 0);
         assert_eq!(state.rejected_tools.len(), 3);
         for _ in 0..3 {
-            assert!(matches!(rx.try_recv().unwrap(), OutputEvent::RejectTool(_, _, _)));
+            assert!(matches!(
+                rx.try_recv().unwrap(),
+                OutputEvent::RejectTool(_, _, _)
+            ));
         }
     }
 
@@ -2191,7 +2464,10 @@ mod tests {
         state.pending_approvals.push(ToolCall {
             id: "tc-reason".to_string(),
             r#type: "function".to_string(),
-            function: FunctionCall { name: "tool".to_string(), arguments: "{}".to_string() },
+            function: FunctionCall {
+                name: "tool".to_string(),
+                arguments: "{}".to_string(),
+            },
             metadata: None,
         });
 
@@ -2228,7 +2504,10 @@ mod tests {
         state.pending_approvals.push(ToolCall {
             id: "tc-esc".to_string(),
             r#type: "function".to_string(),
-            function: FunctionCall { name: "tool".to_string(), arguments: "{}".to_string() },
+            function: FunctionCall {
+                name: "tool".to_string(),
+                arguments: "{}".to_string(),
+            },
             metadata: None,
         });
 
@@ -2339,4 +2618,55 @@ mod tests {
         assert!(state.review_diff.as_ref().unwrap().scroll > 0);
     }
 
+    #[tokio::test]
+    async fn runtime_tab_requests_refresh_on_cycle() {
+        let dir = tempfile::tempdir().unwrap();
+        let (tx, mut rx) = tokio::sync::mpsc::channel(4);
+        let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
+        state.focus = crate::tui::app::WorkspaceFocus::Workbench;
+        state.workbench_tab = crate::tui::app::WorkbenchTab::Sessions;
+
+        handle_input_event(&mut state, &tx, InputEvent::WorkbenchNextTab);
+
+        assert_eq!(state.workbench_tab, crate::tui::app::WorkbenchTab::Runtime);
+        assert!(matches!(
+            rx.recv().await.unwrap(),
+            OutputEvent::ListRuntimeJobs
+        ));
+        assert!(matches!(
+            rx.recv().await.unwrap(),
+            OutputEvent::LoadRuntimeState
+        ));
+    }
+
+    #[test]
+    fn shell_backend_lifecycle_updates_state() {
+        let dir = tempfile::tempdir().unwrap();
+        let (tx, _rx) = tokio::sync::mpsc::channel(4);
+        let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
+        let (stdin_tx, _stdin_rx) = tokio::sync::mpsc::channel(4);
+        let shell = crate::tui::services::ShellCommand {
+            id: "shell-1".to_string(),
+            command: "echo hi".to_string(),
+            stdin_tx,
+        };
+
+        handle_backend_event(&mut state, &tx, InputEvent::ShellStarted(shell.clone()));
+        assert!(state.active_shell_command.is_some());
+        assert!(state.shell_popup_visible);
+
+        handle_backend_event(
+            &mut state,
+            &tx,
+            InputEvent::ShellOutput("hello\n".to_string()),
+        );
+        handle_backend_event(&mut state, &tx, InputEvent::ShellWaitingForInput);
+        assert!(state.shell_output.contains("hello"));
+        assert!(state.shell_waiting_for_input);
+
+        handle_backend_event(&mut state, &tx, InputEvent::ShellCompleted(0));
+        assert!(state.active_shell_command.is_none());
+        assert_eq!(state.shell_exit_code, Some(0));
+        assert!(!state.shell_waiting_for_input);
+    }
 }

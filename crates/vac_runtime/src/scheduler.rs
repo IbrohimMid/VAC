@@ -8,6 +8,7 @@ use tracing::{info, warn};
 use crate::executor::TaskExecutor;
 use crate::jobs::JobStatus;
 use crate::queue::TaskQueue;
+use vac_core::config::ExecutionEnvironment;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "state", rename_all = "snake_case")]
@@ -37,12 +38,26 @@ pub struct AutopilotStateFile {
     #[serde(flatten)]
     pub state: AutopilotState,
     pub mode: String,
+    #[serde(default = "default_task_intent_mode")]
+    pub task_intent_mode: String,
+    #[serde(default = "default_environment_mode")]
+    pub environment_mode: String,
+    #[serde(default)]
+    pub execution_environment: ExecutionEnvironment,
     pub poll_interval_secs: u64,
     pub queue_len: usize,
     pub current_job: Option<uuid::Uuid>,
     pub last_event: Option<AutopilotEvent>,
     pub last_error: Option<String>,
     pub updated_at: DateTime<Utc>,
+}
+
+fn default_task_intent_mode() -> String {
+    "monitor-only".to_string()
+}
+
+fn default_environment_mode() -> String {
+    "host".to_string()
 }
 
 #[derive(Debug, Clone)]
@@ -107,6 +122,9 @@ impl Scheduler {
         self.write_state(&AutopilotStateFile {
             state: AutopilotState::Idle,
             mode: config.mode.clone(),
+            task_intent_mode: executor.task_intent_mode.as_str().to_string(),
+            environment_mode: executor.environment_mode.as_str().to_string(),
+            execution_environment: executor.execution_environment,
             poll_interval_secs: config.poll_interval_secs,
             queue_len: 0,
             current_job: None,
@@ -131,6 +149,9 @@ impl Scheduler {
                     update_state(&AutopilotStateFile {
                         state: AutopilotState::Polling,
                         mode: config.mode.clone(),
+                        task_intent_mode: executor.task_intent_mode.as_str().to_string(),
+                        environment_mode: executor.environment_mode.as_str().to_string(),
+                        execution_environment: executor.execution_environment,
                         poll_interval_secs: config.poll_interval_secs,
                         queue_len,
                         current_job: None,
@@ -154,6 +175,9 @@ impl Scheduler {
                             kind: job.kind_name(),
                         },
                         mode: config.mode.clone(),
+                        task_intent_mode: executor.task_intent_mode.as_str().to_string(),
+                        environment_mode: executor.environment_mode.as_str().to_string(),
+                        execution_environment: executor.execution_environment,
                         poll_interval_secs: config.poll_interval_secs,
                         queue_len,
                         current_job: Some(job.id),
@@ -172,6 +196,9 @@ impl Scheduler {
                             update_state(&AutopilotStateFile {
                                 state: AutopilotState::Idle,
                                 mode: config.mode.clone(),
+                                task_intent_mode: executor.task_intent_mode.as_str().to_string(),
+                                environment_mode: executor.environment_mode.as_str().to_string(),
+                                execution_environment: executor.execution_environment,
                                 poll_interval_secs: config.poll_interval_secs,
                                 queue_len: queue.len().await,
                                 current_job: None,
@@ -193,6 +220,9 @@ impl Scheduler {
                             update_state(&AutopilotStateFile {
                                 state: AutopilotState::Backoff { until },
                                 mode: config.mode.clone(),
+                                task_intent_mode: executor.task_intent_mode.as_str().to_string(),
+                                environment_mode: executor.environment_mode.as_str().to_string(),
+                                execution_environment: executor.execution_environment,
                                 poll_interval_secs: config.poll_interval_secs,
                                 queue_len: queue.len().await,
                                 current_job: None,
@@ -207,6 +237,9 @@ impl Scheduler {
                     update_state(&AutopilotStateFile {
                         state: AutopilotState::Polling,
                         mode: config.mode.clone(),
+                        task_intent_mode: executor.task_intent_mode.as_str().to_string(),
+                        environment_mode: executor.environment_mode.as_str().to_string(),
+                        execution_environment: executor.execution_environment,
                         poll_interval_secs: config.poll_interval_secs,
                         queue_len,
                         current_job: None,
@@ -241,6 +274,9 @@ mod tests {
         let sf = AutopilotStateFile {
             state: AutopilotState::Polling,
             mode: "monitor".to_string(),
+            task_intent_mode: "monitor-only".to_string(),
+            environment_mode: "host".to_string(),
+            execution_environment: ExecutionEnvironment::Host,
             poll_interval_secs: 5,
             queue_len: 2,
             current_job: None,
@@ -251,6 +287,14 @@ mod tests {
         let v = serde_json::to_value(&sf).unwrap();
         assert_eq!(v.get("state").and_then(|s| s.as_str()), Some("polling"));
         assert_eq!(v.get("mode").and_then(|s| s.as_str()), Some("monitor"));
+        assert_eq!(
+            v.get("task_intent_mode").and_then(|s| s.as_str()),
+            Some("monitor-only")
+        );
+        assert_eq!(
+            v.get("environment_mode").and_then(|s| s.as_str()),
+            Some("host")
+        );
         assert_eq!(
             v.get("poll_interval_secs").and_then(|s| s.as_u64()),
             Some(5)

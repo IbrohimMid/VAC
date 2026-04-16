@@ -24,44 +24,79 @@ pub async fn execute_up(project_root: PathBuf) -> anyhow::Result<()> {
     }
 
     let config = AutopilotConfig::load(&project_root)?;
-
+    let vac_config = vac_core::VacConfig::load_with_fallback(&project_root)?;
     let exe = std::env::current_exe()?;
     std::fs::create_dir_all(project_root.join(".vac"))?;
     let log_path = project_root.join(LOG_FILE);
-    let log_file = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&log_path)?;
+    let pid = if should_wrap_in_isolation(&vac_config.runtime) {
+        let isolation =
+            vac_runtime::IsolationManager::new(project_root.clone(), vac_config.runtime.clone());
+        let args = vec![
+            "--project".to_string(),
+            project_root.display().to_string(),
+            "autopilot".to_string(),
+            "run".to_string(),
+        ];
+        isolation.spawn_background(&exe, &args, &log_path, std::collections::HashMap::new())?
+    } else {
+        let log_file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&log_path)?;
 
-    let child = std::process::Command::new(exe)
-        .args([
-            "--project",
-            project_root.to_str().unwrap_or("."),
-            "autopilot",
-            "run",
-        ])
-        .current_dir(&project_root)
-        .stdout(log_file.try_clone()?)
-        .stderr(log_file)
-        .spawn()?;
-
-    let pid = child.id();
+        let child = std::process::Command::new(exe)
+            .args([
+                "--project",
+                project_root.to_str().unwrap_or("."),
+                "autopilot",
+                "run",
+            ])
+            .current_dir(&project_root)
+            .stdout(log_file.try_clone()?)
+            .stderr(log_file)
+            .spawn()?;
+        child.id()
+    };
     std::fs::write(&pid_path, pid.to_string())?;
 
     // Lifecycle event: started
     append_event(
         &project_root,
-        &format!("STARTED pid={pid} mode={}", config.mode),
+        &format!(
+            "STARTED pid={pid} mode={} execution={:?}",
+            config.mode, vac_config.runtime.execution_environment
+        ),
     );
 
     println!("✓ Autopilot started (PID {pid})");
     println!("  Mode:     {}", config.mode);
     println!("  Interval: {}s", config.poll_interval_secs);
+    println!("  Env:      {}", vac_config.runtime.environment_mode);
+    println!("  Exec:     {:?}", vac_config.runtime.execution_environment);
     println!("  Log:      {}", log_path.display());
     Ok(())
 }
 
 pub async fn execute_run(project_root: PathBuf) -> anyhow::Result<()> {
+    let vac_config = vac_core::VacConfig::load_with_fallback(&project_root)?;
+    if should_wrap_in_isolation(&vac_config.runtime) {
+        let exe = std::env::current_exe()?;
+        let isolation =
+            vac_runtime::IsolationManager::new(project_root.clone(), vac_config.runtime.clone());
+        let args = vec![
+            "--project".to_string(),
+            project_root.display().to_string(),
+            "autopilot".to_string(),
+            "run".to_string(),
+        ];
+        let code =
+            isolation.run_foreground(&exe, &args, false, std::collections::HashMap::new())?;
+        if code != 0 {
+            anyhow::bail!("Isolated autopilot exited with code {code}");
+        }
+        return Ok(());
+    }
+
     let controller = vac_runtime::AutopilotController::new(project_root).await?;
     let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
 
@@ -178,6 +213,7 @@ pub async fn execute_status(project_root: PathBuf, format: &str) -> anyhow::Resu
     let pid: u32 = std::fs::read_to_string(&pid_path)?.trim().parse()?;
     if is_running(pid) {
         let config = AutopilotConfig::load(&project_root)?;
+        let vac_config = vac_core::VacConfig::load_with_fallback(&project_root)?;
         if format == "json" {
             println!(
                 "{}",
@@ -185,6 +221,8 @@ pub async fn execute_status(project_root: PathBuf, format: &str) -> anyhow::Resu
                     "status": "running",
                     "pid": pid,
                     "mode": config.mode,
+                    "environment_mode": vac_config.runtime.environment_mode,
+                    "execution_environment": vac_config.runtime.execution_environment,
                     "poll_interval_secs": config.poll_interval_secs,
                     "internal_state": state_json,
                     "log": project_root.join(LOG_FILE).display().to_string()
@@ -195,6 +233,8 @@ pub async fn execute_status(project_root: PathBuf, format: &str) -> anyhow::Resu
         println!("Autopilot: running");
         println!("  PID:    {pid}");
         println!("  Mode:   {}", config.mode);
+        println!("  Env:    {}", vac_config.runtime.environment_mode);
+        println!("  Exec:   {:?}", vac_config.runtime.execution_environment);
         if let Some(mode) = state_mode {
             println!("  State Mode: {mode}");
         }
@@ -225,6 +265,11 @@ pub async fn execute_status(project_root: PathBuf, format: &str) -> anyhow::Resu
         println!("Autopilot: stopped (stale PID removed)");
     }
     Ok(())
+}
+
+fn should_wrap_in_isolation(runtime: &vac_core::RuntimeConfig) -> bool {
+    runtime.execution_environment != vac_core::ExecutionEnvironment::Host
+        && std::env::var("VAC_SKIP_ISOLATION_WRAPPER").ok().as_deref() != Some("1")
 }
 
 fn append_event(project_root: &std::path::Path, event: &str) {

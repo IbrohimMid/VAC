@@ -47,6 +47,7 @@ pub struct ToolContext {
     pub session_id: uuid::Uuid,
     pub shm: Option<Arc<ShmArena>>,
     pub agent_zone: AgentZone,
+    pub environment_mode: String,
     pub privacy: Arc<RwLock<crate::PrivacyVault>>,
 }
 
@@ -56,6 +57,7 @@ impl std::fmt::Debug for ToolContext {
             .field("working_dir", &self.working_dir)
             .field("session_id", &self.session_id)
             .field("agent_zone", &self.agent_zone)
+            .field("environment_mode", &self.environment_mode)
             .finish_non_exhaustive()
     }
 }
@@ -68,6 +70,8 @@ impl ToolContext {
             session_id: uuid::Uuid::new_v4(),
             shm: None,
             agent_zone: AgentZone::ParentAgent,
+            environment_mode: std::env::var("VAC_ENVIRONMENT_MODE")
+                .unwrap_or_else(|_| "host".to_string()),
             privacy: Arc::new(RwLock::new(crate::PrivacyVault::new())),
         }
     }
@@ -84,6 +88,11 @@ impl ToolContext {
 
     pub fn with_zone(mut self, zone: AgentZone) -> Self {
         self.agent_zone = zone;
+        self
+    }
+
+    pub fn with_environment_mode(mut self, mode: impl Into<String>) -> Self {
+        self.environment_mode = mode.into();
         self
     }
 }

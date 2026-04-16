@@ -5,7 +5,7 @@ use std::sync::Arc;
 use chrono::Utc;
 use tokio::sync::Mutex;
 
-use crate::executor::{OperatingMode, TaskExecutor};
+use crate::executor::{EnvironmentMode, OperatingMode, TaskExecutor};
 use crate::jobs::{Job, JobKind, JobStatus};
 use crate::queue::TaskQueue;
 use crate::scheduler::{AutopilotEvent, AutopilotState, AutopilotStateFile};
@@ -23,8 +23,14 @@ impl AutopilotController {
     pub async fn new(project_root: PathBuf) -> anyhow::Result<Self> {
         let config = vac_core::config::AutopilotConfig::load(&project_root)?;
         let vac_config = vac_core::VacConfig::load_with_fallback(&project_root)?;
-        let operating_mode = OperatingMode::parse(&vac_config.runtime.operating_mode);
-        let executor = TaskExecutor::new(project_root.clone(), operating_mode);
+        let operating_mode = OperatingMode::parse(vac_config.runtime.operating_mode());
+        let environment_mode = EnvironmentMode::parse(&vac_config.runtime.environment_mode);
+        let executor = TaskExecutor::new_with_modes(
+            project_root.clone(),
+            operating_mode,
+            environment_mode,
+            vac_config.runtime.execution_environment,
+        );
         let queue = Arc::new(TaskQueue::with_storage(
             project_root.join(".vac/queue.json"),
         ));
@@ -43,6 +49,9 @@ impl AutopilotController {
         mut shutdown: tokio::sync::watch::Receiver<bool>,
     ) -> anyhow::Result<()> {
         let poll_interval = std::time::Duration::from_secs(self.config.poll_interval_secs.max(1));
+        let task_intent_mode = self.executor.task_intent_mode.as_str().to_string();
+        let environment_mode = self.executor.environment_mode.as_str().to_string();
+        let execution_environment = self.executor.execution_environment;
 
         loop {
             if *shutdown.borrow() {
@@ -54,6 +63,9 @@ impl AutopilotController {
                 self.write_state(AutopilotStateFile {
                     state: AutopilotState::Polling,
                     mode: self.config.mode.clone(),
+                    task_intent_mode: task_intent_mode.clone(),
+                    environment_mode: environment_mode.clone(),
+                    execution_environment,
                     poll_interval_secs: self.config.poll_interval_secs,
                     queue_len: queued,
                     current_job: None,
@@ -80,6 +92,9 @@ impl AutopilotController {
                         kind: job.kind_name(),
                     },
                     mode: self.config.mode.clone(),
+                    task_intent_mode: task_intent_mode.clone(),
+                    environment_mode: environment_mode.clone(),
+                    execution_environment,
                     poll_interval_secs: self.config.poll_interval_secs,
                     queue_len: queued,
                     current_job: Some(job.id),
@@ -108,6 +123,9 @@ impl AutopilotController {
                         self.write_state(AutopilotStateFile {
                             state: AutopilotState::Idle,
                             mode: self.config.mode.clone(),
+                            task_intent_mode: task_intent_mode.clone(),
+                            environment_mode: environment_mode.clone(),
+                            execution_environment,
                             poll_interval_secs: self.config.poll_interval_secs,
                             queue_len: self.queued_len().await,
                             current_job: None,
@@ -128,6 +146,9 @@ impl AutopilotController {
                         self.write_state(AutopilotStateFile {
                             state: AutopilotState::Backoff { until },
                             mode: self.config.mode.clone(),
+                            task_intent_mode: task_intent_mode.clone(),
+                            environment_mode: environment_mode.clone(),
+                            execution_environment,
                             poll_interval_secs: self.config.poll_interval_secs,
                             queue_len: self.queued_len().await,
                             current_job: None,
@@ -146,6 +167,9 @@ impl AutopilotController {
                 self.write_state(AutopilotStateFile {
                     state: AutopilotState::Polling,
                     mode: self.config.mode.clone(),
+                    task_intent_mode: task_intent_mode.clone(),
+                    environment_mode: environment_mode.clone(),
+                    execution_environment,
                     poll_interval_secs: self.config.poll_interval_secs,
                     queue_len: self.queued_len().await,
                     current_job: None,
@@ -181,7 +205,7 @@ impl AutopilotController {
             job.kind,
             JobKind::RunTask { .. } | JobKind::PatchProposal { .. }
         ) && matches!(
-            self.executor.operating_mode,
+            self.executor.task_intent_mode,
             OperatingMode::PatchProposal | OperatingMode::AutoFixLowRisk
         ) && self.engine.is_none()
         {
@@ -196,7 +220,7 @@ impl AutopilotController {
             job.kind,
             JobKind::RunTask { .. } | JobKind::PatchProposal { .. }
         ) && matches!(
-            self.executor.operating_mode,
+            self.executor.task_intent_mode,
             OperatingMode::PatchProposal | OperatingMode::AutoFixLowRisk
         ) {
             return self
@@ -226,6 +250,9 @@ impl AutopilotController {
         let queue = self.queue.clone();
         let state_path = self.state_path.clone();
         let mode = self.config.mode.clone();
+        let task_intent_mode = self.executor.task_intent_mode.as_str().to_string();
+        let environment_mode = self.executor.environment_mode.as_str().to_string();
+        let execution_environment = self.executor.execution_environment;
         let poll_interval_secs = self.config.poll_interval_secs;
         let job_id = job.id;
         let kind_label = job.kind_name();
@@ -262,6 +289,9 @@ impl AutopilotController {
                                     tool_call_id: tool_call_id.clone(),
                                 },
                                 mode: mode.clone(),
+                                task_intent_mode: task_intent_mode.clone(),
+                                environment_mode: environment_mode.clone(),
+                                execution_environment,
                                 poll_interval_secs,
                                 queue_len,
                                 current_job: Some(job_id),
@@ -276,17 +306,16 @@ impl AutopilotController {
                             let mode = mode.clone();
                             let queue = queue.clone();
                             let kind_label = kind_label.clone();
+                            let task_intent_mode = task_intent_mode.clone();
+                            let environment_mode = environment_mode.clone();
                             let pending = pending.clone();
                             let approvals = approvals.clone();
                             let store = store.clone();
                             let mut shutdown = shutdown.clone();
                             async move {
-                                let intent = wait_for_approval_intent(
-                                    &store,
-                                    &tool_call_id,
-                                    &mut shutdown,
-                                )
-                                .await;
+                                let intent =
+                                    wait_for_approval_intent(&store, &tool_call_id, &mut shutdown)
+                                        .await;
 
                                 if let Ok(intent) = intent {
                                     let res = if intent.approved {
@@ -316,6 +345,9 @@ impl AutopilotController {
                                                         ),
                                                 },
                                                 mode: mode.clone(),
+                                                task_intent_mode: task_intent_mode.clone(),
+                                                environment_mode: environment_mode.clone(),
+                                                execution_environment,
                                                 poll_interval_secs,
                                                 queue_len,
                                                 current_job: Some(job_id),
@@ -346,6 +378,9 @@ impl AutopilotController {
                                                 tool_call_id: next_id,
                                             },
                                             mode: mode.clone(),
+                                            task_intent_mode: task_intent_mode.clone(),
+                                            environment_mode: environment_mode.clone(),
+                                            execution_environment,
                                             poll_interval_secs,
                                             queue_len,
                                             current_job: Some(job_id),
@@ -363,6 +398,9 @@ impl AutopilotController {
                                                 kind: kind_label,
                                             },
                                             mode: mode.clone(),
+                                            task_intent_mode: task_intent_mode.clone(),
+                                            environment_mode: environment_mode.clone(),
+                                            execution_environment,
                                             poll_interval_secs,
                                             queue_len,
                                             current_job: Some(job_id),
@@ -444,7 +482,8 @@ impl AutopilotController {
             ),
         );
         let router = vac_tools::ToolRouter::new(registry, policy);
-        let context = vac_tools::registry::ToolContext::new(self.project_root.clone());
+        let context = vac_tools::registry::ToolContext::new(self.project_root.clone())
+            .with_environment_mode(vac_config.runtime.environment_mode.clone());
 
         match router.route(&tool_name, arguments.clone(), &context).await {
             Ok(value) => Ok(format!("Tool executed: {tool_name} | result={}", value)),
@@ -474,6 +513,9 @@ impl AutopilotController {
                         tool_call_id: tool_call_id.clone(),
                     },
                     mode: self.config.mode.clone(),
+                    task_intent_mode: self.executor.task_intent_mode.as_str().to_string(),
+                    environment_mode: self.executor.environment_mode.as_str().to_string(),
+                    execution_environment: self.executor.execution_environment,
                     poll_interval_secs: self.config.poll_interval_secs,
                     queue_len: self.queued_len().await,
                     current_job: Some(job.id),

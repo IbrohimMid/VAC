@@ -1,0 +1,1 @@
+- [VAC CLI Architecture Overview](project_architecture.md) -- 3-layer crate structure (vil_swarm, vac_core, vac_cli) with approval flow and TUI rendering
