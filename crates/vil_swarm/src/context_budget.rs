@@ -163,6 +163,7 @@ mod tests {
             name: None,
             tool_call_id: None,
             tool_calls: vec![],
+            image_parts: vec![],
         }
     }
 
@@ -173,6 +174,7 @@ mod tests {
             name: None,
             tool_call_id: Some("tc1".into()),
             tool_calls: vec![],
+            image_parts: vec![],
         }
     }
 
@@ -187,6 +189,7 @@ mod tests {
                 name: "file_read".into(),
                 arguments: json!({"path": "src/main.rs"}),
             }],
+            image_parts: vec![],
         }
     }
 

@@ -76,6 +76,31 @@ impl AnthropicProvider {
     }
 
     fn map_message(msg: &Message) -> OpenAiMessage {
+        // Determine content: if images present, use content blocks array for multimodal
+        let content_value = if !msg.image_parts.is_empty() && msg.role == Role::User {
+            let mut blocks = Vec::new();
+            if !msg.content.is_empty() {
+                blocks.push(serde_json::json!({"type": "text", "text": msg.content}));
+            }
+            for img in &msg.image_parts {
+                blocks.push(serde_json::json!({
+                    "type": "image_url",
+                    "image_url": {
+                        "url": format!("data:{};base64,{}", img.media_type, img.data)
+                    }
+                }));
+            }
+            Some(serde_json::Value::Array(blocks))
+        } else if matches!(msg.role, Role::Assistant) && !msg.tool_calls.is_empty() {
+            if msg.content.is_empty() {
+                None
+            } else {
+                Some(serde_json::Value::String(msg.content.clone()))
+            }
+        } else {
+            Some(serde_json::Value::String(msg.content.clone()))
+        };
+
         let mut mapped = OpenAiMessage {
             role: match msg.role {
                 Role::System => "system".to_string(),
@@ -83,15 +108,7 @@ impl AnthropicProvider {
                 Role::Assistant => "assistant".to_string(),
                 Role::Tool => "tool".to_string(),
             },
-            content: if matches!(msg.role, Role::Assistant) && !msg.tool_calls.is_empty() {
-                if msg.content.is_empty() {
-                    None
-                } else {
-                    Some(msg.content.clone())
-                }
-            } else {
-                Some(msg.content.clone())
-            },
+            content: content_value,
             name: msg.name.clone(),
             tool_call_id: msg.tool_call_id.clone(),
             tool_calls: None,
@@ -428,8 +445,9 @@ struct OpenAiChatRequest {
 #[derive(Debug, Serialize)]
 struct OpenAiMessage {
     role: String,
+    /// Content can be a string or an array of content blocks (for multimodal).
     #[serde(skip_serializing_if = "Option::is_none")]
-    content: Option<String>,
+    content: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

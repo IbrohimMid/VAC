@@ -550,6 +550,7 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                 let filtered = state.profile_switcher_filtered();
                 if let Some(p) = filtered.get(state.profile_switcher_selected) {
                     state.active_profile = p.clone();
+                    let _ = output_tx.try_send(OutputEvent::SwitchProfile(p.clone()));
                 }
                 state.show_profile_switcher = false;
             }
@@ -592,6 +593,8 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                 }
             }
             InputEvent::InputSubmitted => {
+                let selected: Vec<String> = state.selected_rulebooks.iter().cloned().collect();
+                let _ = output_tx.try_send(OutputEvent::ApplyRulebooks(selected));
                 state.show_rulebook_switcher = false;
             }
             _ => {}
@@ -864,6 +867,9 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
         }
         InputEvent::ToggleSidePanel => {
             state.side_panel_visible = !state.side_panel_visible;
+            if !state.side_panel_visible {
+                state.side_panel_row_areas.clear();
+            }
         }
         InputEvent::MouseDragStart(col, row) => {
             let mut clicked_section = None;
@@ -882,13 +888,45 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                 } else {
                     state.side_panel_section_collapsed.insert(sec);
                 }
-            } else if row == 0 {
-                let term_width = crossterm::terminal::size().map(|s| s.0).unwrap_or(80);
-                if col > term_width.saturating_sub(40) {
-                    state.side_panel_visible = !state.side_panel_visible;
-                }
             } else {
-                crate::tui::services::text_selection::handle_drag_start(state, col, row);
+                // Check per-row click areas in side panel
+                let mut handled = false;
+                if state.side_panel_visible {
+                    for (action, rect) in &state.side_panel_row_areas {
+                        if col >= rect.x && col < rect.x + rect.width && row >= rect.y && row < rect.y + rect.height {
+                            match action.clone() {
+                                crate::tui::app::SidePanelRowAction::SwitchSession(id) => {
+                                    let _ = output_tx.try_send(OutputEvent::SwitchToSession(id));
+                                }
+                                crate::tui::app::SidePanelRowAction::ShowMcpDetail(name) => {
+                                    state.push_activity(
+                                        crate::tui::app::ActivityKind::Mcp,
+                                        format!("MCP detail: {}", name),
+                                    );
+                                    state.focus = crate::tui::app::WorkspaceFocus::Workbench;
+                                    state.workbench_tab = crate::tui::app::WorkbenchTab::Runtime;
+                                }
+                                crate::tui::app::SidePanelRowAction::JumpToVilIssue(path) => {
+                                    state.changeset_selected_path = Some(path);
+                                    state.focus = crate::tui::app::WorkspaceFocus::Workbench;
+                                    state.workbench_tab = crate::tui::app::WorkbenchTab::Review;
+                                }
+                            }
+                            handled = true;
+                            break;
+                        }
+                    }
+                }
+                if !handled {
+                    if row == 0 {
+                        let term_width = crossterm::terminal::size().map(|s| s.0).unwrap_or(80);
+                        if col > term_width.saturating_sub(40) {
+                            state.side_panel_visible = !state.side_panel_visible;
+                        }
+                    } else {
+                        crate::tui::services::text_selection::handle_drag_start(state, col, row);
+                    }
+                }
             }
         }
         InputEvent::MouseDrag(col, row) => {
@@ -1209,12 +1247,14 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                         }
                     } else {
                         state.add_user_message(msg.clone());
+                        let parts = std::mem::take(&mut state.pending_image_parts);
                         let _ =
-                            output_tx.try_send(OutputEvent::UserMessage(msg, None, vec![], None));
+                            output_tx.try_send(OutputEvent::UserMessage(msg, None, parts, None));
                     }
                 } else {
                     state.add_user_message(msg.clone());
-                    let _ = output_tx.try_send(OutputEvent::UserMessage(msg, None, vec![], None));
+                    let parts = std::mem::take(&mut state.pending_image_parts);
+                    let _ = output_tx.try_send(OutputEvent::UserMessage(msg, None, parts, None));
                 }
             }
         }
@@ -1240,10 +1280,39 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
         InputEvent::HandleClipboardImagePaste => {
             #[cfg(not(target_os = "android"))]
             {
+                const MAX_IMAGE_BYTES: usize = 10 * 1024 * 1024; // 10MB limit
+
                 match crate::tui::services::clipboard_paste::paste_image_to_temp_png() {
                     Ok((path, _info)) => {
-                        state.input.insert_str(&path.to_string_lossy());
-                        state.input.input(' ');
+                        if let Ok(bytes) = std::fs::read(&path) {
+                            if bytes.len() > MAX_IMAGE_BYTES {
+                                log::warn!("Image too large ({} bytes), max {} bytes", bytes.len(), MAX_IMAGE_BYTES);
+                                state.input.insert_str("[image too large, max 10MB] ");
+                            } else {
+                                use base64::Engine as _;
+                                let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+                                // Detect media type from file extension
+                                let media_type = match path.extension().and_then(|e| e.to_str()) {
+                                    Some("png") => "image/png",
+                                    Some("jpg") | Some("jpeg") => "image/jpeg",
+                                    Some("gif") => "image/gif",
+                                    Some("webp") => "image/webp",
+                                    _ => "image/png", // paste_image_to_temp_png produces PNG-compat output
+                                };
+                                let part = crate::tui::types::ContentPart {
+                                    r#type: "image".to_string(),
+                                    text: None,
+                                    image_url: Some(crate::tui::types::ImageUrl {
+                                        url: format!("data:{};base64,{}", media_type, b64),
+                                    }),
+                                };
+                                state.pending_image_parts.push(part);
+                                state.input.insert_str("[image attached] ");
+                            }
+                        } else {
+                            state.input.insert_str(&path.to_string_lossy());
+                            state.input.input(' ');
+                        }
                     }
                     Err(e) => {
                         log::warn!("Failed to paste image from clipboard: {}", e);

@@ -74,6 +74,11 @@ impl VacEngine {
         Ok(())
     }
 
+    /// Access the swarm orchestrator (for direct operations like set_rulebook).
+    pub fn swarm_mut(&self) -> Option<&Arc<RwLock<vil_swarm::SwarmOrchestrator>>> {
+        self.swarm.as_ref()
+    }
+
     pub fn available_models(&self) -> Vec<(String, String)> {
         let mut models: Vec<(String, String)> = self
             .config
@@ -381,6 +386,27 @@ impl VacEngine {
         cancel: Option<tokio_util::sync::CancellationToken>,
     ) -> VacResult<TaskResult> {
         self.run_task_with_approvals(description, updates, cancel, None)
+            .await
+    }
+
+    /// Run a task with image attachments and structured approval support.
+    #[instrument(skip(self, updates, cancel, approval_rx, image_parts), fields(task_id))]
+    pub async fn run_task_with_images(
+        &mut self,
+        description: &str,
+        updates: Option<mpsc::UnboundedSender<RuntimeUpdate>>,
+        cancel: Option<tokio_util::sync::CancellationToken>,
+        approval_rx: Option<mpsc::UnboundedReceiver<vil_swarm::ApprovalResponse>>,
+        image_parts: Vec<vil_llm::provider::ImagePart>,
+    ) -> VacResult<TaskResult> {
+        // Store image parts for the next agent loop execution
+        if !image_parts.is_empty() {
+            if let Some(ref swarm) = self.swarm {
+                let mut s = swarm.write().await;
+                s.set_pending_images(image_parts);
+            }
+        }
+        self.run_task_with_approvals(description, updates, cancel, approval_rx)
             .await
     }
 

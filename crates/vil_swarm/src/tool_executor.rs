@@ -162,6 +162,7 @@ pub async fn execute_tools(
                         name: Some(call.name),
                         tool_call_id: Some(call.id),
                         tool_calls: vec![],
+                        image_parts: vec![],
                     });
                 }
                 Err(e) => {

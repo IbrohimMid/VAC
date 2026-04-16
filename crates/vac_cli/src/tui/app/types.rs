@@ -263,6 +263,13 @@ pub enum SidePanelSection {
     Sessions,
 }
 
+#[derive(Debug, Clone)]
+pub enum SidePanelRowAction {
+    SwitchSession(String),
+    ShowMcpDetail(String),
+    JumpToVilIssue(String),
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct VilStatusSnapshot {
     pub profile: Option<vac_core::detector::VilProjectProfile>,
@@ -295,6 +302,7 @@ pub struct AppState {
     pub side_panel_width: u16,
     pub side_panel_section_collapsed: std::collections::HashSet<SidePanelSection>,
     pub side_panel_header_areas: std::collections::HashMap<SidePanelSection, ratatui::layout::Rect>,
+    pub side_panel_row_areas: Vec<(SidePanelRowAction, ratatui::layout::Rect)>,
 
     // Input state
     pub input: TextArea,
@@ -448,6 +456,9 @@ pub struct AppState {
     // VIL Status
     pub vil_status: VilStatusSnapshot,
 
+    // Pending image attachments for next message submission
+    pub pending_image_parts: Vec<crate::tui::types::ContentPart>,
+
     // Text Selection
     pub selection_state: crate::tui::services::text_selection::SelectionState,
     pub per_message_cache: PerMessageCache,
@@ -486,6 +497,7 @@ impl AppState {
             side_panel_width: 30,
             side_panel_section_collapsed: std::collections::HashSet::new(),
             side_panel_header_areas: std::collections::HashMap::new(),
+            side_panel_row_areas: vec![],
             input: TextArea::new(),
             cursor_position: 0,
             focus: WorkspaceFocus::Input,
@@ -602,6 +614,7 @@ impl AppState {
             project_root: options.project_root,
             mcp_server_states: HashMap::new(),
             vil_status: VilStatusSnapshot::default(),
+            pending_image_parts: vec![],
             selection_state: crate::tui::services::text_selection::SelectionState::default(),
             per_message_cache: HashMap::new(),
             render_metrics: RenderMetrics::default(),

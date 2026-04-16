@@ -39,6 +39,15 @@ pub enum LlmContent {
         tool_use_id: String,
         content: String,
     },
+    #[serde(rename = "image")]
+    Image {
+        /// "base64"
+        source_type: String,
+        /// e.g. "image/jpeg", "image/png"
+        media_type: String,
+        /// Base64-encoded image data
+        data: String,
+    },
 }
 
 impl From<&Message> for LlmMessage {
@@ -56,6 +65,15 @@ impl From<&Message> for LlmMessage {
         if !msg.content.is_empty() {
             content.push(LlmContent::Text {
                 text: msg.content.clone(),
+            });
+        }
+
+        // Add image parts if present
+        for img in &msg.image_parts {
+            content.push(LlmContent::Image {
+                source_type: img.source_type.clone(),
+                media_type: img.media_type.clone(),
+                data: img.data.clone(),
             });
         }
 
@@ -96,18 +114,48 @@ impl LlmMessage {
 
         let mut result = serde_json::json!({ "role": role });
 
-        // Extract text content
-        let text_content: Vec<String> = self
+        // Check if message has image content — if so, use content blocks array
+        let has_images = self
             .content
             .iter()
-            .filter_map(|c| match c {
-                LlmContent::Text { text } => Some(text.clone()),
-                _ => None,
-            })
-            .collect();
+            .any(|c| matches!(c, LlmContent::Image { .. }));
 
-        if !text_content.is_empty() {
-            result["content"] = serde_json::json!(text_content.join("\n\n"));
+        if has_images {
+            // Multimodal: build content blocks array (OpenAI vision format)
+            let mut blocks = Vec::new();
+            for c in &self.content {
+                match c {
+                    LlmContent::Text { text } => {
+                        blocks.push(serde_json::json!({"type": "text", "text": text}));
+                    }
+                    LlmContent::Image {
+                        media_type, data, ..
+                    } => {
+                        blocks.push(serde_json::json!({
+                            "type": "image_url",
+                            "image_url": {
+                                "url": format!("data:{};base64,{}", media_type, data)
+                            }
+                        }));
+                    }
+                    _ => {}
+                }
+            }
+            result["content"] = serde_json::json!(blocks);
+        } else {
+            // Text-only: use simple string content
+            let text_content: Vec<String> = self
+                .content
+                .iter()
+                .filter_map(|c| match c {
+                    LlmContent::Text { text } => Some(text.clone()),
+                    _ => None,
+                })
+                .collect();
+
+            if !text_content.is_empty() {
+                result["content"] = serde_json::json!(text_content.join("\n\n"));
+            }
         }
 
         // Add tool_calls for assistant
@@ -179,12 +227,31 @@ impl From<&LlmMessage> for Message {
             _ => None,
         });
 
+        // Extract image parts
+        let image_parts: Vec<crate::provider::ImagePart> = msg
+            .content
+            .iter()
+            .filter_map(|c| match c {
+                LlmContent::Image {
+                    source_type,
+                    media_type,
+                    data,
+                } => Some(crate::provider::ImagePart {
+                    source_type: source_type.clone(),
+                    media_type: media_type.clone(),
+                    data: data.clone(),
+                }),
+                _ => None,
+            })
+            .collect();
+
         Message {
             role,
             content: text,
             name: None,
             tool_call_id,
             tool_calls,
+            image_parts,
         }
     }
 }

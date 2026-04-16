@@ -14,6 +14,16 @@ pub enum Role {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImagePart {
+    /// "base64"
+    pub source_type: String,
+    /// e.g. "image/jpeg", "image/png"
+    pub media_type: String,
+    /// Base64-encoded image data
+    pub data: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
     pub role: Role,
     pub content: String,
@@ -22,6 +32,8 @@ pub struct Message {
     pub tool_call_id: Option<String>,
     #[serde(default)]
     pub tool_calls: Vec<ToolCall>,
+    #[serde(default)]
+    pub image_parts: Vec<ImagePart>,
 }
 
 impl Message {
@@ -32,6 +44,7 @@ impl Message {
             name: None,
             tool_call_id: None,
             tool_calls: vec![],
+            image_parts: vec![],
         }
     }
     pub fn user(content: impl Into<String>) -> Self {
@@ -41,6 +54,17 @@ impl Message {
             name: None,
             tool_call_id: None,
             tool_calls: vec![],
+            image_parts: vec![],
+        }
+    }
+    pub fn user_with_images(content: impl Into<String>, images: Vec<ImagePart>) -> Self {
+        Self {
+            role: Role::User,
+            content: content.into(),
+            name: None,
+            tool_call_id: None,
+            tool_calls: vec![],
+            image_parts: images,
         }
     }
     pub fn assistant(content: impl Into<String>) -> Self {
@@ -50,6 +74,7 @@ impl Message {
             name: None,
             tool_call_id: None,
             tool_calls: vec![],
+            image_parts: vec![],
         }
     }
 
@@ -63,6 +88,7 @@ impl Message {
             name: None,
             tool_call_id: None,
             tool_calls,
+            image_parts: vec![],
         }
     }
 
@@ -77,6 +103,7 @@ impl Message {
             name: Some(tool_name.into()),
             tool_call_id: Some(tool_call_id.into()),
             tool_calls: vec![],
+            image_parts: vec![],
         }
     }
 }

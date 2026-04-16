@@ -58,6 +58,7 @@ pub fn render_side_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
         .split(padded_area);
 
     state.side_panel_header_areas.clear();
+    state.side_panel_row_areas.clear();
     let sections = [
         (SidePanelSection::Context, chunks[0]),
         (SidePanelSection::Sessions, chunks[1]),
@@ -115,7 +116,7 @@ fn render_context_section(f: &mut Frame, state: &AppState, area: Rect, collapsed
     f.render_widget(Paragraph::new(lines), area);
 }
 
-fn render_sessions_section(f: &mut Frame, state: &AppState, area: Rect, collapsed: bool) {
+fn render_sessions_section(f: &mut Frame, state: &mut AppState, area: Rect, collapsed: bool) {
     let collapse_indicator = if collapsed { "▸" } else { "▾" };
     let header = Line::from(Span::styled(
         format!("  {} Recent Sessions", collapse_indicator),
@@ -132,7 +133,7 @@ fn render_sessions_section(f: &mut Frame, state: &AppState, area: Rect, collapse
     if state.sessions.is_empty() {
         lines.push(Line::styled("    No sessions", Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC)));
     } else {
-        for (_i, session) in state.sessions.iter().take(5).enumerate() {
+        for (i, session) in state.sessions.iter().take(5).enumerate() {
             let is_active = session.id == state.session_id;
             let color = if is_active { Color::Yellow } else { Color::DarkGray };
             let title = if session.title.is_empty() { "Untitled" } else { &session.title };
@@ -141,13 +142,21 @@ fn render_sessions_section(f: &mut Frame, state: &AppState, area: Rect, collapse
                 Span::styled(prefix, Style::default().fg(color)),
                 Span::styled(title.chars().take(20).collect::<String>(), Style::default().fg(color)),
             ]));
+            // Track row rect for click handling (header is row 0, sessions start at row 1)
+            let row_y = area.y + 1 + i as u16;
+            if row_y < area.y + area.height {
+                state.side_panel_row_areas.push((
+                    crate::tui::app::SidePanelRowAction::SwitchSession(session.id.clone()),
+                    Rect::new(area.x, row_y, area.width, 1),
+                ));
+            }
         }
     }
 
     f.render_widget(Paragraph::new(lines), area);
 }
 
-fn render_mcp_section(f: &mut Frame, state: &AppState, area: Rect, collapsed: bool) {
+fn render_mcp_section(f: &mut Frame, state: &mut AppState, area: Rect, collapsed: bool) {
     let collapse_indicator = if collapsed { "▸" } else { "▾" };
     let connected = state.mcp_server_states.values().filter(|s| s.is_connected()).count();
     let total = state.mcp_server_states.len();
@@ -166,7 +175,17 @@ fn render_mcp_section(f: &mut Frame, state: &AppState, area: Rect, collapsed: bo
     if total == 0 {
         lines.push(Line::styled("    No MCP servers", Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC)));
     } else {
+        let mut row_offset = 1u16; // header is row 0
         for (name, conn_state) in &state.mcp_server_states {
+            // Track row for click
+            let row_y = area.y + row_offset;
+            if row_y < area.y + area.height {
+                state.side_panel_row_areas.push((
+                    crate::tui::app::SidePanelRowAction::ShowMcpDetail(name.clone()),
+                    Rect::new(area.x, row_y, area.width, 1),
+                ));
+            }
+            row_offset += if matches!(conn_state.status, vac_tools::mcp::McpConnectionStatus::Unreachable(_)) { 2 } else { 1 };
             let (status, color) = if conn_state.is_connected() {
                 ("✅", Color::Green)
             } else {

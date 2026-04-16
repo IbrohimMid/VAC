@@ -111,6 +111,10 @@ pub struct SwarmOrchestrator {
     pub hook: Option<Arc<dyn crate::hooks::AgentHook>>,
     /// Shared privacy vault for redacting sensitive information
     pub privacy_vault: Arc<tokio::sync::RwLock<vac_tools::PrivacyVault>>,
+    /// Pending image attachments for the next user message (drained on use).
+    pending_images: Vec<vil_llm::provider::ImagePart>,
+    /// Active profile name (e.g. "strict-vil", "spec-hardening"). Thread-safe alternative to env var.
+    active_profile: Option<String>,
 }
 
 /// Lightweight diagnostic context from vil-lsp, decoupled from vac_core types.
@@ -190,6 +194,8 @@ impl SwarmOrchestrator {
             lsp_context: None,
             hook: None,
             privacy_vault,
+            pending_images: vec![],
+            active_profile: std::env::var("VAC_PROFILE").ok(),
         };
 
         let roles = [
@@ -214,6 +220,23 @@ impl SwarmOrchestrator {
 
     pub fn set_model_override(&mut self, model: Option<String>) {
         self.model_override = model;
+    }
+
+    /// Stage image attachments for the next user message (drained on use).
+    pub fn set_pending_images(&mut self, images: Vec<vil_llm::provider::ImagePart>) {
+        self.pending_images = images;
+    }
+
+    /// Set the active profile (thread-safe alternative to VAC_PROFILE env var).
+    pub fn set_active_profile(&mut self, profile: String) {
+        self.active_profile = Some(profile);
+    }
+
+    fn is_strict_mode(&self) -> bool {
+        self.active_profile
+            .as_deref()
+            .map(|p| p == "strict-vil" || p == "spec-hardening")
+            .unwrap_or(false)
     }
 
     pub fn model_override(&self) -> Option<&str> {
@@ -879,9 +902,7 @@ Rules:
                 )
                 .await?;
 
-            let strict_mode = std::env::var("VAC_PROFILE")
-                .map(|p| p == "strict-vil" || p == "spec-hardening")
-                .unwrap_or(false);
+            let strict_mode = self.is_strict_mode();
 
             match evaluate_planner_output(&plan_output) {
                 PlannerGateResult::Passed(plan) => plan.to_markdown(),
@@ -1048,9 +1069,16 @@ Rules:
             .collect();
 
         // STAGE 1: SEMANTIC PLANNER
+        // Drain pending images into the user message (multimodal support)
+        let user_msg = if !self.pending_images.is_empty() {
+            let images = std::mem::take(&mut self.pending_images);
+            Message::user_with_images(task_description.to_string(), images)
+        } else {
+            Message::user(task_description.to_string())
+        };
         let planner_messages = vec![
             Message::system(Self::semantic_planner_prompt()),
-            Message::user(task_description.to_string()),
+            user_msg,
         ];
 
         let mut state = crate::run_state::AgentRunState::new(planner_messages, cancel.clone());

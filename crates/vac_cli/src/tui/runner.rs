@@ -272,7 +272,7 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
     tokio::spawn(async move {
         while let Some(event) = output_rx.recv().await {
             match event {
-                OutputEvent::UserMessage(msg, _tools, _parts, _usize) => {
+                OutputEvent::UserMessage(msg, _tools, parts, _usize) => {
                     let engine = engine_clone.clone();
                     let input_tx = input_tx_clone.clone();
                     let msg = msg.clone();
@@ -306,9 +306,33 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                         });
 
                         let mut eng = engine.lock().await;
-                        let _ = eng
-                            .run_task_with_approvals(&msg, Some(update_tx), None, None)
-                            .await;
+                        // Convert TUI ContentParts to LLM ImageParts for multimodal
+                        // Generic data-URL parsing: "data:<media_type>;base64,<data>"
+                        let image_parts: Vec<vil_llm::provider::ImagePart> = parts
+                            .iter()
+                            .filter_map(|p| {
+                                p.image_url.as_ref().and_then(|url| {
+                                    let raw = &url.url;
+                                    let after_data = raw.strip_prefix("data:")?;
+                                    let (meta, data) = after_data.split_once(";base64,")?;
+                                    Some(vil_llm::provider::ImagePart {
+                                        source_type: "base64".to_string(),
+                                        media_type: meta.to_string(),
+                                        data: data.to_string(),
+                                    })
+                                })
+                            })
+                            .collect();
+
+                        if image_parts.is_empty() {
+                            let _ = eng
+                                .run_task_with_approvals(&msg, Some(update_tx), None, None)
+                                .await;
+                        } else {
+                            let _ = eng
+                                .run_task_with_images(&msg, Some(update_tx), None, None, image_parts)
+                                .await;
+                        }
 
                         // Clear active channels when task completes
                         *active_tx.lock().await = None;
@@ -340,6 +364,94 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                             .send(InputEvent::SetCurrentModel(model))
                             .await;
                     }
+                }
+                OutputEvent::SwitchProfile(profile_name) => {
+                    let engine = engine_clone.clone();
+                    let project_root = runtime_project_root.clone();
+                    let input_tx = input_tx_clone.clone();
+                    tokio::spawn(async move {
+                        // Set active profile on the swarm (thread-safe, no env var mutation)
+                        {
+                            let eng = engine.lock().await;
+                            if let Some(swarm) = eng.swarm_mut() {
+                                swarm.write().await.set_active_profile(profile_name.clone());
+                            }
+                        }
+
+                        // Persist to .vac/config.toml
+                        let vac_dir = project_root.join(".vac");
+                        let _ = std::fs::create_dir_all(&vac_dir);
+                        let config_path = vac_dir.join("config.toml");
+                        let content = std::fs::read_to_string(&config_path).unwrap_or_default();
+                        let mut table: toml::Table = content.parse().unwrap_or_default();
+                        table
+                            .entry("profile")
+                            .or_insert_with(|| toml::Value::Table(toml::Table::new()))
+                            .as_table_mut()
+                            .map(|t| {
+                                t.insert(
+                                    "active".to_string(),
+                                    toml::Value::String(profile_name.clone()),
+                                )
+                            });
+                        let _ = std::fs::write(&config_path, table.to_string());
+
+                        let _ = input_tx
+                            .send(InputEvent::ShowToast(crate::tui::services::Toast::success(
+                                format!("Profile: {}", profile_name),
+                            )))
+                            .await;
+                    });
+                }
+                OutputEvent::ApplyRulebooks(selected_ids) => {
+                    let engine = engine_clone.clone();
+                    let project_root = runtime_project_root.clone();
+                    let input_tx = input_tx_clone.clone();
+                    tokio::spawn(async move {
+                        // Load rulebooks and filter by selection
+                        let config =
+                            vac_core::VacConfig::load_with_fallback(&project_root).unwrap_or_default();
+                        let all_books = vac_core::rulebook::RulebookLoader::load_all(
+                            &project_root,
+                            &config.rulebook.paths,
+                        );
+                        let filtered: Vec<_> = if selected_ids.is_empty() {
+                            all_books
+                        } else {
+                            all_books
+                                .into_iter()
+                                .filter(|b| selected_ids.contains(&b.id))
+                                .collect()
+                        };
+
+                        // Build resolved context with archetype from VIL project profile
+                        let archetype_str = {
+                            let profile = vac_core::detector::VilProjectProfile::detect(&project_root);
+                            let s = profile.archetype.to_string();
+                            if s == "Unknown" { None } else { Some(s) }
+                        };
+                        let resolved = vac_core::rulebook::ResolvedRuleContext::build(
+                            filtered,
+                            archetype_str.as_deref(),
+                        );
+                        if let Some(overlay) = resolved.to_prompt_overlay() {
+                            let eng = engine.lock().await;
+                            if let Some(swarm) = eng.swarm_mut() {
+                                swarm.write().await.set_rulebook(overlay);
+                            }
+                        }
+
+                        let label = if selected_ids.is_empty() {
+                            "all".to_string()
+                        } else {
+                            selected_ids.join(", ")
+                        };
+                        let _ = input_tx
+                            .send(InputEvent::ShowToast(crate::tui::services::Toast::success(
+                                format!("Rulebooks: {}", label),
+                            )))
+                            .await;
+                    });
                 }
                 OutputEvent::ExecuteCommand(cmd, active_isolation_mode) => {
                     let input_tx = input_tx_clone.clone();

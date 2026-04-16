@@ -195,6 +195,8 @@ pub enum OutputEvent {
     ResumeSession(String),
     SendToolResult(ToolCallResult, bool, Vec<ToolCall>),
     CancelStream,
+    SwitchProfile(String),
+    ApplyRulebooks(Vec<String>),
     ExecuteCommand(String, String), // command, active_isolation_mode
     RetryMessage(uuid::Uuid),
     RevertToMessage(uuid::Uuid),
