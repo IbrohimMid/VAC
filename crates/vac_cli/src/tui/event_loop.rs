@@ -4,6 +4,7 @@ use crate::tui::Model;
 use crate::tui::app::{AppState, AppStateOptions, InputEvent, OutputEvent};
 use crate::tui::event::map_crossterm_event_to_input_event;
 use crate::tui::handlers::HandlerContext;
+use crate::tui::handlers::{approval, changeset as changeset_handler, file_search, model_switcher, review as review_handler};
 use crate::tui::services::helper_block::welcome_messages;
 use crate::tui::terminal::TerminalGuard;
 use crate::tui::view::view;
@@ -205,72 +206,20 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                                 let _ = output_tx.try_send(OutputEvent::NewSession);
                             } else if cmd.command == "/review" {
                                 state.add_user_message(cmd.command.clone());
-                                state.review_open = true;
-                                state.workbench_tab = crate::tui::app::WorkbenchTab::Review;
-                                state.focus = crate::tui::app::WorkspaceFocus::Workbench;
-                                state.push_activity(crate::tui::app::ActivityKind::Review, "Open review");
-                                state.review_generation = state.review_generation.saturating_add(1);
-                                state.review_sync_items();
-                                state.review_normalize_selection();
+                                let mut ctx = HandlerContext::new(state, output_tx);
+                                let _ = review_handler::open(&mut ctx);
                             } else if cmd.command == "/model" {
                                 state.add_user_message(cmd.command.clone());
-                                state.show_model_switcher = true;
-                                state.model_switcher_filter.clear();
-                                state.model_switcher_selected_idx = 0;
+                                let mut ctx = HandlerContext::new(state, output_tx);
+                                let _ = model_switcher::open(&mut ctx);
                             } else if cmd.command == "/files" {
                                 state.add_user_message(cmd.command.clone());
-                                state.show_file_search = true;
-                                state.file_search_query.clear();
-                                state.file_search_selected_idx = 0;
-                                if state.all_files.is_empty() {
-                                    state.all_files =
-                                        crate::tui::services::build_file_index(&state.project_root);
-                                }
-                                state.file_search_results = crate::tui::services::fuzzy_search_files(
-                                    "",
-                                    &state.all_files,
-                                    50,
-                                );
+                                let mut ctx = HandlerContext::new(state, output_tx);
+                                let _ = file_search::open(&mut ctx);
                             } else if cmd.command == "/changes" {
                                 state.add_user_message(cmd.command.clone());
-                                state.show_changeset = true;
-                                state.changeset_selected_idx = 0;
-                                state.changeset_diff_scroll = 0;
-                                state.changeset_selected_path =
-                                    state.changeset_store.active_entries().first().map(|e| e.path.clone());
-                                state.changeset_diff = state.changeset_selected_path.clone().map(|p| {
-                                    let session_id = uuid::Uuid::parse_str(&state.session_id).ok();
-                                    if let Some(session_id) = session_id {
-                                        match crate::tui::services::review::load_diff(
-                                            &state.project_root,
-                                            session_id,
-                                            &p,
-                                        ) {
-                                            Ok(diff) => crate::tui::app::ReviewDiffState {
-                                                path: diff.path,
-                                                old_content: Some(diff.old_content),
-                                                new_content: Some(diff.new_content),
-                                                scroll: 0,
-                                                last_error: None,
-                                            },
-                                            Err(e) => crate::tui::app::ReviewDiffState {
-                                                path: p,
-                                                old_content: None,
-                                                new_content: None,
-                                                scroll: 0,
-                                                last_error: Some(e),
-                                            },
-                                        }
-                                    } else {
-                                        crate::tui::app::ReviewDiffState {
-                                            path: p,
-                                            old_content: None,
-                                            new_content: None,
-                                            scroll: 0,
-                                            last_error: Some("Invalid session id".to_string()),
-                                        }
-                                    }
-                                });
+                                let mut ctx = HandlerContext::new(state, output_tx);
+                                let _ = changeset_handler::open(&mut ctx);
                             } else {
                                 state.add_user_message(cmd.command.clone());
                                 let _ = output_tx.try_send(OutputEvent::UserMessage(
@@ -314,213 +263,67 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
     }
 
     if state.show_model_switcher {
+        let mut ctx = HandlerContext::new(state, output_tx);
         match event {
-            InputEvent::HandleEsc => {
-                state.show_model_switcher = false;
-                state.model_switcher_filter.clear();
-                state.model_switcher_selected_idx = 0;
-            }
+            InputEvent::HandleEsc => { let _ = model_switcher::close(&mut ctx); }
             InputEvent::InputChanged(c) => {
-                state.model_switcher_filter.push(c);
-                state.model_switcher_selected_idx = 0;
+                let mut f = ctx.state.model_switcher_filter.clone();
+                f.push(c);
+                let _ = model_switcher::update_filter(&mut ctx, f);
             }
             InputEvent::InputBackspace => {
-                state.model_switcher_filter.pop();
-                state.model_switcher_selected_idx = 0;
+                let mut f = ctx.state.model_switcher_filter.clone();
+                f.pop();
+                let _ = model_switcher::update_filter(&mut ctx, f);
             }
-            InputEvent::Up => {
-                let len = state.model_switcher_filtered().len();
-                if len > 0 {
-                    state.model_switcher_selected_idx =
-                        state.model_switcher_selected_idx.saturating_sub(1).min(len - 1);
-                }
-            }
-            InputEvent::Down => {
-                let len = state.model_switcher_filtered().len();
-                if len > 0 {
-                    state.model_switcher_selected_idx =
-                        (state.model_switcher_selected_idx + 1).min(len - 1);
-                }
-            }
-            InputEvent::InputSubmitted => {
-                let models = state.model_switcher_filtered();
-                if let Some(selected) = models.get(state.model_switcher_selected_idx).cloned() {
-                    state.current_model = Some(selected.clone());
-                    let _ = output_tx.try_send(OutputEvent::SwitchToModel(selected.clone()));
-                    state.show_model_switcher = false;
-                    state.model_switcher_filter.clear();
-                    state.model_switcher_selected_idx = 0;
-                    state.push_activity(
-                        crate::tui::app::ActivityKind::Status,
-                        format!("Model switched: {}", selected.name),
-                    );
-                }
-            }
+            InputEvent::Up => { let _ = model_switcher::select_prev(&mut ctx); }
+            InputEvent::Down => { let _ = model_switcher::select_next(&mut ctx); }
+            InputEvent::InputSubmitted => { let _ = model_switcher::submit_selected(&mut ctx); }
             _ => {}
         }
         return;
     }
 
     if state.show_file_search {
-        if state.all_files.is_empty() {
-            state.all_files = crate::tui::services::build_file_index(&state.project_root);
+        let mut ctx = HandlerContext::new(state, output_tx);
+        if ctx.state.all_files.is_empty() {
+            ctx.state.all_files = crate::tui::services::build_file_index(&ctx.state.project_root);
         }
-        if state.file_search_results.is_empty() {
-            state.file_search_results = crate::tui::services::fuzzy_search_files(
-                &state.file_search_query,
-                &state.all_files,
-                50,
-            );
-            state.file_search_selected_idx = state
-                .file_search_selected_idx
-                .min(state.file_search_results.len().saturating_sub(1));
+        if ctx.state.file_search_results.is_empty() {
+            let q = ctx.state.file_search_query.clone();
+            let results = crate::tui::services::fuzzy_search_files(&q, &ctx.state.all_files, 50);
+            let max = results.len().saturating_sub(1);
+            ctx.state.file_search_results = results;
+            ctx.state.file_search_selected_idx = ctx.state.file_search_selected_idx.min(max);
         }
-
         match event {
-            InputEvent::HandleEsc => {
-                state.show_file_search = false;
-                state.file_search_query.clear();
-                state.file_search_selected_idx = 0;
-                state.file_search_results.clear();
-            }
+            InputEvent::HandleEsc => { let _ = file_search::close(&mut ctx); }
             InputEvent::InputChanged(c) => {
-                state.file_search_query.push(c);
-                state.file_search_selected_idx = 0;
-                state.file_search_results = crate::tui::services::fuzzy_search_files(
-                    &state.file_search_query,
-                    &state.all_files,
-                    50,
-                );
+                let mut q = ctx.state.file_search_query.clone();
+                q.push(c);
+                let _ = file_search::update_query(&mut ctx, q);
             }
             InputEvent::InputBackspace => {
-                state.file_search_query.pop();
-                state.file_search_selected_idx = 0;
-                state.file_search_results = crate::tui::services::fuzzy_search_files(
-                    &state.file_search_query,
-                    &state.all_files,
-                    50,
-                );
+                let mut q = ctx.state.file_search_query.clone();
+                q.pop();
+                let _ = file_search::update_query(&mut ctx, q);
             }
-            InputEvent::Up => {
-                if !state.file_search_results.is_empty() {
-                    state.file_search_selected_idx =
-                        state.file_search_selected_idx.saturating_sub(1);
-                }
-            }
-            InputEvent::Down => {
-                if !state.file_search_results.is_empty() {
-                    state.file_search_selected_idx = (state.file_search_selected_idx + 1)
-                        .min(state.file_search_results.len().saturating_sub(1));
-                }
-            }
-            InputEvent::InputSubmitted => {
-                if let Some(path) = state
-                    .file_search_results
-                    .get(state.file_search_selected_idx)
-                    .cloned()
-                {
-                    state.show_file_search = false;
-                    state.file_search_query.clear();
-                    state.file_search_selected_idx = 0;
-                    state.file_search_results.clear();
-                    state.focus = crate::tui::app::WorkspaceFocus::Input;
-                    state.input.insert_str(&path);
-                    state.toasts
-                        .push(crate::tui::services::Toast::info(format!("Inserted: {}", path)));
-                }
-            }
+            InputEvent::Up => { let _ = file_search::select_prev(&mut ctx); }
+            InputEvent::Down => { let _ = file_search::select_next(&mut ctx); }
+            InputEvent::InputSubmitted => { let _ = file_search::insert_selected(&mut ctx); }
             _ => {}
         }
         return;
     }
 
     if state.show_changeset {
-        let load_diff = |state: &AppState, path: &str| -> crate::tui::app::ReviewDiffState {
-            let session_id = uuid::Uuid::parse_str(&state.session_id).ok();
-            if let Some(session_id) = session_id {
-                match crate::tui::services::review::load_diff(&state.project_root, session_id, path)
-                {
-                    Ok(diff) => crate::tui::app::ReviewDiffState {
-                        path: diff.path,
-                        old_content: Some(diff.old_content),
-                        new_content: Some(diff.new_content),
-                        scroll: 0,
-                        last_error: None,
-                    },
-                    Err(e) => crate::tui::app::ReviewDiffState {
-                        path: path.to_string(),
-                        old_content: None,
-                        new_content: None,
-                        scroll: 0,
-                        last_error: Some(e),
-                    },
-                }
-            } else {
-                crate::tui::app::ReviewDiffState {
-                    path: path.to_string(),
-                    old_content: None,
-                    new_content: None,
-                    scroll: 0,
-                    last_error: Some("Invalid session id".to_string()),
-                }
-            }
-        };
-
-        if state.changeset_selected_path.is_none() {
-            let active = state.changeset_store.active_entries();
-            state.changeset_selected_idx = state
-                .changeset_selected_idx
-                .min(active.len().saturating_sub(1));
-            state.changeset_selected_path = active
-                .get(state.changeset_selected_idx)
-                .map(|e| e.path.clone());
-            if let Some(path) = state.changeset_selected_path.clone() {
-                state.changeset_diff = Some(load_diff(state, &path));
-            }
-        }
-
+        let mut ctx = HandlerContext::new(state, output_tx);
         match event {
-            InputEvent::HandleEsc => {
-                state.show_changeset = false;
-                state.changeset_selected_idx = 0;
-                state.changeset_diff_scroll = 0;
-                state.changeset_selected_path = None;
-                state.changeset_diff = None;
-            }
-            InputEvent::Up => {
-                let active = state.changeset_store.active_entries();
-                if !active.is_empty() {
-                    state.changeset_selected_idx =
-                        state.changeset_selected_idx.saturating_sub(1);
-                    state.changeset_diff_scroll = 0;
-                    state.changeset_selected_path = active
-                        .get(state.changeset_selected_idx)
-                        .map(|e| e.path.clone());
-                    if let Some(path) = state.changeset_selected_path.clone() {
-                        state.changeset_diff = Some(load_diff(state, &path));
-                    }
-                }
-            }
-            InputEvent::Down => {
-                let active = state.changeset_store.active_entries();
-                if !active.is_empty() {
-                    state.changeset_selected_idx = (state.changeset_selected_idx + 1)
-                        .min(active.len().saturating_sub(1));
-                    state.changeset_diff_scroll = 0;
-                    state.changeset_selected_path = active
-                        .get(state.changeset_selected_idx)
-                        .map(|e| e.path.clone());
-                    if let Some(path) = state.changeset_selected_path.clone() {
-                        state.changeset_diff = Some(load_diff(state, &path));
-                    }
-                }
-            }
-            InputEvent::ScrollUp => {
-                state.changeset_diff_scroll = state.changeset_diff_scroll.saturating_sub(1);
-            }
-            InputEvent::ScrollDown => {
-                state.changeset_diff_scroll = state.changeset_diff_scroll.saturating_add(1);
-            }
+            InputEvent::HandleEsc => { let _ = changeset_handler::close(&mut ctx); }
+            InputEvent::Up => { let _ = changeset_handler::select_prev(&mut ctx); }
+            InputEvent::Down => { let _ = changeset_handler::select_next(&mut ctx); }
+            InputEvent::ScrollUp => { let _ = changeset_handler::scroll_up(&mut ctx); }
+            InputEvent::ScrollDown => { let _ = changeset_handler::scroll_down(&mut ctx); }
             _ => {}
         }
         return;
@@ -1027,26 +830,8 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
             if state.focus == crate::tui::app::WorkspaceFocus::Workbench
                 && state.workbench_tab == crate::tui::app::WorkbenchTab::Approvals
             {
-                if let Some(tc) = state
-                    .pending_approvals
-                    .get(state.approval_selected_idx)
-                    .cloned()
-                {
-                    state.pending_approvals.retain(|t| t.id != tc.id);
-                    state.approval_explanations.remove(&tc.id);
-                    state.approved_tools.push(tc.clone());
-                    state.approval_normalize_selection();
-                    let tool_name = tc.function.name.clone();
-                    let _ = output_tx.try_send(OutputEvent::AcceptTool(tc));
-                    state.push_activity(
-                        crate::tui::app::ActivityKind::Approval,
-                        format!("Approved: {}", tool_name),
-                    );
-                    state.toasts.push(crate::tui::services::Toast::success(format!(
-                        "Approved: {}",
-                        tool_name
-                    )));
-                }
+                let mut ctx = HandlerContext::new(state, output_tx);
+                let _ = approval::approve_current(&mut ctx);
                 return;
             }
 
@@ -1097,73 +882,20 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                                     let _ = output_tx.try_send(OutputEvent::NewSession);
                                 } else if cmd.command == "/review" {
                                     state.add_user_message(trimmed.to_string());
-                                    state.review_open = true;
-                                    state.workbench_tab = crate::tui::app::WorkbenchTab::Review;
-                                    state.focus = crate::tui::app::WorkspaceFocus::Workbench;
-                                    state.push_activity(crate::tui::app::ActivityKind::Review, "Open review");
-                                    state.review_generation =
-                                        state.review_generation.saturating_add(1);
-                                    state.review_sync_items();
-                                    state.review_normalize_selection();
+                                    let mut ctx = HandlerContext::new(state, output_tx);
+                                    let _ = review_handler::open(&mut ctx);
                                 } else if cmd.command == "/model" {
                                     state.add_user_message(trimmed.to_string());
-                                    state.show_model_switcher = true;
-                                    state.model_switcher_filter.clear();
-                                    state.model_switcher_selected_idx = 0;
+                                    let mut ctx = HandlerContext::new(state, output_tx);
+                                    let _ = model_switcher::open(&mut ctx);
                                 } else if cmd.command == "/files" {
                                     state.add_user_message(trimmed.to_string());
-                                    state.show_file_search = true;
-                                    state.file_search_query.clear();
-                                    state.file_search_selected_idx = 0;
-                                    if state.all_files.is_empty() {
-                                        state.all_files =
-                                            crate::tui::services::build_file_index(&state.project_root);
-                                    }
-                                    state.file_search_results = crate::tui::services::fuzzy_search_files(
-                                        "",
-                                        &state.all_files,
-                                        50,
-                                    );
+                                    let mut ctx = HandlerContext::new(state, output_tx);
+                                    let _ = file_search::open(&mut ctx);
                                 } else if cmd.command == "/changes" {
                                     state.add_user_message(trimmed.to_string());
-                                    state.show_changeset = true;
-                                    state.changeset_selected_idx = 0;
-                                    state.changeset_diff_scroll = 0;
-                                    state.changeset_selected_path =
-                                        state.changeset_store.active_entries().first().map(|e| e.path.clone());
-                                    state.changeset_diff = state.changeset_selected_path.clone().map(|p| {
-                                        let session_id = uuid::Uuid::parse_str(&state.session_id).ok();
-                                        if let Some(session_id) = session_id {
-                                            match crate::tui::services::review::load_diff(
-                                                &state.project_root,
-                                                session_id,
-                                                &p,
-                                            ) {
-                                                Ok(diff) => crate::tui::app::ReviewDiffState {
-                                                    path: diff.path,
-                                                    old_content: Some(diff.old_content),
-                                                    new_content: Some(diff.new_content),
-                                                    scroll: 0,
-                                                    last_error: None,
-                                                },
-                                                Err(e) => crate::tui::app::ReviewDiffState {
-                                                    path: p,
-                                                    old_content: None,
-                                                    new_content: None,
-                                                    scroll: 0,
-                                                    last_error: Some(e),
-                                                },
-                                            }
-                                        } else {
-                                            crate::tui::app::ReviewDiffState {
-                                                path: p,
-                                                old_content: None,
-                                                new_content: None,
-                                                scroll: 0,
-                                                last_error: Some("Invalid session id".to_string()),
-                                            }
-                                        }
-                                    });
+                                    let mut ctx = HandlerContext::new(state, output_tx);
+                                    let _ = changeset_handler::open(&mut ctx);
                                 } else {
                                     state.add_user_message(trimmed.to_string());
                                     let _ = output_tx.try_send(OutputEvent::UserMessage(
@@ -1375,48 +1107,12 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
             }
         }
         InputEvent::AutoApproveCurrentTool => {
-            if let Some(tc) = state
-                .pending_approvals
-                .get(state.approval_selected_idx)
-                .cloned()
-            {
-                state.pending_approvals.retain(|t| t.id != tc.id);
-                state.approval_explanations.remove(&tc.id);
-                state.approved_tools.push(tc.clone());
-                state.approval_normalize_selection();
-                let tool_name = tc.function.name.clone();
-                let _ = output_tx.try_send(OutputEvent::AcceptTool(tc));
-                state.push_activity(
-                    crate::tui::app::ActivityKind::Approval,
-                    format!("Approved: {}", tool_name),
-                );
-                state.toasts.push(crate::tui::services::Toast::success(format!(
-                    "Approved: {}",
-                    tool_name
-                )));
-            }
+            let mut ctx = HandlerContext::new(state, output_tx);
+            let _ = approval::approve_current(&mut ctx);
         }
         InputEvent::RejectCurrentTool => {
-            if let Some(tc) = state
-                .pending_approvals
-                .get(state.approval_selected_idx)
-                .cloned()
-            {
-                state.pending_approvals.retain(|t| t.id != tc.id);
-                state.approval_explanations.remove(&tc.id);
-                state.rejected_tools.push(tc.clone());
-                state.approval_normalize_selection();
-                let tool_name = tc.function.name.clone();
-                let _ = output_tx.try_send(OutputEvent::RejectTool(tc, false));
-                state.push_activity(
-                    crate::tui::app::ActivityKind::Approval,
-                    format!("Rejected: {}", tool_name),
-                );
-                state.toasts.push(crate::tui::services::Toast::error(format!(
-                    "Rejected: {}",
-                    tool_name
-                )));
-            }
+            let mut ctx = HandlerContext::new(state, output_tx);
+            let _ = approval::reject_current(&mut ctx);
         }
         InputEvent::ScrollUp => {
             match state.focus {
@@ -1446,55 +1142,16 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
             state.command_palette_selected = 0;
         }
         InputEvent::ShowModelSwitcher => {
-            state.show_model_switcher = true;
-            state.model_switcher_filter.clear();
-            state.model_switcher_selected_idx = 0;
+            let mut ctx = HandlerContext::new(state, output_tx);
+            let _ = model_switcher::open(&mut ctx);
         }
         InputEvent::ShowFileSearch => {
-            state.show_file_search = true;
-            state.file_search_query.clear();
-            state.file_search_selected_idx = 0;
-            if state.all_files.is_empty() {
-                state.all_files = crate::tui::services::build_file_index(&state.project_root);
-            }
-            state.file_search_results =
-                crate::tui::services::fuzzy_search_files("", &state.all_files, 50);
+            let mut ctx = HandlerContext::new(state, output_tx);
+            let _ = file_search::open(&mut ctx);
         }
         InputEvent::ShowChangeset => {
-            state.show_changeset = true;
-            state.changeset_selected_idx = 0;
-            state.changeset_diff_scroll = 0;
-            state.changeset_selected_path = state.changeset_store.active_entries().first().map(|e| e.path.clone());
-            state.changeset_diff = state.changeset_selected_path.clone().map(|p| {
-                let session_id = uuid::Uuid::parse_str(&state.session_id).ok();
-                if let Some(session_id) = session_id {
-                    match crate::tui::services::review::load_diff(&state.project_root, session_id, &p)
-                    {
-                        Ok(diff) => crate::tui::app::ReviewDiffState {
-                            path: diff.path,
-                            old_content: Some(diff.old_content),
-                            new_content: Some(diff.new_content),
-                            scroll: 0,
-                            last_error: None,
-                        },
-                        Err(e) => crate::tui::app::ReviewDiffState {
-                            path: p,
-                            old_content: None,
-                            new_content: None,
-                            scroll: 0,
-                            last_error: Some(e),
-                        },
-                    }
-                } else {
-                    crate::tui::app::ReviewDiffState {
-                        path: p,
-                        old_content: None,
-                        new_content: None,
-                        scroll: 0,
-                        last_error: Some("Invalid session id".to_string()),
-                    }
-                }
-            });
+            let mut ctx = HandlerContext::new(state, output_tx);
+            let _ = changeset_handler::open(&mut ctx);
         }
         InputEvent::ShowShortcuts => {
             state.show_shortcuts = true;
@@ -2491,4 +2148,113 @@ mod tests {
         assert_eq!(state.modified_files.len(), 0);
         assert_eq!(state.modified_files, state.changeset_store.modified_files());
     }
+
+    // ── Branch 5A behavioral tests ──────────────────────────────────────────
+
+    #[test]
+    fn show_model_switcher_event_routes_via_handler() {
+        let dir = tempfile::tempdir().unwrap();
+        let (tx, _rx) = tokio::sync::mpsc::channel(4);
+        let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
+        handle_input_event(&mut state, &tx, InputEvent::ShowModelSwitcher);
+        assert!(state.show_model_switcher);
+        assert!(state.model_switcher_filter.is_empty());
+    }
+
+    #[test]
+    fn show_file_search_event_routes_via_handler() {
+        let dir = tempfile::tempdir().unwrap();
+        let (tx, _rx) = tokio::sync::mpsc::channel(4);
+        let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
+        handle_input_event(&mut state, &tx, InputEvent::ShowFileSearch);
+        assert!(state.show_file_search);
+        assert!(state.file_search_query.is_empty());
+    }
+
+    #[test]
+    fn show_changeset_event_routes_via_handler() {
+        let dir = tempfile::tempdir().unwrap();
+        let (tx, _rx) = tokio::sync::mpsc::channel(4);
+        let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
+        handle_input_event(&mut state, &tx, InputEvent::ShowChangeset);
+        assert!(state.show_changeset);
+    }
+
+    #[tokio::test]
+    async fn slash_model_dispatch_opens_model_switcher_via_handler() {
+        let dir = tempfile::tempdir().unwrap();
+        let (tx, _rx) = tokio::sync::mpsc::channel(4);
+        let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
+        state.input.set_content("/model");
+        handle_input_event(&mut state, &tx, InputEvent::InputSubmitted);
+        assert!(state.show_model_switcher);
+        assert!(!state.show_file_search);
+    }
+
+    #[tokio::test]
+    async fn slash_files_dispatch_opens_file_search_via_handler() {
+        let dir = tempfile::tempdir().unwrap();
+        let (tx, _rx) = tokio::sync::mpsc::channel(4);
+        let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
+        state.input.set_content("/files");
+        handle_input_event(&mut state, &tx, InputEvent::InputSubmitted);
+        assert!(state.show_file_search);
+        assert!(!state.show_model_switcher);
+    }
+
+    #[tokio::test]
+    async fn slash_changes_dispatch_opens_changeset_via_handler() {
+        let dir = tempfile::tempdir().unwrap();
+        let (tx, _rx) = tokio::sync::mpsc::channel(4);
+        let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
+        state.input.set_content("/changes");
+        handle_input_event(&mut state, &tx, InputEvent::InputSubmitted);
+        assert!(state.show_changeset);
+    }
+
+    #[tokio::test]
+    async fn slash_review_dispatch_opens_review_via_handler() {
+        let dir = tempfile::tempdir().unwrap();
+        let (tx, _rx) = tokio::sync::mpsc::channel(4);
+        let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
+        state.input.set_content("/review");
+        handle_input_event(&mut state, &tx, InputEvent::InputSubmitted);
+        assert!(state.review_open);
+        assert_eq!(state.workbench_tab, crate::tui::app::WorkbenchTab::Review);
+    }
+
+    #[tokio::test]
+    async fn approve_current_routes_via_handler() {
+        let dir = tempfile::tempdir().unwrap();
+        let (tx, mut rx) = tokio::sync::mpsc::channel(4);
+        let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
+        state.pending_approvals.push(ToolCall {
+            id: "tc-h".to_string(),
+            r#type: "function".to_string(),
+            function: FunctionCall { name: "write_file".to_string(), arguments: "{}".to_string() },
+            metadata: None,
+        });
+        handle_input_event(&mut state, &tx, InputEvent::AutoApproveCurrentTool);
+        assert_eq!(state.pending_approvals.len(), 0);
+        assert_eq!(state.approved_tools.len(), 1);
+        assert!(matches!(rx.try_recv().unwrap(), OutputEvent::AcceptTool(_)));
+    }
+
+    #[tokio::test]
+    async fn reject_current_routes_via_handler() {
+        let dir = tempfile::tempdir().unwrap();
+        let (tx, mut rx) = tokio::sync::mpsc::channel(4);
+        let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
+        state.pending_approvals.push(ToolCall {
+            id: "tc-r".to_string(),
+            r#type: "function".to_string(),
+            function: FunctionCall { name: "delete_file".to_string(), arguments: "{}".to_string() },
+            metadata: None,
+        });
+        handle_input_event(&mut state, &tx, InputEvent::RejectCurrentTool);
+        assert_eq!(state.pending_approvals.len(), 0);
+        assert_eq!(state.rejected_tools.len(), 1);
+        assert!(matches!(rx.try_recv().unwrap(), OutputEvent::RejectTool(_, _)));
+    }
+
 }
