@@ -11,14 +11,10 @@ use crate::tui::view::view;
 use crossterm::{
     event::{EnableBracketedPaste, EnableMouseCapture},
     execute,
-    terminal::{
-        Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode,
-        enable_raw_mode,
-    },
+    terminal::{EnterAlternateScreen, enable_raw_mode},
 };
 use ratatui::{Terminal, backend::CrosstermBackend};
 use std::io;
-use std::process::Command;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
@@ -580,39 +576,8 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                         state.sessions_selected_idx = state.sessions_selected_idx.saturating_sub(1);
                     }
                     crate::tui::app::WorkbenchTab::Review => {
-                        let prev = state.review_selected_path.clone();
-                        state.review_select_by_delta(-1);
-                        if state.review_diff.is_some() && prev != state.review_selected_path {
-                            if let (Some(path), Ok(session_id)) = (
-                                state.review_selected_path.clone(),
-                                uuid::Uuid::parse_str(&state.session_id),
-                            ) {
-                                match crate::tui::services::review::load_diff(
-                                    &state.project_root,
-                                    session_id,
-                                    &path,
-                                ) {
-                                    Ok(diff) => {
-                                        state.review_diff = Some(crate::tui::app::ReviewDiffState {
-                                            path: diff.path,
-                                            old_content: Some(diff.old_content),
-                                            new_content: Some(diff.new_content),
-                                            scroll: 0,
-                                            last_error: None,
-                                        });
-                                    }
-                                    Err(e) => {
-                                        state.review_diff = Some(crate::tui::app::ReviewDiffState {
-                                            path,
-                                            old_content: None,
-                                            new_content: None,
-                                            scroll: 0,
-                                            last_error: Some(e),
-                                        });
-                                    }
-                                }
-                            }
-                        }
+                        let mut ctx = HandlerContext::new(state, output_tx);
+                        let _ = review_handler::select_prev(&mut ctx);
                     }
                 },
             }
@@ -639,39 +604,8 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                         }
                     }
                     crate::tui::app::WorkbenchTab::Review => {
-                        let prev = state.review_selected_path.clone();
-                        state.review_select_by_delta(1);
-                        if state.review_diff.is_some() && prev != state.review_selected_path {
-                            if let (Some(path), Ok(session_id)) = (
-                                state.review_selected_path.clone(),
-                                uuid::Uuid::parse_str(&state.session_id),
-                            ) {
-                                match crate::tui::services::review::load_diff(
-                                    &state.project_root,
-                                    session_id,
-                                    &path,
-                                ) {
-                                    Ok(diff) => {
-                                        state.review_diff = Some(crate::tui::app::ReviewDiffState {
-                                            path: diff.path,
-                                            old_content: Some(diff.old_content),
-                                            new_content: Some(diff.new_content),
-                                            scroll: 0,
-                                            last_error: None,
-                                        });
-                                    }
-                                    Err(e) => {
-                                        state.review_diff = Some(crate::tui::app::ReviewDiffState {
-                                            path,
-                                            old_content: None,
-                                            new_content: None,
-                                            scroll: 0,
-                                            last_error: Some(e),
-                                        });
-                                    }
-                                }
-                            }
-                        }
+                        let mut ctx = HandlerContext::new(state, output_tx);
+                        let _ = review_handler::select_next(&mut ctx);
                     }
                 },
             }
