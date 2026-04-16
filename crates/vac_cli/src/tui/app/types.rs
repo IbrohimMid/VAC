@@ -472,15 +472,19 @@ impl AppState {
 
     pub fn review_sync_items(&mut self) {
         let session_id = uuid::Uuid::parse_str(&self.session_id).ok();
-        let mut keys: std::collections::HashSet<String> = std::collections::HashSet::new();
-        for path in &self.modified_files {
-            keys.insert(path.clone());
-        }
+        // Use changeset_store as primary source - active entries only
+        let active_paths: std::collections::HashSet<String> = self
+            .changeset_store
+            .active_entries()
+            .iter()
+            .map(|e| e.path.clone())
+            .collect();
 
         self.review_items
-            .retain(|k, v| keys.contains(k) || v.status != ReviewItemStatus::Pending);
+            .retain(|k, v| active_paths.contains(k) || v.status != ReviewItemStatus::Pending);
 
-        for path in &self.modified_files {
+        for entry in self.changeset_store.active_entries() {
+            let path = &entry.path;
             let has_snapshot = session_id
                 .map(|sid| {
                     crate::tui::services::review::snapshot_path(&self.project_root, sid, path)
@@ -507,15 +511,17 @@ impl AppState {
 
     pub fn review_filtered_paths(&self) -> Vec<String> {
         let filter = self.review_filter.trim().to_lowercase();
+        // Primary source: changeset_store active entries (insertion order preserved)
         let mut ordered: Vec<String> = vec![];
         let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
 
-        for p in &self.modified_files {
-            if seen.insert(p.clone()) {
-                ordered.push(p.clone());
+        for entry in self.changeset_store.active_entries() {
+            if seen.insert(entry.path.clone()) {
+                ordered.push(entry.path.clone());
             }
         }
 
+        // Include any review_items not in store (e.g. Restored/Failed still visible)
         let mut extra: Vec<String> = self
             .review_items
             .keys()

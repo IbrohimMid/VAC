@@ -281,7 +281,7 @@ fn render_header(f: &mut Frame, state: &mut AppState, area: Rect) {
     ));
     spans.push(Span::raw("  "));
     spans.push(Span::styled(
-        format!("review {}", state.modified_files.len()),
+        format!("review {}", state.changeset_store.active_entries().len()),
         Style::default().fg(Color::Cyan),
     ));
 
@@ -439,7 +439,7 @@ fn render_operator_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
         ),
         Span::styled("  modified ", Style::default().fg(Color::DarkGray)),
         Span::styled(
-            format!("{}", state.modified_files.len()),
+            format!("{}", state.changeset_store.active_entries().len()),
             Style::default().fg(Color::Cyan),
         ),
     ]));
@@ -529,7 +529,7 @@ fn render_workbench_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
 
     let tabs = vec![
         format!("Approvals ({})", state.pending_approvals.len()),
-        format!("Review ({})", state.modified_files.len()),
+        format!("Review ({})", state.changeset_store.active_entries().len()),
         format!("Sessions ({})", state.sessions.len()),
     ];
     let idx = match state.workbench_tab {

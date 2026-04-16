@@ -1,7 +1,7 @@
 use std::time::SystemTime;
 
 /// Represents the lifecycle state of a file in the changeset.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FileState {
     /// File was newly created by the agent
     Created,
@@ -144,6 +144,31 @@ impl ChangesetStore {
     /// Get all changeset entries.
     pub fn entries(&self) -> &[ChangesetEntry] {
         &self.entries
+    }
+
+    /// Active entries: Created, Modified, or Removed (not yet Reverted/FailedRestore).
+    pub fn active_entries(&self) -> Vec<&ChangesetEntry> {
+        self.entries
+            .iter()
+            .filter(|e| matches!(e.state, FileState::Created | FileState::Modified | FileState::Removed))
+            .collect()
+    }
+
+    /// Reviewable entries: have a snapshot available for diff/revert.
+    pub fn reviewable_entries(&self) -> Vec<&ChangesetEntry> {
+        self.entries
+            .iter()
+            .filter(|e| e.has_snapshot && matches!(e.state, FileState::Created | FileState::Modified))
+            .collect()
+    }
+
+    /// Count entries grouped by state.
+    pub fn counts_by_state(&self) -> std::collections::HashMap<FileState, usize> {
+        let mut map = std::collections::HashMap::new();
+        for e in &self.entries {
+            *map.entry(e.state).or_insert(0) += 1;
+        }
+        map
     }
 
     /// Get derived view of modified/created files (backward compatible with modified_files Vec).
@@ -308,5 +333,48 @@ mod tests {
         assert_eq!(entries[0].state, FileState::FailedRestore);
         assert_eq!(entries[0].last_error, Some("File not found".to_string()));
         assert_eq!(entries[0].actor, "manual");
+    }
+
+    #[test]
+    fn test_active_entries_excludes_reverted() {
+        let mut store = ChangesetStore::new();
+        store.file_created("a.rs".to_string(), "agent".to_string());
+        store.file_modified("b.rs".to_string(), "agent".to_string(), true);
+        store.file_removed("c.rs".to_string(), "agent".to_string());
+        store.file_modified("d.rs".to_string(), "agent".to_string(), true);
+        store.revert_success("d.rs");
+
+        let active = store.active_entries();
+        assert_eq!(active.len(), 3);
+        assert!(active.iter().any(|e| e.path == "a.rs"));
+        assert!(active.iter().any(|e| e.path == "b.rs"));
+        assert!(active.iter().any(|e| e.path == "c.rs"));
+        assert!(!active.iter().any(|e| e.path == "d.rs"));
+    }
+
+    #[test]
+    fn test_reviewable_entries_requires_snapshot() {
+        let mut store = ChangesetStore::new();
+        store.file_modified("with_snap.rs".to_string(), "agent".to_string(), true);
+        store.file_modified("no_snap.rs".to_string(), "agent".to_string(), false);
+        store.file_created("created.rs".to_string(), "agent".to_string());
+
+        let reviewable = store.reviewable_entries();
+        assert_eq!(reviewable.len(), 1);
+        assert_eq!(reviewable[0].path, "with_snap.rs");
+    }
+
+    #[test]
+    fn test_counts_by_state() {
+        let mut store = ChangesetStore::new();
+        store.file_created("a.rs".to_string(), "agent".to_string());
+        store.file_modified("b.rs".to_string(), "agent".to_string(), true);
+        store.file_modified("c.rs".to_string(), "agent".to_string(), true);
+        store.revert_success("b.rs");
+
+        let counts = store.counts_by_state();
+        assert_eq!(counts.get(&FileState::Created), Some(&1));
+        assert_eq!(counts.get(&FileState::Modified), Some(&1));
+        assert_eq!(counts.get(&FileState::Reverted), Some(&1));
     }
 }

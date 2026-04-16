@@ -237,7 +237,7 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                                 state.changeset_selected_idx = 0;
                                 state.changeset_diff_scroll = 0;
                                 state.changeset_selected_path =
-                                    state.modified_files.first().cloned();
+                                    state.changeset_store.active_entries().first().map(|e| e.path.clone());
                                 state.changeset_diff = state.changeset_selected_path.clone().map(|p| {
                                     let session_id = uuid::Uuid::parse_str(&state.session_id).ok();
                                     if let Some(session_id) = session_id {
@@ -749,7 +749,7 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                 match result {
                     Ok(()) => {
                         state.changeset_store.revert_success(&path);
-                        state.modified_files.retain(|p| p != &path);
+                        state.modified_files = state.changeset_store.modified_files();
                         state.review_items.entry(path.clone()).and_modify(|it| {
                             it.status = crate::tui::app::ReviewItemStatus::Restored;
                             it.last_error = None;
@@ -784,7 +784,7 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                 let files: Vec<String> = state
                     .review_filtered_paths()
                     .into_iter()
-                    .filter(|p| state.modified_files.contains(p))
+                    .filter(|p| state.changeset_store.active_entries().iter().any(|e| &e.path == p))
                     .collect();
                 if files.is_empty() {
                     state.add_assistant_message("No files to revert.".to_string());
@@ -807,7 +807,6 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                         Ok(()) => {
                             success_count += 1;
                             state.changeset_store.revert_success(file);
-                            state.modified_files.retain(|p| p != file);
                             state.review_items.entry(file.clone()).and_modify(|it| {
                                 it.status = crate::tui::app::ReviewItemStatus::Restored;
                                 it.last_error = None;
@@ -824,6 +823,7 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                         }
                     }
                 }
+                state.modified_files = state.changeset_store.modified_files();
                 state.add_assistant_message(format!(
                     "Reverted {}/{} files.",
                     success_count,
@@ -838,7 +838,7 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                 state.review_normalize_selection();
             }
             InputEvent::ReviewRevertAll => {
-                let files = state.modified_files.clone();
+                let files = state.changeset_store.modified_files();
                 if files.is_empty() {
                     state.add_assistant_message("No files to revert.".to_string());
                     return;
@@ -872,7 +872,7 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                         }
                     }
                 }
-                state.modified_files.clear();
+                state.modified_files = state.changeset_store.modified_files();
                 state.review_diff = None;
                 state.review_selected_idx = 0;
                 state.review_selected_path = None;
@@ -1130,7 +1130,7 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                                     state.changeset_selected_idx = 0;
                                     state.changeset_diff_scroll = 0;
                                     state.changeset_selected_path =
-                                        state.modified_files.first().cloned();
+                                        state.changeset_store.active_entries().first().map(|e| e.path.clone());
                                     state.changeset_diff = state.changeset_selected_path.clone().map(|p| {
                                         let session_id = uuid::Uuid::parse_str(&state.session_id).ok();
                                         if let Some(session_id) = session_id {
@@ -1464,7 +1464,7 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
             state.show_changeset = true;
             state.changeset_selected_idx = 0;
             state.changeset_diff_scroll = 0;
-            state.changeset_selected_path = state.modified_files.first().cloned();
+            state.changeset_selected_path = state.changeset_store.active_entries().first().map(|e| e.path.clone());
             state.changeset_diff = state.changeset_selected_path.clone().map(|p| {
                 let session_id = uuid::Uuid::parse_str(&state.session_id).ok();
                 if let Some(session_id) = session_id {
@@ -1654,6 +1654,7 @@ fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, e
             state.changeset_diff_scroll = 0;
             state.changeset_selected_path = None;
             state.changeset_store.clear();
+            state.modified_files = state.changeset_store.modified_files(); // derived: empty after clear
             state.changeset_diff = None;
             state.workbench_tab = crate::tui::app::WorkbenchTab::Approvals;
             state.focus = crate::tui::app::WorkspaceFocus::Input;
@@ -1719,9 +1720,6 @@ fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, e
                         "agent".to_string(),
                         true,
                     );
-                    if !state.modified_files.contains(file) {
-                        state.modified_files.push(file.clone());
-                    }
                 }
             }
             if !result.created_files.is_empty() {
@@ -1732,11 +1730,10 @@ fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, e
                         file.clone(),
                         "agent".to_string(),
                     );
-                    if !state.modified_files.contains(file) {
-                        state.modified_files.push(file.clone());
-                    }
                 }
             }
+            // Sync derived view from store (single source of truth)
+            state.modified_files = state.changeset_store.modified_files();
             if state.review_open {
                 state.review_generation = state.review_generation.saturating_add(1);
                 state.review_sync_items();
@@ -1769,7 +1766,9 @@ mod tests {
     fn review_selection_normalizes_when_filter_excludes_selected() {
         let dir = tempfile::tempdir().unwrap();
         let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
-        state.modified_files = vec!["a.txt".to_string(), "b.txt".to_string()];
+        state.changeset_store.file_modified("a.txt".to_string(), "agent".to_string(), false);
+        state.changeset_store.file_modified("b.txt".to_string(), "agent".to_string(), false);
+        state.modified_files = state.changeset_store.modified_files();
         state.review_open = true;
         state.review_selected_path = Some("b.txt".to_string());
         state.review_filter = "a".to_string();
@@ -1969,7 +1968,8 @@ mod tests {
 
         let (tx, _rx) = tokio::sync::mpsc::channel(4);
         let mut state = make_state(root.clone(), session_id);
-        state.modified_files = vec![file_rel.to_string()];
+        state.changeset_store.file_modified(file_rel.to_string(), "agent".to_string(), true);
+        state.modified_files = state.changeset_store.modified_files();
         state.review_open = true;
         state.focus = crate::tui::app::WorkspaceFocus::Workbench;
         state.workbench_tab = crate::tui::app::WorkbenchTab::Review;
@@ -2003,7 +2003,9 @@ mod tests {
 
         let (tx, _rx) = tokio::sync::mpsc::channel(4);
         let mut state = make_state(root.clone(), session_id);
-        state.modified_files = vec!["a.txt".to_string(), "b.txt".to_string()];
+        state.changeset_store.file_modified("a.txt".to_string(), "agent".to_string(), true);
+        state.changeset_store.file_modified("b.txt".to_string(), "agent".to_string(), true);
+        state.modified_files = state.changeset_store.modified_files();
         state.review_open = true;
         state.focus = crate::tui::app::WorkspaceFocus::Workbench;
         state.workbench_tab = crate::tui::app::WorkbenchTab::Review;
@@ -2375,7 +2377,9 @@ mod tests {
 
         let (tx, _rx) = tokio::sync::mpsc::channel(4);
         let mut state = make_state(root.clone(), session_id);
-        state.modified_files = vec!["a.txt".to_string(), "b.txt".to_string()];
+        state.changeset_store.file_modified("a.txt".to_string(), "agent".to_string(), true);
+        state.changeset_store.file_modified("b.txt".to_string(), "agent".to_string(), true);
+        state.modified_files = state.changeset_store.modified_files();
         state.review_open = true;
         state.focus = crate::tui::app::WorkspaceFocus::Workbench;
         state.workbench_tab = crate::tui::app::WorkbenchTab::Review;
@@ -2401,5 +2405,89 @@ mod tests {
             state.review_items.get("b.txt").unwrap().status,
             crate::tui::app::ReviewItemStatus::Restored
         );
+    }
+
+    // ── Branch 4A behavioral tests ──────────────────────────────────────────
+
+    #[test]
+    fn modified_files_is_derived_from_changeset_store() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
+
+        state.changeset_store.file_modified("a.rs".to_string(), "agent".to_string(), true);
+        state.changeset_store.file_created("b.rs".to_string(), "agent".to_string());
+        state.modified_files = state.changeset_store.modified_files();
+
+        // modified_files must equal store's derived view
+        assert_eq!(state.modified_files, state.changeset_store.modified_files());
+        assert_eq!(state.modified_files.len(), 2);
+    }
+
+    #[test]
+    fn counter_consistency_header_tab_popup() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
+
+        state.changeset_store.file_modified("x.rs".to_string(), "agent".to_string(), true);
+        state.changeset_store.file_created("y.rs".to_string(), "agent".to_string());
+        state.changeset_store.file_modified("z.rs".to_string(), "agent".to_string(), true);
+        state.changeset_store.revert_success("z.rs"); // reverted: not active
+
+        let active = state.changeset_store.active_entries().len();
+        // All three surfaces must read the same count
+        assert_eq!(active, 2); // x.rs + y.rs; z.rs is reverted
+        // review_filtered_paths also driven by active_entries
+        state.review_sync_items();
+        assert_eq!(state.review_filtered_paths().len(), 2);
+    }
+
+    #[test]
+    fn task_completed_does_not_dual_write() {
+        let dir = tempfile::tempdir().unwrap();
+        let (tx, _rx) = tokio::sync::mpsc::channel(4);
+        let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
+
+        let result = vac_core::task::TaskResult {
+            task_id: vac_core::task::TaskId::new(),
+            status: vac_core::task::TaskStatus::Completed,
+            summary: "done".to_string(),
+            modified_files: vec!["src/lib.rs".to_string()],
+            created_files: vec!["src/new.rs".to_string()],
+            validation_score: None,
+            elapsed_ms: 0,
+            total_tokens_used: 0,
+            agent_contributions: vec![],
+        };
+        handle_backend_event(&mut state, &tx, InputEvent::TaskCompleted(result));
+
+        // modified_files must equal store's derived view - no independent writes
+        assert_eq!(state.modified_files, state.changeset_store.modified_files());
+        assert_eq!(state.changeset_store.active_entries().len(), 2);
+    }
+
+    #[test]
+    fn session_restore_clears_store_and_syncs_derived() {
+        let dir = tempfile::tempdir().unwrap();
+        let (tx, _rx) = tokio::sync::mpsc::channel(4);
+        let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
+
+        state.changeset_store.file_modified("a.rs".to_string(), "agent".to_string(), true);
+        state.modified_files = state.changeset_store.modified_files();
+        assert_eq!(state.modified_files.len(), 1);
+
+        handle_backend_event(
+            &mut state,
+            &tx,
+            InputEvent::SessionRestored {
+                id: uuid::Uuid::new_v4().to_string(),
+                title: "new".to_string(),
+                messages: vec![],
+            },
+        );
+
+        // Both store and derived view must be empty
+        assert_eq!(state.changeset_store.active_entries().len(), 0);
+        assert_eq!(state.modified_files.len(), 0);
+        assert_eq!(state.modified_files, state.changeset_store.modified_files());
     }
 }
