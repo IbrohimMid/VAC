@@ -197,6 +197,9 @@ pub enum OutputEvent {
     CancelStream,
     SwitchProfile(String),
     ApplyRulebooks(Vec<String>),
+    /// Direct tool invocation from TUI popup (tool_name, args).
+    /// Result is displayed as an assistant message.
+    InvokeVilTool(String, serde_json::Value),
     ExecuteCommand(String, String), // command, active_isolation_mode
     RetryMessage(uuid::Uuid),
     RevertToMessage(uuid::Uuid),

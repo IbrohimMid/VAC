@@ -453,6 +453,34 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                             .await;
                     });
                 }
+                OutputEvent::InvokeVilTool(tool_name, args) => {
+                    let engine = engine_clone.clone();
+                    let input_tx = input_tx_clone.clone();
+                    tokio::spawn(async move {
+                        let eng = engine.lock().await;
+                        match eng.execute_tool_direct(&tool_name, args).await {
+                            Ok(result) => {
+                                let formatted = serde_json::to_string_pretty(&result)
+                                    .unwrap_or_else(|_| result.to_string());
+                                let content = format!(
+                                    "**`{}`** result:\n\n```json\n{}\n```",
+                                    tool_name, formatted
+                                );
+                                let _ = input_tx
+                                    .send(InputEvent::AssistantMessage(content))
+                                    .await;
+                            }
+                            Err(e) => {
+                                let _ = input_tx
+                                    .send(InputEvent::Error(format!(
+                                        "Tool '{}' failed: {}",
+                                        tool_name, e
+                                    )))
+                                    .await;
+                            }
+                        }
+                    });
+                }
                 OutputEvent::ExecuteCommand(cmd, active_isolation_mode) => {
                     let input_tx = input_tx_clone.clone();
                     let (cols, rows) = crossterm::terminal::size().unwrap_or((120, 32));

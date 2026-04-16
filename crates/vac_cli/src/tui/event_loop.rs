@@ -727,7 +727,8 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                                     state.workbench_tab = crate::tui::app::WorkbenchTab::Runtime;
                                 }
                                 crate::tui::app::SidePanelRowAction::JumpToVilIssue(path) => {
-                                    state.changeset_selected_path = Some(path);
+                                    state.review_selected_path = Some(path);
+                                    state.review_selected_idx = 0;
                                     state.focus = crate::tui::app::WorkspaceFocus::Workbench;
                                     state.workbench_tab = crate::tui::app::WorkbenchTab::Review;
                                 }

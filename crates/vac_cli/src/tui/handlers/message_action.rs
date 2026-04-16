@@ -92,26 +92,43 @@ fn dispatch_action(ctx: &mut HandlerContext, action: MessageAction) {
             }
         }
         MessageAction::RepairVilContract => {
-            send_tool_hint(ctx, "Use the `vil_repair` tool to analyze VIL contract violations and suggest fixes. Then apply the suggested repairs.");
+            // Direct tool dispatch — find the most relevant file from changeset
+            let file = first_modified_file(ctx);
+            let args = serde_json::json!({ "file": file });
+            invoke_tool(ctx, "vil_repair", args);
         }
         MessageAction::ExplainPlumbing => {
-            send_tool_hint(ctx, "Use the `vil_plumbing` tool to list and explain all VIL-generated plumbing (#[vil_*] attributes) in the current context.");
+            let file = first_modified_file(ctx);
+            let args = serde_json::json!({ "file": file });
+            invoke_tool(ctx, "vil_plumbing", args);
         }
         MessageAction::AuditZeroCopy => {
-            send_tool_hint(ctx, "Use the `vil_audit` tool with pass_filter=\"zero_copy\" to detect zero-copy risks in the handlers.");
+            let files: Vec<String> = ctx.state.modified_files.clone();
+            let args = serde_json::json!({ "files": files, "pass_filter": "zero_copy" });
+            invoke_tool(ctx, "vil_audit", args);
         }
         MessageAction::DiffIrChange => {
-            send_tool_hint(ctx, "Use the `vil_ir_diff` tool to show IR-significant changes and semantic diff for recently modified files.");
+            let file = first_modified_file(ctx);
+            let args = serde_json::json!({ "file": file });
+            invoke_tool(ctx, "vil_ir_diff", args);
         }
     }
 }
 
-fn send_tool_hint(ctx: &mut HandlerContext, text: &str) {
-    ctx.state.add_user_message(text.to_string());
-    let _ = ctx.output_tx.try_send(OutputEvent::UserMessage(
-        text.to_string(),
-        None,
-        vec![],
-        None,
-    ));
+/// Dispatch a VIL tool directly via InvokeVilTool (no LLM agent loop).
+fn invoke_tool(ctx: &mut HandlerContext, tool_name: &str, args: serde_json::Value) {
+    ctx.state
+        .add_user_message(format!("[Invoking {}]", tool_name));
+    let _ = ctx
+        .output_tx
+        .try_send(OutputEvent::InvokeVilTool(tool_name.to_string(), args));
+}
+
+/// Get the first modified file from the changeset, or a fallback.
+fn first_modified_file(ctx: &HandlerContext) -> String {
+    ctx.state
+        .modified_files
+        .first()
+        .cloned()
+        .unwrap_or_else(|| "src/main.rs".to_string())
 }

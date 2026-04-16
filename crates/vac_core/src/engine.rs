@@ -79,6 +79,25 @@ impl VacEngine {
         self.swarm.as_ref()
     }
 
+    /// Execute a tool directly by name (bypasses LLM agent loop).
+    /// Used for operator-grade direct actions from TUI popups.
+    pub async fn execute_tool_direct(
+        &self,
+        tool_name: &str,
+        args: serde_json::Value,
+    ) -> Result<serde_json::Value, VacError> {
+        let router = self
+            .tool_router
+            .as_ref()
+            .ok_or_else(|| VacError::Task("Tool router not initialized".into()))?;
+        let context = vac_tools::registry::ToolContext::new(self.project_root.clone())
+            .with_session_id(self.session.read().await.id);
+        router
+            .route_approved(tool_name, args, &context)
+            .await
+            .map_err(|e| VacError::Task(format!("Tool execution failed: {e}")))
+    }
+
     pub fn available_models(&self) -> Vec<(String, String)> {
         let mut models: Vec<(String, String)> = self
             .config
