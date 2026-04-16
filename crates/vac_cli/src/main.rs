@@ -196,6 +196,15 @@ enum IsolationAction {
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         command: Vec<String>,
     },
+    /// Wrap an arbitrary command or re-exec VAC interactively inside isolation
+    Wrap {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        command: Vec<String>,
+    },
+    /// Clear the isolation log
+    ClearLogs,
+    /// Run diagnostics for the isolation environment
+    Doctor,
 }
 
 #[derive(Subcommand)]
@@ -306,10 +315,15 @@ async fn main() -> anyhow::Result<()> {
             IsolationAction::Run { tty, command } => {
                 commands::isolation::execute_run(project_root, command, tty).await?
             }
+            IsolationAction::Wrap { command } => {
+                commands::isolation::execute_wrap(project_root, command).await?
+            }
+            IsolationAction::ClearLogs => commands::isolation::execute_clear_logs(project_root).await?,
+            IsolationAction::Doctor => commands::isolation::execute_doctor(project_root, &cli.format).await?,
         },
         Commands::Mcp { action } => match action {
             McpAction::List => commands::mcp::list(&project_root)?,
-            McpAction::Status => commands::mcp::status(&project_root)?,
+            McpAction::Status => commands::mcp::status(&project_root).await?,
         },
         Commands::Autopilot { action } => match action {
             AutopilotAction::Up => commands::autopilot::execute_up(project_root).await?,

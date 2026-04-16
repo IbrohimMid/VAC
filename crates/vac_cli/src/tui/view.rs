@@ -33,6 +33,18 @@ pub fn view(f: &mut Frame, state: &mut AppState) {
         render_shortcuts(f, state);
     }
 
+    if state.show_profile_switcher {
+        crate::tui::services::profile_switcher::render_profile_switcher(f, state);
+    }
+
+    if state.show_rulebook_switcher {
+        crate::tui::services::rulebook_switcher::render_rulebook_switcher(f, state);
+    }
+
+    if state.show_message_action_popup {
+        crate::tui::services::message_action_popup::render_message_action_popup(f, state);
+    }
+
     if state.show_model_switcher {
         render_model_switcher(f, state);
     }
@@ -276,6 +288,11 @@ fn render_toast(f: &mut Frame, state: &mut AppState) {
 
 fn render_header(f: &mut Frame, state: &mut AppState, area: Rect) {
     let mut spans: Vec<Span> = Vec::new();
+    
+    if std::env::var("VAC_INSIDE_ISOLATION").is_ok() {
+        spans.push(Span::styled("[ISOLATED] ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)));
+    }
+    
     spans.push(Span::styled("VAC", Style::default().fg(Color::Magenta)));
     spans.push(Span::raw("  "));
     spans.push(Span::styled(
@@ -289,6 +306,12 @@ fn render_header(f: &mut Frame, state: &mut AppState, area: Rect) {
             Style::default().fg(Color::Cyan),
         ));
     }
+    
+    spans.push(Span::raw("  "));
+    spans.push(Span::styled(
+        format!("prof:{}", state.active_profile),
+        Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+    ));
     
     // Runtime visibility badges
     if let Some(snapshot) = &state.runtime_state_snapshot {
@@ -348,6 +371,30 @@ fn render_header(f: &mut Frame, state: &mut AppState, area: Rect) {
                 .add_modifier(Modifier::BOLD)
         },
     ));
+    
+    // VIL Status Badge
+    let score = state.vil_status.validation_score;
+    let score_label = if score >= 0.9 {
+        "A"
+    } else if score >= 0.7 {
+        "B"
+    } else {
+        "C"
+    };
+    let badge_color = if score >= 0.9 {
+        Color::Green
+    } else if score >= 0.7 {
+        Color::Yellow
+    } else {
+        Color::Red
+    };
+    
+    spans.push(Span::raw("  "));
+    spans.push(Span::styled(
+        format!("VIL:{}", score_label),
+        Style::default().fg(badge_color).add_modifier(Modifier::BOLD),
+    ));
+    
     spans.push(Span::raw("  "));
     spans.push(Span::styled(
         format!("approvals {}", state.pending_approvals.len()),
@@ -364,11 +411,26 @@ fn render_header(f: &mut Frame, state: &mut AppState, area: Rect) {
 }
 
 fn render_workspace(f: &mut Frame, state: &mut AppState, area: Rect) {
+    let main_area = if state.side_panel_visible {
+        let h_chunks = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([
+                Constraint::Length(state.side_panel_width),
+                Constraint::Min(0),
+            ])
+            .split(area);
+        
+        crate::tui::services::side_panel::render_side_panel(f, state, h_chunks[0]);
+        h_chunks[1]
+    } else {
+        area
+    };
+
     let body = Layout::default()
         .direction(Direction::Horizontal)
         .margin(1)
         .constraints([Constraint::Percentage(62), Constraint::Percentage(38)])
-        .split(area);
+        .split(main_area);
 
     let left = Layout::default()
         .direction(Direction::Vertical)
@@ -546,6 +608,16 @@ fn render_operator_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
                 Span::raw(l.to_string()),
             ]));
         }
+    }
+
+    if !state.mcp_server_states.is_empty() {
+        let connected = state.mcp_server_states.values().filter(|s| s.is_connected()).count();
+        let total = state.mcp_server_states.len();
+        let color = if connected == total { Color::Green } else { Color::Yellow };
+        lines.push(Line::from(vec![
+            Span::styled("mcp ", Style::default().fg(Color::DarkGray)),
+            Span::styled(format!("{}/{} connected", connected, total), Style::default().fg(color)),
+        ]));
     }
 
     let widget = Paragraph::new(lines)
@@ -800,7 +872,7 @@ fn render_shell_popup(f: &mut Frame, state: &mut AppState) {
 
     lines.push(Line::raw(""));
     lines.push(Line::styled(
-        "Esc: background  /shell-focus: refocus  /shell-kill: terminate",
+        "Ctrl+Z: background  /shell-focus: refocus  /shell-kill: terminate",
         Style::default().fg(Color::DarkGray),
     ));
 
@@ -1206,6 +1278,32 @@ fn render_runtime_pane(f: &mut Frame, state: &mut AppState, area: Rect) {
         lines.push(Line::raw(""));
     }
 
+    if !state.mcp_server_states.is_empty() {
+        lines.push(Line::from(vec![
+            Span::styled("MCP Servers:", Style::default().add_modifier(Modifier::BOLD)),
+        ]));
+        for (name, conn_state) in &state.mcp_server_states {
+            let (status, color) = if conn_state.is_connected() {
+                ("✅ connected", Color::Green)
+            } else {
+                ("❌ unreachable", Color::Red)
+            };
+            lines.push(Line::from(vec![
+                Span::raw("  "),
+                Span::styled(name.clone(), Style::default().fg(Color::Yellow)),
+                Span::raw(" "),
+                Span::styled(status, Style::default().fg(color)),
+            ]));
+            if let vac_tools::mcp::McpConnectionState::Unreachable(reason) = conn_state {
+                lines.push(Line::from(vec![
+                    Span::raw("    "),
+                    Span::styled(reason.clone(), Style::default().fg(Color::DarkGray)),
+                ]));
+            }
+        }
+        lines.push(Line::raw(""));
+    }
+
     if let Some(job) = state.runtime_jobs.get(state.runtime_selected_idx) {
         lines.push(Line::from(vec![
             Span::styled("Job: ", Style::default().add_modifier(Modifier::BOLD)),
@@ -1364,8 +1462,26 @@ fn render_footer(f: &mut Frame, state: &mut AppState, area: Rect) {
             ),
             Span::styled("Enter", Style::default().fg(Color::Cyan)),
             Span::styled(": send input  ", Style::default().fg(Color::DarkGray)),
-            Span::styled("Esc", Style::default().fg(Color::Cyan)),
+            Span::styled("Ctrl+Z", Style::default().fg(Color::Cyan)),
             Span::styled(": background  ", Style::default().fg(Color::DarkGray)),
+            Span::styled("/shell-kill", Style::default().fg(Color::Cyan)),
+            Span::styled(": terminate", Style::default().fg(Color::DarkGray)),
+        ];
+        let widget = Paragraph::new(Line::from(hints)).wrap(Wrap { trim: true });
+        f.render_widget(widget, area);
+        return;
+    }
+
+    if state.shell_backgrounded && state.active_shell_command.is_some() {
+        let hints = vec![
+            Span::styled(
+                "SHELL [BACKGROUND] ",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("Ctrl+Z", Style::default().fg(Color::Cyan)),
+            Span::styled(": refocus  ", Style::default().fg(Color::DarkGray)),
             Span::styled("/shell-kill", Style::default().fg(Color::Cyan)),
             Span::styled(": terminate", Style::default().fg(Color::DarkGray)),
         ];

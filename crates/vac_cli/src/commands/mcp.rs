@@ -53,13 +53,34 @@ pub fn list(project_root: &Path) -> Result<()> {
             println!("    Allowed in modes: {}", server.allowed_in_modes.join(", "));
         }
         
+        // Diagnostic Warnings
+        let mut warnings = Vec::new();
+        if server.trust_class.is_none() {
+            let default_trust = match server.transport.is_remote() {
+                true => "remote-untrusted",
+                false => "local-trusted",
+            };
+            warnings.push(format!("Trust class is unspecified, defaulting to {}", default_trust));
+        }
+        
+        let is_untrusted = server.effective_trust_class() == McpTrustClass::RemoteUntrusted;
+        let has_auto_policy = matches!(server.approval_policy.as_deref(), Some("auto_all") | Some("auto_safe"));
+        
+        if is_untrusted && has_auto_policy {
+            warnings.push("WARNING: Untrusted remote server has an auto-approval policy! This is a security risk.".to_string());
+        }
+
+        for warning in warnings {
+            println!("    ⚠️  {}", warning);
+        }
+        
         println!();
     }
     
     Ok(())
 }
 
-pub fn status(project_root: &Path) -> Result<()> {
+pub async fn status(project_root: &Path) -> Result<()> {
     let config = VacConfig::load_with_fallback(project_root)?;
     
     let servers = match &config.mcp_servers {
@@ -96,6 +117,22 @@ pub fn status(project_root: &Path) -> Result<()> {
     println!("    🔴 Remote Untrusted: {}", untrusted_count);
     if unspecified_count > 0 {
         println!("    ⚪ Unspecified: {}", unspecified_count);
+    }
+    
+    println!();
+    println!("  Connection Status:");
+    for server in servers {
+        let state = vac_tools::mcp::probe_mcp_server(server).await;
+        let status_badge = if state.is_connected() {
+            "✅ connected"
+        } else {
+            "❌ unreachable"
+        };
+        
+        println!("    {} [{}]", server.name, status_badge);
+        if let vac_tools::mcp::McpConnectionState::Unreachable(reason) = state {
+            println!("      Reason: {}", reason);
+        }
     }
     
     Ok(())

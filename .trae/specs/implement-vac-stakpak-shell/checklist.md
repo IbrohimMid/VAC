@@ -1,0 +1,18 @@
+- [x] Side panel MVP tampil dengan toggle `Ctrl+B` (Context, Runtime, Changeset, VIL status)
+- [x] Profile dan rulebook switcher UX (`Ctrl+O` & `Ctrl+R`) berfungsi dan memodifikasi AppState
+- [x] Popup aksi per-message (`a`) tampil dengan pilihan Copy, Retry, Dismiss
+- [x] `vac isolation wrap -- <cmd>` berhasil mengeksekusi arbitrary command dalam container
+- [x] `vac isolation wrap` tanpa args berhasil me-re-exec VAC interaktif dengan env var `VAC_INSIDE_ISOLATION`
+- [x] `vac isolation clear-logs` dan `vac isolation doctor` berjalan sesuai fungsinya
+- [x] Mount presets Rust dev environment aktif jika ada file Cargo.toml
+- [x] `vac mcp status` menampilkan koneksi state aktual (connected/unreachable)
+- [x] TUI menampilkan MCP status di Context section side panel dan tab Runtime
+- [x] `vac mcp list` memunculkan diagnostic warnings (trust class, approval policy)
+- [x] `AppState` berhasil menerima dan menyimpan `VilStatusSnapshot` saat startup
+- [x] Side panel menampilkan info valid VIL project dari deteksi asli (`VilProjectProfile::detect()`)
+- [x] Modifikasi file men-trigger ulang `vil_validate` dan mengupdate UI secara real-time
+- [x] Terdapat VIL status badge di header yang interaktif
+- [x] Shell TUI mendukung `Ctrl+Z` backgrounding mode
+- [x] Terdapat input history pada shell mode (Up/Down)
+- [x] Terdapat file checkpoint yang diperbarui berkala dan mendukung start with `--resume`
+- [x] `vac doctor` menampilkan checklist diagnostik komprehensif termasuk Isolation dan MCP

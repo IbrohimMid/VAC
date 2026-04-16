@@ -27,6 +27,9 @@ pub enum InputEvent {
     SetRuntimeState(Option<vac_runtime::AutopilotStateFile>),
     McpConnected { name: String, tools: usize },
     McpFailed { name: String, error: String },
+    McpServerState(String, vac_tools::mcp::McpConnectionState),
+    VilStatusUpdated(crate::tui::app::VilStatusSnapshot),
+    ChangesetUpdated,
     IsolationBoundary { action: String, environment: String },
     ShellStarted(crate::tui::services::ShellCommand),
     ShellOutput(String),
@@ -123,6 +126,8 @@ pub enum InputEvent {
     ToggleSidePanel,
     AutoApproveCurrentTool,
     ShowProfileSwitcher,
+    ShowMessageActionPopup,
+    HandleCtrlZ,
     BackgroundShell,
     FocusShell,
     ShellKill,
@@ -157,6 +162,7 @@ impl InputEvent {
                 | InputEvent::ShellError(_)
                 | InputEvent::ShellCompleted(_)
                 | InputEvent::ShellWaitingForInput
+                | InputEvent::McpServerState(_, _)
                 | InputEvent::SessionRestored { .. }
                 | InputEvent::AddUserMessage(_)
         )

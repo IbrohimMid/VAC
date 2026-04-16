@@ -586,6 +586,20 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
         }
     }
 
+    // Periodic checkpoint write (every 30s)
+    let engine_checkpoint = engine.clone();
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(30));
+        loop {
+            interval.tick().await;
+            let eng = engine_checkpoint.lock().await;
+            let session = eng.session().read().await;
+            if let Err(e) = session.save() {
+                log::error!("Failed to save session checkpoint: {}", e);
+            }
+        }
+    });
+
     // Run TUI
     {
         let eng = engine.lock().await;

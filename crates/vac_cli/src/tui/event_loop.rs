@@ -75,7 +75,7 @@ pub async fn run_tui(
         model: model.clone(),
         session_id,
         checkpoint_path: checkpoint_path.clone(),
-        project_root,
+        project_root: project_root.clone(),
     });
 
     // Add welcome messages
@@ -91,6 +91,33 @@ pub async fn run_tui(
 
     // Create input thread
     let (input_tx, mut internal_rx) = tokio::sync::mpsc::channel::<InputEvent>(100);
+    state.input_tx = Some(input_tx.clone());
+
+    // Probe MCP servers in background
+    let config = vac_core::VacConfig::load_with_fallback(&project_root).unwrap_or_default();
+    if let Some(servers) = config.mcp_servers {
+        let input_tx_clone = input_tx.clone();
+        tokio::spawn(async move {
+            for server in servers {
+                let state = vac_tools::mcp::probe_mcp_server(&server).await;
+                let _ = input_tx_clone.send(InputEvent::McpServerState(server.name, state)).await;
+            }
+        });
+    }
+
+    // Spawn background task to detect VIL project profile
+    let bg_input_tx = input_tx.clone();
+    let bg_project_root = project_root.clone();
+    tokio::spawn(async move {
+        let profile = vac_core::detector::VilProjectProfile::detect(&bg_project_root);
+        let snapshot = crate::tui::app::VilStatusSnapshot {
+            profile: Some(profile),
+            validation_score: 1.0,
+            validation_issues: vec![],
+        };
+        let _ = bg_input_tx.send(InputEvent::VilStatusUpdated(snapshot)).await;
+    });
+
     let input_paused = Arc::new(AtomicBool::new(false));
     let input_paused_clone = input_paused.clone();
 
@@ -357,6 +384,108 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
         return;
     }
 
+    if state.show_profile_switcher {
+        match event {
+            InputEvent::HandleEsc => {
+                state.show_profile_switcher = false;
+            }
+            InputEvent::InputChanged(c) => {
+                state.profile_search_input.push(c);
+            }
+            InputEvent::InputBackspace => {
+                state.profile_search_input.pop();
+            }
+            InputEvent::Up => {
+                if state.profile_switcher_selected > 0 {
+                    state.profile_switcher_selected -= 1;
+                }
+            }
+            InputEvent::Down => {
+                let max = state.profile_switcher_filtered().len().saturating_sub(1);
+                if state.profile_switcher_selected < max {
+                    state.profile_switcher_selected += 1;
+                }
+            }
+            InputEvent::InputSubmitted => {
+                let filtered = state.profile_switcher_filtered();
+                if let Some(p) = filtered.get(state.profile_switcher_selected) {
+                    state.active_profile = p.clone();
+                }
+                state.show_profile_switcher = false;
+            }
+            _ => {}
+        }
+        return;
+    }
+
+    if state.show_rulebook_switcher {
+        match event {
+            InputEvent::HandleEsc => {
+                state.show_rulebook_switcher = false;
+            }
+            InputEvent::InputChanged(c) => {
+                if c == ' ' {
+                    let filtered = state.rulebook_switcher_filtered();
+                    if let Some(r) = filtered.get(state.rulebook_switcher_selected) {
+                        if state.selected_rulebooks.contains(&r.id) {
+                            state.selected_rulebooks.remove(&r.id);
+                        } else {
+                            state.selected_rulebooks.insert(r.id.clone());
+                        }
+                    }
+                } else {
+                    state.rulebook_search_input.push(c);
+                }
+            }
+            InputEvent::InputBackspace => {
+                state.rulebook_search_input.pop();
+            }
+            InputEvent::Up => {
+                if state.rulebook_switcher_selected > 0 {
+                    state.rulebook_switcher_selected -= 1;
+                }
+            }
+            InputEvent::Down => {
+                let max = state.rulebook_switcher_filtered().len().saturating_sub(1);
+                if state.rulebook_switcher_selected < max {
+                    state.rulebook_switcher_selected += 1;
+                }
+            }
+            InputEvent::InputSubmitted => {
+                state.show_rulebook_switcher = false;
+            }
+            _ => {}
+        }
+        return;
+    }
+
+    if state.show_message_action_popup {
+        match event {
+            InputEvent::HandleEsc => {
+                state.show_message_action_popup = false;
+            }
+            InputEvent::Up => {
+                if state.message_action_popup_selected > 0 {
+                    state.message_action_popup_selected -= 1;
+                } else {
+                    let num_actions = crate::tui::services::message_action_popup::MessageAction::all().len();
+                    state.message_action_popup_selected = num_actions.saturating_sub(1);
+                }
+            }
+            InputEvent::Down => {
+                let num_actions = crate::tui::services::message_action_popup::MessageAction::all().len();
+                if num_actions > 0 {
+                    state.message_action_popup_selected = (state.message_action_popup_selected + 1) % num_actions;
+                }
+            }
+            InputEvent::InputSubmitted => {
+                state.show_message_action_popup = false;
+            }
+            _ => {}
+        }
+        return;
+    }
+
     if state.show_model_switcher {
         let mut ctx = HandlerContext::new(state, output_tx);
         match event {
@@ -489,7 +618,7 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
             InputEvent::ReviewRevertFiltered => {
                 let _ = review_handler::revert_filtered(&mut ctx);
             }
-            InputEvent::ReviewRevertAll => {
+            InputEvent::ReviewRevertAll | InputEvent::HandleCtrlZ => {
                 let _ = review_handler::revert_all(&mut ctx);
             }
             InputEvent::ReviewOpenEditor => {
@@ -502,6 +631,35 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
 
     // Normal input handling
     match event {
+        InputEvent::ShowProfileSwitcher => {
+            state.show_profile_switcher = true;
+            state.profile_search_input.clear();
+        }
+        InputEvent::ShowRulebookSwitcher => {
+            state.show_rulebook_switcher = true;
+            state.rulebook_search_input.clear();
+        }
+        InputEvent::ShowMessageActionPopup => {
+            state.show_message_action_popup = true;
+            state.message_action_popup_selected = 0;
+            // Target the last user message if any
+            state.message_action_target_id = state.messages.iter().rev().find(|m| m.role == "user").map(|m| m.id);
+        }
+        InputEvent::ToggleSidePanel => {
+            state.side_panel_visible = !state.side_panel_visible;
+        }
+        InputEvent::MouseDragStart(col, row) => {
+            // Header is row 0
+            if row == 0 {
+                // Approximate badge location: we just check if it's right side (col > width - 40)
+                // The exact x depends on terminal width, but let's toggle side panel for clicks on header
+                // specifically around VIL badge
+                let term_width = crossterm::terminal::size().map(|s| s.0).unwrap_or(80);
+                if col > term_width.saturating_sub(40) {
+                    state.side_panel_visible = !state.side_panel_visible;
+                }
+            }
+        }
         InputEvent::Tab => {
             state.focus = state.focus.next();
         }
@@ -645,6 +803,10 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                 let payload = if text.is_empty() {
                     "\n".to_string()
                 } else {
+                    if state.shell_history.last() != Some(&text) {
+                        state.shell_history.push(text.clone());
+                    }
+                    state.shell_history_idx = None;
                     format!("{text}\n")
                 };
                 if let Some(shell) = state.active_shell_command.clone() {
@@ -809,7 +971,22 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
             }
         }
         InputEvent::Up => match state.focus {
-            crate::tui::app::WorkspaceFocus::Input => state.input.move_cursor_up(),
+            crate::tui::app::WorkspaceFocus::Input => {
+                if state.shell_popup_visible && state.active_shell_command.is_some() && !state.shell_history.is_empty() {
+                    let max_idx = state.shell_history.len() - 1;
+                    let next_idx = match state.shell_history_idx {
+                        Some(idx) => idx.saturating_sub(1),
+                        None => max_idx,
+                    };
+                    state.shell_history_idx = Some(next_idx);
+                    if let Some(cmd) = state.shell_history.get(next_idx) {
+                        state.input.set_content(cmd);
+                        state.input.move_cursor_end();
+                    }
+                } else {
+                    state.input.move_cursor_up();
+                }
+            },
             crate::tui::app::WorkspaceFocus::Conversation => {
                 state.scroll = state.scroll.saturating_sub(1);
             }
@@ -835,7 +1012,23 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
             },
         },
         InputEvent::Down => match state.focus {
-            crate::tui::app::WorkspaceFocus::Input => state.input.move_cursor_down(),
+            crate::tui::app::WorkspaceFocus::Input => {
+                if state.shell_popup_visible && state.active_shell_command.is_some() && state.shell_history_idx.is_some() {
+                    let next_idx = state.shell_history_idx.unwrap() + 1;
+                    if next_idx >= state.shell_history.len() {
+                        state.shell_history_idx = None;
+                        state.input.clear();
+                    } else {
+                        state.shell_history_idx = Some(next_idx);
+                        if let Some(cmd) = state.shell_history.get(next_idx) {
+                            state.input.set_content(cmd);
+                            state.input.move_cursor_end();
+                        }
+                    }
+                } else {
+                    state.input.move_cursor_down();
+                }
+            },
             crate::tui::app::WorkspaceFocus::Conversation => {
                 state.scroll = state.scroll.saturating_add(1);
             }
@@ -900,6 +1093,18 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
             {
                 state.review_open = false;
                 state.review_diff = None;
+            }
+        }
+        InputEvent::HandleCtrlZ => {
+            if state.active_shell_command.is_some() {
+                if state.shell_popup_visible {
+                    state.shell_popup_visible = false;
+                    state.shell_backgrounded = true;
+                } else {
+                    state.shell_popup_visible = true;
+                    state.shell_backgrounded = false;
+                }
+                state.shell_history_idx = None;
             }
         }
         InputEvent::BackgroundShell => {
@@ -1157,6 +1362,7 @@ fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, e
             state.shell_exit_code = None;
             state.shell_last_error = None;
             state.shell_output.clear();
+            state.shell_history_idx = None;
             state.push_activity(
                 crate::tui::app::ActivityKind::Shell,
                 format!("Shell started: {}", shell.command),
@@ -1203,6 +1409,35 @@ fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, e
                 format!("MCP server '{}' failed: {}", name, error),
             );
         }
+        InputEvent::McpServerState(name, conn_state) => {
+            state.mcp_server_states.insert(name, conn_state);
+        }
+        InputEvent::VilStatusUpdated(snapshot) => {
+            state.vil_status = snapshot;
+            state.push_activity(
+                crate::tui::app::ActivityKind::Status,
+                "VIL status updated".to_string(),
+            );
+        }
+        InputEvent::ChangesetUpdated => {
+            let files = state.changeset_store.modified_files();
+            let project_root = state.project_root.clone();
+            if let Some(tx) = state.input_tx.clone() {
+                tokio::spawn(async move {
+                    if let Ok(pipeline) = vil_ir::IrPipeline::new(&project_root) {
+                        if let Ok(report) = vil_validate::validate_changes(&pipeline, &files) {
+                            let profile = vac_core::detector::VilProjectProfile::detect(&project_root);
+                            let snapshot = crate::tui::app::VilStatusSnapshot {
+                                profile: Some(profile),
+                                validation_score: report.score,
+                                validation_issues: report.issues,
+                            };
+                            let _ = tx.send(InputEvent::VilStatusUpdated(snapshot)).await;
+                        }
+                    }
+                });
+            }
+        }
         InputEvent::IsolationBoundary { action, environment } => {
             state.push_activity(
                 crate::tui::app::ActivityKind::Isolation,
@@ -1247,6 +1482,7 @@ fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, e
             state.shell_backgrounded = false;
             state.shell_exit_code = None;
             state.shell_last_error = None;
+            state.shell_history_idx = None;
             state.runtime_jobs.clear();
             state.runtime_selected_idx = 0;
             state.runtime_filter.clear();
@@ -1326,6 +1562,7 @@ fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, e
         }
         InputEvent::TaskCompleted(result) => {
             let mut content = result.summary.clone();
+            let mut changeset_updated = false;
             if !result.modified_files.is_empty() {
                 content.push_str("\n\n**Modified Files**:\n");
                 for file in &result.modified_files {
@@ -1333,6 +1570,7 @@ fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, e
                     state
                         .changeset_store
                         .file_modified(file.clone(), "agent".to_string(), true);
+                    changeset_updated = true;
                 }
             }
             if !result.created_files.is_empty() {
@@ -1342,10 +1580,18 @@ fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, e
                     state
                         .changeset_store
                         .file_created(file.clone(), "agent".to_string());
+                    changeset_updated = true;
                 }
             }
             // Sync derived view from store (single source of truth)
             state.modified_files = state.changeset_store.modified_files();
+            
+            if changeset_updated {
+                if let Some(tx) = state.input_tx.clone() {
+                    let _ = tx.try_send(InputEvent::ChangesetUpdated);
+                }
+            }
+            
             if state.review_open {
                 state.review_generation = state.review_generation.saturating_add(1);
                 state.review_sync_items();

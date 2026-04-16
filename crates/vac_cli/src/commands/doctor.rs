@@ -27,7 +27,11 @@ pub async fn execute(
     all_ok &= res.0;
     results.push(res.1);
 
-    let res = check_mcp_config(&project_root, strict, fix);
+    let res = check_mcp_config(&project_root, strict, fix).await;
+    all_ok &= res.0;
+    results.push(res.1);
+
+    let res = check_isolation(&project_root, strict, fix);
     all_ok &= res.0;
     results.push(res.1);
 
@@ -158,11 +162,10 @@ fn check_trace(root: &Path, _strict: bool, _fix: bool) -> (bool, serde_json::Val
     )
 }
 
-fn check_mcp_config(root: &Path, _strict: bool, fix: bool) -> (bool, serde_json::Value) {
+async fn check_mcp_config(root: &Path, _strict: bool, fix: bool) -> (bool, serde_json::Value) {
     let config_path = root.join(".vac/config.toml");
     if !config_path.exists() {
         if fix {
-            // minimal fix
             let _ = std::fs::write(&config_path, "[mcp_servers]\n");
             return (
                 true,
@@ -174,29 +177,95 @@ fn check_mcp_config(root: &Path, _strict: bool, fix: bool) -> (bool, serde_json:
             serde_json::json!({ "id": "mcp_config", "ok": true, "message": "no config — MCP not configured" }),
         );
     }
-    let Ok(content) = std::fs::read_to_string(&config_path) else {
-        return (
-            false,
-            serde_json::json!({ "id": "mcp_config", "ok": false, "message": "failed to read .vac/config.toml" }),
-        );
+
+    let config = match vac_core::VacConfig::load_with_fallback(&root.to_path_buf()) {
+        Ok(c) => c,
+        Err(e) => {
+            return (
+                false,
+                serde_json::json!({ "id": "mcp_config", "ok": false, "message": format!("config parse error: {e}") }),
+            );
+        }
     };
-    match content.parse::<toml::Table>() {
-        Err(e) => (
-            false,
-            serde_json::json!({ "id": "mcp_config", "ok": false, "message": format!(".vac/config.toml parse error: {e}") }),
-        ),
-        Ok(table) => {
-            let n = table
-                .get("mcp_servers")
-                .and_then(|v| v.as_array())
-                .map(|a| a.len())
-                .unwrap_or(0);
-            (
-                true,
-                serde_json::json!({ "id": "mcp_config", "ok": true, "message": format!("config parses ok, {n} MCP server(s) configured") }),
-            )
+
+    let servers = config.mcp_servers.unwrap_or_default();
+    if servers.is_empty() {
+        return (
+            true,
+            serde_json::json!({ "id": "mcp_config", "ok": true, "message": "0 MCP server(s) configured" }),
+        );
+    }
+
+    let mut reachable = 0;
+    let mut messages = Vec::new();
+    for server in &servers {
+        let state = vac_tools::mcp::probe_mcp_server(server).await;
+        if matches!(state, vac_tools::mcp::McpConnectionState::Connected) {
+            reachable += 1;
+        } else {
+            messages.push(format!("{} unreachable", server.name));
         }
     }
+
+    let all_reachable = reachable == servers.len();
+    let msg = if all_reachable {
+        format!("config parses ok, {}/{} MCP server(s) reachable", reachable, servers.len())
+    } else {
+        format!("{}/{} MCP server(s) reachable. Issues: {}", reachable, servers.len(), messages.join(", "))
+    };
+
+    (
+        all_reachable,
+        serde_json::json!({ "id": "mcp_config", "ok": all_reachable, "message": msg }),
+    )
+}
+
+fn check_isolation(root: &Path, _strict: bool, _fix: bool) -> (bool, serde_json::Value) {
+    let config = match vac_core::VacConfig::load_with_fallback(&root.to_path_buf()) {
+        Ok(c) => c,
+        Err(e) => {
+            return (
+                false,
+                serde_json::json!({ "id": "isolation", "ok": false, "message": format!("config parse error: {e}") }),
+            );
+        }
+    };
+
+    let isolation = vac_runtime::IsolationManager::new(root.to_path_buf(), config.runtime);
+    let mut ok = true;
+    let mut messages = Vec::new();
+
+    let runtime = isolation.container_runtime();
+    if let Ok(out) = std::process::Command::new(runtime).arg("--version").output() {
+        if !out.status.success() {
+            ok = false;
+            messages.push(format!("{} not available", runtime));
+        }
+    } else {
+        ok = false;
+        messages.push(format!("{} not found", runtime));
+    }
+
+    if let Err(_) = isolation.container_image() {
+        ok = false;
+        messages.push("container image not configured".to_string());
+    }
+
+    if let Err(e) = isolation.resolve_mounts() {
+        ok = false;
+        messages.push(format!("mounts error: {}", e));
+    }
+
+    let msg = if ok {
+        format!("isolation ok (runtime: {}, image configured, mounts valid)", runtime)
+    } else {
+        format!("isolation issues: {}", messages.join(", "))
+    };
+
+    (
+        ok,
+        serde_json::json!({ "id": "isolation", "ok": ok, "message": msg }),
+    )
 }
 
 fn check_skills(root: &Path, _strict: bool, _fix: bool) -> (bool, serde_json::Value) {

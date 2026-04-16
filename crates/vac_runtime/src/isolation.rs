@@ -87,7 +87,32 @@ impl IsolationManager {
 
     pub fn resolve_mounts(&self) -> anyhow::Result<Vec<PathBuf>> {
         let mut mounts = vec![self.project_root.clone()];
-        for mount in &self.runtime.allowed_mounts {
+        
+        let mut explicit_mounts = self.runtime.allowed_mounts.clone();
+        
+        let mut presets = self.runtime.mount_presets.clone();
+        if self.project_root.join("Cargo.toml").exists() && !presets.contains(&vac_core::config::MountPreset::Rust) {
+            presets.push(vac_core::config::MountPreset::Rust);
+        }
+        
+        for preset in presets {
+            match preset {
+                vac_core::config::MountPreset::Rust => {
+                    if let Ok(home) = std::env::var("HOME") {
+                        explicit_mounts.push(format!("{}/.cargo/registry", home));
+                        explicit_mounts.push(format!("{}/.rustup", home));
+                    }
+                }
+                vac_core::config::MountPreset::Node => {
+                    // Placeholder for future node presets
+                }
+                vac_core::config::MountPreset::Python => {
+                    // Placeholder for future python presets
+                }
+            }
+        }
+        
+        for mount in &explicit_mounts {
             let resolved = if PathBuf::from(mount).is_absolute() {
                 PathBuf::from(mount)
             } else {
@@ -95,10 +120,16 @@ impl IsolationManager {
             };
             if !resolved.exists() {
                 self.append_log(&format!("DENY mount={} reason=missing", resolved.display()));
-                return Err(anyhow!(
-                    "Allowed mount '{}' does not exist",
-                    resolved.display()
-                ));
+                
+                // If it was explicitly allowed by the user, fail.
+                // We assume presets might be auto-included and thus okay to skip if missing.
+                if self.runtime.allowed_mounts.contains(mount) {
+                    return Err(anyhow!(
+                        "Allowed mount '{}' does not exist",
+                        resolved.display()
+                    ));
+                }
+                continue;
             }
             mounts.push(resolved);
         }

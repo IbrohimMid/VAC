@@ -253,8 +253,28 @@ pub struct ReviewDiffState {
 
 // ========== AppState ==========
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SidePanelSection {
+    Context,
+    Runtime,
+    Changeset,
+    VilStatus,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct VilStatusSnapshot {
+    pub profile: Option<vac_core::detector::VilProjectProfile>,
+    pub validation_score: f64,
+    pub validation_issues: Vec<String>,
+}
+
 /// Main application state for TUI
 pub struct AppState {
+    // Layout state
+    pub side_panel_visible: bool,
+    pub side_panel_width: u16,
+    pub side_panel_section_collapsed: std::collections::HashSet<SidePanelSection>,
+
     // Input state
     pub input: TextArea,
     pub cursor_position: usize,
@@ -299,6 +319,8 @@ pub struct AppState {
     pub shell_backgrounded: bool,
     pub shell_exit_code: Option<i32>,
     pub shell_last_error: Option<String>,
+    pub shell_history: Vec<String>,
+    pub shell_history_idx: Option<usize>,
 
     // Streaming state
     pub is_streaming: bool,
@@ -314,6 +336,26 @@ pub struct AppState {
     // Shortcuts popup
     pub show_shortcuts: bool,
     pub shortcuts_mode: ShortcutsPopupMode,
+
+    // Profile & Rulebook Switcher
+    pub show_profile_switcher: bool,
+    pub profile_switcher_selected: usize,
+    pub profile_search_input: String,
+    pub available_profiles: Vec<String>,
+    pub filtered_profiles: Vec<String>,
+    pub active_profile: String,
+
+    pub show_rulebook_switcher: bool,
+    pub rulebook_switcher_selected: usize,
+    pub rulebook_search_input: String,
+    pub available_rulebooks: Vec<crate::tui::types::ListRuleBook>,
+    pub filtered_rulebooks: Vec<crate::tui::types::ListRuleBook>,
+    pub selected_rulebooks: std::collections::HashSet<String>,
+
+    // Message Action Popup
+    pub show_message_action_popup: bool,
+    pub message_action_popup_selected: usize,
+    pub message_action_target_id: Option<Uuid>,
 
     pub changeset_store: crate::tui::services::ChangesetStore,
     pub modified_files: Vec<String>,
@@ -365,6 +407,14 @@ pub struct AppState {
     // Permission UX
     pub auto_approve: bool,
     pub project_root: PathBuf,
+
+    // MCP
+    pub mcp_server_states: HashMap<String, vac_tools::mcp::McpConnectionState>,
+
+    // VIL Status
+    pub vil_status: VilStatusSnapshot,
+
+    pub input_tx: Option<tokio::sync::mpsc::Sender<crate::tui::app::events::InputEvent>>,
 }
 
 /// Options for creating AppState
@@ -389,6 +439,9 @@ impl Default for AppState {
 impl AppState {
     pub fn new(options: AppStateOptions) -> Self {
         Self {
+            side_panel_visible: false,
+            side_panel_width: 30,
+            side_panel_section_collapsed: std::collections::HashSet::new(),
             input: TextArea::new(),
             cursor_position: 0,
             focus: WorkspaceFocus::Input,
@@ -420,6 +473,8 @@ impl AppState {
             shell_backgrounded: false,
             shell_exit_code: None,
             shell_last_error: None,
+            shell_history: Vec::new(),
+            shell_history_idx: None,
             is_streaming: false,
             cancel_requested: false,
             streaming_message_id: None,
@@ -429,6 +484,21 @@ impl AppState {
             commands: Self::default_commands(),
             show_shortcuts: false,
             shortcuts_mode: ShortcutsPopupMode::default(),
+            show_profile_switcher: false,
+            profile_switcher_selected: 0,
+            profile_search_input: String::new(),
+            available_profiles: Vec::new(),
+            filtered_profiles: Vec::new(),
+            active_profile: "default".to_string(),
+            show_rulebook_switcher: false,
+            rulebook_switcher_selected: 0,
+            rulebook_search_input: String::new(),
+            available_rulebooks: Vec::new(),
+            filtered_rulebooks: Vec::new(),
+            selected_rulebooks: std::collections::HashSet::new(),
+            show_message_action_popup: false,
+            message_action_popup_selected: 0,
+            message_action_target_id: None,
             changeset_store: crate::tui::services::ChangesetStore::new(),
             modified_files: Vec::new(),
             workbench_tab: WorkbenchTab::Approvals,
@@ -468,6 +538,9 @@ impl AppState {
             changeset_diff: None,
             auto_approve: false,
             project_root: options.project_root,
+            mcp_server_states: HashMap::new(),
+            vil_status: VilStatusSnapshot::default(),
+            input_tx: None,
         }
     }
 
@@ -513,6 +586,29 @@ impl AppState {
                 .then_with(|| a.name.cmp(&b.name))
         });
         out
+    }
+
+    pub fn profile_switcher_filtered(&self) -> Vec<String> {
+        let q = self.profile_search_input.trim().to_lowercase();
+        self.available_profiles
+            .iter()
+            .filter(|p| q.is_empty() || p.to_lowercase().contains(&q))
+            .cloned()
+            .collect()
+    }
+
+    pub fn rulebook_switcher_filtered(&self) -> Vec<crate::tui::types::ListRuleBook> {
+        let q = self.rulebook_search_input.trim().to_lowercase();
+        self.available_rulebooks
+            .iter()
+            .filter(|r| {
+                q.is_empty()
+                    || r.id.to_lowercase().contains(&q)
+                    || r.name.to_lowercase().contains(&q)
+                    || r.description.as_ref().map_or(false, |d| d.to_lowercase().contains(&q))
+            })
+            .cloned()
+            .collect()
     }
 
     pub fn review_sync_items(&mut self) {
