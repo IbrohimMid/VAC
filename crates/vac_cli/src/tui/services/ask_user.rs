@@ -127,12 +127,24 @@ pub fn render_ask_user_popup(f: &mut Frame, state: &AppState) {
     }
     f.render_widget(Paragraph::new(opt_lines), chunks[1]);
 
-    // Free text input row
-    let input_block = Block::default()
-        .borders(Borders::ALL)
-        .title(" Free text (Enter to submit) ");
-    let input_para = Paragraph::new(Line::from(Span::raw(state.ask_user_input.clone())))
-        .block(input_block);
+    // Free text input row — title + styling reflect whether the caller
+    // permits a free-text answer for this question.
+    let (title, body_line) = if state.ask_user_allow_free_text {
+        (
+            " Free text (Enter to submit) ".to_string(),
+            Line::from(Span::raw(state.ask_user_input.clone())),
+        )
+    } else {
+        (
+            " Free text disabled — pick an option ".to_string(),
+            Line::from(Span::styled(
+                "(select above and press Enter)",
+                Style::default().add_modifier(Modifier::DIM),
+            )),
+        )
+    };
+    let input_block = Block::default().borders(Borders::ALL).title(title);
+    let input_para = Paragraph::new(body_line).block(input_block);
     f.render_widget(input_para, chunks[2]);
 
     // Footer

@@ -298,7 +298,6 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
             }
             InputEvent::InputChanged(c) => {
                 // Number shortcut: 1-9 selects options[n-1] when free-text is empty.
-                // Otherwise digits append to the free-text answer as normal.
                 if state.ask_user_input.is_empty()
                     && c.is_ascii_digit()
                     && c != '0'
@@ -309,15 +308,26 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                         return;
                     }
                 }
+                // Honor `allow_free_text`: when the caller disabled it,
+                // typed characters that aren't number shortcuts are dropped.
+                if !state.ask_user_allow_free_text {
+                    return;
+                }
                 state.ask_user_input.push(c);
                 return;
             }
             InputEvent::InputBackspace => {
-                state.ask_user_input.pop();
+                if state.ask_user_allow_free_text {
+                    state.ask_user_input.pop();
+                }
                 return;
             }
             InputEvent::InputSubmitted => {
-                let answer = if !state.ask_user_input.trim().is_empty() {
+                // When free text is disabled, ignore `ask_user_input` and
+                // always resolve to the selected option's id.
+                let answer = if state.ask_user_allow_free_text
+                    && !state.ask_user_input.trim().is_empty()
+                {
                     state.ask_user_input.trim().to_string()
                 } else if let Some(opt) = state.ask_user_options.get(state.ask_user_selected) {
                     opt.id.clone()
@@ -1125,6 +1135,9 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                             state
                                 .add_assistant_message("Plan marked for revision.".to_string());
                         }
+                        'e' => {
+                            plan_open_editor(state);
+                        }
                         _ => {}
                     },
                     crate::tui::app::WorkbenchTab::Sessions => {
@@ -1397,6 +1410,9 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                                             "No plan.md yet. Run /plan first.".to_string(),
                                         );
                                     }
+                                } else if cmd.command == "/plan-edit" {
+                                    state.add_user_message(trimmed.to_string());
+                                    plan_open_editor(state);
                                 } else {
                                     let expanded = state.expand_pending_pastes(trimmed);
                                     state.add_user_message(expanded.clone());
@@ -1823,6 +1839,110 @@ fn message_at_row(state: &AppState, row: u16) -> Option<uuid::Uuid> {
     None
 }
 
+/// Estimate context-window occupancy as a percent of the active model's
+/// window. Model records don't carry a window size today, so we use coarse
+/// provider/name heuristics (Claude 4.x = 200k; GPT-4o = 128k; GPT-4 = 8k;
+/// unknown = 200k as a safe default). Returns 0 when tokens_used is zero.
+fn estimate_context_percent(model: Option<&crate::tui::types::Model>, tokens_used: u64) -> f32 {
+    if tokens_used == 0 {
+        return 0.0;
+    }
+    let window: u64 = match model {
+        Some(m) => {
+            let id = m.id.to_lowercase();
+            let name = m.name.to_lowercase();
+            if id.contains("claude") || name.contains("claude") || id.contains("sonnet") || id.contains("opus") || id.contains("haiku") {
+                200_000
+            } else if id.contains("gpt-4o") || name.contains("gpt-4o") {
+                128_000
+            } else if id.contains("gpt-4") || name.contains("gpt-4") {
+                8_192
+            } else if id.contains("gemini") {
+                1_000_000
+            } else {
+                200_000
+            }
+        }
+        None => 200_000,
+    };
+    ((tokens_used as f64 / window as f64) * 100.0).clamp(0.0, 100.0) as f32
+}
+
+/// Suspend the TUI, launch `$EDITOR` on plan.md, then re-read the file on
+/// return. Mirrors `handlers::review::open_editor` so editor integration stays
+/// consistent across the app.
+fn plan_open_editor(state: &mut AppState) {
+    use crossterm::{
+        event::{EnableBracketedPaste, EnableMouseCapture},
+        execute,
+        terminal::{
+            Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode,
+            enable_raw_mode,
+        },
+    };
+
+    let project_root = state.project_root.clone();
+    let plan_path = crate::tui::services::plan::plan_file_path(&project_root);
+    if !plan_path.exists() {
+        // Seed a minimal template so the editor has something to open.
+        let title = state
+            .session_title
+            .clone()
+            .unwrap_or_else(|| "Session Plan".to_string());
+        let tmpl = crate::tui::services::plan::new_plan_template(&title);
+        if let Err(e) = crate::tui::services::plan::write_plan_file(&project_root, &tmpl) {
+            state.add_assistant_message(format!("Failed to create plan: {}", e));
+            return;
+        }
+    }
+
+    let preferred = std::env::var("VAC_EDITOR")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| {
+            std::env::var("EDITOR")
+                .ok()
+                .filter(|s| !s.trim().is_empty())
+        })
+        .and_then(|s| s.split_whitespace().next().map(|t| t.to_string()));
+
+    let Some(editor) = crate::tui::services::review::detect_editor(preferred) else {
+        state.add_assistant_message(
+            "No editor available. Set VAC_EDITOR/EDITOR or install nvim/vim/nano.".to_string(),
+        );
+        return;
+    };
+
+    state.push_activity(
+        crate::tui::app::ActivityKind::Review,
+        format!("Open editor on plan.md: {editor}"),
+    );
+
+    let _ = disable_raw_mode();
+    let _ = execute!(std::io::stdout(), LeaveAlternateScreen);
+    let _ = std::process::Command::new(editor).arg(&plan_path).status();
+    let _ = execute!(
+        std::io::stdout(),
+        EnterAlternateScreen,
+        EnableBracketedPaste,
+        EnableMouseCapture,
+        Clear(ClearType::All)
+    );
+    let _ = enable_raw_mode();
+
+    // Re-read to absorb edits the user just made.
+    if let Some((meta, content)) = crate::tui::services::plan::read_plan_file(&project_root) {
+        state.plan_metadata = Some(meta);
+        state.plan_draft = content;
+        state.add_assistant_message("Plan updated from editor.".to_string());
+    } else {
+        state.add_assistant_message(
+            "Plan saved but front matter couldn't be parsed — fix YAML and reload."
+                .to_string(),
+        );
+    }
+}
+
 /// Rewrite plan.md with a new status. Detects concurrent external edits by
 /// hashing the on-disk content against the last-read draft — if they diverge,
 /// refuses to overwrite and surfaces a warning to the user.
@@ -1860,17 +1980,24 @@ fn plan_write_status(state: &mut AppState, new_status: crate::tui::services::pla
 
 fn open_ask_user_popup(state: &mut AppState, tc: &crate::tui::types::ToolCall) {
     let args = crate::tui::services::ask_user::parse_args(&tc.function.arguments);
-    let (question, options) = match args {
-        Some(a) => (Some(a.question), a.options),
+    // Default policy: allow free-text iff the caller opts in OR no options
+    // were supplied (otherwise the user would have no way to answer).
+    let (question, options, allow_free_text) = match args {
+        Some(a) => {
+            let free = a.allow_free_text || a.options.is_empty();
+            (Some(a.question), a.options, free)
+        }
         None => (
             Some("The assistant needs more information.".to_string()),
             Vec::new(),
+            true,
         ),
     };
     state.ask_user_question = question;
     state.ask_user_options = options;
     state.ask_user_selected = 0;
     state.ask_user_input.clear();
+    state.ask_user_allow_free_text = allow_free_text;
     state.ask_user_tool_call_id = Some(tc.id.clone());
     state.show_ask_user_popup = true;
     state.push_activity(
@@ -2295,6 +2422,22 @@ fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, e
             );
         }
         InputEvent::TaskCompleted(result) => {
+            // Real usage wiring: `vac_core::task::TaskResult.total_tokens_used`
+            // is the authoritative producer. We record this turn's total, add
+            // to session running total, and derive a coarse context %.
+            let turn_tokens = result.total_tokens_used;
+            state.current_message_usage = crate::tui::app::TokenUsage {
+                input_tokens: 0,
+                output_tokens: 0,
+                total_tokens: turn_tokens,
+            };
+            state.total_session_usage.total_tokens = state
+                .total_session_usage
+                .total_tokens
+                .saturating_add(turn_tokens);
+            state.context_usage_percent =
+                estimate_context_percent(state.current_model.as_ref(), turn_tokens);
+
             let mut content = result.summary.clone();
             let mut changeset_updated = false;
             if !result.modified_files.is_empty() {

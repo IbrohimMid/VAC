@@ -158,6 +158,11 @@ pub fn vac_commands() -> Vec<HelperCommand> {
             source: CommandSource::BuiltIn,
         },
         HelperCommand {
+            command: "/plan-edit".to_string(),
+            description: "Edit plan.md in $EDITOR".to_string(),
+            source: CommandSource::BuiltIn,
+        },
+        HelperCommand {
             command: "/fix".to_string(),
             description: "Fix linter/build errors".to_string(),
             source: CommandSource::BuiltInWithPrompt {

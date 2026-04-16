@@ -536,6 +536,7 @@ pub struct AppState {
     pub ask_user_selected: usize,
     pub ask_user_input: String,
     pub ask_user_tool_call_id: Option<String>,
+    pub ask_user_allow_free_text: bool,
 
     // Text Selection
     pub selection_state: crate::tui::services::text_selection::SelectionState,
@@ -725,6 +726,7 @@ impl AppState {
             ask_user_selected: 0,
             ask_user_input: String::new(),
             ask_user_tool_call_id: None,
+            ask_user_allow_free_text: true,
             selection_state: crate::tui::services::text_selection::SelectionState::default(),
             per_message_cache: HashMap::new(),
             render_metrics: RenderMetrics::default(),

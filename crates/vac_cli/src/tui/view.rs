@@ -914,7 +914,7 @@ fn render_plan_pane(f: &mut Frame, state: &mut AppState, area: Rect) {
     }
     lines.push(Line::raw(""));
     lines.push(Line::from(Span::styled(
-        "  /plan-review to open review overlay  |  edits write to .vac/session/plan.md",
+        "  e: edit in $EDITOR  |  a: approve  |  r: request changes  |  /plan-review: overlay",
         Style::default().fg(Color::DarkGray),
     )));
 
@@ -1810,8 +1810,14 @@ fn render_footer(f: &mut Frame, state: &mut AppState, area: Rect) {
                 Span::styled(": next tab", Style::default().fg(Color::DarkGray)),
             ],
             WorkbenchTab::Plan => vec![
+                Span::styled("e", Style::default().fg(Color::Cyan)),
+                Span::styled(": edit  ", Style::default().fg(Color::DarkGray)),
+                Span::styled("a", Style::default().fg(Color::Cyan)),
+                Span::styled(": approve  ", Style::default().fg(Color::DarkGray)),
+                Span::styled("r", Style::default().fg(Color::Cyan)),
+                Span::styled(": request changes  ", Style::default().fg(Color::DarkGray)),
                 Span::styled("/plan-review", Style::default().fg(Color::Cyan)),
-                Span::styled(": open review  ", Style::default().fg(Color::DarkGray)),
+                Span::styled(": overlay  ", Style::default().fg(Color::DarkGray)),
                 Span::styled("Ctrl+Tab", Style::default().fg(Color::Cyan)),
                 Span::styled(": next tab", Style::default().fg(Color::DarkGray)),
             ],
