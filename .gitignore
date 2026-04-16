@@ -1,34 +1,28 @@
-# Rust build output
-/target/
+```
+# Dependencies
+target/
 **/target/
-debug/
-release/
 
-# Cargo lock (optional - usually kept for applications)
-# Cargo.lock
+# Build artifacts
+**/*.rs.bk
+**/*.tmp
 
-# IDE and editor files
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-.DS_Store
+# Logs
+*.log
 
-# Environment variables
+# Environment
 .env
 .env.local
+*.env.*
 
-# Generated documentation
-doc/
+# Editor/IDE
+.vscode/
+.idea/
+**/.DS_Store
+**/Thumbs.db
 
-# Rust analyzer
-.rust-analyzer/
-
-# Benchmark outputs
-criterion/
-
-# Test coverage
-*.profraw
-*.profdata
-coverage/
+# Rust-specific
+**/Cargo.lock
+**/Cargo.toml.orig
+**/Cargo.toml.backup
+```

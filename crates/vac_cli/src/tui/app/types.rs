@@ -426,6 +426,9 @@ pub struct AppState {
     // VIL Status
     pub vil_status: VilStatusSnapshot,
 
+    // Text Selection
+    pub selection_state: crate::tui::services::text_selection::SelectionState,
+
     pub input_tx: Option<tokio::sync::mpsc::Sender<crate::tui::app::events::InputEvent>>,
 }
 
@@ -565,6 +568,7 @@ impl AppState {
             project_root: options.project_root,
             mcp_server_states: HashMap::new(),
             vil_status: VilStatusSnapshot::default(),
+            selection_state: crate::tui::services::text_selection::SelectionState::default(),
             input_tx: None,
         }
     }
