@@ -143,6 +143,21 @@ pub fn vac_commands() -> Vec<HelperCommand> {
             source: CommandSource::BuiltIn,
         },
         HelperCommand {
+            command: "/file-changes".to_string(),
+            description: "Searchable popup of changed files".to_string(),
+            source: CommandSource::BuiltIn,
+        },
+        HelperCommand {
+            command: "/plan".to_string(),
+            description: "Open or create the session plan".to_string(),
+            source: CommandSource::BuiltIn,
+        },
+        HelperCommand {
+            command: "/plan-review".to_string(),
+            description: "Open the plan review overlay".to_string(),
+            source: CommandSource::BuiltIn,
+        },
+        HelperCommand {
             command: "/fix".to_string(),
             description: "Fix linter/build errors".to_string(),
             source: CommandSource::BuiltInWithPrompt {

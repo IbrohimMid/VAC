@@ -207,6 +207,53 @@ pub fn build_changeset(modified_files: &[String]) -> Vec<ChangesetEntry> {
         .collect()
 }
 
+/// Status of a todo item surfaced from `<todo>` blocks in assistant messages.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TodoStatus {
+    Pending,
+    InProgress,
+    Done,
+}
+
+impl TodoStatus {
+    pub fn symbol(&self) -> &'static str {
+        match self {
+            TodoStatus::Pending => "[ ]",
+            TodoStatus::InProgress => "[/]",
+            TodoStatus::Done => "[x]",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TodoItemType {
+    Card,
+    ChecklistItem,
+    CollapsedIndicator,
+}
+
+#[derive(Debug, Clone)]
+pub struct TodoItem {
+    pub text: String,
+    pub status: TodoStatus,
+    pub item_type: TodoItemType,
+}
+
+impl TodoItem {
+    pub fn new(text: String) -> Self {
+        Self {
+            text,
+            status: TodoStatus::Pending,
+            item_type: TodoItemType::Card,
+        }
+    }
+
+    pub fn with_status(mut self, status: TodoStatus) -> Self {
+        self.status = status;
+        self
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

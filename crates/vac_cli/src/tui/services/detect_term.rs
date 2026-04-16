@@ -87,6 +87,18 @@ impl ThemeColors {
             Color::Gray
         }
     }
+
+    pub fn warning() -> Color {
+        Color::Yellow
+    }
+
+    pub fn danger() -> Color {
+        Color::Red
+    }
+
+    pub fn success() -> Color {
+        Color::Green
+    }
 }
 
 /// Detect terminal capabilities

@@ -3,16 +3,21 @@
 //! Provides essential UI services for TUI operation.
 
 pub mod approval_bar;
+pub mod ask_user;
+pub mod banner;
 pub mod bash_block;
 pub mod changeset;
 pub mod clipboard_paste;
 pub mod detect_term;
+pub mod file_changes_popup;
 pub mod file_diff;
 pub mod file_search;
 pub mod helper_block;
 pub mod helper_dropdown;
 pub mod markdown_renderer;
 pub mod message;
+pub mod plan;
+pub mod plan_review;
 pub mod message_action_popup;
 pub mod review;
 pub mod shell_mode;
@@ -26,6 +31,7 @@ pub mod syntax_highlighter;
 pub mod text_selection;
 pub mod textarea;
 pub mod toast;
+pub mod todo_extractor;
 
 // Re-export commonly used types
 pub use approval_bar::approval_preview;

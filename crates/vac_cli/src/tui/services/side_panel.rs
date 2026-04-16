@@ -30,6 +30,8 @@ pub fn render_side_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
     let vil_status_collapsed = state.side_panel_section_collapsed.contains(&SidePanelSection::VilStatus);
     let mcp_collapsed = state.side_panel_section_collapsed.contains(&SidePanelSection::Mcp);
     let sessions_collapsed = state.side_panel_section_collapsed.contains(&SidePanelSection::Sessions);
+    let todos_collapsed = state.side_panel_section_collapsed.contains(&SidePanelSection::Todos);
+    let usage_collapsed = state.side_panel_section_collapsed.contains(&SidePanelSection::Usage);
 
     let collapsed_height = 1;
     let context_height = if context_collapsed { collapsed_height } else { 5 };
@@ -43,13 +45,34 @@ pub fn render_side_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
     }).sum::<u16>();
     let mcp_height = if mcp_collapsed { collapsed_height } else { (mcp_lines + 2).max(3) };
     let sessions_height = if sessions_collapsed { collapsed_height } else { 8 };
+    // Todos: hide section entirely when empty; otherwise scale to 1 header + item lines (cap 8).
+    let todos_visible = !state.todos.is_empty();
+    let todos_height = if !todos_visible {
+        0
+    } else if todos_collapsed {
+        collapsed_height
+    } else {
+        (state.todos.len().min(8) as u16) + 1
+    };
+    let usage_visible = state.current_message_usage.total_tokens > 0
+        || state.total_session_usage.total_tokens > 0
+        || state.context_usage_percent > 0.0;
+    let usage_height = if !usage_visible {
+        0
+    } else if usage_collapsed {
+        collapsed_height
+    } else {
+        4
+    };
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(context_height),
+            Constraint::Length(usage_height),
             Constraint::Length(sessions_height),
             Constraint::Length(runtime_height),
+            Constraint::Length(todos_height),
             Constraint::Length(changeset_height),
             Constraint::Length(vil_status_height),
             Constraint::Length(mcp_height),
@@ -59,25 +82,121 @@ pub fn render_side_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
 
     state.side_panel_header_areas.clear();
     state.side_panel_row_areas.clear();
-    let sections = [
+    let mut sections: Vec<(SidePanelSection, Rect)> = vec![
         (SidePanelSection::Context, chunks[0]),
-        (SidePanelSection::Sessions, chunks[1]),
-        (SidePanelSection::Runtime, chunks[2]),
-        (SidePanelSection::Changeset, chunks[3]),
-        (SidePanelSection::VilStatus, chunks[4]),
-        (SidePanelSection::Mcp, chunks[5]),
     ];
+    if usage_visible {
+        sections.push((SidePanelSection::Usage, chunks[1]));
+    }
+    sections.push((SidePanelSection::Sessions, chunks[2]));
+    sections.push((SidePanelSection::Runtime, chunks[3]));
+    if todos_visible {
+        sections.push((SidePanelSection::Todos, chunks[4]));
+    }
+    sections.push((SidePanelSection::Changeset, chunks[5]));
+    sections.push((SidePanelSection::VilStatus, chunks[6]));
+    sections.push((SidePanelSection::Mcp, chunks[7]));
     for (sec, mut rect) in sections {
         rect.height = 1;
         state.side_panel_header_areas.insert(sec, rect);
     }
 
     render_context_section(f, state, chunks[0], context_collapsed);
-    render_sessions_section(f, state, chunks[1], sessions_collapsed);
-    render_runtime_section(f, state, chunks[2], runtime_collapsed);
-    render_changeset_section(f, state, chunks[3], changeset_collapsed);
-    render_vil_status_section(f, state, chunks[4], vil_status_collapsed);
-    render_mcp_section(f, state, chunks[5], mcp_collapsed);
+    if usage_visible {
+        render_usage_section(f, state, chunks[1], usage_collapsed);
+    }
+    render_sessions_section(f, state, chunks[2], sessions_collapsed);
+    render_runtime_section(f, state, chunks[3], runtime_collapsed);
+    if todos_visible {
+        render_todos_section(f, state, chunks[4], todos_collapsed);
+    }
+    render_changeset_section(f, state, chunks[5], changeset_collapsed);
+    render_vil_status_section(f, state, chunks[6], vil_status_collapsed);
+    render_mcp_section(f, state, chunks[7], mcp_collapsed);
+}
+
+fn render_todos_section(f: &mut Frame, state: &AppState, area: Rect, collapsed: bool) {
+    use crate::tui::services::changeset::TodoStatus;
+    let collapse_indicator = if collapsed { "▸" } else { "▾" };
+    let pending = state.todos.iter().filter(|t| t.status != TodoStatus::Done).count();
+    let done = state.todos.len().saturating_sub(pending);
+    let header = Line::from(vec![
+        Span::styled(
+            format!("  {} Todos ", collapse_indicator),
+            Style::default().add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            format!("({}/{})", done, state.todos.len()),
+            Style::default().fg(Color::DarkGray),
+        ),
+    ]);
+
+    if collapsed {
+        f.render_widget(Paragraph::new(vec![header]), area);
+        return;
+    }
+
+    let mut lines = vec![header];
+    for t in state.todos.iter().take(8) {
+        let (marker, color) = match t.status {
+            TodoStatus::Done => ("[✓]", Color::Green),
+            TodoStatus::InProgress => ("[/]", Color::Yellow),
+            TodoStatus::Pending => ("[ ]", Color::DarkGray),
+        };
+        let style = if t.status == TodoStatus::Done {
+            Style::default().fg(Color::DarkGray).add_modifier(Modifier::CROSSED_OUT)
+        } else {
+            Style::default()
+        };
+        lines.push(Line::from(vec![
+            Span::raw("    "),
+            Span::styled(marker, Style::default().fg(color)),
+            Span::raw(" "),
+            Span::styled(t.text.clone(), style),
+        ]));
+    }
+    f.render_widget(Paragraph::new(lines), area);
+}
+
+fn render_usage_section(f: &mut Frame, state: &AppState, area: Rect, collapsed: bool) {
+    let collapse_indicator = if collapsed { "▸" } else { "▾" };
+    let header = Line::from(Span::styled(
+        format!("  {} Usage", collapse_indicator),
+        Style::default().add_modifier(Modifier::BOLD),
+    ));
+
+    if collapsed {
+        f.render_widget(Paragraph::new(vec![header]), area);
+        return;
+    }
+
+    let pct = state.context_usage_percent.clamp(0.0, 100.0);
+    let pct_color = if pct >= 80.0 {
+        Color::Red
+    } else if pct >= 50.0 {
+        Color::Yellow
+    } else {
+        Color::Green
+    };
+    let lines = vec![
+        header,
+        Line::from(vec![
+            Span::styled("    Turn: ", Style::default().fg(Color::DarkGray)),
+            Span::raw(format!(
+                "{} in / {} out",
+                state.current_message_usage.input_tokens, state.current_message_usage.output_tokens
+            )),
+        ]),
+        Line::from(vec![
+            Span::styled("    Session: ", Style::default().fg(Color::DarkGray)),
+            Span::raw(format!("{} tokens", state.total_session_usage.total_tokens)),
+        ]),
+        Line::from(vec![
+            Span::styled("    Context: ", Style::default().fg(Color::DarkGray)),
+            Span::styled(format!("{:.0}%", pct), Style::default().fg(pct_color)),
+        ]),
+    ];
+    f.render_widget(Paragraph::new(lines), area);
 }
 
 fn render_context_section(f: &mut Frame, state: &AppState, area: Rect, collapsed: bool) {
@@ -112,6 +231,18 @@ fn render_context_section(f: &mut Frame, state: &AppState, area: Rect, collapsed
         Span::styled("    Auto-Approve: ", Style::default().fg(Color::DarkGray)),
         Span::styled(auto, Style::default().fg(auto_color)),
     ]));
+
+    if let Some(ident) = state
+        .auth_display_info
+        .0
+        .as_ref()
+        .or(state.auth_display_info.1.as_ref())
+    {
+        lines.push(Line::from(vec![
+            Span::styled("    Auth: ", Style::default().fg(Color::DarkGray)),
+            Span::raw(ident.clone()),
+        ]));
+    }
 
     f.render_widget(Paragraph::new(lines), area);
 }

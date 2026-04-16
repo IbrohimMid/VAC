@@ -12,18 +12,26 @@ use ratatui::{
 
 /// Main view function
 pub fn view(f: &mut Frame, state: &mut AppState) {
+    let banner_h = crate::tui::services::banner::banner_height(state);
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(1),
+            Constraint::Length(banner_h),
             Constraint::Min(1),
             Constraint::Length(1),
         ])
         .split(f.area());
 
     render_header(f, state, chunks[0]);
-    render_workspace(f, state, chunks[1]);
-    render_footer(f, state, chunks[2]);
+    if banner_h > 0 {
+        crate::tui::services::banner::render_banner(f, chunks[1], state);
+    } else {
+        state.banner_click_regions.clear();
+        state.banner_dismiss_region = None;
+    }
+    render_workspace(f, state, chunks[2]);
+    render_footer(f, state, chunks[3]);
 
     if state.show_command_palette {
         render_command_palette(f, state);
@@ -59,6 +67,18 @@ pub fn view(f: &mut Frame, state: &mut AppState) {
 
     if state.show_changeset {
         render_changeset(f, state);
+    }
+
+    if state.show_file_changes_popup {
+        crate::tui::services::file_changes_popup::render_file_changes_popup(f, state);
+    }
+
+    if state.plan_review_open {
+        crate::tui::services::plan_review::render_plan_review(f, state);
+    }
+
+    if state.show_ask_user_popup {
+        crate::tui::services::ask_user::render_ask_user_popup(f, state);
     }
 
     if state.shell_popup_visible {
@@ -514,10 +534,11 @@ fn render_messages(f: &mut Frame, state: &mut AppState, area: Rect) {
         state.per_message_cache.clear();
     }
 
+    state.line_to_message_map.clear();
     for msg in &state.messages {
         use std::collections::hash_map::DefaultHasher;
         use std::hash::{Hash, Hasher};
-        
+
         let mut hasher = DefaultHasher::new();
         msg.content.hash(&mut hasher);
         msg.role.hash(&mut hasher);
@@ -526,8 +547,12 @@ fn render_messages(f: &mut Frame, state: &mut AppState, area: Rect) {
         if let Some(cached) = state.per_message_cache.get(&msg.id) {
             if cached.content_hash == content_hash && cached.width == width {
                 hits += 1;
+                let n = cached.rendered_lines.len();
                 lines.extend(cached.rendered_lines.iter().cloned());
                 lines.push(Line::raw(""));
+                for _ in 0..=n {
+                    state.line_to_message_map.push(msg.id);
+                }
                 continue;
             }
         }
@@ -545,7 +570,8 @@ fn render_messages(f: &mut Frame, state: &mut AppState, area: Rect) {
                 msg_lines.extend(msg.content.lines().map(|l| Line::raw(l.to_string())));
             }
         }
-        
+
+        let n = msg_lines.len();
         state.per_message_cache.insert(msg.id, RenderedMessageCache {
             content_hash,
             rendered_lines: Arc::new(msg_lines.clone()),
@@ -554,6 +580,9 @@ fn render_messages(f: &mut Frame, state: &mut AppState, area: Rect) {
 
         lines.extend(msg_lines);
         lines.push(Line::raw("")); // spacing between messages
+        for _ in 0..=n {
+            state.line_to_message_map.push(msg.id);
+        }
     }
 
     state.render_metrics.cache_hits += hits;
@@ -586,6 +615,21 @@ fn render_messages(f: &mut Frame, state: &mut AppState, area: Rect) {
 }
 
 fn render_input(f: &mut Frame, state: &mut AppState, area: Rect) {
+    // Split off a 1-line tray above the input when there are pending pastes.
+    let (tray_area, input_area) = if !state.pending_pastes.is_empty() && area.height >= 3 {
+        let split = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(1), Constraint::Min(2)])
+            .split(area);
+        (Some(split[0]), split[1])
+    } else {
+        (None, area)
+    };
+
+    if let Some(tray) = tray_area {
+        render_paste_tray(f, state, tray);
+    }
+
     let mut lines = Vec::new();
     if state.input.is_empty() {
         lines.push(Line::from(Span::styled(
@@ -604,15 +648,46 @@ fn render_input(f: &mut Frame, state: &mut AppState, area: Rect) {
             focus_style(state.focus == WorkspaceFocus::Input),
         )))
         .wrap(Wrap { trim: false });
-    f.render_widget(widget, area);
+    f.render_widget(widget, input_area);
 
     if state.focus == WorkspaceFocus::Input && !state.show_command_palette && !state.show_shortcuts
     {
         let (row, col) = state.input.cursor;
-        let cy = area.y + 1 + (row as u16).min(area.height.saturating_sub(3));
-        let cx = area.x + 1 + (col as u16).min(area.width.saturating_sub(3));
+        let cy = input_area.y + 1 + (row as u16).min(input_area.height.saturating_sub(3));
+        let cx = input_area.x + 1 + (col as u16).min(input_area.width.saturating_sub(3));
         f.set_cursor_position((cx, cy));
     }
+}
+
+fn render_paste_tray(f: &mut Frame, state: &AppState, area: Rect) {
+    use crate::tui::services::clipboard_paste::PastedKind;
+    let mut spans: Vec<Span<'static>> = Vec::new();
+    spans.push(Span::styled(
+        "📎 ",
+        Style::default().fg(Color::DarkGray),
+    ));
+    for (i, item) in state.pending_pastes.iter().enumerate() {
+        if i > 0 {
+            spans.push(Span::raw("  "));
+        }
+        let (label, color) = match &item.kind {
+            PastedKind::Text { line_count, char_count, .. } => (
+                format!("[#{} text {}L {}c]", item.id, line_count, char_count),
+                Color::Cyan,
+            ),
+            PastedKind::Image { width, height, byte_count } => (
+                format!("[#{} img {}x{} {}KB]", item.id, width, height, byte_count / 1024),
+                Color::Magenta,
+            ),
+        };
+        spans.push(Span::styled(label, Style::default().fg(color)));
+    }
+    spans.push(Span::styled(
+        "  (Ctrl+U to clear)",
+        Style::default().fg(Color::DarkGray).add_modifier(Modifier::DIM),
+    ));
+    let para = Paragraph::new(Line::from(spans));
+    f.render_widget(para, area);
 }
 
 fn render_operator_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
@@ -768,17 +843,23 @@ fn render_workbench_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
         .constraints([Constraint::Length(2), Constraint::Min(1)])
         .split(area);
 
+    let plan_label = match &state.plan_metadata {
+        Some(m) => format!("Plan [{}]", m.status),
+        None => "Plan".to_string(),
+    };
     let tabs = vec![
         format!("Approvals ({})", state.pending_approvals.len()),
         format!("Review ({})", state.changeset_store.active_entries().len()),
         format!("Sessions ({})", state.sessions.len()),
         format!("Runtime ({})", state.runtime_jobs.len()),
+        plan_label,
     ];
     let idx = match state.workbench_tab {
         WorkbenchTab::Approvals => 0,
         WorkbenchTab::Review => 1,
         WorkbenchTab::Sessions => 2,
         WorkbenchTab::Runtime => 3,
+        WorkbenchTab::Plan => 4,
     };
 
     let tabs = Tabs::new(tabs)
@@ -799,7 +880,51 @@ fn render_workbench_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
         WorkbenchTab::Review => render_review_pane(f, state, chunks[1]),
         WorkbenchTab::Sessions => render_sessions_pane(f, state, chunks[1]),
         WorkbenchTab::Runtime => render_runtime_pane(f, state, chunks[1]),
+        WorkbenchTab::Plan => render_plan_pane(f, state, chunks[1]),
     }
+}
+
+fn render_plan_pane(f: &mut Frame, state: &mut AppState, area: Rect) {
+    let body_text = if state.plan_draft.is_empty() {
+        "No plan loaded. Run /plan to create one.".to_string()
+    } else {
+        crate::tui::services::plan::extract_plan_body(&state.plan_draft).to_string()
+    };
+
+    let mut lines: Vec<Line> = Vec::new();
+    if let Some(meta) = &state.plan_metadata {
+        lines.push(Line::from(vec![
+            Span::styled("Title: ", Style::default().fg(Color::DarkGray)),
+            Span::styled(meta.title.clone(), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+        ]));
+        let (status_label, status_color) = match meta.status {
+            crate::tui::services::plan::PlanStatus::Drafting => ("drafting", Color::Yellow),
+            crate::tui::services::plan::PlanStatus::PendingReview => ("pending_review", Color::Cyan),
+            crate::tui::services::plan::PlanStatus::Approved => ("approved", Color::Green),
+        };
+        lines.push(Line::from(vec![
+            Span::styled("Status: ", Style::default().fg(Color::DarkGray)),
+            Span::styled(status_label.to_string(), Style::default().fg(status_color)),
+            Span::styled(format!("  v{}", meta.version), Style::default().fg(Color::DarkGray)),
+        ]));
+        lines.push(Line::raw(""));
+    }
+    for line in body_text.lines() {
+        lines.push(Line::raw(line.to_string()));
+    }
+    lines.push(Line::raw(""));
+    lines.push(Line::from(Span::styled(
+        "  /plan-review to open review overlay  |  edits write to .vac/session/plan.md",
+        Style::default().fg(Color::DarkGray),
+    )));
+
+    let para = Paragraph::new(lines)
+        .block(Block::default().borders(Borders::ALL).title(Span::styled(
+            "Plan",
+            focus_style(state.focus == WorkspaceFocus::Workbench),
+        )))
+        .wrap(Wrap { trim: false });
+    f.render_widget(para, area);
 }
 
 fn render_approvals_workbench(f: &mut Frame, state: &mut AppState, area: Rect) {
@@ -1681,6 +1806,12 @@ fn render_footer(f: &mut Frame, state: &mut AppState, area: Rect) {
                 Span::styled(": cancel  ", Style::default().fg(Color::DarkGray)),
                 Span::styled("t", Style::default().fg(Color::Cyan)),
                 Span::styled(": retry  ", Style::default().fg(Color::DarkGray)),
+                Span::styled("Ctrl+Tab", Style::default().fg(Color::Cyan)),
+                Span::styled(": next tab", Style::default().fg(Color::DarkGray)),
+            ],
+            WorkbenchTab::Plan => vec![
+                Span::styled("/plan-review", Style::default().fg(Color::Cyan)),
+                Span::styled(": open review  ", Style::default().fg(Color::DarkGray)),
                 Span::styled("Ctrl+Tab", Style::default().fg(Color::Cyan)),
                 Span::styled(": next tab", Style::default().fg(Color::DarkGray)),
             ],

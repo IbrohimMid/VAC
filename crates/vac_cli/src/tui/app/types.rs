@@ -66,6 +66,30 @@ pub struct ExistingPlanPrompt {
     pub inline_prompt: Option<String>,
 }
 
+/// Inline comment attached to a plan line.
+#[derive(Debug, Clone)]
+pub struct PlanComment {
+    pub id: String,
+    pub line: usize,
+    pub author: String,
+    pub text: String,
+    pub resolved: bool,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct TokenUsage {
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub total_tokens: u64,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct BillingInfo {
+    pub credits_remaining: Option<u64>,
+    pub tier: Option<String>,
+}
+
 #[derive(Debug, Clone)]
 pub struct SessionInfo {
     pub title: String,
@@ -120,6 +144,7 @@ pub enum WorkbenchTab {
     Review,
     Sessions,
     Runtime,
+    Plan,
 }
 
 impl WorkbenchTab {
@@ -128,7 +153,8 @@ impl WorkbenchTab {
             Self::Approvals => Self::Review,
             Self::Review => Self::Sessions,
             Self::Sessions => Self::Runtime,
-            Self::Runtime => Self::Approvals,
+            Self::Runtime => Self::Plan,
+            Self::Plan => Self::Approvals,
         }
     }
 }
@@ -261,6 +287,8 @@ pub enum SidePanelSection {
     VilStatus,
     Mcp,
     Sessions,
+    Todos,
+    Usage,
 }
 
 #[derive(Debug, Clone)]
@@ -459,6 +487,56 @@ pub struct AppState {
     // Pending image attachments for next message submission
     pub pending_image_parts: Vec<crate::tui::types::ContentPart>,
 
+    // Banner (top-strip notices / CTAs)
+    pub banner_message: Option<crate::tui::services::banner::BannerMessage>,
+    pub banner_click_regions: Vec<(String, ratatui::layout::Rect)>,
+    pub banner_dismiss_region: Option<ratatui::layout::Rect>,
+
+    // Paste ledger (long text + image tray)
+    pub pending_pastes: Vec<crate::tui::services::clipboard_paste::PastedItem>,
+    pub is_pasting: bool,
+    pub paste_counter: usize,
+
+    // File changes popup (compact, searchable)
+    pub show_file_changes_popup: bool,
+    pub file_changes_selected: usize,
+    pub file_changes_search: String,
+    pub file_changes_scroll: usize,
+
+    // Todos extracted from <todo>…</todo> blocks in assistant messages
+    pub todos: Vec<crate::tui::services::changeset::TodoItem>,
+
+    // Token usage + context pressure + identity
+    pub current_message_usage: TokenUsage,
+    pub total_session_usage: TokenUsage,
+    pub context_usage_percent: f32,
+    pub billing_info: Option<BillingInfo>,
+    pub auth_display_info: (Option<String>, Option<String>, Option<String>),
+
+    // Revert anchors: line_to_message_map is populated during render and
+    // consumed by message_at_row. pending_revert_index stages a confirmation
+    // step for future two-step revert UX.
+    pub line_to_message_map: Vec<Uuid>,
+    pub pending_revert_index: Option<usize>,
+
+    // Plan mode
+    pub plan_mode_active: bool,
+    pub plan_metadata: Option<crate::tui::services::plan::PlanMetadata>,
+    pub plan_draft: String,
+    pub plan_review_open: bool,
+    pub plan_review_selected: usize,
+    pub plan_review_scroll: usize,
+    pub plan_comments: Vec<PlanComment>,
+    pub existing_plan_prompt: Option<ExistingPlanPrompt>,
+
+    // Ask-User popup (triggered by `ask_user` tool call)
+    pub show_ask_user_popup: bool,
+    pub ask_user_question: Option<String>,
+    pub ask_user_options: Vec<crate::tui::services::ask_user::AskUserOption>,
+    pub ask_user_selected: usize,
+    pub ask_user_input: String,
+    pub ask_user_tool_call_id: Option<String>,
+
     // Text Selection
     pub selection_state: crate::tui::services::text_selection::SelectionState,
     pub per_message_cache: PerMessageCache,
@@ -615,6 +693,38 @@ impl AppState {
             mcp_server_states: HashMap::new(),
             vil_status: VilStatusSnapshot::default(),
             pending_image_parts: vec![],
+            banner_message: None,
+            banner_click_regions: Vec::new(),
+            banner_dismiss_region: None,
+            pending_pastes: Vec::new(),
+            is_pasting: false,
+            paste_counter: 0,
+            show_file_changes_popup: false,
+            file_changes_selected: 0,
+            file_changes_search: String::new(),
+            file_changes_scroll: 0,
+            todos: Vec::new(),
+            current_message_usage: TokenUsage::default(),
+            total_session_usage: TokenUsage::default(),
+            context_usage_percent: 0.0,
+            billing_info: None,
+            auth_display_info: (None, None, None),
+            line_to_message_map: Vec::new(),
+            pending_revert_index: None,
+            plan_mode_active: false,
+            plan_metadata: None,
+            plan_draft: String::new(),
+            plan_review_open: false,
+            plan_review_selected: 0,
+            plan_review_scroll: 0,
+            plan_comments: Vec::new(),
+            existing_plan_prompt: None,
+            show_ask_user_popup: false,
+            ask_user_question: None,
+            ask_user_options: Vec::new(),
+            ask_user_selected: 0,
+            ask_user_input: String::new(),
+            ask_user_tool_call_id: None,
             selection_state: crate::tui::services::text_selection::SelectionState::default(),
             per_message_cache: HashMap::new(),
             render_metrics: RenderMetrics::default(),
@@ -632,6 +742,34 @@ impl AppState {
 
     pub fn add_user_message(&mut self, content: String) {
         self.messages.push(Message::user(content, None));
+    }
+
+    /// Count of user-role messages in the current transcript. Computed from
+    /// `messages` rather than denormalized so revert/reset operations don't
+    /// need to remember to adjust a counter.
+    pub fn user_message_count(&self) -> usize {
+        self.messages.iter().filter(|m| m.role == "user").count()
+    }
+
+    /// Replace any pasted-content placeholder tokens in `raw` with the real
+    /// content (for text pastes) or strip them (for image pastes — the image
+    /// rides via `pending_image_parts`). Drains `pending_pastes` regardless of
+    /// whether every placeholder was found, so the ledger stays in sync with
+    /// a submission.
+    pub fn expand_pending_pastes(&mut self, raw: &str) -> String {
+        use crate::tui::services::clipboard_paste::PastedKind;
+        if self.pending_pastes.is_empty() {
+            return raw.to_string();
+        }
+        let mut out = raw.to_string();
+        for item in self.pending_pastes.drain(..) {
+            let replacement = match item.kind {
+                PastedKind::Text { content, .. } => content,
+                PastedKind::Image { .. } => String::new(),
+            };
+            out = out.replace(&item.placeholder, &replacement);
+        }
+        out
     }
 
     pub fn add_assistant_message(&mut self, content: String) {

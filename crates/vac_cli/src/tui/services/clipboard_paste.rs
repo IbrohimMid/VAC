@@ -3,6 +3,49 @@ use log;
 use std::path::PathBuf;
 use tempfile::Builder;
 
+/// A single pasted attachment (long text or image) tracked in the input ledger.
+/// The placeholder token is rendered in the input TextArea so the user sees a
+/// compact representation; the full content is expanded at submit time.
+#[derive(Debug, Clone)]
+pub struct PastedItem {
+    pub id: String,
+    pub placeholder: String,
+    pub kind: PastedKind,
+}
+
+#[derive(Debug, Clone)]
+pub enum PastedKind {
+    /// Long text content to be inlined at submit time.
+    Text { content: String, line_count: usize, char_count: usize },
+    /// Image attachment. The actual ContentPart rides in `pending_image_parts`;
+    /// this variant exists so the tray can show the image alongside text pastes
+    /// and an index for removal.
+    Image { width: u32, height: u32, byte_count: usize },
+}
+
+/// Threshold above which a pasted text becomes a placeholder instead of
+/// being inlined directly. Keeps the input readable while preserving the
+/// full content for submission.
+pub const LONG_PASTE_LINE_THRESHOLD: usize = 8;
+pub const LONG_PASTE_CHAR_THRESHOLD: usize = 800;
+
+pub fn is_long_paste(text: &str) -> bool {
+    text.chars().count() >= LONG_PASTE_CHAR_THRESHOLD
+        || text.chars().filter(|c| *c == '\n').count() + 1 >= LONG_PASTE_LINE_THRESHOLD
+}
+
+pub fn make_paste_id(counter: usize) -> String {
+    format!("p{}", counter)
+}
+
+pub fn text_placeholder(id: &str, char_count: usize, line_count: usize) -> String {
+    format!("«pasted:{} +{} chars, {} lines»", id, char_count, line_count)
+}
+
+pub fn image_placeholder(id: &str, width: u32, height: u32) -> String {
+    format!("«image:{} {}x{}»", id, width, height)
+}
+
 /// Search common directories for an image file matching the given name (with various extensions)
 pub fn find_image_file_by_name(name: &str) -> Option<PathBuf> {
     // Common image extensions to try
