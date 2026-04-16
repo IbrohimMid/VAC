@@ -812,7 +812,7 @@ fn render_sessions_pane(f: &mut Frame, state: &mut AppState, area: Rect) {
                 Span::raw(" "),
                 Span::styled(&s.title, style),
                 Span::styled(
-                    format!(" ({}t)", s.message_count),
+                    format!(" ({}t)", s.task_count),
                     Style::default().fg(Color::DarkGray),
                 ),
             ]))
@@ -840,7 +840,7 @@ fn render_sessions_pane(f: &mut Frame, state: &mut AppState, area: Rect) {
         ]));
         lines.push(Line::from(vec![
             Span::styled("Tasks: ", Style::default().add_modifier(Modifier::BOLD)),
-            Span::raw(sel.message_count.to_string()),
+            Span::raw(sel.task_count.to_string()),
         ]));
         lines.push(Line::from(vec![
             Span::styled("Checkpoint: ", Style::default().add_modifier(Modifier::BOLD)),

@@ -367,16 +367,38 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                             .into_iter()
                             .map(|s| {
                                 let id_str = s.id.to_string();
-                                let has_checkpoint = std::path::Path::new(".vac/checkpoints")
-                                    .join(format!("{}_state.json", id_str))
-                                    .exists();
+                                let checkpoint_dir = std::path::Path::new(".vac/checkpoints");
+                                let state_file = checkpoint_dir.join(format!("{}_state.json", id_str));
+                                let has_checkpoint = state_file.exists();
+                                // Collect checkpoint files for this session (sorted newest first)
+                                let checkpoints: Vec<String> = if checkpoint_dir.exists() {
+                                    let mut files: Vec<_> = std::fs::read_dir(checkpoint_dir)
+                                        .into_iter()
+                                        .flatten()
+                                        .flatten()
+                                        .filter(|e| {
+                                            e.file_name()
+                                                .to_string_lossy()
+                                                .starts_with(&id_str)
+                                        })
+                                        .filter_map(|e| {
+                                            let name = e.file_name().to_string_lossy().to_string();
+                                            let modified = e.metadata().ok()?.modified().ok()?;
+                                            Some((modified, name))
+                                        })
+                                        .collect();
+                                    files.sort_by(|a, b| b.0.cmp(&a.0));
+                                    files.into_iter().map(|(_, name)| name).take(5).collect()
+                                } else {
+                                    vec![]
+                                };
                                 let last_activity = s.updated_at.format("%Y-%m-%d %H:%M").to_string();
                                 crate::tui::app::SessionInfo {
                                     id: id_str.clone(),
                                     title: format!("Session {}", &id_str[..8]),
                                     updated_at: s.updated_at.to_rfc3339(),
-                                    checkpoints: vec![],
-                                    message_count: s.tasks.len(),
+                                    checkpoints,
+                                    task_count: s.tasks.len(),
                                     last_activity,
                                     has_checkpoint,
                                 }

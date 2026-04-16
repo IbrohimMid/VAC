@@ -498,7 +498,23 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                         }
                     }
                     crate::tui::app::WorkbenchTab::Review => {}
-                    crate::tui::app::WorkbenchTab::Sessions => {}
+                    crate::tui::app::WorkbenchTab::Sessions => {
+                        if c == 'r' {
+                            if let Some(sel) = state.sessions.get(state.sessions_selected_idx).cloned() {
+                                if sel.has_checkpoint {
+                                    let _ = output_tx.try_send(OutputEvent::ResumeSession(sel.id.clone()));
+                                    state.push_activity(
+                                        crate::tui::app::ActivityKind::Session,
+                                        format!("Resuming checkpoint: {}", &sel.id[..8.min(sel.id.len())]),
+                                    );
+                                } else {
+                                    state.toasts.push(crate::tui::services::Toast::info(
+                                        "No checkpoint available for this session".to_string(),
+                                    ));
+                                }
+                            }
+                        }
+                    }
                 },
                 _ => {}
             }
@@ -1925,14 +1941,15 @@ mod tests {
             id: "abc123".to_string(),
             title: "Test Session".to_string(),
             updated_at: "2026-04-16T09:00:00Z".to_string(),
-            checkpoints: vec![],
-            message_count: 5,
+            checkpoints: vec!["abc123_state.json".to_string()],
+            task_count: 5,
             last_activity: "2026-04-16 09:00".to_string(),
             has_checkpoint: true,
         };
-        assert_eq!(s.message_count, 5);
+        assert_eq!(s.task_count, 5);
         assert_eq!(s.last_activity, "2026-04-16 09:00");
         assert!(s.has_checkpoint);
+        assert_eq!(s.checkpoints.len(), 1);
     }
 
     #[test]
@@ -1947,7 +1964,7 @@ mod tests {
                 title: "Session 1".to_string(),
                 updated_at: "2026-04-16T09:00:00Z".to_string(),
                 checkpoints: vec![],
-                message_count: 3,
+                task_count: 3,
                 last_activity: "2026-04-16 09:00".to_string(),
                 has_checkpoint: false,
             },
@@ -1955,8 +1972,8 @@ mod tests {
                 id: "s2".to_string(),
                 title: "Session 2".to_string(),
                 updated_at: "2026-04-16T10:00:00Z".to_string(),
-                checkpoints: vec![],
-                message_count: 7,
+                checkpoints: vec!["s2_state.json".to_string()],
+                task_count: 7,
                 last_activity: "2026-04-16 10:00".to_string(),
                 has_checkpoint: true,
             },
@@ -1965,10 +1982,59 @@ mod tests {
         handle_backend_event(&mut state, &tx, InputEvent::SetSessions(sessions));
 
         assert_eq!(state.sessions.len(), 2);
-        assert_eq!(state.sessions[0].message_count, 3);
+        assert_eq!(state.sessions[0].task_count, 3);
         assert!(!state.sessions[0].has_checkpoint);
-        assert_eq!(state.sessions[1].message_count, 7);
+        assert_eq!(state.sessions[1].task_count, 7);
         assert!(state.sessions[1].has_checkpoint);
+        assert_eq!(state.sessions[1].checkpoints.len(), 1);
+    }
+
+    #[test]
+    fn sessions_tab_r_resumes_checkpoint_for_selected_session() {
+        let dir = tempfile::tempdir().unwrap();
+        let (tx, mut rx) = tokio::sync::mpsc::channel(4);
+        let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
+        state.focus = crate::tui::app::WorkspaceFocus::Workbench;
+        state.workbench_tab = crate::tui::app::WorkbenchTab::Sessions;
+        state.sessions = vec![crate::tui::app::SessionInfo {
+            id: "sess-abc".to_string(),
+            title: "Session abc".to_string(),
+            updated_at: "2026-04-16T09:00:00Z".to_string(),
+            checkpoints: vec!["sess-abc_state.json".to_string()],
+            task_count: 2,
+            last_activity: "2026-04-16 09:00".to_string(),
+            has_checkpoint: true,
+        }];
+        state.sessions_selected_idx = 0;
+
+        handle_input_event(&mut state, &tx, InputEvent::InputChanged('r'));
+
+        let ev = rx.try_recv().unwrap();
+        assert!(matches!(ev, OutputEvent::ResumeSession(ref id) if id == "sess-abc"));
+    }
+
+    #[test]
+    fn sessions_tab_r_toasts_when_no_checkpoint() {
+        let dir = tempfile::tempdir().unwrap();
+        let (tx, _rx) = tokio::sync::mpsc::channel(4);
+        let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
+        state.focus = crate::tui::app::WorkspaceFocus::Workbench;
+        state.workbench_tab = crate::tui::app::WorkbenchTab::Sessions;
+        state.sessions = vec![crate::tui::app::SessionInfo {
+            id: "sess-xyz".to_string(),
+            title: "Session xyz".to_string(),
+            updated_at: "2026-04-16T09:00:00Z".to_string(),
+            checkpoints: vec![],
+            task_count: 0,
+            last_activity: "2026-04-16 09:00".to_string(),
+            has_checkpoint: false,
+        }];
+        state.sessions_selected_idx = 0;
+
+        handle_input_event(&mut state, &tx, InputEvent::InputChanged('r'));
+
+        assert!(!state.toasts.is_empty());
+        assert!(state.toasts[0].message.contains("No checkpoint"));
     }
 
     // ── Branch 6B behavioral tests ──────────────────────────────────────────
