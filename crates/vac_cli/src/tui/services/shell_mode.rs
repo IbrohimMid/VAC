@@ -17,10 +17,10 @@ fn get_process_registry() -> Arc<Mutex<HashMap<String, u32>>> {
 
 #[derive(Debug, Clone)]
 pub enum ShellEvent {
-    Output(String),
-    Error(String),
-    Completed(i32),
-    WaitingForInput,
+    Output(String, String),
+    Error(String, String),
+    Completed(String, i32),
+    WaitingForInput(String),
 }
 
 #[derive(Debug, Clone)]
@@ -98,7 +98,7 @@ pub fn run_pty_command(
             Ok(pair) => pair,
             Err(err) => {
                 let _ = output_tx
-                    .blocking_send(ShellEvent::Error(format!("Failed to open PTY: {err}")));
+                    .blocking_send(ShellEvent::Error(command_id.clone(), format!("Failed to open PTY: {err}")));
                 return;
             }
         };
@@ -131,7 +131,7 @@ pub fn run_pty_command(
             Ok(child) => child,
             Err(err) => {
                 let _ = output_tx
-                    .blocking_send(ShellEvent::Error(format!("Failed to spawn shell: {err}")));
+                    .blocking_send(ShellEvent::Error(command_id.clone(), format!("Failed to spawn shell: {err}")));
                 return;
             }
         };
@@ -146,7 +146,7 @@ pub fn run_pty_command(
         let mut writer = match pair.master.take_writer() {
             Ok(writer) => writer,
             Err(err) => {
-                let _ = output_tx.blocking_send(ShellEvent::Error(format!(
+                let _ = output_tx.blocking_send(ShellEvent::Error(command_id.clone(), format!(
                     "Failed to open PTY writer: {err}"
                 )));
                 return;
@@ -156,7 +156,7 @@ pub fn run_pty_command(
         let mut reader = match pair.master.try_clone_reader() {
             Ok(reader) => reader,
             Err(err) => {
-                let _ = output_tx.blocking_send(ShellEvent::Error(format!(
+                let _ = output_tx.blocking_send(ShellEvent::Error(command_id.clone(), format!(
                     "Failed to open PTY reader: {err}"
                 )));
                 return;
@@ -171,6 +171,7 @@ pub fn run_pty_command(
         let (prompt_ready_tx, prompt_ready_rx) = std::sync::mpsc::channel::<()>();
 
         let output_tx_clone = output_tx.clone();
+        let command_id_for_reader = command_id.clone();
         std::thread::spawn(move || {
             let mut first_output = true;
             let mut buf = vec![0u8; 4096];
@@ -178,20 +179,22 @@ pub fn run_pty_command(
                 match reader.read(&mut buf) {
                     Ok(0) => break,
                     Ok(n) => {
-                        if first_output {
+                        let text = String::from_utf8_lossy(&buf[..n]).to_string();
+                        let _ = output_tx_clone.blocking_send(ShellEvent::Output(command_id_for_reader.clone(), text.clone()));
+                        
+                        let has_prompt = text.ends_with("$ ") || text.ends_with("# ") || text.ends_with("> ") || text.ends_with("? ") || text.contains("Press Enter");
+                        if first_output || has_prompt {
                             let _ = prompt_ready_tx.send(());
-                            let _ = output_tx_clone.blocking_send(ShellEvent::WaitingForInput);
+                            let _ = output_tx_clone.blocking_send(ShellEvent::WaitingForInput(command_id_for_reader.clone()));
                             first_output = false;
                         }
-                        let text = String::from_utf8_lossy(&buf[..n]).to_string();
-                        let _ = output_tx_clone.blocking_send(ShellEvent::Output(text));
                     }
                     Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
                         std::thread::sleep(std::time::Duration::from_millis(10));
                     }
                     Err(err) => {
                         let _ = output_tx_clone
-                            .blocking_send(ShellEvent::Error(format!("Read error: {err}")));
+                            .blocking_send(ShellEvent::Error(command_id_for_reader.clone(), format!("Read error: {err}")));
                         break;
                     }
                 }
@@ -223,15 +226,15 @@ pub fn run_pty_command(
                 if let Ok(mut registry) = registry.lock() {
                     registry.remove(&command_id);
                 }
-                let _ = output_tx.blocking_send(ShellEvent::Completed(code));
+                let _ = output_tx.blocking_send(ShellEvent::Completed(command_id.clone(), code));
             }
             Err(err) => {
                 let registry = get_process_registry();
                 if let Ok(mut registry) = registry.lock() {
                     registry.remove(&command_id);
                 }
-                let _ = output_tx.blocking_send(ShellEvent::Error(format!("Wait error: {err}")));
-                let _ = output_tx.blocking_send(ShellEvent::Completed(-1));
+                let _ = output_tx.blocking_send(ShellEvent::Error(command_id.clone(), format!("Wait error: {err}")));
+                let _ = output_tx.blocking_send(ShellEvent::Completed(command_id.clone(), -1));
             }
         }
     });

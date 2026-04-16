@@ -63,9 +63,21 @@ pub async fn execute(
     tokio::spawn(async move {
         while let Some(update) = update_rx.recv().await {
             match update {
-                vac_core::engine::RuntimeUpdate::Status(msg) => println!("⏳ {}", msg),
+                vac_core::engine::RuntimeUpdate::Status(msg) => {
+                    println!("⏳ {}", msg);
+                }
+                vac_core::engine::RuntimeUpdate::ModelInfo { provider, model } => {
+                    println!("🧠 Using Model: {} ({})", model, provider);
+                }
                 vac_core::engine::RuntimeUpdate::ToolCall { name, .. } => {
-                    println!("🛠️  Calling: {}", name)
+                    println!("🛠️  Running: {}", name);
+                }
+                vac_core::engine::RuntimeUpdate::ToolResult { name, success, .. } => {
+                    if success {
+                        println!("✅ Tool completed: {}", name);
+                    } else {
+                        println!("❌ Tool failed: {}", name);
+                    }
                 }
                 vac_core::engine::RuntimeUpdate::ApprovalRequired {
                     tool_call_id,

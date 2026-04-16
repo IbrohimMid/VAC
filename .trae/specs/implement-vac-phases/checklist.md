@@ -1,0 +1,11 @@
+- [x] Clipboard paste dan seleksi text via mouse berjalan di TUI.
+- [x] Side panel memiliki state yang bisa diklik untuk expand/collapse dan memuat Sessions.
+- [x] Shortcut message (Retry, Revert, Explain) berfungsi via message action popup.
+- [x] Terdapat preset untuk Mounts dan auto-detection TTY/Non-TTY di isolasi.
+- [x] Indikator status MCP (trust, mode mismatch) terlihat jelas di TUI panel.
+- [x] Bisa menjalankan multiple shell session secara concurrent.
+- [x] IR validation results dan VIL boundaries warnings termuat di UI (VIL Review Workstation).
+- [x] Auto-generate VIL contract fixes ("Repair VIL Contract") bekerja.
+- [x] System bisa me-restore session dan pending approvals tanpa crash atau deadlock dari checkpoint `.vac`.
+- [x] Caching rendering dan background indexing file membaik kecepatannya untuk large repo.
+- [x] Terdapat env warnings dan tutorial wizard ketika user menjalankan `vac doctor` atau startup pertama kali.

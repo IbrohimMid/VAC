@@ -136,30 +136,59 @@ impl AutopilotController {
                     }
                     Err(e) => {
                         let error = e.to_string();
-                        job.status = JobStatus::Failed(error.clone());
-                        job.completed_at = Some(Utc::now());
-                        self.queue.update_job(job).await;
+                        if job.retry_count < job.max_retries {
+                            job.retry_count += 1;
+                            job.status = JobStatus::Queued;
+                            self.queue.update_job(job.clone()).await;
+                            
+                            let until = Utc::now()
+                                + chrono::Duration::from_std(poll_interval)
+                                    .unwrap_or_else(|_| chrono::Duration::seconds(5));
 
-                        let until = Utc::now()
-                            + chrono::Duration::from_std(poll_interval)
-                                .unwrap_or_else(|_| chrono::Duration::seconds(30));
-                        self.write_state(AutopilotStateFile {
-                            state: AutopilotState::Backoff { until },
-                            mode: self.config.mode.clone(),
-                            task_intent_mode: task_intent_mode.clone(),
-                            environment_mode: environment_mode.clone(),
-                            execution_environment,
-                            poll_interval_secs: self.config.poll_interval_secs,
-                            queue_len: self.queued_len().await,
-                            current_job: None,
-                            last_event: Some(AutopilotEvent::TaskFailed),
-                            last_error: Some(error),
-                            updated_at: Utc::now(),
-                        });
+                            self.write_state(AutopilotStateFile {
+                                state: AutopilotState::Backoff { until },
+                                mode: self.config.mode.clone(),
+                                task_intent_mode: task_intent_mode.clone(),
+                                environment_mode: environment_mode.clone(),
+                                execution_environment,
+                                poll_interval_secs: self.config.poll_interval_secs,
+                                queue_len: self.queued_len().await,
+                                current_job: None,
+                                last_event: Some(AutopilotEvent::RetryScheduled),
+                                last_error: Some(format!("Retry {}/{}: {}", job.retry_count, job.max_retries, error)),
+                                updated_at: Utc::now(),
+                            });
 
-                        tokio::select! {
-                            _ = tokio::time::sleep(poll_interval) => {}
-                            _ = shutdown.changed() => {}
+                            tokio::select! {
+                                _ = tokio::time::sleep(poll_interval) => {}
+                                _ = shutdown.changed() => {}
+                            }
+                        } else {
+                            job.status = JobStatus::Failed(error.clone());
+                            job.completed_at = Some(Utc::now());
+                            self.queue.update_job(job).await;
+
+                            let until = Utc::now()
+                                + chrono::Duration::from_std(poll_interval)
+                                    .unwrap_or_else(|_| chrono::Duration::seconds(30));
+                            self.write_state(AutopilotStateFile {
+                                state: AutopilotState::Failed { error: error.clone() },
+                                mode: self.config.mode.clone(),
+                                task_intent_mode: task_intent_mode.clone(),
+                                environment_mode: environment_mode.clone(),
+                                execution_environment,
+                                poll_interval_secs: self.config.poll_interval_secs,
+                                queue_len: self.queued_len().await,
+                                current_job: None,
+                                last_event: Some(AutopilotEvent::TaskFailed),
+                                last_error: Some(error),
+                                updated_at: Utc::now(),
+                            });
+
+                            tokio::select! {
+                                _ = tokio::time::sleep(poll_interval) => {}
+                                _ = shutdown.changed() => {}
+                            }
                         }
                     }
                 }

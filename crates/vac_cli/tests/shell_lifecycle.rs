@@ -22,12 +22,12 @@ async fn test_shell_basic_execution() {
     
     while let Some(event) = rx.recv().await {
         match event {
-            ShellEvent::Output(text) => {
+            ShellEvent::Output(_, text) => {
                 if text.contains("test") {
                     got_output = true;
                 }
             }
-            ShellEvent::Completed(_) => {
+            ShellEvent::Completed(_, _) => {
                 got_completion = true;
                 break;
             }
@@ -64,7 +64,7 @@ async fn test_shell_cleanup_on_kill() {
         tokio::time::Duration::from_secs(3),
         async {
             while let Some(event) = rx.recv().await {
-                if matches!(event, ShellEvent::Completed(_)) {
+                if matches!(event, ShellEvent::Completed(_, _)) {
                     got_completion = true;
                     break;
                 }
@@ -133,10 +133,10 @@ async fn test_shell_buffer_limit() {
         async {
             while let Some(event) = rx.recv().await {
                 match event {
-                    ShellEvent::Output(text) => {
+                    ShellEvent::Output(_, text) => {
                         total_output.push_str(&text);
                     }
-                    ShellEvent::Completed(_) => break,
+                    ShellEvent::Completed(_, _) => break,
                     _ => {}
                 }
             }
@@ -166,7 +166,7 @@ async fn test_shell_exit_code() {
         tokio::time::Duration::from_secs(3),
         async {
             while let Some(event) = rx.recv().await {
-                if let ShellEvent::Completed(code) = event {
+                if let ShellEvent::Completed(_, code) = event {
                     exit_code = Some(code);
                     break;
                 }

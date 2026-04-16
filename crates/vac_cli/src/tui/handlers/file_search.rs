@@ -6,7 +6,16 @@ use crate::tui::services::{Toast, build_file_index, fuzzy_search_files};
 /// Open file search popup.
 pub fn open(ctx: &mut HandlerContext) -> HandlerResult {
     if ctx.state.all_files.is_empty() {
-        ctx.state.all_files = build_file_index(&ctx.state.project_root);
+        if let Some(tx) = ctx.state.input_tx.clone() {
+            let root = ctx.state.project_root.clone();
+            tokio::spawn(async move {
+                let files = build_file_index(&root);
+                let _ = tx.send(crate::tui::app::events::InputEvent::FileIndexReady(files)).await;
+            });
+            ctx.state.toasts.push(Toast::info("Indexing files in background...".to_string()));
+        } else {
+            ctx.state.all_files = build_file_index(&ctx.state.project_root);
+        }
     }
     ctx.state.show_file_search = true;
     ctx.state.file_search_query.clear();

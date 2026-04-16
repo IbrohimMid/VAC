@@ -532,6 +532,106 @@ Rules:
         .await
     }
 
+    async fn wait_for_approvals(
+        &self,
+        state: &mut crate::run_state::AgentRunState,
+        context: &ToolContext,
+        tool_router: &Arc<vac_tools::router::ToolRouter>,
+        updates: &Option<mpsc::UnboundedSender<AgentLoopEvent>>,
+        approval_rx: &mut Option<mpsc::UnboundedReceiver<ApprovalResponse>>,
+    ) -> SwarmResult<()> {
+        if state.pending_approvals.is_empty() {
+            return Ok(());
+        }
+
+        if let Some(rx) = approval_rx {
+            info!(
+                count = state.pending_approvals.len(),
+                "Waiting for approval responses"
+            );
+            let approval_timeout = std::time::Duration::from_secs(300); // 5 min max wait
+            while !state.pending_approvals.is_empty() {
+                let recv_future = rx.recv();
+                match tokio::time::timeout(approval_timeout, recv_future).await {
+                    Ok(Some(response)) => {
+                        let pos = state
+                            .pending_approvals
+                            .iter()
+                            .position(|p| p.tool_call_id == response.tool_call_id);
+                        if let Some(idx) = pos {
+                            let pending = state.pending_approvals.remove(idx);
+                            if response.approved {
+                                state
+                                    .approved_tools
+                                    .insert(response.tool_call_id.clone());
+                                info!(tool = %pending.tool_name, "Tool approved, re-executing");
+                                let approved_call = vil_llm::provider::ToolCall {
+                                    id: pending.tool_call_id.clone(),
+                                    name: pending.tool_name.clone(),
+                                    arguments: pending.arguments.clone(),
+                                };
+                                crate::tool_executor::execute_tools(
+                                    vec![approved_call],
+                                    state,
+                                    context,
+                                    tool_router,
+                                    updates,
+                                    self.hook.as_deref(),
+                                )
+                                .await?;
+                            } else {
+                                let reason = response
+                                    .reason
+                                    .unwrap_or_else(|| "User rejected".to_string());
+                                info!(tool = %pending.tool_name, reason = %reason, "Tool rejected by user");
+                                state.messages.push(Message::tool(
+                                    pending.tool_name,
+                                    pending.tool_call_id,
+                                    format!("Rejected: {reason}"),
+                                ));
+                            }
+                        } else {
+                            warn!(tool_call_id = %response.tool_call_id, "Received approval for unknown tool call, ignoring");
+                        }
+                    }
+                    Ok(None) => {
+                        warn!("Approval channel closed while waiting for responses");
+                        for pending in state.pending_approvals.drain(..) {
+                            state.messages.push(Message::tool(
+                                pending.tool_name,
+                                pending.tool_call_id,
+                                "Rejected: approval channel closed".to_string(),
+                            ));
+                        }
+                        break;
+                    }
+                    Err(_) => {
+                        warn!("Approval wait timeout, rejecting remaining pending approvals");
+                        for pending in state.pending_approvals.drain(..) {
+                            state.messages.push(Message::tool(
+                                pending.tool_name,
+                                pending.tool_call_id,
+                                "Rejected: approval timeout".to_string(),
+                            ));
+                        }
+                        break;
+                    }
+                }
+            }
+        } else {
+            // No approval channel — auto-reject all pending
+            warn!("Pending approvals but no approval channel, auto-rejecting");
+            for pending in state.pending_approvals.drain(..) {
+                state.messages.push(Message::tool(
+                    pending.tool_name,
+                    pending.tool_call_id,
+                    "Rejected: no approval channel configured".to_string(),
+                ));
+            }
+        }
+        Ok(())
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub async fn execute_agent_loop_with_approvals(
         &self,
@@ -543,6 +643,21 @@ Rules:
         tool_router: &Arc<vac_tools::router::ToolRouter>,
         mut approval_rx: Option<mpsc::UnboundedReceiver<ApprovalResponse>>,
     ) -> SwarmResult<String> {
+        // Step 0: Handle pending approvals from a restored checkpoint
+        if !state.pending_approvals.is_empty() {
+            if let Some(tx) = &updates {
+                for pending in &state.pending_approvals {
+                    let _ = tx.send(AgentLoopEvent::ApprovalRequired {
+                        tool_call_id: pending.tool_call_id.clone(),
+                        tool_name: pending.tool_name.clone(),
+                        arguments: pending.arguments.clone(),
+                        explanation: None, // Restored approvals don't have explanation currently
+                    });
+                }
+            }
+            self.wait_for_approvals(state, context, tool_router, &updates, &mut approval_rx).await?;
+        }
+
         loop {
             // Step 1: Cancellation check
             if state.is_cancelled() {
@@ -686,99 +801,7 @@ Rules:
                     )
                     .await?;
 
-                    // Step 7: Wait for approval responses if any tools require approval
-                    if !state.pending_approvals.is_empty() {
-                        if let Some(ref mut rx) = approval_rx {
-                            info!(
-                                count = state.pending_approvals.len(),
-                                "Waiting for approval responses"
-                            );
-                            let approval_timeout = std::time::Duration::from_secs(300); // 5 min max wait
-                            while !state.pending_approvals.is_empty() {
-                                let recv_future = rx.recv();
-                                match tokio::time::timeout(approval_timeout, recv_future).await {
-                                    Ok(Some(response)) => {
-                                        let pos = state
-                                            .pending_approvals
-                                            .iter()
-                                            .position(|p| p.tool_call_id == response.tool_call_id);
-                                        if let Some(idx) = pos {
-                                            let pending = state.pending_approvals.remove(idx);
-                                            if response.approved {
-                                                state
-                                                    .approved_tools
-                                                    .insert(response.tool_call_id.clone());
-                                                info!(tool = %pending.tool_name, "Tool approved, re-executing");
-                                                let approved_call = vil_llm::provider::ToolCall {
-                                                    id: pending.tool_call_id.clone(),
-                                                    name: pending.tool_name.clone(),
-                                                    arguments: pending.arguments.clone(),
-                                                };
-                                                crate::tool_executor::execute_tools(
-                                                    vec![approved_call],
-                                                    state,
-                                                    context,
-                                                    tool_router,
-                                                    &updates,
-                                                    self.hook.as_deref(),
-                                                )
-                                                .await?;
-                                            } else {
-                                                let reason = response
-                                                    .reason
-                                                    .unwrap_or_else(|| "User rejected".to_string());
-                                                info!(tool = %pending.tool_name, reason = %reason, "Tool rejected by user");
-                                                state.messages.push(Message::tool(
-                                                    pending.tool_name,
-                                                    pending.tool_call_id,
-                                                    format!("Rejected: {reason}"),
-                                                ));
-                                            }
-                                        } else {
-                                            warn!(tool_call_id = %response.tool_call_id, "Received approval for unknown tool call, ignoring");
-                                        }
-                                    }
-                                    Ok(None) => {
-                                        warn!(
-                                            "Approval channel closed while waiting for responses"
-                                        );
-                                        // Reject all remaining pending approvals
-                                        for pending in state.pending_approvals.drain(..) {
-                                            state.messages.push(Message::tool(
-                                                pending.tool_name,
-                                                pending.tool_call_id,
-                                                "Rejected: approval channel closed".to_string(),
-                                            ));
-                                        }
-                                        break;
-                                    }
-                                    Err(_) => {
-                                        warn!(
-                                            "Approval wait timeout, rejecting remaining pending approvals"
-                                        );
-                                        for pending in state.pending_approvals.drain(..) {
-                                            state.messages.push(Message::tool(
-                                                pending.tool_name,
-                                                pending.tool_call_id,
-                                                "Rejected: approval timeout".to_string(),
-                                            ));
-                                        }
-                                        break;
-                                    }
-                                }
-                            }
-                        } else {
-                            // No approval channel — auto-reject all pending
-                            warn!("Pending approvals but no approval channel, auto-rejecting");
-                            for pending in state.pending_approvals.drain(..) {
-                                state.messages.push(Message::tool(
-                                    pending.tool_name,
-                                    pending.tool_call_id,
-                                    "Rejected: no approval channel configured".to_string(),
-                                ));
-                            }
-                        }
-                    }
+                    self.wait_for_approvals(state, context, tool_router, &updates, &mut approval_rx).await?;
 
                     if let Some(tx) = &updates {
                         let _ =

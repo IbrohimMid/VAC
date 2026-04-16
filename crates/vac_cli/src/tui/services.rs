@@ -20,6 +20,7 @@ pub mod shortcuts_popup;
 pub mod side_panel;
 pub mod profile_switcher;
 pub mod isolation_switcher;
+pub mod recent_commands;
 pub mod rulebook_switcher;
 pub mod syntax_highlighter;
 pub mod text_selection;

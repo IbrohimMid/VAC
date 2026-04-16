@@ -5,7 +5,7 @@
 //! - Shortcuts section: Read-only keyboard shortcuts grouped by category
 //! - Sessions section: List of previous sessions to resume
 
-use crate::services::detect_term::ThemeColors;
+use crate::tui::services::detect_term::ThemeColors;
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
@@ -15,9 +15,136 @@ use ratatui::{
 };
 use std::sync::OnceLock;
 
-use crate::app::ShortcutsPopupMode;
-use crate::constants::SCROLL_BUFFER_LINES;
-use crate::services::commands::filter_commands;
+use crate::tui::app::ShortcutsPopupMode;
+use crate::tui::constants::SCROLL_BUFFER_LINES;
+
+/// Command metadata for display (used by command palette)
+#[derive(Debug, Clone)]
+pub struct Command {
+    pub name: String,
+    pub description: String,
+    pub shortcut: String,
+    pub action: CommandAction,
+}
+
+/// Command action enum for command palette
+#[derive(Debug, Clone)]
+pub enum CommandAction {
+    OpenProfileSwitcher,
+    OpenRulebookSwitcher,
+    OpenSessions,
+    OpenShortcuts,
+    ToggleCollapsedMessages,
+    ClearScreen,
+    ToggleAutoApprove,
+    Quit,
+    InsertSlashCommand(String),
+}
+
+fn get_all_commands() -> Vec<Command> {
+    vec![
+        Command {
+            name: "Switch Profile".into(),
+            description: "Change the active user profile".into(),
+            shortcut: "Ctrl+F".into(),
+            action: CommandAction::OpenProfileSwitcher,
+        },
+        Command {
+            name: "Switch Rulebook".into(),
+            description: "Change the active VIL rulebook".into(),
+            shortcut: "".into(),
+            action: CommandAction::OpenRulebookSwitcher,
+        },
+        Command {
+            name: "Resume Session".into(),
+            description: "View and resume previous sessions".into(),
+            shortcut: "".into(),
+            action: CommandAction::OpenSessions,
+        },
+        Command {
+            name: "Keyboard Shortcuts".into(),
+            description: "View all keyboard shortcuts".into(),
+            shortcut: "Ctrl+S".into(),
+            action: CommandAction::OpenShortcuts,
+        },
+        Command {
+            name: "Toggle Messages".into(),
+            description: "Expand/collapse message history".into(),
+            shortcut: "Ctrl+T".into(),
+            action: CommandAction::ToggleCollapsedMessages,
+        },
+        Command {
+            name: "Clear Screen".into(),
+            description: "Clear the terminal output".into(),
+            shortcut: "".into(),
+            action: CommandAction::ClearScreen,
+        },
+        Command {
+            name: "Auto-Approve".into(),
+            description: "Toggle tool auto-approval".into(),
+            shortcut: "Ctrl+O".into(),
+            action: CommandAction::ToggleAutoApprove,
+        },
+        Command {
+            name: "Quit".into(),
+            description: "Exit the application".into(),
+            shortcut: "Ctrl+C".into(),
+            action: CommandAction::Quit,
+        },
+        // Helpful slash commands
+        Command {
+            name: "Help".into(),
+            description: "Show available slash commands".into(),
+            shortcut: "".into(),
+            action: CommandAction::InsertSlashCommand("/help".into()),
+        },
+        Command {
+            name: "Status".into(),
+            description: "Show account & connection status".into(),
+            shortcut: "".into(),
+            action: CommandAction::InsertSlashCommand("/status".into()),
+        },
+        Command {
+            name: "Model".into(),
+            description: "Switch AI model".into(),
+            shortcut: "".into(),
+            action: CommandAction::InsertSlashCommand("/model".into()),
+        },
+        Command {
+            name: "Usage".into(),
+            description: "Show token usage statistics".into(),
+            shortcut: "".into(),
+            action: CommandAction::InsertSlashCommand("/usage".into()),
+        },
+    ]
+}
+
+pub fn filter_commands(query: &str, state: &crate::tui::app::AppState) -> Vec<Command> {
+    let mut cmds = if query.is_empty() {
+        get_all_commands()
+    } else {
+        let query_lower = query.to_lowercase();
+        get_all_commands()
+            .into_iter()
+            .filter(|cmd| {
+                cmd.name.to_lowercase().contains(&query_lower)
+                    || cmd.description.to_lowercase().contains(&query_lower)
+            })
+            .collect()
+    };
+
+    cmds.sort_by_key(|cmd| {
+        let cmd_id = match &cmd.action {
+            CommandAction::InsertSlashCommand(s) => s.clone(),
+            _ => cmd.name.clone(),
+        };
+        let freq = state.recent_commands.frequencies.get(&cmd_id).copied().unwrap_or(0);
+        let recent_idx = state.recent_commands.history.iter().position(|h| h == &cmd_id).unwrap_or(usize::MAX);
+        (std::cmp::Reverse(freq), recent_idx)
+    });
+
+    cmds
+}
 
 #[derive(Debug, Clone)]
 pub struct Shortcut {
@@ -192,7 +319,7 @@ pub fn get_shortcuts_count() -> usize {
     get_all_shortcuts().len()
 }
 
-pub fn render_shortcuts_popup(f: &mut Frame, state: &mut crate::app::AppState) {
+pub fn render_shortcuts_popup(f: &mut Frame, state: &mut crate::tui::app::AppState) {
     // Calculate popup size (60% width, fit height to content)
     let area = centered_rect(60, 80, f.area());
 
@@ -221,7 +348,7 @@ pub fn render_shortcuts_popup(f: &mut Frame, state: &mut crate::app::AppState) {
 
     // Render tabs
     let tab_titles = vec![" Commands ", " Shortcuts ", " Sessions "];
-    let selected_tab = match state.shortcuts_popup_mode {
+    let selected_tab = match state.shortcuts_mode {
         ShortcutsPopupMode::Commands => 0,
         ShortcutsPopupMode::Shortcuts => 1,
         ShortcutsPopupMode::Sessions => 2,
@@ -237,7 +364,7 @@ pub fn render_shortcuts_popup(f: &mut Frame, state: &mut crate::app::AppState) {
         .divider(" | ");
 
     // Render content based on mode with mode-specific layouts
-    match state.shortcuts_popup_mode {
+    match state.shortcuts_mode {
         ShortcutsPopupMode::Commands => {
             // Commands mode: Title, Tabs, Search, Content, Scroll, Help
             let chunks = Layout::default()
@@ -306,7 +433,7 @@ pub fn render_shortcuts_popup(f: &mut Frame, state: &mut crate::app::AppState) {
 
 fn render_commands_section(
     f: &mut Frame,
-    state: &crate::app::AppState,
+    state: &crate::tui::app::AppState,
     search_area: Rect,
     content_area: Rect,
     scroll_area: Rect,
@@ -318,7 +445,7 @@ fn render_commands_section(
     let cursor = "|";
     let placeholder = "Type to filter";
 
-    let search_spans = if state.command_palette_search.is_empty() {
+    let search_spans = if state.command_palette_input.is_empty() {
         vec![
             Span::raw(" "), // Small space before
             Span::styled(search_prompt, Style::default().fg(ThemeColors::magenta())),
@@ -333,7 +460,7 @@ fn render_commands_section(
             Span::styled(search_prompt, Style::default().fg(ThemeColors::magenta())),
             Span::raw(" "),
             Span::styled(
-                &state.command_palette_search,
+                &state.command_palette_input,
                 Style::default()
                     .fg(ThemeColors::text())
                     .add_modifier(Modifier::BOLD),
@@ -352,7 +479,7 @@ fn render_commands_section(
     f.render_widget(search_paragraph, search_area);
 
     // Get filtered commands
-    let filtered_commands = filter_commands(&state.command_palette_search);
+    let filtered_commands = filter_commands(&state.command_palette_input, state);
     let total_commands = filtered_commands.len();
     let height = content_area.height as usize;
 
@@ -474,7 +601,7 @@ fn render_commands_section(
 
 fn render_shortcuts_section(
     f: &mut Frame,
-    state: &mut crate::app::AppState,
+    state: &mut crate::tui::app::AppState,
     search_area: Rect,
     content_area: Rect,
     scroll_area: Rect,
@@ -482,7 +609,7 @@ fn render_shortcuts_section(
     area: Rect,
 ) {
     // Render search input
-    let search_term = &state.command_palette_search;
+    let search_term = &state.command_palette_input;
     let search_prompt = ">";
     let cursor = "|";
     let placeholder = "Type to filter (e.g. 'ctrl+')";
@@ -701,14 +828,14 @@ fn render_shortcuts_section(
 
 fn render_sessions_section(
     f: &mut Frame,
-    state: &mut crate::app::AppState,
+    state: &mut crate::tui::app::AppState,
     search_area: Rect,
     content_area: Rect,
     scroll_area: Rect,
     help_area: Rect,
 ) {
-    // Render search input (reuse command_palette_search since tabs are mutually exclusive)
-    let search_term = &state.command_palette_search;
+    // Render search input (reuse command_palette_input since tabs are mutually exclusive)
+    let search_term = &state.command_palette_input;
     let search_prompt = ">";
     let cursor = "|";
     let placeholder = "Type to filter sessions";
@@ -740,7 +867,7 @@ fn render_sessions_section(
 
     // Filter sessions by search term
     let search_lower = search_term.to_lowercase();
-    let filtered_sessions: Vec<(usize, &crate::app::SessionInfo)> = state
+    let filtered_sessions: Vec<(usize, &crate::tui::app::SessionInfo)> = state
         .sessions
         .iter()
         .enumerate()
@@ -764,8 +891,8 @@ fn render_sessions_section(
         f.render_widget(empty_widget, content_area);
         f.render_widget(Paragraph::new(""), scroll_area);
     } else {
-        // Ensure session_selected is within bounds of filtered list
-        let selected_in_filtered = state.session_selected.min(total_filtered.saturating_sub(1));
+        // Ensure sessions_selected_idx is within bounds of filtered list
+        let selected_in_filtered = state.sessions_selected_idx.min(total_filtered.saturating_sub(1));
 
         // Calculate scroll position based on selected item
         let max_scroll = total_filtered.saturating_sub(height);
@@ -811,7 +938,7 @@ fn render_sessions_section(
             };
 
             let text = format!(" {} . {}", formatted_datetime, session.title);
-            let is_selected = *original_idx == state.session_selected;
+            let is_selected = *original_idx == state.sessions_selected_idx;
 
             let (fg, bg) = if is_selected {
                 (ThemeColors::highlight_fg(), ThemeColors::highlight_bg())

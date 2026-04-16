@@ -260,6 +260,7 @@ pub enum SidePanelSection {
     Changeset,
     VilStatus,
     Mcp,
+    Sessions,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -267,6 +268,24 @@ pub struct VilStatusSnapshot {
     pub profile: Option<vac_core::detector::VilProjectProfile>,
     pub validation_score: f64,
     pub validation_issues: Vec<String>,
+    pub active_rulebook: Option<String>,
+    pub semantic_mode: bool,
+    pub ir_generation_active: bool,
+    pub ir_metadata_files: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ShellSession {
+    pub id: String,
+    pub title: String,
+    pub output: String,
+    pub command: Option<ShellCommand>,
+    pub waiting_for_input: bool,
+    pub backgrounded: bool,
+    pub exit_code: Option<i32>,
+    pub last_error: Option<String>,
+    pub history: Vec<String>,
+    pub history_idx: Option<usize>,
 }
 
 /// Main application state for TUI
@@ -333,6 +352,7 @@ pub struct AppState {
     pub show_command_palette: bool,
     pub command_palette_input: String,
     pub command_palette_selected: usize,
+    pub command_palette_scroll: usize,
     pub commands: Vec<HelperCommand>,
 
     // Helper Dropdown
@@ -340,10 +360,12 @@ pub struct AppState {
     pub helper_scroll: usize,
     pub helper_selected: usize,
     pub filtered_helpers: Vec<HelperCommand>,
+    pub recent_commands: crate::tui::services::recent_commands::RecentCommands,
 
     // Shortcuts popup
     pub show_shortcuts: bool,
     pub shortcuts_mode: ShortcutsPopupMode,
+    pub shortcuts_scroll: usize,
 
     // Isolation Switcher
     pub show_isolation_switcher: bool,
@@ -428,6 +450,12 @@ pub struct AppState {
 
     // Text Selection
     pub selection_state: crate::tui::services::text_selection::SelectionState,
+    pub per_message_cache: PerMessageCache,
+    pub render_metrics: RenderMetrics,
+    pub assembled_lines_cache: Option<MessageLinesCache>,
+    pub collapsed_message_lines_cache: Option<MessageLinesCache>,
+    pub message_area_y: u16,
+    pub message_area_height: u16,
 
     pub input_tx: Option<tokio::sync::mpsc::Sender<crate::tui::app::events::InputEvent>>,
 }
@@ -497,19 +525,25 @@ impl AppState {
             show_command_palette: false,
             command_palette_input: String::new(),
             command_palette_selected: 0,
+            command_palette_scroll: 0,
             commands: Self::default_commands(),
             show_helper_dropdown: false,
             helper_scroll: 0,
             helper_selected: 0,
             filtered_helpers: Vec::new(),
+            recent_commands: crate::tui::services::recent_commands::RecentCommands::load(),
+
             show_shortcuts: false,
             shortcuts_mode: ShortcutsPopupMode::default(),
+            shortcuts_scroll: 0,
             show_isolation_switcher: false,
             isolation_switcher_selected: 0,
             isolation_modes: vec![
                 "host".to_string(),
-                "isolated_interactive".to_string(),
-                "isolated_batch".to_string(),
+                "isolated".to_string(),
+                "isolated (Rust)".to_string(),
+                "isolated (Node)".to_string(),
+                "isolated (Python)".to_string(),
             ],
             active_isolation_mode: "host".to_string(),
             show_profile_switcher: false,
@@ -569,6 +603,12 @@ impl AppState {
             mcp_server_states: HashMap::new(),
             vil_status: VilStatusSnapshot::default(),
             selection_state: crate::tui::services::text_selection::SelectionState::default(),
+            per_message_cache: HashMap::new(),
+            render_metrics: RenderMetrics::default(),
+            assembled_lines_cache: None,
+            collapsed_message_lines_cache: None,
+            message_area_y: 0,
+            message_area_height: 0,
             input_tx: None,
         }
     }
@@ -586,14 +626,23 @@ impl AppState {
     }
 
     pub fn filtered_commands(&self) -> Vec<HelperCommand> {
-        if self.command_palette_input.is_empty() {
-            return self.commands.clone();
-        }
-        self.commands
-            .iter()
-            .filter(|c| c.command.starts_with(&self.command_palette_input))
-            .cloned()
-            .collect()
+        let mut cmds = if self.command_palette_input.is_empty() {
+            self.commands.clone()
+        } else {
+            self.commands
+                .iter()
+                .filter(|c| c.command.to_lowercase().contains(&self.command_palette_input.to_lowercase()) || c.description.to_lowercase().contains(&self.command_palette_input.to_lowercase()))
+                .cloned()
+                .collect()
+        };
+
+        cmds.sort_by_key(|cmd| {
+            let freq = self.recent_commands.frequencies.get(&cmd.command).copied().unwrap_or(0);
+            let recent_idx = self.recent_commands.history.iter().position(|h| h == &cmd.command).unwrap_or(usize::MAX);
+            (std::cmp::Reverse(freq), recent_idx)
+        });
+
+        cmds
     }
 
     pub fn model_switcher_filtered(&self) -> Vec<Model> {
@@ -609,10 +658,9 @@ impl AppState {
             })
             .cloned()
             .collect::<Vec<_>>();
-        out.sort_by(|a, b| {
-            a.provider
-                .cmp(&b.provider)
-                .then_with(|| a.name.cmp(&b.name))
+        out.sort_by_key(|m| {
+            let recent_idx = self.recent_commands.recent_models.iter().position(|r| r == &m.id).unwrap_or(usize::MAX);
+            (recent_idx, m.provider.clone(), m.name.clone())
         });
         out
     }

@@ -28,6 +28,34 @@ impl ThemeColors {
         Color::Cyan
     }
 
+    pub fn dark_gray() -> Color {
+        Color::DarkGray
+    }
+
+    pub fn highlight_fg() -> Color {
+        if is_light_mode() {
+            Color::White
+        } else {
+            Color::Black
+        }
+    }
+
+    pub fn highlight_bg() -> Color {
+        if is_light_mode() {
+            Color::Black
+        } else {
+            Color::White
+        }
+    }
+
+    pub fn accent() -> Color {
+        Color::Cyan
+    }
+
+    pub fn title() -> Color {
+        Color::Yellow
+    }
+
     pub fn magenta() -> Color {
         Color::Magenta
     }

@@ -37,9 +37,14 @@ pub fn render_diff(old_content: &str, new_content: &str, max_width: usize) -> Ve
                 ]));
             }
             similar::ChangeTag::Insert => {
+                let mut span = Span::styled(truncated.clone(), Style::default().fg(Color::Green));
+                // Highlight VIL macros (generated code hint)
+                if truncated.trim().starts_with("#[vil_") {
+                    span = Span::styled(format!("{} (VIL-generated plumbing)", truncated), Style::default().fg(Color::Green).add_modifier(Modifier::BOLD));
+                }
                 lines.push(Line::from(vec![
                     Span::styled("+ ", Style::default().fg(Color::Green)),
-                    Span::styled(truncated, Style::default().fg(Color::Green)),
+                    span,
                 ]));
             }
             similar::ChangeTag::Equal => {

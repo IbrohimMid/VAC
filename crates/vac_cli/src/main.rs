@@ -33,6 +33,8 @@ enum Commands {
         strict: bool,
         #[arg(long)]
         fix: bool,
+        #[arg(long, short)]
+        interactive: bool,
     },
     /// Initialize VIL project context
     Init {
@@ -251,8 +253,8 @@ async fn main() -> anyhow::Result<()> {
         .unwrap_or_else(|| std::env::current_dir().expect("Failed to get current directory"));
 
     match cli.command {
-        Commands::Doctor { strict, fix } => {
-            commands::doctor::execute(project_root, &cli.format, strict, fix).await?
+        Commands::Doctor { strict, fix, interactive } => {
+            commands::doctor::execute(project_root, &cli.format, strict, fix, interactive).await?
         }
         Commands::Init { force } => commands::init::execute(project_root, force).await?,
         Commands::Run {

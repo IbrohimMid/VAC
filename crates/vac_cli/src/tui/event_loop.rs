@@ -110,10 +110,31 @@ pub async fn run_tui(
     let bg_project_root = project_root.clone();
     tokio::spawn(async move {
         let profile = vac_core::detector::VilProjectProfile::detect(&bg_project_root);
+        
+        let mut ir_generation_active = false;
+        let mut ir_metadata_files = vec![];
+        if let Ok(pipeline) = vil_ir::IrPipeline::new(&bg_project_root) {
+            ir_generation_active = true;
+            for (path, module) in pipeline.modules() {
+                let has_vil_attr = module.structs.iter().any(|s| !s.vil_attrs.is_empty())
+                    || module.functions.iter().any(|f| !f.vil_attrs.is_empty());
+                if has_vil_attr {
+                    ir_metadata_files.push(path.clone());
+                }
+            }
+        }
+        
+        let config = vac_core::VacConfig::load_with_fallback(&bg_project_root).unwrap_or_default();
+        let semantic_mode = config.memory.enable_semantic;
+        
         let snapshot = crate::tui::app::VilStatusSnapshot {
             profile: Some(profile),
             validation_score: 1.0,
             validation_issues: vec![],
+            active_rulebook: None,
+            semantic_mode,
+            ir_generation_active,
+            ir_metadata_files,
         };
         let _ = bg_input_tx.send(InputEvent::VilStatusUpdated(snapshot)).await;
     });
@@ -419,6 +440,49 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
             InputEvent::HandleEsc | InputEvent::HideShortcuts => {
                 state.show_shortcuts = false;
             }
+            InputEvent::Tab => {
+                state.shortcuts_mode = match state.shortcuts_mode {
+                    crate::tui::app::ShortcutsPopupMode::Commands => crate::tui::app::ShortcutsPopupMode::Shortcuts,
+                    crate::tui::app::ShortcutsPopupMode::Shortcuts => crate::tui::app::ShortcutsPopupMode::Sessions,
+                    crate::tui::app::ShortcutsPopupMode::Sessions => crate::tui::app::ShortcutsPopupMode::Commands,
+                };
+                state.shortcuts_scroll = 0;
+            }
+            InputEvent::Up => {
+                state.shortcuts_scroll = state.shortcuts_scroll.saturating_sub(1);
+            }
+            InputEvent::Down => {
+                let max = match state.shortcuts_mode {
+                    crate::tui::app::ShortcutsPopupMode::Commands => crate::tui::services::shortcuts_popup::filter_commands("", state).len(),
+                    crate::tui::app::ShortcutsPopupMode::Shortcuts => crate::tui::services::shortcuts_popup::get_shortcuts_count(),
+                    crate::tui::app::ShortcutsPopupMode::Sessions => state.sessions.len(),
+                }.saturating_sub(1);
+                if state.shortcuts_scroll < max {
+                    state.shortcuts_scroll += 1;
+                }
+            }
+            InputEvent::InputSubmitted => {
+                if state.shortcuts_mode == crate::tui::app::ShortcutsPopupMode::Sessions {
+                    if let Some(sel) = state.sessions.get(state.shortcuts_scroll).cloned() {
+                        let _ = output_tx.try_send(OutputEvent::SwitchToSession(sel.id));
+                        state.push_activity(crate::tui::app::ActivityKind::Session, "Switch session");
+                        state.show_shortcuts = false;
+                    }
+                } else if state.shortcuts_mode == crate::tui::app::ShortcutsPopupMode::Commands {
+                    let cmds = crate::tui::services::shortcuts_popup::filter_commands("", state);
+                    if let Some(cmd) = cmds.get(state.shortcuts_scroll) {
+                        match &cmd.action {
+                            crate::tui::services::shortcuts_popup::CommandAction::InsertSlashCommand(s) => {
+                                state.input.clear();
+                                state.input.insert_str(s);
+                                state.input.input(' ');
+                            }
+                            _ => {}
+                        }
+                        state.show_shortcuts = false;
+                    }
+                }
+            }
             _ => {}
         }
         return;
@@ -546,6 +610,79 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                 }
             }
             InputEvent::InputSubmitted => {
+                let actions = crate::tui::services::message_action_popup::MessageAction::all();
+                if let Some(action) = actions.get(state.message_action_popup_selected) {
+                    match action {
+                        crate::tui::services::message_action_popup::MessageAction::CopyMessage => {
+                            if let Some(msg_id) = state.message_action_target_id {
+                                if let Some(msg) = state.messages.iter().find(|m| m.id == msg_id) {
+                                    if let Err(e) = crate::tui::services::clipboard_paste::copy_to_clipboard(&msg.content) {
+                                        log::warn!("Failed to copy message: {}", e);
+                                    }
+                                }
+                            }
+                        }
+                        crate::tui::services::message_action_popup::MessageAction::CopyCode => {
+                            if let Some(msg_id) = state.message_action_target_id {
+                                if let Some(msg) = state.messages.iter().find(|m| m.id == msg_id) {
+                                    let mut code = String::new();
+                                    let mut in_block = false;
+                                    for line in msg.content.lines() {
+                                        if line.starts_with("```") {
+                                            in_block = !in_block;
+                                        } else if in_block {
+                                            code.push_str(line);
+                                            code.push('\n');
+                                        }
+                                    }
+                                    if !code.is_empty() {
+                                        if let Err(e) = crate::tui::services::clipboard_paste::copy_to_clipboard(&code) {
+                                            log::warn!("Failed to copy code: {}", e);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        crate::tui::services::message_action_popup::MessageAction::Regenerate => {
+                            if let Some(msg_id) = state.message_action_target_id {
+                                if let Some(msg) = state.messages.iter().find(|m| m.id == msg_id) {
+                                    if msg.role == "user" {
+                                        state.input.clear();
+                                        for line in msg.content.lines() {
+                                            state.input.insert_str(line);
+                                            state.input.newline();
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        crate::tui::services::message_action_popup::MessageAction::RevertToMessage => {
+                            if let Some(msg_id) = state.message_action_target_id {
+                                let _ = output_tx.try_send(OutputEvent::RevertToMessage(msg_id));
+                            }
+                        }
+                        crate::tui::services::message_action_popup::MessageAction::RepairVilContract => {
+                            let text = "Please repair VIL contract violations and generate fixes for my code.";
+                            state.add_user_message(text.to_string());
+                            let _ = output_tx.try_send(OutputEvent::UserMessage(text.to_string(), None, vec![], None));
+                        }
+                        crate::tui::services::message_action_popup::MessageAction::ExplainPlumbing => {
+                            let text = "Explain the generated VIL plumbing and semantic macros in the current context.";
+                            state.add_user_message(text.to_string());
+                            let _ = output_tx.try_send(OutputEvent::UserMessage(text.to_string(), None, vec![], None));
+                        }
+                        crate::tui::services::message_action_popup::MessageAction::AuditZeroCopy => {
+                            let text = "Audit the handlers for zero-copy risks and semantic violations.";
+                            state.add_user_message(text.to_string());
+                            let _ = output_tx.try_send(OutputEvent::UserMessage(text.to_string(), None, vec![], None));
+                        }
+                        crate::tui::services::message_action_popup::MessageAction::DiffIrChange => {
+                            let text = "Show me the IR-significant changes and semantic diff for recent modifications.";
+                            state.add_user_message(text.to_string());
+                            let _ = output_tx.try_send(OutputEvent::UserMessage(text.to_string(), None, vec![], None));
+                        }
+                    }
+                }
                 state.show_message_action_popup = false;
             }
             _ => {}
@@ -737,15 +874,19 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                     state.side_panel_section_collapsed.insert(sec);
                 }
             } else if row == 0 {
-                // Header is row 0
-                // Approximate badge location: we just check if it's right side (col > width - 40)
-                // The exact x depends on terminal width, but let's toggle side panel for clicks on header
-                // specifically around VIL badge
                 let term_width = crossterm::terminal::size().map(|s| s.0).unwrap_or(80);
                 if col > term_width.saturating_sub(40) {
                     state.side_panel_visible = !state.side_panel_visible;
                 }
+            } else {
+                crate::tui::services::text_selection::handle_drag_start(state, col, row);
             }
+        }
+        InputEvent::MouseDrag(col, row) => {
+            crate::tui::services::text_selection::handle_drag(state, col, row);
+        }
+        InputEvent::MouseDragEnd(col, row) => {
+            crate::tui::services::text_selection::handle_drag_end(state, col, row);
         }
         InputEvent::Tab => {
             state.focus = state.focus.next();
@@ -765,24 +906,13 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                 crate::tui::app::WorkspaceFocus::Input => {
                     if c == '/' && state.input.lines.join("").trim().is_empty() {
                         state.show_helper_dropdown = true;
-                        state.filtered_helpers = state.commands.clone();
+                        state.input.input(c);
+                        crate::tui::services::helper_dropdown::filter_helpers_sync(state);
                         state.helper_selected = 0;
                         state.helper_scroll = 0;
-                        state.input.input(c);
                     } else if state.show_helper_dropdown {
                         state.input.input(c);
-                        let query = state.input.lines.join("");
-                        let query = query.trim_start_matches('/');
-                        state.filtered_helpers = state
-                            .commands
-                            .iter()
-                            .filter(|cmd| {
-                                query.is_empty()
-                                    || cmd.command.contains(query)
-                                    || cmd.description.to_lowercase().contains(&query.to_lowercase())
-                            })
-                            .cloned()
-                            .collect();
+                        crate::tui::services::helper_dropdown::filter_helpers_sync(state);
                         state.helper_selected = 0;
                         state.helper_scroll = 0;
                     } else if c == '@' && !state.at_trigger_active {
@@ -877,25 +1007,9 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
             if state.focus == crate::tui::app::WorkspaceFocus::Input {
                 if state.show_helper_dropdown {
                     state.input.backspace();
-                    let query = state.input.lines.join("");
-                    if !query.starts_with('/') {
-                        state.show_helper_dropdown = false;
-                        state.filtered_helpers.clear();
-                    } else {
-                        let query = query.trim_start_matches('/');
-                        state.filtered_helpers = state
-                            .commands
-                            .iter()
-                            .filter(|cmd| {
-                                query.is_empty()
-                                    || cmd.command.contains(query)
-                                    || cmd.description.to_lowercase().contains(&query.to_lowercase())
-                            })
-                            .cloned()
-                            .collect();
-                        state.helper_selected = 0;
-                        state.helper_scroll = 0;
-                    }
+                    crate::tui::services::helper_dropdown::filter_helpers_sync(state);
+                    state.helper_selected = 0;
+                    state.helper_scroll = 0;
                 } else if state.at_trigger_active {
                     if state.at_query.is_empty() {
                         state.at_trigger_active = false;
@@ -919,6 +1033,9 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
         InputEvent::InputDelete => {
             if state.focus == crate::tui::app::WorkspaceFocus::Input {
                 state.input.delete();
+                if state.show_helper_dropdown {
+                    crate::tui::services::helper_dropdown::filter_helpers_sync(state);
+                }
             }
         }
         InputEvent::InputClear => {
@@ -980,6 +1097,7 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                 state.input.clear();
 
                 if msg.starts_with('/') {
+                    state.recent_commands.add_command(msg.clone());
                     let trimmed = msg.trim();
                     let mut parts = trimmed.splitn(2, char::is_whitespace);
                     let cmd_word = parts.next().unwrap_or(trimmed);
@@ -1084,11 +1202,35 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
             }
         }
         InputEvent::HandlePaste(text) => {
-            for c in text.chars() {
-                if c == '\n' {
-                    state.input.newline();
-                } else if c != '\r' {
-                    state.input.input(c);
+            // First try to extract file paths
+            let paths = crate::tui::services::clipboard_paste::extract_file_paths_from_text(&text);
+            if !paths.is_empty() {
+                for path in paths {
+                    state.input.insert_str(&path.to_string_lossy());
+                    state.input.input(' ');
+                }
+            } else {
+                // Otherwise paste as normal text
+                for c in text.chars() {
+                    if c == '\n' {
+                        state.input.newline();
+                    } else if c != '\r' {
+                        state.input.input(c);
+                    }
+                }
+            }
+        }
+        InputEvent::HandleClipboardImagePaste => {
+            #[cfg(not(target_os = "android"))]
+            {
+                match crate::tui::services::clipboard_paste::paste_image_to_temp_png() {
+                    Ok((path, _info)) => {
+                        state.input.insert_str(&path.to_string_lossy());
+                        state.input.input(' ');
+                    }
+                    Err(e) => {
+                        log::warn!("Failed to paste image from clipboard: {}", e);
+                    }
                 }
             }
         }
@@ -1486,6 +1628,11 @@ fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, e
             
             state.runtime_state_snapshot = snapshot;
         }
+        InputEvent::FileIndexReady(files) => {
+            state.all_files = files;
+            state.file_search_results = state.all_files.iter().take(50).cloned().collect();
+            state.toasts.push(crate::tui::services::Toast::success("File index ready".to_string()));
+        }
         InputEvent::ShellStarted(shell) => {
             state.active_shell_command = Some(shell.clone());
             state.shell_popup_visible = true;
@@ -1500,34 +1647,42 @@ fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, e
                 format!("Shell started: {}", shell.command),
             );
         }
-        InputEvent::ShellOutput(text) => {
-            state.shell_output.push_str(&text);
-        }
-        InputEvent::ShellError(text) => {
-            if !state.shell_output.ends_with('\n') && !state.shell_output.is_empty() {
-                state.shell_output.push('\n');
+        InputEvent::ShellOutput(id, text) => {
+            if state.active_shell_command.as_ref().map_or(false, |cmd| cmd.id == id) || id == "system" {
+                state.shell_output.push_str(&text);
             }
-            state
-                .shell_output
-                .push_str(&format!("[shell error] {text}\n"));
-            state.shell_last_error = Some(text.clone());
+        }
+        InputEvent::ShellError(id, text) => {
+            if state.active_shell_command.as_ref().map_or(false, |cmd| cmd.id == id) || id == "system" {
+                if !state.shell_output.ends_with('\n') && !state.shell_output.is_empty() {
+                    state.shell_output.push('\n');
+                }
+                state
+                    .shell_output
+                    .push_str(&format!("[shell error] {text}\n"));
+                state.shell_last_error = Some(text.clone());
+            }
             state.push_activity(
                 crate::tui::app::ActivityKind::Shell,
                 format!("Shell error: {}", text),
             );
         }
-        InputEvent::ShellCompleted(code) => {
-            state.shell_exit_code = Some(code);
-            state.shell_waiting_for_input = false;
-            state.active_shell_command = None;
+        InputEvent::ShellCompleted(id, code) => {
+            if state.active_shell_command.as_ref().map_or(false, |cmd| cmd.id == id) || id == "system" {
+                state.shell_exit_code = Some(code);
+                state.shell_waiting_for_input = false;
+                state.active_shell_command = None;
+            }
             let status = if code == 0 { "success" } else { "failed" };
             state.push_activity(
                 crate::tui::app::ActivityKind::Shell,
                 format!("Shell {} (exit code {})", status, code),
             );
         }
-        InputEvent::ShellWaitingForInput => {
-            state.shell_waiting_for_input = true;
+        InputEvent::ShellWaitingForInput(id) => {
+            if state.active_shell_command.as_ref().map_or(false, |cmd| cmd.id == id) || id == "system" {
+                state.shell_waiting_for_input = true;
+            }
         }
         InputEvent::McpConnected { name, tools } => {
             state.push_activity(
@@ -1559,10 +1714,26 @@ fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, e
                     if let Ok(pipeline) = vil_ir::IrPipeline::new(&project_root) {
                         if let Ok(report) = vil_validate::validate_changes(&pipeline, &files) {
                             let profile = vac_core::detector::VilProjectProfile::detect(&project_root);
+                            let mut ir_metadata_files = vec![];
+                            for (path, module) in pipeline.modules() {
+                                let has_vil_attr = module.structs.iter().any(|s| !s.vil_attrs.is_empty())
+                                    || module.functions.iter().any(|f| !f.vil_attrs.is_empty());
+                                if has_vil_attr {
+                                    ir_metadata_files.push(path.clone());
+                                }
+                            }
+                            
+                            let config = vac_core::VacConfig::load_with_fallback(&project_root).unwrap_or_default();
+                            let semantic_mode = config.memory.enable_semantic;
+                            
                             let snapshot = crate::tui::app::VilStatusSnapshot {
                                 profile: Some(profile),
                                 validation_score: report.score,
                                 validation_issues: report.issues,
+                                active_rulebook: None, // Will update next
+                                semantic_mode,
+                                ir_generation_active: true,
+                                ir_metadata_files,
                             };
                             let _ = tx.send(InputEvent::VilStatusUpdated(snapshot)).await;
                         }
@@ -3106,13 +3277,13 @@ mod tests {
         handle_backend_event(
             &mut state,
             &tx,
-            InputEvent::ShellOutput("hello\n".to_string()),
+            InputEvent::ShellOutput("shell-1".to_string(), "hello\n".to_string()),
         );
-        handle_backend_event(&mut state, &tx, InputEvent::ShellWaitingForInput);
+        handle_backend_event(&mut state, &tx, InputEvent::ShellWaitingForInput("shell-1".to_string()));
         assert!(state.shell_output.contains("hello"));
         assert!(state.shell_waiting_for_input);
 
-        handle_backend_event(&mut state, &tx, InputEvent::ShellCompleted(0));
+        handle_backend_event(&mut state, &tx, InputEvent::ShellCompleted("shell-1".to_string(), 0));
         assert!(state.active_shell_command.is_none());
         assert_eq!(state.shell_exit_code, Some(0));
         assert!(!state.shell_waiting_for_input);

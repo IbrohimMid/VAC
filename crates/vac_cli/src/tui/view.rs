@@ -491,33 +491,91 @@ fn focus_style(focused: bool) -> Style {
 }
 
 fn render_messages(f: &mut Frame, state: &mut AppState, area: Rect) {
+    state.message_area_y = area.y;
+    state.message_area_height = area.height;
+
     use crate::tui::services::message::render_tool_call_pending;
     use crate::tui::services::message::{render_assistant_message_with_width, render_user_message};
+    use crate::tui::app::types::RenderedMessageCache;
+    use std::sync::Arc;
+    use ratatui::text::Line;
+    use ratatui::text::Span;
 
     let width = area.width.saturating_sub(2) as usize; // account for border
-    let mut lines: Vec<Line> = Vec::new();
+    let mut lines: Vec<Line<'static>> = Vec::new();
+
+    let start_time = std::time::Instant::now();
+    let mut hits = 0;
+    let mut misses = 0;
+
+    // Prune cache to a max size (e.g. 100) to act as LRU-ish
+    if state.per_message_cache.len() > 200 {
+        // Just clear it if it gets too big for now
+        state.per_message_cache.clear();
+    }
 
     for msg in &state.messages {
-        match msg.role.as_str() {
-            "user" => {
-                lines.extend(render_user_message(&msg.content, width));
-            }
-            "assistant" => {
-                lines.extend(render_assistant_message_with_width(&msg.content, width));
-            }
-            _ => {
-                lines.extend(msg.content.lines().map(|l| Line::raw(l.to_string())));
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+        
+        let mut hasher = DefaultHasher::new();
+        msg.content.hash(&mut hasher);
+        msg.role.hash(&mut hasher);
+        let content_hash = hasher.finish();
+
+        if let Some(cached) = state.per_message_cache.get(&msg.id) {
+            if cached.content_hash == content_hash && cached.width == width {
+                hits += 1;
+                lines.extend(cached.rendered_lines.iter().cloned());
+                lines.push(Line::raw(""));
+                continue;
             }
         }
+
+        misses += 1;
+        let mut msg_lines = Vec::new();
+        match msg.role.as_str() {
+            "user" => {
+                msg_lines.extend(render_user_message(&msg.content, width));
+            }
+            "assistant" => {
+                msg_lines.extend(render_assistant_message_with_width(&msg.content, width));
+            }
+            _ => {
+                msg_lines.extend(msg.content.lines().map(|l| Line::raw(l.to_string())));
+            }
+        }
+        
+        state.per_message_cache.insert(msg.id, RenderedMessageCache {
+            content_hash,
+            rendered_lines: Arc::new(msg_lines.clone()),
+            width,
+        });
+
+        lines.extend(msg_lines);
         lines.push(Line::raw("")); // spacing between messages
     }
+
+    state.render_metrics.cache_hits += hits;
+    state.render_metrics.cache_misses += misses;
+    state.render_metrics.last_render_time_us = start_time.elapsed().as_micros() as u64;
 
     // Render pending tool calls from state
     for tc in &state.pending_tool_calls {
         lines.extend(render_tool_call_pending(tc));
     }
 
-    let widget = Paragraph::new(lines)
+    // Cache the lines for text selection
+    state.assembled_lines_cache = Some((state.messages.clone(), width, lines.clone()));
+
+    // Apply text selection highlight
+    let highlighted_lines = crate::tui::services::text_selection::apply_selection_highlight(
+        lines,
+        &state.selection_state,
+        state.scroll,
+    );
+
+    let widget = Paragraph::new(highlighted_lines)
         .block(Block::default().borders(Borders::ALL).title(Span::styled(
             "Conversation",
             focus_style(state.focus == WorkspaceFocus::Conversation),
@@ -1320,7 +1378,7 @@ fn render_runtime_pane(f: &mut Frame, state: &mut AppState, area: Rect) {
                 Span::raw(" "),
                 Span::styled(status, Style::default().fg(color)),
             ]));
-            if let vac_tools::mcp::McpConnectionState::Unreachable(reason) = conn_state {
+            if let vac_tools::mcp::McpConnectionStatus::Unreachable(reason) = &conn_state.status {
                 lines.push(Line::from(vec![
                     Span::raw("    "),
                     Span::styled(reason.clone(), Style::default().fg(Color::DarkGray)),
