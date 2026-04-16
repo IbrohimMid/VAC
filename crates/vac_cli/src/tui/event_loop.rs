@@ -1107,6 +1107,9 @@ fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, e
                                 crate::tui::app::ActivityKind::Approval,
                                 format!("Runtime waiting for approval: {}", &tool_call_id[..8]),
                             );
+                            state.toasts.push(crate::tui::services::Toast::info(
+                                format!("Runtime waiting for approval: {}", &tool_call_id[..8]),
+                            ));
                         }
                     }
                     vac_runtime::AutopilotState::Backoff { until } => {
@@ -1115,6 +1118,9 @@ fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, e
                                 crate::tui::app::ActivityKind::Status,
                                 format!("Runtime entered backoff until {}", until.format("%H:%M:%S")),
                             );
+                            state.toasts.push(crate::tui::services::Toast::info(
+                                format!("Runtime backoff until {}", until.format("%H:%M:%S")),
+                            ));
                         }
                     }
                     _ => {}
@@ -1134,6 +1140,9 @@ fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, e
                             crate::tui::app::ActivityKind::Status,
                             format!("Execution environment switched to {}", env_name),
                         );
+                        state.toasts.push(crate::tui::services::Toast::info(
+                            format!("Switched to {} environment", env_name),
+                        ));
                     }
                 }
             }
