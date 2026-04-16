@@ -874,7 +874,8 @@ fn render_at_dropdown(f: &mut Frame, state: &mut AppState) {
         .iter()
         .enumerate()
         .map(|(i, path)| {
-            let style = if i == state.at_selected_idx {
+            let selected = i == state.at_selected_idx.min(state.at_results.len().saturating_sub(1));
+            let style = if selected {
                 Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
             } else {
                 Style::default()
@@ -905,6 +906,17 @@ fn render_footer(f: &mut Frame, state: &mut AppState, area: Rect) {
             Span::raw(reason.as_str()),
             Span::styled("█", Style::default().fg(Color::Yellow)),
             Span::styled("  Enter: confirm  Esc: skip", Style::default().fg(Color::DarkGray)),
+        ];
+        let widget = Paragraph::new(Line::from(hints)).wrap(Wrap { trim: true });
+        f.render_widget(widget, area);
+        return;
+    }
+
+    if state.at_trigger_active {
+        let hints = vec![
+            Span::styled("@ FILE ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+            Span::styled(&state.at_query, Style::default().fg(Color::White)),
+            Span::styled("  ↑↓: select  Enter: insert  Esc: cancel", Style::default().fg(Color::DarkGray)),
         ];
         let widget = Paragraph::new(Line::from(hints)).wrap(Wrap { trim: true });
         f.render_widget(widget, area);
@@ -947,6 +959,8 @@ fn render_footer(f: &mut Frame, state: &mut AppState, area: Rect) {
         WorkspaceFocus::Input => vec![
             Span::styled("Enter", Style::default().fg(Color::Cyan)),
             Span::styled(": send  ", Style::default().fg(Color::DarkGray)),
+            Span::styled("@", Style::default().fg(Color::Cyan)),
+            Span::styled(": file  ", Style::default().fg(Color::DarkGray)),
             Span::styled("Ctrl+P", Style::default().fg(Color::Cyan)),
             Span::styled(": commands  ", Style::default().fg(Color::DarkGray)),
             Span::styled("Tab", Style::default().fg(Color::Cyan)),

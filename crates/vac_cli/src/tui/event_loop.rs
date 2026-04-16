@@ -512,11 +512,12 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
             if state.focus == crate::tui::app::WorkspaceFocus::Input {
                 if state.at_trigger_active {
                     if state.at_query.is_empty() {
-                        // Backspace deleted the '@' - deactivate
                         state.at_trigger_active = false;
                         state.at_results.clear();
+                        state.at_selected_idx = 0;
                     } else {
                         state.at_query.pop();
+                        state.at_selected_idx = 0;
                         state.at_results = crate::tui::services::fuzzy_search_files(&state.at_query, &state.all_files, 8);
                     }
                 }
