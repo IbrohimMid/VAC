@@ -10,16 +10,19 @@ engine entrypoints that consume it.
   `xai`, `mistral`, and `openai_compat`.
 - `vac_core::engine` builds the router through config only and does not import
   concrete provider types.
-- Config file changes require an engine restart today. There is no hot-reload
-  hook yet, so the restart requirement is documented instead of implied.
+- Provider config changes are reflected through `VacEngine::reload_config()`,
+  which rebuilds the router and reinjects it into the swarm. A full process
+  restart is only needed when the deployment does not expose that reload path
+  or when other subsystems need to be rebuilt.
 
 ## Evidence
 
-- [crates/vil_llm/src/router.rs](/home/emp/Documents/VAC/vastar-agentic-cli/crates/vil_llm/src/router.rs)
-- [crates/vil_llm/src/providers/factory.rs](/home/emp/Documents/VAC/vastar-agentic-cli/crates/vil_llm/src/providers/factory.rs)
-- [crates/vil_llm/tests/provider_smoke_matrix.rs](/home/emp/Documents/VAC/vastar-agentic-cli/crates/vil_llm/tests/provider_smoke_matrix.rs)
-- [crates/vil_llm/tests/provider_stream_parity.rs](/home/emp/Documents/VAC/vastar-agentic-cli/crates/vil_llm/tests/provider_stream_parity.rs)
-- [crates/vac_core/src/engine.rs](/home/emp/Documents/VAC/vastar-agentic-cli/crates/vac_core/src/engine.rs)
+- [crates/vil_llm/src/router.rs](../crates/vil_llm/src/router.rs)
+- [crates/vil_llm/src/providers/factory.rs](../crates/vil_llm/src/providers/factory.rs)
+- [crates/vil_llm/tests/provider_smoke_matrix.rs](../crates/vil_llm/tests/provider_smoke_matrix.rs)
+- [crates/vil_llm/tests/provider_stream_parity.rs](../crates/vil_llm/tests/provider_stream_parity.rs)
+- [crates/vac_core/src/engine.rs](../crates/vac_core/src/engine.rs)
+- [crates/vac_core/tests/config_swap.rs](../crates/vac_core/tests/config_swap.rs)
 
 ## Operational note
 

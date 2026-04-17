@@ -13,7 +13,10 @@ Operational notes for the main subsystems.
 
 - Run `vac doctor`.
 - Confirm the provider-specific environment variables are present.
-- Inspect [docs/PROVIDER_PARITY.md](/home/emp/Documents/VAC/vastar-agentic-cli/docs/PROVIDER_PARITY.md) for the restart requirement and smoke matrix.
+- Inspect [docs/PROVIDER_PARITY.md](./PROVIDER_PARITY.md) for reload behavior
+  and the smoke matrix. Provider wiring can be refreshed by
+  `VacEngine::reload_config()`; restart only if your deployment does not expose
+  that path.
 
 ## Scheduler appears stuck
 
@@ -32,7 +35,7 @@ Operational notes for the main subsystems.
 - Re-run with `--format bundle-json` and `--require-signed` if the bundle should
   be verified.
 - Inspect the bundle path and size caps.
-- Check [docs/THREAT_MODEL.md](/home/emp/Documents/VAC/vastar-agentic-cli/docs/THREAT_MODEL.md) for the import boundary.
+- Check [docs/THREAT_MODEL.md](./THREAT_MODEL.md) for the import boundary.
 
 ## Disk full
 

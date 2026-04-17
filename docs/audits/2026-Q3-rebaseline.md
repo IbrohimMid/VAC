@@ -12,10 +12,10 @@ This audit re-baselines the roadmap against the current `main` branch.
 
 | Area | Status | Evidence |
 | --- | --- | --- |
-| Secret detection | landed, mutation evidence still being collected | [crates/vac_core/src/security/secret_detector.rs](/home/emp/Documents/VAC/vastar-agentic-cli/crates/vac_core/src/security/secret_detector.rs), [crates/vac_core/tests/policy_gate.rs](/home/emp/Documents/VAC/vastar-agentic-cli/crates/vac_core/tests/policy_gate.rs) |
-| Bundle import | landed, fuzz harness added | [crates/vac_core/src/bundle.rs](/home/emp/Documents/VAC/vastar-agentic-cli/crates/vac_core/src/bundle.rs), [crates/vac_core/fuzz/fuzz_targets/bundle_import.rs](/home/emp/Documents/VAC/vastar-agentic-cli/crates/vac_core/fuzz/fuzz_targets/bundle_import.rs) |
-| Policy gate | wrapper-aware guardrail classifier | [crates/vac_core/src/policy_gate.rs](/home/emp/Documents/VAC/vastar-agentic-cli/crates/vac_core/src/policy_gate.rs) |
-| Provider wiring | config-driven router path | [crates/vil_llm/src/router.rs](/home/emp/Documents/VAC/vastar-agentic-cli/crates/vil_llm/src/router.rs), [crates/vac_core/src/engine.rs](/home/emp/Documents/VAC/vastar-agentic-cli/crates/vac_core/src/engine.rs) |
+| Secret detection | landed, mutation evidence still being collected | [crates/vac_core/src/security/secret_detector.rs](../../crates/vac_core/src/security/secret_detector.rs), [crates/vac_core/tests/policy_gate.rs](../../crates/vac_core/tests/policy_gate.rs) |
+| Bundle import | landed, fuzz harness added | [crates/vac_core/src/bundle.rs](../../crates/vac_core/src/bundle.rs), [crates/vac_core/fuzz/fuzz_targets/bundle_import.rs](../../crates/vac_core/fuzz/fuzz_targets/bundle_import.rs) |
+| Policy gate | wrapper-aware guardrail classifier | [crates/vac_core/src/policy_gate.rs](../../crates/vac_core/src/policy_gate.rs) |
+| Provider wiring | config-driven router path | [crates/vil_llm/src/router.rs](../../crates/vil_llm/src/router.rs), [crates/vac_core/src/engine.rs](../../crates/vac_core/src/engine.rs), [crates/vac_core/tests/config_swap.rs](../../crates/vac_core/tests/config_swap.rs) |
 
 ## Rebaseline rule
 

@@ -115,7 +115,7 @@ Goal: eliminate residual false-secure surface from PR #15 + phase-1 commits.
 - [ ] `cargo-audit` weekly — opens issue on advisory.
 - [ ] `CodeQL` Rust analysis weekly.
 - [ ] `sccache` shared across jobs.
-**Exit**: all jobs defined in `.github/workflows/`; required checks configured in branch protection (document the gh CLI command in `RELEASING.md` since the agent likely can't change repo settings).
+**Exit**: all jobs defined in `.github/workflows/`; branch protection only requires PR-triggered checks, while scheduled/manual evidence jobs (`release-dry-run`, `mutation-weekly`, `fuzz-weekly`) remain non-blocking. Document the `gh` CLI command in `RELEASING.md` since the agent likely can't change repo settings.
 
 ### 4.5 Mutation testing
 - [ ] `cargo-mutants` for `vac_core::security::*` and `vac_core::policy_gate` — score ≥80%.

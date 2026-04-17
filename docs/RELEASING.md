@@ -15,7 +15,7 @@ distribution is enabled.
 
 ## Branch protection
 
-Required checks should include at minimum:
+Required checks should include only PR-triggered jobs:
 
 - build/check
 - test
@@ -23,13 +23,17 @@ Required checks should include at minimum:
 - coverage
 - dependency-policy
 - codeql
+
+Do not mark scheduled or manual evidence jobs as required checks:
+
+- release dry run
 - mutation
 - fuzz
-- release dry-run
 - release smoke
 
 If branch protection must be updated manually, use `gh` or the GitHub settings
-UI; the exact check names are defined by the workflow files in `.github/workflows/`.
+UI; the exact check names are defined by the workflow files in
+`.github/workflows/`.
 
 ## Current packaging direction
 
@@ -39,5 +43,5 @@ UI; the exact check names are defined by the workflow files in `.github/workflow
 
 ## Evidence
 
-- [CHANGELOG.md](/home/emp/Documents/VAC/vastar-agentic-cli/CHANGELOG.md)
-- [docs/ROADMAP_TO_100_v2.md](/home/emp/Documents/VAC/vastar-agentic-cli/docs/ROADMAP_TO_100_v2.md)
+- [CHANGELOG.md](../CHANGELOG.md)
+- [docs/ROADMAP_TO_100_v2.md](./ROADMAP_TO_100_v2.md)

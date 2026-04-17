@@ -16,5 +16,5 @@ This log is the wall-clock evidence index for the 6B gate.
 
 ## Evidence
 
-- [docs/internal_deployments.md](/home/emp/Documents/VAC/vastar-agentic-cli/docs/internal_deployments.md)
-- [docs/audits/2026-Q3-rebaseline.md](/home/emp/Documents/VAC/vastar-agentic-cli/docs/audits/2026-Q3-rebaseline.md)
+- [docs/internal_deployments.md](./internal_deployments.md)
+- [docs/audits/2026-Q3-rebaseline.md](./audits/2026-Q3-rebaseline.md)

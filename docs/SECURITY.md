@@ -28,6 +28,6 @@ on this repository.
 
 ## Evidence
 
-- [docs/THREAT_MODEL.md](/home/emp/Documents/VAC/vastar-agentic-cli/docs/THREAT_MODEL.md)
-- [crates/vac_core/src/security/secret_detector.rs](/home/emp/Documents/VAC/vastar-agentic-cli/crates/vac_core/src/security/secret_detector.rs)
-- [crates/vac_core/src/bundle.rs](/home/emp/Documents/VAC/vastar-agentic-cli/crates/vac_core/src/bundle.rs)
+- [docs/THREAT_MODEL.md](./THREAT_MODEL.md)
+- [crates/vac_core/src/security/secret_detector.rs](../crates/vac_core/src/security/secret_detector.rs)
+- [crates/vac_core/src/bundle.rs](../crates/vac_core/src/bundle.rs)

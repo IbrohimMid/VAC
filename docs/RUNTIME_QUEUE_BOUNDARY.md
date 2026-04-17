@@ -23,6 +23,6 @@ access logic.
 
 ## Evidence
 
-- [crates/vac_runtime/src/runtime_queue.rs](/home/emp/Documents/VAC/vastar-agentic-cli/crates/vac_runtime/src/runtime_queue.rs)
-- [crates/vac_runtime/tests/queue_tests.rs](/home/emp/Documents/VAC/vastar-agentic-cli/crates/vac_runtime/tests/queue_tests.rs)
-- [crates/vac_cli/src/tui/runner.rs](/home/emp/Documents/VAC/vastar-agentic-cli/crates/vac_cli/src/tui/runner.rs)
+- [crates/vac_runtime/src/runtime_queue.rs](../crates/vac_runtime/src/runtime_queue.rs)
+- [crates/vac_runtime/tests/queue_tests.rs](../crates/vac_runtime/tests/queue_tests.rs)
+- [crates/vac_cli/src/tui/runner.rs](../crates/vac_cli/src/tui/runner.rs)
