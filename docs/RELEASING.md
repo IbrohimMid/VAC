@@ -23,13 +23,14 @@ Required checks should include only PR-triggered jobs:
 - coverage
 - dependency-policy
 - codeql
+- release smoke
 
 Do not mark scheduled or manual evidence jobs as required checks:
 
 - release dry run
 - mutation
 - fuzz
-- release smoke
+- security audit
 
 If branch protection must be updated manually, use `gh` or the GitHub settings
 UI; the exact check names are defined by the workflow files in
