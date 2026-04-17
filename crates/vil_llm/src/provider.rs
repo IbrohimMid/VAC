@@ -207,14 +207,21 @@ pub struct ToolCall {
 #[derive(Debug, Clone)]
 pub enum StreamChunk {
     Text(String),
+    /// Announce a tool call is starting. Still emitted for low-level observability.
     ToolCallStart {
         id: String,
         name: String,
     },
+    /// Raw partial tool-argument JSON fragment. Kept for low-level/debug consumers;
+    /// high-level consumers should rely on `ToolCallComplete`, which only fires
+    /// after the assembler has a fully parsed tool call.
     ToolCallDelta {
         id: String,
         arguments_delta: String,
     },
+    /// A fully aggregated, parsed tool call. The preferred variant for UI consumers —
+    /// never contains half-parsed JSON.
+    ToolCallComplete(ToolCall),
     Done {
         usage: TokenUsage,
         finish_reason: FinishReason,
