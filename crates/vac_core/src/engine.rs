@@ -1301,6 +1301,9 @@ model = "claude-3-5-sonnet-20241022"
     }
 
     #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    // ENV_LOCK is a std::sync::Mutex used purely to serialize env-var mutations
+    // across tests in this module; the awaits inside never re-enter env code.
     async fn llm_router_tracks_config_file_swaps() {
         let _guard = ENV_LOCK.lock().unwrap();
         clear_env();
