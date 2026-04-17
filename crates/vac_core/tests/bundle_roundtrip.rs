@@ -160,6 +160,61 @@ fn signed_bundle_round_trips_and_requires_explicit_trust_for_approvals() {
 }
 
 #[test]
+fn import_rejects_unsigned_bundle_when_signature_is_required() {
+    let (_dir1, root1, session_id) = seed_source_project(None);
+    let out1_path = export_bundle(&root1, session_id, false);
+
+    let dir2 = tempdir().unwrap();
+    let root2 = dir2.path();
+    let err = vac_core::bundle::import_bundle_from_path_with_options(
+        root2,
+        &out1_path,
+        vac_core::bundle::BundleImportOptions {
+            require_signed: true,
+            overwrite_session: false,
+            trust_approvals: false,
+            redact_on_import: true,
+        },
+    )
+    .unwrap_err();
+    assert!(err.to_string().contains("required but missing"));
+}
+
+#[test]
+fn import_rejects_tampered_signed_bundle() {
+    let (_dir1, root1, session_id) = seed_source_project(None);
+    let out1_path = export_bundle(&root1, session_id, true);
+
+    let tampered_dir = tempdir().unwrap();
+    let tampered_path = tampered_dir
+        .path()
+        .join(format!("{session_id}.tampered.bundle.json"));
+    let mut bundle: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&out1_path).unwrap()).unwrap();
+    bundle["metadata"]["redacted"] = serde_json::Value::Bool(false);
+    std::fs::write(
+        &tampered_path,
+        serde_json::to_string_pretty(&bundle).unwrap(),
+    )
+    .unwrap();
+
+    let dir2 = tempdir().unwrap();
+    let root2 = dir2.path();
+    let err = vac_core::bundle::import_bundle_from_path_with_options(
+        root2,
+        &tampered_path,
+        vac_core::bundle::BundleImportOptions {
+            require_signed: true,
+            overwrite_session: false,
+            trust_approvals: false,
+            redact_on_import: true,
+        },
+    )
+    .unwrap_err();
+    assert!(err.to_string().contains("verification failed"));
+}
+
+#[test]
 fn import_rejects_session_collision_without_overwrite() {
     let (_dir1, root1, session_id) = seed_source_project(None);
     let out1_path = export_bundle(&root1, session_id, false);

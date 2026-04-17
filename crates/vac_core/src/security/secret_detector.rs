@@ -266,7 +266,8 @@ fn detect_private_key_blocks(text: &str, out: &mut Vec<DetectedSecret>) {
         let end_marker = format!("{end_marker_suffix}{label}{line_suffix}");
         let scan_from = label_end;
         let Some(end_rel) = text[scan_from..].find(&end_marker) else {
-            break;
+            search_from = label_end;
+            continue;
         };
         let end = scan_from + end_rel + end_marker.len();
         let kind = if label.contains("OPENSSH PRIVATE KEY") {
@@ -602,16 +603,18 @@ mod tests {
             positives.push(jwt_token(idx));
         }
 
-        let mut detected_positives = 0usize;
+        let mut true_positives = 0usize;
+        let mut false_negatives = 0usize;
         for sample in &positives {
             let findings = detector.detect(sample);
-            assert!(
-                findings
-                    .iter()
-                    .any(|f| matches!(f.kind, DetectionKind::Secret(_))),
-                "expected secret finding for sample: {sample}"
-            );
-            detected_positives += 1;
+            if findings
+                .iter()
+                .any(|f| matches!(f.kind, DetectionKind::Secret(_)))
+            {
+                true_positives += 1;
+            } else {
+                false_negatives += 1;
+            }
         }
 
         let mut negatives = Vec::new();
@@ -633,8 +636,17 @@ mod tests {
             }
         }
 
-        assert_eq!(detected_positives, positives.len());
+        let precision = true_positives as f64 / (true_positives + false_positive_hits) as f64;
+        let recall = true_positives as f64 / (true_positives + false_negatives) as f64;
+
+        assert_eq!(true_positives, positives.len());
+        assert_eq!(false_negatives, 0);
         assert_eq!(false_positive_hits, 0);
+        assert!(
+            precision >= 0.9,
+            "expected precision >= 0.9, got {precision:.3}"
+        );
+        assert!(recall >= 0.95, "expected recall >= 0.95, got {recall:.3}");
     }
 
     #[test]
