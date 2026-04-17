@@ -79,11 +79,17 @@ pub async fn execute(
     // actually, let's keep it non-blocking
     results.push(res.1);
 
+    let llm_cfg = vil_llm::LlmConfig::load(&project_root).unwrap_or_else(|e| {
+        tracing::warn!(error = %e, "failed to load [llm] config; falling back to defaults");
+        vil_llm::LlmConfig::default()
+    });
+
     if format == "json" {
-        let out = serde_json::json!({
+        let mut out = serde_json::json!({
             "ready": all_ok,
             "checks": results
         });
+        out["llm"] = llm_config_json(&llm_cfg);
         println!("{}", serde_json::to_string_pretty(&out)?);
     } else {
         for res in &results {
@@ -103,6 +109,8 @@ pub async fn execute(
             }
         }
         println!();
+        print_llm_config(&llm_cfg);
+        println!();
         if all_ok {
             println!("✅ All checks passed. VAC is ready.");
         } else {
@@ -111,6 +119,108 @@ pub async fn execute(
     }
 
     Ok(())
+}
+
+fn print_llm_config(cfg: &vil_llm::LlmConfig) {
+    println!("LLM configuration");
+    let default_model = cfg
+        .providers
+        .get(&cfg.default_provider)
+        .and_then(|p| p.model.as_deref())
+        .unwrap_or("<model unset>");
+    println!(
+        "  Default provider: {} ({})",
+        cfg.default_provider, default_model
+    );
+    let chain_str = if cfg.fallback_chain.is_empty() {
+        "<none>".to_string()
+    } else {
+        cfg.fallback_chain.join(" → ")
+    };
+    println!("  Fallback chain:   {}", chain_str);
+    println!(
+        "  Budget:           {} tokens",
+        format_with_commas(cfg.budget_tokens)
+    );
+
+    if cfg.routing.is_empty() {
+        println!("  Tool routing:     <empty>");
+    } else {
+        let mut entries: Vec<(&String, &String)> = cfg.routing.iter().collect();
+        entries.sort_by(|a, b| a.0.cmp(b.0));
+        let joined = entries
+            .iter()
+            .map(|(k, v)| format!("{k}→{v}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        println!("  Tool routing:     {}", joined);
+    }
+
+    if cfg.providers.is_empty() {
+        println!("  Providers:        <none configured>");
+    } else {
+        println!("  Providers:");
+        let mut names: Vec<&String> = cfg.providers.keys().collect();
+        names.sort();
+        for name in names {
+            let pc = &cfg.providers[name];
+            match &pc.api_key_env {
+                Some(var) => {
+                    if std::env::var(var).is_ok() {
+                        println!("    ✓ {} ({} set)", name, var);
+                    } else {
+                        println!("    ✗ {} ({} missing)", name, var);
+                    }
+                }
+                None => {
+                    println!("    ✓ {} (no api_key_env required)", name);
+                }
+            }
+        }
+    }
+}
+
+fn llm_config_json(cfg: &vil_llm::LlmConfig) -> serde_json::Value {
+    let providers: serde_json::Map<String, serde_json::Value> = cfg
+        .providers
+        .iter()
+        .map(|(name, pc)| {
+            let ready = match &pc.api_key_env {
+                Some(var) => std::env::var(var).is_ok(),
+                None => true,
+            };
+            (
+                name.clone(),
+                serde_json::json!({
+                    "api_key_env": pc.api_key_env,
+                    "model": pc.model,
+                    "base_url": pc.base_url,
+                    "ready": ready,
+                }),
+            )
+        })
+        .collect();
+
+    serde_json::json!({
+        "default_provider": cfg.default_provider,
+        "fallback_chain": cfg.fallback_chain,
+        "budget_tokens": cfg.budget_tokens,
+        "routing": cfg.routing,
+        "providers": providers,
+    })
+}
+
+fn format_with_commas(n: u64) -> String {
+    let raw = n.to_string();
+    let bytes = raw.as_bytes();
+    let mut out = String::with_capacity(raw.len() + raw.len() / 3);
+    for (i, b) in bytes.iter().enumerate() {
+        if i > 0 && (bytes.len() - i) % 3 == 0 {
+            out.push(',');
+        }
+        out.push(*b as char);
+    }
+    out
 }
 
 fn check_knowledge(root: &Path, _strict: bool, _fix: bool) -> (bool, serde_json::Value) {

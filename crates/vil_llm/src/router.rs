@@ -1,5 +1,6 @@
 //! LLM Router — manages multiple providers with fallback chain.
 
+use crate::config::LlmConfig;
 use crate::error::{LlmError, LlmResult};
 use crate::provider::{LlmProvider, LlmRequest, LlmResponse, StreamChunk};
 use crate::rulebook_hook::RulebookContext;
@@ -107,6 +108,32 @@ impl LlmRouter {
 
     pub fn set_fallback_chain(&mut self, chain: Vec<String>) {
         self.fallback_chain = chain;
+    }
+
+    /// Build a router from a resolved `LlmConfig`. Known provider names are
+    /// registered via their respective builders; unknown names are skipped with
+    /// a warning (forward-compatible: newly defined providers in a future
+    /// config do not fail the loader).
+    pub fn from_config(cfg: &LlmConfig) -> Self {
+        let mut router = Self::new(&cfg.default_provider, cfg.budget_tokens);
+        router.set_fallback_chain(cfg.fallback_chain.clone());
+
+        for name in cfg.providers.keys() {
+            match name.as_str() {
+                "anthropic" | "kilo" | "kilo_gateway" => {
+                    router.add_provider(Arc::new(AnthropicProvider::new()));
+                }
+                other => {
+                    warn!(
+                        provider = other,
+                        "provider listed in [llm.providers] but no builder registered yet — \
+                         skipping (pending Unit 1/2 merges)"
+                    );
+                }
+            }
+        }
+
+        router
     }
 
     pub async fn complete(&self, request: &LlmRequest) -> LlmResult<LlmResponse> {
