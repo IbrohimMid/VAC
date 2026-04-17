@@ -1,76 +1,50 @@
-name: Release Smoke Tests
+name: Release Smoke
 
 on:
   workflow_dispatch:
-    inputs:
-      version:
-        description: 'Version to smoke test (e.g. v1.2.3)'
-        required: true
-  release:
-    types: [published]
+  schedule:
+    - cron: "29 1 * * 0"
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_TARGET_DIR: ${{ github.workspace }}/target
 
 jobs:
-  smoke-test-linux:
-    name: Smoke Test (Linux)
-    runs-on: ubuntu-latest
+  smoke:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            binary: release/vac
+          - os: macos-latest
+            binary: release/vac
+          - os: windows-latest
+            binary: release/vac.exe
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Download Artifacts
-        run: |
-          echo "Simulating artifact download for Linux..."
-          # Replace with actual curl/wget of cargo-dist artifacts
-      - name: Verify Signature
-        run: |
-          echo "Verifying minisign signature..."
-          # minisign -Vm vac-linux.tar.gz -p minisign.pub
-      - name: Run Smoke Test
-        run: |
-          echo "Running vac --version..."
-          # ./vac --version
-          echo "Running vac help..."
-          # ./vac --help
+      - uses: actions/checkout@v4
 
-  smoke-test-macos:
-    name: Smoke Test (macOS)
-    runs-on: macos-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Download Artifacts
-        run: echo "Simulating artifact download for macOS..."
-      - name: Verify Signature
-        run: echo "Verifying minisign signature..."
-      - name: Run Smoke Test
-        run: echo "Running macOS smoke test..."
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
 
-  smoke-test-windows:
-    name: Smoke Test (Windows)
-    runs-on: windows-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Download Artifacts
-        run: echo "Simulating artifact download for Windows..."
-      - name: Run Smoke Test
-        run: echo "Running Windows smoke test..."
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ${{ env.CARGO_TARGET_DIR }}
+          key: ${{ runner.os }}-cargo-release-smoke-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-release-smoke-
 
-  smoke-test-docker:
-    name: Smoke Test (Docker)
-    runs-on: ubuntu-latest
-    steps:
-      - name: Pull Docker Image
-        run: echo "docker pull ghcr.io/repo/vac:${{ github.event.inputs.version || github.event.release.tag_name }}"
-      - name: Verify Cosign Signature
-        run: echo "cosign verify ghcr.io/repo/vac:${{ github.event.inputs.version || github.event.release.tag_name }}"
-      - name: Run Docker Smoke Test
-        run: echo "docker run --rm ghcr.io/repo/vac --version"
+      - name: Build vac release binary
+        shell: bash
+        run: cargo build -p vac_cli --bin vac --release
 
-  smoke-test-homebrew:
-    name: Smoke Test (Homebrew)
-    runs-on: macos-latest
-    steps:
-      - name: Install via Homebrew
-        run: echo "brew install namespace/tap/vac"
-      - name: Run Smoke Test
-        run: echo "vac --version"
+      - name: Run release smoke contract
+        shell: bash
+        run: bash scripts/release_smoke.sh "${{ matrix.binary }}"

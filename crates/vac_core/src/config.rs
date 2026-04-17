@@ -94,7 +94,7 @@ pub struct MemoryConfig {
 }
 
 fn default_memory_path() -> PathBuf {
-    PathBuf::from(".vac/memory")
+    PathBuf::from(".vac/memory/vil_memory.db")
 }
 fn bool_true() -> bool {
     true

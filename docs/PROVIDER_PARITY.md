@@ -1,16 +1,27 @@
-# Provider Parity Contract
+# Provider Parity
 
-## Overview
-This document outlines the expectations for LLM providers integrated into VAC, ensuring consistency across both streaming and complete request execution. We require that all providers adhere to the `StreamParityContract`.
+This document records the current provider wiring status for `vil_llm` and the
+engine entrypoints that consume it.
 
-## Streaming Parity Contract
-When an LLM provider is requested to stream its response, it must implement the `StreamParityContract`. This contract guarantees that regardless of the underlying API specifics, the VAC engine receives uniform chunks.
+## Current status
 
-### Contract Requirements
-1. **Tool Call Starts**: The stream must emit a `StreamChunk::ToolCallStart` containing the ID and name of the tool before any arguments are streamed.
-2. **Tool Call Deltas**: The stream must emit `StreamChunk::ToolCallDelta` chunks containing partial JSON arguments as they arrive.
-3. **Tool Call Completion**: If the provider natively emits a completion event, or if VAC needs to synthesize one, the stream must eventually emit a `StreamChunk::ToolCallComplete` for each tool call that was started.
-4. **Usage and Finish Reason**: The stream must conclude with a `StreamChunk::Done` containing the total token usage and the finish reason (e.g., `FinishReason::ToolUse` or `FinishReason::Stop`).
+- `LlmRouter::from_config()` is the canonical wiring path.
+- The supported config-backed providers are `anthropic`, `openai`, `gemini`,
+  `xai`, `mistral`, and `openai_compat`.
+- `vac_core::engine` builds the router through config only and does not import
+  concrete provider types.
+- Config file changes require an engine restart today. There is no hot-reload
+  hook yet, so the restart requirement is documented instead of implied.
 
-## CI Smoke Tests
-To ensure ongoing compliance with the `StreamParityContract`, we require CI smoke tests that validate at least 3 providers (e.g., Anthropic, OpenAI, Gemini) against real APIs. These tests execute a basic streaming tool call scenario and verify that all chunks conform to the contract.
+## Evidence
+
+- [crates/vil_llm/src/router.rs](/home/emp/Documents/VAC/vastar-agentic-cli/crates/vil_llm/src/router.rs)
+- [crates/vil_llm/src/providers/factory.rs](/home/emp/Documents/VAC/vastar-agentic-cli/crates/vil_llm/src/providers/factory.rs)
+- [crates/vil_llm/tests/provider_smoke_matrix.rs](/home/emp/Documents/VAC/vastar-agentic-cli/crates/vil_llm/tests/provider_smoke_matrix.rs)
+- [crates/vil_llm/tests/provider_stream_parity.rs](/home/emp/Documents/VAC/vastar-agentic-cli/crates/vil_llm/tests/provider_stream_parity.rs)
+- [crates/vac_core/src/engine.rs](/home/emp/Documents/VAC/vastar-agentic-cli/crates/vac_core/src/engine.rs)
+
+## Operational note
+
+Provider smoke tests are env-gated. They should skip cleanly when API keys or
+base URLs are absent and should never block merge on a missing credential.

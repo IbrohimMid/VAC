@@ -1,0 +1,42 @@
+name: Mutation Weekly
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "41 4 * * 0"
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_TARGET_DIR: ${{ github.workspace }}/target
+
+jobs:
+  mutants:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: secret-detector
+            file: crates/vac_core/src/security/secret_detector.rs
+          - name: policy-gate
+            file: crates/vac_core/src/policy_gate.rs
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-mutants
+        run: cargo install cargo-mutants --locked
+
+      - name: Run mutation test
+        run: cargo mutants -f ${{ matrix.file }} | tee mutants-${{ matrix.name }}.log
+
+      - name: Upload mutation logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutants-${{ matrix.name }}-logs
+          path: |
+            mutants-${{ matrix.name }}.log

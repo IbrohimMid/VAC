@@ -34,6 +34,8 @@ impl Default for PolicyGateMode {
 }
 
 impl PolicyGateMode {
+    /// Parse mode string. Unknown values return `None` so callers can
+    /// fail-closed (treat as Strict) instead of silently degrading.
     pub fn parse(s: &str) -> Option<Self> {
         match normalize_key(s).as_str() {
             "strict" => Some(Self::Strict),
@@ -51,32 +53,220 @@ pub enum PolicyGateDecision {
 }
 
 pub fn classify_shell_command(command: &str) -> Option<PolicyGateAction> {
-    // Replace shell operators and subshell characters with space
-    let sanitized = command.replace(
-        &['$', '(', ')', '`', '&', '|', ';', '<', '>', '{', '}'][..],
-        " ",
-    );
-    let tokens = shell_words::split(&sanitized).ok()?;
+    let tokens = shell_words::split(command).ok()?;
     classify_tokens(&tokens)
 }
 
 fn classify_tokens(tokens: &[String]) -> Option<PolicyGateAction> {
-    for i in 0..tokens.len() {
-        let token = &tokens[i];
+    let program_token = tokens.first()?;
+    let program = program_basename(program_token);
+    let rest = &tokens[1..];
 
-        // Handle nested shell commands like `bash -c "git merge"`
-        if token.contains(' ') || token.contains('\n') {
-            if let Some(action) = classify_shell_command(token) {
-                return Some(action);
+    match program.as_str() {
+        "sudo" => classify_tokens(strip_leading_tokens(
+            rest,
+            &[
+                "-u",
+                "-g",
+                "-h",
+                "--user",
+                "--group",
+                "--chdir",
+                "--login-shell",
+                "--shell",
+                "--preserve-env",
+                "--set-home",
+            ],
+        )),
+        "env" => classify_tokens(strip_leading_tokens(rest, &["-u", "-C", "-S"])),
+        "xargs" => classify_tokens(strip_leading_tokens(
+            rest,
+            &["-n", "-L", "-P", "-I", "-s", "-d"],
+        )),
+        "timeout" => classify_timeout(rest),
+        "nohup" | "nice" | "stdbuf" | "watch" => {
+            classify_tokens(strip_leading_tokens(rest, &["-n", "-o", "-e", "-i"]))
+        }
+        "eval" => classify_eval(rest),
+        "command" => classify_tokens(rest),
+        "bash" | "sh" | "zsh" => {
+            if let Some(nested) = nested_shell_command(rest) {
+                return classify_shell_command(nested);
             }
+            classify_tokens(strip_leading_tokens(rest, &[]))
         }
+        "find" => classify_find(rest),
+        _ => classify_command(&program, rest),
+    }
+}
 
-        let program = program_basename(token);
-        if let Some(action) = classify_command(&program, &tokens[i + 1..]) {
-            return Some(action);
+fn classify_timeout(rest: &[String]) -> Option<PolicyGateAction> {
+    let rest = strip_leading_tokens(
+        rest,
+        &[
+            "-k",
+            "--kill-after",
+            "--signal",
+            "-s",
+            "--foreground",
+            "--preserve-status",
+        ],
+    );
+    let rest = skip_duration_prefix(rest);
+    classify_tokens(rest)
+}
+
+fn classify_eval(rest: &[String]) -> Option<PolicyGateAction> {
+    let nested = rest.join(" ");
+    if nested.trim().is_empty() {
+        return None;
+    }
+    classify_shell_command(&nested)
+}
+
+fn classify_find(rest: &[String]) -> Option<PolicyGateAction> {
+    let mut idx = 0usize;
+    while idx < rest.len() {
+        let token = rest[idx].as_str();
+        if matches!(token, "-exec" | "-execdir" | "-ok" | "-okdir") {
+            let mut end = idx + 1;
+            while end < rest.len() {
+                if matches!(rest[end].as_str(), ";" | "+" | r"\;") {
+                    break;
+                }
+                end += 1;
+            }
+            if end > idx + 1 {
+                return classify_tokens(&rest[idx + 1..end]);
+            }
+            return None;
         }
+        idx += 1;
     }
     None
+}
+
+fn classify_command(program: &str, rest: &[String]) -> Option<PolicyGateAction> {
+    match program {
+        "git" => classify_git(strip_leading_tokens(
+            rest,
+            &["-C", "-c", "--git-dir", "--work-tree", "--namespace"],
+        )),
+        "gh" => classify_gh(strip_leading_tokens(
+            rest,
+            &["-R", "--repo", "-H", "--hostname", "--workdir"],
+        )),
+        "kubectl" => classify_kubectl(strip_leading_tokens(
+            rest,
+            &[
+                "-n",
+                "--namespace",
+                "--context",
+                "--kubeconfig",
+                "--cluster",
+                "--user",
+                "--server",
+                "--token",
+            ],
+        )),
+        "terraform" => classify_terraform(strip_leading_tokens(rest, &["-chdir"])),
+        "helm" => classify_helm(strip_leading_tokens(
+            rest,
+            &["-n", "--namespace", "--kube-context"],
+        )),
+        "docker" => classify_docker(strip_leading_tokens(rest, &["-H", "--host"])),
+        "cargo" => classify_cargo(strip_leading_tokens(rest, &["-Z"])),
+        _ => None,
+    }
+}
+
+fn classify_git(rest: &[String]) -> Option<PolicyGateAction> {
+    match rest.first().map(|s| s.as_str()) {
+        Some("merge") => Some(PolicyGateAction::Merge),
+        Some("push") => Some(PolicyGateAction::Deploy),
+        _ => None,
+    }
+}
+
+fn classify_gh(rest: &[String]) -> Option<PolicyGateAction> {
+    match (
+        rest.first().map(|s| s.as_str()),
+        rest.get(1).map(|s| s.as_str()),
+    ) {
+        (Some("pr"), Some("merge")) => Some(PolicyGateAction::Merge),
+        _ => None,
+    }
+}
+
+fn classify_kubectl(rest: &[String]) -> Option<PolicyGateAction> {
+    match rest.first().map(|s| s.as_str()) {
+        Some("apply") => Some(PolicyGateAction::Apply),
+        Some("rollout") => Some(PolicyGateAction::Deploy),
+        _ => None,
+    }
+}
+
+fn classify_terraform(rest: &[String]) -> Option<PolicyGateAction> {
+    match rest.first().map(|s| s.as_str()) {
+        Some("apply") => Some(PolicyGateAction::Apply),
+        _ => None,
+    }
+}
+
+fn classify_helm(rest: &[String]) -> Option<PolicyGateAction> {
+    match rest.first().map(|s| s.as_str()) {
+        Some("upgrade") => Some(PolicyGateAction::Deploy),
+        _ => None,
+    }
+}
+
+fn classify_docker(rest: &[String]) -> Option<PolicyGateAction> {
+    match rest.first().map(|s| s.as_str()) {
+        Some("push") => Some(PolicyGateAction::Deploy),
+        _ => None,
+    }
+}
+
+fn classify_cargo(rest: &[String]) -> Option<PolicyGateAction> {
+    match rest.first().map(|s| s.as_str()) {
+        Some("publish") => Some(PolicyGateAction::Deploy),
+        _ => None,
+    }
+}
+
+fn nested_shell_command(tokens: &[String]) -> Option<&str> {
+    let mut idx = 0usize;
+    while idx < tokens.len() {
+        let token = tokens[idx].as_str();
+        if token == "--" {
+            return None;
+        }
+        if shell_command_flag(token) {
+            return tokens.get(idx + 1).map(|s| s.as_str());
+        }
+        if shell_flag_consumes_next_value(token) {
+            idx += 2;
+            continue;
+        }
+        if !token.starts_with('-') {
+            return None;
+        }
+        idx += 1;
+    }
+    None
+}
+
+fn shell_command_flag(token: &str) -> bool {
+    token.starts_with('-')
+        && !token.starts_with("--")
+        && token.trim_start_matches('-').contains('c')
+}
+
+fn shell_flag_consumes_next_value(token: &str) -> bool {
+    token.starts_with('-')
+        && !token.starts_with("--")
+        && token.trim_start_matches('-').contains('o')
+        && !token.trim_start_matches('-').contains('c')
 }
 
 fn strip_leading_tokens<'a>(tokens: &'a [String], value_flags: &[&str]) -> &'a [String] {
@@ -97,11 +287,44 @@ fn strip_leading_tokens<'a>(tokens: &'a [String], value_flags: &[&str]) -> &'a [
         let flag = token.split('=').next().unwrap_or(token);
         let takes_value = flag_is_value_flag(flag, value_flags);
         idx += 1;
-        if takes_value && !token.contains('=') && idx < tokens.len() {
+        if takes_value && flag_consumes_next_value(flag, token, value_flags) && idx < tokens.len() {
             idx += 1;
         }
     }
     &tokens[idx..]
+}
+
+fn skip_duration_prefix(tokens: &[String]) -> &[String] {
+    let Some(first) = tokens.first() else {
+        return tokens;
+    };
+    if is_duration_token(first) && tokens.len() > 1 {
+        &tokens[1..]
+    } else {
+        tokens
+    }
+}
+
+fn is_duration_token(token: &str) -> bool {
+    let token = token.trim_start_matches('+');
+    if token.is_empty() {
+        return false;
+    }
+
+    let (numeric, suffix) = token.split_at(
+        token
+            .find(|c: char| !c.is_ascii_digit() && c != '.')
+            .unwrap_or(token.len()),
+    );
+    if numeric.is_empty() {
+        return false;
+    }
+
+    if suffix.is_empty() {
+        return true;
+    }
+
+    matches!(suffix, "s" | "m" | "h" | "d" | "w" | "ms" | "us" | "µs")
 }
 
 fn flag_is_value_flag(flag: &str, value_flags: &[&str]) -> bool {
@@ -109,6 +332,12 @@ fn flag_is_value_flag(flag: &str, value_flags: &[&str]) -> bool {
         *candidate == flag
             || (flag.starts_with(candidate) && flag != *candidate && candidate.starts_with('-'))
     })
+}
+
+fn flag_consumes_next_value(flag: &str, token: &str, value_flags: &[&str]) -> bool {
+    value_flags
+        .iter()
+        .any(|candidate| *candidate == flag && token == *candidate)
 }
 
 fn is_assignment(token: &str) -> bool {
@@ -121,223 +350,6 @@ fn program_basename(token: &str) -> String {
         .and_then(|name| name.to_str())
         .unwrap_or(token)
         .to_lowercase()
-}
-
-fn classify_command(program: &str, rest: &[String]) -> Option<PolicyGateAction> {
-    match program {
-        "git" => {
-            let stripped = strip_leading_tokens(
-                rest,
-                &["-C", "-c", "--git-dir", "--work-tree", "--namespace"],
-            );
-            for t in stripped {
-                if matches!(
-                    t.as_str(),
-                    "commit"
-                        | "log"
-                        | "status"
-                        | "diff"
-                        | "show"
-                        | "checkout"
-                        | "branch"
-                        | "fetch"
-                        | "pull"
-                        | "rebase"
-                        | "reset"
-                        | "revert"
-                        | "clone"
-                        | "init"
-                        | "add"
-                        | "rm"
-                        | "mv"
-                ) {
-                    return None;
-                }
-                if t == "merge" {
-                    return Some(PolicyGateAction::Merge);
-                }
-                if t == "push" {
-                    return Some(PolicyGateAction::Deploy);
-                }
-            }
-            for (i, t) in rest.iter().enumerate() {
-                if t.starts_with("-c") || (i > 0 && rest[i - 1] == "-c") {
-                    if t.contains("=merge") {
-                        return Some(PolicyGateAction::Merge);
-                    }
-                    if t.contains("=push") {
-                        return Some(PolicyGateAction::Deploy);
-                    }
-                }
-            }
-            None
-        }
-        "gh" => {
-            let stripped =
-                strip_leading_tokens(rest, &["-R", "--repo", "-H", "--hostname", "--workdir"]);
-            let mut pr_seen = false;
-            for t in stripped {
-                if t == "pr" {
-                    pr_seen = true;
-                    continue;
-                }
-                if pr_seen && (t == "merge" || t.contains("=merge")) {
-                    return Some(PolicyGateAction::Merge);
-                }
-            }
-            None
-        }
-        "kubectl" => {
-            let stripped = strip_leading_tokens(
-                rest,
-                &[
-                    "-n",
-                    "--namespace",
-                    "--context",
-                    "--kubeconfig",
-                    "--cluster",
-                    "--user",
-                    "--server",
-                    "--token",
-                    "plugin",
-                ],
-            );
-            for t in stripped {
-                if matches!(
-                    t.as_str(),
-                    "get"
-                        | "describe"
-                        | "logs"
-                        | "explain"
-                        | "exec"
-                        | "port-forward"
-                        | "proxy"
-                        | "top"
-                        | "auth"
-                        | "create"
-                        | "delete"
-                        | "edit"
-                        | "patch"
-                        | "scale"
-                        | "annotate"
-                        | "label"
-                ) {
-                    return None;
-                }
-                if t == "apply" || t == "kustomize" {
-                    return Some(PolicyGateAction::Apply);
-                }
-                if t == "rollout" {
-                    return Some(PolicyGateAction::Deploy);
-                }
-            }
-            None
-        }
-        "terraform" => {
-            let stripped = strip_leading_tokens(rest, &["-chdir", "--chdir"]);
-            for t in stripped {
-                if matches!(
-                    t.as_str(),
-                    "plan"
-                        | "init"
-                        | "validate"
-                        | "fmt"
-                        | "show"
-                        | "state"
-                        | "import"
-                        | "refresh"
-                        | "output"
-                        | "providers"
-                        | "graph"
-                ) {
-                    return None;
-                }
-                if t == "apply" {
-                    return Some(PolicyGateAction::Apply);
-                }
-            }
-            None
-        }
-        "helm" => {
-            let stripped = strip_leading_tokens(rest, &["-n", "--namespace", "--kube-context"]);
-            for t in stripped {
-                if matches!(
-                    t.as_str(),
-                    "install"
-                        | "template"
-                        | "show"
-                        | "lint"
-                        | "get"
-                        | "history"
-                        | "status"
-                        | "list"
-                        | "repo"
-                        | "search"
-                        | "env"
-                        | "plugin"
-                ) {
-                    return None;
-                }
-                if t == "upgrade" {
-                    return Some(PolicyGateAction::Deploy);
-                }
-            }
-            None
-        }
-        "docker" => {
-            let stripped = strip_leading_tokens(rest, &["-H", "--host"]);
-            for t in stripped {
-                if matches!(
-                    t.as_str(),
-                    "build"
-                        | "run"
-                        | "pull"
-                        | "images"
-                        | "ps"
-                        | "logs"
-                        | "exec"
-                        | "inspect"
-                        | "stop"
-                        | "rm"
-                        | "rmi"
-                        | "network"
-                        | "volume"
-                ) {
-                    return None;
-                }
-                if t == "push" {
-                    return Some(PolicyGateAction::Deploy);
-                }
-            }
-            None
-        }
-        "cargo" => {
-            let stripped = strip_leading_tokens(rest, &["-Z"]);
-            for t in stripped {
-                if matches!(
-                    t.as_str(),
-                    "build"
-                        | "check"
-                        | "test"
-                        | "run"
-                        | "fmt"
-                        | "clippy"
-                        | "doc"
-                        | "update"
-                        | "search"
-                        | "install"
-                        | "uninstall"
-                ) {
-                    return None;
-                }
-                if t == "publish" {
-                    return Some(PolicyGateAction::Deploy);
-                }
-            }
-            None
-        }
-        _ => None,
-    }
 }
 
 pub fn evaluate(

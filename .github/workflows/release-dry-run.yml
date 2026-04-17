@@ -1,0 +1,36 @@
+name: Release Dry Run
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to plan
+        required: true
+        default: v0.1.0
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_TARGET_DIR: ${{ github.workspace }}/target
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-dist
+        run: cargo install cargo-dist --locked
+
+      - name: Plan release
+        run: cargo dist plan --tag "${{ inputs.tag }}" | tee dist-plan.txt
+
+      - name: Upload plan artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-plan
+          path: dist-plan.txt

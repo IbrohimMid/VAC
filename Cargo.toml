@@ -87,6 +87,8 @@ tracing-opentelemetry = "0.28"
 opentelemetry = { version = "0.27", features = ["metrics"] }
 opentelemetry_sdk = { version = "0.27", features = ["rt-tokio"] }
 opentelemetry-otlp = { version = "0.27", features = ["grpc-tonic", "http-proto", "reqwest-client", "trace"] }
+
+# Metrics
 metrics = "0.24"
 metrics-exporter-prometheus = "0.16"
 
@@ -137,22 +139,18 @@ lto = "thin"
 codegen-units = 1
 opt-level = 3
 
-[workspace.metadata.dist]
-# The preferred cargo-dist version to use in CI
-cargo-dist-version = "0.14.1"
-# CI backends to support
-ci = ["github"]
-# The installers to generate for each app
-installers = ["shell", "powershell", "homebrew"]
-# A GitHub repo to push Homebrew formulas to
-tap = "IbrohimMid/homebrew-tap"
-# A Scoop bucket to push manifests to
-scoop = "IbrohimMid/scoop-bucket"
-# AUR package is published manually or via specialized action
+[profile.dist]
+inherits = "release"
+lto = "thin"
 
-# Target platforms to build apps for
-targets = ["aarch64-apple-darwin", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc"]
-# Publish jobs to run in CI
-pr-run-mode = "plan"
-# Whether to install an updater program
-install-updater = false
+[workspace.metadata.dist]
+cargo-dist-version = "0.31.0"
+ci = ["github"]
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "aarch64-apple-darwin",
+    "x86_64-apple-darwin",
+    "x86_64-pc-windows-msvc",
+]
+installers = []
+github-attestations = true

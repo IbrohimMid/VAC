@@ -58,7 +58,7 @@ If you are a new user, please check out our **[Onboarding Guide](docs/onboarding
 
 ### Installation
 ```bash
-cargo install --locked
+cargo install --path crates/vac_cli --locked
 ```
 
 ### Usage
@@ -87,6 +87,11 @@ For full documentation and advanced usage, visit: [https://vastar.id/docs/vac](h
 - [Threat Model](docs/THREAT_MODEL.md)
 - [Security Policy](docs/SECURITY.md)
 - [Runtime Queue Boundary](docs/RUNTIME_QUEUE_BOUNDARY.md)
+- [Provider Parity](docs/PROVIDER_PARITY.md)
+- [Security Policy](docs/SECURITY.md)
+- [Releasing](docs/RELEASING.md)
+- [Runbook](docs/RUNBOOK.md)
+- [Stability Log](docs/STABILITY_LOG.md)
 - [Arsitektur Privasi dan Kontrak Eksekusi](docs/privacy_architecture.md)
 - [Runtime Operating Guide](docs/runtime_operating_guide.md)
 - [Structured Approval Flow](docs/STRUCTURED_APPROVAL_FLOW.md)

@@ -1,0 +1,23 @@
+# Build cache & speed config for VAC workspace.
+# Scope: applies only when cargo is run inside this repo (or its worktrees).
+
+[build]
+# Keep the repo portable by default. CI and local workflows can still
+# override this via `CARGO_TARGET_DIR` when they want a custom cache path.
+target-dir = "target"
+
+# Leave ~2 cores for editor/agent responsiveness on 12-thread machines.
+jobs = 10
+
+[profile.dev]
+# "line-tables-only" keeps backtraces usable but cuts debug-info size ~70%
+# and shaves measurable time off link step. Switch to 0 if you never debug.
+debug = "line-tables-only"
+incremental = true
+# More codegen units = more parallelism, slightly worse runtime (fine for dev).
+codegen-units = 256
+
+[profile.dev.package."*"]
+# Dependencies rarely need debug info. Stripping it here is the single biggest
+# win for this workspace given the LLM/RAG dep graph.
+debug = false

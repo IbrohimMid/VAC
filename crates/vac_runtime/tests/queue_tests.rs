@@ -136,7 +136,6 @@ async fn runtime_queue_trait_reads_both_queue_types() {
 }
 
 use proptest::prelude::*;
-use vac_runtime::RuntimeQueue;
 
 fn arbitrary_job_kind() -> impl Strategy<Value = JobKind> {
     prop_oneof![

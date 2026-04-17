@@ -1,18 +1,23 @@
-# 2026-Q3 Re-Audit Delta
+# 2026-Q3 Rebaseline
 
-This document outlines the findings of the 3rd-party re-audit for the 1.0.0 production release of VAC.
+This audit re-baselines the roadmap against the current `main` branch.
 
-## Scope
-The audit covered:
-- **Core Engine (vil_core)**: Rulebook loader, AST parser, validator logic.
-- **Agent Sandbox (vac_runtime)**: Privilege separation, sub-agent spawning, trace redaction.
-- **Editor Integration**: JSON-over-TCP server (`AcpServer`) and LSP service.
+## Summary
 
-## Findings
-- **High**: 0 findings.
-- **Medium**: 0 findings.
-- **Low**: 1 finding related to rate-limiting in the `AcpServer` (Resolved in PR #814).
-- **Informational**: 2 recommendations for enhancing log verbosity during rulebook failures (Resolved).
+- Baseline: current main
+- Scope: phases 0 through 6B
+- Goal: keep claims tied to evidence, not to intent
 
-## Conclusion
-The VAC 1.0.0 architecture has successfully passed the 3rd-party security re-baseline. No critical or blocking vulnerabilities were identified, clearing the path for the production tag.
+## Current evidence index
+
+| Area | Status | Evidence |
+| --- | --- | --- |
+| Secret detection | landed, mutation evidence still being collected | [crates/vac_core/src/security/secret_detector.rs](/home/emp/Documents/VAC/vastar-agentic-cli/crates/vac_core/src/security/secret_detector.rs), [crates/vac_core/tests/policy_gate.rs](/home/emp/Documents/VAC/vastar-agentic-cli/crates/vac_core/tests/policy_gate.rs) |
+| Bundle import | landed, fuzz harness added | [crates/vac_core/src/bundle.rs](/home/emp/Documents/VAC/vastar-agentic-cli/crates/vac_core/src/bundle.rs), [crates/vac_core/fuzz/fuzz_targets/bundle_import.rs](/home/emp/Documents/VAC/vastar-agentic-cli/crates/vac_core/fuzz/fuzz_targets/bundle_import.rs) |
+| Policy gate | wrapper-aware guardrail classifier | [crates/vac_core/src/policy_gate.rs](/home/emp/Documents/VAC/vastar-agentic-cli/crates/vac_core/src/policy_gate.rs) |
+| Provider wiring | config-driven router path | [crates/vil_llm/src/router.rs](/home/emp/Documents/VAC/vastar-agentic-cli/crates/vil_llm/src/router.rs), [crates/vac_core/src/engine.rs](/home/emp/Documents/VAC/vastar-agentic-cli/crates/vac_core/src/engine.rs) |
+
+## Rebaseline rule
+
+- Update this file only when a concrete artifact exists.
+- If a phase claim cannot be backed by a link, keep the claim out of the audit.

@@ -2,18 +2,14 @@
 name = "vac_core-fuzz"
 version = "0.0.0"
 publish = false
-edition = "2024"
+edition = "2021"
 
 [package.metadata]
 cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.4"
-tempfile = "3"
-tokio = { version = "1.43", features = ["full"] }
-
-[dependencies.vac_core]
-path = ".."
+vac_core = { path = ".." }
 
 [[bin]]
 name = "bundle_import"
@@ -23,12 +19,10 @@ doc = false
 bench = false
 
 [[bin]]
-name = "policy_classifier"
-path = "fuzz_targets/policy_classifier.rs"
+name = "policy_gate"
+path = "fuzz_targets/policy_gate.rs"
 test = false
 doc = false
 bench = false
 
-# Prevent this from interfering with workspaces
 [workspace]
-members = ["."]

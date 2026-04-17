@@ -14,7 +14,7 @@ cargo install --path crates/vac_cli --locked
 
 Atau jika Anda sudah berada di dalam repositori utama:
 ```bash
-cargo install --locked
+cargo install --path crates/vac_cli --locked
 ```
 
 Pastikan direktori instalasi `cargo` (biasanya `~/.cargo/bin`) sudah berada di dalam `PATH` sistem Anda.

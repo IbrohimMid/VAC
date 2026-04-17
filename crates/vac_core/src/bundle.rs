@@ -373,6 +373,37 @@ pub fn export_bundle_to_path_with_options(
     Ok(output_path)
 }
 
+/// Parse and validate an imported bundle payload without touching the
+/// filesystem.
+pub fn parse_bundle_from_bytes_with_options(
+    content: &[u8],
+    options: &BundleImportOptions,
+) -> VacResult<VacBundle> {
+    let mut bundle: VacBundle = serde_json::from_slice(content)?;
+
+    ensure_supported_bundle_version(&bundle.metadata.version)?;
+    verify_bundle_signature(&bundle, options.require_signed)?;
+
+    if options.redact_on_import {
+        bundle = redact_bundle(bundle);
+    } else {
+        tracing::warn!(
+            session_id = %bundle.metadata.session_id,
+            "importing bundle without redaction; secrets in the bundle will be preserved"
+        );
+    }
+
+    if let Some(summary) = bundle.context_summary.as_ref() {
+        if summary.len() as u64 > MAX_CONTEXT_SUMMARY_BYTES {
+            return Err(VacError::Session(format!(
+                "Imported context summary exceeds {MAX_CONTEXT_SUMMARY_BYTES} byte cap"
+            )));
+        }
+    }
+
+    Ok(bundle)
+}
+
 pub fn import_bundle_from_path(project_root: &Path, input: &Path) -> VacResult<Uuid> {
     import_bundle_from_path_with_options(project_root, input, BundleImportOptions::default())
 }
@@ -391,33 +422,13 @@ pub fn import_bundle_from_path_with_options(
     }
 
     let content = std::fs::read(input)?;
-    let mut bundle: VacBundle = serde_json::from_slice(&content)?;
+    let bundle = parse_bundle_from_bytes_with_options(&content, &options)?;
     let sid = bundle.metadata.session_id;
-
-    ensure_supported_bundle_version(&bundle.metadata.version)?;
-    verify_bundle_signature(&bundle, options.require_signed)?;
 
     if session_collision_exists(project_root, sid) && !options.overwrite_session {
         return Err(VacError::Session(format!(
             "Session {sid} already exists. Re-run with overwrite enabled to replace it."
         )));
-    }
-
-    if options.redact_on_import {
-        bundle = redact_bundle(bundle);
-    } else {
-        tracing::warn!(
-            session_id = %sid,
-            "importing bundle without redaction; secrets in the bundle will be preserved"
-        );
-    }
-
-    if let Some(summary) = bundle.context_summary.as_ref() {
-        if summary.len() as u64 > MAX_CONTEXT_SUMMARY_BYTES {
-            return Err(VacError::Session(format!(
-                "Imported context summary exceeds {MAX_CONTEXT_SUMMARY_BYTES} byte cap"
-            )));
-        }
     }
 
     if options.trust_approvals {

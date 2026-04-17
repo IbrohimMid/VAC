@@ -1,3 +1,5 @@
-examine_globs = [
-    "crates/vac_core/src/security/secret_detector.rs"
-]
+copy_vcs = true
+gitignore = true
+test_tool = "cargo"
+test_workspace = true
+examine_re = ["secret_detector", "policy_gate"]

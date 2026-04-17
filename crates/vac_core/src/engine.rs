@@ -175,6 +175,13 @@ impl VacEngine {
         self.context_engine = Some(ctx);
 
         info!("Initializing memory store...");
+        if let Some(parent) = self.config.memory.persist_path.parent() {
+            if !parent.as_os_str().is_empty() {
+                std::fs::create_dir_all(parent).map_err(|e| {
+                    VacError::Other(anyhow::anyhow!("Memory store init error: {}", e))
+                })?;
+            }
+        }
         let mem_config = vil_memory::MemoryConfig {
             working_capacity: 100,
             db_path: self.config.memory.persist_path.clone(),
@@ -1294,18 +1301,9 @@ mod tests {
         let temp_dir = tempfile::tempdir().unwrap();
         let project_root = temp_dir.path().to_path_buf();
 
-        // Write minimal config so init won't fail
-        std::fs::write(
-            project_root.join("vac.toml"),
-            r#"
-[llm]
-default_provider = "anthropic"
-[llm.providers.anthropic]
-api_key_env = "ANTHROPIC_API_KEY"
-model = "claude-3-5-sonnet-20241022"
-"#,
-        )
-        .unwrap();
+        // Simulate the bootstrap contract that `vac init` provides.
+        write_config(&project_root, &VacConfig::default());
+        std::fs::create_dir_all(project_root.join(".vac/memory")).unwrap();
 
         let mut engine = VacEngine::new(project_root.clone()).await.unwrap();
 
@@ -1328,7 +1326,7 @@ model = "claude-3-5-sonnet-20241022"
     #[allow(clippy::await_holding_lock)]
     // ENV_LOCK is a std::sync::Mutex used purely to serialize env-var mutations
     // across tests in this module; the awaits inside never re-enter env code.
-    async fn llm_router_tracks_config_file_swaps() {
+    async fn llm_router_requires_restart_for_config_file_swaps() {
         let _guard = ENV_LOCK.lock().unwrap();
         clear_env();
 

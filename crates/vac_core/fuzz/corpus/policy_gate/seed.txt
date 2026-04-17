@@ -1,0 +1,1 @@
+sudo env FOO=bar timeout 30s bash -lc "git merge origin/main"

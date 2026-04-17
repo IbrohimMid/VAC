@@ -140,7 +140,7 @@ async fn test_shell_exit_code() {
     assert!(result.is_ok());
 
     let mut exit_code = None;
-    let timeout = tokio::time::timeout(tokio::time::Duration::from_secs(3), async {
+    let timeout = tokio::time::timeout(tokio::time::Duration::from_secs(5), async {
         while let Some(event) = rx.recv().await {
             if let ShellEvent::Completed(_, code) = event {
                 exit_code = Some(code);
@@ -149,6 +149,8 @@ async fn test_shell_exit_code() {
         }
     });
 
-    let _ = timeout.await;
+    timeout
+        .await
+        .expect("shell completion should arrive before timeout");
     assert_eq!(exit_code, Some(42), "Should capture exit code 42");
 }

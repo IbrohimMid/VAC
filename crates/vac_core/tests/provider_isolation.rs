@@ -20,7 +20,7 @@ fn test_engine_concrete_provider_isolation() {
 
     for entry in WalkDir::new(core_src) {
         let entry = entry.unwrap();
-        if entry.path().extension().map_or(false, |ext| ext == "rs") {
+        if entry.path().extension().is_some_and(|ext| ext == "rs") {
             let content = fs::read_to_string(entry.path()).unwrap();
             for provider in &concrete_providers {
                 if content.contains(provider) {

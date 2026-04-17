@@ -84,13 +84,11 @@ pub fn init(
         } else {
             registry.with(json_layer).try_init()?;
         }
+    } else if let Some(t) = tracer {
+        let telemetry = tracing_opentelemetry::layer().with_tracer(t);
+        registry.with(fmt_layer).with(telemetry).try_init()?;
     } else {
-        if let Some(t) = tracer {
-            let telemetry = tracing_opentelemetry::layer().with_tracer(t);
-            registry.with(fmt_layer).with(telemetry).try_init()?;
-        } else {
-            registry.with(fmt_layer).try_init()?;
-        }
+        registry.with(fmt_layer).try_init()?;
     }
 
     if let Some(addr) = metrics_addr {

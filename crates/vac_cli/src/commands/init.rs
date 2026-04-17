@@ -119,7 +119,7 @@ todo_write = true
 # =============================================================================
 
 [memory]
-persist_path = ".vac/memory"
+persist_path = ".vac/memory/vil_memory.db"
 enable_episodic = true
 enable_semantic = true
 

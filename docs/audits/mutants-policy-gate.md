@@ -1,11 +1,11 @@
-# Secret Detector Mutation Report
+# Policy Gate Mutation Report
 
 Status: scaffolded, awaiting a CI-produced run.
 
 ## Run command
 
 ```bash
-cargo mutants -f crates/vac_core/src/security/secret_detector.rs
+cargo mutants -f crates/vac_core/src/policy_gate.rs
 ```
 
 ## Report fields

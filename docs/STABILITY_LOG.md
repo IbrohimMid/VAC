@@ -1,13 +1,20 @@
-# Stability Log (1.0 Tag Readiness)
+# Stability Log
 
-This log tracks the stability metrics and incidents during the extended canary phase leading up to the 1.0.0 release.
+This log is the wall-clock evidence index for the 6B gate.
 
-## 2026-Q2 to 2026-Q3 (Canary Phase)
-- **Uptime**: 99.99% across all core backend services.
-- **Incident Response**: Zero P0 incidents; three P1 incidents resolved within 15 minutes average.
-- **VIL Engine Validation**: 100% pass rate on the golden task suite validation and regression benchmarks.
-- **Memory Leaks**: No memory leaks detected during long-running cloud-agent execution briefs (`docs/SUPERBATCH_PHASE_3_TO_7.md`).
-- **LSP Integration**: Seamless sync and diagnostic reporting; incremental updates function without fail under high load.
+## Entry format
 
-## Conclusion
-The agent runtime, core logic, and security enforcement mechanisms are stable and production-ready for the 1.0 tag.
+| Date | Environment | Critical bugs | Evidence | Notes |
+| --- | --- | --- | --- | --- |
+| yyyy-mm-dd | local / staging / internal deploy | 0 | link to artifact or test run | short note |
+
+## Rules
+
+- Record only observed bugs, not hypothetical risks.
+- Link each entry to a concrete artifact, test run, or deployment note.
+- Do not use this file as the only proof of stability; it is an index only.
+
+## Evidence
+
+- [docs/internal_deployments.md](/home/emp/Documents/VAC/vastar-agentic-cli/docs/internal_deployments.md)
+- [docs/audits/2026-Q3-rebaseline.md](/home/emp/Documents/VAC/vastar-agentic-cli/docs/audits/2026-Q3-rebaseline.md)
