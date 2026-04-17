@@ -10,6 +10,7 @@ use tokio::sync::{RwLock, mpsc};
 use tracing::{info, warn};
 
 use crate::providers::anthropic::AnthropicProvider;
+use crate::providers::openai::OpenAiProvider;
 
 fn is_retryable(e: &LlmError) -> bool {
     match e {
@@ -59,6 +60,11 @@ impl LlmRouter {
 
     pub fn with_kilo_gateway(&mut self) -> &mut Self {
         self.add_provider(Arc::new(AnthropicProvider::new()));
+        self
+    }
+
+    pub fn with_openai(&mut self) -> &mut Self {
+        self.add_provider(Arc::new(OpenAiProvider::new()));
         self
     }
 
