@@ -24,10 +24,13 @@ pub enum PolicyGateMode {
 }
 
 impl PolicyGateMode {
-    pub fn parse(s: &str) -> Self {
+    /// Parse mode string. Unknown values return `None` so callers can
+    /// fail-closed (treat as Strict) instead of silently degrading to Soft.
+    pub fn parse(s: &str) -> Option<Self> {
         match normalize_key(s).as_str() {
-            "strict" => Self::Strict,
-            _ => Self::Soft,
+            "strict" => Some(Self::Strict),
+            "soft" => Some(Self::Soft),
+            _ => None,
         }
     }
 }
@@ -90,7 +93,13 @@ pub fn evaluate(
         return PolicyGateDecision::Allow;
     }
 
-    let mode = PolicyGateMode::parse(&cfg.mode);
+    let mode = PolicyGateMode::parse(&cfg.mode).unwrap_or_else(|| {
+        tracing::warn!(
+            mode = %cfg.mode,
+            "policy_gate: unknown mode, defaulting to Strict (fail-closed)"
+        );
+        PolicyGateMode::Strict
+    });
     match score {
         Some(s) => {
             if s < cfg.threshold {
@@ -108,10 +117,16 @@ pub fn evaluate(
                 PolicyGateDecision::Allow
             }
         }
-        None => PolicyGateDecision::Warn(format!(
-            "Policy gate: validation score tidak tersedia; aksi '{}' dilewatkan tanpa gate.",
-            action.as_str()
-        )),
+        None => {
+            let msg = format!(
+                "Policy gate: validation score tidak tersedia untuk aksi '{}'.",
+                action.as_str()
+            );
+            match mode {
+                PolicyGateMode::Strict => PolicyGateDecision::Block(msg),
+                PolicyGateMode::Soft => PolicyGateDecision::Warn(msg),
+            }
+        }
     }
 }
 

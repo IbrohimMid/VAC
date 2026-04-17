@@ -3,6 +3,7 @@
 use crate::agent::*;
 use crate::context_crawler::{ContextCrawler, inject_workspace_context};
 use crate::error::{SwarmError, SwarmResult};
+use crate::reasoning_fsm::{ReasoningEvent, ReasoningTransition};
 use crate::semantic::{PlannerGateResult, evaluate_planner_output};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -773,10 +774,7 @@ Rules:
                     iteration: state.iterations,
                 });
 
-            let transitions = state
-                .reasoning
-                .apply(crate::reasoning_fsm::ReasoningEvent::BeginAttempt)
-                .map_err(|e| SwarmError::Orchestration(e.to_string()))?;
+            let transitions = begin_reasoning_iteration(state)?;
             if let Some(tx) = &updates {
                 for t in transitions {
                     let _ = tx.send(AgentLoopEvent::ReasoningTransition {
@@ -913,26 +911,9 @@ Rules:
                                 || m.content.starts_with("Denied:")
                                 || m.content.starts_with("Rejected:"))
                     });
-                    let obs = state
-                        .reasoning
-                        .apply(crate::reasoning_fsm::ReasoningEvent::Observe { had_error })
-                        .map_err(|e| SwarmError::Orchestration(e.to_string()))?;
+                    let obs = observe_tool_results(state, had_error)?;
                     if let Some(tx) = &updates {
                         for t in obs {
-                            let _ = tx.send(AgentLoopEvent::ReasoningTransition {
-                                from: t.from,
-                                to: t.to,
-                                attempt: t.attempt,
-                            });
-                        }
-                    }
-
-                    let retry = state
-                        .reasoning
-                        .apply(crate::reasoning_fsm::ReasoningEvent::SetRetry)
-                        .map_err(|e| SwarmError::Orchestration(e.to_string()))?;
-                    if let Some(tx) = &updates {
-                        for t in retry {
                             let _ = tx.send(AgentLoopEvent::ReasoningTransition {
                                 from: t.from,
                                 to: t.to,
@@ -1343,5 +1324,77 @@ Rules:
 
     pub fn agents(&self) -> &HashMap<AgentId, AgentDefinition> {
         &self.agents
+    }
+}
+
+fn begin_reasoning_iteration(
+    state: &mut crate::run_state::AgentRunState,
+) -> SwarmResult<Vec<ReasoningTransition>> {
+    let mut transitions = Vec::new();
+    if state.iterations > 1 {
+        transitions.extend(
+            state
+                .reasoning
+                .apply(ReasoningEvent::SetRetry)
+                .map_err(|e| SwarmError::Orchestration(e.to_string()))?,
+        );
+    }
+    transitions.extend(
+        state
+            .reasoning
+            .apply(ReasoningEvent::BeginAttempt)
+            .map_err(|e| SwarmError::Orchestration(e.to_string()))?,
+    );
+    Ok(transitions)
+}
+
+fn observe_tool_results(
+    state: &mut crate::run_state::AgentRunState,
+    had_error: bool,
+) -> SwarmResult<Vec<ReasoningTransition>> {
+    state
+        .reasoning
+        .apply(ReasoningEvent::Observe { had_error })
+        .map_err(|e| SwarmError::Orchestration(e.to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::reasoning_fsm::ReasoningPhase;
+
+    #[test]
+    fn begin_reasoning_iteration_only_marks_retry_before_followup_attempts() {
+        let mut state = crate::run_state::AgentRunState::new(vec![], None);
+
+        state.iterations = 1;
+        let first = begin_reasoning_iteration(&mut state).unwrap();
+        assert!(first.is_empty());
+        assert_eq!(state.reasoning.phase, ReasoningPhase::Attempt);
+        assert_eq!(state.reasoning.attempt, 1);
+
+        let observe = observe_tool_results(&mut state, false).unwrap();
+        let observe_phases: Vec<_> = observe.iter().map(|t| (t.from, t.to)).collect();
+        assert_eq!(
+            observe_phases,
+            vec![
+                (ReasoningPhase::Attempt, ReasoningPhase::Observe),
+                (ReasoningPhase::Observe, ReasoningPhase::Plan),
+            ]
+        );
+        assert_eq!(state.reasoning.phase, ReasoningPhase::Plan);
+
+        state.iterations = 2;
+        let second = begin_reasoning_iteration(&mut state).unwrap();
+        let second_phases: Vec<_> = second.iter().map(|t| (t.from, t.to)).collect();
+        assert_eq!(
+            second_phases,
+            vec![
+                (ReasoningPhase::Plan, ReasoningPhase::Retry),
+                (ReasoningPhase::Retry, ReasoningPhase::Attempt),
+            ]
+        );
+        assert_eq!(state.reasoning.phase, ReasoningPhase::Attempt);
+        assert_eq!(state.reasoning.attempt, 2);
     }
 }

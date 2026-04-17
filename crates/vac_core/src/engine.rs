@@ -582,7 +582,7 @@ impl VacEngine {
         info!("Starting agent loop execution...");
         let trace_handle = self.trace_recorder.clone();
         let update_tx = updates.clone();
-        let (swarm_tx, mut swarm_rx) = mpsc::unbounded_channel::<vil_swarm::AgentLoopEvent>();
+        let (swarm_tx, swarm_rx) = mpsc::unbounded_channel::<vil_swarm::AgentLoopEvent>();
         let session_id = self.session.read().await.id;
         let project_root = self.project_root.clone();
         let privacy_vault = self.privacy_vault.clone();
@@ -603,176 +603,15 @@ impl VacEngine {
                 });
             }
         }
-        tokio::spawn(async move {
-            while let Some(event) = swarm_rx.recv().await {
-                if let Some(ref recorder) = trace_handle {
-                    match recorder.lock() {
-                        Ok(mut rec) => {
-                            match &event {
-                                vil_swarm::AgentLoopEvent::LlmRequest {
-                                    provider,
-                                    model,
-                                    message_count,
-                                } => {
-                                    rec.record_llm_request(provider, model, *message_count);
-                                }
-                                vil_swarm::AgentLoopEvent::AssistantMessage {
-                                    content,
-                                    tool_calls,
-                                } => {
-                                    rec.record(
-                                        vac_trace::RecordType::AgentMessage,
-                                        None,
-                                        serde_json::json!({
-                                            "content": content,
-                                            "tool_calls": tool_calls,
-                                        }),
-                                    );
-                                }
-                                vil_swarm::AgentLoopEvent::ToolCall {
-                                    id: _,
-                                    name,
-                                    arguments,
-                                } => {
-                                    rec.record_tool_call(name, arguments);
-                                }
-                                vil_swarm::AgentLoopEvent::ToolResult {
-                                    id: _,
-                                    name,
-                                    content,
-                                    success,
-                                } => {
-                                    rec.record_tool_result(name, content, *success);
-                                }
-                                vil_swarm::AgentLoopEvent::ApprovalDecision {
-                                    tool_call_id,
-                                    tool_name,
-                                    approved,
-                                    reason,
-                                } => {
-                                    rec.record(
-                                        vac_trace::RecordType::PolicyDecision,
-                                        None,
-                                        serde_json::json!({
-                                            "kind": "approval_decision",
-                                            "tool_call_id": tool_call_id,
-                                            "tool_name": tool_name,
-                                            "approved": approved,
-                                            "reason": reason,
-                                        }),
-                                    );
-                                }
-                                vil_swarm::AgentLoopEvent::ReasoningTransition {
-                                    from,
-                                    to,
-                                    attempt,
-                                } => {
-                                    rec.record(
-                                        vac_trace::RecordType::PolicyDecision,
-                                        None,
-                                        serde_json::json!({
-                                            "kind": "reasoning_transition",
-                                            "from": from,
-                                            "to": to,
-                                            "attempt": attempt,
-                                        }),
-                                    );
-                                }
-                                vil_swarm::AgentLoopEvent::ModelResponse { provider, model } => {
-                                    rec.record_llm_response(provider, model);
-                                }
-                                _ => {}
-                            }
-                            if let Err(e) = rec.flush() {
-                                tracing::warn!("Failed to write trace to disk: {}", e);
-                            }
-                        }
-                        Err(e) => tracing::warn!("Trace recorder lock is poisoned: {}", e),
-                    }
-                }
-                if let Some(ref tx) = update_tx {
-                    let update = match event {
-                        vil_swarm::AgentLoopEvent::Status(message) => {
-                            Some(RuntimeUpdate::Status(message))
-                        }
-                        vil_swarm::AgentLoopEvent::ModelResponse { provider, model } => {
-                            Some(RuntimeUpdate::ModelInfo { provider, model })
-                        }
-                        vil_swarm::AgentLoopEvent::AssistantChunk(chunk) => {
-                            let restored = {
-                                let vault = privacy_vault.read().await;
-                                vault.restore(&chunk)
-                            };
-                            Some(RuntimeUpdate::AssistantChunk(restored))
-                        }
-                        vil_swarm::AgentLoopEvent::ToolCall {
-                            id,
-                            name,
-                            arguments,
-                        } => Some(RuntimeUpdate::ToolCall {
-                            id,
-                            name,
-                            arguments,
-                        }),
-                        vil_swarm::AgentLoopEvent::ToolResult {
-                            id,
-                            name,
-                            content,
-                            success,
-                        } => Some(RuntimeUpdate::ToolResult {
-                            id,
-                            name,
-                            content,
-                            success,
-                        }),
-                        vil_swarm::AgentLoopEvent::ApprovalRequired {
-                            tool_call_id,
-                            tool_name,
-                            arguments,
-                            explanation,
-                        } => {
-                            let store = approval_store.clone();
-                            let tool_call_id_disk = tool_call_id.clone();
-                            let tool_name_disk = tool_name.clone();
-                            let args_disk = arguments.clone();
-                            let explanation_disk = explanation.clone();
-                            if let Err(e) = tokio::task::spawn_blocking(move || {
-                                store.record_request(
-                                    tool_call_id_disk,
-                                    tool_name_disk,
-                                    args_disk,
-                                    explanation_disk,
-                                    Some(session_uuid),
-                                    Some(task_uuid),
-                                )
-                            })
-                            .await
-                            .map_err(|e| {
-                                VacError::Task(format!("Approval store task failed: {}", e))
-                            })
-                            .and_then(|r| r)
-                            {
-                                warn!(error = %e, "Failed to persist approval request");
-                            }
-
-                            Some(RuntimeUpdate::ApprovalRequired {
-                                tool_call_id,
-                                tool_name,
-                                arguments,
-                                explanation,
-                            })
-                        }
-                        vil_swarm::AgentLoopEvent::ApprovalDecision { .. } => None,
-                        vil_swarm::AgentLoopEvent::ReasoningTransition { .. } => None,
-                        vil_swarm::AgentLoopEvent::AssistantMessage { .. } => None,
-                        vil_swarm::AgentLoopEvent::LlmRequest { .. } => None,
-                    };
-                    if let Some(up) = update {
-                        let _ = tx.send(up);
-                    }
-                }
-            }
-        });
+        spawn_agent_event_bridge(
+            swarm_rx,
+            trace_handle,
+            update_tx,
+            privacy_vault,
+            approval_store,
+            session_uuid,
+            task_uuid,
+        );
 
         let execution = swarm
             .agent_loop_with_full_context(
@@ -974,7 +813,7 @@ impl VacEngine {
 
         let trace_handle = self.trace_recorder.clone();
         let update_tx = updates.clone();
-        let (swarm_tx, mut swarm_rx) =
+        let (swarm_tx, swarm_rx) =
             tokio::sync::mpsc::unbounded_channel::<vil_swarm::AgentLoopEvent>();
         let project_root = self.project_root.clone();
         let privacy_vault = self.privacy_vault.clone();
@@ -982,164 +821,15 @@ impl VacEngine {
         let task_uuid = resume_task_id;
         let session_uuid = session_id;
 
-        tokio::spawn(async move {
-            while let Some(event) = swarm_rx.recv().await {
-                if let Some(ref recorder) = trace_handle {
-                    if let Ok(mut rec) = recorder.lock() {
-                        match &event {
-                            vil_swarm::AgentLoopEvent::LlmRequest {
-                                provider,
-                                model,
-                                message_count,
-                            } => {
-                                rec.record_llm_request(provider, model, *message_count);
-                            }
-                            vil_swarm::AgentLoopEvent::AssistantMessage {
-                                content,
-                                tool_calls,
-                            } => {
-                                rec.record(
-                                    vac_trace::RecordType::AgentMessage,
-                                    None,
-                                    serde_json::json!({
-                                        "content": content,
-                                        "tool_calls": tool_calls,
-                                    }),
-                                );
-                            }
-                            vil_swarm::AgentLoopEvent::ToolCall {
-                                id: _,
-                                name,
-                                arguments,
-                            } => {
-                                rec.record_tool_call(name, arguments);
-                            }
-                            vil_swarm::AgentLoopEvent::ToolResult {
-                                id: _,
-                                name,
-                                content,
-                                success,
-                            } => {
-                                rec.record_tool_result(name, content, *success);
-                            }
-                            vil_swarm::AgentLoopEvent::ApprovalDecision {
-                                tool_call_id,
-                                tool_name,
-                                approved,
-                                reason,
-                            } => {
-                                rec.record(
-                                    vac_trace::RecordType::PolicyDecision,
-                                    None,
-                                    serde_json::json!({
-                                        "kind": "approval_decision",
-                                        "tool_call_id": tool_call_id,
-                                        "tool_name": tool_name,
-                                        "approved": approved,
-                                        "reason": reason,
-                                    }),
-                                );
-                            }
-                            vil_swarm::AgentLoopEvent::ReasoningTransition {
-                                from,
-                                to,
-                                attempt,
-                            } => {
-                                rec.record(
-                                    vac_trace::RecordType::PolicyDecision,
-                                    None,
-                                    serde_json::json!({
-                                        "kind": "reasoning_transition",
-                                        "from": from,
-                                        "to": to,
-                                        "attempt": attempt,
-                                    }),
-                                );
-                            }
-                            vil_swarm::AgentLoopEvent::ModelResponse { provider, model } => {
-                                rec.record_llm_response(provider, model);
-                            }
-                            _ => {}
-                        }
-                        let _ = rec.flush();
-                    }
-                }
-                if let Some(ref tx) = update_tx {
-                    let update = match event {
-                        vil_swarm::AgentLoopEvent::Status(message) => {
-                            Some(RuntimeUpdate::Status(message))
-                        }
-                        vil_swarm::AgentLoopEvent::ModelResponse { provider, model } => {
-                            Some(RuntimeUpdate::ModelInfo { provider, model })
-                        }
-                        vil_swarm::AgentLoopEvent::AssistantChunk(chunk) => {
-                            let restored = {
-                                let vault = privacy_vault.read().await;
-                                vault.restore(&chunk)
-                            };
-                            Some(RuntimeUpdate::AssistantChunk(restored))
-                        }
-                        vil_swarm::AgentLoopEvent::ToolCall {
-                            id,
-                            name,
-                            arguments,
-                        } => Some(RuntimeUpdate::ToolCall {
-                            id,
-                            name,
-                            arguments,
-                        }),
-                        vil_swarm::AgentLoopEvent::ToolResult {
-                            id,
-                            name,
-                            content,
-                            success,
-                        } => Some(RuntimeUpdate::ToolResult {
-                            id,
-                            name,
-                            content,
-                            success,
-                        }),
-                        vil_swarm::AgentLoopEvent::ApprovalRequired {
-                            tool_call_id,
-                            tool_name,
-                            arguments,
-                            explanation,
-                        } => {
-                            let store = approval_store.clone();
-                            let tool_call_id_disk = tool_call_id.clone();
-                            let tool_name_disk = tool_name.clone();
-                            let args_disk = arguments.clone();
-                            let explanation_disk = explanation.clone();
-                            let _ = tokio::task::spawn_blocking(move || {
-                                store.record_request(
-                                    tool_call_id_disk,
-                                    tool_name_disk,
-                                    args_disk,
-                                    explanation_disk,
-                                    Some(session_uuid),
-                                    Some(task_uuid),
-                                )
-                            })
-                            .await;
-
-                            Some(RuntimeUpdate::ApprovalRequired {
-                                tool_call_id,
-                                tool_name,
-                                arguments,
-                                explanation,
-                            })
-                        }
-                        vil_swarm::AgentLoopEvent::ApprovalDecision { .. } => None,
-                        vil_swarm::AgentLoopEvent::ReasoningTransition { .. } => None,
-                        vil_swarm::AgentLoopEvent::AssistantMessage { .. } => None,
-                        vil_swarm::AgentLoopEvent::LlmRequest { .. } => None,
-                    };
-                    if let Some(up) = update {
-                        let _ = tx.send(up);
-                    }
-                }
-            }
-        });
+        spawn_agent_event_bridge(
+            swarm_rx,
+            trace_handle,
+            update_tx,
+            privacy_vault,
+            approval_store,
+            session_uuid,
+            task_uuid,
+        );
 
         state.cancel = cancel.clone();
 
@@ -1298,6 +988,223 @@ fn resolve_provider_api_key(env_name: &str) -> Option<String> {
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
         .or_else(|| auth::resolve_kilo_api_key().ok().flatten())
+}
+
+fn spawn_agent_event_bridge(
+    mut swarm_rx: mpsc::UnboundedReceiver<vil_swarm::AgentLoopEvent>,
+    trace_handle: Option<std::sync::Arc<std::sync::Mutex<vac_trace::TraceRecorder>>>,
+    update_tx: Option<mpsc::UnboundedSender<RuntimeUpdate>>,
+    privacy_vault: Arc<RwLock<vac_tools::PrivacyVault>>,
+    approval_store: ApprovalStore,
+    session_uuid: uuid::Uuid,
+    task_uuid: uuid::Uuid,
+) {
+    tokio::spawn(async move {
+        while let Some(event) = swarm_rx.recv().await {
+            record_agent_event(trace_handle.as_ref(), &event);
+            if let Some(ref tx) = update_tx {
+                if let Some(update) = runtime_update_from_agent_event(
+                    event,
+                    &privacy_vault,
+                    &approval_store,
+                    session_uuid,
+                    task_uuid,
+                )
+                .await
+                {
+                    let _ = tx.send(update);
+                }
+            }
+        }
+    });
+}
+
+fn record_agent_event(
+    trace_handle: Option<&std::sync::Arc<std::sync::Mutex<vac_trace::TraceRecorder>>>,
+    event: &vil_swarm::AgentLoopEvent,
+) {
+    let Some(recorder) = trace_handle else {
+        return;
+    };
+
+    match recorder.lock() {
+        Ok(mut rec) => {
+            match event {
+                vil_swarm::AgentLoopEvent::LlmRequest {
+                    provider,
+                    model,
+                    message_count,
+                } => {
+                    rec.record_llm_request(provider, model, *message_count);
+                }
+                vil_swarm::AgentLoopEvent::AssistantMessage {
+                    content,
+                    tool_calls,
+                } => {
+                    rec.record(
+                        vac_trace::RecordType::AgentMessage,
+                        None,
+                        serde_json::json!({
+                            "content": content,
+                            "tool_calls": tool_calls,
+                        }),
+                    );
+                }
+                vil_swarm::AgentLoopEvent::ToolCall {
+                    id: _,
+                    name,
+                    arguments,
+                } => {
+                    rec.record_tool_call(name, arguments);
+                }
+                vil_swarm::AgentLoopEvent::ToolResult {
+                    id: _,
+                    name,
+                    content,
+                    success,
+                } => {
+                    rec.record_tool_result(name, content, *success);
+                }
+                vil_swarm::AgentLoopEvent::ApprovalDecision {
+                    tool_call_id,
+                    tool_name,
+                    approved,
+                    reason,
+                } => {
+                    rec.record(
+                        vac_trace::RecordType::PolicyDecision,
+                        None,
+                        serde_json::json!({
+                            "kind": "approval_decision",
+                            "tool_call_id": tool_call_id,
+                            "tool_name": tool_name,
+                            "approved": approved,
+                            "reason": reason,
+                        }),
+                    );
+                }
+                vil_swarm::AgentLoopEvent::ReasoningTransition { from, to, attempt } => {
+                    rec.record(
+                        vac_trace::RecordType::PolicyDecision,
+                        None,
+                        serde_json::json!({
+                            "kind": "reasoning_transition",
+                            "from": from,
+                            "to": to,
+                            "attempt": attempt,
+                        }),
+                    );
+                }
+                vil_swarm::AgentLoopEvent::ModelResponse { provider, model } => {
+                    rec.record_llm_response(provider, model);
+                }
+                _ => {}
+            }
+
+            if let Err(e) = rec.flush() {
+                warn!(error = %e, "Failed to write trace to disk");
+            }
+        }
+        Err(e) => warn!(error = %e, "Trace recorder lock is poisoned"),
+    }
+}
+
+async fn runtime_update_from_agent_event(
+    event: vil_swarm::AgentLoopEvent,
+    privacy_vault: &Arc<RwLock<vac_tools::PrivacyVault>>,
+    approval_store: &ApprovalStore,
+    session_uuid: uuid::Uuid,
+    task_uuid: uuid::Uuid,
+) -> Option<RuntimeUpdate> {
+    match event {
+        vil_swarm::AgentLoopEvent::Status(message) => Some(RuntimeUpdate::Status(message)),
+        vil_swarm::AgentLoopEvent::ModelResponse { provider, model } => {
+            Some(RuntimeUpdate::ModelInfo { provider, model })
+        }
+        vil_swarm::AgentLoopEvent::AssistantChunk(chunk) => {
+            let restored = {
+                let vault = privacy_vault.read().await;
+                vault.restore(&chunk)
+            };
+            Some(RuntimeUpdate::AssistantChunk(restored))
+        }
+        vil_swarm::AgentLoopEvent::ToolCall {
+            id,
+            name,
+            arguments,
+        } => Some(RuntimeUpdate::ToolCall {
+            id,
+            name,
+            arguments,
+        }),
+        vil_swarm::AgentLoopEvent::ToolResult {
+            id,
+            name,
+            content,
+            success,
+        } => Some(RuntimeUpdate::ToolResult {
+            id,
+            name,
+            content,
+            success,
+        }),
+        vil_swarm::AgentLoopEvent::ApprovalRequired {
+            tool_call_id,
+            tool_name,
+            arguments,
+            explanation,
+        } => {
+            persist_approval_request(
+                approval_store,
+                tool_call_id.clone(),
+                tool_name.clone(),
+                arguments.clone(),
+                explanation.clone(),
+                session_uuid,
+                task_uuid,
+            )
+            .await;
+
+            Some(RuntimeUpdate::ApprovalRequired {
+                tool_call_id,
+                tool_name,
+                arguments,
+                explanation,
+            })
+        }
+        vil_swarm::AgentLoopEvent::ApprovalDecision { .. }
+        | vil_swarm::AgentLoopEvent::ReasoningTransition { .. }
+        | vil_swarm::AgentLoopEvent::AssistantMessage { .. }
+        | vil_swarm::AgentLoopEvent::LlmRequest { .. } => None,
+    }
+}
+
+async fn persist_approval_request(
+    approval_store: &ApprovalStore,
+    tool_call_id: String,
+    tool_name: String,
+    arguments: serde_json::Value,
+    explanation: Option<String>,
+    session_uuid: uuid::Uuid,
+    task_uuid: uuid::Uuid,
+) {
+    let store = approval_store.clone();
+    if let Err(e) = tokio::task::spawn_blocking(move || {
+        store.record_request(
+            tool_call_id,
+            tool_name,
+            arguments,
+            explanation,
+            Some(session_uuid),
+            Some(task_uuid),
+        )
+    })
+    .await
+    .map_err(|e| VacError::Task(format!("Approval store task failed: {}", e)))
+    .and_then(|r| r)
+    {
+        warn!(error = %e, "Failed to persist approval request");
+    }
 }
 
 /// Snapshot of engine status.

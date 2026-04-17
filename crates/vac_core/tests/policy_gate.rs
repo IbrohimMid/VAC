@@ -52,11 +52,23 @@ fn soft_warns_below_threshold() {
 }
 
 #[test]
-fn missing_score_falls_back_to_warn() {
+fn missing_score_blocks_in_strict() {
     let cfg = PolicyGateConfig {
         enable: true,
         threshold: 0.9,
         mode: "strict".to_string(),
+        actions: vec!["deploy".to_string()],
+    };
+    let d = evaluate(&cfg, PolicyGateAction::Deploy, None);
+    assert!(matches!(d, PolicyGateDecision::Block(_)));
+}
+
+#[test]
+fn missing_score_warns_in_soft() {
+    let cfg = PolicyGateConfig {
+        enable: true,
+        threshold: 0.9,
+        mode: "soft".to_string(),
         actions: vec!["deploy".to_string()],
     };
     let d = evaluate(&cfg, PolicyGateAction::Deploy, None);

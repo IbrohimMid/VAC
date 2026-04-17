@@ -87,11 +87,19 @@ impl AgentTaskQueue {
     pub fn with_storage(path: PathBuf) -> Self {
         let mut loaded = VecDeque::new();
         if path.exists() {
-            if let Ok(content) = std::fs::read_to_string(&path) {
-                if let Ok(tasks) = serde_json::from_str::<Vec<AgentTask>>(&content) {
-                    for t in tasks {
-                        loaded.push_back(t);
+            match std::fs::read_to_string(&path) {
+                Ok(content) => match serde_json::from_str::<Vec<AgentTask>>(&content) {
+                    Ok(tasks) => {
+                        for t in tasks {
+                            loaded.push_back(t);
+                        }
                     }
+                    Err(e) => {
+                        tracing::warn!(?path, error = %e, "agent_scheduler: failed to parse queue storage; starting empty");
+                    }
+                },
+                Err(e) => {
+                    tracing::warn!(?path, error = %e, "agent_scheduler: failed to read queue storage; starting empty");
                 }
             }
         }
@@ -107,12 +115,22 @@ impl AgentTaskQueue {
             return;
         };
         if let Some(parent) = path.parent() {
-            let _ = std::fs::create_dir_all(parent);
+            if let Err(e) = std::fs::create_dir_all(parent) {
+                tracing::warn!(?path, error = %e, "agent_scheduler: failed to create queue storage dir");
+                return;
+            }
         }
         let tasks = self.tasks.read().await;
         let vec: Vec<AgentTask> = tasks.iter().cloned().collect();
-        if let Ok(json) = serde_json::to_string_pretty(&vec) {
-            let _ = std::fs::write(path, json);
+        match serde_json::to_string_pretty(&vec) {
+            Ok(json) => {
+                if let Err(e) = std::fs::write(path, json) {
+                    tracing::warn!(?path, error = %e, "agent_scheduler: failed to persist queue storage");
+                }
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "agent_scheduler: failed to serialize queue");
+            }
         }
     }
 
@@ -460,7 +478,8 @@ async fn set_worker_status(
     status: AgentWorkerStatus,
     last_output: Option<String>,
 ) {
-    {
+    let counts = queue.counts().await;
+    let snapshot = {
         let mut s = state.write().await;
         if let Some(w) = s.workers.iter_mut().find(|w| w.worker_id == worker_id) {
             w.status = status;
@@ -469,18 +488,28 @@ async fn set_worker_status(
             }
             w.updated_at = Utc::now();
         }
-        s.counts = queue.counts().await;
+        s.counts = counts;
         s.updated_at = Utc::now();
-    }
+        serde_json::to_string_pretty(&*s)
+    };
 
     let Some(path) = state_file else {
         return;
     };
     if let Some(parent) = path.parent() {
-        let _ = std::fs::create_dir_all(parent);
+        if let Err(e) = std::fs::create_dir_all(parent) {
+            tracing::warn!(?path, error = %e, "agent_scheduler: failed to create state dir");
+            return;
+        }
     }
-    let s = state.read().await;
-    if let Ok(json) = serde_json::to_string_pretty(&*s) {
-        let _ = std::fs::write(path, json);
+    match snapshot {
+        Ok(json) => {
+            if let Err(e) = std::fs::write(path, json) {
+                tracing::warn!(?path, error = %e, "agent_scheduler: failed to persist state file");
+            }
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "agent_scheduler: failed to serialize state");
+        }
     }
 }

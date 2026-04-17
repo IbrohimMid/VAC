@@ -96,7 +96,8 @@ impl AgentContextSnapshot {
         }
 
         if out.len() > max_chars {
-            out.truncate(max_chars);
+            let boundary = char_boundary_at_or_before(&out, max_chars);
+            out.truncate(boundary);
             if !out.ends_with('\n') {
                 out.push('\n');
             }
@@ -206,24 +207,14 @@ impl GitChangesSummary {
             if line.starts_with("## ") {
                 continue;
             }
+            let Some((status, path)) = parse_porcelain_entry(line) else {
+                continue;
+            };
+
             out.total_files += 1;
-            if let Some(path) = line.strip_prefix("??") {
+            if status == "??" {
                 out.untracked += 1;
-                if out.files.len() < max_files {
-                    out.files.push(GitFileStatus {
-                        status: "??".to_string(),
-                        path: path.trim().to_string(),
-                    });
-                }
-                continue;
-            }
-            if line.len() < 4 {
-                continue;
-            }
-            let status = &line[0..2];
-            let path = line[3..].trim();
-            let is_conflict = is_conflict_status(status);
-            if is_conflict {
+            } else if is_conflict_status(status) {
                 out.conflicted += 1;
             } else {
                 let staged = status.as_bytes()[0] != b' ';
@@ -265,6 +256,40 @@ async fn read_limited<R: tokio::io::AsyncRead + Unpin>(r: &mut R, max: usize) ->
 
 fn is_conflict_status(code: &str) -> bool {
     code == "AA" || code == "DD" || code.as_bytes().contains(&b'U')
+}
+
+fn parse_porcelain_entry(line: &str) -> Option<(&str, &str)> {
+    let bytes = line.as_bytes();
+    if bytes.len() < 4 || bytes[2] != b' ' {
+        return None;
+    }
+
+    let status = std::str::from_utf8(&bytes[..2]).ok()?;
+    let raw_path = line.get(3..)?;
+    if raw_path.is_empty() {
+        return None;
+    }
+
+    let is_rename_or_copy = status.as_bytes().iter().any(|b| matches!(b, b'R' | b'C'));
+    let path = if is_rename_or_copy {
+        raw_path
+            .rsplit_once(" -> ")
+            .map(|(_, renamed)| renamed)
+            .filter(|renamed| !renamed.is_empty())
+            .unwrap_or(raw_path)
+    } else {
+        raw_path
+    };
+
+    Some((status, path))
+}
+
+fn char_boundary_at_or_before(s: &str, limit: usize) -> usize {
+    let mut boundary = limit.min(s.len());
+    while boundary > 0 && !s.is_char_boundary(boundary) {
+        boundary -= 1;
+    }
+    boundary
 }
 
 pub fn inject_workspace_context(messages: &mut Vec<vil_llm::provider::Message>, prompt: String) {
@@ -345,5 +370,29 @@ mod tests {
         assert_eq!(sum.untracked, 2);
         assert_eq!(sum.conflicted, 1);
         assert_eq!(sum.files.len(), 2);
+    }
+
+    #[test]
+    fn parse_porcelain_rename_keeps_destination_path_for_multibyte_names() {
+        let porcelain = "R  old/naïve.rs -> new/你好.rs\n";
+        let sum = GitChangesSummary::from_porcelain(porcelain, 5);
+        assert_eq!(sum.total_files, 1);
+        assert_eq!(sum.staged, 1);
+        assert_eq!(sum.files.len(), 1);
+        assert_eq!(sum.files[0].status, "R ");
+        assert_eq!(sum.files[0].path, "new/你好.rs");
+    }
+
+    #[test]
+    fn prompt_block_truncation_never_panics_on_multibyte_boundaries() {
+        let snap = AgentContextSnapshot {
+            cwd: "/tmp/你".to_string(),
+            git: None,
+        };
+        let limit = "Workspace Context:\n- CWD: /tmp/".len() + 1;
+        let rendered = std::panic::catch_unwind(|| snap.to_prompt_block_with_limit(limit))
+            .expect("truncation should not panic on multibyte boundaries");
+        assert!(rendered.len() <= limit);
+        assert!(rendered.ends_with('\n'));
     }
 }

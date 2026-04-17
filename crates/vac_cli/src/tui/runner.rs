@@ -297,9 +297,6 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
     // Initialize engine (load tools, policies, etc.)
     let warnings = engine.init().await?;
 
-    // We will add the warnings to the banner queue later via InputEvent or direct injection
-    // Wait, TUI state is not initialized yet.
-    // We will inject it below.
     let approvals = engine.approval_handle();
     let session_id = engine.session_id().await.to_string();
 
@@ -728,12 +725,19 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                     let input_tx = input_tx_clone.clone();
                     let project_root = runtime_project_root.clone();
                     tokio::spawn(async move {
-                        match vac_core::bundle::export_bundle_to_path(
-                            &project_root,
-                            None,
-                            Some(&path),
-                            true,
-                        ) {
+                        let result = tokio::task::spawn_blocking(move || {
+                            vac_core::bundle::export_bundle_to_path(
+                                &project_root,
+                                None,
+                                Some(&path),
+                                true,
+                            )
+                        })
+                        .await
+                        .unwrap_or_else(|e| {
+                            Err(vac_core::VacError::Task(format!("join error: {e}")))
+                        });
+                        match result {
                             Ok(out_path) => {
                                 let _ = input_tx
                                     .send(InputEvent::ShowToast(
@@ -766,7 +770,15 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                     let input_tx = input_tx_clone.clone();
                     let project_root = runtime_project_root.clone();
                     tokio::spawn(async move {
-                        match vac_core::bundle::import_bundle_from_path(&project_root, &path) {
+                        let path_for_msg = path.clone();
+                        let result = tokio::task::spawn_blocking(move || {
+                            vac_core::bundle::import_bundle_from_path(&project_root, &path)
+                        })
+                        .await
+                        .unwrap_or_else(|e| {
+                            Err(vac_core::VacError::Task(format!("join error: {e}")))
+                        });
+                        match result {
                             Ok(session_id) => {
                                 let _ = input_tx
                                     .send(InputEvent::ShowToast(
@@ -779,7 +791,7 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                                 let _ = input_tx
                                     .send(InputEvent::AssistantMessage(format!(
                                         "Bundle diimpor dari `{}`",
-                                        path.display()
+                                        path_for_msg.display()
                                     )))
                                     .await;
                             }

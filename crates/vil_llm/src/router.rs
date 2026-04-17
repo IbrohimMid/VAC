@@ -105,8 +105,11 @@ impl LlmRouter {
         }
     }
 
-    pub fn with_rate_limit(self, requests_per_minute: u32) -> Self {
-        self.rate_limiter.try_lock().unwrap().requests_per_minute = requests_per_minute;
+    pub fn with_rate_limit(mut self, requests_per_minute: u32) -> Self {
+        Arc::get_mut(&mut self.rate_limiter)
+            .expect("rate limiter should be unshared during router configuration")
+            .get_mut()
+            .requests_per_minute = requests_per_minute;
         self
     }
 

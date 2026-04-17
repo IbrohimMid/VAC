@@ -296,11 +296,17 @@ impl ApprovalStore {
             }
             let content = match std::fs::read_to_string(&path) {
                 Ok(c) => c,
-                Err(_) => continue,
+                Err(e) => {
+                    warn!(?path, error = %e, "approval store: skipping unreadable record");
+                    continue;
+                }
             };
             let record = match serde_json::from_str::<ApprovalRecord>(&content) {
                 Ok(r) => r,
-                Err(_) => continue,
+                Err(e) => {
+                    warn!(?path, error = %e, "approval store: skipping malformed record");
+                    continue;
+                }
             };
             if record.session_id == Some(session_id) {
                 out.push(record);
