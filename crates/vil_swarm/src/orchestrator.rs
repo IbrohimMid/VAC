@@ -584,9 +584,7 @@ Rules:
                         if let Some(idx) = pos {
                             let pending = state.pending_approvals.remove(idx);
                             if response.approved {
-                                state
-                                    .approved_tools
-                                    .insert(response.tool_call_id.clone());
+                                state.approved_tools.insert(response.tool_call_id.clone());
                                 info!(tool = %pending.tool_name, "Tool approved, re-executing");
                                 let approved_call = vil_llm::provider::ToolCall {
                                     id: pending.tool_call_id.clone(),
@@ -678,7 +676,8 @@ Rules:
                     });
                 }
             }
-            self.wait_for_approvals(state, context, tool_router, &updates, &mut approval_rx).await?;
+            self.wait_for_approvals(state, context, tool_router, &updates, &mut approval_rx)
+                .await?;
         }
 
         loop {
@@ -824,7 +823,14 @@ Rules:
                     )
                     .await?;
 
-                    self.wait_for_approvals(state, context, tool_router, &updates, &mut approval_rx).await?;
+                    self.wait_for_approvals(
+                        state,
+                        context,
+                        tool_router,
+                        &updates,
+                        &mut approval_rx,
+                    )
+                    .await?;
 
                     if let Some(tx) = &updates {
                         let _ =
@@ -906,7 +912,7 @@ Rules:
 
             match evaluate_planner_output(&plan_output) {
                 PlannerGateResult::Passed(plan) => plan.to_markdown(),
-                PlannerGateResult::KnowledgeGateFailed(plan) if strict_mode => {
+                PlannerGateResult::KnowledgeGateFailed(_plan) if strict_mode => {
                     return Err(SwarmError::Orchestration("Planner gate FAILED".into()));
                 }
                 PlannerGateResult::KnowledgeGateFailed(plan) => {
@@ -915,7 +921,7 @@ Rules:
                         plan.to_markdown()
                     )
                 }
-                PlannerGateResult::ParseFailed(raw) if strict_mode => {
+                PlannerGateResult::ParseFailed(_raw) if strict_mode => {
                     return Err(SwarmError::Orchestration(
                         "Planner gate FAILED (ParseFailed)".into(),
                     ));
@@ -1076,10 +1082,7 @@ Rules:
         } else {
             Message::user(task_description.to_string())
         };
-        let planner_messages = vec![
-            Message::system(Self::semantic_planner_prompt()),
-            user_msg,
-        ];
+        let planner_messages = vec![Message::system(Self::semantic_planner_prompt()), user_msg];
 
         let mut state = crate::run_state::AgentRunState::new(planner_messages, cancel.clone());
         state.stage = crate::run_state::RunStage::Planner;
@@ -1119,7 +1122,7 @@ Rules:
                     plan.to_markdown()
                 )
             }
-            PlannerGateResult::ParseFailed(raw) if strict_mode => {
+            PlannerGateResult::ParseFailed(_raw) if strict_mode => {
                 return Err(SwarmError::Orchestration(
                     "Planner gate FAILED (strict-vil): planner did not produce valid SemanticPlan JSON. \
                     Cannot proceed without a typed plan in strict mode.".to_string()

@@ -261,7 +261,9 @@ fn pass_tri_lane_consistency(
 
         // Fallback: also check body_summary for patterns not caught by body_calls
         if let Some(body) = &func.body_summary {
-            if body.contains("std :: thread :: sleep") && !func.body_calls.iter().any(|c| c.contains("thread::sleep")) {
+            if body.contains("std :: thread :: sleep")
+                && !func.body_calls.iter().any(|c| c.contains("thread::sleep"))
+            {
                 issues.push(format!(
                     "Handler '{}' uses std::thread::sleep in the Fast Lane. Use tokio::time::sleep instead.",
                     func.name
@@ -287,7 +289,10 @@ fn pass_generated_plumbing(module: &IrModule, issues: &mut Vec<String>) -> f64 {
         };
 
         // Check if the impl has encode/decode methods (indicates hand-written plumbing)
-        let has_encode = imp.methods.iter().any(|m| m.name == "encode" || m.name == "decode");
+        let has_encode = imp
+            .methods
+            .iter()
+            .any(|m| m.name == "encode" || m.name == "decode");
         let severity = if has_encode { "high" } else { "medium" };
 
         issues.push(format!(
@@ -303,7 +308,10 @@ fn pass_generated_plumbing(module: &IrModule, issues: &mut Vec<String>) -> f64 {
 
     // Detect structs that have both a #[vil_state] attr AND a manual VilState impl (duplicate)
     for s in &module.structs {
-        let has_vil_attr = s.vil_attrs.iter().any(|a| a == "vil_state" || a == "vil_event" || a == "vil_message");
+        let has_vil_attr = s
+            .vil_attrs
+            .iter()
+            .any(|a| a == "vil_state" || a == "vil_event" || a == "vil_message");
         if !has_vil_attr {
             continue;
         }

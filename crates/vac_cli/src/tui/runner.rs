@@ -491,64 +491,62 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                     let (cols, rows) = crossterm::terminal::size().unwrap_or((120, 32));
                     let rows = rows.saturating_sub(8).max(8);
                     let cols = cols.saturating_sub(4).max(40);
-                    let shell_spec = match vac_core::VacConfig::load_with_fallback(
-                        &runtime_project_root,
-                    ) {
-                        Ok(mut config) => {
-                            // Auto-detect interactive vs batch
-                            let is_interactive = cmd.is_empty();
+                    let shell_spec =
+                        match vac_core::VacConfig::load_with_fallback(&runtime_project_root) {
+                            Ok(mut config) => {
+                                // Auto-detect interactive vs batch
+                                let is_interactive = cmd.is_empty();
 
-                            let mut env_mode_str = active_isolation_mode.as_str();
-                            if active_isolation_mode.starts_with("isolated") {
-                                if is_interactive {
-                                    env_mode_str = "isolated_interactive";
-                                } else {
-                                    env_mode_str = "isolated_batch";
+                                let mut env_mode_str = active_isolation_mode.as_str();
+                                if active_isolation_mode.starts_with("isolated") {
+                                    if is_interactive {
+                                        env_mode_str = "isolated_interactive";
+                                    } else {
+                                        env_mode_str = "isolated_batch";
+                                    }
                                 }
-                            }
 
-                            if let Ok(env_mode) =
-                                serde_json::from_str::<vac_core::ExecutionEnvironment>(&format!(
-                                    "\"{}\"",
-                                    env_mode_str
-                                ))
-                            {
-                                config.runtime.execution_environment = env_mode;
-                            }
+                                if let Ok(env_mode) =
+                                    serde_json::from_str::<vac_core::ExecutionEnvironment>(
+                                        &format!("\"{}\"", env_mode_str),
+                                    )
+                                {
+                                    config.runtime.execution_environment = env_mode;
+                                }
 
-                            // Handle default mount presets
-                            if active_isolation_mode.contains("(Rust)") {
-                                config
-                                    .runtime
-                                    .mount_presets
-                                    .push(vac_core::config::MountPreset::Rust);
-                            } else if active_isolation_mode.contains("(Node)") {
-                                config
-                                    .runtime
-                                    .mount_presets
-                                    .push(vac_core::config::MountPreset::Node);
-                            } else if active_isolation_mode.contains("(Python)") {
-                                config
-                                    .runtime
-                                    .mount_presets
-                                    .push(vac_core::config::MountPreset::Python);
-                            }
+                                // Handle default mount presets
+                                if active_isolation_mode.contains("(Rust)") {
+                                    config
+                                        .runtime
+                                        .mount_presets
+                                        .push(vac_core::config::MountPreset::Rust);
+                                } else if active_isolation_mode.contains("(Node)") {
+                                    config
+                                        .runtime
+                                        .mount_presets
+                                        .push(vac_core::config::MountPreset::Node);
+                                } else if active_isolation_mode.contains("(Python)") {
+                                    config
+                                        .runtime
+                                        .mount_presets
+                                        .push(vac_core::config::MountPreset::Python);
+                                }
 
-                            if config.runtime.execution_environment
-                                == vac_core::ExecutionEnvironment::IsolatedInteractive
-                                || config.runtime.execution_environment
-                                    == vac_core::ExecutionEnvironment::IsolatedBatch
-                            {
-                                let isolation = vac_runtime::IsolationManager::new(
-                                    runtime_project_root.clone(),
-                                    config.runtime.clone(),
-                                );
+                                if config.runtime.execution_environment
+                                    == vac_core::ExecutionEnvironment::IsolatedInteractive
+                                    || config.runtime.execution_environment
+                                        == vac_core::ExecutionEnvironment::IsolatedBatch
+                                {
+                                    let isolation = vac_runtime::IsolationManager::new(
+                                        runtime_project_root.clone(),
+                                        config.runtime.clone(),
+                                    );
 
-                                if is_interactive {
-                                    match isolation.build_interactive_shell_spec() {
-                                        Ok(spec) => Some(spec),
-                                        Err(err) => {
-                                            let _ = input_tx
+                                    if is_interactive {
+                                        match isolation.build_interactive_shell_spec() {
+                                            Ok(spec) => Some(spec),
+                                            Err(err) => {
+                                                let _ = input_tx
                                                 .send(InputEvent::ShellError(
                                                     "system".to_string(),
                                                     format!(
@@ -556,56 +554,60 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                                                     ),
                                                 ))
                                                 .await;
-                                            continue;
+                                                continue;
+                                            }
+                                        }
+                                    } else {
+                                        let env = std::collections::HashMap::new();
+                                        match isolation.build_container_command(
+                                            std::path::Path::new("sh"),
+                                            &["-c".to_string(), cmd.clone()],
+                                            true,
+                                            &env,
+                                        ) {
+                                            Ok(command) => {
+                                                let program = command
+                                                    .get_program()
+                                                    .to_string_lossy()
+                                                    .to_string();
+                                                let args = command
+                                                    .get_args()
+                                                    .map(|a| a.to_string_lossy().to_string())
+                                                    .collect();
+                                                Some(vac_runtime::IsolationLaunchSpec {
+                                                    program,
+                                                    args,
+                                                    cwd: runtime_project_root.clone(),
+                                                    env,
+                                                })
+                                            }
+                                            Err(err) => {
+                                                let _ = input_tx
+                                                    .send(InputEvent::ShellError(
+                                                        "system".to_string(),
+                                                        format!(
+                                                            "Failed to build batch command: {err}"
+                                                        ),
+                                                    ))
+                                                    .await;
+                                                continue;
+                                            }
                                         }
                                     }
                                 } else {
-                                    let env = std::collections::HashMap::new();
-                                    match isolation.build_container_command(
-                                        std::path::Path::new("sh"),
-                                        &["-c".to_string(), cmd.clone()],
-                                        true,
-                                        &env,
-                                    ) {
-                                        Ok(command) => {
-                                            let program =
-                                                command.get_program().to_string_lossy().to_string();
-                                            let args = command
-                                                .get_args()
-                                                .map(|a| a.to_string_lossy().to_string())
-                                                .collect();
-                                            Some(vac_runtime::IsolationLaunchSpec {
-                                                program,
-                                                args,
-                                                cwd: runtime_project_root.clone(),
-                                                env,
-                                            })
-                                        }
-                                        Err(err) => {
-                                            let _ = input_tx
-                                                .send(InputEvent::ShellError(
-                                                    "system".to_string(),
-                                                    format!("Failed to build batch command: {err}"),
-                                                ))
-                                                .await;
-                                            continue;
-                                        }
-                                    }
+                                    None
                                 }
-                            } else {
-                                None
                             }
-                        }
-                        Err(err) => {
-                            let _ = input_tx
-                                .send(InputEvent::ShellError(
-                                    "system".to_string(),
-                                    format!("Failed to load runtime config for shell: {err}"),
-                                ))
-                                .await;
-                            continue;
-                        }
-                    };
+                            Err(err) => {
+                                let _ = input_tx
+                                    .send(InputEvent::ShellError(
+                                        "system".to_string(),
+                                        format!("Failed to load runtime config for shell: {err}"),
+                                    ))
+                                    .await;
+                                continue;
+                            }
+                        };
 
                     let shell_result = crate::tui::services::run_pty_command(
                         cmd.clone(),
@@ -865,7 +867,7 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
     }
 
     let config = vac_core::VacConfig::load_with_fallback(&project_root).unwrap_or_default();
-    if config.mcp_servers.as_ref().map_or(true, |s| s.is_empty()) {
+    if config.mcp_servers.as_ref().is_none_or(|s| s.is_empty()) {
         let _ = input_tx
             .send(InputEvent::ShowToast(crate::tui::services::Toast::info(
                 "No MCP servers configured.".to_string(),

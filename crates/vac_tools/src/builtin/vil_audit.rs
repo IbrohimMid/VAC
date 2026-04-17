@@ -142,17 +142,13 @@ impl VilTool for VilAuditTool {
                             || issue_lower.contains("json<t>")
                             || issue_lower.contains("extension<t>")
                     }
-                    "tri_lane" => {
-                        issue_lower.contains("lane")
-                            || issue_lower.contains("blocking")
-                    }
+                    "tri_lane" => issue_lower.contains("lane") || issue_lower.contains("blocking"),
                     "plumbing" => {
                         issue_lower.contains("manually implements")
                             || issue_lower.contains("plumbing")
                     }
                     "semantic" => {
-                        issue_lower.contains("boundary")
-                            || issue_lower.contains("network")
+                        issue_lower.contains("boundary") || issue_lower.contains("network")
                     }
                     "macro_coverage" => {
                         issue_lower.contains("semantic macros")

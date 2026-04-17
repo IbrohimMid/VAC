@@ -84,8 +84,8 @@ pub fn render_side_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
     };
     let mcp_lines = state
         .mcp_server_states
-        .iter()
-        .map(|(_, s)| {
+        .values()
+        .map(|s| {
             if matches!(
                 s.status,
                 vac_tools::mcp::McpConnectionStatus::Unreachable(_)
@@ -680,13 +680,7 @@ fn render_changeset_section(f: &mut Frame, state: &AppState, area: Rect, collaps
                 .add_modifier(Modifier::ITALIC),
         ));
     } else {
-        for (_, entry) in state
-            .changeset_store
-            .active_entries()
-            .iter()
-            .take(8)
-            .enumerate()
-        {
+        for entry in state.changeset_store.active_entries().iter().take(8) {
             let indicator = match entry.state {
                 crate::tui::services::FileState::Created => "[+]",
                 crate::tui::services::FileState::Modified => "[~]",

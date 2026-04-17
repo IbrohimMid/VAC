@@ -956,7 +956,7 @@ impl AppState {
                     || r.name.to_lowercase().contains(&q)
                     || r.description
                         .as_ref()
-                        .map_or(false, |d| d.to_lowercase().contains(&q))
+                        .is_some_and(|d| d.to_lowercase().contains(&q))
             })
             .cloned()
             .collect()

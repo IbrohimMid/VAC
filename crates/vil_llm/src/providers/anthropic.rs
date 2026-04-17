@@ -82,8 +82,7 @@ impl AnthropicProvider {
         let content_value = if !msg.image_parts.is_empty() && msg.role == Role::User {
             let mut blocks = Vec::new();
             if !msg.content.is_empty() {
-                let mut text_block =
-                    serde_json::json!({"type": "text", "text": msg.content});
+                let mut text_block = serde_json::json!({"type": "text", "text": msg.content});
                 if cache_marked {
                     if let Some(obj) = text_block.as_object_mut() {
                         obj.insert(
@@ -630,20 +629,14 @@ mod tests {
     fn unmarked_message_stays_as_string() {
         let msg = Message::user("hi");
         let mapped = AnthropicProvider::map_message(&msg, false);
-        assert!(matches!(
-            mapped.content,
-            Some(serde_json::Value::String(_))
-        ));
+        assert!(matches!(mapped.content, Some(serde_json::Value::String(_))));
     }
 
     #[test]
     fn build_request_applies_cache_control_at_flagged_indices() {
         let provider = AnthropicProvider::new().with_api_key("test-key");
-        let req = LlmRequest::new(vec![
-            Message::system("shared"),
-            Message::user("varies"),
-        ])
-        .with_cache_control([0]);
+        let req = LlmRequest::new(vec![Message::system("shared"), Message::user("varies")])
+            .with_cache_control([0]);
 
         let built = provider.build_request(&req);
         // Message 0 should be content-blocks with cache_control.
@@ -685,7 +678,10 @@ mod tests {
             .with_api_key("test-key")
             .with_base_url(&server.uri());
         let req = LlmRequest::new(vec![Message::user("hello")]);
-        let resp = provider.complete(&req).await.expect("request should succeed");
+        let resp = provider
+            .complete(&req)
+            .await
+            .expect("request should succeed");
 
         assert_eq!(resp.usage.prompt_tokens, 100);
         assert_eq!(resp.usage.completion_tokens, 50);

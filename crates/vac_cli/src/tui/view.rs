@@ -731,9 +731,7 @@ fn render_paste_tray(f: &mut Frame, state: &AppState, area: Rect) {
     // Show a sliding window of cards so the selected index is always visible.
     let capacity = (area.height.saturating_sub(1)) as usize;
     let total = state.pending_pastes.len();
-    let start = if total <= capacity {
-        0
-    } else if selected < capacity {
+    let start = if total <= capacity || selected < capacity {
         0
     } else {
         selected + 1 - capacity

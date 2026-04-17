@@ -95,7 +95,7 @@ pub async fn execute_run(
 pub async fn execute_wrap(project_root: PathBuf, command: Vec<String>) -> anyhow::Result<()> {
     let mut config = vac_core::VacConfig::load_with_fallback(&project_root)?;
 
-    let (binary, args, mut env) = if command.is_empty() {
+    let (binary, args, env) = if command.is_empty() {
         let current_exe = std::env::current_exe()?;
         let mut e = HashMap::new();
         e.insert("VAC_INSIDE_ISOLATION".to_string(), "1".to_string());

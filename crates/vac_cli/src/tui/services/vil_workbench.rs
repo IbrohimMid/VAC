@@ -62,8 +62,7 @@ impl ClassifiedIssue {
 /// `vil_validate` embeds identifiers in single quotes (e.g. `Handler
 /// 'create_user'` or `Module 'user'`). We return the first quoted token.
 fn extract_file_hint(text: &str) -> Option<String> {
-    let mut chars = text.char_indices();
-    while let Some((i, c)) = chars.next() {
+    for (i, c) in text.char_indices() {
         if c == '\'' {
             let rest = &text[i + 1..];
             if let Some(end) = rest.find('\'') {

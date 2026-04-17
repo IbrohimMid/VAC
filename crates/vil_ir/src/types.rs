@@ -150,10 +150,7 @@ impl TypeRef {
         }
         // Only flag Vec<u8>, not Vec<Endpoint> etc.
         if self.name == "Vec" {
-            return self
-                .generics
-                .first()
-                .map_or(true, |g| g.name == "u8"); // bare Vec without generics = assume bytes
+            return self.generics.first().is_none_or(|g| g.name == "u8"); // bare Vec without generics = assume bytes
         }
         self.generics.iter().any(|g| g.contains_owned_bytes())
     }

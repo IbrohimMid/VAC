@@ -126,8 +126,12 @@ pub fn repair_zero_copy(module: &IrModule, source: &str) -> Vec<RepairAction> {
             }
 
             // Search for the param type in the function signature lines
-            for line_idx in fn_start.saturating_sub(1)..fn_end.min(lines.len()) {
-                let line = lines[line_idx];
+            for (line_idx, line) in lines
+                .iter()
+                .enumerate()
+                .skip(fn_start.saturating_sub(1))
+                .take(fn_end.min(lines.len()) - fn_start.saturating_sub(1))
+            {
                 let search = format!("{}: {}", param.name, param.ty.name);
                 if let Some(col) = line.find(&search) {
                     let replacement = format!("{}: ShmSlice<'_>", param.name);
@@ -314,4 +318,3 @@ pub fn generate_repair_plan(module: &IrModule, source: &str, file_path: &str) ->
         repairs,
     }
 }
-

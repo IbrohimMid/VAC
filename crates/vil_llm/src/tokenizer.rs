@@ -143,7 +143,11 @@ pub struct AnthropicApiTokenizer {
 
 #[cfg(feature = "anthropic-count-tokens")]
 impl AnthropicApiTokenizer {
-    pub fn new(api_key: impl Into<String>, base_url: impl Into<String>, model: impl Into<String>) -> Self {
+    pub fn new(
+        api_key: impl Into<String>,
+        base_url: impl Into<String>,
+        model: impl Into<String>,
+    ) -> Self {
         Self {
             api_key: api_key.into(),
             base_url: base_url.into(),

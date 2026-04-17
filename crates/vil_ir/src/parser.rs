@@ -2,8 +2,8 @@
 
 use crate::error::{IrError, IrResult};
 use crate::types::*;
-use std::path::Path;
 use quote::ToTokens;
+use std::path::Path;
 use syn::{self, visit::Visit};
 
 /// Parse a single Rust source file into IR.
@@ -358,7 +358,11 @@ impl<'ast> Visit<'ast> for IrCollector {
             where_clauses: Vec::new(),
             body_summary: {
                 let body_str = node.block.to_token_stream().to_string();
-                if body_str.len() > 2 { Some(body_str) } else { None }
+                if body_str.len() > 2 {
+                    Some(body_str)
+                } else {
+                    None
+                }
             },
             body_calls: Self::extract_call_paths(&node.block),
             doc_comment: Self::extract_doc_comment(&node.attrs),

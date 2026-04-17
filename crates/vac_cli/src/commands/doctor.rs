@@ -324,7 +324,7 @@ async fn check_mcp_config(root: &Path, _strict: bool, fix: bool) -> (bool, serde
         );
     }
 
-    let config = match vac_core::VacConfig::load_with_fallback(&root.to_path_buf()) {
+    let config = match vac_core::VacConfig::load_with_fallback(root) {
         Ok(c) => c,
         Err(e) => {
             return (
@@ -376,7 +376,7 @@ async fn check_mcp_config(root: &Path, _strict: bool, fix: bool) -> (bool, serde
 }
 
 fn check_isolation(root: &Path, _strict: bool, _fix: bool) -> (bool, serde_json::Value) {
-    let config = match vac_core::VacConfig::load_with_fallback(&root.to_path_buf()) {
+    let config = match vac_core::VacConfig::load_with_fallback(root) {
         Ok(c) => c,
         Err(e) => {
             return (
@@ -404,7 +404,7 @@ fn check_isolation(root: &Path, _strict: bool, _fix: bool) -> (bool, serde_json:
         messages.push(format!("{} not found", runtime));
     }
 
-    if let Err(_) = isolation.container_image() {
+    if isolation.container_image().is_err() {
         ok = false;
         messages.push("container image not configured".to_string());
     }

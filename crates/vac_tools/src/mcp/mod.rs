@@ -46,19 +46,25 @@ pub async fn probe_mcp_server(config: &McpServerConfig) -> McpConnectionState {
                 .timeout(std::time::Duration::from_secs(3))
                 .build()
                 .unwrap_or_default();
-            
+
             match client.head(url).send().await {
-                Ok(resp) if resp.status().is_success() || resp.status().is_redirection() || resp.status() == reqwest::StatusCode::METHOD_NOT_ALLOWED => {
+                Ok(resp)
+                    if resp.status().is_success()
+                        || resp.status().is_redirection()
+                        || resp.status() == reqwest::StatusCode::METHOD_NOT_ALLOWED =>
+                {
                     // Some SSE endpoints might not support HEAD and return 405 Method Not Allowed,
                     // but reaching the endpoint means it's connected.
                     McpConnectionStatus::Connected
                 }
-                Ok(resp) => McpConnectionStatus::Unreachable(format!("HTTP error: {}", resp.status())),
+                Ok(resp) => {
+                    McpConnectionStatus::Unreachable(format!("HTTP error: {}", resp.status()))
+                }
                 Err(e) => McpConnectionStatus::Unreachable(format!("Connection failed: {}", e)),
             }
         }
     };
-    
+
     McpConnectionState {
         status,
         trust_class: config.trust_class,

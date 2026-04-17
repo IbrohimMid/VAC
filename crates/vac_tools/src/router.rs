@@ -181,7 +181,10 @@ impl PolicyEngine for VilTrustPolicyAdapter {
                 let abs_path = context.working_dir.join(file_path);
                 if let Ok(content) = std::fs::read_to_string(&abs_path) {
                     if content.contains("#[vil_") {
-                        let warning = format!("⚠️ WARNING: Modifying VIL-generated plumbing in `{}`. Are you sure?", file_path);
+                        let warning = format!(
+                            "⚠️ WARNING: Modifying VIL-generated plumbing in `{}`. Are you sure?",
+                            file_path
+                        );
                         return PolicyDecision::NeedsApproval(warning);
                     }
                 }
@@ -219,9 +222,7 @@ fn classify_tool_risk(tool_name: &str) -> RiskLevel {
     match tool_name {
         // Safe: read-only operations
         "file_read" | "glob" | "grep" | "search" | "todo_write" | "task_done" | "vil_knowledge"
-        | "vil_ir_diff" | "vil_audit" | "vil_plumbing" | "vil_repair" => {
-            RiskLevel::Safe
-        }
+        | "vil_ir_diff" | "vil_audit" | "vil_plumbing" | "vil_repair" => RiskLevel::Safe,
         // NeedsApproval: write operations
         "file_write" | "file_edit" | "git" | "cargo" => RiskLevel::NeedsApproval,
         // Dangerous: shell execution

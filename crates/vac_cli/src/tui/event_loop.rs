@@ -811,14 +811,11 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                 } else if state.shortcuts_mode == crate::tui::app::ShortcutsPopupMode::Commands {
                     let cmds = crate::tui::services::shortcuts_popup::filter_commands("", state);
                     if let Some(cmd) = cmds.get(state.shortcuts_scroll) {
-                        match &cmd.action {
-                            crate::tui::services::shortcuts_popup::CommandAction::InsertSlashCommand(s) => {
+                        if let crate::tui::services::shortcuts_popup::CommandAction::InsertSlashCommand(s) = &cmd.action {
                                 state.input.clear();
                                 state.input.insert_str(s);
                                 state.input.input(' ');
                             }
-                            _ => {}
-                        }
                         state.show_shortcuts = false;
                     }
                 }
@@ -2359,7 +2356,7 @@ fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, e
             if state
                 .active_shell_command
                 .as_ref()
-                .map_or(false, |cmd| cmd.id == id)
+                .is_some_and(|cmd| cmd.id == id)
                 || id == "system"
             {
                 state.shell_output.push_str(&text);
@@ -2381,7 +2378,7 @@ fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, e
             if state
                 .active_shell_command
                 .as_ref()
-                .map_or(false, |cmd| cmd.id == id)
+                .is_some_and(|cmd| cmd.id == id)
                 || id == "system"
             {
                 if !state.shell_output.ends_with('\n') && !state.shell_output.is_empty() {
@@ -2403,7 +2400,7 @@ fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, e
             if state
                 .active_shell_command
                 .as_ref()
-                .map_or(false, |cmd| cmd.id == id)
+                .is_some_and(|cmd| cmd.id == id)
                 || id == "system"
             {
                 state.shell_exit_code = Some(code);
@@ -2428,7 +2425,7 @@ fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, e
             if state
                 .active_shell_command
                 .as_ref()
-                .map_or(false, |cmd| cmd.id == id)
+                .is_some_and(|cmd| cmd.id == id)
                 || id == "system"
             {
                 state.shell_waiting_for_input = true;

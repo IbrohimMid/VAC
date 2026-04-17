@@ -59,7 +59,10 @@ pub async fn process_stream(
             }
             StreamChunk::ToolCallComplete(tool_call) => {
                 // Already-assembled tool call from the streaming assembler
-                tool_args_buf.insert(tool_call.id.clone(), (tool_call.name, tool_call.arguments.to_string()));
+                tool_args_buf.insert(
+                    tool_call.id.clone(),
+                    (tool_call.name, tool_call.arguments.to_string()),
+                );
             }
         }
     }
