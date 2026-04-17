@@ -54,7 +54,11 @@ pub fn render_rulebook_switcher(f: &mut Frame, state: &mut AppState) {
         .collect();
 
     let list = List::new(items)
-        .block(Block::default().borders(Borders::ALL).title("Rulebooks (Space to toggle, Enter to confirm)"))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Rulebooks (Space to toggle, Enter to confirm)"),
+        )
         .highlight_style(
             Style::default()
                 .fg(Color::Yellow)

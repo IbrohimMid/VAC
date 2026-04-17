@@ -62,8 +62,7 @@ impl ClassifiedIssue {
 /// `vil_validate` embeds identifiers in single quotes (e.g. `Handler
 /// 'create_user'` or `Module 'user'`). We return the first quoted token.
 fn extract_file_hint(text: &str) -> Option<String> {
-    let mut chars = text.char_indices();
-    while let Some((i, c)) = chars.next() {
+    for (i, c) in text.char_indices() {
         if c == '\'' {
             let rest = &text[i + 1..];
             if let Some(end) = rest.find('\'') {
@@ -84,8 +83,9 @@ fn shorten(text: &str) -> String {
     if collapsed.len() <= MAX {
         collapsed
     } else {
+        // '…' is 3 bytes in UTF-8, so trim to MAX-3 to stay within budget.
         let mut t = collapsed;
-        t.truncate(MAX.saturating_sub(1));
+        t.truncate(MAX.saturating_sub(3));
         t.push('…');
         t
     }
@@ -104,8 +104,7 @@ pub fn classify_issues(state: &AppState) -> Vec<ClassifiedIssue> {
 
 /// Count issues per kind.
 pub fn group_counts(issues: &[ClassifiedIssue]) -> std::collections::HashMap<VilIssueKind, usize> {
-    let mut m: std::collections::HashMap<VilIssueKind, usize> =
-        std::collections::HashMap::new();
+    let mut m: std::collections::HashMap<VilIssueKind, usize> = std::collections::HashMap::new();
     for issue in issues {
         *m.entry(issue.kind).or_insert(0) += 1;
     }
@@ -154,12 +153,14 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
 
     let tabs = Tabs::new(titles)
         .select(selected_tab_idx)
-        .block(Block::default().borders(Borders::ALL).title(Span::styled(
-            "VIL Issues",
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
-        )))
+        .block(
+            Block::default().borders(Borders::ALL).title(Span::styled(
+                "VIL Issues",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            )),
+        )
         .highlight_style(
             Style::default()
                 .fg(Color::Yellow)
@@ -178,12 +179,7 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
     render_lineage_panel(f, state, body[1], &view);
 }
 
-fn render_issue_list(
-    f: &mut Frame,
-    state: &AppState,
-    area: Rect,
-    view: &[&ClassifiedIssue],
-) {
+fn render_issue_list(f: &mut Frame, state: &AppState, area: Rect, view: &[&ClassifiedIssue]) {
     let empty_msg = if state.vil_status.validation_issues.is_empty() {
         "No validation issues. Run /vil-status or edit a watched file."
     } else {
@@ -201,7 +197,9 @@ fn render_issue_list(
         return;
     }
 
-    let sel = state.vil_workbench_selected.min(view.len().saturating_sub(1));
+    let sel = state
+        .vil_workbench_selected
+        .min(view.len().saturating_sub(1));
     let items: Vec<ListItem> = view
         .iter()
         .enumerate()
@@ -235,15 +233,12 @@ fn render_issue_list(
     f.render_widget(list, area);
 }
 
-fn render_lineage_panel(
-    f: &mut Frame,
-    state: &AppState,
-    area: Rect,
-    view: &[&ClassifiedIssue],
-) {
+fn render_lineage_panel(f: &mut Frame, state: &AppState, area: Rect, view: &[&ClassifiedIssue]) {
     let mut lines: Vec<Line> = Vec::new();
 
-    let sel = state.vil_workbench_selected.min(view.len().saturating_sub(1));
+    let sel = state
+        .vil_workbench_selected
+        .min(view.len().saturating_sub(1));
     let current = view.get(sel).copied();
 
     if let Some(issue) = current {
@@ -268,10 +263,7 @@ fn render_lineage_panel(
 
         // Lineage = IR-drift history: surface any `ir_metadata_files`
         // whose path mentions the target.
-        let needle = issue
-            .file
-            .clone()
-            .unwrap_or_else(|| issue.raw.clone());
+        let needle = issue.file.clone().unwrap_or_else(|| issue.raw.clone());
         let related: Vec<&String> = state
             .vil_status
             .ir_metadata_files
@@ -379,9 +371,7 @@ mod tests {
     #[test]
     fn classify_keyword_matrix() {
         assert_eq!(
-            VilIssueKind::classify(
-                "Handler 'a' param 'b' contains owned-bytes type 'Vec<u8>'"
-            ),
+            VilIssueKind::classify("Handler 'a' param 'b' contains owned-bytes type 'Vec<u8>'"),
             VilIssueKind::ZeroCopy
         );
         assert_eq!(

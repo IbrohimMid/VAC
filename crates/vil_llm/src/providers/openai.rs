@@ -826,7 +826,8 @@ mod tests {
                     break;
                 }
                 StreamChunk::Error(e) => panic!("stream error: {e}"),
-                StreamChunk::ToolCallComplete(_) => { /* aggregated by assembler; ignored in test */ }
+                StreamChunk::ToolCallComplete(_) => { /* aggregated by assembler; ignored in test */
+                }
             }
         }
 

@@ -1,7 +1,7 @@
-use crate::tui::{app::AppState, services::detect_term::ThemeColors, app::CommandSource};
+use crate::tui::{app::AppState, app::CommandSource, services::detect_term::ThemeColors};
 use nucleo_matcher::{
-    pattern::{CaseMatching, Normalization, Pattern},
     Config, Matcher,
+    pattern::{CaseMatching, Normalization, Pattern},
 };
 use std::cmp::Reverse;
 
@@ -18,8 +18,18 @@ pub fn filter_helpers_sync(state: &mut AppState) {
         // Sort by recency/frequency when query is empty
         let mut cmds = state.commands.clone();
         cmds.sort_by_key(|c| {
-            let freq = state.recent_commands.frequencies.get(&c.command).copied().unwrap_or(0);
-            let recent_idx = state.recent_commands.history.iter().position(|h| h == &c.command).unwrap_or(usize::MAX);
+            let freq = state
+                .recent_commands
+                .frequencies
+                .get(&c.command)
+                .copied()
+                .unwrap_or(0);
+            let recent_idx = state
+                .recent_commands
+                .history
+                .iter()
+                .position(|h| h == &c.command)
+                .unwrap_or(usize::MAX);
             (Reverse(freq), recent_idx)
         });
         state.filtered_helpers = cmds;
@@ -40,7 +50,12 @@ pub fn filter_helpers_sync(state: &mut AppState) {
     }
 
     matches.sort_by_key(|(score, cmd)| {
-        let freq = state.recent_commands.frequencies.get(&cmd.command).copied().unwrap_or(0);
+        let freq = state
+            .recent_commands
+            .frequencies
+            .get(&cmd.command)
+            .copied()
+            .unwrap_or(0);
         (Reverse(*score), Reverse(freq))
     });
 
@@ -49,7 +64,7 @@ pub fn filter_helpers_sync(state: &mut AppState) {
 use ratatui::{
     Frame,
     layout::Rect,
-    style::{Modifier, Style, Color},
+    style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem, ListState},
 };
@@ -135,35 +150,28 @@ pub fn render_helper_dropdown(f: &mut Frame, state: &AppState, dropdown_area: Re
                 let is_selected = line_index == state.helper_selected;
 
                 let command_style = if is_selected {
-                    Style::default()
-                        .fg(highlight_fg)
-                        .bg(highlight_bg)
+                    Style::default().fg(highlight_fg).bg(highlight_bg)
                 } else {
                     Style::default().fg(ThemeColors::cyan()).bg(dropdown_bg)
                 };
 
                 let description_style = if is_selected {
-                    Style::default()
-                        .fg(highlight_fg)
-                        .bg(highlight_bg)
+                    Style::default().fg(highlight_fg).bg(highlight_bg)
                 } else {
                     Style::default().fg(dropdown_text).bg(dropdown_bg)
                 };
 
                 let padding_style = if is_selected {
-                    Style::default()
-                        .fg(highlight_fg)
-                        .bg(highlight_bg)
+                    Style::default().fg(highlight_fg).bg(highlight_bg)
                 } else {
                     Style::default().fg(dropdown_muted).bg(dropdown_bg)
                 };
 
-                let description_text =
-                    if matches!(command.source, CommandSource::Custom { .. }) {
-                        format!(" – [custom] {}", command.description)
-                    } else {
-                        format!(" – {}", command.description)
-                    };
+                let description_text = if matches!(command.source, CommandSource::Custom { .. }) {
+                    format!(" – [custom] {}", command.description)
+                } else {
+                    format!(" – {}", command.description)
+                };
 
                 let spans = vec![
                     Span::styled(format!("  {}  ", command.command), command_style),

@@ -16,11 +16,19 @@ pub struct PastedItem {
 #[derive(Debug, Clone)]
 pub enum PastedKind {
     /// Long text content to be inlined at submit time.
-    Text { content: String, line_count: usize, char_count: usize },
+    Text {
+        content: String,
+        line_count: usize,
+        char_count: usize,
+    },
     /// Image attachment. The actual ContentPart rides in `pending_image_parts`;
     /// this variant exists so the tray can show the image alongside text pastes
     /// and an index for removal.
-    Image { width: u32, height: u32, byte_count: usize },
+    Image {
+        width: u32,
+        height: u32,
+        byte_count: usize,
+    },
 }
 
 /// Threshold above which a pasted text becomes a placeholder instead of
@@ -39,7 +47,10 @@ pub fn make_paste_id(counter: usize) -> String {
 }
 
 pub fn text_placeholder(id: &str, char_count: usize, line_count: usize) -> String {
-    format!("«pasted:{} +{} chars, {} lines»", id, char_count, line_count)
+    format!(
+        "«pasted:{} +{} chars, {} lines»",
+        id, char_count, line_count
+    )
 }
 
 pub fn image_placeholder(id: &str, width: u32, height: u32) -> String {
@@ -621,7 +632,10 @@ pub fn token_estimate(kind: &PastedKind) -> usize {
 pub fn preview_text(kind: &PastedKind) -> String {
     match kind {
         PastedKind::Text { content, .. } => {
-            let one_line: String = content.chars().map(|c| if c == '\n' { ' ' } else { c }).collect();
+            let one_line: String = content
+                .chars()
+                .map(|c| if c == '\n' { ' ' } else { c })
+                .collect();
             let trimmed = one_line.trim();
             let preview: String = trimmed.chars().take(80).collect();
             if trimmed.chars().count() > 80 {
@@ -645,11 +659,7 @@ pub fn clamp_selected(selected: usize, len: usize) -> usize {
 
 /// Move cursor to the next paste (wrapping).
 pub fn select_next(selected: usize, len: usize) -> usize {
-    if len == 0 {
-        0
-    } else {
-        (selected + 1) % len
-    }
+    if len == 0 { 0 } else { (selected + 1) % len }
 }
 
 /// Move cursor to the previous paste (wrapping).
@@ -808,10 +818,16 @@ mod tests {
         ];
         // Simulate selected=0, press "J" twice (swap with next)
         let sel = swap_with_next(&mut pastes, 0); // [p2, p1, p3], cursor=1
-        assert_eq!(pastes.iter().map(|p| p.id.as_str()).collect::<Vec<_>>(), ["p2", "p1", "p3"]);
+        assert_eq!(
+            pastes.iter().map(|p| p.id.as_str()).collect::<Vec<_>>(),
+            ["p2", "p1", "p3"]
+        );
         assert_eq!(sel, 1);
         let sel = swap_with_next(&mut pastes, sel); // [p2, p3, p1], cursor=2
-        assert_eq!(pastes.iter().map(|p| p.id.as_str()).collect::<Vec<_>>(), ["p2", "p3", "p1"]);
+        assert_eq!(
+            pastes.iter().map(|p| p.id.as_str()).collect::<Vec<_>>(),
+            ["p2", "p3", "p1"]
+        );
         assert_eq!(sel, 2);
     }
 
@@ -823,7 +839,10 @@ mod tests {
             text_item("p3", "three"),
         ];
         let sel = swap_with_prev(&mut pastes, 2); // [p1, p3, p2], cursor=1
-        assert_eq!(pastes.iter().map(|p| p.id.as_str()).collect::<Vec<_>>(), ["p1", "p3", "p2"]);
+        assert_eq!(
+            pastes.iter().map(|p| p.id.as_str()).collect::<Vec<_>>(),
+            ["p1", "p3", "p2"]
+        );
         assert_eq!(sel, 1);
     }
 

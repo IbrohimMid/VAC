@@ -96,7 +96,7 @@ pub fn view(f: &mut Frame, state: &mut AppState) {
         let height = count + 2; // + borders or arrows
         let x = area.x + 1;
         let y = area.y + area.height.saturating_sub(height + 2); // above footer
-        
+
         let rect = Rect {
             x,
             y,
@@ -328,11 +328,16 @@ fn render_toast(f: &mut Frame, state: &mut AppState) {
 
 fn render_header(f: &mut Frame, state: &mut AppState, area: Rect) {
     let mut spans: Vec<Span> = Vec::new();
-    
+
     if std::env::var("VAC_INSIDE_ISOLATION").is_ok() {
-        spans.push(Span::styled("[ISOLATED] ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)));
+        spans.push(Span::styled(
+            "[ISOLATED] ",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        ));
     }
-    
+
     spans.push(Span::styled("VAC", Style::default().fg(Color::Magenta)));
     spans.push(Span::raw("  "));
     spans.push(Span::styled(
@@ -346,7 +351,7 @@ fn render_header(f: &mut Frame, state: &mut AppState, area: Rect) {
             Style::default().fg(Color::Cyan),
         ));
     }
-    
+
     spans.push(Span::raw(" | "));
     spans.push(Span::styled(
         format!("env:{}", state.active_isolation_mode),
@@ -356,28 +361,32 @@ fn render_header(f: &mut Frame, state: &mut AppState, area: Rect) {
     spans.push(Span::raw(" | "));
     spans.push(Span::styled(
         format!("prof:{}", state.active_profile),
-        Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+        Style::default()
+            .fg(Color::Yellow)
+            .add_modifier(Modifier::BOLD),
     ));
-    
+
     // Runtime visibility badges
     if let Some(snapshot) = &state.runtime_state_snapshot {
         spans.push(Span::raw("  "));
         let (exec_label, exec_color) = match snapshot.execution_environment {
             vac_core::ExecutionEnvironment::Host => ("host", Color::Yellow),
             vac_core::ExecutionEnvironment::IsolatedBatch => ("isolated-batch", Color::Green),
-            vac_core::ExecutionEnvironment::IsolatedInteractive => ("isolated-interactive", Color::Cyan),
+            vac_core::ExecutionEnvironment::IsolatedInteractive => {
+                ("isolated-interactive", Color::Cyan)
+            }
         };
         spans.push(Span::styled(
             format!("exec:{}", exec_label),
             Style::default().fg(exec_color).add_modifier(Modifier::BOLD),
         ));
-        
+
         spans.push(Span::raw("  "));
         spans.push(Span::styled(
             format!("intent:{}", snapshot.task_intent_mode),
             Style::default().fg(Color::Cyan),
         ));
-        
+
         spans.push(Span::raw("  "));
         let env_color = if snapshot.environment_mode.contains("trusted-networked") {
             Color::Red
@@ -389,7 +398,7 @@ fn render_header(f: &mut Frame, state: &mut AppState, area: Rect) {
             Style::default().fg(env_color),
         ));
     }
-    
+
     spans.push(Span::raw("  "));
     spans.push(Span::styled(
         format!(
@@ -417,7 +426,7 @@ fn render_header(f: &mut Frame, state: &mut AppState, area: Rect) {
                 .add_modifier(Modifier::BOLD)
         },
     ));
-    
+
     // VIL Status Badge
     let score = state.vil_status.validation_score;
     let score_label = if score >= 0.9 {
@@ -434,13 +443,15 @@ fn render_header(f: &mut Frame, state: &mut AppState, area: Rect) {
     } else {
         Color::Red
     };
-    
+
     spans.push(Span::raw("  "));
     spans.push(Span::styled(
         format!("VIL:{}", score_label),
-        Style::default().fg(badge_color).add_modifier(Modifier::BOLD),
+        Style::default()
+            .fg(badge_color)
+            .add_modifier(Modifier::BOLD),
     ));
-    
+
     spans.push(Span::raw("  "));
     spans.push(Span::styled(
         format!("approvals {}", state.pending_approvals.len()),
@@ -465,7 +476,7 @@ fn render_workspace(f: &mut Frame, state: &mut AppState, area: Rect) {
                 Constraint::Min(0),
             ])
             .split(area);
-        
+
         crate::tui::services::side_panel::render_side_panel(f, state, h_chunks[0]);
         h_chunks[1]
     } else {
@@ -514,12 +525,12 @@ fn render_messages(f: &mut Frame, state: &mut AppState, area: Rect) {
     state.message_area_y = area.y;
     state.message_area_height = area.height;
 
+    use crate::tui::app::types::RenderedMessageCache;
     use crate::tui::services::message::render_tool_call_pending;
     use crate::tui::services::message::{render_assistant_message_with_width, render_user_message};
-    use crate::tui::app::types::RenderedMessageCache;
-    use std::sync::Arc;
     use ratatui::text::Line;
     use ratatui::text::Span;
+    use std::sync::Arc;
 
     let width = area.width.saturating_sub(2) as usize; // account for border
     let mut lines: Vec<Line<'static>> = Vec::new();
@@ -572,11 +583,14 @@ fn render_messages(f: &mut Frame, state: &mut AppState, area: Rect) {
         }
 
         let n = msg_lines.len();
-        state.per_message_cache.insert(msg.id, RenderedMessageCache {
-            content_hash,
-            rendered_lines: Arc::new(msg_lines.clone()),
-            width,
-        });
+        state.per_message_cache.insert(
+            msg.id,
+            RenderedMessageCache {
+                content_hash,
+                rendered_lines: Arc::new(msg_lines.clone()),
+                width,
+            },
+        );
 
         lines.extend(msg_lines);
         lines.push(Line::raw("")); // spacing between messages
@@ -683,12 +697,16 @@ fn render_paste_tray(f: &mut Frame, state: &AppState, area: Rect) {
     let mode_hint = if state.pending_paste_reorder_mode {
         Span::styled(
             " [REORDER — J/K swap, r exit]",
-            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
         )
     } else {
         Span::styled(
             " j/k select, d remove, r reorder, Enter preview",
-            Style::default().fg(Color::DarkGray).add_modifier(Modifier::DIM),
+            Style::default()
+                .fg(Color::DarkGray)
+                .add_modifier(Modifier::DIM),
         )
     };
     let header = Line::from(vec![
@@ -700,20 +718,20 @@ fn render_paste_tray(f: &mut Frame, state: &AppState, area: Rect) {
         mode_hint,
         Span::styled(
             "  (Ctrl+U clear)",
-            Style::default().fg(Color::DarkGray).add_modifier(Modifier::DIM),
+            Style::default()
+                .fg(Color::DarkGray)
+                .add_modifier(Modifier::DIM),
         ),
     ]);
 
-    let selected = state.pending_paste_selected.min(
-        state.pending_pastes.len().saturating_sub(1),
-    );
+    let selected = state
+        .pending_paste_selected
+        .min(state.pending_pastes.len().saturating_sub(1));
 
     // Show a sliding window of cards so the selected index is always visible.
     let capacity = (area.height.saturating_sub(1)) as usize;
     let total = state.pending_pastes.len();
-    let start = if total <= capacity {
-        0
-    } else if selected < capacity {
+    let start = if total <= capacity || selected < capacity {
         0
     } else {
         selected + 1 - capacity
@@ -726,7 +744,11 @@ fn render_paste_tray(f: &mut Frame, state: &AppState, area: Rect) {
         let abs = start + i;
         let is_selected = abs == selected;
         let cursor = if is_selected {
-            if state.pending_paste_reorder_mode { "»" } else { ">" }
+            if state.pending_paste_reorder_mode {
+                "»"
+            } else {
+                ">"
+            }
         } else {
             " "
         };
@@ -744,11 +766,15 @@ fn render_paste_tray(f: &mut Frame, state: &AppState, area: Rect) {
         let spans = vec![
             Span::styled(
                 format!("{} ", cursor),
-                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
             ),
             Span::styled(
                 kind_badge(&item.kind).to_string(),
-                Style::default().fg(badge_color).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(badge_color)
+                    .add_modifier(Modifier::BOLD),
             ),
             Span::raw(" "),
             Span::styled(format!("#{}", item.id), row_style),
@@ -849,12 +875,23 @@ fn render_operator_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
     }
 
     if !state.mcp_server_states.is_empty() {
-        let connected = state.mcp_server_states.values().filter(|s| s.is_connected()).count();
+        let connected = state
+            .mcp_server_states
+            .values()
+            .filter(|s| s.is_connected())
+            .count();
         let total = state.mcp_server_states.len();
-        let color = if connected == total { Color::Green } else { Color::Yellow };
+        let color = if connected == total {
+            Color::Green
+        } else {
+            Color::Yellow
+        };
         lines.push(Line::from(vec![
             Span::styled("mcp ", Style::default().fg(Color::DarkGray)),
-            Span::styled(format!("{}/{} connected", connected, total), Style::default().fg(color)),
+            Span::styled(
+                format!("{}/{} connected", connected, total),
+                Style::default().fg(color),
+            ),
         ]));
     }
 
@@ -932,6 +969,7 @@ fn render_workbench_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
         format!("Sessions ({})", state.sessions.len()),
         format!("Runtime ({})", state.runtime_jobs.len()),
         plan_label,
+        format!("VIL Issues ({})", state.vil_status.validation_issues.len()),
     ];
     let idx = match state.workbench_tab {
         WorkbenchTab::Approvals => 0,
@@ -939,6 +977,7 @@ fn render_workbench_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
         WorkbenchTab::Sessions => 2,
         WorkbenchTab::Runtime => 3,
         WorkbenchTab::Plan => 4,
+        WorkbenchTab::VilIssues => 5,
     };
 
     let tabs = Tabs::new(tabs)
@@ -960,6 +999,7 @@ fn render_workbench_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
         WorkbenchTab::Sessions => render_sessions_pane(f, state, chunks[1]),
         WorkbenchTab::Runtime => render_runtime_pane(f, state, chunks[1]),
         WorkbenchTab::Plan => render_plan_pane(f, state, chunks[1]),
+        WorkbenchTab::VilIssues => crate::tui::services::vil_workbench::render(f, state, chunks[1]),
     }
 }
 
@@ -974,17 +1014,27 @@ fn render_plan_pane(f: &mut Frame, state: &mut AppState, area: Rect) {
     if let Some(meta) = &state.plan_metadata {
         lines.push(Line::from(vec![
             Span::styled("Title: ", Style::default().fg(Color::DarkGray)),
-            Span::styled(meta.title.clone(), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                meta.title.clone(),
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
         ]));
         let (status_label, status_color) = match meta.status {
             crate::tui::services::plan::PlanStatus::Drafting => ("drafting", Color::Yellow),
-            crate::tui::services::plan::PlanStatus::PendingReview => ("pending_review", Color::Cyan),
+            crate::tui::services::plan::PlanStatus::PendingReview => {
+                ("pending_review", Color::Cyan)
+            }
             crate::tui::services::plan::PlanStatus::Approved => ("approved", Color::Green),
         };
         lines.push(Line::from(vec![
             Span::styled("Status: ", Style::default().fg(Color::DarkGray)),
             Span::styled(status_label.to_string(), Style::default().fg(status_color)),
-            Span::styled(format!("  v{}", meta.version), Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                format!("  v{}", meta.version),
+                Style::default().fg(Color::DarkGray),
+            ),
         ]));
         lines.push(Line::raw(""));
     }
@@ -1567,9 +1617,10 @@ fn render_runtime_pane(f: &mut Frame, state: &mut AppState, area: Rect) {
     }
 
     if !state.mcp_server_states.is_empty() {
-        lines.push(Line::from(vec![
-            Span::styled("MCP Servers:", Style::default().add_modifier(Modifier::BOLD)),
-        ]));
+        lines.push(Line::from(vec![Span::styled(
+            "MCP Servers:",
+            Style::default().add_modifier(Modifier::BOLD),
+        )]));
         for (name, conn_state) in &state.mcp_server_states {
             let (status, color) = if conn_state.is_connected() {
                 ("✅ connected", Color::Green)
@@ -1897,6 +1948,22 @@ fn render_footer(f: &mut Frame, state: &mut AppState, area: Rect) {
                 Span::styled(": request changes  ", Style::default().fg(Color::DarkGray)),
                 Span::styled("/plan-review", Style::default().fg(Color::Cyan)),
                 Span::styled(": overlay  ", Style::default().fg(Color::DarkGray)),
+                Span::styled("Ctrl+Tab", Style::default().fg(Color::Cyan)),
+                Span::styled(": next tab", Style::default().fg(Color::DarkGray)),
+            ],
+            WorkbenchTab::VilIssues => vec![
+                Span::styled("↑/↓", Style::default().fg(Color::Cyan)),
+                Span::styled(": select  ", Style::default().fg(Color::DarkGray)),
+                Span::styled("R", Style::default().fg(Color::Cyan)),
+                Span::styled(": repair  ", Style::default().fg(Color::DarkGray)),
+                Span::styled("A", Style::default().fg(Color::Cyan)),
+                Span::styled(": audit  ", Style::default().fg(Color::DarkGray)),
+                Span::styled("D", Style::default().fg(Color::Cyan)),
+                Span::styled(": ir-diff  ", Style::default().fg(Color::DarkGray)),
+                Span::styled("O", Style::default().fg(Color::Cyan)),
+                Span::styled(": open  ", Style::default().fg(Color::DarkGray)),
+                Span::styled("←/→", Style::default().fg(Color::Cyan)),
+                Span::styled(": filter  ", Style::default().fg(Color::DarkGray)),
                 Span::styled("Ctrl+Tab", Style::default().fg(Color::Cyan)),
                 Span::styled(": next tab", Style::default().fg(Color::DarkGray)),
             ],

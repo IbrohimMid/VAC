@@ -1,8 +1,8 @@
 //! Rulebook switcher popup handler.
 
 use super::{HandlerContext, HandlerResult};
-use crate::tui::app::events::OutputEvent;
 use crate::tui::app::InputEvent;
+use crate::tui::app::events::OutputEvent;
 
 pub fn handle_event(ctx: &mut HandlerContext, event: InputEvent) -> HandlerResult {
     match event {
@@ -33,14 +33,20 @@ pub fn handle_event(ctx: &mut HandlerContext, event: InputEvent) -> HandlerResul
             }
         }
         InputEvent::Down => {
-            let max = ctx.state.rulebook_switcher_filtered().len().saturating_sub(1);
+            let max = ctx
+                .state
+                .rulebook_switcher_filtered()
+                .len()
+                .saturating_sub(1);
             if ctx.state.rulebook_switcher_selected < max {
                 ctx.state.rulebook_switcher_selected += 1;
             }
         }
         InputEvent::InputSubmitted => {
             let selected: Vec<String> = ctx.state.selected_rulebooks.iter().cloned().collect();
-            let _ = ctx.output_tx.try_send(OutputEvent::ApplyRulebooks(selected));
+            let _ = ctx
+                .output_tx
+                .try_send(OutputEvent::ApplyRulebooks(selected));
             ctx.state.show_rulebook_switcher = false;
         }
         _ => {}

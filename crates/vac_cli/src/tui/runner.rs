@@ -330,7 +330,13 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                                 .await;
                         } else {
                             let _ = eng
-                                .run_task_with_images(&msg, Some(update_tx), None, None, image_parts)
+                                .run_task_with_images(
+                                    &msg,
+                                    Some(update_tx),
+                                    None,
+                                    None,
+                                    image_parts,
+                                )
                                 .await;
                         }
 
@@ -409,8 +415,8 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                     let input_tx = input_tx_clone.clone();
                     tokio::spawn(async move {
                         // Load rulebooks and filter by selection
-                        let config =
-                            vac_core::VacConfig::load_with_fallback(&project_root).unwrap_or_default();
+                        let config = vac_core::VacConfig::load_with_fallback(&project_root)
+                            .unwrap_or_default();
                         let all_books = vac_core::rulebook::RulebookLoader::load_all(
                             &project_root,
                             &config.rulebook.paths,
@@ -426,7 +432,8 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
 
                         // Build resolved context with archetype from VIL project profile
                         let archetype_str = {
-                            let profile = vac_core::detector::VilProjectProfile::detect(&project_root);
+                            let profile =
+                                vac_core::detector::VilProjectProfile::detect(&project_root);
                             let s = profile.archetype.to_string();
                             if s == "Unknown" { None } else { Some(s) }
                         };
@@ -466,9 +473,7 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                                     "**`{}`** result:\n\n```json\n{}\n```",
                                     tool_name, formatted
                                 );
-                                let _ = input_tx
-                                    .send(InputEvent::AssistantMessage(content))
-                                    .await;
+                                let _ = input_tx.send(InputEvent::AssistantMessage(content)).await;
                             }
                             Err(e) => {
                                 let _ = input_tx
@@ -491,7 +496,7 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                             Ok(mut config) => {
                                 // Auto-detect interactive vs batch
                                 let is_interactive = cmd.is_empty();
-                                
+
                                 let mut env_mode_str = active_isolation_mode.as_str();
                                 if active_isolation_mode.starts_with("isolated") {
                                     if is_interactive {
@@ -501,34 +506,54 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                                     }
                                 }
 
-                                if let Ok(env_mode) = serde_json::from_str::<vac_core::ExecutionEnvironment>(&format!("\"{}\"", env_mode_str)) {
+                                if let Ok(env_mode) =
+                                    serde_json::from_str::<vac_core::ExecutionEnvironment>(
+                                        &format!("\"{}\"", env_mode_str),
+                                    )
+                                {
                                     config.runtime.execution_environment = env_mode;
                                 }
 
                                 // Handle default mount presets
                                 if active_isolation_mode.contains("(Rust)") {
-                                    config.runtime.mount_presets.push(vac_core::config::MountPreset::Rust);
+                                    config
+                                        .runtime
+                                        .mount_presets
+                                        .push(vac_core::config::MountPreset::Rust);
                                 } else if active_isolation_mode.contains("(Node)") {
-                                    config.runtime.mount_presets.push(vac_core::config::MountPreset::Node);
+                                    config
+                                        .runtime
+                                        .mount_presets
+                                        .push(vac_core::config::MountPreset::Node);
                                 } else if active_isolation_mode.contains("(Python)") {
-                                    config.runtime.mount_presets.push(vac_core::config::MountPreset::Python);
+                                    config
+                                        .runtime
+                                        .mount_presets
+                                        .push(vac_core::config::MountPreset::Python);
                                 }
-                                
-                                if config.runtime.execution_environment == vac_core::ExecutionEnvironment::IsolatedInteractive || config.runtime.execution_environment == vac_core::ExecutionEnvironment::IsolatedBatch {
+
+                                if config.runtime.execution_environment
+                                    == vac_core::ExecutionEnvironment::IsolatedInteractive
+                                    || config.runtime.execution_environment
+                                        == vac_core::ExecutionEnvironment::IsolatedBatch
+                                {
                                     let isolation = vac_runtime::IsolationManager::new(
                                         runtime_project_root.clone(),
                                         config.runtime.clone(),
                                     );
-                                    
+
                                     if is_interactive {
                                         match isolation.build_interactive_shell_spec() {
                                             Ok(spec) => Some(spec),
                                             Err(err) => {
                                                 let _ = input_tx
-                                                    .send(InputEvent::ShellError("system".to_string(), format!(
+                                                .send(InputEvent::ShellError(
+                                                    "system".to_string(),
+                                                    format!(
                                                         "Failed to prepare isolated shell: {err}"
-                                                    )))
-                                                    .await;
+                                                    ),
+                                                ))
+                                                .await;
                                                 continue;
                                             }
                                         }
@@ -541,8 +566,14 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                                             &env,
                                         ) {
                                             Ok(command) => {
-                                                let program = command.get_program().to_string_lossy().to_string();
-                                                let args = command.get_args().map(|a| a.to_string_lossy().to_string()).collect();
+                                                let program = command
+                                                    .get_program()
+                                                    .to_string_lossy()
+                                                    .to_string();
+                                                let args = command
+                                                    .get_args()
+                                                    .map(|a| a.to_string_lossy().to_string())
+                                                    .collect();
                                                 Some(vac_runtime::IsolationLaunchSpec {
                                                     program,
                                                     args,
@@ -552,9 +583,12 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                                             }
                                             Err(err) => {
                                                 let _ = input_tx
-                                                    .send(InputEvent::ShellError("system".to_string(), format!(
-                                                        "Failed to build batch command: {err}"
-                                                    )))
+                                                    .send(InputEvent::ShellError(
+                                                        "system".to_string(),
+                                                        format!(
+                                                            "Failed to build batch command: {err}"
+                                                        ),
+                                                    ))
                                                     .await;
                                                 continue;
                                             }
@@ -566,9 +600,10 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                             }
                             Err(err) => {
                                 let _ = input_tx
-                                    .send(InputEvent::ShellError("system".to_string(), format!(
-                                        "Failed to load runtime config for shell: {err}"
-                                    )))
+                                    .send(InputEvent::ShellError(
+                                        "system".to_string(),
+                                        format!("Failed to load runtime config for shell: {err}"),
+                                    ))
                                     .await;
                                 continue;
                             }
@@ -619,9 +654,10 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                         }
                         Err(err_msg) => {
                             let _ = input_tx
-                                .send(InputEvent::ShellError("system".to_string(), format!(
-                                    "Failed to start shell: {err_msg}"
-                                )))
+                                .send(InputEvent::ShellError(
+                                    "system".to_string(),
+                                    format!("Failed to start shell: {err_msg}"),
+                                ))
                                 .await;
                         }
                     }
@@ -823,16 +859,20 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
     };
 
     if corpus_root.is_none() {
-        let _ = input_tx.send(InputEvent::ShowToast(crate::tui::services::Toast::info(
-            "VIL Knowledge missing. Using bootstrap fallback.".to_string(),
-        ))).await;
+        let _ = input_tx
+            .send(InputEvent::ShowToast(crate::tui::services::Toast::info(
+                "VIL Knowledge missing. Using bootstrap fallback.".to_string(),
+            )))
+            .await;
     }
 
     let config = vac_core::VacConfig::load_with_fallback(&project_root).unwrap_or_default();
-    if config.mcp_servers.as_ref().map_or(true, |s| s.is_empty()) {
-        let _ = input_tx.send(InputEvent::ShowToast(crate::tui::services::Toast::info(
-            "No MCP servers configured.".to_string(),
-        ))).await;
+    if config.mcp_servers.as_ref().is_none_or(|s| s.is_empty()) {
+        let _ = input_tx
+            .send(InputEvent::ShowToast(crate::tui::services::Toast::info(
+                "No MCP servers configured.".to_string(),
+            )))
+            .await;
     }
 
     run_tui(

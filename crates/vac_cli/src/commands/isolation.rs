@@ -94,23 +94,31 @@ pub async fn execute_run(
 
 pub async fn execute_wrap(project_root: PathBuf, command: Vec<String>) -> anyhow::Result<()> {
     let mut config = vac_core::VacConfig::load_with_fallback(&project_root)?;
-    
-    let (binary, args, mut env) = if command.is_empty() {
+
+    let (binary, args, env) = if command.is_empty() {
         let current_exe = std::env::current_exe()?;
         let mut e = HashMap::new();
         e.insert("VAC_INSIDE_ISOLATION".to_string(), "1".to_string());
-        
+
         // Add the VAC binary directory to allowed_mounts
         if let Some(parent) = current_exe.parent() {
-            config.runtime.allowed_mounts.push(parent.to_string_lossy().to_string());
+            config
+                .runtime
+                .allowed_mounts
+                .push(parent.to_string_lossy().to_string());
         }
-        
+
         (current_exe, vec!["interactive".to_string()], e)
     } else {
-        (PathBuf::from(&command[0]), command[1..].to_vec(), HashMap::new())
+        (
+            PathBuf::from(&command[0]),
+            command[1..].to_vec(),
+            HashMap::new(),
+        )
     };
 
-    let isolation = vac_runtime::IsolationManager::new(project_root.clone(), config.runtime.clone());
+    let isolation =
+        vac_runtime::IsolationManager::new(project_root.clone(), config.runtime.clone());
 
     if !isolation.is_isolated() {
         anyhow::bail!("Cannot wrap command: execution_environment is not isolated");
@@ -139,7 +147,7 @@ pub async fn execute_clear_logs(project_root: PathBuf) -> anyhow::Result<()> {
 pub async fn execute_doctor(project_root: PathBuf, format: &str) -> anyhow::Result<()> {
     let config = vac_core::VacConfig::load_with_fallback(&project_root)?;
     let isolation = vac_runtime::IsolationManager::new(project_root, config.runtime);
-    
+
     let is_json = format == "json";
 
     if !is_json {
@@ -150,7 +158,10 @@ pub async fn execute_doctor(project_root: PathBuf, format: &str) -> anyhow::Resu
 
     // 1. Check container runtime
     let runtime = isolation.container_runtime();
-    let runtime_status = match std::process::Command::new(runtime).arg("--version").output() {
+    let runtime_status = match std::process::Command::new(runtime)
+        .arg("--version")
+        .output()
+    {
         Ok(out) if out.status.success() => {
             let version = String::from_utf8_lossy(&out.stdout).trim().to_string();
             ("OK", version)
@@ -176,10 +187,13 @@ pub async fn execute_doctor(project_root: PathBuf, format: &str) -> anyhow::Resu
     if is_json {
         let mut json_obj = serde_json::Map::new();
         for (name, (status, msg)) in checks {
-            json_obj.insert(name.to_string(), serde_json::json!({
-                "status": status,
-                "message": msg
-            }));
+            json_obj.insert(
+                name.to_string(),
+                serde_json::json!({
+                    "status": status,
+                    "message": msg
+                }),
+            );
         }
         println!("{}", serde_json::to_string_pretty(&json_obj)?);
     } else {

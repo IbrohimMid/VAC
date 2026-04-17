@@ -1,5 +1,5 @@
 use std::collections::HashSet;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use chrono::Utc;
@@ -140,7 +140,7 @@ impl AutopilotController {
                             job.retry_count += 1;
                             job.status = JobStatus::Queued;
                             self.queue.update_job(job.clone()).await;
-                            
+
                             let until = Utc::now()
                                 + chrono::Duration::from_std(poll_interval)
                                     .unwrap_or_else(|_| chrono::Duration::seconds(5));
@@ -155,7 +155,10 @@ impl AutopilotController {
                                 queue_len: self.queued_len().await,
                                 current_job: None,
                                 last_event: Some(AutopilotEvent::RetryScheduled),
-                                last_error: Some(format!("Retry {}/{}: {}", job.retry_count, job.max_retries, error)),
+                                last_error: Some(format!(
+                                    "Retry {}/{}: {}",
+                                    job.retry_count, job.max_retries, error
+                                )),
                                 updated_at: Utc::now(),
                             });
 
@@ -168,11 +171,13 @@ impl AutopilotController {
                             job.completed_at = Some(Utc::now());
                             self.queue.update_job(job).await;
 
-                            let until = Utc::now()
+                            let _until = Utc::now()
                                 + chrono::Duration::from_std(poll_interval)
                                     .unwrap_or_else(|_| chrono::Duration::seconds(30));
                             self.write_state(AutopilotStateFile {
-                                state: AutopilotState::Failed { error: error.clone() },
+                                state: AutopilotState::Failed {
+                                    error: error.clone(),
+                                },
                                 mode: self.config.mode.clone(),
                                 task_intent_mode: task_intent_mode.clone(),
                                 environment_mode: environment_mode.clone(),
@@ -602,11 +607,11 @@ async fn queued_len(queue: &TaskQueue) -> usize {
         .count()
 }
 
-fn resolve_or_create_session_id(project_root: &PathBuf) -> uuid::Uuid {
+fn resolve_or_create_session_id(project_root: &Path) -> uuid::Uuid {
     match vac_core::Session::load_latest(project_root) {
         Ok(Some(s)) => s.id,
         _ => {
-            let session = vac_core::Session::new(project_root.clone());
+            let session = vac_core::Session::new(project_root.to_path_buf());
             let id = session.id;
             let _ = session.save();
             id

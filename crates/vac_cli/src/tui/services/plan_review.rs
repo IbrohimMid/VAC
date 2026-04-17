@@ -65,10 +65,7 @@ fn render_title(f: &mut Frame, state: &AppState, area: Rect) {
 
     let comment_count = state.plan_comments.len();
     let line1 = Line::from(vec![
-        Span::styled(
-            "  Plan: ",
-            Style::default().fg(ThemeColors::dark_gray()),
-        ),
+        Span::styled("  Plan: ", Style::default().fg(ThemeColors::dark_gray())),
         Span::styled(
             title,
             Style::default()
@@ -83,7 +80,9 @@ fn render_title(f: &mut Frame, state: &AppState, area: Rect) {
         Span::raw("  "),
         Span::styled(
             status_label,
-            Style::default().fg(status_color).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(status_color)
+                .add_modifier(Modifier::BOLD),
         ),
     ]);
 
@@ -143,7 +142,10 @@ fn render_footer(f: &mut Frame, area: Rect) {
         Span::styled("a", Style::default().fg(ThemeColors::cyan())),
         Span::styled(": Approve  ", Style::default().fg(ThemeColors::dark_gray())),
         Span::styled("r", Style::default().fg(ThemeColors::cyan())),
-        Span::styled(": Request changes  ", Style::default().fg(ThemeColors::dark_gray())),
+        Span::styled(
+            ": Request changes  ",
+            Style::default().fg(ThemeColors::dark_gray()),
+        ),
         Span::styled("Esc", Style::default().fg(ThemeColors::cyan())),
         Span::styled(": Close", Style::default().fg(ThemeColors::dark_gray())),
     ]);

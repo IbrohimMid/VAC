@@ -229,7 +229,10 @@ impl VilTool for VilRepairTool {
                 severity: r.severity.clone(),
                 suggested_fix: format!(
                     "Line {}: replace cols {}..{} with `{}`",
-                    r.edit.line, r.edit.col_start, r.edit.col_end, r.edit.new_text.trim()
+                    r.edit.line,
+                    r.edit.col_start,
+                    r.edit.col_end,
+                    r.edit.new_text.trim()
                 ),
                 rationale: format!("Repair pattern: {}", r.pattern),
             })
@@ -240,7 +243,8 @@ impl VilTool for VilRepairTool {
             if let Some(fallback) = issue_to_repair(issue) {
                 // Avoid duplicating issues already covered by the engine
                 let dominated = planned_repairs.iter().any(|r| {
-                    r.issue.contains(&fallback.issue[..fallback.issue.len().min(40)])
+                    r.issue
+                        .contains(&fallback.issue[..fallback.issue.len().min(40)])
                 });
                 if !dominated {
                     planned_repairs.push(fallback);

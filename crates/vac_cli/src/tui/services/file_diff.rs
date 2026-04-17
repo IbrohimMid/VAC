@@ -40,7 +40,12 @@ pub fn render_diff(old_content: &str, new_content: &str, max_width: usize) -> Ve
                 let mut span = Span::styled(truncated.clone(), Style::default().fg(Color::Green));
                 // Highlight VIL macros (generated code hint)
                 if truncated.trim().starts_with("#[vil_") {
-                    span = Span::styled(format!("{} (VIL-generated plumbing)", truncated), Style::default().fg(Color::Green).add_modifier(Modifier::BOLD));
+                    span = Span::styled(
+                        format!("{} (VIL-generated plumbing)", truncated),
+                        Style::default()
+                            .fg(Color::Green)
+                            .add_modifier(Modifier::BOLD),
+                    );
                 }
                 lines.push(Line::from(vec![
                     Span::styled("+ ", Style::default().fg(Color::Green)),

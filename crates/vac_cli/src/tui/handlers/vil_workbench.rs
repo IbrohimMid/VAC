@@ -34,8 +34,7 @@ pub fn select_next(ctx: &mut HandlerContext) -> HandlerResult {
 
 /// Select previous issue within the active filter.
 pub fn select_prev(ctx: &mut HandlerContext) -> HandlerResult {
-    ctx.state.vil_workbench_selected =
-        ctx.state.vil_workbench_selected.saturating_sub(1);
+    ctx.state.vil_workbench_selected = ctx.state.vil_workbench_selected.saturating_sub(1);
     Ok(())
 }
 
@@ -88,11 +87,7 @@ pub fn run_audit(ctx: &mut HandlerContext) -> HandlerResult {
             .push(Toast::info("No VIL issue selected.".to_string()));
         return Ok(());
     };
-    let files: Vec<String> = issue
-        .file
-        .clone()
-        .into_iter()
-        .collect();
+    let files: Vec<String> = issue.file.clone().into_iter().collect();
     let pass_filter = match issue.kind {
         VilIssueKind::ZeroCopy => "zero_copy",
         VilIssueKind::Plumbing => "plumbing",
@@ -145,9 +140,9 @@ pub fn open_in_editor(ctx: &mut HandlerContext) -> HandlerResult {
         return Ok(());
     };
     let Some(path) = issue.file.clone() else {
-        ctx.state
-            .toasts
-            .push(Toast::info("Selected issue has no associated file.".to_string()));
+        ctx.state.toasts.push(Toast::info(
+            "Selected issue has no associated file.".to_string(),
+        ));
         return Ok(());
     };
 
@@ -163,9 +158,7 @@ pub fn open_in_editor(ctx: &mut HandlerContext) -> HandlerResult {
 
     // `detect_editor` lives under the review service; reuse to avoid
     // duplicating the fallback chain (nvim → vim → nano → vi).
-    let Some(editor) =
-        crate::tui::services::review::detect_editor(preferred)
-    else {
+    let Some(editor) = crate::tui::services::review::detect_editor(preferred) else {
         ctx.state.add_assistant_message(
             "No editor available. Set VAC_EDITOR/EDITOR or install nvim/vim/nano.".to_string(),
         );

@@ -39,7 +39,11 @@ pub fn render_profile_switcher(f: &mut Frame, state: &mut AppState) {
             } else {
                 Style::default()
             };
-            let prefix = if p == &state.active_profile { "* " } else { "  " };
+            let prefix = if p == &state.active_profile {
+                "* "
+            } else {
+                "  "
+            };
             ListItem::new(Line::from(vec![
                 Span::styled(prefix, Style::default().fg(Color::Green)),
                 Span::styled(p.clone(), style),

@@ -98,9 +98,17 @@ fn summary_line_for_change(module_path: &str, change: &IrChange) -> String {
     };
     let desc_lower = change.description.to_lowercase();
     let verb = if desc_lower == "added" {
-        format!("added {} {}", change.entity_type.to_lowercase(), change.entity_name)
+        format!(
+            "added {} {}",
+            change.entity_type.to_lowercase(),
+            change.entity_name
+        )
     } else if desc_lower == "removed" {
-        format!("removed {} {}", change.entity_type.to_lowercase(), change.entity_name)
+        format!(
+            "removed {} {}",
+            change.entity_type.to_lowercase(),
+            change.entity_name
+        )
     } else if desc_lower.contains("doc comment") {
         format!("doc comment updated on {}", change.entity_name)
     } else {
@@ -316,13 +324,12 @@ pub fn diff_modules(old: Option<&IrModule>, new: Option<&IrModule>) -> Option<Mo
         }
     }
 
-    let overall_kind = if !renames.is_empty()
-        || changes.iter().any(|c| c.kind == ChangeKind::Semantic)
-    {
-        ChangeKind::Semantic
-    } else {
-        ChangeKind::Cosmetic
-    };
+    let overall_kind =
+        if !renames.is_empty() || changes.iter().any(|c| c.kind == ChangeKind::Semantic) {
+            ChangeKind::Semantic
+        } else {
+            ChangeKind::Cosmetic
+        };
 
     Some(ModuleDiff {
         path,
@@ -435,8 +442,16 @@ mod tests {
 
         let diff = diff_modules(Some(&old), Some(&new)).expect("diff");
         assert_eq!(diff.renames.len(), 0, "signature mismatch must not rename");
-        assert!(diff.changes.iter().any(|c| c.entity_name == "bar" && c.description == "Added"));
-        assert!(diff.changes.iter().any(|c| c.entity_name == "foo" && c.description == "Removed"));
+        assert!(
+            diff.changes
+                .iter()
+                .any(|c| c.entity_name == "bar" && c.description == "Added")
+        );
+        assert!(
+            diff.changes
+                .iter()
+                .any(|c| c.entity_name == "foo" && c.description == "Removed")
+        );
     }
 
     #[test]

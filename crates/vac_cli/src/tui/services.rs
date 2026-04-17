@@ -14,29 +14,32 @@ pub mod file_diff;
 pub mod file_search;
 pub mod helper_block;
 pub mod helper_dropdown;
+pub mod isolation_switcher;
 pub mod markdown_renderer;
 pub mod message;
+pub mod message_action_popup;
 pub mod plan;
 pub mod plan_review;
-pub mod message_action_popup;
+pub mod profile_switcher;
+pub mod recent_commands;
 pub mod review;
+pub mod rulebook_switcher;
 pub mod shell_mode;
 pub mod shortcuts_popup;
 pub mod side_panel;
-pub mod profile_switcher;
-pub mod isolation_switcher;
-pub mod recent_commands;
-pub mod rulebook_switcher;
 pub mod syntax_highlighter;
 pub mod text_selection;
 pub mod textarea;
 pub mod toast;
 pub mod todo_extractor;
+pub mod vil_workbench;
 
 // Re-export commonly used types
 pub use approval_bar::approval_preview;
 pub use changeset::{ChangesetEntry, ChangesetStore, FileState, build_changeset};
-pub use clipboard_paste::{extract_file_paths_from_text, paste_image_to_temp_png, copy_to_clipboard};
+pub use clipboard_paste::{
+    copy_to_clipboard, extract_file_paths_from_text, paste_image_to_temp_png,
+};
 pub use detect_term::ThemeColors;
 pub use file_diff::{preview_file_diff, render_diff};
 pub use file_search::{build_file_index, fuzzy_search_files};
@@ -46,6 +49,6 @@ pub use markdown_renderer::{
 };
 pub use shell_mode::{ShellCommand, ShellEvent, run_pty_command};
 pub use shortcuts_popup::{Shortcut, get_all_shortcuts, render_shortcuts_popup};
-pub use textarea::{TextArea, TextAreaState};
 pub use text_selection::SelectionState;
+pub use textarea::{TextArea, TextAreaState};
 pub use toast::{Toast, ToastStyle};

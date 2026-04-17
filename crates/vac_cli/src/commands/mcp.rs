@@ -3,11 +3,11 @@
 use anyhow::Result;
 use std::path::Path;
 use vac_core::VacConfig;
-use vac_tools::mcp::{McpTrustClass, McpTransport};
+use vac_tools::mcp::{McpTransport, McpTrustClass};
 
 pub fn list(project_root: &Path) -> Result<()> {
     let config = VacConfig::load_with_fallback(project_root)?;
-    
+
     let servers = match &config.mcp_servers {
         Some(servers) if !servers.is_empty() => servers,
         _ => {
@@ -15,10 +15,10 @@ pub fn list(project_root: &Path) -> Result<()> {
             return Ok(());
         }
     };
-    
+
     println!("MCP Servers:");
     println!();
-    
+
     for server in servers {
         let trust_badge = match server.trust_class {
             Some(McpTrustClass::LocalTrusted) => "🟢 local-trusted",
@@ -26,9 +26,9 @@ pub fn list(project_root: &Path) -> Result<()> {
             Some(McpTrustClass::RemoteUntrusted) => "🔴 remote-untrusted",
             None => "⚪ unspecified",
         };
-        
+
         println!("  {} [{}]", server.name, trust_badge);
-        
+
         match &server.transport {
             McpTransport::Stdio { command, args } => {
                 println!("    Transport: stdio");
@@ -40,19 +40,22 @@ pub fn list(project_root: &Path) -> Result<()> {
                 println!("    URL: {}", url);
             }
         }
-        
+
         if !server.env.is_empty() {
             println!("    Environment: {} vars", server.env.len());
         }
-        
+
         if let Some(policy) = &server.approval_policy {
             println!("    Approval policy: {}", policy);
         }
-        
+
         if !server.allowed_in_modes.is_empty() {
-            println!("    Allowed in modes: {}", server.allowed_in_modes.join(", "));
+            println!(
+                "    Allowed in modes: {}",
+                server.allowed_in_modes.join(", ")
+            );
         }
-        
+
         // Diagnostic Warnings
         let mut warnings = Vec::new();
         if server.trust_class.is_none() {
@@ -60,12 +63,18 @@ pub fn list(project_root: &Path) -> Result<()> {
                 true => "remote-untrusted",
                 false => "local-trusted",
             };
-            warnings.push(format!("Trust class is unspecified, defaulting to {}", default_trust));
+            warnings.push(format!(
+                "Trust class is unspecified, defaulting to {}",
+                default_trust
+            ));
         }
-        
+
         let is_untrusted = server.effective_trust_class() == McpTrustClass::RemoteUntrusted;
-        let has_auto_policy = matches!(server.approval_policy.as_deref(), Some("auto_all") | Some("auto_safe"));
-        
+        let has_auto_policy = matches!(
+            server.approval_policy.as_deref(),
+            Some("auto_all") | Some("auto_safe")
+        );
+
         if is_untrusted && has_auto_policy {
             warnings.push("WARNING: Untrusted remote server has an auto-approval policy! This is a security risk.".to_string());
         }
@@ -73,16 +82,16 @@ pub fn list(project_root: &Path) -> Result<()> {
         for warning in warnings {
             println!("    ⚠️  {}", warning);
         }
-        
+
         println!();
     }
-    
+
     Ok(())
 }
 
 pub async fn status(project_root: &Path) -> Result<()> {
     let config = VacConfig::load_with_fallback(project_root)?;
-    
+
     let servers = match &config.mcp_servers {
         Some(servers) => servers,
         None => {
@@ -92,25 +101,26 @@ pub async fn status(project_root: &Path) -> Result<()> {
             return Ok(());
         }
     };
-    
+
     println!("MCP Status:");
     println!();
     println!("  Total servers: {}", servers.len());
     println!();
-    
-    let local_count = servers.iter()
+
+    let local_count = servers
+        .iter()
         .filter(|s| matches!(s.trust_class, Some(McpTrustClass::LocalTrusted)))
         .count();
-    let verified_count = servers.iter()
+    let verified_count = servers
+        .iter()
         .filter(|s| matches!(s.trust_class, Some(McpTrustClass::RemoteVerified)))
         .count();
-    let untrusted_count = servers.iter()
+    let untrusted_count = servers
+        .iter()
         .filter(|s| matches!(s.trust_class, Some(McpTrustClass::RemoteUntrusted)))
         .count();
-    let unspecified_count = servers.iter()
-        .filter(|s| s.trust_class.is_none())
-        .count();
-    
+    let unspecified_count = servers.iter().filter(|s| s.trust_class.is_none()).count();
+
     println!("  Trust distribution:");
     println!("    🟢 Local Trusted: {}", local_count);
     println!("    🟡 Remote Verified: {}", verified_count);
@@ -118,7 +128,7 @@ pub async fn status(project_root: &Path) -> Result<()> {
     if unspecified_count > 0 {
         println!("    ⚪ Unspecified: {}", unspecified_count);
     }
-    
+
     println!();
     println!("  Connection Status:");
     for server in servers {
@@ -128,12 +138,12 @@ pub async fn status(project_root: &Path) -> Result<()> {
         } else {
             "❌ unreachable"
         };
-        
+
         println!("    {} [{}]", server.name, status_badge);
         if let vac_tools::mcp::McpConnectionStatus::Unreachable(reason) = state.status {
             println!("      Reason: {}", reason);
         }
     }
-    
+
     Ok(())
 }

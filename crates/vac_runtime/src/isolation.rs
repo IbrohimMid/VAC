@@ -87,14 +87,16 @@ impl IsolationManager {
 
     pub fn resolve_mounts(&self) -> anyhow::Result<Vec<PathBuf>> {
         let mut mounts = vec![self.project_root.clone()];
-        
+
         let mut explicit_mounts = self.runtime.allowed_mounts.clone();
-        
+
         let mut presets = self.runtime.mount_presets.clone();
-        if self.project_root.join("Cargo.toml").exists() && !presets.contains(&vac_core::config::MountPreset::Rust) {
+        if self.project_root.join("Cargo.toml").exists()
+            && !presets.contains(&vac_core::config::MountPreset::Rust)
+        {
             presets.push(vac_core::config::MountPreset::Rust);
         }
-        
+
         for preset in presets {
             match preset {
                 vac_core::config::MountPreset::Rust => {
@@ -111,7 +113,7 @@ impl IsolationManager {
                 }
             }
         }
-        
+
         for mount in &explicit_mounts {
             let resolved = if PathBuf::from(mount).is_absolute() {
                 PathBuf::from(mount)
@@ -120,7 +122,7 @@ impl IsolationManager {
             };
             if !resolved.exists() {
                 self.append_log(&format!("DENY mount={} reason=missing", resolved.display()));
-                
+
                 // If it was explicitly allowed by the user, fail.
                 // We assume presets might be auto-included and thus okay to skip if missing.
                 if self.runtime.allowed_mounts.contains(mount) {
