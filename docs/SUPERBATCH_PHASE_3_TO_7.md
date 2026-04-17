@@ -2,7 +2,7 @@
 
 **Audience**: long-running cloud coding agent (Claude/Codex/etc.) with full repo write access, ability to run `cargo`, open PRs, and iterate for 8–24h continuously.
 
-**Repo**: `vastar-agentic-cli` · branch base: `codex/phase-0-audit-fixes` (post-commit `100ceb1`).
+**Repo**: `vastar-agentic-cli` · **base branch: `main` (ALWAYS)** — current HEAD `6e48091`. Every feature branch MUST be cut from the latest `main`, and every PR MUST target `main`. No exceptions, no long-lived integration branches.
 
 **Source of truth**: `docs/ROADMAP_TO_100_v2.md`. Read it first. This document = execution plan; v2 = scoring contract.
 
@@ -284,11 +284,12 @@ A PR is mergeable iff ALL of:
 
 ## First action when the agent wakes up
 
-1. `git fetch && git status` — confirm clean tree on `codex/phase-0-audit-fixes` (or successor branch).
+1. `git fetch origin && git checkout main && git pull --ff-only origin main` — ALWAYS sync to latest `main` first. Never branch from a stale local main.
 2. Read `docs/ROADMAP_TO_100_v2.md` end-to-end.
 3. Read this file end-to-end.
-4. `cargo check --workspace && cargo clippy --workspace --all-targets -- -D warnings` — confirm baseline green.
-5. Pick the lowest-numbered unchecked sub-phase, create branch `phase-N.X-<slug>`, start work.
-6. Commit + push + open PR within ≤4h of starting; iterate to green.
+4. `cargo check --workspace && cargo clippy --workspace --all-targets -- -D warnings` — confirm baseline green on fresh main.
+5. Pick the lowest-numbered unchecked sub-phase, `git checkout -b phase-N.X-<slug>` (cut from main), start work.
+6. Commit + push + open PR **targeting `main`** within ≤4h of starting; iterate to green.
+7. Before every new sub-phase: repeat step 1 to re-sync. Never stack work on an un-merged branch unless there is a hard dependency (and even then, rebase onto main as soon as the dependency lands).
 
 End of superbatch.
