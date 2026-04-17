@@ -37,6 +37,7 @@ pub mod model_switcher;
 pub mod profile_switcher;
 pub mod review;
 pub mod rulebook_switcher;
+pub mod vil_workbench;
 
 use crate::tui::app::{AppState, OutputEvent};
 use tokio::sync::mpsc::Sender;

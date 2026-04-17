@@ -15,6 +15,73 @@ fn get_process_registry() -> Arc<Mutex<HashMap<String, u32>>> {
         .clone()
 }
 
+// ========== Shell lifecycle & prompt detection (Unit 6, Wave 3.4) ==========
+
+/// Lifecycle state shown in the shell footer strip.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ShellLifecycle {
+    /// Shell is running, no special state.
+    Running,
+    /// Shell appears idle at a prompt (prompt-ready detection fired).
+    PromptReady,
+    /// Process exited normally.
+    Exited(i32),
+    /// Process was killed (SIGKILL / forced termination).
+    Killed,
+    /// An error prevented the shell from starting or continuing.
+    Error(String),
+}
+
+impl ShellLifecycle {
+    /// Human-readable label for the footer hint.
+    pub fn label(&self) -> String {
+        match self {
+            Self::Running => "Running".into(),
+            Self::PromptReady => "Prompt ready".into(),
+            Self::Exited(code) => format!("Exited({})", code),
+            Self::Killed => "Killed".into(),
+            Self::Error(msg) => format!("Error: {}", msg),
+        }
+    }
+}
+
+/// Detect whether `text` ends with a shell prompt indicator.
+///
+/// Matches common prompt suffixes: `$ `, `# `, `> `, `% `,
+/// as well as Windows-style `>` at the very end.
+pub fn detect_prompt_ready(text: &str) -> bool {
+    let trimmed = text.trim_end_matches('\n');
+    if trimmed.is_empty() {
+        return false;
+    }
+    let last_line = trimmed.lines().next_back().unwrap_or("");
+    last_line.ends_with("$ ")
+        || last_line.ends_with("# ")
+        || last_line.ends_with("> ")
+        || last_line.ends_with("% ")
+        || last_line.ends_with(">")
+}
+
+/// Detect whether the last line of output is a password/passphrase prompt.
+///
+/// When true, the TUI should suppress input echo (show dots or nothing).
+pub fn detect_password_prompt(text: &str) -> bool {
+    let trimmed = text.trim_end_matches('\n');
+    if trimmed.is_empty() {
+        return false;
+    }
+    let last_line = trimmed
+        .lines()
+        .next_back()
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    last_line.contains("password")
+        || last_line.contains("passphrase")
+        || last_line.contains("pin:")
+        || last_line.contains("secret:")
+        || (last_line.contains("enter") && last_line.contains("key"))
+}
+
 #[derive(Debug, Clone)]
 pub enum ShellEvent {
     Output(String, String),
@@ -97,8 +164,10 @@ pub fn run_pty_command(
         }) {
             Ok(pair) => pair,
             Err(err) => {
-                let _ = output_tx
-                    .blocking_send(ShellEvent::Error(command_id.clone(), format!("Failed to open PTY: {err}")));
+                let _ = output_tx.blocking_send(ShellEvent::Error(
+                    command_id.clone(),
+                    format!("Failed to open PTY: {err}"),
+                ));
                 return;
             }
         };
@@ -130,8 +199,10 @@ pub fn run_pty_command(
         let mut child = match pair.slave.spawn_command(cmd) {
             Ok(child) => child,
             Err(err) => {
-                let _ = output_tx
-                    .blocking_send(ShellEvent::Error(command_id.clone(), format!("Failed to spawn shell: {err}")));
+                let _ = output_tx.blocking_send(ShellEvent::Error(
+                    command_id.clone(),
+                    format!("Failed to spawn shell: {err}"),
+                ));
                 return;
             }
         };
@@ -146,9 +217,10 @@ pub fn run_pty_command(
         let mut writer = match pair.master.take_writer() {
             Ok(writer) => writer,
             Err(err) => {
-                let _ = output_tx.blocking_send(ShellEvent::Error(command_id.clone(), format!(
-                    "Failed to open PTY writer: {err}"
-                )));
+                let _ = output_tx.blocking_send(ShellEvent::Error(
+                    command_id.clone(),
+                    format!("Failed to open PTY writer: {err}"),
+                ));
                 return;
             }
         };
@@ -156,9 +228,10 @@ pub fn run_pty_command(
         let mut reader = match pair.master.try_clone_reader() {
             Ok(reader) => reader,
             Err(err) => {
-                let _ = output_tx.blocking_send(ShellEvent::Error(command_id.clone(), format!(
-                    "Failed to open PTY reader: {err}"
-                )));
+                let _ = output_tx.blocking_send(ShellEvent::Error(
+                    command_id.clone(),
+                    format!("Failed to open PTY reader: {err}"),
+                ));
                 return;
             }
         };
@@ -180,12 +253,17 @@ pub fn run_pty_command(
                     Ok(0) => break,
                     Ok(n) => {
                         let text = String::from_utf8_lossy(&buf[..n]).to_string();
-                        let _ = output_tx_clone.blocking_send(ShellEvent::Output(command_id_for_reader.clone(), text.clone()));
-                        
-                        let has_prompt = text.ends_with("$ ") || text.ends_with("# ") || text.ends_with("> ") || text.ends_with("? ") || text.contains("Press Enter");
+                        let _ = output_tx_clone.blocking_send(ShellEvent::Output(
+                            command_id_for_reader.clone(),
+                            text.clone(),
+                        ));
+
+                        let has_prompt = detect_prompt_ready(&text) || text.contains("Press Enter");
                         if first_output || has_prompt {
                             let _ = prompt_ready_tx.send(());
-                            let _ = output_tx_clone.blocking_send(ShellEvent::WaitingForInput(command_id_for_reader.clone()));
+                            let _ = output_tx_clone.blocking_send(ShellEvent::WaitingForInput(
+                                command_id_for_reader.clone(),
+                            ));
                             first_output = false;
                         }
                     }
@@ -193,8 +271,10 @@ pub fn run_pty_command(
                         std::thread::sleep(std::time::Duration::from_millis(10));
                     }
                     Err(err) => {
-                        let _ = output_tx_clone
-                            .blocking_send(ShellEvent::Error(command_id_for_reader.clone(), format!("Read error: {err}")));
+                        let _ = output_tx_clone.blocking_send(ShellEvent::Error(
+                            command_id_for_reader.clone(),
+                            format!("Read error: {err}"),
+                        ));
                         break;
                     }
                 }
@@ -233,11 +313,64 @@ pub fn run_pty_command(
                 if let Ok(mut registry) = registry.lock() {
                     registry.remove(&command_id);
                 }
-                let _ = output_tx.blocking_send(ShellEvent::Error(command_id.clone(), format!("Wait error: {err}")));
+                let _ = output_tx.blocking_send(ShellEvent::Error(
+                    command_id.clone(),
+                    format!("Wait error: {err}"),
+                ));
                 let _ = output_tx.blocking_send(ShellEvent::Completed(command_id.clone(), -1));
             }
         }
     });
 
     Ok(shell_cmd)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn detect_prompt_ready_matches_common_suffixes() {
+        assert!(detect_prompt_ready("user@host:~$ "));
+        assert!(detect_prompt_ready("root@host:/# "));
+        assert!(detect_prompt_ready("mysql> "));
+        assert!(detect_prompt_ready("(venv) user@host:~% "));
+        assert!(detect_prompt_ready("C:\\Users\\me>"));
+    }
+
+    #[test]
+    fn detect_prompt_ready_rejects_non_prompts() {
+        assert!(!detect_prompt_ready("compiling crate..."));
+        assert!(!detect_prompt_ready(""));
+        assert!(!detect_prompt_ready("hello world\n"));
+    }
+
+    #[test]
+    fn detect_password_prompt_matches_common_patterns() {
+        assert!(detect_password_prompt("Password: "));
+        assert!(detect_password_prompt(
+            "Enter passphrase for key '/home/user/.ssh/id_rsa': "
+        ));
+        assert!(detect_password_prompt("[sudo] password for user: "));
+        assert!(detect_password_prompt("PIN: "));
+        assert!(detect_password_prompt("Enter your secret: "));
+        assert!(detect_password_prompt("Enter decryption key: "));
+    }
+
+    #[test]
+    fn detect_password_prompt_rejects_normal_output() {
+        assert!(!detect_password_prompt("user@host:~$ "));
+        assert!(!detect_password_prompt("Downloading file..."));
+        assert!(!detect_password_prompt(""));
+    }
+
+    #[test]
+    fn lifecycle_labels_are_human_readable() {
+        assert_eq!(ShellLifecycle::Running.label(), "Running");
+        assert_eq!(ShellLifecycle::PromptReady.label(), "Prompt ready");
+        assert_eq!(ShellLifecycle::Exited(0).label(), "Exited(0)");
+        assert_eq!(ShellLifecycle::Exited(1).label(), "Exited(1)");
+        assert_eq!(ShellLifecycle::Killed.label(), "Killed");
+        assert_eq!(ShellLifecycle::Error("boom".into()).label(), "Error: boom");
+    }
 }

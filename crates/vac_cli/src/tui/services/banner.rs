@@ -14,11 +14,46 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph},
 };
+use std::collections::{HashSet, VecDeque};
 use std::time::{Duration, Instant};
 
 const BANNER_MESSAGE_DURATION: Duration = Duration::from_secs(60);
 
 pub const BANNER_VISIBLE_HEIGHT: u16 = 3;
+
+// ========== Unit 8 (Wave 3.6) — Banner maturity ==========
+
+/// Severity controls auto-expiry and dismissibility.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum BannerSeverity {
+    /// Must be explicitly dismissed; blocks input until acknowledged.
+    Blocking,
+    /// Auto-expires after 30s, can be dismissed early.
+    Suggested,
+    /// Auto-expires after 10s, lowest priority.
+    Informative,
+}
+
+impl BannerSeverity {
+    pub fn auto_expiry(self) -> Option<Duration> {
+        match self {
+            Self::Blocking => None,
+            Self::Suggested => Some(Duration::from_secs(30)),
+            Self::Informative => Some(Duration::from_secs(10)),
+        }
+    }
+}
+
+/// An inline button embedded in the banner strip.
+#[derive(Debug, Clone)]
+pub struct BannerAction {
+    pub label: String,
+    pub command: String,
+    pub keybind_hint: Option<String>,
+}
+
+/// Stable identifier for deduplication and dismissed-memory.
+pub type BannerId = String;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BannerStyle {
@@ -41,31 +76,45 @@ impl BannerStyle {
 
 #[derive(Debug, Clone)]
 pub struct BannerMessage {
+    pub id: BannerId,
     pub text: String,
     pub created_at: Instant,
     pub style: BannerStyle,
     pub persistent: bool,
     pub action: Option<String>,
+    // Unit 8 extensions
+    pub severity: BannerSeverity,
+    pub actions: Vec<BannerAction>,
 }
 
 impl BannerMessage {
     pub fn new(text: impl Into<String>, style: BannerStyle) -> Self {
+        let text = text.into();
+        let id = format!("banner-{:x}", fxhash(&text));
         Self {
-            text: text.into(),
+            id,
+            text,
             created_at: Instant::now(),
             style,
             persistent: false,
             action: None,
+            severity: BannerSeverity::Informative,
+            actions: Vec::new(),
         }
     }
 
     pub fn persistent(text: impl Into<String>, style: BannerStyle) -> Self {
+        let text = text.into();
+        let id = format!("banner-{:x}", fxhash(&text));
         Self {
-            text: text.into(),
+            id,
+            text,
             created_at: Instant::now(),
             style,
             persistent: true,
             action: None,
+            severity: BannerSeverity::Blocking,
+            actions: Vec::new(),
         }
     }
 
@@ -74,21 +123,112 @@ impl BannerMessage {
         style: BannerStyle,
         action: impl Into<String>,
     ) -> Self {
+        let text = text.into();
+        let id = format!("banner-{:x}", fxhash(&text));
         Self {
-            text: text.into(),
+            id,
+            text,
             created_at: Instant::now(),
             style,
             persistent: true,
             action: Some(action.into()),
+            severity: BannerSeverity::Blocking,
+            actions: Vec::new(),
         }
+    }
+
+    pub fn with_severity(mut self, severity: BannerSeverity) -> Self {
+        self.severity = severity;
+        if severity == BannerSeverity::Blocking {
+            self.persistent = true;
+        }
+        self
+    }
+
+    pub fn with_actions(mut self, actions: Vec<BannerAction>) -> Self {
+        self.actions = actions;
+        self
     }
 
     pub fn is_expired(&self) -> bool {
         if self.persistent {
             return false;
         }
-        self.created_at.elapsed() > BANNER_MESSAGE_DURATION
+        let expiry = self
+            .severity
+            .auto_expiry()
+            .unwrap_or(BANNER_MESSAGE_DURATION);
+        self.created_at.elapsed() > expiry
     }
+}
+
+/// Stacked banner queue. At most one banner renders at a time; `Ctrl+B` cycles.
+#[derive(Debug, Clone, Default)]
+pub struct BannerQueue {
+    pub queue: VecDeque<BannerMessage>,
+    pub dismissed: HashSet<BannerId>,
+}
+
+impl BannerQueue {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Push a banner; deduplicates by id and skips dismissed banners.
+    pub fn push(&mut self, msg: BannerMessage) {
+        if self.dismissed.contains(&msg.id) {
+            return;
+        }
+        if self.queue.iter().any(|m| m.id == msg.id) {
+            return;
+        }
+        self.queue.push_back(msg);
+    }
+
+    /// Remove expired and dismissed entries, return the front (visible) banner.
+    pub fn current(&mut self) -> Option<&BannerMessage> {
+        // Drain expired/dismissed from front
+        while let Some(front) = self.queue.front() {
+            if front.is_expired() || self.dismissed.contains(&front.id) {
+                self.queue.pop_front();
+            } else {
+                break;
+            }
+        }
+        self.queue.front()
+    }
+
+    /// Dismiss the current banner (move to next in queue).
+    pub fn dismiss_current(&mut self) {
+        if let Some(msg) = self.queue.pop_front() {
+            self.dismissed.insert(msg.id);
+        }
+    }
+
+    /// Cycle: move the front banner to the back.
+    pub fn cycle(&mut self) {
+        if let Some(msg) = self.queue.pop_front() {
+            self.queue.push_back(msg);
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.queue.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.queue.is_empty()
+    }
+}
+
+/// Cheap non-cryptographic hash for banner id generation.
+fn fxhash(s: &str) -> u64 {
+    let mut hash: u64 = 0xcbf29ce484222325;
+    for b in s.bytes() {
+        hash ^= b as u64;
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    hash
 }
 
 pub fn banner_height(state: &AppState) -> u16 {
@@ -229,4 +369,88 @@ pub fn render_banner(f: &mut Frame, area: Rect, state: &mut AppState) {
 
     f.render_widget(paragraph, area);
     state.banner_click_regions = click_regions;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn queue_deduplicates_by_id() {
+        let mut q = BannerQueue::new();
+        let msg1 = BannerMessage::new("hello", BannerStyle::Info);
+        let msg2 = BannerMessage::new("hello", BannerStyle::Warning); // same text = same id
+        q.push(msg1);
+        q.push(msg2);
+        assert_eq!(q.len(), 1);
+    }
+
+    #[test]
+    fn queue_dismiss_skips_to_next() {
+        let mut q = BannerQueue::new();
+        q.push(BannerMessage::new("first", BannerStyle::Info));
+        q.push(BannerMessage::new("second", BannerStyle::Warning));
+        assert_eq!(q.current().unwrap().text, "first");
+        q.dismiss_current();
+        assert_eq!(q.current().unwrap().text, "second");
+    }
+
+    #[test]
+    fn queue_dismissed_banners_not_re_added() {
+        let mut q = BannerQueue::new();
+        let msg = BannerMessage::new("once", BannerStyle::Info);
+        let id = msg.id.clone();
+        q.push(msg);
+        q.dismiss_current();
+        assert!(q.dismissed.contains(&id));
+        // Try to re-add
+        q.push(BannerMessage::new("once", BannerStyle::Info));
+        assert!(q.current().is_none());
+    }
+
+    #[test]
+    fn queue_cycle_moves_front_to_back() {
+        let mut q = BannerQueue::new();
+        q.push(BannerMessage::new("a", BannerStyle::Info));
+        q.push(BannerMessage::new("b", BannerStyle::Info));
+        assert_eq!(q.current().unwrap().text, "a");
+        q.cycle();
+        assert_eq!(q.current().unwrap().text, "b");
+        q.cycle();
+        assert_eq!(q.current().unwrap().text, "a");
+    }
+
+    #[test]
+    fn severity_expiry_durations() {
+        assert_eq!(BannerSeverity::Blocking.auto_expiry(), None);
+        assert_eq!(
+            BannerSeverity::Suggested.auto_expiry(),
+            Some(Duration::from_secs(30))
+        );
+        assert_eq!(
+            BannerSeverity::Informative.auto_expiry(),
+            Some(Duration::from_secs(10))
+        );
+    }
+
+    #[test]
+    fn blocking_banner_never_expires() {
+        let msg = BannerMessage::persistent("important", BannerStyle::Error)
+            .with_severity(BannerSeverity::Blocking);
+        assert!(!msg.is_expired());
+        assert!(msg.persistent);
+    }
+
+    #[test]
+    fn banner_with_actions() {
+        let msg = BannerMessage::new("upgrade available", BannerStyle::Info)
+            .with_severity(BannerSeverity::Suggested)
+            .with_actions(vec![BannerAction {
+                label: "Upgrade".into(),
+                command: "/upgrade".into(),
+                keybind_hint: Some("u".into()),
+            }]);
+        assert_eq!(msg.actions.len(), 1);
+        assert_eq!(msg.actions[0].command, "/upgrade");
+    }
 }

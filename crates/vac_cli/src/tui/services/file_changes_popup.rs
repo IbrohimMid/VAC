@@ -96,7 +96,10 @@ pub fn render_file_changes_popup(f: &mut Frame, state: &AppState) {
             Span::styled(">", Style::default().fg(ThemeColors::magenta())),
             Span::raw(" "),
             Span::styled("|", Style::default().fg(ThemeColors::cyan())),
-            Span::styled("Type to filter", Style::default().fg(ThemeColors::dark_gray())),
+            Span::styled(
+                "Type to filter",
+                Style::default().fg(ThemeColors::dark_gray()),
+            ),
         ]
     } else {
         vec![
@@ -149,12 +152,10 @@ pub fn render_file_changes_popup(f: &mut Frame, state: &AppState) {
         };
 
         let name_style = match entry.state {
-            FileState::Reverted | FileState::Removed | FileState::FailedRestore => {
-                Style::default()
-                    .fg(ThemeColors::dark_gray())
-                    .add_modifier(Modifier::CROSSED_OUT)
-                    .bg(bg_color)
-            }
+            FileState::Reverted | FileState::Removed | FileState::FailedRestore => Style::default()
+                .fg(ThemeColors::dark_gray())
+                .add_modifier(Modifier::CROSSED_OUT)
+                .bg(bg_color),
             _ => {
                 let s = if is_selected {
                     Style::default().fg(ThemeColors::highlight_fg())
@@ -178,7 +179,10 @@ pub fn render_file_changes_popup(f: &mut Frame, state: &AppState) {
     let footer = vec![
         Span::raw(" "),
         Span::styled("↑/↓", Style::default().fg(ThemeColors::cyan())),
-        Span::styled(": Navigate  ", Style::default().fg(ThemeColors::dark_gray())),
+        Span::styled(
+            ": Navigate  ",
+            Style::default().fg(ThemeColors::dark_gray()),
+        ),
         Span::styled("Ctrl+X", Style::default().fg(ThemeColors::cyan())),
         Span::styled(": Revert  ", Style::default().fg(ThemeColors::dark_gray())),
         Span::styled("Esc", Style::default().fg(ThemeColors::cyan())),

@@ -1,8 +1,8 @@
 //! Message action popup handler.
 
 use super::{HandlerContext, HandlerResult};
-use crate::tui::app::events::OutputEvent;
 use crate::tui::app::InputEvent;
+use crate::tui::app::events::OutputEvent;
 use crate::tui::services::message_action_popup::MessageAction;
 
 pub fn handle_event(ctx: &mut HandlerContext, event: InputEvent) -> HandlerResult {

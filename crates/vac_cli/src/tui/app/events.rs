@@ -26,17 +26,26 @@ pub enum InputEvent {
     SetRuntimeJobs(Vec<vac_runtime::Job>),
     SetRuntimeState(Option<vac_runtime::AutopilotStateFile>),
     FileIndexReady(Vec<String>),
-    McpConnected { name: String, tools: usize },
-    McpFailed { name: String, error: String },
+    McpConnected {
+        name: String,
+        tools: usize,
+    },
+    McpFailed {
+        name: String,
+        error: String,
+    },
     McpServerState(String, vac_tools::mcp::McpConnectionState),
     VilStatusUpdated(crate::tui::app::VilStatusSnapshot),
     ChangesetUpdated,
-    IsolationBoundary { action: String, environment: String },
+    IsolationBoundary {
+        action: String,
+        environment: String,
+    },
     // Shell events
     ShellStarted(crate::tui::services::ShellCommand),
-    ShellOutput(String, String), // command_id, text
-    ShellError(String, String), // command_id, text
-    ShellCompleted(String, i32), // command_id, code
+    ShellOutput(String, String),  // command_id, text
+    ShellError(String, String),   // command_id, text
+    ShellCompleted(String, i32),  // command_id, code
     ShellWaitingForInput(String), // command_id
     SessionRestored {
         id: String,

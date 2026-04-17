@@ -145,6 +145,7 @@ pub enum WorkbenchTab {
     Sessions,
     Runtime,
     Plan,
+    VilIssues,
 }
 
 impl WorkbenchTab {
@@ -154,7 +155,8 @@ impl WorkbenchTab {
             Self::Review => Self::Sessions,
             Self::Sessions => Self::Runtime,
             Self::Runtime => Self::Plan,
-            Self::Plan => Self::Approvals,
+            Self::Plan => Self::VilIssues,
+            Self::VilIssues => Self::Approvals,
         }
     }
 }
@@ -298,6 +300,66 @@ pub enum SidePanelRowAction {
     JumpToVilIssue(String),
 }
 
+// ========== VIL Issue classification (Unit 9, Wave 4.1) ==========
+
+/// Issue kind inferred from free-text validation issue strings.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum VilIssueKind {
+    Semantic,
+    ZeroCopy,
+    Plumbing,
+    IrDrift,
+    CanonicalTerm,
+    Other,
+}
+
+impl VilIssueKind {
+    /// Keyword-based heuristic classifier for free-text validation issues.
+    pub fn classify(text: &str) -> Self {
+        let lower = text.to_ascii_lowercase();
+        if lower.contains("zero-copy")
+            || lower.contains("zerocopy")
+            || lower.contains("zero_copy")
+            || lower.contains("owned-bytes")
+        {
+            Self::ZeroCopy
+        } else if lower.contains("plumbing")
+            || lower.contains("manually implements")
+            || lower.contains("remove plumbing")
+        {
+            Self::Plumbing
+        } else if lower.contains("ir drift")
+            || lower.contains("ir-drift")
+            || lower.contains("ir metadata drift")
+        {
+            Self::IrDrift
+        } else if lower.contains("canonical term") || lower.contains("canonical-term") {
+            Self::CanonicalTerm
+        } else if lower.contains("semantic")
+            || lower.contains("vil role macro")
+            || lower.contains("#[vil_state]")
+            || lower.contains("#[vil_event]")
+            || lower.contains("#[vil_fault]")
+            || lower.contains("#[vil_decision]")
+        {
+            Self::Semantic
+        } else {
+            Self::Other
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Semantic => "Semantic",
+            Self::ZeroCopy => "ZeroCopy",
+            Self::Plumbing => "Plumbing",
+            Self::IrDrift => "IrDrift",
+            Self::CanonicalTerm => "Canonical",
+            Self::Other => "Other",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct VilStatusSnapshot {
     pub profile: Option<vac_core::detector::VilProjectProfile>,
@@ -378,6 +440,10 @@ pub struct AppState {
     pub shell_last_error: Option<String>,
     pub shell_history: Vec<String>,
     pub shell_history_idx: Option<usize>,
+    // Unit 6 (Wave 3.4) — Prompt-aware shell polish
+    pub shell_prompt_ready: bool,
+    pub shell_password_mode: bool,
+    pub shell_lifecycle: crate::tui::services::shell_mode::ShellLifecycle,
 
     // Streaming state
     pub is_streaming: bool,
@@ -491,6 +557,8 @@ pub struct AppState {
     pub banner_message: Option<crate::tui::services::banner::BannerMessage>,
     pub banner_click_regions: Vec<(String, ratatui::layout::Rect)>,
     pub banner_dismiss_region: Option<ratatui::layout::Rect>,
+    // Unit 8 (Wave 3.6) — Banner queue + severity
+    pub banner_queue: crate::tui::services::banner::BannerQueue,
 
     // Paste ledger (long text + image tray)
     pub pending_pastes: Vec<crate::tui::services::clipboard_paste::PastedItem>,
@@ -537,6 +605,10 @@ pub struct AppState {
     pub ask_user_input: String,
     pub ask_user_tool_call_id: Option<String>,
     pub ask_user_allow_free_text: bool,
+    // Unit 7 (Wave 3.5) — structured ask-user UX
+    pub ask_user_question_kind: crate::tui::services::ask_user::AskUserQuestionKind,
+    pub ask_user_multi_selected: std::collections::HashSet<usize>,
+    pub ask_user_metadata: std::collections::HashMap<String, String>,
 
     // Text Selection
     pub selection_state: crate::tui::services::text_selection::SelectionState,
@@ -548,6 +620,10 @@ pub struct AppState {
     pub message_area_height: u16,
 
     pub input_tx: Option<tokio::sync::mpsc::Sender<crate::tui::app::events::InputEvent>>,
+
+    // ===== Unit 9 (Wave 4.1) — VIL Issue Workstation =====
+    pub vil_workbench_selected: usize,
+    pub vil_workbench_group_filter: Option<VilIssueKind>,
 
     // ===== Unit 5 (Wave 3.1) — Attachment tray preview & reorder =====
     /// Cursor in the paste tray; indexes into `pending_pastes`.
@@ -617,6 +693,9 @@ impl AppState {
             shell_last_error: None,
             shell_history: Vec::new(),
             shell_history_idx: None,
+            shell_prompt_ready: false,
+            shell_password_mode: false,
+            shell_lifecycle: crate::tui::services::shell_mode::ShellLifecycle::Running,
             is_streaming: false,
             cancel_requested: false,
             streaming_message_id: None,
@@ -704,6 +783,7 @@ impl AppState {
             banner_message: None,
             banner_click_regions: Vec::new(),
             banner_dismiss_region: None,
+            banner_queue: crate::tui::services::banner::BannerQueue::new(),
             pending_pastes: Vec::new(),
             is_pasting: false,
             paste_counter: 0,
@@ -734,6 +814,10 @@ impl AppState {
             ask_user_input: String::new(),
             ask_user_tool_call_id: None,
             ask_user_allow_free_text: true,
+            ask_user_question_kind:
+                crate::tui::services::ask_user::AskUserQuestionKind::SingleSelect,
+            ask_user_multi_selected: std::collections::HashSet::new(),
+            ask_user_metadata: std::collections::HashMap::new(),
             selection_state: crate::tui::services::text_selection::SelectionState::default(),
             per_message_cache: HashMap::new(),
             render_metrics: RenderMetrics::default(),
@@ -742,6 +826,9 @@ impl AppState {
             message_area_y: 0,
             message_area_height: 0,
             input_tx: None,
+            // Unit 9 (Wave 4.1) — VIL Issue Workstation
+            vil_workbench_selected: 0,
+            vil_workbench_group_filter: None,
             // Unit 5 (Wave 3.1) — Attachment tray preview & reorder
             pending_paste_selected: 0,
             pending_paste_reorder_mode: false,
@@ -794,14 +881,31 @@ impl AppState {
         } else {
             self.commands
                 .iter()
-                .filter(|c| c.command.to_lowercase().contains(&self.command_palette_input.to_lowercase()) || c.description.to_lowercase().contains(&self.command_palette_input.to_lowercase()))
+                .filter(|c| {
+                    c.command
+                        .to_lowercase()
+                        .contains(&self.command_palette_input.to_lowercase())
+                        || c.description
+                            .to_lowercase()
+                            .contains(&self.command_palette_input.to_lowercase())
+                })
                 .cloned()
                 .collect()
         };
 
         cmds.sort_by_key(|cmd| {
-            let freq = self.recent_commands.frequencies.get(&cmd.command).copied().unwrap_or(0);
-            let recent_idx = self.recent_commands.history.iter().position(|h| h == &cmd.command).unwrap_or(usize::MAX);
+            let freq = self
+                .recent_commands
+                .frequencies
+                .get(&cmd.command)
+                .copied()
+                .unwrap_or(0);
+            let recent_idx = self
+                .recent_commands
+                .history
+                .iter()
+                .position(|h| h == &cmd.command)
+                .unwrap_or(usize::MAX);
             (std::cmp::Reverse(freq), recent_idx)
         });
 
@@ -822,7 +926,12 @@ impl AppState {
             .cloned()
             .collect::<Vec<_>>();
         out.sort_by_key(|m| {
-            let recent_idx = self.recent_commands.recent_models.iter().position(|r| r == &m.id).unwrap_or(usize::MAX);
+            let recent_idx = self
+                .recent_commands
+                .recent_models
+                .iter()
+                .position(|r| r == &m.id)
+                .unwrap_or(usize::MAX);
             (recent_idx, m.provider.clone(), m.name.clone())
         });
         out
@@ -845,7 +954,9 @@ impl AppState {
                 q.is_empty()
                     || r.id.to_lowercase().contains(&q)
                     || r.name.to_lowercase().contains(&q)
-                    || r.description.as_ref().map_or(false, |d| d.to_lowercase().contains(&q))
+                    || r.description
+                        .as_ref()
+                        .map_or(false, |d| d.to_lowercase().contains(&q))
             })
             .cloned()
             .collect()

@@ -92,9 +92,15 @@ pub fn render_message_action_popup(f: &mut Frame, state: &AppState) {
             MessageAction::CopyCode => ("Copy Code", " extract code blocks to clipboard"),
             MessageAction::Regenerate => ("Regenerate", " discard this and retry"),
             MessageAction::RevertToMessage => ("Revert", " undo messages and file changes"),
-            MessageAction::RepairVilContract => ("Repair VIL Contract", " auto-generate fixes for VIL rules"),
-            MessageAction::ExplainPlumbing => ("Explain Plumbing", " explain generated VIL plumbing"),
-            MessageAction::AuditZeroCopy => ("Audit Zero-Copy", " detect zero-copy risks in handler"),
+            MessageAction::RepairVilContract => {
+                ("Repair VIL Contract", " auto-generate fixes for VIL rules")
+            }
+            MessageAction::ExplainPlumbing => {
+                ("Explain Plumbing", " explain generated VIL plumbing")
+            }
+            MessageAction::AuditZeroCopy => {
+                ("Audit Zero-Copy", " detect zero-copy risks in handler")
+            }
             MessageAction::DiffIrChange => ("Diff IR Change", " view semantic IR-significant diff"),
         };
 
@@ -104,12 +110,7 @@ pub fn render_message_action_popup(f: &mut Frame, state: &AppState) {
 
         let line = if is_selected {
             Line::from(vec![
-                Span::styled(
-                    "  ",
-                    Style::default()
-                        .bg(Color::Blue)
-                        .fg(Color::White),
-                ),
+                Span::styled("  ", Style::default().bg(Color::Blue).fg(Color::White)),
                 Span::styled(
                     highlight_word,
                     Style::default()
@@ -117,26 +118,16 @@ pub fn render_message_action_popup(f: &mut Frame, state: &AppState) {
                         .fg(Color::White)
                         .add_modifier(Modifier::BOLD),
                 ),
-                Span::styled(
-                    rest_text,
-                    Style::default()
-                        .bg(Color::Blue)
-                        .fg(Color::White),
-                ),
+                Span::styled(rest_text, Style::default().bg(Color::Blue).fg(Color::White)),
                 Span::styled(
                     " ".repeat(padding),
-                    Style::default()
-                        .bg(Color::Blue)
-                        .fg(Color::White),
+                    Style::default().bg(Color::Blue).fg(Color::White),
                 ),
             ])
         } else {
             Line::from(vec![
                 Span::raw("  "),
-                Span::styled(
-                    highlight_word,
-                    Style::default().fg(Color::Reset),
-                ),
+                Span::styled(highlight_word, Style::default().fg(Color::Reset)),
                 Span::styled(rest_text, Style::default().fg(Color::DarkGray)),
             ])
         };

@@ -10,9 +10,13 @@ pub fn open(ctx: &mut HandlerContext) -> HandlerResult {
             let root = ctx.state.project_root.clone();
             tokio::spawn(async move {
                 let files = build_file_index(&root);
-                let _ = tx.send(crate::tui::app::events::InputEvent::FileIndexReady(files)).await;
+                let _ = tx
+                    .send(crate::tui::app::events::InputEvent::FileIndexReady(files))
+                    .await;
             });
-            ctx.state.toasts.push(Toast::info("Indexing files in background...".to_string()));
+            ctx.state
+                .toasts
+                .push(Toast::info("Indexing files in background...".to_string()));
         } else {
             ctx.state.all_files = build_file_index(&ctx.state.project_root);
         }

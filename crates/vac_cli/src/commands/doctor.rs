@@ -12,25 +12,34 @@ pub async fn execute(
     if interactive {
         println!("🩺 Welcome to VAC Doctor Interactive Setup Wizard");
         println!("==================================================");
-        
+
         // Interactive prompt for LLM provider
-        println!("What is your primary LLM provider? [anthropic/openai/local] (default: anthropic): ");
+        println!(
+            "What is your primary LLM provider? [anthropic/openai/local] (default: anthropic): "
+        );
         let mut provider = String::new();
         std::io::stdin().read_line(&mut provider)?;
         let provider = provider.trim();
-        let provider = if provider.is_empty() { "anthropic" } else { provider };
-        
+        let provider = if provider.is_empty() {
+            "anthropic"
+        } else {
+            provider
+        };
+
         let config_path = project_root.join(".vac/config.toml");
         if !config_path.exists() {
             println!("No config found. Run `vac init` first.");
             return Ok(());
         }
-        
+
         let content = std::fs::read_to_string(&config_path)?;
-        let new_content = content.replace("default_provider = \"anthropic\"", &format!("default_provider = \"{}\"", provider));
+        let new_content = content.replace(
+            "default_provider = \"anthropic\"",
+            &format!("default_provider = \"{}\"", provider),
+        );
         std::fs::write(&config_path, new_content)?;
         println!("✓ Updated default provider to {}", provider);
-        
+
         // Run checks
         println!("\nRunning diagnostics...");
     }
@@ -346,9 +355,18 @@ async fn check_mcp_config(root: &Path, _strict: bool, fix: bool) -> (bool, serde
 
     let all_reachable = reachable == servers.len();
     let msg = if all_reachable {
-        format!("config parses ok, {}/{} MCP server(s) reachable", reachable, servers.len())
+        format!(
+            "config parses ok, {}/{} MCP server(s) reachable",
+            reachable,
+            servers.len()
+        )
     } else {
-        format!("{}/{} MCP server(s) reachable. Issues: {}", reachable, servers.len(), messages.join(", "))
+        format!(
+            "{}/{} MCP server(s) reachable. Issues: {}",
+            reachable,
+            servers.len(),
+            messages.join(", ")
+        )
     };
 
     (
@@ -373,7 +391,10 @@ fn check_isolation(root: &Path, _strict: bool, _fix: bool) -> (bool, serde_json:
     let mut messages = Vec::new();
 
     let runtime = isolation.container_runtime();
-    if let Ok(out) = std::process::Command::new(runtime).arg("--version").output() {
+    if let Ok(out) = std::process::Command::new(runtime)
+        .arg("--version")
+        .output()
+    {
         if !out.status.success() {
             ok = false;
             messages.push(format!("{} not available", runtime));
@@ -394,7 +415,10 @@ fn check_isolation(root: &Path, _strict: bool, _fix: bool) -> (bool, serde_json:
     }
 
     let msg = if ok {
-        format!("isolation ok (runtime: {}, image configured, mounts valid)", runtime)
+        format!(
+            "isolation ok (runtime: {}, image configured, mounts valid)",
+            runtime
+        )
     } else {
         format!("isolation issues: {}", messages.join(", "))
     };

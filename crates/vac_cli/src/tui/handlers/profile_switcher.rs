@@ -1,8 +1,8 @@
 //! Profile switcher popup handler.
 
 use super::{HandlerContext, HandlerResult};
-use crate::tui::app::events::OutputEvent;
 use crate::tui::app::InputEvent;
+use crate::tui::app::events::OutputEvent;
 
 pub fn handle_event(ctx: &mut HandlerContext, event: InputEvent) -> HandlerResult {
     match event {
@@ -21,7 +21,11 @@ pub fn handle_event(ctx: &mut HandlerContext, event: InputEvent) -> HandlerResul
             }
         }
         InputEvent::Down => {
-            let max = ctx.state.profile_switcher_filtered().len().saturating_sub(1);
+            let max = ctx
+                .state
+                .profile_switcher_filtered()
+                .len()
+                .saturating_sub(1);
             if ctx.state.profile_switcher_selected < max {
                 ctx.state.profile_switcher_selected += 1;
             }
@@ -30,7 +34,9 @@ pub fn handle_event(ctx: &mut HandlerContext, event: InputEvent) -> HandlerResul
             let filtered = ctx.state.profile_switcher_filtered();
             if let Some(p) = filtered.get(ctx.state.profile_switcher_selected) {
                 ctx.state.active_profile = p.clone();
-                let _ = ctx.output_tx.try_send(OutputEvent::SwitchProfile(p.clone()));
+                let _ = ctx
+                    .output_tx
+                    .try_send(OutputEvent::SwitchProfile(p.clone()));
             }
             ctx.state.show_profile_switcher = false;
         }

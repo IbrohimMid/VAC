@@ -138,8 +138,18 @@ pub fn filter_commands(query: &str, state: &crate::tui::app::AppState) -> Vec<Co
             CommandAction::InsertSlashCommand(s) => s.clone(),
             _ => cmd.name.clone(),
         };
-        let freq = state.recent_commands.frequencies.get(&cmd_id).copied().unwrap_or(0);
-        let recent_idx = state.recent_commands.history.iter().position(|h| h == &cmd_id).unwrap_or(usize::MAX);
+        let freq = state
+            .recent_commands
+            .frequencies
+            .get(&cmd_id)
+            .copied()
+            .unwrap_or(0);
+        let recent_idx = state
+            .recent_commands
+            .history
+            .iter()
+            .position(|h| h == &cmd_id)
+            .unwrap_or(usize::MAX);
         (std::cmp::Reverse(freq), recent_idx)
     });
 
@@ -892,7 +902,9 @@ fn render_sessions_section(
         f.render_widget(Paragraph::new(""), scroll_area);
     } else {
         // Ensure sessions_selected_idx is within bounds of filtered list
-        let selected_in_filtered = state.sessions_selected_idx.min(total_filtered.saturating_sub(1));
+        let selected_in_filtered = state
+            .sessions_selected_idx
+            .min(total_filtered.saturating_sub(1));
 
         // Calculate scroll position based on selected item
         let max_scroll = total_filtered.saturating_sub(height);

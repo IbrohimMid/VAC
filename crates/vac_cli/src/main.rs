@@ -253,9 +253,11 @@ async fn main() -> anyhow::Result<()> {
         .unwrap_or_else(|| std::env::current_dir().expect("Failed to get current directory"));
 
     match cli.command {
-        Commands::Doctor { strict, fix, interactive } => {
-            commands::doctor::execute(project_root, &cli.format, strict, fix, interactive).await?
-        }
+        Commands::Doctor {
+            strict,
+            fix,
+            interactive,
+        } => commands::doctor::execute(project_root, &cli.format, strict, fix, interactive).await?,
         Commands::Init { force } => commands::init::execute(project_root, force).await?,
         Commands::Run {
             task,
@@ -320,8 +322,12 @@ async fn main() -> anyhow::Result<()> {
             IsolationAction::Wrap { command } => {
                 commands::isolation::execute_wrap(project_root, command).await?
             }
-            IsolationAction::ClearLogs => commands::isolation::execute_clear_logs(project_root).await?,
-            IsolationAction::Doctor => commands::isolation::execute_doctor(project_root, &cli.format).await?,
+            IsolationAction::ClearLogs => {
+                commands::isolation::execute_clear_logs(project_root).await?
+            }
+            IsolationAction::Doctor => {
+                commands::isolation::execute_doctor(project_root, &cli.format).await?
+            }
         },
         Commands::Mcp { action } => match action {
             McpAction::List => commands::mcp::list(&project_root)?,
