@@ -615,11 +615,18 @@ fn render_messages(f: &mut Frame, state: &mut AppState, area: Rect) {
 }
 
 fn render_input(f: &mut Frame, state: &mut AppState, area: Rect) {
-    // Split off a 1-line tray above the input when there are pending pastes.
-    let (tray_area, input_area) = if !state.pending_pastes.is_empty() && area.height >= 3 {
+    // Split off a tray above the input when there are pending pastes.
+    // Unit 5 (Wave 3.1): tray grows to one row per paste (up to 6) when there
+    // are any pending pastes, so each card shows kind/size/tokens/preview.
+    let tray_rows = if !state.pending_pastes.is_empty() {
+        paste_tray_rows(state.pending_pastes.len())
+    } else {
+        0
+    };
+    let (tray_area, input_area) = if tray_rows > 0 && area.height >= tray_rows + 2 {
         let split = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Length(1), Constraint::Min(2)])
+            .constraints([Constraint::Length(tray_rows), Constraint::Min(2)])
             .split(area);
         (Some(split[0]), split[1])
     } else {
@@ -659,34 +666,106 @@ fn render_input(f: &mut Frame, state: &mut AppState, area: Rect) {
     }
 }
 
+/// Height (rows) allocated to the paste tray for `n` pending pastes.
+/// One row per paste up to a cap, plus one header row.
+pub(crate) fn paste_tray_rows(n: usize) -> u16 {
+    // cap visible cards at 6; user can still navigate beyond with j/k.
+    let visible = n.min(6) as u16;
+    visible + 1
+}
+
 fn render_paste_tray(f: &mut Frame, state: &AppState, area: Rect) {
-    use crate::tui::services::clipboard_paste::PastedKind;
-    let mut spans: Vec<Span<'static>> = Vec::new();
-    spans.push(Span::styled(
-        "📎 ",
-        Style::default().fg(Color::DarkGray),
-    ));
-    for (i, item) in state.pending_pastes.iter().enumerate() {
-        if i > 0 {
-            spans.push(Span::raw("  "));
-        }
-        let (label, color) = match &item.kind {
-            PastedKind::Text { line_count, char_count, .. } => (
-                format!("[#{} text {}L {}c]", item.id, line_count, char_count),
-                Color::Cyan,
-            ),
-            PastedKind::Image { width, height, byte_count } => (
-                format!("[#{} img {}x{} {}KB]", item.id, width, height, byte_count / 1024),
-                Color::Magenta,
-            ),
+    use crate::tui::services::clipboard_paste::{
+        PastedKind, kind_badge, preview_text, size_label, token_estimate,
+    };
+
+    // Header line: paste count + reorder-mode hint + clear hint.
+    let mode_hint = if state.pending_paste_reorder_mode {
+        Span::styled(
+            " [REORDER — J/K swap, r exit]",
+            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+        )
+    } else {
+        Span::styled(
+            " j/k select, d remove, r reorder, Enter preview",
+            Style::default().fg(Color::DarkGray).add_modifier(Modifier::DIM),
+        )
+    };
+    let header = Line::from(vec![
+        Span::styled("📎 ", Style::default().fg(Color::DarkGray)),
+        Span::styled(
+            format!("{} attachment(s)", state.pending_pastes.len()),
+            Style::default().fg(Color::DarkGray),
+        ),
+        mode_hint,
+        Span::styled(
+            "  (Ctrl+U clear)",
+            Style::default().fg(Color::DarkGray).add_modifier(Modifier::DIM),
+        ),
+    ]);
+
+    let selected = state.pending_paste_selected.min(
+        state.pending_pastes.len().saturating_sub(1),
+    );
+
+    // Show a sliding window of cards so the selected index is always visible.
+    let capacity = (area.height.saturating_sub(1)) as usize;
+    let total = state.pending_pastes.len();
+    let start = if total <= capacity {
+        0
+    } else if selected < capacity {
+        0
+    } else {
+        selected + 1 - capacity
+    };
+    let end = (start + capacity).min(total);
+
+    let mut lines: Vec<Line<'static>> = Vec::with_capacity(end - start + 1);
+    lines.push(header);
+    for (i, item) in state.pending_pastes[start..end].iter().enumerate() {
+        let abs = start + i;
+        let is_selected = abs == selected;
+        let cursor = if is_selected {
+            if state.pending_paste_reorder_mode { "»" } else { ">" }
+        } else {
+            " "
         };
-        spans.push(Span::styled(label, Style::default().fg(color)));
+        let badge_color = match &item.kind {
+            PastedKind::Text { .. } => Color::Cyan,
+            PastedKind::Image { .. } => Color::Magenta,
+        };
+        let row_style = if is_selected {
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(Color::Gray)
+        };
+        let spans = vec![
+            Span::styled(
+                format!("{} ", cursor),
+                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                kind_badge(&item.kind).to_string(),
+                Style::default().fg(badge_color).add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(" "),
+            Span::styled(format!("#{}", item.id), row_style),
+            Span::raw(" "),
+            Span::styled(size_label(&item.kind), Style::default().fg(Color::DarkGray)),
+            Span::raw(" "),
+            Span::styled(
+                format!("~{}tok", token_estimate(&item.kind)),
+                Style::default().fg(Color::Green),
+            ),
+            Span::raw("  "),
+            Span::styled(preview_text(&item.kind), row_style),
+        ];
+        lines.push(Line::from(spans));
     }
-    spans.push(Span::styled(
-        "  (Ctrl+U to clear)",
-        Style::default().fg(Color::DarkGray).add_modifier(Modifier::DIM),
-    ));
-    let para = Paragraph::new(Line::from(spans));
+
+    let para = Paragraph::new(lines).wrap(Wrap { trim: false });
     f.render_widget(para, area);
 }
 
