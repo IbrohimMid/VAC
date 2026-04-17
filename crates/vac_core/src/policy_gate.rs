@@ -189,15 +189,32 @@ fn nested_shell_command(tokens: &[String]) -> Option<&str> {
         if token == "--" {
             return None;
         }
+        if shell_command_flag(token) {
+            return tokens.get(idx + 1).map(|s| s.as_str());
+        }
+        if shell_flag_consumes_next_value(token) {
+            idx += 2;
+            continue;
+        }
         if !token.starts_with('-') {
             return None;
-        }
-        if token.trim_start_matches('-').contains('c') {
-            return tokens.get(idx + 1).map(|s| s.as_str());
         }
         idx += 1;
     }
     None
+}
+
+fn shell_command_flag(token: &str) -> bool {
+    token.starts_with('-')
+        && !token.starts_with("--")
+        && token.trim_start_matches('-').contains('c')
+}
+
+fn shell_flag_consumes_next_value(token: &str) -> bool {
+    token.starts_with('-')
+        && !token.starts_with("--")
+        && token.trim_start_matches('-').contains('o')
+        && !token.trim_start_matches('-').contains('c')
 }
 
 fn strip_leading_tokens<'a>(tokens: &'a [String], value_flags: &[&str]) -> &'a [String] {

@@ -34,6 +34,10 @@ fn classify_flags_and_wrappers() {
         Some(PolicyGateAction::Merge)
     );
     assert_eq!(
+        classify_shell_command("bash -o pipefail -c \"git merge origin/main\""),
+        Some(PolicyGateAction::Merge)
+    );
+    assert_eq!(
         classify_shell_command("xargs -I{} git push origin main"),
         Some(PolicyGateAction::Deploy)
     );
@@ -51,6 +55,10 @@ fn bypass_corpus_covers_wrapper_variants() {
         ),
         ("bash -c \"git merge main\"", PolicyGateAction::Merge),
         ("bash -lc \"git merge main\"", PolicyGateAction::Merge),
+        (
+            "bash -euxo pipefail -c \"git merge main\"",
+            PolicyGateAction::Merge,
+        ),
         ("sh -c \"git merge main\"", PolicyGateAction::Merge),
         ("xargs -I{} git merge main", PolicyGateAction::Merge),
         ("git -C /repo merge main", PolicyGateAction::Merge),

@@ -81,6 +81,32 @@ fn export_bundle(root: &Path, session_id: Uuid, sign: bool) -> PathBuf {
 }
 
 #[test]
+fn bundle_export_uses_requested_session_not_latest() {
+    let (_dir, root, first_session_id) = seed_source_project(None);
+
+    let second_session = vac_core::Session::new(root.to_path_buf());
+    second_session.save().unwrap();
+
+    let out_path = root
+        .join(".vac/exports")
+        .join(format!("{first_session_id}.bundle.json"));
+    vac_core::bundle::export_bundle_to_path_with_options(
+        &root,
+        Some(first_session_id),
+        Some(&out_path),
+        vac_core::bundle::BundleExportOptions {
+            redact_secrets: true,
+            sign: false,
+        },
+    )
+    .unwrap();
+
+    let bundle: vac_core::VacBundle =
+        serde_json::from_str(&std::fs::read_to_string(&out_path).unwrap()).unwrap();
+    assert_eq!(bundle.metadata.session_id, first_session_id);
+}
+
+#[test]
 fn bundle_redaction_and_round_trip() {
     let (_dir1, root1, session_id) = seed_source_project(Some(
         "Context summary with password=hunter2hunter2".to_string(),

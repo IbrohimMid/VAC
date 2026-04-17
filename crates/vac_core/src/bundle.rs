@@ -316,9 +316,13 @@ pub fn export_bundle_to_path_with_options(
     output: Option<&Path>,
     options: BundleExportOptions,
 ) -> VacResult<PathBuf> {
-    let session = Session::load_latest(project_root)?
-        .ok_or_else(|| VacError::Session("No session found".to_string()))?;
-    let sid = session_id.unwrap_or(session.id);
+    let session = match session_id {
+        Some(sid) => Session::load(project_root, sid)?
+            .ok_or_else(|| VacError::Session(format!("Session not found for export: {sid}")))?,
+        None => Session::load_latest(project_root)?
+            .ok_or_else(|| VacError::Session("No session found".to_string()))?,
+    };
+    let sid = session.id;
 
     let state_path = checkpoint_state_path(project_root, sid);
     if !state_path.exists() {
