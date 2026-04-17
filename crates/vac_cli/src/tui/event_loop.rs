@@ -2360,6 +2360,18 @@ fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, e
                 || id == "system"
             {
                 state.shell_output.push_str(&text);
+                
+                // Truncate to 1MB circular buffer
+                let max_size = 1024 * 1024;
+                if state.shell_output.len() > max_size {
+                    let keep_len = max_size - 128 * 1024; // Keep ~900KB to avoid shifting on every push
+                    let mut safe_idx = state.shell_output.len() - keep_len;
+                    while safe_idx < state.shell_output.len() && !state.shell_output.is_char_boundary(safe_idx) {
+                        safe_idx += 1;
+                    }
+                    state.shell_output = state.shell_output[safe_idx..].to_string();
+                }
+
                 // Unit 6: detect prompt-ready and password-mode from output
                 state.shell_prompt_ready =
                     crate::tui::services::shell_mode::detect_prompt_ready(&state.shell_output);
@@ -2387,6 +2399,17 @@ fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, e
                 state
                     .shell_output
                     .push_str(&format!("[shell error] {text}\n"));
+
+                let max_size = 1024 * 1024;
+                if state.shell_output.len() > max_size {
+                    let keep_len = max_size - 128 * 1024;
+                    let mut safe_idx = state.shell_output.len() - keep_len;
+                    while safe_idx < state.shell_output.len() && !state.shell_output.is_char_boundary(safe_idx) {
+                        safe_idx += 1;
+                    }
+                    state.shell_output = state.shell_output[safe_idx..].to_string();
+                }
+
                 state.shell_last_error = Some(text.clone());
                 state.shell_lifecycle =
                     crate::tui::services::shell_mode::ShellLifecycle::Error(text.clone());

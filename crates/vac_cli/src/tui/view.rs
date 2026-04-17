@@ -969,7 +969,7 @@ fn render_workbench_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
         format!("Sessions ({})", state.sessions.len()),
         format!("Runtime ({})", state.runtime_jobs.len()),
         plan_label,
-        format!("VIL Issues ({})", state.vil_status.validation_issues.len()),
+        format!("VIL ({})", state.vil_status.validation_issues.len()),
     ];
     let idx = match state.workbench_tab {
         WorkbenchTab::Approvals => 0,
@@ -977,7 +977,7 @@ fn render_workbench_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
         WorkbenchTab::Sessions => 2,
         WorkbenchTab::Runtime => 3,
         WorkbenchTab::Plan => 4,
-        WorkbenchTab::VilIssues => 5,
+        WorkbenchTab::Vil => 5,
     };
 
     let tabs = Tabs::new(tabs)
@@ -999,7 +999,7 @@ fn render_workbench_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
         WorkbenchTab::Sessions => render_sessions_pane(f, state, chunks[1]),
         WorkbenchTab::Runtime => render_runtime_pane(f, state, chunks[1]),
         WorkbenchTab::Plan => render_plan_pane(f, state, chunks[1]),
-        WorkbenchTab::VilIssues => crate::tui::services::vil_workbench::render(f, state, chunks[1]),
+        WorkbenchTab::Vil => crate::tui::services::vil_workbench::render(f, state, chunks[1]),
     }
 }
 
@@ -1951,7 +1951,7 @@ fn render_footer(f: &mut Frame, state: &mut AppState, area: Rect) {
                 Span::styled("Ctrl+Tab", Style::default().fg(Color::Cyan)),
                 Span::styled(": next tab", Style::default().fg(Color::DarkGray)),
             ],
-            WorkbenchTab::VilIssues => vec![
+            WorkbenchTab::Vil => vec![
                 Span::styled("↑/↓", Style::default().fg(Color::Cyan)),
                 Span::styled(": select  ", Style::default().fg(Color::DarkGray)),
                 Span::styled("R", Style::default().fg(Color::Cyan)),

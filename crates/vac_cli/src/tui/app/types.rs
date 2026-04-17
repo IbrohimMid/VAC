@@ -145,7 +145,7 @@ pub enum WorkbenchTab {
     Sessions,
     Runtime,
     Plan,
-    VilIssues,
+    Vil,
 }
 
 impl WorkbenchTab {
@@ -155,8 +155,8 @@ impl WorkbenchTab {
             Self::Review => Self::Sessions,
             Self::Sessions => Self::Runtime,
             Self::Runtime => Self::Plan,
-            Self::Plan => Self::VilIssues,
-            Self::VilIssues => Self::Approvals,
+            Self::Plan => Self::Vil,
+            Self::Vil => Self::Approvals,
         }
     }
 }
