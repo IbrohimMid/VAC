@@ -5,6 +5,7 @@ pub mod executor;
 pub mod isolation;
 pub mod jobs;
 pub mod queue;
+pub mod runtime_queue;
 pub mod scheduler;
 pub mod watcher;
 
@@ -21,6 +22,7 @@ pub use executor::{
 pub use isolation::{ISOLATION_LOG_FILE, IsolationLaunchSpec, IsolationManager};
 pub use jobs::{Job, JobKind, JobStatus, JobTrigger};
 pub use queue::TaskQueue;
+pub use runtime_queue::RuntimeQueue;
 pub use scheduler::{
     AutopilotEvent, AutopilotState, AutopilotStateFile, Scheduler, SchedulerConfig,
 };

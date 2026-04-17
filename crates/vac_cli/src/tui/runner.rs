@@ -16,6 +16,13 @@ use super::{
 /// Shared handle to the active task's update channel for structured approval routing.
 type ActiveUpdateTx = Arc<Mutex<Option<mpsc::UnboundedSender<RuntimeUpdate>>>>;
 
+async fn load_runtime_queue_items<Q>(queue: &Q) -> Vec<Q::Item>
+where
+    Q: vac_runtime::RuntimeQueue,
+{
+    queue.list().await
+}
+
 fn classify_init_warning(
     warning: &str,
 ) -> (
@@ -50,9 +57,8 @@ fn classify_init_warning(
 }
 
 async fn load_runtime_jobs(project_root: &std::path::Path) -> Vec<vac_runtime::Job> {
-    vac_runtime::TaskQueue::with_storage(project_root.join(".vac/queue.json"))
-        .list()
-        .await
+    let queue = vac_runtime::TaskQueue::with_storage(project_root.join(".vac/queue.json"));
+    load_runtime_queue_items(&queue).await
 }
 
 fn load_runtime_state(project_root: &std::path::Path) -> Option<vac_runtime::AutopilotStateFile> {
@@ -61,9 +67,9 @@ fn load_runtime_state(project_root: &std::path::Path) -> Option<vac_runtime::Aut
 }
 
 async fn load_agent_tasks(project_root: &std::path::Path) -> Vec<vac_runtime::AgentTask> {
-    vac_runtime::AgentTaskQueue::with_storage(project_root.join(".vac/agent_queue.json"))
-        .list()
-        .await
+    let queue =
+        vac_runtime::AgentTaskQueue::with_storage(project_root.join(".vac/agent_queue.json"));
+    load_runtime_queue_items(&queue).await
 }
 
 fn load_agent_state(

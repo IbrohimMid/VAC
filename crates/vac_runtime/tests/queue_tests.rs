@@ -1,6 +1,10 @@
 //! Tests for vac_runtime queue and scheduler.
 
-use vac_runtime::{Job, JobKind, JobStatus, TaskQueue};
+use vac_runtime::{AgentRole, AgentTask, AgentTaskQueue, Job, JobKind, JobStatus, TaskQueue};
+
+async fn load_runtime_queue_items<Q: vac_runtime::RuntimeQueue>(queue: &Q) -> Vec<Q::Item> {
+    queue.list().await
+}
 
 #[tokio::test]
 async fn queue_enqueue_dequeue_fifo() {
@@ -104,4 +108,17 @@ async fn queue_persistence_saves_and_loads() {
         JobStatus::Queued,
         "Untouched job should remain Queued"
     );
+}
+
+#[tokio::test]
+async fn runtime_queue_trait_reads_both_queue_types() {
+    let task_queue = TaskQueue::new();
+    task_queue.enqueue(Job::new(JobKind::DiagnosticSweep)).await;
+    assert_eq!(load_runtime_queue_items(&task_queue).await.len(), 1);
+
+    let agent_queue = AgentTaskQueue::new();
+    agent_queue
+        .enqueue(AgentTask::new(AgentRole::Dev, "review task"))
+        .await;
+    assert_eq!(load_runtime_queue_items(&agent_queue).await.len(), 1);
 }

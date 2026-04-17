@@ -28,7 +28,7 @@ Berikut adalah contoh konfigurasi dasar yang dapat Anda gunakan:
 ```toml
 [llm]
 default_provider = "anthropic"
-max_tokens_per_task = 0
+budget_tokens = 0
 
 # Konfigurasi Provider Anthropic
 [llm.providers.anthropic]

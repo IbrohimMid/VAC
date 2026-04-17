@@ -26,7 +26,8 @@ pub use approval::{
 pub use auth::{AuthStatus, StoredAuth};
 pub use bundle::{BundleMetadata, VacBundle};
 pub use config::{
-    ExecutionEnvironment, NetworkPolicy, RulebookConfig, RuntimeConfig, VacConfig, VilLspConfig,
+    ExecutionEnvironment, LlmConfig, LlmProviderConfig, NetworkPolicy, RulebookConfig,
+    RuntimeConfig, VacConfig, VilLspConfig,
 };
 pub use detector::{VilArchetype, VilProjectProfile};
 pub use engine::{EngineStatus, RuntimeUpdate, TaskHistoryEntry, VacEngine};

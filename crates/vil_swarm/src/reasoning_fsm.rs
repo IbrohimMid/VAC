@@ -32,10 +32,22 @@ pub enum ReasoningEvent {
     SetRetry,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ReasoningEventKind {
+    BeginAttempt,
+    Observe,
+    SetRetry,
+}
+
 #[derive(Error, Debug, Clone, PartialEq, Eq)]
 pub enum ReasoningError {
     #[error("max attempts reached (attempt={attempt}, max_attempts={max_attempts})")]
     MaxAttemptsReached { attempt: usize, max_attempts: usize },
+    #[error("illegal reasoning transition: event {event:?} is not allowed from phase {from:?}")]
+    IllegalTransition {
+        from: ReasoningPhase,
+        event: ReasoningEvent,
+    },
 }
 
 impl ReasoningStateMachine {
@@ -53,6 +65,13 @@ impl ReasoningStateMachine {
         &mut self,
         event: ReasoningEvent,
     ) -> Result<Vec<ReasoningTransition>, ReasoningError> {
+        if !self.legal_events().contains(&event.kind()) {
+            return Err(ReasoningError::IllegalTransition {
+                from: self.phase,
+                event,
+            });
+        }
+
         match event {
             ReasoningEvent::BeginAttempt => {
                 if self.attempt >= self.max_attempts {
@@ -77,6 +96,16 @@ impl ReasoningStateMachine {
         }
     }
 
+    fn legal_events(&self) -> &'static [ReasoningEventKind] {
+        match self.phase {
+            ReasoningPhase::Attempt if self.attempt == 0 => &[ReasoningEventKind::BeginAttempt],
+            ReasoningPhase::Attempt => &[ReasoningEventKind::Observe],
+            ReasoningPhase::Observe | ReasoningPhase::Diagnose => &[],
+            ReasoningPhase::Plan => &[ReasoningEventKind::SetRetry],
+            ReasoningPhase::Retry => &[ReasoningEventKind::BeginAttempt],
+        }
+    }
+
     fn set_phase(&mut self, phase: ReasoningPhase) -> Vec<ReasoningTransition> {
         if self.phase == phase {
             return Vec::new();
@@ -91,6 +120,16 @@ impl ReasoningStateMachine {
     }
 }
 
+impl ReasoningEvent {
+    fn kind(self) -> ReasoningEventKind {
+        match self {
+            ReasoningEvent::BeginAttempt => ReasoningEventKind::BeginAttempt,
+            ReasoningEvent::Observe { .. } => ReasoningEventKind::Observe,
+            ReasoningEvent::SetRetry => ReasoningEventKind::SetRetry,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -99,8 +138,17 @@ mod tests {
     fn attempt_cap_is_enforced() {
         let mut sm = ReasoningStateMachine::new(2);
         assert!(sm.apply(ReasoningEvent::BeginAttempt).is_ok());
+        assert!(
+            sm.apply(ReasoningEvent::Observe { had_error: false })
+                .is_ok()
+        );
         assert!(sm.apply(ReasoningEvent::SetRetry).is_ok());
         assert!(sm.apply(ReasoningEvent::BeginAttempt).is_ok());
+        assert!(
+            sm.apply(ReasoningEvent::Observe { had_error: false })
+                .is_ok()
+        );
+        assert!(sm.apply(ReasoningEvent::SetRetry).is_ok());
         assert!(matches!(
             sm.apply(ReasoningEvent::BeginAttempt),
             Err(ReasoningError::MaxAttemptsReached { attempt: 2, .. })
@@ -149,5 +197,32 @@ mod tests {
                 (ReasoningPhase::Diagnose, ReasoningPhase::Plan),
             ]
         );
+    }
+
+    #[test]
+    fn observe_before_begin_attempt_is_rejected() {
+        let mut sm = ReasoningStateMachine::new(5);
+        let err = sm.apply(ReasoningEvent::Observe { had_error: false });
+        assert!(matches!(
+            err,
+            Err(ReasoningError::IllegalTransition {
+                from: ReasoningPhase::Attempt,
+                event: ReasoningEvent::Observe { had_error: false }
+            })
+        ));
+    }
+
+    #[test]
+    fn begin_attempt_twice_without_retry_is_rejected() {
+        let mut sm = ReasoningStateMachine::new(5);
+        assert!(sm.apply(ReasoningEvent::BeginAttempt).is_ok());
+        let err = sm.apply(ReasoningEvent::BeginAttempt);
+        assert!(matches!(
+            err,
+            Err(ReasoningError::IllegalTransition {
+                from: ReasoningPhase::Attempt,
+                event: ReasoningEvent::BeginAttempt
+            })
+        ));
     }
 }

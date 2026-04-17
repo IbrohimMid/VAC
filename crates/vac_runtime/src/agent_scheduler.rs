@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
@@ -8,6 +9,8 @@ use std::sync::Arc;
 use tokio::sync::{Notify, RwLock};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
+
+use crate::runtime_queue::RuntimeQueue;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -124,7 +127,17 @@ impl AgentTaskQueue {
         let vec: Vec<AgentTask> = tasks.iter().cloned().collect();
         match serde_json::to_string_pretty(&vec) {
             Ok(json) => {
-                if let Err(e) = std::fs::write(path, json) {
+                let tmp_path = path.with_file_name(format!(
+                    "{}.tmp",
+                    path.file_name()
+                        .and_then(|name| name.to_str())
+                        .unwrap_or("agent_queue.json")
+                ));
+                if let Err(e) = std::fs::write(&tmp_path, json) {
+                    tracing::warn!(?tmp_path, error = %e, "agent_scheduler: failed to write queue temp file");
+                    return;
+                }
+                if let Err(e) = std::fs::rename(&tmp_path, path) {
                     tracing::warn!(?path, error = %e, "agent_scheduler: failed to persist queue storage");
                 }
             }
@@ -185,6 +198,15 @@ impl AgentTaskQueue {
 
     fn notifier(&self) -> Arc<Notify> {
         self.notify.clone()
+    }
+}
+
+#[async_trait]
+impl RuntimeQueue for AgentTaskQueue {
+    type Item = AgentTask;
+
+    async fn list(&self) -> Vec<Self::Item> {
+        AgentTaskQueue::list(self).await
     }
 }
 

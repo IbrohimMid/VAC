@@ -4,6 +4,7 @@ use crate::policy_gate::{PolicyGateAction, PolicyGateMode};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+pub use vil_llm::{LlmConfig, ProviderConfig as LlmProviderConfig};
 
 /// Top-level VAC configuration, loaded from `~/.config/vac/config.toml`
 /// or `<project>/.vac/config.toml`.
@@ -38,46 +39,6 @@ pub struct VacConfig {
     /// MCP preset instances (expanded to mcp_servers at runtime)
     #[serde(default)]
     pub mcp_presets: Vec<vac_tools::mcp::McpPresetInstanceConfig>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LlmConfig {
-    /// Default LLM provider name
-    pub default_provider: String,
-    /// Named provider configurations
-    pub providers: HashMap<String, LlmProviderConfig>,
-    /// Fallback chain: try providers in order
-    #[serde(default)]
-    pub fallback_chain: Vec<String>,
-    /// Global token budget per task (0 = unlimited)
-    #[serde(default)]
-    pub max_tokens_per_task: u64,
-    /// Maximum requests per minute (0 = unlimited)
-    #[serde(default)]
-    pub requests_per_minute: u32,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LlmProviderConfig {
-    /// Environment variable name for API key
-    pub api_key_env: String,
-    /// Model identifier
-    pub model: String,
-    /// Optional base URL override
-    pub base_url: Option<String>,
-    /// Max tokens per request
-    #[serde(default = "default_max_tokens")]
-    pub max_tokens: u32,
-    /// Temperature (0.0 - 2.0)
-    #[serde(default = "default_temperature")]
-    pub temperature: f32,
-}
-
-fn default_max_tokens() -> u32 {
-    8192
-}
-fn default_temperature() -> f32 {
-    0.0
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -282,21 +243,19 @@ impl Default for VacConfig {
         default_providers.insert(
             "anthropic".to_string(),
             LlmProviderConfig {
-                api_key_env: "ANTHROPIC_API_KEY".to_string(),
-                model: "claude-3-7-sonnet-20250219".to_string(),
+                api_key_env: Some("ANTHROPIC_API_KEY".to_string()),
+                model: Some("claude-3-7-sonnet-20250219".to_string()),
                 base_url: None,
-                max_tokens: default_max_tokens(),
-                temperature: default_temperature(),
+                ..Default::default()
             },
         );
         default_providers.insert(
             "openai".to_string(),
             LlmProviderConfig {
-                api_key_env: "OPENAI_API_KEY".to_string(),
-                model: "gpt-4o".to_string(),
+                api_key_env: Some("OPENAI_API_KEY".to_string()),
+                model: Some("gpt-4o".to_string()),
                 base_url: None,
-                max_tokens: default_max_tokens(),
-                temperature: default_temperature(),
+                ..Default::default()
             },
         );
 
@@ -305,8 +264,9 @@ impl Default for VacConfig {
                 default_provider: "anthropic".into(),
                 providers: default_providers,
                 fallback_chain: vec!["anthropic".to_string(), "openai".to_string()],
-                max_tokens_per_task: 0,
+                budget_tokens: 0,
                 requests_per_minute: 0,
+                routing: HashMap::new(),
             },
             tools: ToolConfig {
                 default_policy: default_policy(),

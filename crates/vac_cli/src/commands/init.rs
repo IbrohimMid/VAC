@@ -67,6 +67,7 @@ analyze_after_edit = true
 
 [llm]
 default_provider = "anthropic"
+budget_tokens = 0
 
 [llm.providers.anthropic]
 # Kilo Gateway: https://kilo.ai

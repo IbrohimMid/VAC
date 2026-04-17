@@ -104,7 +104,11 @@ impl VacEngine {
             .llm
             .providers
             .iter()
-            .map(|(provider, cfg)| (provider.clone(), cfg.model.clone()))
+            .filter_map(|(provider, cfg)| {
+                cfg.model
+                    .as_ref()
+                    .map(|model| (provider.clone(), model.clone()))
+            })
             .collect();
         models.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
         models
@@ -224,7 +228,7 @@ impl VacEngine {
         }
 
         info!("Initializing LLM router...");
-        let budget_limit = self.config.llm.max_tokens_per_task;
+        let budget_limit = self.config.llm.budget_tokens;
         let mut llm_router = LlmRouter::new(&self.config.llm.default_provider, budget_limit)
             .with_rate_limit(self.config.llm.requests_per_minute);
         match self.config.llm.default_provider.as_str() {
@@ -380,16 +384,22 @@ impl VacEngine {
     fn build_kilo_provider(&self, provider_name: &str) -> AnthropicProvider {
         let mut provider = AnthropicProvider::new();
         if let Some(config) = self.config.llm.providers.get(provider_name) {
-            if let Some(api_key) = resolve_provider_api_key(config.api_key_env.as_str()) {
+            if let Some(api_key) = config
+                .api_key_env
+                .as_deref()
+                .and_then(resolve_provider_api_key)
+            {
                 provider = provider.with_api_key(&api_key);
             }
-            if let Some(base_url) = &config.base_url {
+            if let Some(base_url) = config.base_url.as_deref() {
                 if !base_url.trim().is_empty() && std::env::var("KILO_GATEWAY_URL").is_err() {
                     provider = provider.with_base_url(base_url);
                 }
             }
-            if !config.model.trim().is_empty() && std::env::var("KILO_MODEL").is_err() {
-                provider = provider.with_model(&config.model);
+            if let Some(model) = config.model.as_deref() {
+                if !model.trim().is_empty() && std::env::var("KILO_MODEL").is_err() {
+                    provider = provider.with_model(model);
+                }
             }
         } else if let Some(api_key) = resolve_provider_api_key("KILO_API_KEY") {
             provider = provider.with_api_key(&api_key);

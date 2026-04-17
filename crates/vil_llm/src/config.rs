@@ -1,7 +1,8 @@
 //! `.vac/config.toml` `[llm]` section parsing and runtime resolution.
 //!
-//! This module is the *vil_llm*-local view of the LLM configuration (independent
-//! from the workspace-wide `vac_core::config::LlmConfig`). It is designed to:
+//! This module owns the canonical LLM config shape for VAC. `vac_core`
+//! re-exports this type so the workspace has one source of truth. It is
+//! designed to:
 //!
 //! 1. Parse the `[llm]` section from `<project_root>/.vac/config.toml` with
 //!    schema tolerant of missing fields (defaults fill in gaps).
@@ -28,7 +29,7 @@
 //! base_url = "https://api.anthropic.com"
 //! ```
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
 
@@ -44,25 +45,55 @@ pub const ENV_DEFAULT_PROVIDER: &str = "VAC_LLM_DEFAULT_PROVIDER";
 /// Env var that overrides `[llm].budget_tokens`.
 pub const ENV_BUDGET_TOKENS: &str = "VAC_LLM_BUDGET_TOKENS";
 
-/// Resolved LLM configuration used by `LlmRouter::from_config` and `vac doctor`.
-#[derive(Debug, Clone)]
+/// Resolved LLM configuration used by `LlmRouter::from_config`, `vac doctor`,
+/// and `vac_core::VacConfig`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LlmConfig {
     pub default_provider: String,
+    #[serde(default)]
     pub fallback_chain: Vec<String>,
+    #[serde(default, alias = "max_tokens_per_task")]
     pub budget_tokens: u64,
     /// Maximum LLM requests per minute. 0 means unlimited.
+    #[serde(default)]
     pub requests_per_minute: u32,
     /// Tool name → provider-or-alias (e.g. `"grep" -> "cheap"`).
+    #[serde(default)]
     pub routing: HashMap<String, String>,
+    #[serde(default)]
     pub providers: HashMap<String, ProviderConfig>,
 }
 
 /// Per-provider config block.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProviderConfig {
     pub api_key_env: Option<String>,
     pub model: Option<String>,
     pub base_url: Option<String>,
+    #[serde(default = "default_max_tokens")]
+    pub max_tokens: u32,
+    #[serde(default = "default_temperature")]
+    pub temperature: f32,
+}
+
+impl Default for ProviderConfig {
+    fn default() -> Self {
+        Self {
+            api_key_env: None,
+            model: None,
+            base_url: None,
+            max_tokens: default_max_tokens(),
+            temperature: default_temperature(),
+        }
+    }
+}
+
+fn default_max_tokens() -> u32 {
+    8192
+}
+
+fn default_temperature() -> f32 {
+    0.0
 }
 
 impl Default for LlmConfig {
@@ -91,7 +122,7 @@ struct RawLlm {
     default_provider: Option<String>,
     #[serde(default)]
     fallback_chain: Option<Vec<String>>,
-    #[serde(default)]
+    #[serde(default, alias = "max_tokens_per_task")]
     pub budget_tokens: Option<u64>,
     #[serde(default)]
     requests_per_minute: Option<u32>,
@@ -109,6 +140,10 @@ struct RawProvider {
     model: Option<String>,
     #[serde(default)]
     base_url: Option<String>,
+    #[serde(default)]
+    max_tokens: Option<u32>,
+    #[serde(default)]
+    temperature: Option<f32>,
 }
 
 impl LlmConfig {
@@ -178,6 +213,8 @@ fn merge_raw_with_defaults(raw: RawLlm) -> LlmConfig {
                     api_key_env: rp.api_key_env,
                     model: rp.model,
                     base_url: rp.base_url,
+                    max_tokens: rp.max_tokens.unwrap_or(default_max_tokens()),
+                    temperature: rp.temperature.unwrap_or(default_temperature()),
                 },
             )
         })
@@ -274,9 +311,13 @@ model = "gpt-4o"
             anthropic.base_url.as_deref(),
             Some("https://api.anthropic.com")
         );
+        assert_eq!(anthropic.max_tokens, default_max_tokens());
+        assert_eq!(anthropic.temperature, default_temperature());
         let openai = cfg.providers.get("openai").expect("openai present");
         assert_eq!(openai.api_key_env.as_deref(), Some("OPENAI_API_KEY"));
         assert!(openai.base_url.is_none());
+        assert_eq!(openai.max_tokens, default_max_tokens());
+        assert_eq!(openai.temperature, default_temperature());
     }
 
     #[test]
@@ -359,6 +400,19 @@ budget_tokens = 12345
             LlmConfigError::Parse(_, _) => {}
             other => panic!("expected Parse error, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn legacy_budget_tokens_field_alias_is_accepted() {
+        let _g = ENV_LOCK.lock().unwrap();
+        clear_env();
+
+        let toml = r#"
+[llm]
+max_tokens_per_task = 12345
+"#;
+        let cfg = LlmConfig::from_toml_str(toml).expect("parse ok");
+        assert_eq!(cfg.budget_tokens, 12_345);
     }
 
     #[test]

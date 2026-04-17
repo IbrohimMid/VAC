@@ -10,6 +10,7 @@ const INIT_CONFIG_TEMPLATE: &str = r#"
 
 [llm]
 default_provider = "anthropic"
+budget_tokens = 0
 
 [llm.providers.anthropic]
 api_key_env = "KILO_API_KEY"

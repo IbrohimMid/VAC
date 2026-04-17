@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -5,6 +6,7 @@ use tokio::sync::RwLock;
 use uuid::Uuid;
 
 use crate::jobs::{Job, JobStatus};
+use crate::runtime_queue::RuntimeQueue;
 
 pub struct TaskQueue {
     jobs: Arc<RwLock<VecDeque<Job>>>,
@@ -51,7 +53,15 @@ impl TaskQueue {
             let jobs = self.jobs.read().await;
             let vec: Vec<Job> = jobs.iter().cloned().collect();
             if let Ok(json) = serde_json::to_string_pretty(&vec) {
-                let _ = std::fs::write(path, json);
+                let tmp_path = path.with_file_name(format!(
+                    "{}.tmp",
+                    path.file_name()
+                        .and_then(|name| name.to_str())
+                        .unwrap_or("queue.json")
+                ));
+                if std::fs::write(&tmp_path, json).is_ok() {
+                    let _ = std::fs::rename(&tmp_path, path);
+                }
             }
         }
     }
@@ -132,6 +142,15 @@ impl TaskQueue {
 
     pub async fn is_empty(&self) -> bool {
         self.jobs.read().await.is_empty()
+    }
+}
+
+#[async_trait]
+impl RuntimeQueue for TaskQueue {
+    type Item = Job;
+
+    async fn list(&self) -> Vec<Self::Item> {
+        TaskQueue::list(self).await
     }
 }
 

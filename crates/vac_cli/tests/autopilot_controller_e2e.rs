@@ -38,9 +38,11 @@ deny = {}
 }
 
 fn read_queue(root: &std::path::Path) -> Vec<Job> {
-    let content =
-        std::fs::read_to_string(root.join(".vac/queue.json")).unwrap_or_else(|_| "[]".to_string());
-    serde_json::from_str(&content).unwrap()
+    let content = std::fs::read_to_string(root.join(".vac/queue.json")).unwrap_or_default();
+    if content.trim().is_empty() {
+        return vec![];
+    }
+    serde_json::from_str(&content).unwrap_or_default()
 }
 
 fn wait_until<F: FnMut() -> bool>(timeout: Duration, mut f: F) -> bool {
