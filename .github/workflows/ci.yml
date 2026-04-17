@@ -78,3 +78,57 @@ jobs:
 
       - name: cargo clippy
         run: cargo clippy --workspace -- -D warnings
+
+  llm-smoke:
+    name: LLM Smoke (${{ matrix.provider }})
+    runs-on: ubuntu-latest
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - provider: anthropic
+            test: smoke_anthropic
+          - provider: openai
+            test: smoke_openai
+          - provider: gemini
+            test: smoke_gemini
+          - provider: xai
+            test: smoke_xai
+          - provider: mistral
+            test: smoke_mistral
+          - provider: openai_compat
+            test: smoke_openai_compat
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      KILO_API_KEY: ${{ secrets.KILO_API_KEY }}
+      KILO_GATEWAY_URL: ${{ secrets.KILO_GATEWAY_URL }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GEMINI_BASE_URL: ${{ secrets.GEMINI_BASE_URL }}
+      XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
+      XAI_BASE_URL: ${{ secrets.XAI_BASE_URL }}
+      MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+      MISTRAL_BASE_URL: ${{ secrets.MISTRAL_BASE_URL }}
+      OPENAI_COMPAT_BASE_URL: ${{ secrets.OPENAI_COMPAT_BASE_URL }}
+      OPENAI_COMPAT_API_KEY: ${{ secrets.OPENAI_COMPAT_API_KEY }}
+      OPENAI_COMPAT_MODEL: ${{ secrets.OPENAI_COMPAT_MODEL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-smoke-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-smoke-
+
+      - name: cargo smoke test
+        run: cargo test -p vil_llm --test provider_smoke_matrix -- --exact ${{ matrix.test }} --nocapture

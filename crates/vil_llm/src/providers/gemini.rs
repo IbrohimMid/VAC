@@ -387,9 +387,7 @@ impl LlmProvider for GeminiProvider {
                         usage = u;
                     }
                     if let Some(candidate) = val.candidates.into_iter().next() {
-                        if let Some(fr) = candidate.finish_reason.as_deref() {
-                            finish_reason = map_finish_reason(Some(fr), saw_tool_call);
-                        }
+                        let candidate_finish_reason = candidate.finish_reason;
                         if let Some(content) = candidate.content {
                             for part in content.parts {
                                 match part {
@@ -421,6 +419,9 @@ impl LlmProvider for GeminiProvider {
                                     GeminiResponsePart::Unknown => {}
                                 }
                             }
+                        }
+                        if let Some(fr) = candidate_finish_reason.as_deref() {
+                            finish_reason = map_finish_reason(Some(fr), saw_tool_call);
                         }
                     }
                 }

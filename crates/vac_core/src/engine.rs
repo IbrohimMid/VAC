@@ -2,7 +2,6 @@
 
 use crate::{
     approval::{ActiveApprovalRegistry, ApprovalHandle, ApprovalStore},
-    auth,
     config::VacConfig,
     error::{VacError, VacResult},
     session::Session,
@@ -15,7 +14,6 @@ use std::sync::Arc;
 use tokio::sync::{RwLock, mpsc};
 use tracing::{error, info, instrument, warn};
 use vil_llm::LlmRouter;
-use vil_llm::providers::anthropic::AnthropicProvider;
 
 /// The main VAC engine that orchestrates all subsystems.
 pub struct VacEngine {
@@ -112,6 +110,11 @@ impl VacEngine {
             .collect();
         models.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
         models
+    }
+
+    fn build_llm_router(&self) -> LlmRouter {
+        LlmRouter::from_config(&self.config.llm)
+            .with_rate_limit(self.config.llm.requests_per_minute)
     }
 
     /// Initialize all subsystems. Called by `vac init`.
@@ -228,21 +231,7 @@ impl VacEngine {
         }
 
         info!("Initializing LLM router...");
-        let budget_limit = self.config.llm.budget_tokens;
-        let mut llm_router = LlmRouter::new(&self.config.llm.default_provider, budget_limit)
-            .with_rate_limit(self.config.llm.requests_per_minute);
-        match self.config.llm.default_provider.as_str() {
-            "anthropic" => {
-                llm_router.add_provider(Arc::new(self.build_kilo_provider("anthropic")));
-            }
-            "kilo_gateway" => {
-                llm_router.add_provider(Arc::new(self.build_kilo_provider("kilo_gateway")));
-            }
-            _ => {
-                llm_router.add_provider(Arc::new(self.build_kilo_provider("anthropic")));
-            }
-        }
-        let llm_router = Arc::new(llm_router);
+        let llm_router = Arc::new(self.build_llm_router());
         self.llm_router = Some(llm_router.clone());
 
         if self.config.trace.enable {
@@ -379,32 +368,6 @@ impl VacEngine {
 
         info!("All VAC subsystems initialized successfully.");
         Ok(warnings)
-    }
-
-    fn build_kilo_provider(&self, provider_name: &str) -> AnthropicProvider {
-        let mut provider = AnthropicProvider::new();
-        if let Some(config) = self.config.llm.providers.get(provider_name) {
-            if let Some(api_key) = config
-                .api_key_env
-                .as_deref()
-                .and_then(resolve_provider_api_key)
-            {
-                provider = provider.with_api_key(&api_key);
-            }
-            if let Some(base_url) = config.base_url.as_deref() {
-                if !base_url.trim().is_empty() && std::env::var("KILO_GATEWAY_URL").is_err() {
-                    provider = provider.with_base_url(base_url);
-                }
-            }
-            if let Some(model) = config.model.as_deref() {
-                if !model.trim().is_empty() && std::env::var("KILO_MODEL").is_err() {
-                    provider = provider.with_model(model);
-                }
-            }
-        } else if let Some(api_key) = resolve_provider_api_key("KILO_API_KEY") {
-            provider = provider.with_api_key(&api_key);
-        }
-        provider
     }
 
     /// Execute a task end-to-end.
@@ -992,14 +955,6 @@ fn convert_archetype(a: &crate::detector::VilArchetype) -> vil_swarm::VilArchety
     }
 }
 
-fn resolve_provider_api_key(env_name: &str) -> Option<String> {
-    std::env::var(env_name)
-        .ok()
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-        .or_else(|| auth::resolve_kilo_api_key().ok().flatten())
-}
-
 fn spawn_agent_event_bridge(
     mut swarm_rx: mpsc::UnboundedReceiver<vil_swarm::AgentLoopEvent>,
     trace_handle: Option<std::sync::Arc<std::sync::Mutex<vac_trace::TraceRecorder>>>,
@@ -1281,6 +1236,34 @@ pub enum RuntimeUpdate {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::LlmProviderConfig;
+    use std::sync::Mutex;
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    fn clear_env() {
+        // SAFETY: ENV_LOCK serializes env mutation within this test module.
+        unsafe {
+            for key in [
+                "ANTHROPIC_API_KEY",
+                "OPENAI_API_KEY",
+                "GEMINI_API_KEY",
+                "XAI_API_KEY",
+                "MISTRAL_API_KEY",
+                "OPENAI_COMPAT_API_KEY",
+                "OPENAI_COMPAT_BASE_URL",
+            ] {
+                std::env::remove_var(key);
+            }
+        }
+    }
+
+    fn write_config(project_root: &std::path::Path, config: &VacConfig) {
+        let vac_dir = project_root.join(".vac");
+        std::fs::create_dir_all(&vac_dir).expect("create .vac");
+        let rendered = toml::to_string(config).expect("serialize config");
+        std::fs::write(vac_dir.join("config.toml"), rendered).expect("write config");
+    }
 
     #[tokio::test]
     async fn test_engine_injects_privacy_vault() {
@@ -1315,5 +1298,78 @@ model = "claude-3-5-sonnet-20241022"
             Arc::ptr_eq(&engine.privacy_vault, &swarm.privacy_vault),
             "Engine did not inject its shared privacy vault to the SwarmOrchestrator"
         );
+    }
+
+    #[tokio::test]
+    async fn llm_router_tracks_config_file_swaps() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        clear_env();
+
+        unsafe {
+            std::env::set_var("ANTHROPIC_API_KEY", "anthropic-test");
+        }
+
+        let anthropic_dir = tempfile::tempdir().unwrap();
+        let mut anthropic_cfg = VacConfig::default();
+        anthropic_cfg.llm.default_provider = "anthropic".to_string();
+        anthropic_cfg.llm.budget_tokens = 4096;
+        anthropic_cfg
+            .llm
+            .providers
+            .retain(|name, _| name == "anthropic");
+        anthropic_cfg
+            .llm
+            .providers
+            .get_mut("anthropic")
+            .expect("anthropic provider")
+            .model = Some("claude-sonnet-4".to_string());
+        write_config(anthropic_dir.path(), &anthropic_cfg);
+
+        let anthropic_engine = VacEngine::new(anthropic_dir.path().to_path_buf())
+            .await
+            .unwrap();
+        let anthropic_router = anthropic_engine.build_llm_router();
+        assert_eq!(anthropic_router.default_provider(), "anthropic");
+        assert!(anthropic_router.has_provider("anthropic"));
+
+        let compat_dir = tempfile::tempdir().unwrap();
+        let mut compat_cfg = VacConfig::default();
+        compat_cfg.llm.default_provider = "openai_compat".to_string();
+        compat_cfg.llm.budget_tokens = 4096;
+        compat_cfg.llm.providers.insert(
+            "openai_compat".to_string(),
+            LlmProviderConfig {
+                api_key_env: None,
+                model: None,
+                base_url: None,
+                ..Default::default()
+            },
+        );
+        compat_cfg
+            .llm
+            .providers
+            .retain(|name, _| name == "openai_compat");
+        compat_cfg
+            .llm
+            .providers
+            .get_mut("openai_compat")
+            .expect("openai_compat provider")
+            .base_url = Some("http://127.0.0.1:11434/v1".to_string());
+        compat_cfg
+            .llm
+            .providers
+            .get_mut("openai_compat")
+            .expect("openai_compat provider")
+            .model = Some("llama3.1".to_string());
+        write_config(compat_dir.path(), &compat_cfg);
+
+        let compat_engine = VacEngine::new(compat_dir.path().to_path_buf())
+            .await
+            .unwrap();
+        let compat_router = compat_engine.build_llm_router();
+        assert_eq!(compat_router.default_provider(), "openai_compat");
+        assert!(compat_router.has_provider("openai_compat"));
+
+        clear_env();
     }
 }

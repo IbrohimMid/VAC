@@ -185,6 +185,7 @@ impl AnthropicProvider {
                 .map(|(i, m)| Self::map_message(m, llm_request.is_cache_marked(i)))
                 .collect(),
             max_tokens: llm_request.max_tokens.unwrap_or(4096),
+            temperature: llm_request.temperature,
             stream: false,
             tools: if llm_request.tools.is_empty() {
                 None
@@ -519,6 +520,8 @@ struct OpenAiChatRequest {
     model: String,
     messages: Vec<OpenAiMessage>,
     max_tokens: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    temperature: Option<f32>,
     stream: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     tools: Option<Vec<OpenAiToolDefinition>>,

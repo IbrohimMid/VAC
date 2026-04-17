@@ -3,6 +3,7 @@
 use crate::config::LlmConfig;
 use crate::error::{LlmError, LlmResult};
 use crate::provider::{LlmProvider, LlmRequest, LlmResponse, StreamChunk};
+use crate::providers::build_provider_from_config;
 use crate::rulebook_hook::RulebookContext;
 use crate::sanitize;
 use crate::token_budget::TokenBudget;
@@ -10,12 +11,6 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{RwLock, mpsc};
 use tracing::{info, warn};
-
-use crate::providers::anthropic::AnthropicProvider;
-use crate::providers::gemini::GeminiProvider;
-use crate::providers::openai::OpenAiProvider;
-use crate::providers::openai_compat::OpenAiCompatProvider;
-use crate::providers::{mistral, xai};
 
 fn is_retryable(e: &LlmError) -> bool {
     match e {
@@ -78,6 +73,7 @@ impl SimpleRateLimiter {
 
 pub struct LlmRouter {
     providers: HashMap<String, Arc<dyn LlmProvider>>,
+    provider_defaults: HashMap<String, ProviderDefaults>,
     default_provider: String,
     fallback_chain: Vec<String>,
     /// Per-tool provider overrides: tool name -> provider name.
@@ -91,10 +87,17 @@ pub struct LlmRouter {
     rate_limiter: Arc<tokio::sync::Mutex<SimpleRateLimiter>>,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct ProviderDefaults {
+    max_tokens: u32,
+    temperature: f32,
+}
+
 impl LlmRouter {
     pub fn new(default_provider: &str, budget_limit: u64) -> Self {
         Self {
             providers: HashMap::new(),
+            provider_defaults: HashMap::new(),
             default_provider: default_provider.to_string(),
             fallback_chain: vec![],
             tool_routing_map: HashMap::new(),
@@ -103,6 +106,10 @@ impl LlmRouter {
             retry_config: crate::retry::RetryConfig::default(),
             rate_limiter: Arc::new(tokio::sync::Mutex::new(SimpleRateLimiter::new(0))),
         }
+    }
+
+    pub fn add_provider_named(&mut self, name: impl Into<String>, provider: Arc<dyn LlmProvider>) {
+        self.providers.insert(name.into(), provider);
     }
 
     pub fn with_rate_limit(mut self, requests_per_minute: u32) -> Self {
@@ -147,41 +154,56 @@ impl LlmRouter {
     }
 
     pub fn add_provider(&mut self, provider: Arc<dyn LlmProvider>) {
-        self.providers.insert(provider.name().to_string(), provider);
+        self.add_provider_named(provider.name().to_string(), provider);
     }
 
     pub fn with_anthropic(&mut self) -> &mut Self {
-        self.add_provider(Arc::new(AnthropicProvider::new()));
+        self.add_provider_named(
+            "anthropic",
+            Arc::new(crate::providers::anthropic::AnthropicProvider::new()),
+        );
         self
     }
 
     pub fn with_kilo_gateway(&mut self) -> &mut Self {
-        self.add_provider(Arc::new(AnthropicProvider::new()));
+        self.add_provider_named(
+            "kilo_gateway",
+            Arc::new(crate::providers::anthropic::AnthropicProvider::new()),
+        );
         self
     }
 
     pub fn with_openai(&mut self) -> &mut Self {
-        self.add_provider(Arc::new(OpenAiProvider::new()));
+        self.add_provider_named(
+            "openai",
+            Arc::new(crate::providers::openai::OpenAiProvider::new()),
+        );
         self
     }
 
     pub fn with_gemini(&mut self) -> &mut Self {
-        self.add_provider(Arc::new(GeminiProvider::new()));
+        self.add_provider_named(
+            "gemini",
+            Arc::new(crate::providers::gemini::GeminiProvider::new()),
+        );
         self
     }
 
     pub fn with_xai(&mut self) -> &mut Self {
-        self.add_provider(Arc::new(xai::new()));
+        self.add_provider_named("xai", Arc::new(crate::providers::xai::new()));
         self
     }
 
     pub fn with_mistral(&mut self) -> &mut Self {
-        self.add_provider(Arc::new(mistral::new()));
+        self.add_provider_named("mistral", Arc::new(crate::providers::mistral::new()));
         self
     }
 
     pub fn with_openai_compat(&mut self) -> &mut Self {
-        self.add_provider(Arc::new(OpenAiCompatProvider::new()));
+        self.add_provider_named(
+            "openai_compat",
+            Arc::new(crate::providers::openai_compat::OpenAiCompatProvider::new()),
+        );
         self
     }
 
@@ -192,27 +214,54 @@ impl LlmRouter {
     /// Build a router from a resolved `LlmConfig`. Known provider names are
     /// registered via their respective builders; unknown names are skipped with
     /// a warning (forward-compatible: newly defined providers in a future
-    /// config do not fail the loader).
+    /// config do not fail the loader). Tool routing and provider-specific
+    /// request defaults are also imported from config.
     pub fn from_config(cfg: &LlmConfig) -> Self {
         let mut router = Self::new(&cfg.default_provider, cfg.budget_tokens);
         router.set_fallback_chain(cfg.fallback_chain.clone());
+        router.set_tool_routing(cfg.routing.clone());
 
-        for name in cfg.providers.keys() {
-            match name.as_str() {
-                "anthropic" | "kilo" | "kilo_gateway" => {
-                    router.add_provider(Arc::new(AnthropicProvider::new()));
-                }
-                other => {
-                    warn!(
-                        provider = other,
-                        "provider listed in [llm.providers] but no builder registered yet — \
-                         skipping (pending Unit 1/2 merges)"
-                    );
-                }
+        for (name, provider_cfg) in &cfg.providers {
+            if let Some(provider) = build_provider_from_config(name, provider_cfg) {
+                router.provider_defaults.insert(
+                    name.clone(),
+                    ProviderDefaults {
+                        max_tokens: provider_cfg.max_tokens,
+                        temperature: provider_cfg.temperature,
+                    },
+                );
+                router.add_provider_named(name.clone(), provider);
             }
         }
 
         router
+    }
+
+    pub fn default_provider(&self) -> &str {
+        &self.default_provider
+    }
+
+    pub fn provider_names(&self) -> Vec<String> {
+        let mut names: Vec<String> = self.providers.keys().cloned().collect();
+        names.sort();
+        names
+    }
+
+    pub fn has_provider(&self, name: &str) -> bool {
+        self.providers.contains_key(name)
+    }
+
+    fn apply_provider_defaults(&self, provider_name: &str, request: &LlmRequest) -> LlmRequest {
+        let mut merged = request.clone();
+        if let Some(defaults) = self.provider_defaults.get(provider_name) {
+            if merged.max_tokens.is_none() {
+                merged.max_tokens = Some(defaults.max_tokens);
+            }
+            if merged.temperature.is_none() {
+                merged.temperature = Some(defaults.temperature);
+            }
+        }
+        merged
     }
 
     pub async fn complete(&self, request: &LlmRequest) -> LlmResult<LlmResponse> {
@@ -235,6 +284,7 @@ impl LlmRouter {
 
         for provider_name in &chain {
             if let Some(provider) = self.providers.get(provider_name) {
+                let request = self.apply_provider_defaults(provider_name, request);
                 // Sanitize messages per-provider (each provider may have different contract rules)
                 let sanitized_messages =
                     sanitize::sanitize_messages(&request.messages, provider_name);
@@ -307,6 +357,7 @@ impl LlmRouter {
                     message: "Default provider not found".into(),
                 })?;
 
+        let request = self.apply_provider_defaults(&self.default_provider, request);
         // Sanitize messages for this specific provider
         let sanitized_messages =
             sanitize::sanitize_messages(&request.messages, &self.default_provider);
@@ -333,9 +384,33 @@ impl LlmRouter {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::LlmConfig;
+    use crate::provider::{LlmRequest, Message};
+    use std::sync::Mutex;
+    use wiremock::matchers::{body_partial_json, method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     fn router() -> LlmRouter {
         LlmRouter::new("default_prov", 1_000)
+    }
+
+    fn clear_env() {
+        // SAFETY: ENV_LOCK serializes env mutation within this test module.
+        unsafe {
+            for key in [
+                "ANTHROPIC_API_KEY",
+                "OPENAI_API_KEY",
+                "GEMINI_API_KEY",
+                "XAI_API_KEY",
+                "MISTRAL_API_KEY",
+                "OPENAI_COMPAT_API_KEY",
+                "OPENAI_COMPAT_BASE_URL",
+            ] {
+                std::env::remove_var(key);
+            }
+        }
     }
 
     #[test]
@@ -412,5 +487,139 @@ mod tests {
 
         tokio::time::advance(std::time::Duration::from_secs(60)).await;
         let _ = handle.await;
+    }
+
+    #[test]
+    fn from_config_registers_supported_providers_and_routing() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        clear_env();
+
+        // SAFETY: ENV_LOCK serializes env mutation within this test module.
+        unsafe {
+            std::env::set_var("ANTHROPIC_API_KEY", "anthropic-test");
+            std::env::set_var("OPENAI_API_KEY", "openai-test");
+            std::env::set_var("GEMINI_API_KEY", "gemini-test");
+            std::env::set_var("XAI_API_KEY", "xai-test");
+            std::env::set_var("MISTRAL_API_KEY", "mistral-test");
+        }
+
+        let cfg = LlmConfig::from_toml_str(
+            r#"
+[llm]
+default_provider = "openai"
+fallback_chain = ["gemini", "mistral"]
+budget_tokens = 4096
+
+[llm.routing]
+lint = "openai"
+review = "gemini"
+
+[llm.providers.anthropic]
+api_key_env = "ANTHROPIC_API_KEY"
+model = "claude-sonnet-4"
+
+[llm.providers.openai]
+api_key_env = "OPENAI_API_KEY"
+model = "gpt-4o"
+
+[llm.providers.gemini]
+api_key_env = "GEMINI_API_KEY"
+model = "gemini-2.0-flash"
+
+[llm.providers.xai]
+api_key_env = "XAI_API_KEY"
+model = "grok-beta"
+
+[llm.providers.mistral]
+api_key_env = "MISTRAL_API_KEY"
+model = "mistral-large-latest"
+
+[llm.providers.openai_compat]
+base_url = "http://127.0.0.1:11434/v1"
+model = "llama3.1"
+max_tokens = 2048
+temperature = 0.25
+"#,
+        )
+        .expect("config parses");
+
+        let router = LlmRouter::from_config(&cfg);
+        assert_eq!(router.default_provider(), "openai");
+        assert_eq!(router.route_for_tool("lint"), "openai");
+        assert_eq!(router.route_for_tool("review"), "gemini");
+
+        let names = router.provider_names();
+        assert_eq!(
+            names,
+            vec![
+                "anthropic".to_string(),
+                "gemini".to_string(),
+                "mistral".to_string(),
+                "openai".to_string(),
+                "openai_compat".to_string(),
+                "xai".to_string(),
+            ]
+        );
+        for name in [
+            "anthropic",
+            "gemini",
+            "mistral",
+            "openai",
+            "openai_compat",
+            "xai",
+        ] {
+            assert!(router.has_provider(name), "missing provider {name}");
+        }
+
+        clear_env();
+    }
+
+    #[tokio::test]
+    async fn from_config_applies_provider_defaults_to_requests() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .and(body_partial_json(serde_json::json!({
+                "model": "llama3.1",
+                "max_tokens": 2048,
+                "temperature": 0.25
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "chatcmpl-1",
+                "object": "chat.completion",
+                "model": "llama3.1",
+                "choices": [{
+                    "index": 0,
+                    "finish_reason": "stop",
+                    "message": {"role": "assistant", "content": "hello"}
+                }],
+                "usage": {"prompt_tokens": 2, "completion_tokens": 1, "total_tokens": 3}
+            })))
+            .mount(&server)
+            .await;
+
+        let cfg = LlmConfig::from_toml_str(&format!(
+            r#"
+[llm]
+default_provider = "openai_compat"
+budget_tokens = 4096
+
+[llm.providers.openai_compat]
+base_url = "{}/v1"
+model = "llama3.1"
+max_tokens = 2048
+temperature = 0.25
+"#,
+            server.uri()
+        ))
+        .expect("config parses");
+
+        let router = LlmRouter::from_config(&cfg);
+        let req = LlmRequest::new(vec![Message::user("hi")]);
+        let resp = router.complete(&req).await.expect("complete");
+
+        assert_eq!(resp.content, "hello");
+        assert_eq!(resp.model, "llama3.1");
+        assert_eq!(resp.usage.total_tokens, 3);
     }
 }
