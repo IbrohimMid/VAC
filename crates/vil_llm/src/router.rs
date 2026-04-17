@@ -187,6 +187,8 @@ impl LlmRouter {
                     temperature: request.temperature,
                     stop_sequences: request.stop_sequences.clone(),
                     tools: request.tools.clone(),
+                    cache_control_blocks: request.cache_control_blocks.clone(),
+                    cache_control_hint: request.cache_control_hint,
                 };
 
                 let mut attempt = 0usize;
@@ -255,6 +257,8 @@ impl LlmRouter {
             temperature: request.temperature,
             stop_sequences: request.stop_sequences.clone(),
             tools: request.tools.clone(),
+            cache_control_blocks: request.cache_control_blocks.clone(),
+            cache_control_hint: request.cache_control_hint,
         };
 
         provider.stream(&sanitized_request).await

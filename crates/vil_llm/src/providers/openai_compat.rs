@@ -381,6 +381,9 @@ pub(crate) fn openai_response_to_llm(
             prompt_tokens: usage.prompt_tokens,
             completion_tokens: usage.completion_tokens,
             total_tokens: usage.total_tokens,
+            cached_tokens: 0,
+            cache_creation_tokens: 0,
+            cache_hit_rate: 0.0,
         },
         tool_calls,
     })
@@ -527,6 +530,9 @@ pub(crate) async fn openai_stream(
                     prompt_tokens: usage.prompt_tokens,
                     completion_tokens: usage.completion_tokens,
                     total_tokens: usage.total_tokens,
+                    cached_tokens: 0,
+                    cache_creation_tokens: 0,
+                    cache_hit_rate: 0.0,
                 },
                 finish_reason,
             })

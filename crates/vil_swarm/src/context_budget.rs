@@ -1,20 +1,26 @@
 //! Context budget management — two-level message reducer.
 //! Adapted from stakpak/libs/agent-core/src/budget_context.rs (Apache-2.0).
+//!
+//! Tokenization is delegated to [`vil_llm::Tokenizer`] so callers can swap in
+//! a provider-aware counter (Anthropic `count_tokens`, custom heuristic, …).
+//! The default adapter is `TiktokenAdapter` (cl100k_base) which preserves the
+//! original `+8` per-message overhead + `1.05` safety factor that the donor
+//! tuned against.
 
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use vil_llm::provider::{Message, Role, ToolCall};
+use vil_llm::tokenizer::{SAFETY_FACTOR, TiktokenAdapter, Tokenizer};
 
 const DEFAULT_CONTEXT_WINDOW: u64 = 204_800;
 const MAX_OUTPUT_TOKENS: u64 = 4_000;
-const SAFETY_BUFFER: f64 = 1.05;
 const TRIM_HEADROOM: f64 = 0.75;
 const KEEP_LAST_N_ASSISTANT: usize = 3;
 const TRIMMED_PLACEHOLDER: &str = "[trimmed older context]";
 
-/// Global tokenizer using cl100k_base (Claude/GPT-4 compatible)
-static TOKENIZER: Lazy<tiktoken_rs::CoreBPE> =
-    Lazy::new(|| tiktoken_rs::cl100k_base().expect("cl100k_base BPE initialization failed"));
+/// Process-wide default tokenizer. Exposed so callers that don't care which
+/// tokenizer is used (most of them) can just pass `&*DEFAULT_TOKENIZER`.
+pub static DEFAULT_TOKENIZER: Lazy<TiktokenAdapter> = Lazy::new(TiktokenAdapter::new);
 
 /// Stores original message content before trimming for potential restoration.
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
@@ -51,38 +57,47 @@ impl TrimStore {
     }
 }
 
-/// Estimate token count for a single message (content + tool overhead).
-/// Estimate token count for a single message using real BPE tokenization.
-fn message_token_estimate(msg: &Message) -> u64 {
-    let mut text = msg.content.clone();
-    for tc in &msg.tool_calls {
-        text.push_str(&tc.name);
-        text.push_str(&tc.arguments.to_string());
-    }
-    if let Some(id) = &msg.tool_call_id {
-        text.push_str(id);
-    }
-    if let Some(n) = &msg.name {
-        text.push_str(n);
-    }
-    let tokens = TOKENIZER.encode_ordinary(&text).len() as u64;
-    tokens + 8 // per-message overhead
+/// Token count for a single message (content + tool-call payload + per-message
+/// overhead) via the supplied tokenizer.
+fn message_token_estimate<T: Tokenizer + ?Sized>(tokenizer: &T, msg: &Message) -> u64 {
+    tokenizer.count_message(msg) as u64
 }
 
-/// Estimate total tokens for a message slice.
+/// Estimate total tokens for a message slice, with safety factor applied.
+/// Uses the process-wide default tokenizer — tiktoken cl100k_base.
 pub fn estimate_tokens(messages: &[Message]) -> u64 {
-    let raw: u64 = messages.iter().map(message_token_estimate).sum();
-    (raw as f64 * SAFETY_BUFFER).ceil() as u64
+    estimate_tokens_with(&*DEFAULT_TOKENIZER, messages)
 }
 
-/// Two-level context reducer.
+/// Same as [`estimate_tokens`] but with an explicit tokenizer — lets callers
+/// swap in a provider-aware counter.
+pub fn estimate_tokens_with<T: Tokenizer + ?Sized>(tokenizer: &T, messages: &[Message]) -> u64 {
+    let raw: u64 = messages
+        .iter()
+        .map(|m| message_token_estimate(tokenizer, m))
+        .sum();
+    (raw as f64 * SAFETY_FACTOR).ceil() as u64
+}
+
+/// Two-level context reducer, using the default tokenizer. Equivalent to
+/// calling [`reduce_messages_with`] with `&*DEFAULT_TOKENIZER`.
+pub fn reduce_messages(
+    messages: Vec<Message>,
+    trim_boundary: &mut usize,
+    store: &mut TrimStore,
+) -> Vec<Message> {
+    reduce_messages_with(&*DEFAULT_TOKENIZER, messages, trim_boundary, store)
+}
+
+/// Two-level context reducer with an explicit tokenizer.
 ///
 /// Level A: trim old assistant+tool messages to placeholder, keep last N assistant.
 /// Level B: emergency hard cap — trim oldest non-system messages if still over budget.
 ///
 /// `trim_boundary` tracks the highest trimmed index across turns (cache stability).
 /// `store` preserves original content for potential restoration.
-pub fn reduce_messages(
+pub fn reduce_messages_with<T: Tokenizer + ?Sized>(
+    tokenizer: &T,
     mut messages: Vec<Message>,
     trim_boundary: &mut usize,
     store: &mut TrimStore,
@@ -92,7 +107,7 @@ pub fn reduce_messages(
     let trim_target = (threshold as f64 * TRIM_HEADROOM) as u64;
 
     // Fast path: already under budget and no prior trimming needed.
-    if *trim_boundary == 0 && estimate_tokens(&messages) <= threshold {
+    if *trim_boundary == 0 && estimate_tokens_with(tokenizer, &messages) <= threshold {
         return messages;
     }
 
@@ -130,7 +145,7 @@ pub fn reduce_messages(
     }
     *trim_boundary = new_boundary;
 
-    if estimate_tokens(&messages) <= threshold {
+    if estimate_tokens_with(tokenizer, &messages) <= threshold {
         return messages;
     }
 
@@ -138,7 +153,7 @@ pub fn reduce_messages(
     // Trim oldest non-system messages until under trim_target.
     // Never remove the latest user message.
     let mut i = 0;
-    while i < messages.len() && estimate_tokens(&messages) > trim_target {
+    while i < messages.len() && estimate_tokens_with(tokenizer, &messages) > trim_target {
         if messages[i].role != Role::System && Some(i) != latest_user_idx {
             store.trim_one(i, &mut messages[i]);
             // Update trim_boundary to track this emergency trim
@@ -202,9 +217,33 @@ mod tests {
 
     #[test]
     fn estimate_tokens_includes_tool_calls() {
+        let tokenizer = &*DEFAULT_TOKENIZER;
         let plain = msg(Role::Assistant, "ok");
         let with_tool = assistant_with_tool_call("ok");
-        assert!(message_token_estimate(&with_tool) > message_token_estimate(&plain));
+        assert!(
+            message_token_estimate(tokenizer, &with_tool)
+                > message_token_estimate(tokenizer, &plain)
+        );
+    }
+
+    #[test]
+    fn reduce_with_heuristic_tokenizer_still_honors_budget() {
+        // Parity: swapping in the cheap heuristic still shrinks a blown
+        // context below the window.
+        let heuristic = vil_llm::tokenizer::HeuristicAdapter::new();
+        let big = "word ".repeat(60_000);
+        let mut messages = vec![msg(Role::System, "sys")];
+        for _ in 0..6 {
+            messages.push(msg(Role::Assistant, &big));
+            messages.push(tool_msg(&big));
+        }
+        messages.push(msg(Role::User, "final task"));
+
+        let mut boundary = 0;
+        let mut store = TrimStore::default();
+        let reduced = reduce_messages_with(&heuristic, messages, &mut boundary, &mut store);
+        assert!(estimate_tokens_with(&heuristic, &reduced) < DEFAULT_CONTEXT_WINDOW);
+        assert_eq!(reduced.last().unwrap().content, "final task");
     }
 
     #[test]

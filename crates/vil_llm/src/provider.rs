@@ -108,6 +108,21 @@ impl Message {
     }
 }
 
+/// Prompt-caching hint. Today only Anthropic `ephemeral` is meaningful — other
+/// providers ignore the field. Stored alongside `LlmRequest` instead of inline
+/// on `Message` so routing layers can flag messages without mutating them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CacheControlHint {
+    /// Anthropic ephemeral breakpoint (`cache_control: {type: "ephemeral"}`).
+    Ephemeral,
+}
+
+impl Default for CacheControlHint {
+    fn default() -> Self {
+        Self::Ephemeral
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LlmRequest {
     pub messages: Vec<Message>,
@@ -116,6 +131,16 @@ pub struct LlmRequest {
     pub temperature: Option<f32>,
     pub stop_sequences: Vec<String>,
     pub tools: Vec<ToolDefinition>,
+    /// Indices into `messages` that should carry a `cache_control` breakpoint
+    /// when the provider supports prompt caching (Anthropic). Out-of-range
+    /// indices are silently ignored. Kept sorted by the helpers but not
+    /// enforced so callers can re-use the field.
+    #[serde(default)]
+    pub cache_control_blocks: Vec<usize>,
+    /// Hint shared by every entry in `cache_control_blocks`. Defaults to
+    /// `Ephemeral`, which is the only variant today.
+    #[serde(default)]
+    pub cache_control_hint: CacheControlHint,
 }
 
 impl LlmRequest {
@@ -127,6 +152,8 @@ impl LlmRequest {
             temperature: None,
             stop_sequences: vec![],
             tools: vec![],
+            cache_control_blocks: vec![],
+            cache_control_hint: CacheControlHint::Ephemeral,
         }
     }
 
@@ -139,6 +166,8 @@ impl LlmRequest {
             temperature: None,
             stop_sequences: vec![],
             tools: vec![],
+            cache_control_blocks: vec![],
+            cache_control_hint: CacheControlHint::Ephemeral,
         }
     }
 
@@ -163,6 +192,22 @@ impl LlmRequest {
     pub fn with_tools(mut self, tools: Vec<ToolDefinition>) -> Self {
         self.tools = tools;
         self
+    }
+
+    /// Flag one or more message indices for prompt-cache breakpoints.
+    /// Out-of-range indices are filtered out so callers don't have to
+    /// coordinate with message-list mutations.
+    pub fn with_cache_control(mut self, indices: impl IntoIterator<Item = usize>) -> Self {
+        let len = self.messages.len();
+        self.cache_control_blocks = indices.into_iter().filter(|i| *i < len).collect();
+        self.cache_control_blocks.sort_unstable();
+        self.cache_control_blocks.dedup();
+        self
+    }
+
+    /// True if the given message index should carry a cache-control marker.
+    pub fn is_cache_marked(&self, idx: usize) -> bool {
+        self.cache_control_blocks.binary_search(&idx).is_ok()
     }
 }
 
@@ -195,6 +240,33 @@ pub struct TokenUsage {
     pub prompt_tokens: u64,
     pub completion_tokens: u64,
     pub total_tokens: u64,
+    /// Tokens served from the provider's prompt cache (Anthropic
+    /// `cache_read_input_tokens`). `0` on providers that don't report it.
+    #[serde(default)]
+    pub cached_tokens: u64,
+    /// Tokens written to the provider's prompt cache this request
+    /// (Anthropic `cache_creation_input_tokens`). Informational — the
+    /// write is already billed as input tokens on Anthropic's wire.
+    #[serde(default)]
+    pub cache_creation_tokens: u64,
+    /// `cached_tokens / (prompt_tokens + cached_tokens)`. Zero when no
+    /// tokens were sent at all. Range: `[0.0, 1.0]`.
+    #[serde(default)]
+    pub cache_hit_rate: f64,
+}
+
+impl TokenUsage {
+    /// Recompute `cache_hit_rate` from the token counts currently set.
+    /// Safe on zero input (returns `0.0`). Call after populating
+    /// `prompt_tokens` and `cached_tokens`.
+    pub fn recompute_cache_hit_rate(&mut self) {
+        let denom = self.prompt_tokens + self.cached_tokens;
+        self.cache_hit_rate = if denom == 0 {
+            0.0
+        } else {
+            self.cached_tokens as f64 / denom as f64
+        };
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

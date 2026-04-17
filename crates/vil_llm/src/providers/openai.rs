@@ -273,6 +273,9 @@ impl LlmProvider for OpenAiProvider {
                 prompt_tokens: usage.prompt_tokens,
                 completion_tokens: usage.completion_tokens,
                 total_tokens: usage.total_tokens,
+                cached_tokens: 0,
+                cache_creation_tokens: 0,
+                cache_hit_rate: 0.0,
             },
             tool_calls,
         })
@@ -422,6 +425,9 @@ impl LlmProvider for OpenAiProvider {
                         prompt_tokens: usage.prompt_tokens,
                         completion_tokens: usage.completion_tokens,
                         total_tokens: usage.total_tokens,
+                        cached_tokens: 0,
+                        cache_creation_tokens: 0,
+                        cache_hit_rate: 0.0,
                     },
                     finish_reason,
                 })
@@ -525,7 +531,7 @@ struct OpenAiUsage {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::provider::{Message, ToolDefinition};
+    use crate::provider::{CacheControlHint, Message, ToolDefinition};
     use wiremock::matchers::{header, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -675,6 +681,8 @@ mod tests {
                     "properties": {"a": {"type": "number"}}
                 }),
             }],
+            cache_control_blocks: vec![],
+            cache_control_hint: CacheControlHint::Ephemeral,
         };
 
         let resp = provider.complete(&req).await.expect("body matched");
