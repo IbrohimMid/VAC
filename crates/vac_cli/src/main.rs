@@ -21,6 +21,8 @@ struct Cli {
     verbose: u8,
     #[arg(long, default_value = "text", global = true)]
     format: String,
+    #[arg(long, default_value = "text", global = true)]
+    log_format: String,
     #[command(subcommand)]
     command: Commands,
 }
@@ -255,11 +257,22 @@ async fn main() -> anyhow::Result<()> {
             2 => "debug",
             _ => "trace",
         };
-        fmt()
-            .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| filter.into()))
-            .with_target(false)
-            .with_writer(std::io::stderr)
-            .init();
+        let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| filter.into());
+        
+        if cli.log_format == "json" {
+            fmt()
+                .json()
+                .with_env_filter(env_filter)
+                .with_target(false)
+                .with_writer(std::io::stderr)
+                .init();
+        } else {
+            fmt()
+                .with_env_filter(env_filter)
+                .with_target(false)
+                .with_writer(std::io::stderr)
+                .init();
+        }
     }
 
     let project_root = cli
