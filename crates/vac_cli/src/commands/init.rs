@@ -246,7 +246,10 @@ name = "Project Rules"
     // Initialize engine and scan codebase
     println!("   🔍 Scanning codebase...");
     let mut engine = vac_core::VacEngine::new(project_root).await?;
-    engine.init().await?;
+    let warnings = engine.init().await?;
+    for warning in warnings {
+        eprintln!("Warning: {}", warning);
+    }
 
     let status = engine.status().await?;
     println!("\n✓ VAC initialized successfully!");

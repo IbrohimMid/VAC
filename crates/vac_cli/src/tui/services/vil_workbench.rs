@@ -130,8 +130,14 @@ pub fn selected_issue(state: &AppState) -> Option<ClassifiedIssue> {
 pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(3), Constraint::Min(1)])
+        .constraints([
+            Constraint::Length(4), // Status panel
+            Constraint::Length(3), // Tabs
+            Constraint::Min(1),    // Body
+        ])
         .split(area);
+
+    render_status_panel(f, state, chunks[0]);
 
     let issues = classify_issues(state);
     let counts = group_counts(&issues);
@@ -155,7 +161,7 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
         .select(selected_tab_idx)
         .block(
             Block::default().borders(Borders::ALL).title(Span::styled(
-                "VIL Issues",
+                "Issue Groups",
                 Style::default()
                     .fg(Color::Yellow)
                     .add_modifier(Modifier::BOLD),
@@ -166,17 +172,96 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
                 .fg(Color::Yellow)
                 .add_modifier(Modifier::BOLD),
         );
-    f.render_widget(tabs, chunks[0]);
+    f.render_widget(tabs, chunks[1]);
 
     // --- body: list (left) + lineage panel (right) ---
     let body = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
-        .split(chunks[1]);
+        .split(chunks[2]);
 
     let view = filtered(state, &issues);
     render_issue_list(f, state, body[0], &view);
     render_lineage_panel(f, state, body[1], &view);
+}
+
+fn render_status_panel(f: &mut Frame, state: &AppState, area: Rect) {
+    let score = state.vil_status.validation_score;
+    let score_label = if score >= 0.9 {
+        "A"
+    } else if score >= 0.7 {
+        "B"
+    } else {
+        "C"
+    };
+
+    let score_color = if score >= 0.9 {
+        Color::Green
+    } else if score >= 0.7 {
+        Color::Yellow
+    } else {
+        Color::Red
+    };
+
+    let active_rulebook = state
+        .selected_rulebooks
+        .iter()
+        .next()
+        .map(|s| s.as_str())
+        .unwrap_or("default");
+
+    let mut spans = vec![
+        Span::styled(" Score: ", Style::default().add_modifier(Modifier::BOLD)),
+        Span::styled(score_label, Style::default().fg(score_color)),
+        Span::raw(" │ "),
+        Span::styled("Rulebook: ", Style::default().add_modifier(Modifier::BOLD)),
+        Span::styled(active_rulebook.to_string(), Style::default().fg(Color::Cyan)),
+        Span::raw(" │ "),
+        Span::styled("Semantic Mode: ", Style::default().add_modifier(Modifier::BOLD)),
+    ];
+
+    if state.vil_status.semantic_mode {
+        spans.push(Span::styled("Enabled", Style::default().fg(Color::Green)));
+    } else {
+        spans.push(Span::styled("Disabled", Style::default().fg(Color::DarkGray)));
+    }
+
+    spans.push(Span::raw(" │ "));
+    spans.push(Span::styled("IR Sync: ", Style::default().add_modifier(Modifier::BOLD)));
+    if state.vil_status.ir_generation_active {
+        spans.push(Span::styled(
+            format!("Active ({} files)", state.vil_status.ir_metadata_files.len()),
+            Style::default().fg(Color::Green),
+        ));
+    } else {
+        spans.push(Span::styled("Inactive", Style::default().fg(Color::DarkGray)));
+    }
+
+    if let Some(profile) = &state.vil_status.profile {
+        spans.push(Span::raw(" │ "));
+        spans.push(Span::styled("Archetype: ", Style::default().add_modifier(Modifier::BOLD)));
+        spans.push(Span::styled(
+            format!("{}", profile.archetype),
+            Style::default().fg(Color::Cyan),
+        ));
+        spans.push(Span::raw(" │ "));
+        spans.push(Span::styled("VIL Deps: ", Style::default().add_modifier(Modifier::BOLD)));
+        spans.push(Span::raw(profile.vil_deps.len().to_string()));
+    } else {
+        spans.push(Span::raw(" │ "));
+        spans.push(Span::styled(
+            "Scanning profile...",
+            Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC),
+        ));
+    }
+
+    let p = Paragraph::new(Line::from(spans))
+        .block(Block::default().borders(Borders::ALL).title(Span::styled(
+            "VIL Workstation",
+            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+        )));
+
+    f.render_widget(p, area);
 }
 
 fn render_issue_list(f: &mut Frame, state: &AppState, area: Rect, view: &[&ClassifiedIssue]) {

@@ -13,7 +13,7 @@ use crate::tui::services::vil_workbench;
 /// Open the VIL Issues workstation tab (also jumps focus to the workbench).
 pub fn open(ctx: &mut HandlerContext) -> HandlerResult {
     ctx.state.focus = WorkspaceFocus::Workbench;
-    ctx.state.workbench_tab = WorkbenchTab::VilIssues;
+    ctx.state.workbench_tab = WorkbenchTab::Vil;
     ctx.state
         .push_activity(ActivityKind::Status, "Opened VIL Issues workstation");
     Ok(())
@@ -228,7 +228,7 @@ mod tests {
         assert!(open(&mut ctx).is_ok());
         assert_eq!(
             ctx.state.workbench_tab,
-            crate::tui::app::WorkbenchTab::VilIssues
+            crate::tui::app::WorkbenchTab::Vil
         );
         assert_eq!(ctx.state.focus, crate::tui::app::WorkspaceFocus::Workbench);
     }

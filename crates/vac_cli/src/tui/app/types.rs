@@ -286,7 +286,6 @@ pub enum SidePanelSection {
     Context,
     Runtime,
     Changeset,
-    VilStatus,
     Mcp,
     Sessions,
     Todos,

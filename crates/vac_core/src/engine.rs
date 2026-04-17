@@ -112,7 +112,7 @@ impl VacEngine {
 
     /// Initialize all subsystems. Called by `vac init`.
     #[instrument(skip(self))]
-    pub async fn init(&mut self) -> VacResult<()> {
+    pub async fn init(&mut self) -> VacResult<Vec<String>> {
         self.init_with_policy(None).await
     }
 
@@ -120,7 +120,8 @@ impl VacEngine {
     pub async fn init_with_policy(
         &mut self,
         policy_override: Option<Arc<dyn vac_tools::router::PolicyEngine>>,
-    ) -> VacResult<()> {
+    ) -> VacResult<Vec<String>> {
+        let mut warnings = Vec::new();
         info!("Initializing VAC subsystems...");
 
         info!("Initializing IR pipeline...");
@@ -203,7 +204,9 @@ impl VacEngine {
                         }
                     },
                     Err(e) => {
-                        warn!(name = %server_config.name, error = %e, "Failed to connect MCP server")
+                        let err_msg = format!("Failed to connect MCP server '{}': {}", server_config.name, e);
+                        warn!("{}", err_msg);
+                        warnings.push(err_msg);
                     }
                 }
             }
@@ -211,7 +214,8 @@ impl VacEngine {
 
         info!("Initializing LLM router...");
         let budget_limit = self.config.llm.max_tokens_per_task;
-        let mut llm_router = LlmRouter::new(&self.config.llm.default_provider, budget_limit);
+        let mut llm_router = LlmRouter::new(&self.config.llm.default_provider, budget_limit)
+            .with_rate_limit(self.config.llm.requests_per_minute);
         match self.config.llm.default_provider.as_str() {
             "anthropic" => {
                 llm_router.add_provider(Arc::new(self.build_kilo_provider("anthropic")));
@@ -359,7 +363,7 @@ impl VacEngine {
         }
 
         info!("All VAC subsystems initialized successfully.");
-        Ok(())
+        Ok(warnings)
     }
 
     fn build_kilo_provider(&self, provider_name: &str) -> AnthropicProvider {

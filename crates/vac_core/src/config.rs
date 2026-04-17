@@ -46,6 +46,9 @@ pub struct LlmConfig {
     /// Global token budget per task (0 = unlimited)
     #[serde(default)]
     pub max_tokens_per_task: u64,
+    /// Maximum requests per minute (0 = unlimited)
+    #[serde(default)]
+    pub requests_per_minute: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -297,6 +300,7 @@ impl Default for VacConfig {
                 providers: default_providers,
                 fallback_chain: vec!["anthropic".to_string(), "openai".to_string()],
                 max_tokens_per_task: 0,
+                requests_per_minute: 0,
             },
             tools: ToolConfig {
                 default_policy: default_policy(),

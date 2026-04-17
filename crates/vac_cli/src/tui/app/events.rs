@@ -35,6 +35,7 @@ pub enum InputEvent {
         error: String,
     },
     McpServerState(String, vac_tools::mcp::McpConnectionState),
+    ShowBanner(String, crate::tui::services::banner::BannerStyle, crate::tui::services::banner::BannerSeverity),
     VilStatusUpdated(crate::tui::app::VilStatusSnapshot),
     ChangesetUpdated,
     IsolationBoundary {
@@ -177,6 +178,7 @@ impl InputEvent {
                 | InputEvent::ShellCompleted(_, _)
                 | InputEvent::ShellWaitingForInput(_)
                 | InputEvent::McpServerState(_, _)
+                | InputEvent::ShowBanner(_, _, _)
                 | InputEvent::SessionRestored { .. }
                 | InputEvent::AddUserMessage(_)
         )

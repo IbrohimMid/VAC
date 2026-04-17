@@ -249,7 +249,11 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
     let mut engine = VacEngine::new(project_root.clone()).await?;
 
     // Initialize engine (load tools, policies, etc.)
-    engine.init().await?;
+    let warnings = engine.init().await?;
+    
+    // We will add the warnings to the banner queue later via InputEvent or direct injection
+    // Wait, TUI state is not initialized yet.
+    // We will inject it below.
     let approvals = engine.approval_handle();
     let session_id = engine.session_id().await.to_string();
 
@@ -257,6 +261,19 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
 
     // Create channels
     let (input_tx, input_rx) = mpsc::channel::<InputEvent>(100);
+    
+    // Inject warnings into the TUI banner queue
+    let input_tx_clone_for_warnings = input_tx.clone();
+    tokio::spawn(async move {
+        for warning in warnings {
+            let _ = input_tx_clone_for_warnings.send(InputEvent::ShowBanner(
+                warning,
+                crate::tui::services::banner::BannerStyle::Warning,
+                crate::tui::services::banner::BannerSeverity::Suggested,
+            )).await;
+        }
+    });
+
     let (output_tx, mut output_rx) = mpsc::channel::<OutputEvent>(100);
     let (shutdown_tx, _shutdown_rx) = tokio::sync::broadcast::channel::<()>(1);
 

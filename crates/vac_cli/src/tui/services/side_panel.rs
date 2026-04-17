@@ -33,9 +33,6 @@ pub fn render_side_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
     let changeset_collapsed = state
         .side_panel_section_collapsed
         .contains(&SidePanelSection::Changeset);
-    let vil_status_collapsed = state
-        .side_panel_section_collapsed
-        .contains(&SidePanelSection::VilStatus);
     let mcp_collapsed = state
         .side_panel_section_collapsed
         .contains(&SidePanelSection::Mcp);
@@ -64,23 +61,6 @@ pub fn render_side_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
         collapsed_height
     } else {
         10
-    };
-    let vil_issues_count = state.vil_status.validation_issues.len().min(3);
-    let vil_status_lines = if state.vil_status.profile.is_some() {
-        7
-    } else {
-        6
-    };
-    let vil_status_height = if vil_status_collapsed {
-        collapsed_height
-    } else {
-        (vil_status_lines
-            + vil_issues_count
-            + if state.vil_status.validation_issues.len() > 3 {
-                1
-            } else {
-                0
-            }) as u16
     };
     let mcp_lines = state
         .mcp_server_states
@@ -135,7 +115,6 @@ pub fn render_side_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
             Constraint::Length(runtime_height),
             Constraint::Length(todos_height),
             Constraint::Length(changeset_height),
-            Constraint::Length(vil_status_height),
             Constraint::Length(mcp_height),
             Constraint::Min(0),
         ])
@@ -153,8 +132,7 @@ pub fn render_side_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
         sections.push((SidePanelSection::Todos, chunks[4]));
     }
     sections.push((SidePanelSection::Changeset, chunks[5]));
-    sections.push((SidePanelSection::VilStatus, chunks[6]));
-    sections.push((SidePanelSection::Mcp, chunks[7]));
+    sections.push((SidePanelSection::Mcp, chunks[6]));
     for (sec, mut rect) in sections {
         rect.height = 1;
         state.side_panel_header_areas.insert(sec, rect);
@@ -170,8 +148,7 @@ pub fn render_side_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
         render_todos_section(f, state, chunks[4], todos_collapsed);
     }
     render_changeset_section(f, state, chunks[5], changeset_collapsed);
-    render_vil_status_section(f, state, chunks[6], vil_status_collapsed);
-    render_mcp_section(f, state, chunks[7], mcp_collapsed);
+    render_mcp_section(f, state, chunks[6], mcp_collapsed);
 }
 
 fn render_todos_section(f: &mut Frame, state: &AppState, area: Rect, collapsed: bool) {
@@ -475,134 +452,6 @@ fn render_mcp_section(f: &mut Frame, state: &mut AppState, area: Rect, collapsed
                     Span::styled(reason.clone(), Style::default().fg(Color::DarkGray)),
                 ]));
             }
-        }
-    }
-
-    f.render_widget(Paragraph::new(lines), area);
-}
-
-fn render_vil_status_section(f: &mut Frame, state: &AppState, area: Rect, collapsed: bool) {
-    let collapse_indicator = if collapsed { "▸" } else { "▾" };
-    let score = state.vil_status.validation_score;
-    let score_label = if score >= 0.9 {
-        "A"
-    } else if score >= 0.7 {
-        "B"
-    } else {
-        "C"
-    };
-
-    let header = Line::from(Span::styled(
-        format!("  {} VIL Status [{}]", collapse_indicator, score_label),
-        Style::default().add_modifier(Modifier::BOLD),
-    ));
-
-    if collapsed {
-        f.render_widget(Paragraph::new(vec![header]), area);
-        return;
-    }
-
-    let mut lines = vec![header];
-
-    let active_rulebook = state
-        .selected_rulebooks
-        .iter()
-        .next()
-        .map(|s| s.as_str())
-        .unwrap_or("default");
-    lines.push(Line::from(vec![
-        Span::styled("    Rulebook: ", Style::default().fg(Color::DarkGray)),
-        Span::styled(
-            active_rulebook.to_string(),
-            Style::default().fg(Color::Cyan),
-        ),
-    ]));
-
-    let semantic_mode = if state.vil_status.semantic_mode {
-        "Enabled"
-    } else {
-        "Disabled"
-    };
-    let semantic_color = if state.vil_status.semantic_mode {
-        Color::Green
-    } else {
-        Color::DarkGray
-    };
-    lines.push(Line::from(vec![
-        Span::styled("    Semantic Mode: ", Style::default().fg(Color::DarkGray)),
-        Span::styled(semantic_mode, Style::default().fg(semantic_color)),
-    ]));
-
-    let ir_status = if state.vil_status.ir_generation_active {
-        "Active"
-    } else {
-        "Inactive"
-    };
-    let ir_color = if state.vil_status.ir_generation_active {
-        Color::Green
-    } else {
-        Color::DarkGray
-    };
-    let ir_metadata = format!(
-        "{} ({} files)",
-        ir_status,
-        state.vil_status.ir_metadata_files.len()
-    );
-    lines.push(Line::from(vec![
-        Span::styled("    IR Sync: ", Style::default().fg(Color::DarkGray)),
-        Span::styled(ir_metadata, Style::default().fg(ir_color)),
-    ]));
-
-    if let Some(profile) = &state.vil_status.profile {
-        let archetype = format!("{}", profile.archetype);
-        lines.push(Line::from(vec![
-            Span::styled("    Archetype: ", Style::default().fg(Color::DarkGray)),
-            Span::styled(archetype, Style::default().fg(Color::Cyan)),
-        ]));
-
-        let deps_count = profile.vil_deps.len();
-        lines.push(Line::from(vec![
-            Span::styled("    VIL Deps: ", Style::default().fg(Color::DarkGray)),
-            Span::raw(deps_count.to_string()),
-        ]));
-    } else {
-        lines.push(Line::styled(
-            "    Scanning...",
-            Style::default()
-                .fg(Color::DarkGray)
-                .add_modifier(Modifier::ITALIC),
-        ));
-    }
-
-    let issues_count = state.vil_status.validation_issues.len();
-    let issues_color = if issues_count > 0 {
-        Color::Yellow
-    } else {
-        Color::Green
-    };
-    lines.push(Line::from(vec![
-        Span::styled("    Issues: ", Style::default().fg(Color::DarkGray)),
-        Span::styled(issues_count.to_string(), Style::default().fg(issues_color)),
-    ]));
-
-    if issues_count > 0 {
-        let max_issues = 3;
-        for issue in state.vil_status.validation_issues.iter().take(max_issues) {
-            let mut text = issue.clone();
-            if text.len() > 30 {
-                text.truncate(27);
-                text.push_str("...");
-            }
-            lines.push(Line::from(vec![
-                Span::styled("      • ", Style::default().fg(Color::DarkGray)),
-                Span::styled(text, Style::default().fg(Color::Yellow)),
-            ]));
-        }
-        if issues_count > max_issues {
-            lines.push(Line::from(vec![Span::styled(
-                format!("      ... and {} more", issues_count - max_issues),
-                Style::default().fg(Color::DarkGray),
-            )]));
         }
     }
 

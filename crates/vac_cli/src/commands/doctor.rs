@@ -151,6 +151,11 @@ fn print_llm_config(cfg: &vil_llm::LlmConfig) {
         "  Budget:           {} tokens",
         format_with_commas(cfg.budget_tokens)
     );
+    if cfg.requests_per_minute > 0 {
+        println!("  Rate limit:       {} req/min", cfg.requests_per_minute);
+    } else {
+        println!("  Rate limit:       <unlimited>");
+    }
 
     if cfg.routing.is_empty() {
         println!("  Tool routing:     <empty>");
@@ -214,6 +219,7 @@ fn llm_config_json(cfg: &vil_llm::LlmConfig) -> serde_json::Value {
         "default_provider": cfg.default_provider,
         "fallback_chain": cfg.fallback_chain,
         "budget_tokens": cfg.budget_tokens,
+        "requests_per_minute": cfg.requests_per_minute,
         "routing": cfg.routing,
         "providers": providers,
     })

@@ -107,18 +107,38 @@ pub struct AskUserQuestion {
     pub r#type: String,
     pub options: Vec<AskUserOption>,
     pub required: bool,
+    #[serde(default)]
+    pub kind: Option<crate::tui::services::ask_user::AskUserQuestionKind>,
+    #[serde(default)]
+    pub metadata: std::collections::HashMap<String, String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AskUserOption {
     pub value: String,
     pub label: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub metadata: std::collections::HashMap<String, String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AskUserAnswer {
-    pub value: String,
-    pub custom: bool,
+    #[serde(default)]
+    pub kind: Option<String>,
+    #[serde(default)]
+    pub text: Option<String>,
+    #[serde(default)]
+    pub selected: Option<Vec<String>>,
+    #[serde(default)]
+    pub label: Option<String>,
+    #[serde(default)]
+    pub labels: Option<Vec<String>>,
+    #[serde(default)]
+    pub metadata: std::collections::HashMap<String, String>,
+    #[serde(default)]
+    pub question_metadata: std::collections::HashMap<String, String>,
 }
 
 // ========== Task Pause Info ==========

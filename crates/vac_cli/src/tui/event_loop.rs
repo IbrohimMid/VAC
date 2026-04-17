@@ -1230,7 +1230,7 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                         _ => {}
                     },
                     crate::tui::app::WorkbenchTab::Review => {}
-                    crate::tui::app::WorkbenchTab::VilIssues => {
+                    crate::tui::app::WorkbenchTab::Vil => {
                         use crate::tui::handlers::vil_workbench;
                         let mut ctx = HandlerContext::new(state, output_tx);
                         match c {
@@ -1745,7 +1745,7 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                     let _ = review_handler::select_prev(&mut ctx);
                 }
                 crate::tui::app::WorkbenchTab::Plan => {}
-                crate::tui::app::WorkbenchTab::VilIssues => {
+                crate::tui::app::WorkbenchTab::Vil => {
                     let mut ctx = HandlerContext::new(state, output_tx);
                     let _ = crate::tui::handlers::vil_workbench::select_prev(&mut ctx);
                 }
@@ -1801,7 +1801,7 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                     let _ = review_handler::select_next(&mut ctx);
                 }
                 crate::tui::app::WorkbenchTab::Plan => {}
-                crate::tui::app::WorkbenchTab::VilIssues => {
+                crate::tui::app::WorkbenchTab::Vil => {
                     let mut ctx = HandlerContext::new(state, output_tx);
                     let _ = crate::tui::handlers::vil_workbench::select_next(&mut ctx);
                 }
@@ -2246,6 +2246,12 @@ fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, e
         }
         InputEvent::AvailableModelsLoaded(models) => {
             state.available_models = models;
+        }
+        InputEvent::ShowBanner(text, style, severity) => {
+            let msg = crate::tui::services::banner::BannerMessage::new(text, style)
+                .with_severity(severity);
+            state.banner_queue.push(msg);
+            state.banner_message = state.banner_queue.current().cloned();
         }
         InputEvent::ShowToast(toast) => {
             state.toasts.push(toast);
