@@ -32,6 +32,22 @@ cargo test -p vac_cli --test integration_events
 cargo build -p vac_cli --release   # the binary user runs
 ```
 
+### Testing & Coverage
+
+For local testing and generating coverage reports, we use `cargo-llvm-cov`. It is part of the standard dev workflow:
+
+```bash
+# Install the coverage tool
+cargo install cargo-llvm-cov
+
+# Run tests and verify coverage (enforces a 65% minimum line coverage)
+cargo llvm-cov --workspace --fail-under-lines 65
+
+# Generate an HTML report to see uncovered lines
+cargo llvm-cov --workspace --html
+open target/llvm-cov/html/index.html
+```
+
 ### Shared build cache
 
 `.cargo/config.toml` points `target-dir` to `~/.cargo-target-shared/...`
