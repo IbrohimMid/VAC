@@ -1,0 +1,3 @@
+examine_re = [
+    "vac_core::security::secret_detector::",
+]

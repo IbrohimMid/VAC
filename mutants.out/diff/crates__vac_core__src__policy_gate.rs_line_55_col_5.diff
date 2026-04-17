@@ -1,0 +1,23 @@
+--- crates/vac_core/src/policy_gate.rs
++++ replace classify_shell_command -> Option<PolicyGateAction> with None
+@@ -47,19 +47,17 @@
+ pub enum PolicyGateDecision {
+     Allow,
+     Warn(String),
+     Block(String),
+ }
+ 
+ pub fn classify_shell_command(command: &str) -> Option<PolicyGateAction> {
+     // Replace shell operators and subshell characters with space
+-    let sanitized = command.replace(&['$', '(', ')', '`', '&', '|', ';', '<', '>', '{', '}'][..], " ");
+-    let tokens = shell_words::split(&sanitized).ok()?;
+-    classify_tokens(&tokens)
++    None /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ fn classify_tokens(tokens: &[String]) -> Option<PolicyGateAction> {
+     for i in 0..tokens.len() {
+         let token = &tokens[i];
+         
+         // Handle nested shell commands like `bash -c "git merge"`
+         if token.contains(' ') || token.contains('\n') {

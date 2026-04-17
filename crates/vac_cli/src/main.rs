@@ -2,10 +2,10 @@
 
 mod commands;
 mod output;
+mod telemetry;
 
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
-use tracing_subscriber::{EnvFilter, fmt};
 
 #[derive(Parser)]
 #[command(
@@ -21,6 +21,12 @@ struct Cli {
     verbose: u8,
     #[arg(long, default_value = "text", global = true)]
     format: String,
+    #[arg(long, env = "VAC_LOG_FORMAT", default_value = "text", global = true)]
+    log_format: String,
+    #[arg(long, env = "VAC_OTEL_ENDPOINT", global = true)]
+    otel_endpoint: Option<String>,
+    #[arg(long, env = "VAC_METRICS_ADDR", global = true)]
+    metrics_addr: Option<String>,
     #[command(subcommand)]
     command: Commands,
 }
@@ -130,6 +136,8 @@ enum Commands {
         #[command(subcommand)]
         action: AutopilotAction,
     },
+    /// Migrate .vac/ schema to the latest version
+    Migrate,
 }
 
 #[derive(Subcommand)]
@@ -249,17 +257,12 @@ async fn main() -> anyhow::Result<()> {
     let interactive_mode = matches!(&cli.command, Commands::Interactive { .. });
 
     if !interactive_mode {
-        let filter = match cli.verbose {
-            0 => "warn,vac=info",
-            1 => "info,vac=debug",
-            2 => "debug",
-            _ => "trace",
-        };
-        fmt()
-            .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| filter.into()))
-            .with_target(false)
-            .with_writer(std::io::stderr)
-            .init();
+        telemetry::init(
+            cli.verbose,
+            &cli.log_format,
+            cli.otel_endpoint.as_deref(),
+            cli.metrics_addr.as_deref(),
+        )?;
     }
 
     let project_root = cli
@@ -374,6 +377,9 @@ async fn main() -> anyhow::Result<()> {
             }
             AutopilotAction::Run => commands::autopilot::execute_run(project_root).await?,
         },
+        Commands::Migrate => {
+            commands::migrate::execute(project_root).await?;
+        }
     }
 
     Ok(())

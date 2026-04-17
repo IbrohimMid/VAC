@@ -1,0 +1,21 @@
+--- crates/vac_core/src/policy_gate.rs
++++ replace += with -= in strip_leading_tokens
+@@ -79,17 +79,17 @@
+ fn strip_leading_tokens<'a>(tokens: &'a [String], value_flags: &[&str]) -> &'a [String] {
+     let mut idx = 0usize;
+     while idx < tokens.len() {
+         let token = tokens[idx].as_str();
+         if token == "--" {
+             return &tokens[idx + 1..];
+         }
+         if is_assignment(token) {
+-            idx += 1;
++            idx -= /* ~ changed by cargo-mutants ~ */ 1;
+             continue;
+         }
+         if !token.starts_with('-') {
+             break;
+         }
+ 
+         let flag = token.split('=').next().unwrap_or(token);
+         let takes_value = flag_is_value_flag(flag, value_flags);

@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use vil_llm::provider::{LlmProvider, LlmRequest, Message};
+use vil_llm::provider::{LlmProvider, LlmRequest, Message, StreamChunk};
 use vil_llm::providers::anthropic::AnthropicProvider;
 use vil_llm::providers::gemini::GeminiProvider;
 use vil_llm::providers::mistral;
@@ -32,6 +32,57 @@ async fn smoke_provider<P: LlmProvider>(label: &str, provider: P) {
     );
 }
 
+async fn smoke_stream_parity<P: LlmProvider>(label: &str, provider: P) {
+    let mut request = LlmRequest::new(vec![Message::user(
+        "What is 5 + 7? Use the 'add' tool to find out. Please only use the tool.",
+    )]);
+    request.tools = vec![vil_llm::provider::Tool {
+        name: "add".to_string(),
+        description: "Add two numbers".to_string(),
+        input_schema: serde_json::json!({
+            "type": "object",
+            "properties": {
+                "a": { "type": "number" },
+                "b": { "type": "number" }
+            },
+            "required": ["a", "b"]
+        }),
+    }];
+
+    let mut rx = tokio::time::timeout(Duration::from_secs(30), provider.stream(&request))
+        .await
+        .unwrap_or_else(|_| panic!("{label} stream open timed out"))
+        .unwrap_or_else(|err| panic!("{label} stream open failed: {err}"));
+
+    let mut tool_called = false;
+    let mut chunks = Vec::new();
+
+    let timeout_future = tokio::time::timeout(Duration::from_secs(120), async {
+        while let Some(chunk) = rx.recv().await {
+            let is_terminal = matches!(chunk, StreamChunk::Done { .. } | StreamChunk::Error(_));
+            chunks.push(chunk.clone());
+            if let StreamChunk::ToolCallStart { name, .. } = chunk {
+                if name == "add" {
+                    tool_called = true;
+                }
+            }
+            if is_terminal {
+                break;
+            }
+        }
+    });
+
+    timeout_future
+        .await
+        .unwrap_or_else(|_| panic!("{label} stream receive timed out"));
+
+    assert!(
+        tool_called,
+        "{label} stream did not emit ToolCallStart for 'add'. Chunks: {:?}",
+        chunks
+    );
+}
+
 #[tokio::test]
 async fn smoke_anthropic() {
     let Some(api_key) = env_value("ANTHROPIC_API_KEY").or_else(|| env_value("KILO_API_KEY")) else {
@@ -47,7 +98,8 @@ async fn smoke_anthropic() {
         provider = provider.with_model(&model);
     }
 
-    smoke_provider("anthropic", provider).await;
+    smoke_provider("anthropic", provider.clone()).await;
+    smoke_stream_parity("anthropic_stream", provider).await;
 }
 
 #[tokio::test]
@@ -65,7 +117,8 @@ async fn smoke_openai() {
         provider = provider.with_model(&model);
     }
 
-    smoke_provider("openai", provider).await;
+    smoke_provider("openai", provider.clone()).await;
+    smoke_stream_parity("openai_stream", provider).await;
 }
 
 #[tokio::test]
@@ -83,7 +136,8 @@ async fn smoke_gemini() {
         provider = provider.with_model(&model);
     }
 
-    smoke_provider("gemini", provider).await;
+    smoke_provider("gemini", provider.clone()).await;
+    smoke_stream_parity("gemini_stream", provider).await;
 }
 
 #[tokio::test]
@@ -101,7 +155,8 @@ async fn smoke_xai() {
         provider = provider.with_model(&model);
     }
 
-    smoke_provider("xai", provider).await;
+    smoke_provider("xai", provider.clone()).await;
+    smoke_stream_parity("xai_stream", provider).await;
 }
 
 #[tokio::test]
@@ -119,7 +174,8 @@ async fn smoke_mistral() {
         provider = provider.with_model(&model);
     }
 
-    smoke_provider("mistral", provider).await;
+    smoke_provider("mistral", provider.clone()).await;
+    smoke_stream_parity("mistral_stream", provider).await;
 }
 
 #[tokio::test]
@@ -137,5 +193,6 @@ async fn smoke_openai_compat() {
         provider = provider.with_model(&model);
     }
 
-    smoke_provider("openai_compat", provider).await;
+    smoke_provider("openai_compat", provider.clone()).await;
+    smoke_stream_parity("openai_compat_stream", provider).await;
 }

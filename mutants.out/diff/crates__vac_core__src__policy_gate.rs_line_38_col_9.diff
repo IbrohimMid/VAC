@@ -1,0 +1,25 @@
+--- crates/vac_core/src/policy_gate.rs
++++ replace PolicyGateMode::parse -> Option<Self> with None
+@@ -30,21 +30,17 @@
+ impl Default for PolicyGateMode {
+     fn default() -> Self {
+         Self::Soft
+     }
+ }
+ 
+ impl PolicyGateMode {
+     pub fn parse(s: &str) -> Option<Self> {
+-        match normalize_key(s).as_str() {
+-            "strict" => Some(Self::Strict),
+-            "soft" => Some(Self::Soft),
+-            _ => None,
+-        }
++        None /* ~ changed by cargo-mutants ~ */
+     }
+ }
+ 
+ #[derive(Debug, Clone, PartialEq, Eq)]
+ pub enum PolicyGateDecision {
+     Allow,
+     Warn(String),
+     Block(String),

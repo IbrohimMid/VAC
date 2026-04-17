@@ -1,0 +1,23 @@
+pkgname=vac
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="VAC — Vastar Agentic CLI: Autonomous development powered by VIL Engine"
+arch=('x86_64' 'aarch64')
+url="https://vastar.id/products/vac"
+license=('MIT')
+depends=('glibc')
+makedepends=('cargo')
+source=("https://github.com/IbrohimMid/VAC/archive/v${pkgver}.tar.gz")
+sha256sums=('SKIP')
+
+build() {
+  cd "$srcdir/VAC-${pkgver}"
+  export RUSTUP_TOOLCHAIN=stable
+  cargo build --release --locked
+}
+
+package() {
+  cd "$srcdir/VAC-${pkgver}"
+  install -Dm755 target/release/vac "$pkgdir/usr/bin/vac"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

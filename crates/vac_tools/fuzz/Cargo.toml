@@ -1,0 +1,26 @@
+[package]
+name = "vac_tools-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+serde_json = "1.0"
+
+[dependencies.vac_tools]
+path = ".."
+
+[[bin]]
+name = "mcp_message_parser"
+path = "fuzz_targets/mcp_message_parser.rs"
+test = false
+doc = false
+bench = false
+
+# Prevent this from interfering with workspaces
+[workspace]
+members = ["."]

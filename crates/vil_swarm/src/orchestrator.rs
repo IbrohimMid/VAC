@@ -276,6 +276,10 @@ impl SwarmOrchestrator {
         self.rulebook = Some(overlay);
     }
 
+    pub fn set_llm_router(&mut self, llm_router: Option<Arc<LlmRouter>>) {
+        self.llm_router = llm_router;
+    }
+
     /// Set LSP diagnostic context to inject into agent prompts.
     pub fn set_lsp_prompt_context(&mut self, ctx: ExternalDiagnosticContext) {
         self.lsp_context = Some(ctx);

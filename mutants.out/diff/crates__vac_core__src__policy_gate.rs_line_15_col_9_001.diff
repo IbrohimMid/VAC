@@ -1,0 +1,25 @@
+--- crates/vac_core/src/policy_gate.rs
++++ replace PolicyGateAction::as_str -> &'static str with "xyzzy"
+@@ -7,21 +7,17 @@
+ pub enum PolicyGateAction {
+     Apply,
+     Deploy,
+     Merge,
+ }
+ 
+ impl PolicyGateAction {
+     pub fn as_str(self) -> &'static str {
+-        match self {
+-            Self::Apply => "apply",
+-            Self::Deploy => "deploy",
+-            Self::Merge => "merge",
+-        }
++        "xyzzy" /* ~ changed by cargo-mutants ~ */
+     }
+ }
+ 
+ #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+ #[serde(rename_all = "lowercase")]
+ pub enum PolicyGateMode {
+     Strict,
+     Soft,

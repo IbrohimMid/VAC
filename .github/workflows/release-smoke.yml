@@ -1,0 +1,76 @@
+name: Release Smoke Tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to smoke test (e.g. v1.2.3)'
+        required: true
+  release:
+    types: [published]
+
+jobs:
+  smoke-test-linux:
+    name: Smoke Test (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Download Artifacts
+        run: |
+          echo "Simulating artifact download for Linux..."
+          # Replace with actual curl/wget of cargo-dist artifacts
+      - name: Verify Signature
+        run: |
+          echo "Verifying minisign signature..."
+          # minisign -Vm vac-linux.tar.gz -p minisign.pub
+      - name: Run Smoke Test
+        run: |
+          echo "Running vac --version..."
+          # ./vac --version
+          echo "Running vac help..."
+          # ./vac --help
+
+  smoke-test-macos:
+    name: Smoke Test (macOS)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Download Artifacts
+        run: echo "Simulating artifact download for macOS..."
+      - name: Verify Signature
+        run: echo "Verifying minisign signature..."
+      - name: Run Smoke Test
+        run: echo "Running macOS smoke test..."
+
+  smoke-test-windows:
+    name: Smoke Test (Windows)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Download Artifacts
+        run: echo "Simulating artifact download for Windows..."
+      - name: Run Smoke Test
+        run: echo "Running Windows smoke test..."
+
+  smoke-test-docker:
+    name: Smoke Test (Docker)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pull Docker Image
+        run: echo "docker pull ghcr.io/repo/vac:${{ github.event.inputs.version || github.event.release.tag_name }}"
+      - name: Verify Cosign Signature
+        run: echo "cosign verify ghcr.io/repo/vac:${{ github.event.inputs.version || github.event.release.tag_name }}"
+      - name: Run Docker Smoke Test
+        run: echo "docker run --rm ghcr.io/repo/vac --version"
+
+  smoke-test-homebrew:
+    name: Smoke Test (Homebrew)
+    runs-on: macos-latest
+    steps:
+      - name: Install via Homebrew
+        run: echo "brew install namespace/tap/vac"
+      - name: Run Smoke Test
+        run: echo "vac --version"

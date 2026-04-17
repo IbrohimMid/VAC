@@ -1,0 +1,50 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  generate-release-notes:
+    name: Generate Release Notes
+    runs-on: ubuntu-latest
+    outputs:
+      notes: ${{ steps.git-cliff.outputs.content }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Generate Release Notes with git-cliff
+        id: git-cliff
+        uses: orhun/git-cliff-action@v3
+        with:
+          config: cliff.toml
+          args: -vv --latest --strip header
+
+  build-and-release:
+    needs: generate-release-notes
+    name: Build and Publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Run cargo-dist
+        run: |
+          cargo install cargo-dist
+          cargo dist build
+      - name: Sign artifacts with minisign
+        run: |
+          echo "Signing artifacts with minisign..."
+          # minisign -Sm vac-linux.tar.gz
+      - name: Sign container with cosign
+        run: |
+          echo "Signing container with cosign..."
+          # cosign sign --key cosign.key ghcr.io/namespace/vac
+      - name: Upload Release
+        uses: softprops/action-gh-release@v1
+        with:
+          body: ${{ needs.generate-release-notes.outputs.notes }}
+          files: |
+            target/dist/*

@@ -134,3 +134,74 @@ async fn runtime_queue_trait_reads_both_queue_types() {
         .await;
     assert_eq!(load_runtime_queue_items(&agent_queue).await.len(), 1);
 }
+
+use proptest::prelude::*;
+use vac_runtime::RuntimeQueue;
+
+fn arbitrary_job_kind() -> impl Strategy<Value = JobKind> {
+    prop_oneof![
+        any::<String>().prop_map(|s| JobKind::RunTask { description: s }),
+        Just(JobKind::DiagnosticSweep),
+        Just(JobKind::RulebookComplianceCheck),
+        prop::collection::vec(any::<String>(), 0..5)
+            .prop_map(|files| JobKind::PatchProposal { files }),
+        (any::<String>(), any::<String>()).prop_map(|(name, arg)| JobKind::ToolCall {
+            tool_name: name,
+            arguments: serde_json::json!({ "arg": arg }),
+        }),
+    ]
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(50))]
+
+    #[test]
+    fn runtime_queue_trait_round_trip_task_queue(
+        jobs in prop::collection::vec(arbitrary_job_kind(), 0..20)
+    ) {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            let q = TaskQueue::new();
+            let mut expected = Vec::new();
+            for kind in jobs {
+                let job = Job::new(kind);
+                expected.push(job.clone());
+                q.enqueue(job).await;
+            }
+
+            let loaded = load_runtime_queue_items(&q).await;
+            prop_assert_eq!(loaded.len(), expected.len());
+            for (l, e) in loaded.iter().zip(expected.iter()) {
+                prop_assert_eq!(l.id, e.id);
+            }
+            Ok(())
+        }).unwrap();
+    }
+
+    #[test]
+    fn runtime_queue_trait_round_trip_agent_queue(
+        tasks in prop::collection::vec(
+            (prop_oneof![Just(AgentRole::Dev), Just(AgentRole::Qa), Just(AgentRole::Review)], any::<String>()),
+            0..20
+        )
+    ) {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            let q = AgentTaskQueue::new();
+            let mut expected = Vec::new();
+            for (role, desc) in tasks {
+                let task = AgentTask::new(role, &desc);
+                expected.push(task.clone());
+                q.enqueue(task).await;
+            }
+
+            let loaded = load_runtime_queue_items(&q).await;
+            prop_assert_eq!(loaded.len(), expected.len());
+            for (l, e) in loaded.iter().zip(expected.iter()) {
+                prop_assert_eq!(l.id, e.id);
+                prop_assert_eq!(&l.description, &e.description);
+            }
+            Ok(())
+        }).unwrap();
+    }
+}

@@ -7,6 +7,7 @@ pub mod journal;
 pub mod mcp;
 pub mod privacy;
 pub mod registry;
+pub mod resource_limits;
 pub mod router;
 pub mod sandbox;
 pub mod security;

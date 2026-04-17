@@ -1,0 +1,21 @@
+--- crates/vac_core/src/policy_gate.rs
++++ replace || with && in classify_tokens
+@@ -57,17 +57,17 @@
+     classify_tokens(&tokens)
+ }
+ 
+ fn classify_tokens(tokens: &[String]) -> Option<PolicyGateAction> {
+     for i in 0..tokens.len() {
+         let token = &tokens[i];
+         
+         // Handle nested shell commands like `bash -c "git merge"`
+-        if token.contains(' ') || token.contains('\n') {
++        if token.contains(' ') && /* ~ changed by cargo-mutants ~ */ token.contains('\n') {
+             if let Some(action) = classify_shell_command(token) {
+                 return Some(action);
+             }
+         }
+         
+         let program = program_basename(token);
+         if let Some(action) = classify_command(&program, &tokens[i+1..]) {
+             return Some(action);

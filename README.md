@@ -44,6 +44,8 @@ VAC is built on a modular Rust-based architecture divided into the VIL (Vastar I
 - **Explicit Approval Flows**: High-risk operations (e.g., executing arbitrary bash scripts, deleting critical files) are safely intercepted with "restore-before-execute" mechanisms, requiring user approval in the TUI.
 - **Local Sandbox**: Commands are executed within defined boundaries to prevent unintended system-wide modifications.
 
+For detailed security analysis and reporting procedures, please refer to our [Threat Model](docs/THREAT_MODEL.md) and [Security Policy](docs/SECURITY.md).
+
 ---
 
 ## 🌟 New to VAC?
@@ -83,6 +85,7 @@ For full documentation and advanced usage, visit: [https://vastar.id/docs/vac](h
 - [Roadmap to 100/100 (v2)](docs/ROADMAP_TO_100_v2.md)
 - [Superbatch execution brief (cloud agent)](docs/SUPERBATCH_PHASE_3_TO_7.md)
 - [Threat Model](docs/THREAT_MODEL.md)
+- [Security Policy](docs/SECURITY.md)
 - [Runtime Queue Boundary](docs/RUNTIME_QUEUE_BOUNDARY.md)
 - [Arsitektur Privasi dan Kontrak Eksekusi](docs/privacy_architecture.md)
 - [Runtime Operating Guide](docs/runtime_operating_guide.md)

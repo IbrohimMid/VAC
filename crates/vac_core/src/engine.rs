@@ -117,6 +117,30 @@ impl VacEngine {
             .with_rate_limit(self.config.llm.requests_per_minute)
     }
 
+    /// Reload configuration dynamically and rebuild subsystems without a full restart.
+    pub async fn reload_config(&mut self) -> VacResult<Vec<String>> {
+        let warnings = Vec::new();
+        info!("Reloading VAC configuration dynamically...");
+
+        let new_config = VacConfig::load_with_fallback(&self.project_root)?;
+        self.config = new_config;
+
+        info!("Rebuilding LLM router with new config...");
+        let llm_router = Arc::new(self.build_llm_router());
+        self.llm_router = Some(llm_router.clone());
+
+        if let Some(ref mut swarm_arc) = self.swarm {
+            info!("Injecting new LLM router into swarm...");
+            let mut swarm = swarm_arc.write().await;
+            swarm.set_llm_router(Some(llm_router));
+            // We could also re-initialize tool_router here if tool config changed,
+            // but for now we focus on the core LLM config swap parity.
+        }
+
+        info!("Config reload complete.");
+        Ok(warnings)
+    }
+
     /// Initialize all subsystems. Called by `vac init`.
     #[instrument(skip(self))]
     pub async fn init(&mut self) -> VacResult<Vec<String>> {
