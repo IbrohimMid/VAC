@@ -37,6 +37,18 @@ jobs:
       - name: cargo build
         run: cargo build --workspace
 
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+      - name: Generate code coverage
+        run: cargo llvm-cov --all-features --workspace --fail-under-lines 70
+
   test:
     name: Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -62,6 +74,54 @@ jobs:
       - name: cargo test
         run: cargo test --workspace
 
+  security:
+    name: Security Audits
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+      - name: cargo audit
+        run: cargo install cargo-audit && cargo audit
+      - name: cargo deny
+        uses: EmbarkStudios/cargo-deny-action@v1
+
+  codeql:
+    name: CodeQL
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript, python
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+
+  release-dry-run:
+    name: Release Dry Run
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cargo Publish Dry Run
+        run: cargo publish --dry-run -p vac_core && cargo publish --dry-run -p vac_tools && cargo publish --dry-run -p vac_cli
+
+  mutation-tests:
+    name: Mutation Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+      - name: Install cargo-mutants
+        run: cargo install cargo-mutants
+      - name: Run cargo mutants
+        run: cargo mutants
+
   lint:
     name: Lint
     runs-on: ubuntu-latest
@@ -78,6 +138,7 @@ jobs:
 
       - name: cargo clippy
         run: cargo clippy --workspace -- -D warnings
+
 
   llm-smoke:
     name: LLM Smoke (${{ matrix.provider }})

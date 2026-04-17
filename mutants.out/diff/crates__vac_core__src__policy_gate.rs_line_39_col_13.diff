@@ -1,0 +1,21 @@
+--- crates/vac_core/src/policy_gate.rs
++++ delete match arm "strict" in PolicyGateMode::parse
+@@ -31,17 +31,17 @@
+     fn default() -> Self {
+         Self::Soft
+     }
+ }
+ 
+ impl PolicyGateMode {
+     pub fn parse(s: &str) -> Option<Self> {
+         match normalize_key(s).as_str() {
+-            "strict" => Some(Self::Strict),
++             /* ~ changed by cargo-mutants ~ */
+             "soft" => Some(Self::Soft),
+             _ => None,
+         }
+     }
+ }
+ 
+ #[derive(Debug, Clone, PartialEq, Eq)]
+ pub enum PolicyGateDecision {

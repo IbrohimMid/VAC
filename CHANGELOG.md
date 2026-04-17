@@ -6,9 +6,14 @@ Versioning: [Semantic Versioning](https://semver.org/)
 
 ---
 
-## [Unreleased]
+## [1.0.0] - 2026-04-17
+
+Production tag readiness for Phase 6B.
 
 ### Added
+- `docs/STABILITY_LOG.md` — extended canary stability and incident tracking.
+- `docs/case-studies/internal_deployments.md` — internal production deployments case studies.
+- `docs/audits/2026-Q3-rebaseline.md` — 3rd-party re-audit delta.
 - `docs/ROADMAP_TO_100_v2.md` — codebase-grounded roadmap superseding v1.
 - `docs/SUPERBATCH_PHASE_3_TO_7.md` — long-running cloud-agent execution brief (base branch: `main`).
 - `docs/THREAT_MODEL.md`, `docs/RUNTIME_QUEUE_BOUNDARY.md` — security + architecture decision records.
@@ -17,11 +22,16 @@ Versioning: [Semantic Versioning](https://semver.org/)
 - Phase 3: `vil_llm::providers::factory` registers all configured providers; `vac_core::engine` no longer constructs concrete providers; provider smoke matrix + stream parity tests across Anthropic/OpenAI/Gemini/xAI/Mistral/OpenAI-compat.
 
 ### Changed
+- `SECURITY.md` — updated supported versions for `1.0.x`.
 - Repo cleanup: stale milestone, wave, and audit-snapshot docs moved to `docs/archive/`.
 - `docs/ROADMAP_TO_100.md` (v1) renamed to `docs/archive/ROADMAP_TO_100_v1.md`.
 
 ### Removed
 - Stray top-level `output.json` and console-transcript dump.
+
+---
+
+## [Unreleased]
 
 ---
 

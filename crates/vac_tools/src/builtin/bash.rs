@@ -147,6 +147,17 @@ impl VilTool for BashTool {
             cmd.envs(env);
         }
 
+        #[cfg(unix)]
+        unsafe {
+            cmd.pre_exec(|| {
+                // Apply 2GB memory limit
+                let _ = crate::resource_limits::apply_rlimit_as(2 * 1024 * 1024 * 1024);
+                // Apply 1GB file size limit (disk quota)
+                let _ = crate::resource_limits::apply_rlimit_fsize(1024 * 1024 * 1024);
+                Ok(())
+            });
+        }
+
         cmd.kill_on_drop(true);
 
         let output = match tokio::time::timeout(

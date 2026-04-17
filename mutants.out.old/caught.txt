@@ -1,0 +1,2 @@
+crates/vac_core/src/policy_gate.rs:55:5: replace classify_shell_command -> Option<PolicyGateAction> with None
+crates/vac_core/src/policy_gate.rs:61:5: replace classify_tokens -> Option<PolicyGateAction> with None

@@ -21,8 +21,9 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 anyhow = { workspace = true }
-async-trait = { workspace = true }
 uuid = { workspace = true }
+async-trait = { workspace = true }
+libc = "0.2"
 reqwest = { workspace = true }
 walkdir = { workspace = true }
 futures = { workspace = true }

@@ -1,0 +1,6 @@
+crates/vac_core/src/policy_gate.rs:15:9: replace PolicyGateAction::as_str -> &'static str with ""
+crates/vac_core/src/policy_gate.rs:15:9: replace PolicyGateAction::as_str -> &'static str with "xyzzy"
+crates/vac_core/src/policy_gate.rs:38:9: replace PolicyGateMode::parse -> Option<Self> with None
+crates/vac_core/src/policy_gate.rs:38:9: replace PolicyGateMode::parse -> Option<Self> with Some(Default::default())
+crates/vac_core/src/policy_gate.rs:39:13: delete match arm "strict" in PolicyGateMode::parse
+crates/vac_core/src/policy_gate.rs:40:13: delete match arm "soft" in PolicyGateMode::parse

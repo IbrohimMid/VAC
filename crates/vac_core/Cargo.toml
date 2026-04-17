@@ -48,3 +48,5 @@ vil_validate = { workspace = true }
 vil_ir = { workspace = true }
 vac_tools = { workspace = true }
 vac_runtime = { workspace = true }
+trybuild = "1.0.116"
+proptest = "1.11.0"

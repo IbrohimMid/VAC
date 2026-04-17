@@ -1,0 +1,248 @@
+{
+  "$id": "https://json.schemastore.org/cargo-mutants-config.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "cargo-mutants configuration",
+  "description": "cargo-mutants configuration, read by default from `.cargo/mutants.toml`. See <https://mutants.rs/>.",
+  "type": "object",
+  "properties": {
+    "additional_cargo_args": {
+      "description": "Pass extra args to every cargo invocation.",
+      "type": "array",
+      "default": [],
+      "items": {
+        "type": "string"
+      }
+    },
+    "additional_cargo_test_args": {
+      "description": "Pass extra args to cargo test.",
+      "type": "array",
+      "default": [],
+      "items": {
+        "type": "string"
+      }
+    },
+    "all_features": {
+      "description": "Activate all features.",
+      "type": [
+        "boolean",
+        "null"
+      ],
+      "default": null
+    },
+    "build_timeout_multiplier": {
+      "description": "Build timeout multiplier, relative to the baseline 'cargo build'.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "format": "double",
+      "default": null
+    },
+    "cap_lints": {
+      "description": "Pass `--cap-lints` to rustc.",
+      "type": "boolean",
+      "default": false
+    },
+    "copy_target": {
+      "description": "Copy the /target directory to build directories.",
+      "type": [
+        "boolean",
+        "null"
+      ],
+      "default": null
+    },
+    "copy_vcs": {
+      "description": "Copy `.git` and other VCS directories to the build directory.",
+      "type": [
+        "boolean",
+        "null"
+      ],
+      "default": null
+    },
+    "error_values": {
+      "description": "Generate these error values from functions returning Result.",
+      "type": "array",
+      "default": [],
+      "items": {
+        "type": "string"
+      }
+    },
+    "examine_globs": {
+      "description": "Generate mutants from source files matching these globs.",
+      "type": "array",
+      "default": [],
+      "items": {
+        "type": "string"
+      }
+    },
+    "examine_re": {
+      "description": "Examine only mutants whose name matches one of these regexps.",
+      "type": "array",
+      "default": [],
+      "items": {
+        "type": "string"
+      }
+    },
+    "exclude_globs": {
+      "description": "Exclude mutants from source files matching these globs.",
+      "type": "array",
+      "default": [],
+      "items": {
+        "type": "string"
+      }
+    },
+    "exclude_re": {
+      "description": "Exclude mutants whose name matches these regexps.",
+      "type": "array",
+      "default": [],
+      "items": {
+        "type": "string"
+      }
+    },
+    "features": {
+      "description": "Space or comma separated list of features to activate.",
+      "type": "array",
+      "default": [],
+      "items": {
+        "type": "string"
+      }
+    },
+    "gitignore": {
+      "description": "When copying the tree, exclude patterns in `.gitignore`.",
+      "type": [
+        "boolean",
+        "null"
+      ],
+      "default": null
+    },
+    "minimum_test_timeout": {
+      "description": "Minimum test timeout, in seconds, as a floor on the autoset value.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "format": "double",
+      "default": null
+    },
+    "no_default_features": {
+      "description": "Do not activate the `default` feature.",
+      "type": [
+        "boolean",
+        "null"
+      ],
+      "default": null
+    },
+    "output": {
+      "description": "Output directory.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "default": null
+    },
+    "profile": {
+      "description": "Cargo profile.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "default": null
+    },
+    "sharding": {
+      "description": "Sharding method to use when running with --shards.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Sharding"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "skip_calls": {
+      "description": "Skip calls to functions or methods with these names.\n\n This is combined with values from the --skip-calls argument.",
+      "type": "array",
+      "default": [],
+      "items": {
+        "type": "string"
+      }
+    },
+    "skip_calls_defaults": {
+      "description": "Use built-in defaults for `skip_calls` in addition to any explicit values.",
+      "type": [
+        "boolean",
+        "null"
+      ],
+      "default": null
+    },
+    "test_package": {
+      "description": "Run tests from these packages for all mutants.",
+      "type": "array",
+      "default": [],
+      "items": {
+        "type": "string"
+      }
+    },
+    "test_tool": {
+      "description": "Tool used to run test suites: cargo or nextest.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/TestTool"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "test_workspace": {
+      "description": "Run tests from all packages in the workspace, not just the mutated package.\n\n Overrides `test_package`.",
+      "type": [
+        "boolean",
+        "null"
+      ],
+      "default": null
+    },
+    "timeout_multiplier": {
+      "description": "Timeout multiplier, relative to the baseline 'cargo test'.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "format": "double",
+      "default": null
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "Sharding": {
+      "description": "Method for sharding.",
+      "oneOf": [
+        {
+          "description": "Run mutant `i` on shard `i % k`.\n\n This was the default up to cargo-mutants 25.3.1.\n\n This distributes mutants more evenly and will likely generate more equal completion\n times, but it has less locality of reference within each shard's cache and so may\n cause more build time.",
+          "type": "string",
+          "const": "round-robin"
+        },
+        {
+          "description": "Run consecutive ranges of mutants on each shard: the first `n/k` on shard 0, etc. (default)\n\n This makes the incremental change between each build likely to be smaller and\n so may reduce build time, but it may also lead to more unbalanced shards.",
+          "type": "string",
+          "const": "slice"
+        }
+      ]
+    },
+    "TestTool": {
+      "description": "Choice of tool to use to run tests.",
+      "oneOf": [
+        {
+          "description": "Use `cargo test`, the default.",
+          "type": "string",
+          "const": "cargo"
+        },
+        {
+          "description": "Use `cargo nextest`.",
+          "type": "string",
+          "const": "nextest"
+        }
+      ]
+    }
+  }
+}

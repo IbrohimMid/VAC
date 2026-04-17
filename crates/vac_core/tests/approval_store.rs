@@ -50,3 +50,35 @@ fn approval_store_persists_request_and_decision() {
     assert_eq!(loaded.state, ApprovalState::Rejected);
     assert_eq!(loaded.reason.as_deref(), Some("no"));
 }
+
+use proptest::prelude::*;
+
+proptest! {
+    #[test]
+    fn approval_store_handles_arbitrary_strings(
+        ref tc_id in "\\PC+",
+        ref tool_name in "\\PC+",
+        ref reason in "\\PC*",
+    ) {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().to_path_buf();
+        std::fs::create_dir_all(root.join(".vac")).unwrap();
+        let store = ApprovalStore::new(root.clone());
+
+        // Create request
+        let rec = store.record_request(
+            tc_id.clone(),
+            tool_name.clone(),
+            serde_json::json!({}),
+            if reason.is_empty() { None } else { Some(reason.clone()) },
+            None,
+            None
+        ).unwrap();
+
+        assert_eq!(rec.tool_call_id, *tc_id);
+        assert_eq!(rec.tool_name, *tool_name);
+
+        let loaded = store.load(tc_id).unwrap().unwrap();
+        assert_eq!(loaded.tool_call_id, *tc_id);
+    }
+}

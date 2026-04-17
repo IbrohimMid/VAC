@@ -1,0 +1,3 @@
+examine_globs = [
+    "crates/vac_core/src/security/secret_detector.rs"
+]

@@ -1,0 +1,36 @@
+--- crates/vac_core/src/policy_gate.rs
++++ replace classify_tokens -> Option<PolicyGateAction> with Some(Default::default())
+@@ -53,32 +53,17 @@
+ pub fn classify_shell_command(command: &str) -> Option<PolicyGateAction> {
+     // Replace shell operators and subshell characters with space
+     let sanitized = command.replace(&['$', '(', ')', '`', '&', '|', ';', '<', '>', '{', '}'][..], " ");
+     let tokens = shell_words::split(&sanitized).ok()?;
+     classify_tokens(&tokens)
+ }
+ 
+ fn classify_tokens(tokens: &[String]) -> Option<PolicyGateAction> {
+-    for i in 0..tokens.len() {
+-        let token = &tokens[i];
+-        
+-        // Handle nested shell commands like `bash -c "git merge"`
+-        if token.contains(' ') || token.contains('\n') {
+-            if let Some(action) = classify_shell_command(token) {
+-                return Some(action);
+-            }
+-        }
+-        
+-        let program = program_basename(token);
+-        if let Some(action) = classify_command(&program, &tokens[i+1..]) {
+-            return Some(action);
+-        }
+-    }
+-    None
++    Some(Default::default()) /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ fn strip_leading_tokens<'a>(tokens: &'a [String], value_flags: &[&str]) -> &'a [String] {
+     let mut idx = 0usize;
+     while idx < tokens.len() {
+         let token = tokens[idx].as_str();
+         if token == "--" {
+             return &tokens[idx + 1..];

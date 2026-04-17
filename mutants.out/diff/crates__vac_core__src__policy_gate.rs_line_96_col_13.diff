@@ -1,0 +1,21 @@
+--- crates/vac_core/src/policy_gate.rs
++++ replace += with -= in strip_leading_tokens
+@@ -88,17 +88,17 @@
+             continue;
+         }
+         if !token.starts_with('-') {
+             break;
+         }
+ 
+         let flag = token.split('=').next().unwrap_or(token);
+         let takes_value = flag_is_value_flag(flag, value_flags);
+-        idx += 1;
++        idx -= /* ~ changed by cargo-mutants ~ */ 1;
+         if takes_value && !token.contains('=') && idx < tokens.len() {
+             idx += 1;
+         }
+     }
+     &tokens[idx..]
+ }
+ 
+ fn flag_is_value_flag(flag: &str, value_flags: &[&str]) -> bool {

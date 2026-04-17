@@ -283,3 +283,31 @@ fn import_rejects_malformed_json_and_oversized_summary() {
     let err = vac_core::bundle::import_bundle_from_path(root, &oversized).unwrap_err();
     assert!(err.to_string().contains("byte cap"));
 }
+
+use proptest::prelude::*;
+
+proptest! {
+    #[test]
+    fn bundle_roundtrips_arbitrary_summary(ref summary in "\\PC*") {
+        let (_dir1, root1, session_id) = seed_source_project(Some(summary.clone()));
+
+        let out1_path = export_bundle(&root1, session_id, false);
+
+        let dir2 = tempdir().unwrap();
+        let root2 = dir2.path();
+        vac_core::bundle::import_bundle_from_path(root2, &out1_path).unwrap();
+
+        let out2_path = export_bundle(root2, session_id, false);
+
+        let raw1 = std::fs::read_to_string(&out1_path).unwrap();
+        let b1: vac_core::VacBundle = serde_json::from_str(&raw1).unwrap();
+
+        let raw2 = std::fs::read_to_string(&out2_path).unwrap();
+        let b2: vac_core::VacBundle = serde_json::from_str(&raw2).unwrap();
+
+        assert_eq!(
+            serde_json::to_value(&b1.context_summary).unwrap(),
+            serde_json::to_value(&b2.context_summary).unwrap()
+        );
+    }
+}

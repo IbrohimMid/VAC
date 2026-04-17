@@ -8,7 +8,7 @@ target-dir = "/home/emp/.cargo-target-shared/vastar-agentic-cli"
 
 # sccache wraps rustc with a global compile cache — even `cargo clean` +
 # rebuild reuses work from any prior build (stored in ~/.cache/sccache).
-rustc-wrapper = "sccache"
+# rustc-wrapper = "sccache"
 
 # Leave ~2 cores for editor/agent responsiveness on i7-8750H (12 threads).
 jobs = 10

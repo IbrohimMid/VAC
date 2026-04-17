@@ -1,0 +1,14 @@
+{
+    "version": "0.1.0",
+    "description": "VAC — Vastar Agentic CLI",
+    "homepage": "https://vastar.id/products/vac",
+    "license": "MIT",
+    "architecture": {
+        "64bit": {
+            "url": "https://github.com/IbrohimMid/VAC/releases/download/v0.1.0/vac-x86_64-pc-windows-msvc.zip",
+            "hash": "SHA256"
+        }
+    },
+    "bin": "vac.exe",
+    "checkver": "github"
+}

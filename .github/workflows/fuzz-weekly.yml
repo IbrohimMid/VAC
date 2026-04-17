@@ -1,0 +1,33 @@
+name: Weekly Fuzzing
+
+on:
+  schedule:
+    - cron: '0 0 * * 0'
+  workflow_dispatch:
+
+jobs:
+  fuzz:
+    name: Fuzz ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - target: bundle_import
+            dir: crates/vac_core
+          - target: policy_classifier
+            dir: crates/vac_core
+          - target: mcp_message_parser
+            dir: crates/vac_tools
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Install Rust nightly
+        uses: dtolnay/rust-toolchain@nightly
+      
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz
+      
+      - name: Run ${{ matrix.target }} fuzzer
+        run: cargo +nightly fuzz run ${{ matrix.target }} -- -max_total_time=3600
+        working-directory: ${{ matrix.dir }}

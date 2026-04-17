@@ -662,4 +662,238 @@ mod tests {
         assert!(restored.contains("sk_test_1234567890abcdef"));
         assert!(restored.contains("user@example.com"));
     }
+
+    #[test]
+    fn adversarial_mutant_tests() {
+        let detector = SecretDetector::new();
+
+        // contains_secrets
+        assert!(detector.contains_secrets("sk-12345678901234567890"));
+        assert!(!detector.contains_secrets("just some normal text without secrets"));
+
+        // PatternRule push_matches & capture_group logic
+        let mut findings = Vec::new();
+        let rule_no_capture = PatternRule::new(
+            DetectionKind::Pii(PiiType::Email),
+            r"\b[a-z]+@[a-z]+\.[a-z]+\b",
+            0,
+        );
+        rule_no_capture.push_matches("test test@test.com test", &mut findings);
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].value, "test@test.com");
+
+        let mut findings = Vec::new();
+        let rule_capture = PatternRule::new(
+            DetectionKind::Secret(SecretType::BearerToken),
+            r"(?i)\bbearer\s+([A-Za-z0-9._\-]{20,})\b",
+            1,
+        );
+        rule_capture.push_matches("Bearer 12345678901234567890 abc", &mut findings);
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].value, "12345678901234567890");
+
+        // looks_like_jwt branches
+        // Valid JWT
+        let valid_jwt = jwt_token(99);
+        assert!(looks_like_jwt(&valid_jwt));
+        // Missing parts
+        assert!(!looks_like_jwt("header.payload"));
+        // Extra parts
+        assert!(!looks_like_jwt("header.payload.signature.extra"));
+        // Empty parts
+        assert!(!looks_like_jwt(".payload.signature"));
+        assert!(!looks_like_jwt("header..signature"));
+        assert!(!looks_like_jwt("header.payload."));
+        // Invalid base64
+        assert!(!looks_like_jwt("invalid!header.payload.signature"));
+        assert!(!looks_like_jwt(&format!(
+            "{}.invalid!payload.signature",
+            URL_SAFE_NO_PAD.encode(b"{}")
+        )));
+        // Valid base64 but not JSON {
+        assert!(!looks_like_jwt(&format!(
+            "{}.{}.signature",
+            URL_SAFE_NO_PAD.encode(b"notjson"),
+            URL_SAFE_NO_PAD.encode(b"{}")
+        )));
+        assert!(!looks_like_jwt(&format!(
+            "{}.{}.signature",
+            URL_SAFE_NO_PAD.encode(b"{}"),
+            URL_SAFE_NO_PAD.encode(b"notjson")
+        )));
+
+        // detect_private_key_blocks branches
+        // Missing end marker
+        let no_end = "-----BEGIN RSA PRIVATE KEY-----\nbody\n";
+        let mut f = Vec::new();
+        detect_private_key_blocks(no_end, &mut f);
+        assert!(f.is_empty());
+
+        // Missing line suffix after BEGIN
+        let no_suffix = "-----BEGIN RSA PRIVATE KEY body";
+        let mut f = Vec::new();
+        detect_private_key_blocks(no_suffix, &mut f);
+        assert!(f.is_empty());
+
+        // Not a private key
+        let not_private = "-----BEGIN CERTIFICATE-----\nbody\n-----END CERTIFICATE-----";
+        let mut f = Vec::new();
+        detect_private_key_blocks(not_private, &mut f);
+        assert!(f.is_empty());
+
+        // PEM vs SSH
+        let pem_key = "-----BEGIN RSA PRIVATE KEY-----\nbody\n-----END RSA PRIVATE KEY-----";
+        let mut f = Vec::new();
+        detect_private_key_blocks(pem_key, &mut f);
+        assert_eq!(f.len(), 1);
+        assert_eq!(f[0].kind, DetectionKind::Secret(SecretType::PemPrivateKey));
+
+        let ssh_key =
+            "-----BEGIN OPENSSH PRIVATE KEY-----\nbody\n-----END OPENSSH PRIVATE KEY-----";
+        let mut f = Vec::new();
+        detect_private_key_blocks(ssh_key, &mut f);
+        assert_eq!(f.len(), 1);
+        assert_eq!(f[0].kind, DetectionKind::Secret(SecretType::SshPrivateKey));
+
+        // detect_high_entropy_tokens & looks_benign branches
+        // Benign: all digits
+        assert!(looks_benign("123456789012345678901234"));
+        // Benign: uuid
+        assert!(looks_benign("123e4567-e89b-12d3-a456-426614174000"));
+        // Benign: hex digest
+        assert!(looks_benign("abcdef1234567890abcdef12"));
+        // Benign: version like
+        assert!(looks_benign("1.2.3.45678901234567890123456"));
+        // Benign: len < 24
+        assert!(looks_benign("short_string"));
+        // Benign: character classes < 2 (e.g. only lowercase)
+        assert!(looks_benign("aaaaaaaaaaaaaaaaaaaaaaaaa"));
+        // Not benign, but low entropy (e.g. many repeated chars)
+        let mut f = Vec::new();
+        detect_high_entropy_tokens("AaAaAaAaAaAaAaAaAaAaAaAa", &mut f);
+        assert!(f.is_empty()); // Entropy < 4.5
+
+        // High entropy, not benign -> detected
+        let mut f = Vec::new();
+        // A string with 24 distinct characters
+        detect_high_entropy_tokens("AbCdEfGhIjKlMnOpQrStUvWx", &mut f);
+        assert_eq!(f.len(), 1);
+
+        // is_uuid branches
+        assert!(!is_uuid("123e4567-e89b-12d3-a456-42661417400")); // len != 36
+        assert!(!is_uuid("123e4567-e89b-12d3-a456X426614174000")); // wrong dash
+        assert!(!is_uuid("123e4567-e89b-12d3-a456-42661417400g")); // non hex
+
+        // is_hex_digest branches
+        assert!(!is_hex_digest("abcdef1234567890abcdef1")); // < 24
+        assert!(!is_hex_digest("abcdef1234567890abcdef1g")); // non hex
+
+        // is_version_like branches
+        assert!(!is_version_like("1.2.a")); // non digit
+        assert!(!is_version_like("1.2.")); // empty part
+        assert!(!is_version_like("1.2")); // < 3 parts
+
+        // character_classes branches
+        assert_eq!(character_classes("aA1+"), 4);
+        assert_eq!(character_classes("a"), 1);
+
+        // shannon_entropy branches
+        assert_eq!(shannon_entropy(""), 0.0);
+
+        // kind_score & dedup_overlapping
+        let s1 = DetectedSecret {
+            kind: DetectionKind::Secret(SecretType::GenericSecret), // score 100
+            value: "1".to_string(),
+            start: 0,
+            end: 10,
+        };
+        let s2 = DetectedSecret {
+            kind: DetectionKind::Pii(PiiType::Email), // score 50
+            value: "2".to_string(),
+            start: 0,
+            end: 10,
+        };
+        let s3 = DetectedSecret {
+            kind: DetectionKind::Secret(SecretType::Jwt), // score 4
+            value: "3".to_string(),
+            start: 0,
+            end: 10,
+        };
+        let s4 = DetectedSecret {
+            kind: DetectionKind::Secret(SecretType::BearerToken), // score 5
+            value: "4".to_string(),
+            start: 5,
+            end: 15,
+        };
+        let s5 = DetectedSecret {
+            kind: DetectionKind::Secret(SecretType::AwsAccessKey), // score 0
+            value: "5".to_string(),
+            start: 20,
+            end: 30,
+        };
+        let findings = vec![s1.clone(), s2.clone(), s3.clone(), s4.clone(), s5.clone()];
+        let deduped = dedup_overlapping(findings);
+        // group 1: s1, s2, s3, s4. Best is s1 (score 100, wait. pick_best looks for min score?
+        // Let's check pick_best logic:
+        // `if candidate_score < best_score ...` => smaller score is better.
+        // Jwt is 4, BearerToken is 5, PII is 50, Generic is 100, AwsAccessKey is 0.
+        // Among s1(100), s2(50), s3(4), s4(5), min score is s3 (4).
+        // Then s5(0) is separate.
+        assert_eq!(deduped.len(), 2);
+        assert_eq!(deduped[0].kind, DetectionKind::Secret(SecretType::Jwt));
+        assert_eq!(
+            deduped[1].kind,
+            DetectionKind::Secret(SecretType::AwsAccessKey)
+        );
+
+        // Test pick_best tie-breakers (same score, diff length)
+        let s_short = DetectedSecret {
+            kind: DetectionKind::Secret(SecretType::AwsAccessKey),
+            value: "short".to_string(),
+            start: 0,
+            end: 5,
+        };
+        let s_long = DetectedSecret {
+            kind: DetectionKind::Secret(SecretType::AwsAccessKey),
+            value: "longer".to_string(),
+            start: 0,
+            end: 6,
+        };
+        let deduped2 = dedup_overlapping(vec![s_short, s_long.clone()]);
+        assert_eq!(deduped2.len(), 1);
+        assert_eq!(deduped2[0].end, 6); // prefers longer
+
+        // Test pick_best tie-breakers (same score, same length, diff start)
+        let s_late = DetectedSecret {
+            kind: DetectionKind::Secret(SecretType::AwsAccessKey),
+            value: "same1".to_string(),
+            start: 1,
+            end: 6,
+        };
+        let s_early = DetectedSecret {
+            kind: DetectionKind::Secret(SecretType::AwsAccessKey),
+            value: "same2".to_string(),
+            start: 0,
+            end: 5,
+        };
+        // Dedup overlapping will put them in same group if start < group_end
+        let deduped3 = dedup_overlapping(vec![s_early.clone(), s_late]);
+        assert_eq!(deduped3.len(), 1);
+        assert_eq!(deduped3[0].start, 0); // prefers earlier
+
+        // DetectedSecret len method
+        assert_eq!(s_long.len(), 6);
+    }
+
+    use proptest::prelude::*;
+
+    proptest! {
+        #[test]
+        fn detector_does_not_panic_on_arbitrary_strings(ref s in "\\PC*") {
+            let detector = SecretDetector::new();
+            // Just ensure it does not panic and finishes
+            let _ = detector.detect(s);
+            let _ = detector.contains_secrets(s);
+        }
+    }
 }

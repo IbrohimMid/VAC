@@ -133,6 +133,7 @@ impl ReasoningEvent {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
 
     #[test]
     fn attempt_cap_is_enforced() {
@@ -224,5 +225,65 @@ mod tests {
                 event: ReasoningEvent::BeginAttempt
             })
         ));
+    }
+
+    proptest! {
+        #[test]
+        fn fsm_sequence_fuzzing(
+            max_attempts in 1..15usize,
+            events in prop::collection::vec(
+                prop_oneof![
+                    Just(ReasoningEvent::BeginAttempt),
+                    any::<bool>().prop_map(|had_error| ReasoningEvent::Observe { had_error }),
+                    Just(ReasoningEvent::SetRetry),
+                ],
+                0..50
+            )
+        ) {
+            let mut sm = ReasoningStateMachine::new(max_attempts);
+
+            for event in events {
+                let prev_phase = sm.phase;
+                let prev_attempt = sm.attempt;
+
+                let res = sm.apply(event);
+                match res {
+                    Ok(transitions) => {
+                        // Invariants on success:
+
+                        // 1. attempt count should not exceed max_attempts
+                        prop_assert!(sm.attempt <= sm.max_attempts);
+
+                        // 2. if BeginAttempt, attempt must have incremented
+                        if let ReasoningEvent::BeginAttempt = event {
+                            prop_assert_eq!(sm.attempt, prev_attempt + 1);
+                        } else {
+                            prop_assert_eq!(sm.attempt, prev_attempt);
+                        }
+
+                        // 3. phase transitions must be continuous and match final state
+                        if !transitions.is_empty() {
+                            prop_assert_eq!(transitions.first().unwrap().from, prev_phase);
+                            prop_assert_eq!(transitions.last().unwrap().to, sm.phase);
+
+                            // check continuity
+                            for window in transitions.windows(2) {
+                                prop_assert_eq!(window[0].to, window[1].from);
+                            }
+                        }
+                    }
+                    Err(ReasoningError::MaxAttemptsReached { attempt, max_attempts: m }) => {
+                        prop_assert_eq!(attempt, prev_attempt);
+                        prop_assert_eq!(attempt, sm.max_attempts);
+                        prop_assert_eq!(m, sm.max_attempts);
+                        prop_assert_eq!(event, ReasoningEvent::BeginAttempt);
+                    }
+                    Err(ReasoningError::IllegalTransition { from, event: err_event }) => {
+                        prop_assert_eq!(from, prev_phase);
+                        prop_assert_eq!(err_event, event);
+                    }
+                }
+            }
+        }
     }
 }

@@ -1,0 +1,42 @@
+--- crates/vac_core/src/policy_gate.rs
++++ replace strip_leading_tokens -> &'a[String] with Vec::leak(vec![String::new()])
+@@ -72,38 +72,17 @@
+         if let Some(action) = classify_command(&program, &tokens[i+1..]) {
+             return Some(action);
+         }
+     }
+     None
+ }
+ 
+ fn strip_leading_tokens<'a>(tokens: &'a [String], value_flags: &[&str]) -> &'a [String] {
+-    let mut idx = 0usize;
+-    while idx < tokens.len() {
+-        let token = tokens[idx].as_str();
+-        if token == "--" {
+-            return &tokens[idx + 1..];
+-        }
+-        if is_assignment(token) {
+-            idx += 1;
+-            continue;
+-        }
+-        if !token.starts_with('-') {
+-            break;
+-        }
+-
+-        let flag = token.split('=').next().unwrap_or(token);
+-        let takes_value = flag_is_value_flag(flag, value_flags);
+-        idx += 1;
+-        if takes_value && !token.contains('=') && idx < tokens.len() {
+-            idx += 1;
+-        }
+-    }
+-    &tokens[idx..]
++    Vec::leak(vec![String::new()]) /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ fn flag_is_value_flag(flag: &str, value_flags: &[&str]) -> bool {
+     value_flags.iter().any(|candidate| {
+         *candidate == flag
+             || (flag.starts_with(candidate) && flag != *candidate && candidate.starts_with('-'))
+     })
+ }
