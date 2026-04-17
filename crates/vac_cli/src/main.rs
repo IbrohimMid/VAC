@@ -258,7 +258,7 @@ async fn main() -> anyhow::Result<()> {
             _ => "trace",
         };
         let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| filter.into());
-        
+
         if cli.log_format == "json" {
             fmt()
                 .json()
