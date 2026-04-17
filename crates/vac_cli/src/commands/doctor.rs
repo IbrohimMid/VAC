@@ -340,11 +340,22 @@ async fn check_mcp_config(root: &Path, _strict: bool, fix: bool) -> (bool, serde
         }
     };
 
-    let servers = config.mcp_servers.unwrap_or_default();
+    let mut servers = config.mcp_servers.unwrap_or_default();
+    let (preset_servers, preset_warnings) =
+        vac_tools::mcp::resolve_mcp_presets(&config.mcp_presets);
+    servers.extend(preset_servers);
     if servers.is_empty() {
+        let msg = if preset_warnings.is_empty() {
+            "0 MCP server(s) configured".to_string()
+        } else {
+            format!(
+                "0 MCP server(s) active. Preset warnings: {}",
+                preset_warnings.join("; ")
+            )
+        };
         return (
             true,
-            serde_json::json!({ "id": "mcp_config", "ok": true, "message": "0 MCP server(s) configured" }),
+            serde_json::json!({ "id": "mcp_config", "ok": true, "message": msg }),
         );
     }
 
@@ -377,7 +388,11 @@ async fn check_mcp_config(root: &Path, _strict: bool, fix: bool) -> (bool, serde
 
     (
         all_reachable,
-        serde_json::json!({ "id": "mcp_config", "ok": all_reachable, "message": msg }),
+        serde_json::json!({
+            "id": "mcp_config",
+            "ok": all_reachable,
+            "message": if preset_warnings.is_empty() { msg } else { format!("{msg}. Preset warnings: {}", preset_warnings.join("; ")) }
+        }),
     )
 }
 

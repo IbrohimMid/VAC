@@ -6,6 +6,7 @@
 pub mod agent;
 pub mod checkpoint;
 pub mod context_budget;
+pub mod context_crawler;
 pub mod error;
 pub mod events;
 pub mod hooks;
@@ -15,6 +16,7 @@ pub mod orchestrator;
 pub mod patterns;
 pub mod policy_bridge;
 pub mod protocol;
+pub mod reasoning_fsm;
 pub mod redaction;
 pub mod run_state;
 pub mod sandbox;

@@ -14,6 +14,7 @@ use crate::tui::services::vil_workbench;
 pub fn open(ctx: &mut HandlerContext) -> HandlerResult {
     ctx.state.focus = WorkspaceFocus::Workbench;
     ctx.state.workbench_tab = WorkbenchTab::Vil;
+    ctx.state.push_vil_log("opened vil workbench");
     ctx.state
         .push_activity(ActivityKind::Status, "Opened VIL Issues workstation");
     Ok(())
@@ -188,6 +189,7 @@ pub fn open_in_editor(ctx: &mut HandlerContext) -> HandlerResult {
 fn invoke_tool(ctx: &mut HandlerContext, tool_name: &str, args: serde_json::Value) {
     ctx.state
         .add_user_message(format!("[Invoking {}]", tool_name));
+    ctx.state.push_vil_log(format!("invoke {tool_name}"));
     let _ = ctx
         .output_tx
         .try_send(OutputEvent::InvokeVilTool(tool_name.to_string(), args));
@@ -226,10 +228,7 @@ mod tests {
         let (mut state, tx, _rx) = make_ctx();
         let mut ctx = HandlerContext::new(&mut state, &tx);
         assert!(open(&mut ctx).is_ok());
-        assert_eq!(
-            ctx.state.workbench_tab,
-            crate::tui::app::WorkbenchTab::Vil
-        );
+        assert_eq!(ctx.state.workbench_tab, crate::tui::app::WorkbenchTab::Vil);
         assert_eq!(ctx.state.focus, crate::tui::app::WorkspaceFocus::Workbench);
     }
 

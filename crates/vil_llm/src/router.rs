@@ -32,7 +32,7 @@ fn is_retryable(e: &LlmError) -> bool {
 
 pub struct SimpleRateLimiter {
     pub requests_per_minute: u32,
-    pub request_timestamps: std::collections::VecDeque<std::time::Instant>,
+    pub request_timestamps: std::collections::VecDeque<tokio::time::Instant>,
 }
 
 impl SimpleRateLimiter {
@@ -50,7 +50,7 @@ impl SimpleRateLimiter {
                 if guard.requests_per_minute == 0 {
                     return;
                 }
-                let now = std::time::Instant::now();
+                let now = tokio::time::Instant::now();
                 let one_min_ago = now - std::time::Duration::from_secs(60);
                 while let Some(&ts) = guard.request_timestamps.front() {
                     if ts < one_min_ago {
@@ -391,5 +391,23 @@ mod tests {
         let mut r = router();
         r.set_rulebook(RulebookContext::new(|_tool| None));
         assert_eq!(r.route_for_tool("Anything"), "default_prov");
+    }
+
+    #[tokio::test]
+    async fn rate_limiter_blocks_until_window_advances() {
+        tokio::time::pause();
+        let limiter = Arc::new(tokio::sync::Mutex::new(SimpleRateLimiter::new(1)));
+        SimpleRateLimiter::acquire(&limiter).await;
+
+        let handle = tokio::spawn({
+            let limiter = limiter.clone();
+            async move { SimpleRateLimiter::acquire(&limiter).await }
+        });
+
+        tokio::task::yield_now().await;
+        assert!(!handle.is_finished());
+
+        tokio::time::advance(std::time::Duration::from_secs(60)).await;
+        let _ = handle.await;
     }
 }

@@ -213,6 +213,8 @@ pub fn get_all_shortcuts() -> Vec<Shortcut> {
         Shortcut::new("/status", "Show account status", "Commands"),
         Shortcut::new("/sessions", "List available sessions", "Commands"),
         Shortcut::new("/resume", "Resume last session", "Commands"),
+        Shortcut::new("/export", "Export bundle JSON (redacted)", "Commands"),
+        Shortcut::new("/import", "Import bundle JSON", "Commands"),
         Shortcut::new("/memorize", "Memorize conversation", "Commands"),
         Shortcut::new("/model", "Switch model", "Commands"),
         Shortcut::new(

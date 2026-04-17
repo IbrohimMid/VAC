@@ -1,3 +1,4 @@
+pub mod agent_scheduler;
 pub mod autopilot;
 pub mod cron_scheduler;
 pub mod executor;
@@ -7,6 +8,11 @@ pub mod queue;
 pub mod scheduler;
 pub mod watcher;
 
+pub use agent_scheduler::{
+    AgentQueueCounts, AgentRole, AgentScheduler, AgentSchedulerConfig, AgentSchedulerStateFile,
+    AgentTask, AgentTaskHandler, AgentTaskQueue, AgentTaskStatus, AgentWorkerSnapshot,
+    AgentWorkerStatus,
+};
 pub use autopilot::AutopilotController;
 pub use cron_scheduler::{CronEntry, CronScheduler};
 pub use executor::{

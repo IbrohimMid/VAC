@@ -4,6 +4,7 @@ pub mod autopilot;
 pub mod config;
 pub mod doctor;
 pub mod export;
+pub mod import;
 pub mod init;
 pub mod interactive;
 pub mod isolation;

@@ -146,7 +146,7 @@ fn read_config_state(project_root: &std::path::Path) -> (Option<bool>, Option<bo
         .and_then(|t| t.get("enable_signing"))
         .and_then(|v| v.as_bool());
 
-    let mcp_servers = table
+    let mut mcp_servers: Vec<String> = table
         .get("mcp_servers")
         .and_then(|v| v.as_array())
         .map(|arr| {
@@ -156,6 +156,26 @@ fn read_config_state(project_root: &std::path::Path) -> (Option<bool>, Option<bo
         })
         .unwrap_or_default();
 
+    let mcp_presets = table
+        .get("mcp_presets")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|p| {
+                    p.get("name")
+                        .and_then(|n| n.as_str())
+                        .map(|s| format!("preset:{s}"))
+                        .or_else(|| {
+                            p.get("preset")
+                                .and_then(|n| n.as_str())
+                                .map(|s| format!("preset:{s}"))
+                        })
+                })
+                .collect::<Vec<String>>()
+        })
+        .unwrap_or_default();
+
+    mcp_servers.extend(mcp_presets);
     (trace_enabled, trace_signing, mcp_servers)
 }
 

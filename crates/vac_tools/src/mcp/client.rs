@@ -436,54 +436,6 @@ impl McpClient {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::collections::HashMap;
-
-    fn registry() -> Arc<ToolRegistry> {
-        Arc::new(ToolRegistry::new())
-    }
-
-    #[test]
-    fn remote_verified_requires_https() {
-        let client = McpClient::new(
-            McpServerConfig {
-                name: "remote".to_string(),
-                transport: McpTransport::Sse {
-                    url: "http://example.com/mcp".to_string(),
-                },
-                env: HashMap::new(),
-                trust_class: Some(McpTrustClass::RemoteVerified),
-                tls: None,
-                approval_policy: None,
-                allowed_in_modes: vec![],
-            },
-            registry(),
-        );
-        assert!(client.validate_config().is_err());
-    }
-
-    #[test]
-    fn local_trusted_remote_host_is_rejected() {
-        let client = McpClient::new(
-            McpServerConfig {
-                name: "remote".to_string(),
-                transport: McpTransport::Sse {
-                    url: "https://example.com/mcp".to_string(),
-                },
-                env: HashMap::new(),
-                trust_class: Some(McpTrustClass::LocalTrusted),
-                tls: None,
-                approval_policy: None,
-                allowed_in_modes: vec![],
-            },
-            registry(),
-        );
-        assert!(client.validate_config().is_err());
-    }
-}
-
 struct McpProxyTool {
     prefixed_name: String,
     tool_name: String,
@@ -599,5 +551,53 @@ impl VilTool for McpProxyTool {
                     .ok_or_else(|| ToolError::McpError("No result".into()))
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    fn registry() -> Arc<ToolRegistry> {
+        Arc::new(ToolRegistry::new())
+    }
+
+    #[test]
+    fn remote_verified_requires_https() {
+        let client = McpClient::new(
+            McpServerConfig {
+                name: "remote".to_string(),
+                transport: McpTransport::Sse {
+                    url: "http://example.com/mcp".to_string(),
+                },
+                env: HashMap::new(),
+                trust_class: Some(McpTrustClass::RemoteVerified),
+                tls: None,
+                approval_policy: None,
+                allowed_in_modes: vec![],
+            },
+            registry(),
+        );
+        assert!(client.validate_config().is_err());
+    }
+
+    #[test]
+    fn local_trusted_remote_host_is_rejected() {
+        let client = McpClient::new(
+            McpServerConfig {
+                name: "remote".to_string(),
+                transport: McpTransport::Sse {
+                    url: "https://example.com/mcp".to_string(),
+                },
+                env: HashMap::new(),
+                trust_class: Some(McpTrustClass::LocalTrusted),
+                tls: None,
+                approval_policy: None,
+                allowed_in_modes: vec![],
+            },
+            registry(),
+        );
+        assert!(client.validate_config().is_err());
     }
 }

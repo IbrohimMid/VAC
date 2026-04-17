@@ -2,7 +2,7 @@
 
 use chrono::{DateTime, Utc};
 use ratatui::text::Line;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -143,6 +143,7 @@ pub enum WorkbenchTab {
     Approvals,
     Review,
     Sessions,
+    Agents,
     Runtime,
     Plan,
     Vil,
@@ -153,7 +154,8 @@ impl WorkbenchTab {
         match self {
             Self::Approvals => Self::Review,
             Self::Review => Self::Sessions,
-            Self::Sessions => Self::Runtime,
+            Self::Sessions => Self::Agents,
+            Self::Agents => Self::Runtime,
             Self::Runtime => Self::Plan,
             Self::Plan => Self::Vil,
             Self::Vil => Self::Approvals,
@@ -178,6 +180,12 @@ pub enum ActivityKind {
 pub struct ActivityItem {
     pub at: DateTime<Utc>,
     pub kind: ActivityKind,
+    pub message: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct VilLogEntry {
+    pub at: DateTime<Utc>,
     pub message: String,
 }
 
@@ -505,6 +513,10 @@ pub struct AppState {
     pub review_generation: u64,
 
     pub sessions_selected_idx: usize,
+    pub agent_tasks: Vec<vac_runtime::AgentTask>,
+    pub agent_selected_idx: usize,
+    pub agent_detail_scroll: usize,
+    pub agent_state_snapshot: Option<vac_runtime::AgentSchedulerStateFile>,
     pub runtime_jobs: Vec<vac_runtime::Job>,
     pub runtime_selected_idx: usize,
     pub runtime_filter: String,
@@ -548,6 +560,9 @@ pub struct AppState {
 
     // VIL Status
     pub vil_status: VilStatusSnapshot,
+    pub last_validation_score: Option<f64>,
+    pub vil_score_history: Vec<f64>,
+    pub vil_event_log: VecDeque<VilLogEntry>,
 
     // Pending image attachments for next message submission
     pub pending_image_parts: Vec<crate::tui::types::ContentPart>,
@@ -608,6 +623,9 @@ pub struct AppState {
     pub ask_user_question_kind: crate::tui::services::ask_user::AskUserQuestionKind,
     pub ask_user_multi_selected: std::collections::HashSet<usize>,
     pub ask_user_metadata: std::collections::HashMap<String, String>,
+    pub ask_user_filter: String,
+    pub ask_user_search_active: bool,
+    pub ask_user_scroll: usize,
 
     // Text Selection
     pub selection_state: crate::tui::services::text_selection::SelectionState,
@@ -748,6 +766,10 @@ impl AppState {
             review_diff: None,
             review_generation: 0,
             sessions_selected_idx: 0,
+            agent_tasks: Vec::new(),
+            agent_selected_idx: 0,
+            agent_detail_scroll: 0,
+            agent_state_snapshot: None,
             runtime_jobs: Vec::new(),
             runtime_selected_idx: 0,
             runtime_filter: String::new(),
@@ -778,6 +800,9 @@ impl AppState {
             project_root: options.project_root,
             mcp_server_states: HashMap::new(),
             vil_status: VilStatusSnapshot::default(),
+            last_validation_score: None,
+            vil_score_history: Vec::new(),
+            vil_event_log: VecDeque::new(),
             pending_image_parts: vec![],
             banner_message: None,
             banner_click_regions: Vec::new(),
@@ -817,6 +842,9 @@ impl AppState {
                 crate::tui::services::ask_user::AskUserQuestionKind::SingleSelect,
             ask_user_multi_selected: std::collections::HashSet::new(),
             ask_user_metadata: std::collections::HashMap::new(),
+            ask_user_filter: String::new(),
+            ask_user_search_active: false,
+            ask_user_scroll: 0,
             selection_state: crate::tui::services::text_selection::SelectionState::default(),
             per_message_cache: HashMap::new(),
             render_metrics: RenderMetrics::default(),
@@ -872,6 +900,30 @@ impl AppState {
 
     pub fn add_assistant_message(&mut self, content: String) {
         self.messages.push(Message::assistant(content));
+    }
+
+    pub fn record_vil_score(&mut self, score: f64) {
+        let should_push = match self.vil_score_history.last().copied() {
+            Some(prev) => (prev - score).abs() > 0.0001,
+            None => true,
+        };
+        if should_push {
+            self.vil_score_history.push(score);
+            if self.vil_score_history.len() > 60 {
+                let drain = self.vil_score_history.len().saturating_sub(60);
+                self.vil_score_history.drain(0..drain);
+            }
+        }
+    }
+
+    pub fn push_vil_log(&mut self, message: impl Into<String>) {
+        self.vil_event_log.push_back(VilLogEntry {
+            at: Utc::now(),
+            message: message.into(),
+        });
+        while self.vil_event_log.len() > 200 {
+            self.vil_event_log.pop_front();
+        }
     }
 
     pub fn filtered_commands(&self) -> Vec<HelperCommand> {

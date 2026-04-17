@@ -131,7 +131,7 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(4), // Status panel
+            Constraint::Length(6), // Status panel
             Constraint::Length(3), // Tabs
             Constraint::Min(1),    // Body
         ])
@@ -182,7 +182,16 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
 
     let view = filtered(state, &issues);
     render_issue_list(f, state, body[0], &view);
-    render_lineage_panel(f, state, body[1], &view);
+    let log_height = body[1].height.saturating_div(3).clamp(6, 12);
+    let right = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Min(body[1].height.saturating_sub(log_height)),
+            Constraint::Length(log_height),
+        ])
+        .split(body[1]);
+    render_lineage_panel(f, state, right[0], &view);
+    render_vil_log_panel(f, state, right[1]);
 }
 
 fn render_status_panel(f: &mut Frame, state: &AppState, area: Rect) {
@@ -204,64 +213,186 @@ fn render_status_panel(f: &mut Frame, state: &AppState, area: Rect) {
     };
 
     let active_rulebook = state
-        .selected_rulebooks
-        .iter()
-        .next()
-        .map(|s| s.as_str())
-        .unwrap_or("default");
+        .vil_status
+        .active_rulebook
+        .clone()
+        .or_else(|| {
+            if state.selected_rulebooks.is_empty() {
+                None
+            } else {
+                let mut v = state.selected_rulebooks.iter().cloned().collect::<Vec<_>>();
+                v.sort();
+                Some(v.join(", "))
+            }
+        })
+        .unwrap_or_else(|| "default".to_string());
 
-    let mut spans = vec![
-        Span::styled(" Score: ", Style::default().add_modifier(Modifier::BOLD)),
+    let trend = ascii_sparkline(
+        if state.vil_score_history.is_empty() {
+            std::slice::from_ref(&score)
+        } else {
+            state.vil_score_history.as_slice()
+        },
+        24,
+    );
+
+    let mut header = vec![
+        Span::styled("Score: ", Style::default().add_modifier(Modifier::BOLD)),
         Span::styled(score_label, Style::default().fg(score_color)),
+        Span::styled(
+            format!(" ({:.2})", score),
+            Style::default().fg(Color::DarkGray),
+        ),
         Span::raw(" │ "),
-        Span::styled("Rulebook: ", Style::default().add_modifier(Modifier::BOLD)),
-        Span::styled(active_rulebook.to_string(), Style::default().fg(Color::Cyan)),
+        Span::styled("Trend: ", Style::default().add_modifier(Modifier::BOLD)),
+        Span::styled(trend, Style::default().fg(Color::Cyan)),
         Span::raw(" │ "),
-        Span::styled("Semantic Mode: ", Style::default().add_modifier(Modifier::BOLD)),
+        Span::styled("Issues: ", Style::default().add_modifier(Modifier::BOLD)),
+        Span::raw(state.vil_status.validation_issues.len().to_string()),
     ];
 
-    if state.vil_status.semantic_mode {
-        spans.push(Span::styled("Enabled", Style::default().fg(Color::Green)));
+    header.push(Span::raw(" │ "));
+    header.push(Span::styled(
+        "Semantic: ",
+        Style::default().add_modifier(Modifier::BOLD),
+    ));
+    header.push(if state.vil_status.semantic_mode {
+        Span::styled("On", Style::default().fg(Color::Green))
     } else {
-        spans.push(Span::styled("Disabled", Style::default().fg(Color::DarkGray)));
-    }
+        Span::styled("Off", Style::default().fg(Color::DarkGray))
+    });
 
-    spans.push(Span::raw(" │ "));
-    spans.push(Span::styled("IR Sync: ", Style::default().add_modifier(Modifier::BOLD)));
+    let mut meta = vec![
+        Span::styled("Rulebook: ", Style::default().add_modifier(Modifier::BOLD)),
+        Span::styled(active_rulebook, Style::default().fg(Color::Cyan)),
+        Span::raw(" │ "),
+        Span::styled("IR: ", Style::default().add_modifier(Modifier::BOLD)),
+    ];
+
     if state.vil_status.ir_generation_active {
-        spans.push(Span::styled(
-            format!("Active ({} files)", state.vil_status.ir_metadata_files.len()),
+        meta.push(Span::styled(
+            format!("Active ({})", state.vil_status.ir_metadata_files.len()),
             Style::default().fg(Color::Green),
         ));
     } else {
-        spans.push(Span::styled("Inactive", Style::default().fg(Color::DarkGray)));
+        meta.push(Span::styled(
+            "Inactive",
+            Style::default().fg(Color::DarkGray),
+        ));
     }
 
     if let Some(profile) = &state.vil_status.profile {
-        spans.push(Span::raw(" │ "));
-        spans.push(Span::styled("Archetype: ", Style::default().add_modifier(Modifier::BOLD)));
-        spans.push(Span::styled(
+        meta.push(Span::raw(" │ "));
+        meta.push(Span::styled(
+            "Archetype: ",
+            Style::default().add_modifier(Modifier::BOLD),
+        ));
+        meta.push(Span::styled(
             format!("{}", profile.archetype),
             Style::default().fg(Color::Cyan),
         ));
-        spans.push(Span::raw(" │ "));
-        spans.push(Span::styled("VIL Deps: ", Style::default().add_modifier(Modifier::BOLD)));
-        spans.push(Span::raw(profile.vil_deps.len().to_string()));
-    } else {
-        spans.push(Span::raw(" │ "));
-        spans.push(Span::styled(
-            "Scanning profile...",
-            Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC),
-        ));
     }
 
-    let p = Paragraph::new(Line::from(spans))
-        .block(Block::default().borders(Borders::ALL).title(Span::styled(
-            "VIL Workstation",
-            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
-        )));
+    let deps_line = if let Some(profile) = &state.vil_status.profile {
+        let deps = compact_list(&profile.vil_deps, 5);
+        let constructs = compact_list(&profile.detected_constructs, 6);
+        Line::from(vec![
+            Span::styled("Deps: ", Style::default().add_modifier(Modifier::BOLD)),
+            Span::styled(
+                format!("{} ({})", deps, profile.vil_deps.len()),
+                Style::default().fg(Color::White),
+            ),
+            Span::raw(" │ "),
+            Span::styled(
+                "Constructs: ",
+                Style::default().add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                format!("{} ({})", constructs, profile.detected_constructs.len()),
+                Style::default().fg(Color::White),
+            ),
+        ])
+    } else {
+        Line::styled(
+            "Scanning profile...",
+            Style::default()
+                .fg(Color::DarkGray)
+                .add_modifier(Modifier::ITALIC),
+        )
+    };
 
-    f.render_widget(p, area);
+    let p = Paragraph::new(vec![Line::from(header), Line::from(meta), deps_line]).block(
+        Block::default().borders(Borders::ALL).title(Span::styled(
+            "VIL Workstation",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        )),
+    );
+
+    f.render_widget(p.wrap(Wrap { trim: true }), area);
+}
+
+fn render_vil_log_panel(f: &mut Frame, state: &AppState, area: Rect) {
+    let max = area.height.saturating_sub(2) as usize;
+    let mut lines: Vec<Line> = Vec::new();
+    let entries: Vec<_> = state.vil_event_log.iter().rev().take(max.max(1)).collect();
+    for entry in entries.into_iter().rev() {
+        let ts = entry.at.format("%H:%M:%S").to_string();
+        lines.push(Line::from(vec![
+            Span::styled(ts, Style::default().fg(Color::DarkGray)),
+            Span::raw(" "),
+            Span::raw(entry.message.clone()),
+        ]));
+    }
+    if lines.is_empty() {
+        lines.push(Line::styled(
+            "no VIL events yet",
+            Style::default().fg(Color::DarkGray),
+        ));
+    }
+    let widget = Paragraph::new(lines)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("VIL Log (tail)"),
+        )
+        .wrap(Wrap { trim: true });
+    f.render_widget(widget, area);
+}
+
+fn ascii_sparkline(values: &[f64], width: usize) -> String {
+    const LEVELS: &[u8] = b" .:-=+*#%@";
+    if width == 0 {
+        return String::new();
+    }
+    if values.is_empty() {
+        return " ".repeat(width);
+    }
+    let start = values.len().saturating_sub(width);
+    let slice = &values[start..];
+    let mut out = String::with_capacity(width);
+    if slice.len() < width {
+        out.push_str(&" ".repeat(width - slice.len()));
+    }
+    for v in slice {
+        let clamped = v.clamp(0.0, 1.0);
+        let idx = (clamped * (LEVELS.len().saturating_sub(1) as f64)).round() as usize;
+        out.push(LEVELS[idx] as char);
+    }
+    out
+}
+
+fn compact_list(items: &[String], max: usize) -> String {
+    if items.is_empty() {
+        return "-".to_string();
+    }
+    let shown = items.iter().take(max).cloned().collect::<Vec<_>>();
+    if items.len() > max {
+        format!("{}, +{}", shown.join(", "), items.len() - max)
+    } else {
+        shown.join(", ")
+    }
 }
 
 fn render_issue_list(f: &mut Frame, state: &AppState, area: Rect, view: &[&ClassifiedIssue]) {

@@ -75,6 +75,11 @@ pub fn vac_commands() -> Vec<HelperCommand> {
             source: CommandSource::BuiltIn,
         },
         HelperCommand {
+            command: "/agents".to_string(),
+            description: "Show multi-agent queue".to_string(),
+            source: CommandSource::BuiltIn,
+        },
+        HelperCommand {
             command: "/shell".to_string(),
             description: "Run interactive shell command".to_string(),
             source: CommandSource::BuiltIn,
@@ -113,6 +118,16 @@ pub fn vac_commands() -> Vec<HelperCommand> {
         HelperCommand {
             command: "/resume".to_string(),
             description: "Resume from checkpoint".to_string(),
+            source: CommandSource::BuiltIn,
+        },
+        HelperCommand {
+            command: "/export".to_string(),
+            description: "Export bundle JSON (redacted): /export [path]".to_string(),
+            source: CommandSource::BuiltIn,
+        },
+        HelperCommand {
+            command: "/import".to_string(),
+            description: "Import bundle JSON: /import <path>".to_string(),
             source: CommandSource::BuiltIn,
         },
         // Help

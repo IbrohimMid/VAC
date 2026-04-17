@@ -178,6 +178,19 @@ max_concurrent_jobs = 2
 # transport.command = "npx"
 # transport.args = ["-y", "@modelcontextprotocol/server-filesystem", "/"]
 #
+# Example MCP preset wiring (expanded into MCP servers at runtime):
+# [[mcp_presets]]
+# preset = "github"
+# allowed_in_modes = ["trusted-networked"]
+#
+# [[mcp_presets]]
+# preset = "jira"
+# allowed_in_modes = ["trusted-networked"]
+#
+# [[mcp_presets]]
+# preset = "ci"
+# allowed_in_modes = ["trusted-networked"]
+#
 # [[mcp_servers]]
 # name = "remote-knowledge"
 # transport.type = "sse"

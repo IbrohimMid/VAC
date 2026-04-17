@@ -16,6 +16,39 @@ use super::{
 /// Shared handle to the active task's update channel for structured approval routing.
 type ActiveUpdateTx = Arc<Mutex<Option<mpsc::UnboundedSender<RuntimeUpdate>>>>;
 
+fn classify_init_warning(
+    warning: &str,
+) -> (
+    crate::tui::services::banner::BannerStyle,
+    crate::tui::services::banner::BannerSeverity,
+) {
+    let lower = warning.to_ascii_lowercase();
+    if lower.contains("failed to connect mcp server") || lower.contains("mcp server") {
+        let tls_related = lower.contains("tls")
+            || lower.contains("certificate")
+            || lower.contains("ca file")
+            || lower.contains("mtls")
+            || lower.contains("server_name")
+            || lower.contains("identity");
+        if tls_related {
+            (
+                crate::tui::services::banner::BannerStyle::Error,
+                crate::tui::services::banner::BannerSeverity::Blocking,
+            )
+        } else {
+            (
+                crate::tui::services::banner::BannerStyle::Warning,
+                crate::tui::services::banner::BannerSeverity::Suggested,
+            )
+        }
+    } else {
+        (
+            crate::tui::services::banner::BannerStyle::Warning,
+            crate::tui::services::banner::BannerSeverity::Suggested,
+        )
+    }
+}
+
 async fn load_runtime_jobs(project_root: &std::path::Path) -> Vec<vac_runtime::Job> {
     vac_runtime::TaskQueue::with_storage(project_root.join(".vac/queue.json"))
         .list()
@@ -24,6 +57,19 @@ async fn load_runtime_jobs(project_root: &std::path::Path) -> Vec<vac_runtime::J
 
 fn load_runtime_state(project_root: &std::path::Path) -> Option<vac_runtime::AutopilotStateFile> {
     let content = std::fs::read_to_string(project_root.join(".vac/autopilot.state")).ok()?;
+    serde_json::from_str(&content).ok()
+}
+
+async fn load_agent_tasks(project_root: &std::path::Path) -> Vec<vac_runtime::AgentTask> {
+    vac_runtime::AgentTaskQueue::with_storage(project_root.join(".vac/agent_queue.json"))
+        .list()
+        .await
+}
+
+fn load_agent_state(
+    project_root: &std::path::Path,
+) -> Option<vac_runtime::AgentSchedulerStateFile> {
+    let content = std::fs::read_to_string(project_root.join(".vac/agent_scheduler.state")).ok()?;
     serde_json::from_str(&content).ok()
 }
 
@@ -250,7 +296,7 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
 
     // Initialize engine (load tools, policies, etc.)
     let warnings = engine.init().await?;
-    
+
     // We will add the warnings to the banner queue later via InputEvent or direct injection
     // Wait, TUI state is not initialized yet.
     // We will inject it below.
@@ -261,16 +307,15 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
 
     // Create channels
     let (input_tx, input_rx) = mpsc::channel::<InputEvent>(100);
-    
+
     // Inject warnings into the TUI banner queue
     let input_tx_clone_for_warnings = input_tx.clone();
     tokio::spawn(async move {
         for warning in warnings {
-            let _ = input_tx_clone_for_warnings.send(InputEvent::ShowBanner(
-                warning,
-                crate::tui::services::banner::BannerStyle::Warning,
-                crate::tui::services::banner::BannerSeverity::Suggested,
-            )).await;
+            let (style, severity) = classify_init_warning(&warning);
+            let _ = input_tx_clone_for_warnings
+                .send(InputEvent::ShowBanner(warning, style, severity))
+                .await;
         }
     });
 
@@ -679,6 +724,77 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                         }
                     }
                 }
+                OutputEvent::ExportBundle(path) => {
+                    let input_tx = input_tx_clone.clone();
+                    let project_root = runtime_project_root.clone();
+                    tokio::spawn(async move {
+                        match vac_core::bundle::export_bundle_to_path(
+                            &project_root,
+                            None,
+                            Some(&path),
+                            true,
+                        ) {
+                            Ok(out_path) => {
+                                let _ = input_tx
+                                    .send(InputEvent::ShowToast(
+                                        crate::tui::services::Toast::success(format!(
+                                            "Bundle diekspor: {}",
+                                            out_path.display()
+                                        )),
+                                    ))
+                                    .await;
+                                let _ = input_tx
+                                    .send(InputEvent::AssistantMessage(format!(
+                                        "Bundle diekspor ke `{}`",
+                                        out_path.display()
+                                    )))
+                                    .await;
+                            }
+                            Err(e) => {
+                                let _ = input_tx
+                                    .send(InputEvent::ShowToast(
+                                        crate::tui::services::Toast::error(format!(
+                                            "Gagal export bundle: {e}"
+                                        )),
+                                    ))
+                                    .await;
+                            }
+                        }
+                    });
+                }
+                OutputEvent::ImportBundle(path) => {
+                    let input_tx = input_tx_clone.clone();
+                    let project_root = runtime_project_root.clone();
+                    tokio::spawn(async move {
+                        match vac_core::bundle::import_bundle_from_path(&project_root, &path) {
+                            Ok(session_id) => {
+                                let _ = input_tx
+                                    .send(InputEvent::ShowToast(
+                                        crate::tui::services::Toast::success(format!(
+                                            "Bundle diimpor (session_id={})",
+                                            session_id
+                                        )),
+                                    ))
+                                    .await;
+                                let _ = input_tx
+                                    .send(InputEvent::AssistantMessage(format!(
+                                        "Bundle diimpor dari `{}`",
+                                        path.display()
+                                    )))
+                                    .await;
+                            }
+                            Err(e) => {
+                                let _ = input_tx
+                                    .send(InputEvent::ShowToast(
+                                        crate::tui::services::Toast::error(format!(
+                                            "Gagal import bundle: {e}"
+                                        )),
+                                    ))
+                                    .await;
+                            }
+                        }
+                    });
+                }
                 OutputEvent::ListSessions => {
                     let eng = engine_clone.lock().await;
                     if let Ok(sessions) = eng.list_sessions().await {
@@ -734,10 +850,20 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                     let jobs = load_runtime_jobs(&runtime_project_root).await;
                     let _ = input_tx_clone.send(InputEvent::SetRuntimeJobs(jobs)).await;
                 }
+                OutputEvent::ListAgentTasks => {
+                    let tasks = load_agent_tasks(&runtime_project_root).await;
+                    let _ = input_tx_clone.send(InputEvent::SetAgentTasks(tasks)).await;
+                }
                 OutputEvent::LoadRuntimeState => {
                     let snapshot = load_runtime_state(&runtime_project_root);
                     let _ = input_tx_clone
                         .send(InputEvent::SetRuntimeState(snapshot))
+                        .await;
+                }
+                OutputEvent::LoadAgentState => {
+                    let snapshot = load_agent_state(&runtime_project_root);
+                    let _ = input_tx_clone
+                        .send(InputEvent::SetAgentState(snapshot))
                         .await;
                 }
                 OutputEvent::CancelRuntimeJob(id) => {

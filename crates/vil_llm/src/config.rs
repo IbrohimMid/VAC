@@ -92,7 +92,7 @@ struct RawLlm {
     #[serde(default)]
     fallback_chain: Option<Vec<String>>,
     #[serde(default)]
-   pub budget_tokens: Option<u64>,
+    pub budget_tokens: Option<u64>,
     #[serde(default)]
     requests_per_minute: Option<u32>,
     #[serde(default)]
@@ -163,7 +163,9 @@ fn merge_raw_with_defaults(raw: RawLlm) -> LlmConfig {
     let default_provider = raw.default_provider.unwrap_or(defaults.default_provider);
     let fallback_chain = raw.fallback_chain.unwrap_or(defaults.fallback_chain);
     let budget_tokens = raw.budget_tokens.unwrap_or(defaults.budget_tokens);
-    let requests_per_minute = raw.requests_per_minute.unwrap_or(defaults.requests_per_minute);
+    let requests_per_minute = raw
+        .requests_per_minute
+        .unwrap_or(defaults.requests_per_minute);
     let routing = raw.routing.unwrap_or_default();
     let providers = raw
         .providers
