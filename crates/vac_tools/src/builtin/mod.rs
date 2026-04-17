@@ -1,4 +1,5 @@
 pub mod bash;
+pub mod canonical_lint;
 pub mod cargo;
 pub mod file_edit;
 pub mod file_read;
@@ -49,17 +50,14 @@ pub async fn register_builtin_tools(registry: &Arc<ToolRegistry>) -> Result<(), 
     registry
         .register(vil_lsp_query::VilLspQueryTool::new())
         .await?;
-    registry
-        .register(vil_ir_diff::VilIrDiffTool::new())
-        .await?;
-    registry
-        .register(vil_audit::VilAuditTool::new())
-        .await?;
+    registry.register(vil_ir_diff::VilIrDiffTool::new()).await?;
+    registry.register(vil_audit::VilAuditTool::new()).await?;
     registry
         .register(vil_plumbing::VilPlumbingTool::new())
         .await?;
+    registry.register(vil_repair::VilRepairTool::new()).await?;
     registry
-        .register(vil_repair::VilRepairTool::new())
+        .register(canonical_lint::CanonicalLintTool::new())
         .await?;
 
     let skills_dir = std::path::PathBuf::from(".vac/skills");
