@@ -1,6 +1,6 @@
 # Roadmap to 100/100 — v2 (Codebase-Grounded)
 
-**Supersedes `ROADMAP_TO_100.md` (v1).** v1 scored 82/100 in external review. This v2 applies five corrections: rebaseline, un-mark false-done items, reframe provider work as *runtime-truth unification*, split operability vs evidence-gate, and move desktop/web expansion out of critical path.
+**Supersedes `archive/ROADMAP_TO_100_v1.md`.** v1 scored 82/100 in external review. This v2 applies five corrections: rebaseline, un-mark false-done items, reframe provider work as *runtime-truth unification*, split operability vs evidence-gate, and move desktop/web expansion out of critical path.
 
 Change labels used throughout: **KEEP** (unchanged from v1) · **REWRITE** (semantics changed) · **REMOVE** (dropped from this track) · **MOVE** (relocated to another track) · **NEW** (added in v2).
 

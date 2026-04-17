@@ -79,5 +79,13 @@ vac interactive
 
 For full documentation and advanced usage, visit: [https://vastar.id/docs/vac](https://vastar.id/docs/vac)
 
+- [Onboarding Guide](docs/onboarding.md)
+- [Roadmap to 100/100 (v2)](docs/ROADMAP_TO_100_v2.md)
+- [Superbatch execution brief (cloud agent)](docs/SUPERBATCH_PHASE_3_TO_7.md)
+- [Threat Model](docs/THREAT_MODEL.md)
+- [Runtime Queue Boundary](docs/RUNTIME_QUEUE_BOUNDARY.md)
 - [Arsitektur Privasi dan Kontrak Eksekusi](docs/privacy_architecture.md)
 - [Runtime Operating Guide](docs/runtime_operating_guide.md)
+- [Structured Approval Flow](docs/STRUCTURED_APPROVAL_FLOW.md)
+- [Competitive Analysis](docs/COMPETITIVE_ANALYSIS.md)
+- Historical / superseded docs: [`docs/archive/`](docs/archive/)

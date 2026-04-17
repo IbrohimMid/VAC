@@ -6,6 +6,25 @@ Versioning: [Semantic Versioning](https://semver.org/)
 
 ---
 
+## [Unreleased]
+
+### Added
+- `docs/ROADMAP_TO_100_v2.md` — codebase-grounded roadmap superseding v1.
+- `docs/SUPERBATCH_PHASE_3_TO_7.md` — long-running cloud-agent execution brief (base branch: `main`).
+- `docs/THREAT_MODEL.md`, `docs/RUNTIME_QUEUE_BOUNDARY.md` — security + architecture decision records.
+- Phase 1: hardened `secret_detector` (gitleaks-style provider rules, entropy filter, PII split, dedup), bundle import (signature, collision, redact-on-import, size cap, schema gate), policy gate classifier (shell-words parser, 100+ adversarial corpus), policy gate fail-closed semantics.
+- Phase 2: FSM `legal_transitions` table + reject-illegal, `RuntimeQueue` trait abstraction, `LlmConfig` single-owner cleanup.
+- Phase 3: `vil_llm::providers::factory` registers all configured providers; `vac_core::engine` no longer constructs concrete providers; provider smoke matrix + stream parity tests across Anthropic/OpenAI/Gemini/xAI/Mistral/OpenAI-compat.
+
+### Changed
+- Repo cleanup: stale milestone, wave, and audit-snapshot docs moved to `docs/archive/`.
+- `docs/ROADMAP_TO_100.md` (v1) renamed to `docs/archive/ROADMAP_TO_100_v1.md`.
+
+### Removed
+- Stray top-level `output.json` and console-transcript dump.
+
+---
+
 ## [0.1.0] — 2026-04-12
 
 First release candidate. Architecture-complete, feature-complete, hardening-complete.
