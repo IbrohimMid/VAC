@@ -236,4 +236,22 @@ pub trait LlmProvider: Send + Sync {
     async fn complete(&self, request: &LlmRequest) -> LlmResult<LlmResponse>;
 
     async fn stream(&self, request: &LlmRequest) -> LlmResult<mpsc::Receiver<StreamChunk>>;
+
+    /// Whether the provider supports vision / image input on its default model.
+    /// Default: `false`.
+    fn supports_vision(&self) -> bool {
+        false
+    }
+
+    /// Whether the provider supports tool/function calling on its default model.
+    /// Default: `true` (most modern frontier providers do).
+    fn supports_tools(&self) -> bool {
+        true
+    }
+
+    /// Advertised max context window (in tokens) for the provider's default model.
+    /// Default: `128_000`.
+    fn max_context_tokens(&self) -> u32 {
+        128_000
+    }
 }

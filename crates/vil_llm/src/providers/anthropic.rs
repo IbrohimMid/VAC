@@ -220,6 +220,20 @@ impl LlmProvider for AnthropicProvider {
         "anthropic"
     }
 
+    fn supports_vision(&self) -> bool {
+        // Claude 3/3.5/4 models all support images via Kilo Gateway's OpenAI-compat wire.
+        true
+    }
+
+    fn supports_tools(&self) -> bool {
+        true
+    }
+
+    fn max_context_tokens(&self) -> u32 {
+        // Claude 3.5 / Sonnet 4 family: 200K context.
+        200_000
+    }
+
     async fn complete(&self, request: &LlmRequest) -> LlmResult<LlmResponse> {
         let response = self.do_complete(&self.build_request(request)).await?;
         let choice = response
