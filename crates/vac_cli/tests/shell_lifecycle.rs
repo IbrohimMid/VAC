@@ -7,28 +7,34 @@ use vac_cli::tui::services::{ShellEvent, run_pty_command};
 async fn test_shell_basic_execution() {
     let (tx, mut rx) = mpsc::channel(100);
 
-    let result = run_pty_command("echo test".to_string(), None, tx, 24, 80);
+    let shell = run_pty_command(String::new(), None, tx, 24, 80)
+        .expect("Shell command should start successfully");
 
-    assert!(result.is_ok(), "Shell command should start successfully");
+    tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
+    shell.send_input("echo test\n".to_string());
+    shell.send_input("exit\n".to_string());
 
     let mut got_output = false;
     let mut got_completion = false;
 
-    while let Some(event) = rx.recv().await {
-        match event {
-            ShellEvent::Output(_, text) => {
-                if text.contains("test") {
-                    got_output = true;
+    let timeout = tokio::time::timeout(tokio::time::Duration::from_secs(5), async {
+        while let Some(event) = rx.recv().await {
+            match event {
+                ShellEvent::Output(_, text) => {
+                    if text.contains("test") {
+                        got_output = true;
+                    }
                 }
+                ShellEvent::Completed(_, _) => {
+                    got_completion = true;
+                    break;
+                }
+                _ => {}
             }
-            ShellEvent::Completed(_, _) => {
-                got_completion = true;
-                break;
-            }
-            _ => {}
         }
-    }
+    });
 
+    let _ = timeout.await;
     assert!(got_output, "Should receive output containing 'test'");
     assert!(got_completion, "Should receive completion event");
 }
@@ -103,9 +109,10 @@ async fn test_shell_buffer_limit() {
     // Generate large output
     let large_command = format!("printf '{}'", "x".repeat(10000));
 
-    let result = run_pty_command(large_command, None, tx, 24, 80);
+    let shell = run_pty_command(large_command, None, tx, 24, 80).expect("Shell should start");
 
-    assert!(result.is_ok(), "Shell should handle large output");
+    tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
+    shell.send_input("exit\n".to_string());
 
     let mut total_output = String::new();
     let timeout = tokio::time::timeout(tokio::time::Duration::from_secs(5), async {

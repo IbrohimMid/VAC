@@ -10,6 +10,10 @@
 
 use crate::tui::app::AppState;
 use crate::tui::services::detect_term::ThemeColors;
+use nucleo_matcher::{
+    Config, Matcher, Utf32Str,
+    pattern::{AtomKind, CaseMatching, Normalization, Pattern},
+};
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
@@ -25,10 +29,11 @@ pub const ASK_USER_TOOL_NAME: &str = "ask_user";
 // ========== Unit 7 (Wave 3.5) — Ask-user structured UX ==========
 
 /// Discriminated question kind; the tool caller can request a specific UX.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum AskUserQuestionKind {
     /// One option must be selected (radio buttons).
+    #[default]
     SingleSelect,
     /// Multiple options can be toggled on/off (checkboxes).
     MultiSelect,
@@ -36,12 +41,6 @@ pub enum AskUserQuestionKind {
     FreeText,
     /// Options + free-text combined.
     Mixed,
-}
-
-impl Default for AskUserQuestionKind {
-    fn default() -> Self {
-        Self::SingleSelect
-    }
 }
 
 /// Mirror of the donor's `AskUserOption`. Kept local to avoid a stakpak_shared
@@ -152,6 +151,87 @@ pub fn build_answer(state: &AppState, multi_selected: &HashSet<usize>) -> serde_
     }
 }
 
+pub fn filtered_option_indices(query: &str, options: &[AskUserOption]) -> Vec<usize> {
+    let q = query.trim();
+    if q.is_empty() {
+        return (0..options.len()).collect();
+    }
+
+    let pattern = Pattern::new(
+        q,
+        CaseMatching::Smart,
+        Normalization::Smart,
+        AtomKind::Fuzzy,
+    );
+    let mut matcher = Matcher::new(Config::DEFAULT);
+    let mut buf: Vec<char> = Vec::new();
+
+    let mut matches: Vec<(u32, usize)> = Vec::new();
+    for (idx, opt) in options.iter().enumerate() {
+        let mut text = opt.label.clone();
+        if let Some(desc) = &opt.description {
+            text.push(' ');
+            text.push_str(desc);
+        }
+        let haystack: Utf32Str<'_> = Utf32Str::new(&text, &mut buf);
+        if let Some(score) = pattern.score(haystack, &mut matcher) {
+            matches.push((score, idx));
+        }
+    }
+
+    matches.sort_by(
+        |(a_score, a_idx), (b_score, b_idx)| match b_score.cmp(a_score) {
+            std::cmp::Ordering::Equal => options[*a_idx]
+                .label
+                .to_lowercase()
+                .cmp(&options[*b_idx].label.to_lowercase()),
+            other => other,
+        },
+    );
+
+    matches.into_iter().map(|(_, idx)| idx).collect()
+}
+
+pub fn answer_summary(state: &AppState, filtered: &[usize]) -> String {
+    match state.ask_user_question_kind {
+        AskUserQuestionKind::FreeText => state.ask_user_input.trim().to_string(),
+        AskUserQuestionKind::SingleSelect => state
+            .ask_user_options
+            .get(state.ask_user_selected)
+            .map(|o| o.label.clone())
+            .unwrap_or_default(),
+        AskUserQuestionKind::MultiSelect => {
+            let mut labels = state
+                .ask_user_multi_selected
+                .iter()
+                .filter_map(|&i| state.ask_user_options.get(i).map(|o| o.label.clone()))
+                .collect::<Vec<_>>();
+            labels.sort();
+            if labels.is_empty() {
+                if let Some(&idx) = filtered.first() {
+                    return state
+                        .ask_user_options
+                        .get(idx)
+                        .map(|o| o.label.clone())
+                        .unwrap_or_default();
+                }
+            }
+            labels.join(", ")
+        }
+        AskUserQuestionKind::Mixed => {
+            let t = state.ask_user_input.trim();
+            if !t.is_empty() {
+                return t.to_string();
+            }
+            state
+                .ask_user_options
+                .get(state.ask_user_selected)
+                .map(|o| o.label.clone())
+                .unwrap_or_default()
+        }
+    }
+}
+
 pub fn render_ask_user_popup(f: &mut Frame, state: &AppState) {
     let terminal = f.area();
     // Fall back to a terse notice when the terminal is too small to show the
@@ -167,7 +247,9 @@ pub fn render_ask_user_popup(f: &mut Frame, state: &AppState) {
     }
     let width = (terminal.width * 70 / 100).max(60).min(terminal.width);
     let option_count = state.ask_user_options.len() as u16;
-    let height = (7 + option_count.min(10) + 3).min(terminal.height);
+    let show_search = !state.ask_user_options.is_empty();
+    let list_cap = option_count.clamp(1, 10);
+    let height = (if show_search { 13 } else { 10 } + list_cap).min(terminal.height);
     let x = (terminal.width.saturating_sub(width)) / 2;
     let y = (terminal.height.saturating_sub(height)) / 2;
     let area = Rect::new(x, y, width, height);
@@ -191,15 +273,21 @@ pub fn render_ask_user_popup(f: &mut Frame, state: &AppState) {
         height: area.height - 2,
     };
 
+    let mut constraints = Vec::new();
+    constraints.push(Constraint::Length(3));
+    if show_search {
+        constraints.push(Constraint::Length(3));
+    }
+    constraints.push(Constraint::Min(1));
+    constraints.push(Constraint::Length(3));
+    constraints.push(Constraint::Length(1));
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(3),
-            Constraint::Min(1),
-            Constraint::Length(3),
-            Constraint::Length(1),
-        ])
+        .constraints(constraints)
         .split(inner);
+    let option_chunk_idx = if show_search { 2 } else { 1 };
+    let input_chunk_idx = if show_search { 3 } else { 2 };
+    let footer_chunk_idx = if show_search { 4 } else { 3 };
 
     // Question
     let question = state.ask_user_question.clone().unwrap_or_default();
@@ -210,40 +298,133 @@ pub fn render_ask_user_popup(f: &mut Frame, state: &AppState) {
     .wrap(Wrap { trim: false });
     f.render_widget(q_para, chunks[0]);
 
+    if show_search {
+        let prompt = ">";
+        let cursor = "|";
+        let placeholder = "Type to filter options";
+        let active = state.ask_user_search_active;
+
+        let spans = if state.ask_user_filter.is_empty() {
+            vec![
+                Span::raw(" "),
+                Span::styled(prompt, Style::default().fg(ThemeColors::magenta())),
+                Span::raw(" "),
+                Span::styled(
+                    cursor,
+                    if active {
+                        Style::default().fg(ThemeColors::cyan())
+                    } else {
+                        Style::default().fg(ThemeColors::dark_gray())
+                    },
+                ),
+                Span::styled(placeholder, Style::default().fg(ThemeColors::dark_gray())),
+                Span::raw(" "),
+            ]
+        } else {
+            vec![
+                Span::raw(" "),
+                Span::styled(prompt, Style::default().fg(ThemeColors::magenta())),
+                Span::raw(" "),
+                Span::styled(
+                    &state.ask_user_filter,
+                    Style::default()
+                        .fg(ThemeColors::text())
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    cursor,
+                    if active {
+                        Style::default().fg(ThemeColors::cyan())
+                    } else {
+                        Style::default().fg(ThemeColors::dark_gray())
+                    },
+                ),
+                Span::raw(" "),
+            ]
+        };
+        let search_text =
+            ratatui::text::Text::from(vec![Line::from(""), Line::from(spans), Line::from("")]);
+        f.render_widget(Paragraph::new(search_text), chunks[1]);
+    }
+
     // Options list — render depends on question kind
     let kind = state.ask_user_question_kind;
     let is_multi = kind == AskUserQuestionKind::MultiSelect;
     let mut opt_lines: Vec<Line> = Vec::new();
-    for (i, opt) in state.ask_user_options.iter().enumerate() {
-        let is_cursor = i == state.ask_user_selected;
-        let is_checked = state.ask_user_multi_selected.contains(&i);
-        let marker = if is_multi {
-            if is_checked { "[x]" } else { "[ ]" }
-        } else if is_cursor {
-            ">"
-        } else {
-            " "
-        };
-        let style = if is_cursor {
-            Style::default()
-                .fg(ThemeColors::highlight_fg())
-                .bg(ThemeColors::highlight_bg())
-        } else {
-            Style::default()
-        };
-        let mut label = format!("  {} {}. {}", marker, i + 1, opt.label);
-        if let Some(desc) = &opt.description {
-            label.push_str(&format!("  — {}", desc));
-        }
-        opt_lines.push(Line::from(Span::styled(label, style)));
-    }
-    if opt_lines.is_empty() {
+    let filtered = filtered_option_indices(&state.ask_user_filter, &state.ask_user_options);
+    if filtered.is_empty() && !state.ask_user_options.is_empty() {
+        opt_lines.push(Line::from(Span::styled(
+            "  (no options match your filter)",
+            Style::default().fg(ThemeColors::dark_gray()),
+        )));
+    } else if state.ask_user_options.is_empty() {
         opt_lines.push(Line::from(Span::styled(
             "  (no options — type your answer below)",
             Style::default().fg(ThemeColors::dark_gray()),
         )));
+    } else {
+        let visible = chunks[option_chunk_idx].height as usize;
+        let sel_pos = filtered
+            .iter()
+            .position(|&i| i == state.ask_user_selected)
+            .unwrap_or(0);
+
+        let mut scroll = state.ask_user_scroll.min(sel_pos);
+        if sel_pos >= scroll.saturating_add(visible) {
+            scroll = sel_pos + 1 - visible;
+        }
+        scroll = scroll.min(filtered.len().saturating_sub(1));
+
+        let mut available = visible;
+        let has_above = scroll > 0;
+        let has_below = scroll.saturating_add(visible) < filtered.len();
+        if has_above && available > 0 {
+            opt_lines.push(Line::from(Span::styled(
+                " ▲",
+                Style::default().fg(ThemeColors::dark_gray()),
+            )));
+            available = available.saturating_sub(1);
+        }
+        if has_below && available > 0 {
+            available = available.saturating_sub(1);
+        }
+
+        for i in 0..available {
+            let pos = scroll + i;
+            if pos >= filtered.len() {
+                break;
+            }
+            let opt_idx = filtered[pos];
+            let opt = &state.ask_user_options[opt_idx];
+            let is_cursor = opt_idx == state.ask_user_selected;
+            let is_checked = state.ask_user_multi_selected.contains(&opt_idx);
+            let style = if is_cursor {
+                Style::default()
+                    .fg(ThemeColors::highlight_fg())
+                    .bg(ThemeColors::highlight_bg())
+            } else {
+                Style::default()
+            };
+            let prefix = if is_cursor { ">" } else { " " };
+            let mut label = if is_multi {
+                let box_mark = if is_checked { "[x]" } else { "[ ]" };
+                format!("  {} {} {}. {}", prefix, box_mark, pos + 1, opt.label)
+            } else {
+                format!("  {} {}. {}", prefix, pos + 1, opt.label)
+            };
+            if let Some(desc) = &opt.description {
+                label.push_str(&format!("  — {}", desc));
+            }
+            opt_lines.push(Line::from(Span::styled(label, style)));
+        }
+        if has_below {
+            opt_lines.push(Line::from(Span::styled(
+                " ▼",
+                Style::default().fg(ThemeColors::dark_gray()),
+            )));
+        }
     }
-    f.render_widget(Paragraph::new(opt_lines), chunks[1]);
+    f.render_widget(Paragraph::new(opt_lines), chunks[option_chunk_idx]);
 
     // Free text input row — title + styling reflect whether the caller
     // permits a free-text answer for this question.
@@ -263,7 +444,7 @@ pub fn render_ask_user_popup(f: &mut Frame, state: &AppState) {
     };
     let input_block = Block::default().borders(Borders::ALL).title(title);
     let input_para = Paragraph::new(body_line).block(input_block);
-    f.render_widget(input_para, chunks[2]);
+    f.render_widget(input_para, chunks[input_chunk_idx]);
 
     // Footer — varies by question kind
     let mut hints = vec![
@@ -271,6 +452,16 @@ pub fn render_ask_user_popup(f: &mut Frame, state: &AppState) {
         Span::styled("↑/↓", Style::default().fg(ThemeColors::cyan())),
         Span::styled(": Option  ", Style::default().fg(ThemeColors::dark_gray())),
     ];
+    if show_search {
+        hints.push(Span::styled(
+            "Tab",
+            Style::default().fg(ThemeColors::cyan()),
+        ));
+        hints.push(Span::styled(
+            ": Search  ",
+            Style::default().fg(ThemeColors::dark_gray()),
+        ));
+    }
     if is_multi {
         hints.push(Span::styled(
             "Space",
@@ -280,13 +471,29 @@ pub fn render_ask_user_popup(f: &mut Frame, state: &AppState) {
             ": Toggle  ",
             Style::default().fg(ThemeColors::dark_gray()),
         ));
+        hints.push(Span::styled(
+            "Ctrl+A",
+            Style::default().fg(ThemeColors::cyan()),
+        ));
+        hints.push(Span::styled(
+            ": All  ",
+            Style::default().fg(ThemeColors::dark_gray()),
+        ));
+        hints.push(Span::styled(
+            "Ctrl+U",
+            Style::default().fg(ThemeColors::cyan()),
+        ));
+        hints.push(Span::styled(
+            ": None  ",
+            Style::default().fg(ThemeColors::dark_gray()),
+        ));
     }
     hints.push(Span::styled(
         "Enter",
         Style::default().fg(ThemeColors::cyan()),
     ));
     hints.push(Span::styled(
-        ": Submit  ",
+        ": Confirm  ",
         Style::default().fg(ThemeColors::dark_gray()),
     ));
     hints.push(Span::styled(
@@ -298,7 +505,7 @@ pub fn render_ask_user_popup(f: &mut Frame, state: &AppState) {
         Style::default().fg(ThemeColors::dark_gray()),
     ));
     let footer = Line::from(hints);
-    f.render_widget(Paragraph::new(footer), chunks[3]);
+    f.render_widget(Paragraph::new(footer), chunks[footer_chunk_idx]);
 }
 
 #[cfg(test)]
@@ -393,5 +600,75 @@ mod tests {
         let json = serde_json::to_string(&opt).unwrap();
         let parsed: AskUserOption = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.metadata.get("key").unwrap(), "val");
+    }
+
+    #[test]
+    fn filtered_option_indices_fuzzy_orders_best_match_first() {
+        let options = vec![
+            AskUserOption {
+                id: "rust".into(),
+                label: "Rust".into(),
+                description: None,
+                metadata: HashMap::new(),
+            },
+            AskUserOption {
+                id: "ruby".into(),
+                label: "Ruby".into(),
+                description: None,
+                metadata: HashMap::new(),
+            },
+            AskUserOption {
+                id: "java".into(),
+                label: "Java".into(),
+                description: None,
+                metadata: HashMap::new(),
+            },
+        ];
+        let filtered = filtered_option_indices("rb", &options);
+        assert_eq!(filtered.first().copied(), Some(1));
+    }
+
+    #[test]
+    fn render_respects_filter_and_cursor_highlight() {
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+
+        let state = AppState {
+            show_ask_user_popup: true,
+            ask_user_question: Some("Pick one".into()),
+            ask_user_options: vec![
+                AskUserOption {
+                    id: "rust".into(),
+                    label: "Rust".into(),
+                    description: None,
+                    metadata: HashMap::new(),
+                },
+                AskUserOption {
+                    id: "ruby".into(),
+                    label: "Ruby".into(),
+                    description: None,
+                    metadata: HashMap::new(),
+                },
+            ],
+            ask_user_question_kind: AskUserQuestionKind::SingleSelect,
+            ask_user_selected: 0,
+            ask_user_filter: "rb".into(),
+            ask_user_scroll: 0,
+            ..Default::default()
+        };
+
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| render_ask_user_popup(f, &state)).unwrap();
+        let buf = terminal.backend().buffer();
+        let mut s = String::new();
+        for y in 0..buf.area.height {
+            for x in 0..buf.area.width {
+                s.push_str(buf[(x, y)].symbol());
+            }
+            s.push('\n');
+        }
+        assert!(s.contains("Ruby"));
+        assert!(!s.contains("Rust"));
     }
 }

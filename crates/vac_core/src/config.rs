@@ -26,12 +26,17 @@ pub struct VacConfig {
     /// Rulebook governance settings
     #[serde(default)]
     pub rulebook: RulebookConfig,
+    #[serde(default)]
+    pub policy_gate: PolicyGateConfig,
     /// Background runtime settings
     #[serde(default)]
     pub runtime: RuntimeConfig,
     /// MCP server configurations
     #[serde(default)]
     pub mcp_servers: Option<Vec<vac_tools::mcp::McpServerConfig>>,
+    /// MCP preset instances (expanded to mcp_servers at runtime)
+    #[serde(default)]
+    pub mcp_presets: Vec<vac_tools::mcp::McpPresetInstanceConfig>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -46,6 +51,9 @@ pub struct LlmConfig {
     /// Global token budget per task (0 = unlimited)
     #[serde(default)]
     pub max_tokens_per_task: u64,
+    /// Maximum requests per minute (0 = unlimited)
+    #[serde(default)]
+    pub requests_per_minute: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -297,6 +305,7 @@ impl Default for VacConfig {
                 providers: default_providers,
                 fallback_chain: vec!["anthropic".to_string(), "openai".to_string()],
                 max_tokens_per_task: 0,
+                requests_per_minute: 0,
             },
             tools: ToolConfig {
                 default_policy: default_policy(),
@@ -328,8 +337,41 @@ impl Default for VacConfig {
             },
             vil_lsp: VilLspConfig::default(),
             rulebook: RulebookConfig::default(),
+            policy_gate: PolicyGateConfig::default(),
             runtime: RuntimeConfig::default(),
             mcp_servers: None,
+            mcp_presets: vec![],
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PolicyGateConfig {
+    #[serde(default)]
+    pub enable: bool,
+    #[serde(default = "default_policy_gate_threshold")]
+    pub threshold: f64,
+    #[serde(default = "default_policy_gate_mode")]
+    pub mode: String,
+    #[serde(default)]
+    pub actions: Vec<String>,
+}
+
+fn default_policy_gate_threshold() -> f64 {
+    0.85
+}
+
+fn default_policy_gate_mode() -> String {
+    "soft".to_string()
+}
+
+impl Default for PolicyGateConfig {
+    fn default() -> Self {
+        Self {
+            enable: false,
+            threshold: default_policy_gate_threshold(),
+            mode: default_policy_gate_mode(),
+            actions: vec![],
         }
     }
 }

@@ -244,7 +244,10 @@ impl AutopilotController {
         ) && self.engine.is_none()
         {
             let mut engine = vac_core::VacEngine::new(self.project_root.clone()).await?;
-            engine.init().await?;
+            let warnings = engine.init().await?;
+            for warning in warnings {
+                eprintln!("Warning: {}", warning);
+            }
             let engine = Arc::new(Mutex::new(engine));
             self.executor.attach_engine(engine.clone());
             self.engine = Some(engine);

@@ -1,6 +1,7 @@
 //! Swarm Orchestrator — manages agent lifecycle and task routing.
 
 use crate::agent::*;
+use crate::context_crawler::{ContextCrawler, inject_workspace_context};
 use crate::error::{SwarmError, SwarmResult};
 use crate::semantic::{PlannerGateResult, evaluate_planner_output};
 use std::collections::HashMap;
@@ -10,6 +11,7 @@ use tracing::{info, warn};
 use vac_tools::registry::ToolContext;
 use vac_tools::router::ToolRouter;
 use vil_llm::LlmRouter;
+use vil_llm::provider::Role;
 use vil_llm::provider::{LlmRequest, Message, ToolDefinition};
 
 pub struct ExecutionResult {
@@ -40,6 +42,10 @@ pub enum AgentLoopEvent {
         model: String,
     },
     AssistantChunk(String),
+    AssistantMessage {
+        content: String,
+        tool_calls: usize,
+    },
     ToolCall {
         id: String,
         name: String,
@@ -56,6 +62,17 @@ pub enum AgentLoopEvent {
         tool_name: String,
         arguments: serde_json::Value,
         explanation: Option<String>,
+    },
+    ApprovalDecision {
+        tool_call_id: String,
+        tool_name: String,
+        approved: bool,
+        reason: Option<String>,
+    },
+    ReasoningTransition {
+        from: crate::reasoning_fsm::ReasoningPhase,
+        to: crate::reasoning_fsm::ReasoningPhase,
+        attempt: usize,
     },
 }
 
@@ -586,6 +603,14 @@ Rules:
                             if response.approved {
                                 state.approved_tools.insert(response.tool_call_id.clone());
                                 info!(tool = %pending.tool_name, "Tool approved, re-executing");
+                                if let Some(tx) = updates {
+                                    let _ = tx.send(AgentLoopEvent::ApprovalDecision {
+                                        tool_call_id: pending.tool_call_id.clone(),
+                                        tool_name: pending.tool_name.clone(),
+                                        approved: true,
+                                        reason: response.reason.clone(),
+                                    });
+                                }
                                 let approved_call = vil_llm::provider::ToolCall {
                                     id: pending.tool_call_id.clone(),
                                     name: pending.tool_name.clone(),
@@ -605,6 +630,14 @@ Rules:
                                     .reason
                                     .unwrap_or_else(|| "User rejected".to_string());
                                 info!(tool = %pending.tool_name, reason = %reason, "Tool rejected by user");
+                                if let Some(tx) = updates {
+                                    let _ = tx.send(AgentLoopEvent::ApprovalDecision {
+                                        tool_call_id: pending.tool_call_id.clone(),
+                                        tool_name: pending.tool_name.clone(),
+                                        approved: false,
+                                        reason: Some(reason.clone()),
+                                    });
+                                }
                                 state.messages.push(Message::tool(
                                     pending.tool_name,
                                     pending.tool_call_id,
@@ -618,6 +651,14 @@ Rules:
                     Ok(None) => {
                         warn!("Approval channel closed while waiting for responses");
                         for pending in state.pending_approvals.drain(..) {
+                            if let Some(tx) = updates {
+                                let _ = tx.send(AgentLoopEvent::ApprovalDecision {
+                                    tool_call_id: pending.tool_call_id.clone(),
+                                    tool_name: pending.tool_name.clone(),
+                                    approved: false,
+                                    reason: Some("approval channel closed".to_string()),
+                                });
+                            }
                             state.messages.push(Message::tool(
                                 pending.tool_name,
                                 pending.tool_call_id,
@@ -629,6 +670,14 @@ Rules:
                     Err(_) => {
                         warn!("Approval wait timeout, rejecting remaining pending approvals");
                         for pending in state.pending_approvals.drain(..) {
+                            if let Some(tx) = updates {
+                                let _ = tx.send(AgentLoopEvent::ApprovalDecision {
+                                    tool_call_id: pending.tool_call_id.clone(),
+                                    tool_name: pending.tool_name.clone(),
+                                    approved: false,
+                                    reason: Some("approval timeout".to_string()),
+                                });
+                            }
                             state.messages.push(Message::tool(
                                 pending.tool_name,
                                 pending.tool_call_id,
@@ -640,9 +689,16 @@ Rules:
                 }
             }
         } else {
-            // No approval channel — auto-reject all pending
             warn!("Pending approvals but no approval channel, auto-rejecting");
             for pending in state.pending_approvals.drain(..) {
+                if let Some(tx) = updates {
+                    let _ = tx.send(AgentLoopEvent::ApprovalDecision {
+                        tool_call_id: pending.tool_call_id.clone(),
+                        tool_name: pending.tool_name.clone(),
+                        approved: false,
+                        reason: Some("no approval channel configured".to_string()),
+                    });
+                }
                 state.messages.push(Message::tool(
                     pending.tool_name,
                     pending.tool_call_id,
@@ -716,6 +772,20 @@ Rules:
                 .push(crate::events::AgentEvent::IterationStarted {
                     iteration: state.iterations,
                 });
+
+            let transitions = state
+                .reasoning
+                .apply(crate::reasoning_fsm::ReasoningEvent::BeginAttempt)
+                .map_err(|e| SwarmError::Orchestration(e.to_string()))?;
+            if let Some(tx) = &updates {
+                for t in transitions {
+                    let _ = tx.send(AgentLoopEvent::ReasoningTransition {
+                        from: t.from,
+                        to: t.to,
+                        attempt: t.attempt,
+                    });
+                }
+            }
             // Step 3: Context reduction
             let prev_boundary = state.trim_boundary;
             let reduced = crate::context_budget::reduce_messages(
@@ -769,6 +839,10 @@ Rules:
                     provider: "kilo".to_string(),
                     model: response.model.clone(),
                 });
+                let _ = tx.send(AgentLoopEvent::AssistantMessage {
+                    content: response.content.clone(),
+                    tool_calls: response.tool_calls.len(),
+                });
             }
 
             match response.finish_reason {
@@ -793,6 +867,7 @@ Rules:
                         response.content.clone(),
                         response.tool_calls.clone(),
                     ));
+                    let tool_msg_start = state.messages.len();
 
                     // Classify tools: Data Lane (parallel reads) / Control Lane (serial writes)
                     let (parallel_reads, serial_writes) =
@@ -831,6 +906,40 @@ Rules:
                         &mut approval_rx,
                     )
                     .await?;
+
+                    let had_error = state.messages[tool_msg_start..].iter().any(|m| {
+                        m.role == Role::Tool
+                            && (m.content.starts_with("Error:")
+                                || m.content.starts_with("Denied:")
+                                || m.content.starts_with("Rejected:"))
+                    });
+                    let obs = state
+                        .reasoning
+                        .apply(crate::reasoning_fsm::ReasoningEvent::Observe { had_error })
+                        .map_err(|e| SwarmError::Orchestration(e.to_string()))?;
+                    if let Some(tx) = &updates {
+                        for t in obs {
+                            let _ = tx.send(AgentLoopEvent::ReasoningTransition {
+                                from: t.from,
+                                to: t.to,
+                                attempt: t.attempt,
+                            });
+                        }
+                    }
+
+                    let retry = state
+                        .reasoning
+                        .apply(crate::reasoning_fsm::ReasoningEvent::SetRetry)
+                        .map_err(|e| SwarmError::Orchestration(e.to_string()))?;
+                    if let Some(tx) = &updates {
+                        for t in retry {
+                            let _ = tx.send(AgentLoopEvent::ReasoningTransition {
+                                from: t.from,
+                                to: t.to,
+                                attempt: t.attempt,
+                            });
+                        }
+                    }
 
                     if let Some(tx) = &updates {
                         let _ =
@@ -882,6 +991,10 @@ Rules:
         if let Some(sid) = session_id {
             context = context.with_session_id(sid);
         }
+
+        let workspace_ctx = ContextCrawler::new().crawl(&context.working_dir).await;
+        let workspace_prompt = workspace_ctx.to_prompt_block();
+        inject_workspace_context(&mut state.messages, workspace_prompt.clone());
 
         let tool_defs: Vec<ToolDefinition> = tool_router
             .registry()
@@ -978,6 +1091,7 @@ Rules:
 
             state.messages = vec![
                 Message::system(coder_prompt),
+                Message::system(workspace_prompt),
                 Message::user(format!("Task: {}\n\n{}", task_description, plan_context)),
             ];
             state.trim_boundary = 0;
@@ -1062,6 +1176,9 @@ Rules:
             context = context.with_session_id(sid);
         }
 
+        let workspace_ctx = ContextCrawler::new().crawl(&context.working_dir).await;
+        let workspace_prompt = workspace_ctx.to_prompt_block();
+
         let tool_defs: Vec<ToolDefinition> = tool_router
             .registry()
             .list()
@@ -1082,7 +1199,11 @@ Rules:
         } else {
             Message::user(task_description.to_string())
         };
-        let planner_messages = vec![Message::system(Self::semantic_planner_prompt()), user_msg];
+        let planner_messages = vec![
+            Message::system(Self::semantic_planner_prompt()),
+            Message::system(workspace_prompt.clone()),
+            user_msg,
+        ];
 
         let mut state = crate::run_state::AgentRunState::new(planner_messages, cancel.clone());
         state.stage = crate::run_state::RunStage::Planner;
@@ -1181,6 +1302,7 @@ Rules:
         // Reset state for coder stage — keep tokens/files, replace messages
         let coder_messages = vec![
             Message::system(coder_prompt),
+            Message::system(workspace_prompt),
             Message::user(format!("Task: {}\n\n{}", task_description, plan_context)),
         ];
         state.messages = coder_messages;

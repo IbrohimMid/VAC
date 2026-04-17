@@ -56,6 +56,7 @@ fn make_fn(name: &str, params: Vec<(&str, &str)>, ret: Option<&str>, is_async: b
         }),
         where_clauses: vec![],
         body_summary: None,
+        body_calls: vec![],
         doc_comment: None,
         line_span: (0, 0),
         vil_attrs: vec![],

@@ -5,6 +5,7 @@ use uuid::Uuid;
 use crate::tui::app::{LoadingOperation, SessionInfo};
 use crate::tui::services::Toast;
 use crate::tui::types::*;
+use std::path::PathBuf;
 
 #[derive(Debug)]
 pub enum InputEvent {
@@ -23,6 +24,8 @@ pub enum InputEvent {
     AvailableModelsLoaded(Vec<Model>),
     ShowToast(Toast),
     SetSessions(Vec<SessionInfo>),
+    SetAgentTasks(Vec<vac_runtime::AgentTask>),
+    SetAgentState(Option<vac_runtime::AgentSchedulerStateFile>),
     SetRuntimeJobs(Vec<vac_runtime::Job>),
     SetRuntimeState(Option<vac_runtime::AutopilotStateFile>),
     FileIndexReady(Vec<String>),
@@ -35,6 +38,11 @@ pub enum InputEvent {
         error: String,
     },
     McpServerState(String, vac_tools::mcp::McpConnectionState),
+    ShowBanner(
+        String,
+        crate::tui::services::banner::BannerStyle,
+        crate::tui::services::banner::BannerSeverity,
+    ),
     VilStatusUpdated(crate::tui::app::VilStatusSnapshot),
     ChangesetUpdated,
     IsolationBoundary {
@@ -168,6 +176,8 @@ impl InputEvent {
                 | InputEvent::AvailableModelsLoaded(_)
                 | InputEvent::ShowToast(_)
                 | InputEvent::SetSessions(_)
+                | InputEvent::SetAgentTasks(_)
+                | InputEvent::SetAgentState(_)
                 | InputEvent::SetRuntimeJobs(_)
                 | InputEvent::SetRuntimeState(_)
                 | InputEvent::FileIndexReady(_)
@@ -177,6 +187,7 @@ impl InputEvent {
                 | InputEvent::ShellCompleted(_, _)
                 | InputEvent::ShellWaitingForInput(_)
                 | InputEvent::McpServerState(_, _)
+                | InputEvent::ShowBanner(_, _, _)
                 | InputEvent::SessionRestored { .. }
                 | InputEvent::AddUserMessage(_)
         )
@@ -195,6 +206,8 @@ pub enum OutputEvent {
     RejectTool(ToolCall, bool, Option<String>),
     SwitchToModel(Model),
     ListSessions,
+    ListAgentTasks,
+    LoadAgentState,
     ListRuntimeJobs,
     LoadRuntimeState,
     CancelRuntimeJob(uuid::Uuid),
@@ -212,4 +225,6 @@ pub enum OutputEvent {
     ExecuteCommand(String, String), // command, active_isolation_mode
     RetryMessage(uuid::Uuid),
     RevertToMessage(uuid::Uuid),
+    ExportBundle(PathBuf),
+    ImportBundle(PathBuf),
 }

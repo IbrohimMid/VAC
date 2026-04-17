@@ -65,6 +65,16 @@ impl SecretDetector {
                 SecretType::Email,
                 Regex::new(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b").unwrap(),
             ),
+            // URL
+            (
+                SecretType::Url,
+                Regex::new(r"https?://[^\s/$.?#].[^\s]*").unwrap(),
+            ),
+            // Generic Secret
+            (
+                SecretType::GenericSecret,
+                Regex::new(r#"(?i)(bearer|secret|token)\s+([a-zA-Z0-9_\-\.]{20,})"#).unwrap(),
+            ),
         ];
 
         Self { patterns }
@@ -134,5 +144,45 @@ mod tests {
         let secrets = detector.detect(text);
         assert_eq!(secrets.len(), 1);
         assert_eq!(secrets[0].secret_type, SecretType::Email);
+    }
+
+    #[test]
+    fn test_detect_url() {
+        let detector = SecretDetector::new();
+        let text = "Visit https://example.com for more info";
+        let secrets = detector.detect(text);
+        assert_eq!(secrets.len(), 1);
+        assert_eq!(secrets[0].secret_type, SecretType::Url);
+    }
+
+    #[test]
+    fn test_detect_generic_secret() {
+        let detector = SecretDetector::new();
+        let text = "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9";
+        let secrets = detector.detect(text);
+        assert_eq!(secrets.len(), 1);
+        assert_eq!(secrets[0].secret_type, SecretType::GenericSecret);
+    }
+
+    #[test]
+    fn test_detect_api_key_assignment() {
+        let detector = SecretDetector::new();
+        let text = r#"api_key="abcdefghijklmnopqrstuvwxyz123456""#;
+        let secrets = detector.detect(text);
+        assert_eq!(secrets.len(), 1);
+        assert_eq!(secrets[0].secret_type, SecretType::ApiKey);
+        assert!(detector.contains_secrets(text));
+    }
+
+    #[test]
+    fn test_detect_aws_secret_key_assignment() {
+        let detector = SecretDetector::new();
+        let secret = "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8S9t0";
+        assert_eq!(secret.len(), 40);
+        let text = format!(r#"aws_secret="{}""#, secret);
+        let secrets = detector.detect(&text);
+        assert_eq!(secrets.len(), 1);
+        assert_eq!(secrets[0].secret_type, SecretType::AwsSecretKey);
+        assert!(detector.contains_secrets(&text));
     }
 }

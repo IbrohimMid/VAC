@@ -50,6 +50,8 @@ pub struct LlmConfig {
     pub default_provider: String,
     pub fallback_chain: Vec<String>,
     pub budget_tokens: u64,
+    /// Maximum LLM requests per minute. 0 means unlimited.
+    pub requests_per_minute: u32,
     /// Tool name → provider-or-alias (e.g. `"grep" -> "cheap"`).
     pub routing: HashMap<String, String>,
     pub providers: HashMap<String, ProviderConfig>,
@@ -69,6 +71,7 @@ impl Default for LlmConfig {
             default_provider: DEFAULT_PROVIDER.to_string(),
             fallback_chain: vec![DEFAULT_PROVIDER.to_string()],
             budget_tokens: DEFAULT_BUDGET_TOKENS,
+            requests_per_minute: 0,
             routing: HashMap::new(),
             providers: HashMap::new(),
         }
@@ -89,7 +92,9 @@ struct RawLlm {
     #[serde(default)]
     fallback_chain: Option<Vec<String>>,
     #[serde(default)]
-    budget_tokens: Option<u64>,
+    pub budget_tokens: Option<u64>,
+    #[serde(default)]
+    requests_per_minute: Option<u32>,
     #[serde(default)]
     routing: Option<HashMap<String, String>>,
     #[serde(default)]
@@ -158,6 +163,9 @@ fn merge_raw_with_defaults(raw: RawLlm) -> LlmConfig {
     let default_provider = raw.default_provider.unwrap_or(defaults.default_provider);
     let fallback_chain = raw.fallback_chain.unwrap_or(defaults.fallback_chain);
     let budget_tokens = raw.budget_tokens.unwrap_or(defaults.budget_tokens);
+    let requests_per_minute = raw
+        .requests_per_minute
+        .unwrap_or(defaults.requests_per_minute);
     let routing = raw.routing.unwrap_or_default();
     let providers = raw
         .providers
@@ -179,6 +187,7 @@ fn merge_raw_with_defaults(raw: RawLlm) -> LlmConfig {
         default_provider,
         fallback_chain,
         budget_tokens,
+        requests_per_minute,
         routing,
         providers,
     }

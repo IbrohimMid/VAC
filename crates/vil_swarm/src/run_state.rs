@@ -2,6 +2,7 @@
 //! Extracted from orchestrator.rs to formalize the control-plane state contract.
 
 use crate::events::EventCollector;
+use crate::reasoning_fsm::ReasoningStateMachine;
 use vac_tools::approvals::PendingApproval;
 use vil_llm::provider::{Message, ToolCall};
 
@@ -30,6 +31,7 @@ pub struct AgentRunState {
     pub cancel: Option<tokio_util::sync::CancellationToken>,
     /// Current stage marker for checkpoint metadata.
     pub stage: RunStage,
+    pub reasoning: ReasoningStateMachine,
     /// Active tool calls pending execution (for checkpoint restore).
     pub active_tool_calls: Vec<ToolCall>,
     /// Tool calls awaiting human approval (for checkpoint restore).
@@ -85,6 +87,7 @@ impl AgentRunState {
             collector: EventCollector::new(),
             cancel,
             stage: RunStage::Planner,
+            reasoning: ReasoningStateMachine::new(ReasoningStateMachine::DEFAULT_MAX_ATTEMPTS),
             active_tool_calls: Vec::new(),
             pending_approvals: Vec::new(),
             approved_tools: std::collections::HashSet::new(),
@@ -106,6 +109,7 @@ impl AgentRunState {
     ) -> Result<(), crate::checkpoint::CheckpointError> {
         let metadata = serde_json::json!({
             "stage": self.stage.to_string(),
+            "reasoning": self.reasoning,
             "iterations": self.iterations,
             "total_tokens": self.total_tokens,
             "trim_boundary": self.trim_boundary,
@@ -169,6 +173,12 @@ impl AgentRunState {
                 .and_then(|v| serde_json::from_value(v.clone()).ok())
                 .unwrap_or_default(),
             stage,
+            reasoning: metadata
+                .get("reasoning")
+                .and_then(|v| serde_json::from_value(v.clone()).ok())
+                .unwrap_or_else(|| {
+                    ReasoningStateMachine::new(ReasoningStateMachine::DEFAULT_MAX_ATTEMPTS)
+                }),
             cancel: None,
             collector: EventCollector::new(),
             active_tool_calls: metadata
@@ -270,6 +280,9 @@ mod tests {
         state.total_tokens = 1000;
         state.record_modified("src/main.rs".to_string());
         state.stage = RunStage::Coder;
+        let _ = state
+            .reasoning
+            .apply(crate::reasoning_fsm::ReasoningEvent::BeginAttempt);
 
         let temp_path = std::env::temp_dir().join("test_checkpoint.json");
         state.save_checkpoint(&temp_path, None).unwrap();
@@ -280,6 +293,7 @@ mod tests {
         assert_eq!(restored.modified_files.len(), 1);
         assert_eq!(restored.stage, RunStage::Coder);
         assert_eq!(restored.messages[0].content, "test task");
+        assert_eq!(restored.reasoning.attempt, 1);
 
         std::fs::remove_file(temp_path).ok();
     }

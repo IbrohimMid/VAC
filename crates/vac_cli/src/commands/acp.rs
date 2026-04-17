@@ -13,7 +13,10 @@ pub async fn execute(project_root: PathBuf, port: u16) -> anyhow::Result<()> {
 
     // Initialize engine
     let mut engine = vac_core::VacEngine::new(project_root.clone()).await?;
-    engine.init().await?;
+    let warnings = engine.init().await?;
+    for warning in warnings {
+        eprintln!("Warning: {}", warning);
+    }
     let approvals = engine.approval_handle();
     let engine = Arc::new(Mutex::new(engine));
 

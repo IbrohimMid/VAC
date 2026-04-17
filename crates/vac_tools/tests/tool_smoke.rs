@@ -31,6 +31,7 @@ async fn registers_all_builtin_tools() {
         names,
         vec![
             "bash",
+            "canonical_lint",
             "cargo",
             "file_edit",
             "file_read",
@@ -43,9 +44,13 @@ async fn registers_all_builtin_tools() {
             "sequential_think",
             "task_done",
             "todo_write",
+            "vil_audit",
             "vil_diagnostics",
+            "vil_ir_diff",
             "vil_knowledge",
             "vil_lsp_query",
+            "vil_plumbing",
+            "vil_repair",
             "vil_status",
         ]
     );

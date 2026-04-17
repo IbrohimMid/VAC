@@ -111,16 +111,11 @@ impl Message {
 /// Prompt-caching hint. Today only Anthropic `ephemeral` is meaningful — other
 /// providers ignore the field. Stored alongside `LlmRequest` instead of inline
 /// on `Message` so routing layers can flag messages without mutating them.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum CacheControlHint {
     /// Anthropic ephemeral breakpoint (`cache_control: {type: "ephemeral"}`).
+    #[default]
     Ephemeral,
-}
-
-impl Default for CacheControlHint {
-    fn default() -> Self {
-        Self::Ephemeral
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

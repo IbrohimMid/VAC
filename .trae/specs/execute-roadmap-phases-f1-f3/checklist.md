@@ -1,0 +1,10 @@
+- [x] ContextCrawler terintegrasi ke agent context dan memiliki fallback yang aman pada non-git directory
+- [x] Ask-User mendukung filter/fuzzy search dan shortcut untuk multi-select dan single-select
+- [x] Error path kritis muncul di operator surface (banner/workbench) dengan severity yang konsisten
+- [x] Reasoning loop memiliki batas percobaan, integrasi approval, dan test transisi state
+- [x] WorkbenchTab::Vil menampilkan score timeline + dependency view + log streaming minimal
+- [x] MCP preset registry dapat mengaktifkan preset, memvalidasi env, dan melaporkan kegagalan secara eksplisit
+- [x] Multi-agent scheduler berjalan dengan antrean yang terlihat di TUI dan test fairness/shutdown lulus
+- [x] Governance enforcement memblokir aksi berisiko sesuai policy dan memiliki fallback saat score belum ada
+- [x] Session bundle export/import melakukan redaction secret dan round-trip tanpa kehilangan metadata penting
+- [x] `cargo test` lulus dan ringkasan audit ulang gap vs Stakpak/Claude Code tersedia

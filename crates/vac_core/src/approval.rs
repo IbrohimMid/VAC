@@ -275,6 +275,41 @@ impl ApprovalStore {
         Ok(Some(serde_json::from_str(&content)?))
     }
 
+    pub fn write_record(&self, record: &ApprovalRecord) -> VacResult<()> {
+        std::fs::create_dir_all(&self.approvals_dir)?;
+        self.write(record)
+    }
+
+    pub fn list_by_session(&self, session_id: Uuid) -> VacResult<Vec<ApprovalRecord>> {
+        let entries = match std::fs::read_dir(&self.approvals_dir) {
+            Ok(e) => e,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(e) => return Err(e.into()),
+        };
+
+        let mut out = Vec::new();
+        for entry in entries {
+            let entry = entry?;
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("json") {
+                continue;
+            }
+            let content = match std::fs::read_to_string(&path) {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
+            let record = match serde_json::from_str::<ApprovalRecord>(&content) {
+                Ok(r) => r,
+                Err(_) => continue,
+            };
+            if record.session_id == Some(session_id) {
+                out.push(record);
+            }
+        }
+        out.sort_by_key(|r| r.created_at);
+        Ok(out)
+    }
+
     fn write(&self, record: &ApprovalRecord) -> VacResult<()> {
         let path = self.approval_path(&record.tool_call_id);
         let tmp = path.with_extension("json.tmp");

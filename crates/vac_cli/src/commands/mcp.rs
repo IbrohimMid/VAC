@@ -8,18 +8,31 @@ use vac_tools::mcp::{McpTransport, McpTrustClass};
 pub fn list(project_root: &Path) -> Result<()> {
     let config = VacConfig::load_with_fallback(project_root)?;
 
-    let servers = match &config.mcp_servers {
-        Some(servers) if !servers.is_empty() => servers,
-        _ => {
-            println!("No MCP servers configured.");
-            return Ok(());
+    let mut servers = config.mcp_servers.clone().unwrap_or_default();
+    let (preset_servers, preset_warnings) =
+        vac_tools::mcp::resolve_mcp_presets(&config.mcp_presets);
+    let has_preset_warnings = !preset_warnings.is_empty();
+    servers.extend(preset_servers);
+
+    if servers.is_empty() {
+        println!("No MCP servers configured.");
+        for w in &preset_warnings {
+            println!("  ⚠️  {}", w);
         }
-    };
+        return Ok(());
+    }
 
     println!("MCP Servers:");
     println!();
 
-    for server in servers {
+    for w in &preset_warnings {
+        println!("  ⚠️  {}", w);
+    }
+    if has_preset_warnings {
+        println!();
+    }
+
+    for server in &servers {
         let trust_badge = match server.trust_class {
             Some(McpTrustClass::LocalTrusted) => "🟢 local-trusted",
             Some(McpTrustClass::RemoteVerified) => "🟡 remote-verified",
@@ -92,20 +105,23 @@ pub fn list(project_root: &Path) -> Result<()> {
 pub async fn status(project_root: &Path) -> Result<()> {
     let config = VacConfig::load_with_fallback(project_root)?;
 
-    let servers = match &config.mcp_servers {
-        Some(servers) => servers,
-        None => {
-            println!("MCP Status:");
-            println!();
-            println!("  Total servers: 0");
-            return Ok(());
-        }
-    };
+    let mut servers = config.mcp_servers.clone().unwrap_or_default();
+    let (preset_servers, preset_warnings) =
+        vac_tools::mcp::resolve_mcp_presets(&config.mcp_presets);
+    servers.extend(preset_servers);
 
     println!("MCP Status:");
     println!();
     println!("  Total servers: {}", servers.len());
     println!();
+
+    if !preset_warnings.is_empty() {
+        println!("  Preset warnings:");
+        for w in &preset_warnings {
+            println!("    ⚠️  {}", w);
+        }
+        println!();
+    }
 
     let local_count = servers
         .iter()
@@ -131,7 +147,7 @@ pub async fn status(project_root: &Path) -> Result<()> {
 
     println!();
     println!("  Connection Status:");
-    for server in servers {
+    for server in &servers {
         let state = vac_tools::mcp::probe_mcp_server(server).await;
         let status_badge = if state.is_connected() {
             "✅ connected"

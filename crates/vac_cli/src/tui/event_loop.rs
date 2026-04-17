@@ -326,6 +326,22 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
 
     // Ask-User popup intercepts all input when visible
     if state.show_ask_user_popup {
+        let kind = state.ask_user_question_kind;
+        let has_options = !state.ask_user_options.is_empty();
+        let max_visible = 10usize;
+        let filtered = crate::tui::services::ask_user::filtered_option_indices(
+            &state.ask_user_filter,
+            &state.ask_user_options,
+        );
+        let selected_pos = if filtered.is_empty() {
+            0
+        } else {
+            filtered
+                .iter()
+                .position(|&i| i == state.ask_user_selected)
+                .unwrap_or(0)
+        };
+
         match event {
             InputEvent::HandleEsc => {
                 // Cancel: send an error-status tool result and close popup.
@@ -351,27 +367,77 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                 state.ask_user_question = None;
                 state.ask_user_options.clear();
                 state.ask_user_input.clear();
+                state.ask_user_multi_selected.clear();
+                state.ask_user_metadata.clear();
+                state.ask_user_filter.clear();
+                state.ask_user_search_active = false;
+                state.ask_user_scroll = 0;
+                return;
+            }
+            InputEvent::Tab => {
+                if has_options {
+                    state.ask_user_search_active = !state.ask_user_search_active;
+                }
                 return;
             }
             InputEvent::Up | InputEvent::ScrollUp => {
-                state.ask_user_selected = state.ask_user_selected.saturating_sub(1);
+                if !filtered.is_empty() && selected_pos > 0 {
+                    let new_pos = selected_pos - 1;
+                    state.ask_user_selected = filtered[new_pos];
+                    state.ask_user_scroll = state.ask_user_scroll.min(new_pos);
+                }
                 return;
             }
             InputEvent::Down | InputEvent::ScrollDown => {
-                if !state.ask_user_options.is_empty() {
-                    let max_idx = state.ask_user_options.len().saturating_sub(1);
-                    if state.ask_user_selected < max_idx {
-                        state.ask_user_selected += 1;
+                if !filtered.is_empty() && selected_pos + 1 < filtered.len() {
+                    let new_pos = selected_pos + 1;
+                    state.ask_user_selected = filtered[new_pos];
+                    let max_scroll = filtered.len().saturating_sub(1);
+                    state.ask_user_scroll = state.ask_user_scroll.min(max_scroll);
+                    if new_pos >= state.ask_user_scroll.saturating_add(max_visible) {
+                        state.ask_user_scroll = new_pos + 1 - max_visible;
                     }
                 }
                 return;
             }
             InputEvent::InputChanged(c) => {
+                if state.ask_user_search_active {
+                    state.ask_user_filter.push(c);
+                    state.ask_user_scroll = 0;
+                    let filtered = crate::tui::services::ask_user::filtered_option_indices(
+                        &state.ask_user_filter,
+                        &state.ask_user_options,
+                    );
+                    if let Some(&first) = filtered.first() {
+                        state.ask_user_selected = first;
+                    }
+                    return;
+                }
+
+                if kind == crate::tui::services::ask_user::AskUserQuestionKind::MultiSelect
+                    && c == ' '
+                    && !filtered.is_empty()
+                {
+                    if state
+                        .ask_user_multi_selected
+                        .contains(&state.ask_user_selected)
+                    {
+                        state
+                            .ask_user_multi_selected
+                            .remove(&state.ask_user_selected);
+                    } else {
+                        state
+                            .ask_user_multi_selected
+                            .insert(state.ask_user_selected);
+                    }
+                    return;
+                }
+
                 // Number shortcut: 1-9 selects options[n-1] when free-text is empty.
                 if state.ask_user_input.is_empty() && c.is_ascii_digit() && c != '0' {
                     let idx = (c as u8 - b'1') as usize;
-                    if idx < state.ask_user_options.len() {
-                        state.ask_user_selected = idx;
+                    if idx < filtered.len() {
+                        state.ask_user_selected = filtered[idx];
                         return;
                     }
                 }
@@ -384,22 +450,48 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                 return;
             }
             InputEvent::InputBackspace => {
+                if state.ask_user_search_active {
+                    state.ask_user_filter.pop();
+                    state.ask_user_scroll = 0;
+                    let filtered = crate::tui::services::ask_user::filtered_option_indices(
+                        &state.ask_user_filter,
+                        &state.ask_user_options,
+                    );
+                    if let Some(&first) = filtered.first() {
+                        state.ask_user_selected = first;
+                    }
+                    return;
+                }
                 if state.ask_user_allow_free_text {
                     state.ask_user_input.pop();
                 }
                 return;
             }
-            InputEvent::InputSubmitted => {
-                // When free text is disabled, ignore `ask_user_input` and
-                // always resolve to the selected option's id.
-                let answer =
-                    if state.ask_user_allow_free_text && !state.ask_user_input.trim().is_empty() {
-                        state.ask_user_input.trim().to_string()
-                    } else if let Some(opt) = state.ask_user_options.get(state.ask_user_selected) {
-                        opt.id.clone()
+            InputEvent::InputClear => {
+                if state.ask_user_search_active {
+                    state.ask_user_filter.clear();
+                    state.ask_user_scroll = 0;
+                    return;
+                }
+                if kind == crate::tui::services::ask_user::AskUserQuestionKind::MultiSelect {
+                    state.ask_user_multi_selected.clear();
+                } else if state.ask_user_allow_free_text {
+                    state.ask_user_input.clear();
+                }
+                return;
+            }
+            InputEvent::InputCursorStart => {
+                if kind == crate::tui::services::ask_user::AskUserQuestionKind::MultiSelect {
+                    let indices = if state.ask_user_filter.trim().is_empty() {
+                        (0..state.ask_user_options.len()).collect::<Vec<_>>()
                     } else {
-                        String::new()
+                        filtered.clone()
                     };
+                    state.ask_user_multi_selected = indices.into_iter().collect();
+                }
+                return;
+            }
+            InputEvent::InputSubmitted => {
                 if let Some(tc_id) = state.ask_user_tool_call_id.take() {
                     let tool_call = crate::tui::types::ToolCall {
                         id: tc_id.clone(),
@@ -410,6 +502,12 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                         },
                         metadata: None,
                     };
+                    let payload = crate::tui::services::ask_user::build_answer(
+                        state,
+                        &state.ask_user_multi_selected,
+                    );
+                    let answer =
+                        serde_json::to_string(&payload).unwrap_or_else(|_| payload.to_string());
                     let result = crate::tui::types::ToolCallResult {
                         call: tool_call,
                         result: answer.clone(),
@@ -417,15 +515,22 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                     };
                     let _ =
                         output_tx.try_send(OutputEvent::SendToolResult(result, false, Vec::new()));
+                    let question = state.ask_user_question.clone().unwrap_or_default();
+                    let summary = crate::tui::services::ask_user::answer_summary(state, &filtered);
                     state.push_activity(
                         crate::tui::app::ActivityKind::Approval,
-                        format!("User replied: {}", answer),
+                        crate::tui::services::ask_user::transcript_annotation(&question, &summary),
                     );
                 }
                 state.show_ask_user_popup = false;
                 state.ask_user_question = None;
                 state.ask_user_options.clear();
                 state.ask_user_input.clear();
+                state.ask_user_multi_selected.clear();
+                state.ask_user_metadata.clear();
+                state.ask_user_filter.clear();
+                state.ask_user_search_active = false;
+                state.ask_user_scroll = 0;
                 return;
             }
             _ => {}
@@ -691,12 +796,20 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                                 state.focus = crate::tui::app::WorkspaceFocus::Workbench;
                                 let _ = output_tx.try_send(OutputEvent::ListRuntimeJobs);
                                 let _ = output_tx.try_send(OutputEvent::LoadRuntimeState);
+                            } else if cmd.command == "/agents" {
+                                state.workbench_tab = crate::tui::app::WorkbenchTab::Agents;
+                                state.focus = crate::tui::app::WorkspaceFocus::Workbench;
+                                let _ = output_tx.try_send(OutputEvent::ListAgentTasks);
+                                let _ = output_tx.try_send(OutputEvent::LoadAgentState);
                             } else if cmd.command == "/shell" {
                                 state.add_user_message(cmd.command.clone());
-                                let _ = output_tx.try_send(OutputEvent::ExecuteCommand(
-                                    String::new(),
-                                    state.active_isolation_mode.clone(),
-                                ));
+                                let shell_cmd = String::new();
+                                if policy_gate_allows_shell_command(state, &shell_cmd) {
+                                    let _ = output_tx.try_send(OutputEvent::ExecuteCommand(
+                                        shell_cmd,
+                                        state.active_isolation_mode.clone(),
+                                    ));
+                                }
                             } else if cmd.command == "/shell-focus" {
                                 if state.active_shell_command.is_some() {
                                     state.shell_popup_visible = true;
@@ -1162,7 +1275,10 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                 state.focus = crate::tui::app::WorkspaceFocus::Workbench;
             }
             state.workbench_tab = state.workbench_tab.next();
-            if state.workbench_tab == crate::tui::app::WorkbenchTab::Runtime {
+            if state.workbench_tab == crate::tui::app::WorkbenchTab::Agents {
+                let _ = output_tx.try_send(OutputEvent::ListAgentTasks);
+                let _ = output_tx.try_send(OutputEvent::LoadAgentState);
+            } else if state.workbench_tab == crate::tui::app::WorkbenchTab::Runtime {
                 let _ = output_tx.try_send(OutputEvent::ListRuntimeJobs);
                 let _ = output_tx.try_send(OutputEvent::LoadRuntimeState);
             }
@@ -1230,7 +1346,7 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                         _ => {}
                     },
                     crate::tui::app::WorkbenchTab::Review => {}
-                    crate::tui::app::WorkbenchTab::VilIssues => {
+                    crate::tui::app::WorkbenchTab::Vil => {
                         use crate::tui::handlers::vil_workbench;
                         let mut ctx = HandlerContext::new(state, output_tx);
                         match c {
@@ -1290,6 +1406,12 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                                     ));
                                 }
                             }
+                        }
+                    }
+                    crate::tui::app::WorkbenchTab::Agents => {
+                        if c == 'r' {
+                            let _ = output_tx.try_send(OutputEvent::ListAgentTasks);
+                            let _ = output_tx.try_send(OutputEvent::LoadAgentState);
                         }
                     }
                     crate::tui::app::WorkbenchTab::Runtime => match c {
@@ -1454,10 +1576,12 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                                 } else if cmd.command == "/shell" {
                                     state.add_user_message(trimmed.to_string());
                                     let shell_cmd = cmd_args.unwrap_or_default().to_string();
-                                    let _ = output_tx.try_send(OutputEvent::ExecuteCommand(
-                                        shell_cmd,
-                                        state.active_isolation_mode.clone(),
-                                    ));
+                                    if policy_gate_allows_shell_command(state, &shell_cmd) {
+                                        let _ = output_tx.try_send(OutputEvent::ExecuteCommand(
+                                            shell_cmd,
+                                            state.active_isolation_mode.clone(),
+                                        ));
+                                    }
                                 } else if cmd.command == "/shell-focus" {
                                     state.shell_popup_visible =
                                         state.active_shell_command.is_some();
@@ -1473,6 +1597,47 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                                     }
                                 } else if cmd.command == "/new" {
                                     let _ = output_tx.try_send(OutputEvent::NewSession);
+                                } else if cmd.command == "/export" {
+                                    state.add_user_message(trimmed.to_string());
+                                    let output_path = cmd_args
+                                        .map(std::path::PathBuf::from)
+                                        .map(|p| {
+                                            if p.is_absolute() {
+                                                p
+                                            } else {
+                                                state.project_root.join(p)
+                                            }
+                                        })
+                                        .unwrap_or_else(|| {
+                                            state
+                                                .project_root
+                                                .join(".vac/exports/session.bundle.json")
+                                        });
+                                    state.toasts.push(crate::tui::services::Toast::info(
+                                        "Mengekspor bundle...".to_string(),
+                                    ));
+                                    let _ =
+                                        output_tx.try_send(OutputEvent::ExportBundle(output_path));
+                                } else if cmd.command == "/import" {
+                                    state.add_user_message(trimmed.to_string());
+                                    let Some(arg) = cmd_args else {
+                                        state.toasts.push(crate::tui::services::Toast::error(
+                                            "Gunakan: /import <path>".to_string(),
+                                        ));
+                                        state.add_assistant_message(
+                                            "Gunakan: /import <path>".to_string(),
+                                        );
+                                        return;
+                                    };
+                                    let mut input_path = std::path::PathBuf::from(arg);
+                                    if !input_path.is_absolute() {
+                                        input_path = state.project_root.join(input_path);
+                                    }
+                                    state.toasts.push(crate::tui::services::Toast::info(
+                                        "Mengimpor bundle...".to_string(),
+                                    ));
+                                    let _ =
+                                        output_tx.try_send(OutputEvent::ImportBundle(input_path));
                                 } else if cmd.command == "/review" {
                                     state.add_user_message(trimmed.to_string());
                                     let mut ctx = HandlerContext::new(state, output_tx);
@@ -1736,6 +1901,10 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                 crate::tui::app::WorkbenchTab::Sessions => {
                     state.sessions_selected_idx = state.sessions_selected_idx.saturating_sub(1);
                 }
+                crate::tui::app::WorkbenchTab::Agents => {
+                    state.agent_selected_idx = state.agent_selected_idx.saturating_sub(1);
+                    state.agent_detail_scroll = 0;
+                }
                 crate::tui::app::WorkbenchTab::Runtime => {
                     state.runtime_selected_idx = state.runtime_selected_idx.saturating_sub(1);
                     state.runtime_detail_scroll = 0;
@@ -1745,7 +1914,7 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                     let _ = review_handler::select_prev(&mut ctx);
                 }
                 crate::tui::app::WorkbenchTab::Plan => {}
-                crate::tui::app::WorkbenchTab::VilIssues => {
+                crate::tui::app::WorkbenchTab::Vil => {
                     let mut ctx = HandlerContext::new(state, output_tx);
                     let _ = crate::tui::handlers::vil_workbench::select_prev(&mut ctx);
                 }
@@ -1790,6 +1959,12 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                         state.sessions_selected_idx += 1;
                     }
                 }
+                crate::tui::app::WorkbenchTab::Agents => {
+                    if state.agent_selected_idx + 1 < state.agent_tasks.len() {
+                        state.agent_selected_idx += 1;
+                        state.agent_detail_scroll = 0;
+                    }
+                }
                 crate::tui::app::WorkbenchTab::Runtime => {
                     if state.runtime_selected_idx + 1 < state.runtime_jobs.len() {
                         state.runtime_selected_idx += 1;
@@ -1801,7 +1976,7 @@ fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
                     let _ = review_handler::select_next(&mut ctx);
                 }
                 crate::tui::app::WorkbenchTab::Plan => {}
-                crate::tui::app::WorkbenchTab::VilIssues => {
+                crate::tui::app::WorkbenchTab::Vil => {
                     let mut ctx = HandlerContext::new(state, output_tx);
                     let _ = crate::tui::handlers::vil_workbench::select_next(&mut ctx);
                 }
@@ -2136,15 +2311,23 @@ fn open_ask_user_popup(state: &mut AppState, tc: &crate::tui::types::ToolCall) {
     let args = crate::tui::services::ask_user::parse_args(&tc.function.arguments);
     // Default policy: allow free-text iff the caller opts in OR no options
     // were supplied (otherwise the user would have no way to answer).
-    let (question, options, allow_free_text) = match args {
+    let (question, options, allow_free_text, kind, metadata) = match args {
         Some(a) => {
-            let free = a.allow_free_text || a.options.is_empty();
-            (Some(a.question), a.options, free)
+            let k = a.effective_kind();
+            let free = matches!(
+                k,
+                crate::tui::services::ask_user::AskUserQuestionKind::FreeText
+                    | crate::tui::services::ask_user::AskUserQuestionKind::Mixed
+            ) || a.allow_free_text
+                || a.options.is_empty();
+            (Some(a.question), a.options, free, k, a.metadata)
         }
         None => (
             Some("The assistant needs more information.".to_string()),
             Vec::new(),
             true,
+            crate::tui::services::ask_user::AskUserQuestionKind::FreeText,
+            std::collections::HashMap::new(),
         ),
     };
     state.ask_user_question = question;
@@ -2152,6 +2335,12 @@ fn open_ask_user_popup(state: &mut AppState, tc: &crate::tui::types::ToolCall) {
     state.ask_user_selected = 0;
     state.ask_user_input.clear();
     state.ask_user_allow_free_text = allow_free_text;
+    state.ask_user_question_kind = kind;
+    state.ask_user_metadata = metadata;
+    state.ask_user_multi_selected.clear();
+    state.ask_user_filter.clear();
+    state.ask_user_search_active = false;
+    state.ask_user_scroll = 0;
     state.ask_user_tool_call_id = Some(tc.id.clone());
     state.show_ask_user_popup = true;
     state.push_activity(
@@ -2178,6 +2367,133 @@ fn is_low_risk_tool(tool_name: &str) -> bool {
             | "vil_plumbing"
             | "vil_repair"
     )
+}
+
+fn is_vil_tool(tool_name: &str) -> bool {
+    tool_name.starts_with("vil_")
+}
+
+fn truncate_banner_text(text: &str, max_chars: usize) -> String {
+    if text.chars().count() <= max_chars {
+        return text.to_string();
+    }
+    text.chars()
+        .take(max_chars.saturating_sub(1))
+        .chain(std::iter::once('…'))
+        .collect()
+}
+
+fn classify_critical_banner(
+    text: &str,
+) -> Option<(
+    crate::tui::services::banner::BannerStyle,
+    crate::tui::services::banner::BannerSeverity,
+)> {
+    let lower = text.to_ascii_lowercase();
+    let tls_related = lower.contains("tls")
+        || lower.contains("certificate")
+        || lower.contains("ca file")
+        || lower.contains("mtls")
+        || lower.contains("server_name")
+        || lower.contains("identity");
+
+    if lower.contains("warden blocked")
+        || lower.contains("trust/policy violation")
+        || lower.contains("permission denied")
+        || lower.contains("blocked:")
+        || lower.contains("blocked by")
+    {
+        return Some((
+            crate::tui::services::banner::BannerStyle::Error,
+            crate::tui::services::banner::BannerSeverity::Blocking,
+        ));
+    }
+
+    if lower.contains("failed to connect mcp server") || lower.contains("mcp error") {
+        return Some(if tls_related {
+            (
+                crate::tui::services::banner::BannerStyle::Error,
+                crate::tui::services::banner::BannerSeverity::Blocking,
+            )
+        } else {
+            (
+                crate::tui::services::banner::BannerStyle::Warning,
+                crate::tui::services::banner::BannerSeverity::Suggested,
+            )
+        });
+    }
+
+    if lower.contains("agent loop exceeded")
+        || lower.contains("iterations without completing")
+        || lower.contains("max iterations")
+    {
+        return Some((
+            crate::tui::services::banner::BannerStyle::Error,
+            crate::tui::services::banner::BannerSeverity::Blocking,
+        ));
+    }
+
+    if lower.contains("rate limited") || lower.contains("retry after") || lower.contains("429") {
+        return Some((
+            crate::tui::services::banner::BannerStyle::Warning,
+            crate::tui::services::banner::BannerSeverity::Suggested,
+        ));
+    }
+
+    if lower.contains("all providers in fallback chain failed")
+        || lower.contains("maximum retry attempts")
+        || lower.contains("max retry")
+    {
+        return Some((
+            crate::tui::services::banner::BannerStyle::Error,
+            crate::tui::services::banner::BannerSeverity::Suggested,
+        ));
+    }
+
+    None
+}
+
+fn push_banner_direct(
+    state: &mut AppState,
+    text: String,
+    style: crate::tui::services::banner::BannerStyle,
+    severity: crate::tui::services::banner::BannerSeverity,
+) {
+    let msg = crate::tui::services::banner::BannerMessage::new(text, style).with_severity(severity);
+    state.banner_queue.push(msg);
+    state.banner_message = state.banner_queue.current().cloned();
+}
+
+fn policy_gate_allows_shell_command(state: &mut AppState, cmd: &str) -> bool {
+    let Ok(config) = vac_core::VacConfig::load_with_fallback(&state.project_root) else {
+        return true;
+    };
+    let Some(action) = vac_core::policy_gate::classify_shell_command(cmd) else {
+        return true;
+    };
+    let decision =
+        vac_core::policy_gate::evaluate(&config.policy_gate, action, state.last_validation_score);
+    match decision {
+        vac_core::policy_gate::PolicyGateDecision::Allow => true,
+        vac_core::policy_gate::PolicyGateDecision::Warn(msg) => {
+            push_banner_direct(
+                state,
+                truncate_banner_text(&msg, 140),
+                crate::tui::services::banner::BannerStyle::Warning,
+                crate::tui::services::banner::BannerSeverity::Suggested,
+            );
+            true
+        }
+        vac_core::policy_gate::PolicyGateDecision::Block(msg) => {
+            push_banner_direct(
+                state,
+                truncate_banner_text(&msg, 140),
+                crate::tui::services::banner::BannerStyle::Error,
+                crate::tui::services::banner::BannerSeverity::Blocking,
+            );
+            false
+        }
+    }
 }
 
 fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, event: InputEvent) {
@@ -2230,6 +2546,13 @@ fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, e
             );
         }
         InputEvent::Error(msg) => {
+            if let Some((style, severity)) = classify_critical_banner(&msg) {
+                push_banner_direct(state, truncate_banner_text(&msg, 140), style, severity);
+            }
+            let lower = msg.to_ascii_lowercase();
+            if lower.contains("vil") || lower.contains("ir") || lower.contains("rulebook") {
+                state.push_vil_log(format!("error: {}", truncate_banner_text(&msg, 120)));
+            }
             state.add_assistant_message(format!("Error: {}", msg));
             state
                 .toasts
@@ -2247,7 +2570,21 @@ fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, e
         InputEvent::AvailableModelsLoaded(models) => {
             state.available_models = models;
         }
+        InputEvent::ShowBanner(text, style, severity) => {
+            let msg = crate::tui::services::banner::BannerMessage::new(text, style)
+                .with_severity(severity);
+            state.banner_queue.push(msg);
+            state.banner_message = state.banner_queue.current().cloned();
+        }
         InputEvent::ShowToast(toast) => {
+            let lower = toast.message.to_ascii_lowercase();
+            if lower.contains("vil")
+                || lower.contains("rulebook")
+                || lower.contains("archetype")
+                || lower.contains("ir")
+            {
+                state.push_vil_log(toast.message.clone());
+            }
             state.toasts.push(toast);
             if state.toasts.len() > 3 {
                 state.toasts.drain(0..state.toasts.len().saturating_sub(3));
@@ -2257,6 +2594,17 @@ fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, e
             state.sessions = sessions;
             state.sessions_selected_idx = 0;
             state.push_activity(crate::tui::app::ActivityKind::Session, "Sessions updated");
+        }
+        InputEvent::SetAgentTasks(tasks) => {
+            state.agent_tasks = tasks;
+            if state.agent_selected_idx >= state.agent_tasks.len() {
+                state.agent_selected_idx = state.agent_tasks.len().saturating_sub(1);
+            }
+            state.push_activity(crate::tui::app::ActivityKind::Status, "Agent queue updated");
+        }
+        InputEvent::SetAgentState(snapshot) => {
+            state.agent_state_snapshot = snapshot;
+            state.push_activity(crate::tui::app::ActivityKind::Status, "Agent state updated");
         }
         InputEvent::SetRuntimeJobs(jobs) => {
             state.runtime_jobs = jobs;
@@ -2360,6 +2708,20 @@ fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, e
                 || id == "system"
             {
                 state.shell_output.push_str(&text);
+
+                // Truncate to 1MB circular buffer
+                let max_size = 1024 * 1024;
+                if state.shell_output.len() > max_size {
+                    let keep_len = max_size - 128 * 1024; // Keep ~900KB to avoid shifting on every push
+                    let mut safe_idx = state.shell_output.len() - keep_len;
+                    while safe_idx < state.shell_output.len()
+                        && !state.shell_output.is_char_boundary(safe_idx)
+                    {
+                        safe_idx += 1;
+                    }
+                    state.shell_output = state.shell_output[safe_idx..].to_string();
+                }
+
                 // Unit 6: detect prompt-ready and password-mode from output
                 state.shell_prompt_ready =
                     crate::tui::services::shell_mode::detect_prompt_ready(&state.shell_output);
@@ -2387,6 +2749,19 @@ fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, e
                 state
                     .shell_output
                     .push_str(&format!("[shell error] {text}\n"));
+
+                let max_size = 1024 * 1024;
+                if state.shell_output.len() > max_size {
+                    let keep_len = max_size - 128 * 1024;
+                    let mut safe_idx = state.shell_output.len() - keep_len;
+                    while safe_idx < state.shell_output.len()
+                        && !state.shell_output.is_char_boundary(safe_idx)
+                    {
+                        safe_idx += 1;
+                    }
+                    state.shell_output = state.shell_output[safe_idx..].to_string();
+                }
+
                 state.shell_last_error = Some(text.clone());
                 state.shell_lifecycle =
                     crate::tui::services::shell_mode::ShellLifecycle::Error(text.clone());
@@ -2444,9 +2819,33 @@ fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, e
             );
         }
         InputEvent::McpServerState(name, conn_state) => {
+            if matches!(
+                conn_state.status,
+                vac_tools::mcp::McpConnectionStatus::Unreachable(_)
+            ) {
+                let reason = match &conn_state.status {
+                    vac_tools::mcp::McpConnectionStatus::Unreachable(r) => r.clone(),
+                    _ => String::new(),
+                };
+                push_banner_direct(
+                    state,
+                    truncate_banner_text(
+                        &format!("MCP server '{name}' unreachable: {reason}"),
+                        140,
+                    ),
+                    crate::tui::services::banner::BannerStyle::Warning,
+                    crate::tui::services::banner::BannerSeverity::Suggested,
+                );
+            }
             state.mcp_server_states.insert(name, conn_state);
         }
         InputEvent::VilStatusUpdated(snapshot) => {
+            state.record_vil_score(snapshot.validation_score);
+            state.push_vil_log(format!(
+                "vil_status score={:.2} issues={}",
+                snapshot.validation_score,
+                snapshot.validation_issues.len()
+            ));
             state.vil_status = snapshot;
             state.push_activity(
                 crate::tui::app::ActivityKind::Status,
@@ -2579,6 +2978,9 @@ fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, e
             state.changeset_store.clear();
             state.modified_files = state.changeset_store.modified_files(); // derived: empty after clear
             state.changeset_diff = None;
+            state.vil_score_history.clear();
+            state.vil_event_log.clear();
+            state.last_validation_score = None;
             state.workbench_tab = crate::tui::app::WorkbenchTab::Approvals;
             state.focus = crate::tui::app::WorkspaceFocus::Input;
             state.push_activity(crate::tui::app::ActivityKind::Session, "Session restored");
@@ -2632,17 +3034,39 @@ fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, e
                 crate::tui::app::ActivityKind::Tool,
                 format!("Tool started: {}", tc.function.name),
             );
+            if is_vil_tool(&tc.function.name) {
+                state.push_vil_log(format!("tool start {}", tc.function.name));
+            }
         }
         InputEvent::ToolResult(result) => {
             state.pending_tool_calls.retain(|c| c.id != result.call.id);
             state.approved_tools.retain(|c| c.id != result.call.id);
+            if result.status == crate::tui::types::ToolCallResultStatus::Error {
+                if let Some((style, severity)) = classify_critical_banner(&result.result) {
+                    push_banner_direct(
+                        state,
+                        truncate_banner_text(&result.result, 140),
+                        style,
+                        severity,
+                    );
+                }
+            }
             state.add_assistant_message(result.result);
             state.push_activity(
                 crate::tui::app::ActivityKind::Tool,
                 format!("Tool result: {}", result.call.function.name),
             );
+            if is_vil_tool(&result.call.function.name) {
+                let status = match result.status {
+                    crate::tui::types::ToolCallResultStatus::Success => "ok",
+                    crate::tui::types::ToolCallResultStatus::Error => "error",
+                    crate::tui::types::ToolCallResultStatus::Pending => "pending",
+                };
+                state.push_vil_log(format!("tool {status} {}", result.call.function.name));
+            }
         }
         InputEvent::TaskCompleted(result) => {
+            state.last_validation_score = result.validation_score;
             // Real usage wiring: `vac_core::task::TaskResult.total_tokens_used`
             // is the authoritative producer. We record this turn's total, add
             // to session running total, and derive a coarse context %.
@@ -2823,6 +3247,117 @@ mod tests {
         });
         handle_input_event(&mut state, &tx, InputEvent::PageDown);
         assert!(state.review_diff.as_ref().unwrap().scroll > 0);
+    }
+
+    #[tokio::test]
+    async fn ask_user_filter_and_shortcuts_update_state_and_send_structured_result() {
+        let dir = tempfile::tempdir().unwrap();
+        let (tx, mut rx) = tokio::sync::mpsc::channel(4);
+        let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
+
+        let args = r#"{
+            "question": "Pick tags",
+            "options": [
+                {"id":"a","label":"Alpha"},
+                {"id":"b","label":"Beta"},
+                {"id":"c","label":"Gamma"}
+            ],
+            "kind": "multi_select",
+            "allow_free_text": false,
+            "metadata": {"source":"test"}
+        }"#;
+        let tc = ToolCall {
+            id: "tc_ask_1".to_string(),
+            r#type: "function".to_string(),
+            function: FunctionCall {
+                name: crate::tui::services::ask_user::ASK_USER_TOOL_NAME.to_string(),
+                arguments: args.to_string(),
+            },
+            metadata: None,
+        };
+        open_ask_user_popup(&mut state, &tc);
+        assert!(state.show_ask_user_popup);
+        assert_eq!(
+            state.ask_user_question_kind,
+            crate::tui::services::ask_user::AskUserQuestionKind::MultiSelect
+        );
+        assert_eq!(state.ask_user_metadata.get("source").unwrap(), "test");
+
+        handle_input_event(&mut state, &tx, InputEvent::Tab);
+        assert!(state.ask_user_search_active);
+        handle_input_event(&mut state, &tx, InputEvent::InputChanged('b'));
+        assert_eq!(state.ask_user_filter, "b");
+        assert_eq!(state.ask_user_selected, 1);
+
+        handle_input_event(&mut state, &tx, InputEvent::Tab);
+        assert!(!state.ask_user_search_active);
+
+        handle_input_event(&mut state, &tx, InputEvent::InputCursorStart);
+        assert!(state.ask_user_multi_selected.contains(&1));
+        assert_eq!(state.ask_user_multi_selected.len(), 1);
+
+        handle_input_event(&mut state, &tx, InputEvent::InputClear);
+        assert!(state.ask_user_multi_selected.is_empty());
+
+        handle_input_event(&mut state, &tx, InputEvent::InputSubmitted);
+        let ev = rx.recv().await.unwrap();
+        let OutputEvent::SendToolResult(res, _, _) = ev else {
+            panic!("expected SendToolResult");
+        };
+        assert_eq!(res.status, crate::tui::types::ToolCallResultStatus::Success);
+        let parsed: serde_json::Value = serde_json::from_str(&res.result).unwrap();
+        assert_eq!(parsed["kind"], "multi_select");
+        assert_eq!(parsed["selected"].as_array().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn critical_banner_mcp_tls_is_blocking() {
+        let msg = "Failed to connect MCP server 'github': MCP error: Failed to build HTTP client for MCP server 'github': error setting certificate verify locations";
+        let out = classify_critical_banner(msg);
+        assert_eq!(
+            out,
+            Some((
+                crate::tui::services::banner::BannerStyle::Error,
+                crate::tui::services::banner::BannerSeverity::Blocking
+            ))
+        );
+    }
+
+    #[test]
+    fn critical_banner_governance_block_is_blocking() {
+        let msg = "Tool execution error: Warden blocked: process substitution $() not allowed";
+        let out = classify_critical_banner(msg);
+        assert_eq!(
+            out,
+            Some((
+                crate::tui::services::banner::BannerStyle::Error,
+                crate::tui::services::banner::BannerSeverity::Blocking
+            ))
+        );
+    }
+
+    #[test]
+    fn shell_output_is_bounded() {
+        let dir = tempfile::tempdir().unwrap();
+        let (tx, _rx) = tokio::sync::mpsc::channel(4);
+        let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
+
+        let (stdin_tx, _stdin_rx) = tokio::sync::mpsc::channel::<String>(1);
+        let shell = crate::tui::services::ShellCommand {
+            id: "shell-1".to_string(),
+            command: "sh".to_string(),
+            stdin_tx,
+        };
+        handle_backend_event(&mut state, &tx, InputEvent::ShellStarted(shell.clone()));
+
+        let big = "x".repeat(2 * 1024 * 1024);
+        handle_backend_event(
+            &mut state,
+            &tx,
+            InputEvent::ShellOutput(shell.id.clone(), big),
+        );
+        assert!(state.shell_output.len() <= 1024 * 1024);
+        assert!(state.shell_output.chars().all(|c| c == 'x'));
     }
 
     #[tokio::test]
@@ -4039,6 +4574,18 @@ mod tests {
         let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
         state.focus = crate::tui::app::WorkspaceFocus::Workbench;
         state.workbench_tab = crate::tui::app::WorkbenchTab::Sessions;
+
+        handle_input_event(&mut state, &tx, InputEvent::WorkbenchNextTab);
+
+        assert_eq!(state.workbench_tab, crate::tui::app::WorkbenchTab::Agents);
+        assert!(matches!(
+            rx.recv().await.unwrap(),
+            OutputEvent::ListAgentTasks
+        ));
+        assert!(matches!(
+            rx.recv().await.unwrap(),
+            OutputEvent::LoadAgentState
+        ));
 
         handle_input_event(&mut state, &tx, InputEvent::WorkbenchNextTab);
 

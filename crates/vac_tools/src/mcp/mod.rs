@@ -1,4 +1,5 @@
 pub mod client;
+pub mod presets;
 pub mod server;
 
 use serde::{Deserialize, Serialize};
@@ -203,6 +204,7 @@ impl McpServerConfig {
 }
 
 pub use client::McpClient;
+pub use presets::{McpPresetInstanceConfig, McpServerPreset, resolve_mcp_presets};
 pub use server::McpServer;
 
 #[cfg(test)]

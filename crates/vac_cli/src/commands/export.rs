@@ -12,6 +12,7 @@ pub async fn execute(
         project_root.join(format!(
             ".vac/exports/session.{}",
             match format.as_str() {
+                "bundle-json" | "bundle" => "bundle.json",
                 "opencode-json" => "json",
                 "claude-jsonl" => "jsonl",
                 _ => "vac",
@@ -28,7 +29,7 @@ pub async fn execute(
     let session = vac_core::Session::load_latest(&project_root)?
         .ok_or_else(|| anyhow::anyhow!("No session found. Run a task first."))?;
 
-    // Load trace records if available
+    // Load trace records if available (only needed for trace-based formats)
     let trace_path = project_root
         .join(".vac/traces")
         .join(format!("{}.json", session.id));
@@ -36,7 +37,6 @@ pub async fn execute(
         let content = std::fs::read_to_string(&trace_path)?;
         serde_json::from_str::<Vec<vac_trace::recorder::TraceRecord>>(&content)?
     } else {
-        println!("   ⚠️  No trace records found for this session.");
         Vec::new()
     };
 
@@ -47,8 +47,21 @@ pub async fn execute(
 
     // Export based on format
     match format.as_str() {
+        "bundle-json" | "bundle" => {
+            println!("   🧳 Exporting as bundle (redacted)...");
+            vac_core::bundle::export_bundle_to_path(
+                &project_root,
+                Some(session.id),
+                Some(&output_path),
+                true,
+            )?;
+            println!("   ✓ Exported as bundle JSON");
+        }
         "vac-cbor" => {
             println!("   💾 Exporting as VAC CBOR...");
+            if records.is_empty() {
+                println!("   ⚠️  No trace records found for this session.");
+            }
             vac_trace::exporter::export_vac(
                 &session.id.to_string(),
                 records,
@@ -66,13 +79,16 @@ pub async fn execute(
         }
         "claude-jsonl" => {
             println!("   🤖 Exporting as Claude JSONL...");
+            if records.is_empty() {
+                println!("   ⚠️  No trace records found for this session.");
+            }
             vac_trace::exporter::export_claude_jsonl(&records, &output_path)
                 .map_err(|e| anyhow::anyhow!("Failed to export Claude JSONL: {}", e))?;
             println!("   ✓ Exported as Claude JSONL");
         }
         _ => {
             anyhow::bail!(
-                "Unknown format: {}. Use: vac-cbor, opencode-json, claude-jsonl",
+                "Unknown format: {}. Use: bundle-json, vac-cbor, opencode-json, claude-jsonl",
                 format
             );
         }

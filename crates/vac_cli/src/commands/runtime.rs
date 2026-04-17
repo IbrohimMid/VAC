@@ -263,7 +263,10 @@ pub async fn execute_start(project_root: PathBuf) -> anyhow::Result<()> {
 
     // Initialize engine
     let mut engine = vac_core::VacEngine::new(project_root.clone()).await?;
-    engine.init().await?;
+    let warnings = engine.init().await?;
+    for warning in warnings {
+        eprintln!("Warning: {}", warning);
+    }
     let engine = Arc::new(Mutex::new(engine));
 
     // Build executor with engine attached

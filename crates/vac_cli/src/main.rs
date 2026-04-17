@@ -86,6 +86,12 @@ enum Commands {
         #[arg(long)]
         sign: bool,
     },
+    /// Import session bundle into current project
+    Import {
+        input: PathBuf,
+        #[arg(short, long, default_value = "bundle-json")]
+        format: String,
+    },
     /// Manage VIL-native rulebooks (SOP, playbooks, governance constraints)
     Rulebook {
         #[command(subcommand)]
@@ -284,6 +290,9 @@ async fn main() -> anyhow::Result<()> {
             sign,
         } => {
             commands::export::execute(project_root, output, format, sign).await?;
+        }
+        Commands::Import { input, format } => {
+            commands::import::execute(project_root, input, format).await?;
         }
         Commands::Rulebook { action } => match action {
             RulebookAction::List => commands::rulebook::execute_list(project_root).await?,

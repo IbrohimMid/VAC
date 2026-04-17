@@ -112,7 +112,7 @@ impl VacEngine {
 
     /// Initialize all subsystems. Called by `vac init`.
     #[instrument(skip(self))]
-    pub async fn init(&mut self) -> VacResult<()> {
+    pub async fn init(&mut self) -> VacResult<Vec<String>> {
         self.init_with_policy(None).await
     }
 
@@ -120,7 +120,8 @@ impl VacEngine {
     pub async fn init_with_policy(
         &mut self,
         policy_override: Option<Arc<dyn vac_tools::router::PolicyEngine>>,
-    ) -> VacResult<()> {
+    ) -> VacResult<Vec<String>> {
+        let mut warnings = Vec::new();
         info!("Initializing VAC subsystems...");
 
         info!("Initializing IR pipeline...");
@@ -174,9 +175,17 @@ impl VacEngine {
         let tools = vac_tools::ToolRouter::new(registry.clone(), policy.clone());
         self.tool_router = Some(tools);
 
-        if let Some(ref mcp_servers) = self.config.mcp_servers {
+        let mut mcp_servers = self.config.mcp_servers.clone().unwrap_or_default();
+        if !self.config.mcp_presets.is_empty() {
+            let (preset_servers, preset_warnings) =
+                vac_tools::mcp::resolve_mcp_presets(&self.config.mcp_presets);
+            warnings.extend(preset_warnings);
+            mcp_servers.extend(preset_servers);
+        }
+
+        if !mcp_servers.is_empty() {
             info!(count = mcp_servers.len(), "Initializing MCP servers...");
-            for server_config in mcp_servers {
+            for server_config in &mcp_servers {
                 if !server_config.is_allowed_in_mode(&self.config.runtime.environment_mode) {
                     info!(
                         name = %server_config.name,
@@ -203,7 +212,12 @@ impl VacEngine {
                         }
                     },
                     Err(e) => {
-                        warn!(name = %server_config.name, error = %e, "Failed to connect MCP server")
+                        let err_msg = format!(
+                            "Failed to connect MCP server '{}': {}",
+                            server_config.name, e
+                        );
+                        warn!("{}", err_msg);
+                        warnings.push(err_msg);
                     }
                 }
             }
@@ -211,7 +225,8 @@ impl VacEngine {
 
         info!("Initializing LLM router...");
         let budget_limit = self.config.llm.max_tokens_per_task;
-        let mut llm_router = LlmRouter::new(&self.config.llm.default_provider, budget_limit);
+        let mut llm_router = LlmRouter::new(&self.config.llm.default_provider, budget_limit)
+            .with_rate_limit(self.config.llm.requests_per_minute);
         match self.config.llm.default_provider.as_str() {
             "anthropic" => {
                 llm_router.add_provider(Arc::new(self.build_kilo_provider("anthropic")));
@@ -359,7 +374,7 @@ impl VacEngine {
         }
 
         info!("All VAC subsystems initialized successfully.");
-        Ok(())
+        Ok(warnings)
     }
 
     fn build_kilo_provider(&self, provider_name: &str) -> AnthropicProvider {
@@ -601,6 +616,19 @@ impl VacEngine {
                                 } => {
                                     rec.record_llm_request(provider, model, *message_count);
                                 }
+                                vil_swarm::AgentLoopEvent::AssistantMessage {
+                                    content,
+                                    tool_calls,
+                                } => {
+                                    rec.record(
+                                        vac_trace::RecordType::AgentMessage,
+                                        None,
+                                        serde_json::json!({
+                                            "content": content,
+                                            "tool_calls": tool_calls,
+                                        }),
+                                    );
+                                }
                                 vil_swarm::AgentLoopEvent::ToolCall {
                                     id: _,
                                     name,
@@ -615,6 +643,40 @@ impl VacEngine {
                                     success,
                                 } => {
                                     rec.record_tool_result(name, content, *success);
+                                }
+                                vil_swarm::AgentLoopEvent::ApprovalDecision {
+                                    tool_call_id,
+                                    tool_name,
+                                    approved,
+                                    reason,
+                                } => {
+                                    rec.record(
+                                        vac_trace::RecordType::PolicyDecision,
+                                        None,
+                                        serde_json::json!({
+                                            "kind": "approval_decision",
+                                            "tool_call_id": tool_call_id,
+                                            "tool_name": tool_name,
+                                            "approved": approved,
+                                            "reason": reason,
+                                        }),
+                                    );
+                                }
+                                vil_swarm::AgentLoopEvent::ReasoningTransition {
+                                    from,
+                                    to,
+                                    attempt,
+                                } => {
+                                    rec.record(
+                                        vac_trace::RecordType::PolicyDecision,
+                                        None,
+                                        serde_json::json!({
+                                            "kind": "reasoning_transition",
+                                            "from": from,
+                                            "to": to,
+                                            "attempt": attempt,
+                                        }),
+                                    );
                                 }
                                 vil_swarm::AgentLoopEvent::ModelResponse { provider, model } => {
                                     rec.record_llm_response(provider, model);
@@ -700,6 +762,9 @@ impl VacEngine {
                                 explanation,
                             })
                         }
+                        vil_swarm::AgentLoopEvent::ApprovalDecision { .. } => None,
+                        vil_swarm::AgentLoopEvent::ReasoningTransition { .. } => None,
+                        vil_swarm::AgentLoopEvent::AssistantMessage { .. } => None,
                         vil_swarm::AgentLoopEvent::LlmRequest { .. } => None,
                     };
                     if let Some(up) = update {
@@ -929,6 +994,19 @@ impl VacEngine {
                             } => {
                                 rec.record_llm_request(provider, model, *message_count);
                             }
+                            vil_swarm::AgentLoopEvent::AssistantMessage {
+                                content,
+                                tool_calls,
+                            } => {
+                                rec.record(
+                                    vac_trace::RecordType::AgentMessage,
+                                    None,
+                                    serde_json::json!({
+                                        "content": content,
+                                        "tool_calls": tool_calls,
+                                    }),
+                                );
+                            }
                             vil_swarm::AgentLoopEvent::ToolCall {
                                 id: _,
                                 name,
@@ -943,6 +1021,40 @@ impl VacEngine {
                                 success,
                             } => {
                                 rec.record_tool_result(name, content, *success);
+                            }
+                            vil_swarm::AgentLoopEvent::ApprovalDecision {
+                                tool_call_id,
+                                tool_name,
+                                approved,
+                                reason,
+                            } => {
+                                rec.record(
+                                    vac_trace::RecordType::PolicyDecision,
+                                    None,
+                                    serde_json::json!({
+                                        "kind": "approval_decision",
+                                        "tool_call_id": tool_call_id,
+                                        "tool_name": tool_name,
+                                        "approved": approved,
+                                        "reason": reason,
+                                    }),
+                                );
+                            }
+                            vil_swarm::AgentLoopEvent::ReasoningTransition {
+                                from,
+                                to,
+                                attempt,
+                            } => {
+                                rec.record(
+                                    vac_trace::RecordType::PolicyDecision,
+                                    None,
+                                    serde_json::json!({
+                                        "kind": "reasoning_transition",
+                                        "from": from,
+                                        "to": to,
+                                        "attempt": attempt,
+                                    }),
+                                );
                             }
                             vil_swarm::AgentLoopEvent::ModelResponse { provider, model } => {
                                 rec.record_llm_response(provider, model);
@@ -1017,6 +1129,9 @@ impl VacEngine {
                                 explanation,
                             })
                         }
+                        vil_swarm::AgentLoopEvent::ApprovalDecision { .. } => None,
+                        vil_swarm::AgentLoopEvent::ReasoningTransition { .. } => None,
+                        vil_swarm::AgentLoopEvent::AssistantMessage { .. } => None,
                         vil_swarm::AgentLoopEvent::LlmRequest { .. } => None,
                     };
                     if let Some(up) = update {

@@ -14,6 +14,7 @@ vac_trace = { workspace = true }
 vil_swarm = { workspace = true }
 
 tokio = { workspace = true }
+tokio-util = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }

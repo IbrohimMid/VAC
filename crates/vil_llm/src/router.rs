@@ -30,6 +30,52 @@ fn is_retryable(e: &LlmError) -> bool {
     }
 }
 
+pub struct SimpleRateLimiter {
+    pub requests_per_minute: u32,
+    pub request_timestamps: std::collections::VecDeque<tokio::time::Instant>,
+}
+
+impl SimpleRateLimiter {
+    pub fn new(requests_per_minute: u32) -> Self {
+        Self {
+            requests_per_minute,
+            request_timestamps: std::collections::VecDeque::new(),
+        }
+    }
+
+    pub async fn acquire(limiter: &Arc<tokio::sync::Mutex<Self>>) {
+        loop {
+            let wait_time = {
+                let mut guard = limiter.lock().await;
+                if guard.requests_per_minute == 0 {
+                    return;
+                }
+                let now = tokio::time::Instant::now();
+                let one_min_ago = now - std::time::Duration::from_secs(60);
+                while let Some(&ts) = guard.request_timestamps.front() {
+                    if ts < one_min_ago {
+                        guard.request_timestamps.pop_front();
+                    } else {
+                        break;
+                    }
+                }
+                if guard.request_timestamps.len() < guard.requests_per_minute as usize {
+                    guard.request_timestamps.push_back(now);
+                    None
+                } else {
+                    let oldest = guard.request_timestamps.front().unwrap();
+                    Some(*oldest + std::time::Duration::from_secs(60) - now)
+                }
+            };
+            if let Some(w) = wait_time {
+                tokio::time::sleep(w).await;
+            } else {
+                return;
+            }
+        }
+    }
+}
+
 pub struct LlmRouter {
     providers: HashMap<String, Arc<dyn LlmProvider>>,
     default_provider: String,
@@ -42,6 +88,7 @@ pub struct LlmRouter {
     rulebook: RulebookContext,
     budget: Arc<RwLock<TokenBudget>>,
     retry_config: crate::retry::RetryConfig,
+    rate_limiter: Arc<tokio::sync::Mutex<SimpleRateLimiter>>,
 }
 
 impl LlmRouter {
@@ -54,7 +101,13 @@ impl LlmRouter {
             rulebook: RulebookContext::empty(),
             budget: Arc::new(RwLock::new(TokenBudget::new(budget_limit))),
             retry_config: crate::retry::RetryConfig::default(),
+            rate_limiter: Arc::new(tokio::sync::Mutex::new(SimpleRateLimiter::new(0))),
         }
+    }
+
+    pub fn with_rate_limit(self, requests_per_minute: u32) -> Self {
+        self.rate_limiter.try_lock().unwrap().requests_per_minute = requests_per_minute;
+        self
     }
 
     pub fn with_retry_config(mut self, config: crate::retry::RetryConfig) -> Self {
@@ -160,6 +213,8 @@ impl LlmRouter {
     }
 
     pub async fn complete(&self, request: &LlmRequest) -> LlmResult<LlmResponse> {
+        SimpleRateLimiter::acquire(&self.rate_limiter).await;
+
         {
             let budget = self.budget.read().await;
             if budget.is_exceeded() {
@@ -239,6 +294,8 @@ impl LlmRouter {
     }
 
     pub async fn stream(&self, request: &LlmRequest) -> LlmResult<mpsc::Receiver<StreamChunk>> {
+        SimpleRateLimiter::acquire(&self.rate_limiter).await;
+
         let provider =
             self.providers
                 .get(&self.default_provider)
@@ -334,5 +391,23 @@ mod tests {
         let mut r = router();
         r.set_rulebook(RulebookContext::new(|_tool| None));
         assert_eq!(r.route_for_tool("Anything"), "default_prov");
+    }
+
+    #[tokio::test]
+    async fn rate_limiter_blocks_until_window_advances() {
+        tokio::time::pause();
+        let limiter = Arc::new(tokio::sync::Mutex::new(SimpleRateLimiter::new(1)));
+        SimpleRateLimiter::acquire(&limiter).await;
+
+        let handle = tokio::spawn({
+            let limiter = limiter.clone();
+            async move { SimpleRateLimiter::acquire(&limiter).await }
+        });
+
+        tokio::task::yield_now().await;
+        assert!(!handle.is_finished());
+
+        tokio::time::advance(std::time::Duration::from_secs(60)).await;
+        let _ = handle.await;
     }
 }
