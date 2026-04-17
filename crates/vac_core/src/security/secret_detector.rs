@@ -1,34 +1,109 @@
 //! Secret Detection
 //!
-//! Detects sensitive information like API keys, IPs, AWS IDs
+//! Detects sensitive information like API keys, credentials, tokens, and PII.
 
+use base64::Engine as _;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use regex::Regex;
+use std::collections::HashMap;
 use std::sync::OnceLock;
 
-/// Types of secrets that can be detected
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+/// Types of secrets that can be detected.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SecretType {
-    ApiKey,
     AwsAccessKey,
     AwsSecretKey,
-    IpAddress,
-    Email,
-    Url,
+    BearerToken,
+    GitHubToken,
+    GitHubFineGrainedToken,
+    GitLabToken,
+    SlackToken,
+    StripeSecretKey,
+    OpenAiKey,
+    AnthropicKey,
+    GoogleApiKey,
+    Jwt,
+    PemPrivateKey,
+    SshPrivateKey,
     GenericSecret,
 }
 
-/// A detected secret
+/// PII categories that should be redacted but are not secrets.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum PiiType {
+    Email,
+    Url,
+    IpAddress,
+}
+
+/// A finding detected by the secret detector.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum DetectionKind {
+    Secret(SecretType),
+    Pii(PiiType),
+}
+
+/// A detected secret or PII value.
 #[derive(Debug, Clone)]
 pub struct DetectedSecret {
-    pub secret_type: SecretType,
+    pub kind: DetectionKind,
     pub value: String,
     pub start: usize,
     pub end: usize,
 }
 
-/// Secret detector using regex patterns
+impl DetectedSecret {
+    fn len(&self) -> usize {
+        self.end.saturating_sub(self.start)
+    }
+}
+
+#[derive(Debug, Clone)]
+struct PatternRule {
+    kind: DetectionKind,
+    regex: Regex,
+    capture_group: usize,
+}
+
+impl PatternRule {
+    fn new(kind: DetectionKind, pattern: &str, capture_group: usize) -> Self {
+        Self {
+            kind,
+            regex: Regex::new(pattern).unwrap(),
+            capture_group,
+        }
+    }
+
+    fn push_matches(&self, text: &str, out: &mut Vec<DetectedSecret>) {
+        if self.capture_group == 0 {
+            for mat in self.regex.find_iter(text) {
+                out.push(DetectedSecret {
+                    kind: self.kind,
+                    value: mat.as_str().to_string(),
+                    start: mat.start(),
+                    end: mat.end(),
+                });
+            }
+            return;
+        }
+
+        for caps in self.regex.captures_iter(text) {
+            let Some(mat) = caps.get(self.capture_group) else {
+                continue;
+            };
+            out.push(DetectedSecret {
+                kind: self.kind,
+                value: mat.as_str().to_string(),
+                start: mat.start(),
+                end: mat.end(),
+            });
+        }
+    }
+}
+
+/// Secret detector using structured rules plus entropy-based generic detection.
 pub struct SecretDetector {
-    patterns: Vec<(SecretType, Regex)>,
+    patterns: Vec<PatternRule>,
 }
 
 impl Default for SecretDetector {
@@ -40,149 +115,539 @@ impl Default for SecretDetector {
 impl SecretDetector {
     pub fn new() -> Self {
         let patterns = vec![
-            // AWS Access Key
-            (
-                SecretType::AwsAccessKey,
-                Regex::new(r"AKIA[0-9A-Z]{16}").unwrap(),
+            PatternRule::new(
+                DetectionKind::Secret(SecretType::AwsAccessKey),
+                r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b",
+                0,
             ),
-            // AWS Secret Key (40 chars base64)
-            (
-                SecretType::AwsSecretKey,
-                Regex::new(r#"(?i)aws.{0,20}['"][0-9a-zA-Z/+=]{40}['"]"#).unwrap(),
+            PatternRule::new(
+                DetectionKind::Secret(SecretType::AwsSecretKey),
+                r#"(?i)\b(?:aws[_-]?secret(?:[_-]?access)?[_-]?key|secret[_-]?access[_-]?key)\b\s*[:=]\s*['"]?([A-Za-z0-9/+=]{40})['"]?"#,
+                1,
             ),
-            // Generic API Key patterns
-            (
-                SecretType::ApiKey,
-                Regex::new(r#"(?i)(api[_-]?key|apikey|apitoken)['""]?\s*[:=]\s*['"]?([a-zA-Z0-9_\-]{20,})"#).unwrap(),
+            PatternRule::new(
+                DetectionKind::Secret(SecretType::GitHubToken),
+                r"\bgh[opsur]_[A-Za-z0-9]{20,}\b",
+                0,
             ),
-            // IP Address
-            (
-                SecretType::IpAddress,
-                Regex::new(r"\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b").unwrap(),
+            PatternRule::new(
+                DetectionKind::Secret(SecretType::GitHubFineGrainedToken),
+                r"\bgithub_pat_[A-Za-z0-9_]{20,}\b",
+                0,
             ),
-            // Email
-            (
-                SecretType::Email,
-                Regex::new(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b").unwrap(),
+            PatternRule::new(
+                DetectionKind::Secret(SecretType::GitLabToken),
+                r"\bglpat-[A-Za-z0-9_-]{20,}\b",
+                0,
             ),
-            // URL
-            (
-                SecretType::Url,
-                Regex::new(r"https?://[^\s/$.?#].[^\s]*").unwrap(),
+            PatternRule::new(
+                DetectionKind::Secret(SecretType::SlackToken),
+                r"\bxox[baprs]-[A-Za-z0-9-]{10,}\b",
+                0,
             ),
-            // Generic Secret
-            (
-                SecretType::GenericSecret,
-                Regex::new(r#"(?i)(bearer|secret|token)\s+([a-zA-Z0-9_\-\.]{20,})"#).unwrap(),
+            PatternRule::new(
+                DetectionKind::Secret(SecretType::StripeSecretKey),
+                r"\bsk_(?:live|test)_[A-Za-z0-9]{20,}\b",
+                0,
+            ),
+            PatternRule::new(
+                DetectionKind::Secret(SecretType::OpenAiKey),
+                r"\bsk-[A-Za-z0-9]{20,}\b",
+                0,
+            ),
+            PatternRule::new(
+                DetectionKind::Secret(SecretType::AnthropicKey),
+                r"\bsk-ant-[A-Za-z0-9-]{20,}\b",
+                0,
+            ),
+            PatternRule::new(
+                DetectionKind::Secret(SecretType::GoogleApiKey),
+                r"\bAIza[0-9A-Za-z\-_]{35}\b",
+                0,
+            ),
+            PatternRule::new(
+                DetectionKind::Secret(SecretType::BearerToken),
+                r#"(?i)\bbearer\s+([A-Za-z0-9._\-]{20,})\b"#,
+                1,
+            ),
+            PatternRule::new(
+                DetectionKind::Secret(SecretType::Jwt),
+                r"\b[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b",
+                0,
+            ),
+            PatternRule::new(
+                DetectionKind::Pii(PiiType::Email),
+                r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b",
+                0,
+            ),
+            PatternRule::new(
+                DetectionKind::Pii(PiiType::Url),
+                r#"https?://[^\s<>"']+"#,
+                0,
+            ),
+            PatternRule::new(
+                DetectionKind::Pii(PiiType::IpAddress),
+                r"\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b",
+                0,
             ),
         ];
 
         Self { patterns }
     }
 
-    /// Detect all secrets in text
+    /// Detect all secrets and PII in text.
     pub fn detect(&self, text: &str) -> Vec<DetectedSecret> {
-        let mut secrets = Vec::new();
+        let mut findings = Vec::new();
 
-        for (secret_type, pattern) in &self.patterns {
-            for mat in pattern.find_iter(text) {
-                secrets.push(DetectedSecret {
-                    secret_type: secret_type.clone(),
-                    value: mat.as_str().to_string(),
-                    start: mat.start(),
-                    end: mat.end(),
-                });
-            }
+        for pattern in &self.patterns {
+            pattern.push_matches(text, &mut findings);
         }
 
-        // Sort by position
-        secrets.sort_by_key(|s| s.start);
-        secrets
+        detect_jwt_candidates(text, &mut findings);
+        detect_private_key_blocks(text, &mut findings);
+        detect_high_entropy_tokens(text, &mut findings);
+
+        dedup_overlapping(findings)
     }
 
-    /// Check if text contains any secrets
+    /// Check if text contains any secrets or PII.
     pub fn contains_secrets(&self, text: &str) -> bool {
-        self.patterns
-            .iter()
-            .any(|(_, pattern)| pattern.is_match(text))
+        !self.detect(text).is_empty()
     }
 }
 
-/// Global detector instance
+/// Global detector instance.
 static DETECTOR: OnceLock<SecretDetector> = OnceLock::new();
 
-/// Get global detector instance
+/// Get global detector instance.
 pub fn get_detector() -> &'static SecretDetector {
     DETECTOR.get_or_init(SecretDetector::new)
+}
+
+fn detect_jwt_candidates(text: &str, out: &mut Vec<DetectedSecret>) {
+    static JWT_RE: OnceLock<Regex> = OnceLock::new();
+    let regex = JWT_RE.get_or_init(|| {
+        Regex::new(r"\b[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b").unwrap()
+    });
+
+    for mat in regex.find_iter(text) {
+        let token = mat.as_str();
+        if !looks_like_jwt(token) {
+            continue;
+        }
+        out.push(DetectedSecret {
+            kind: DetectionKind::Secret(SecretType::Jwt),
+            value: token.to_string(),
+            start: mat.start(),
+            end: mat.end(),
+        });
+    }
+}
+
+fn detect_private_key_blocks(text: &str, out: &mut Vec<DetectedSecret>) {
+    let mut search_from = 0;
+    let begin_marker = "-----BEGIN ";
+    let end_marker_suffix = "-----END ";
+    let line_suffix = "-----";
+
+    while let Some(begin_rel) = text[search_from..].find(begin_marker) {
+        let begin = search_from + begin_rel;
+        let label_start = begin + begin_marker.len();
+        let Some(label_end_rel) = text[label_start..].find(line_suffix) else {
+            break;
+        };
+        let label_end = label_start + label_end_rel;
+        let label = &text[label_start..label_end];
+        if !label.contains("PRIVATE KEY") {
+            search_from = label_end;
+            continue;
+        }
+
+        let end_marker = format!("{end_marker_suffix}{label}{line_suffix}");
+        let scan_from = label_end;
+        let Some(end_rel) = text[scan_from..].find(&end_marker) else {
+            break;
+        };
+        let end = scan_from + end_rel + end_marker.len();
+        let kind = if label.contains("OPENSSH PRIVATE KEY") {
+            DetectionKind::Secret(SecretType::SshPrivateKey)
+        } else {
+            DetectionKind::Secret(SecretType::PemPrivateKey)
+        };
+
+        out.push(DetectedSecret {
+            kind,
+            value: text[begin..end].to_string(),
+            start: begin,
+            end,
+        });
+
+        search_from = end;
+    }
+}
+
+fn detect_high_entropy_tokens(text: &str, out: &mut Vec<DetectedSecret>) {
+    static CANDIDATE_RE: OnceLock<Regex> = OnceLock::new();
+    let regex = CANDIDATE_RE.get_or_init(|| Regex::new(r"\b[A-Za-z0-9+/=_-]{20,}\b").unwrap());
+
+    for mat in regex.find_iter(text) {
+        let candidate = mat.as_str();
+        if looks_benign(candidate) {
+            continue;
+        }
+
+        let entropy = shannon_entropy(candidate);
+        if entropy < 4.5 {
+            continue;
+        }
+
+        out.push(DetectedSecret {
+            kind: DetectionKind::Secret(SecretType::GenericSecret),
+            value: candidate.to_string(),
+            start: mat.start(),
+            end: mat.end(),
+        });
+    }
+}
+
+fn looks_like_jwt(token: &str) -> bool {
+    let mut parts = token.split('.');
+    let (Some(header), Some(payload), Some(signature)) = (parts.next(), parts.next(), parts.next())
+    else {
+        return false;
+    };
+    if parts.next().is_some() || header.is_empty() || payload.is_empty() || signature.is_empty() {
+        return false;
+    }
+
+    let decode = |segment: &str| URL_SAFE_NO_PAD.decode(segment.as_bytes()).ok();
+    let Some(header_bytes) = decode(header) else {
+        return false;
+    };
+    let Some(payload_bytes) = decode(payload) else {
+        return false;
+    };
+
+    let header_text = String::from_utf8_lossy(&header_bytes);
+    let payload_text = String::from_utf8_lossy(&payload_bytes);
+    header_text.trim_start().starts_with('{') && payload_text.trim_start().starts_with('{')
+}
+
+fn looks_benign(candidate: &str) -> bool {
+    if candidate.chars().all(|c| c.is_ascii_digit()) {
+        return true;
+    }
+    if is_uuid(candidate) {
+        return true;
+    }
+    if is_hex_digest(candidate) {
+        return true;
+    }
+    if is_version_like(candidate) {
+        return true;
+    }
+    if candidate.len() < 24 {
+        return true;
+    }
+    if character_classes(candidate) < 2 {
+        return true;
+    }
+    false
+}
+
+fn character_classes(candidate: &str) -> usize {
+    let mut classes = 0;
+    if candidate.chars().any(|c| c.is_ascii_lowercase()) {
+        classes += 1;
+    }
+    if candidate.chars().any(|c| c.is_ascii_uppercase()) {
+        classes += 1;
+    }
+    if candidate.chars().any(|c| c.is_ascii_digit()) {
+        classes += 1;
+    }
+    if candidate
+        .chars()
+        .any(|c| matches!(c, '+' | '/' | '=' | '_' | '-'))
+    {
+        classes += 1;
+    }
+    classes
+}
+
+fn is_uuid(candidate: &str) -> bool {
+    let bytes = candidate.as_bytes();
+    if bytes.len() != 36 {
+        return false;
+    }
+    for (idx, ch) in bytes.iter().enumerate() {
+        match idx {
+            8 | 13 | 18 | 23 => {
+                if *ch != b'-' {
+                    return false;
+                }
+            }
+            _ => {
+                if !ch.is_ascii_hexdigit() {
+                    return false;
+                }
+            }
+        }
+    }
+    true
+}
+
+fn is_hex_digest(candidate: &str) -> bool {
+    let len = candidate.len();
+    len >= 24 && candidate.chars().all(|c| c.is_ascii_hexdigit())
+}
+
+fn is_version_like(candidate: &str) -> bool {
+    let mut parts = candidate.split('.');
+    let mut seen = 0usize;
+    for part in parts.by_ref() {
+        if part.is_empty() || !part.chars().all(|c| c.is_ascii_digit()) {
+            return false;
+        }
+        seen += 1;
+    }
+    seen >= 3
+}
+
+fn shannon_entropy(candidate: &str) -> f64 {
+    let len = candidate.chars().count() as f64;
+    if len == 0.0 {
+        return 0.0;
+    }
+
+    let mut counts = HashMap::new();
+    for ch in candidate.chars() {
+        *counts.entry(ch).or_insert(0usize) += 1;
+    }
+
+    counts
+        .values()
+        .map(|count| {
+            let p = *count as f64 / len;
+            -p * p.log2()
+        })
+        .sum()
+}
+
+fn kind_score(kind: &DetectionKind) -> u8 {
+    match kind {
+        DetectionKind::Secret(SecretType::GenericSecret) => 100,
+        DetectionKind::Secret(SecretType::BearerToken) => 5,
+        DetectionKind::Secret(SecretType::Jwt) => 4,
+        DetectionKind::Pii(_) => 50,
+        DetectionKind::Secret(_) => 0,
+    }
+}
+
+fn dedup_overlapping(mut findings: Vec<DetectedSecret>) -> Vec<DetectedSecret> {
+    if findings.is_empty() {
+        return findings;
+    }
+
+    findings.sort_by(|a, b| {
+        a.start
+            .cmp(&b.start)
+            .then_with(|| b.end.cmp(&a.end))
+            .then_with(|| kind_score(&a.kind).cmp(&kind_score(&b.kind)))
+    });
+
+    let mut out = Vec::with_capacity(findings.len());
+    let mut group: Vec<DetectedSecret> = Vec::new();
+    let mut group_end = 0usize;
+
+    for finding in findings {
+        if group.is_empty() {
+            group_end = finding.end;
+            group.push(finding);
+            continue;
+        }
+
+        if finding.start < group_end {
+            group_end = group_end.max(finding.end);
+            group.push(finding);
+        } else {
+            out.push(pick_best(&mut group));
+            group.clear();
+            group_end = finding.end;
+            group.push(finding);
+        }
+    }
+
+    if !group.is_empty() {
+        out.push(pick_best(&mut group));
+    }
+
+    out.sort_by(|a, b| a.start.cmp(&b.start).then_with(|| a.end.cmp(&b.end)));
+    out
+}
+
+fn pick_best(group: &mut Vec<DetectedSecret>) -> DetectedSecret {
+    let mut best_idx = 0usize;
+    for idx in 1..group.len() {
+        let candidate = &group[idx];
+        let best = &group[best_idx];
+        let candidate_score = kind_score(&candidate.kind);
+        let best_score = kind_score(&best.kind);
+        let candidate_len = candidate.len();
+        let best_len = best.len();
+        if candidate_score < best_score
+            || (candidate_score == best_score && candidate_len > best_len)
+            || (candidate_score == best_score
+                && candidate_len == best_len
+                && candidate.start < best.start)
+        {
+            best_idx = idx;
+        }
+    }
+    group.swap_remove(best_idx)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 
-    #[test]
-    fn test_detect_aws_key() {
-        let detector = SecretDetector::new();
-        let text = "AWS_ACCESS_KEY=AKIAIOSFODNN7EXAMPLE";
-        let secrets = detector.detect(text);
-        assert!(!secrets.is_empty());
+    fn jwt_token(idx: usize) -> String {
+        let header =
+            URL_SAFE_NO_PAD.encode(format!(r#"{{"alg":"HS256","typ":"JWT","kid":"{}"}}"#, idx));
+        let payload =
+            URL_SAFE_NO_PAD.encode(format!(r#"{{"sub":"user-{}","scope":"repo:write"}}"#, idx));
+        let signature = URL_SAFE_NO_PAD.encode(format!("signature-{idx}"));
+        format!("{header}.{payload}.{signature}")
     }
 
     #[test]
-    fn test_detect_ip() {
+    fn pii_are_classified_separately() {
         let detector = SecretDetector::new();
-        let text = "Server at 192.168.1.1";
-        let secrets = detector.detect(text);
-        assert_eq!(secrets.len(), 1);
-        assert_eq!(secrets[0].secret_type, SecretType::IpAddress);
+        let text = "Contact user@example.com at https://example.com or 10.0.0.1";
+        let findings = detector.detect(text);
+
+        assert!(
+            findings
+                .iter()
+                .any(|f| matches!(f.kind, DetectionKind::Pii(PiiType::Email)))
+        );
+        assert!(
+            findings
+                .iter()
+                .any(|f| matches!(f.kind, DetectionKind::Pii(PiiType::Url)))
+        );
+        assert!(
+            findings
+                .iter()
+                .any(|f| matches!(f.kind, DetectionKind::Pii(PiiType::IpAddress)))
+        );
+        assert!(
+            findings
+                .iter()
+                .all(|f| !matches!(f.kind, DetectionKind::Secret(SecretType::GenericSecret)))
+        );
     }
 
     #[test]
-    fn test_detect_email() {
+    fn detects_private_keys_and_jwts_without_overlap_duplicates() {
         let detector = SecretDetector::new();
-        let text = "Contact: user@example.com";
-        let secrets = detector.detect(text);
-        assert_eq!(secrets.len(), 1);
-        assert_eq!(secrets[0].secret_type, SecretType::Email);
+        let text = format!(
+            "Authorization: Bearer {}\n{}\n",
+            jwt_token(1),
+            "-----BEGIN OPENSSH PRIVATE KEY-----\nssh-private-key-body\n-----END OPENSSH PRIVATE KEY-----"
+        );
+
+        let findings = detector.detect(&text);
+        let secret_count = findings
+            .iter()
+            .filter(|f| matches!(f.kind, DetectionKind::Secret(_)))
+            .count();
+
+        assert_eq!(secret_count, 2);
+        assert!(
+            findings
+                .iter()
+                .any(|f| matches!(f.kind, DetectionKind::Secret(SecretType::Jwt)))
+        );
+        assert!(
+            findings
+                .iter()
+                .any(|f| matches!(f.kind, DetectionKind::Secret(SecretType::SshPrivateKey)))
+        );
+        assert!(findings.windows(2).all(|pair| pair[0].end <= pair[1].start));
     }
 
     #[test]
-    fn test_detect_url() {
+    fn adversarial_secret_corpus_hits_true_positives_and_avoids_false_positives() {
         let detector = SecretDetector::new();
-        let text = "Visit https://example.com for more info";
-        let secrets = detector.detect(text);
-        assert_eq!(secrets.len(), 1);
-        assert_eq!(secrets[0].secret_type, SecretType::Url);
+        let mut positives = Vec::new();
+
+        for idx in 0..7 {
+            positives.push(format!("ghp_{}{}", "A".repeat(35), idx));
+            positives.push(format!("github_pat_{}{}", "a".repeat(22), idx));
+            positives.push(format!("xoxb-{}{}", "A".repeat(24), idx));
+            positives.push(format!("sk-{}{}", "B".repeat(24), idx));
+            positives.push(format!("sk-ant-{}{}", "C".repeat(24), idx));
+            positives.push(format!("AIza{}", "D".repeat(35)));
+            positives.push(format!(
+                "AKIA{}{}",
+                "E".repeat(15),
+                char::from(b'A' + idx as u8)
+            ));
+            positives.push(format!("sk_live_{}{}", "F".repeat(24), idx));
+        }
+
+        for idx in 0..10 {
+            positives.push(jwt_token(idx));
+        }
+
+        let mut detected_positives = 0usize;
+        for sample in &positives {
+            let findings = detector.detect(sample);
+            assert!(
+                findings
+                    .iter()
+                    .any(|f| matches!(f.kind, DetectionKind::Secret(_))),
+                "expected secret finding for sample: {sample}"
+            );
+            detected_positives += 1;
+        }
+
+        let mut negatives = Vec::new();
+        for idx in 0..25 {
+            negatives.push(format!("v{}.{}.{}", idx, idx + 1, idx + 2));
+            negatives.push(format!("https://example.com/v{}", idx));
+            negatives.push(format!("user{}@example.com", idx));
+            negatives.push(format!("Release candidate {} for build {}", idx, idx + 1));
+        }
+
+        let mut false_positive_hits = 0usize;
+        for sample in &negatives {
+            let findings = detector.detect(sample);
+            if findings
+                .iter()
+                .any(|f| matches!(f.kind, DetectionKind::Secret(_)))
+            {
+                false_positive_hits += 1;
+            }
+        }
+
+        assert_eq!(detected_positives, positives.len());
+        assert_eq!(false_positive_hits, 0);
     }
 
     #[test]
-    fn test_detect_generic_secret() {
-        let detector = SecretDetector::new();
-        let text = "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9";
-        let secrets = detector.detect(text);
-        assert_eq!(secrets.len(), 1);
-        assert_eq!(secrets[0].secret_type, SecretType::GenericSecret);
-    }
+    fn secret_substitution_uses_detected_ranges() {
+        let mut sub = super::super::secret_substitution::SecretSubstitution::new();
+        let original = "API_KEY=sk_test_1234567890abcdef contact user@example.com";
+        let substituted = sub.substitute(original);
+        assert!(substituted.contains("[SECRET_"));
+        assert!(!substituted.contains("sk_test_1234567890abcdef"));
+        assert!(!substituted.contains("user@example.com"));
 
-    #[test]
-    fn test_detect_api_key_assignment() {
-        let detector = SecretDetector::new();
-        let text = r#"api_key="abcdefghijklmnopqrstuvwxyz123456""#;
-        let secrets = detector.detect(text);
-        assert_eq!(secrets.len(), 1);
-        assert_eq!(secrets[0].secret_type, SecretType::ApiKey);
-        assert!(detector.contains_secrets(text));
-    }
-
-    #[test]
-    fn test_detect_aws_secret_key_assignment() {
-        let detector = SecretDetector::new();
-        let secret = "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8S9t0";
-        assert_eq!(secret.len(), 40);
-        let text = format!(r#"aws_secret="{}""#, secret);
-        let secrets = detector.detect(&text);
-        assert_eq!(secrets.len(), 1);
-        assert_eq!(secrets[0].secret_type, SecretType::AwsSecretKey);
-        assert!(detector.contains_secrets(&text));
+        let restored = sub.restore(&substituted);
+        assert!(restored.contains("sk_test_1234567890abcdef"));
+        assert!(restored.contains("user@example.com"));
     }
 }

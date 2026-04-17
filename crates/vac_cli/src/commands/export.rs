@@ -49,11 +49,14 @@ pub async fn execute(
     match format.as_str() {
         "bundle-json" | "bundle" => {
             println!("   🧳 Exporting as bundle (redacted)...");
-            vac_core::bundle::export_bundle_to_path(
+            vac_core::bundle::export_bundle_to_path_with_options(
                 &project_root,
                 Some(session.id),
                 Some(&output_path),
-                true,
+                vac_core::bundle::BundleExportOptions {
+                    redact_secrets: true,
+                    sign,
+                },
             )?;
             println!("   ✓ Exported as bundle JSON");
         }

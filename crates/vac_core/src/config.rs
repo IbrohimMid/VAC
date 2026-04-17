@@ -1,5 +1,6 @@
 //! Global configuration for VAC engine.
 
+use crate::policy_gate::{PolicyGateAction, PolicyGateMode};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -352,17 +353,17 @@ pub struct PolicyGateConfig {
     #[serde(default = "default_policy_gate_threshold")]
     pub threshold: f64,
     #[serde(default = "default_policy_gate_mode")]
-    pub mode: String,
+    pub mode: PolicyGateMode,
     #[serde(default)]
-    pub actions: Vec<String>,
+    pub actions: Vec<PolicyGateAction>,
 }
 
 fn default_policy_gate_threshold() -> f64 {
     0.85
 }
 
-fn default_policy_gate_mode() -> String {
-    "soft".to_string()
+fn default_policy_gate_mode() -> PolicyGateMode {
+    PolicyGateMode::Soft
 }
 
 impl Default for PolicyGateConfig {

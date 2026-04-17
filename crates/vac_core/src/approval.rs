@@ -316,6 +316,21 @@ impl ApprovalStore {
         Ok(out)
     }
 
+    pub fn remove_by_session(&self, session_id: Uuid) -> VacResult<usize> {
+        let records = self.list_by_session(session_id)?;
+        let mut removed = 0usize;
+
+        for record in records {
+            let path = self.approval_path(&record.tool_call_id);
+            if path.exists() {
+                std::fs::remove_file(&path)?;
+                removed += 1;
+            }
+        }
+
+        Ok(removed)
+    }
+
     fn write(&self, record: &ApprovalRecord) -> VacResult<()> {
         let path = self.approval_path(&record.tool_call_id);
         let tmp = path.with_extension("json.tmp");

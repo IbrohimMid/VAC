@@ -1,14 +1,15 @@
+use std::path::{Path, PathBuf};
 use tempfile::tempdir;
+use uuid::Uuid;
 
-#[test]
-fn bundle_redaction_and_round_trip() {
-    let dir1 = tempdir().unwrap();
-    let root1 = dir1.path();
+fn seed_source_project(summary: Option<String>) -> (tempfile::TempDir, PathBuf, Uuid) {
+    let dir = tempdir().unwrap();
+    let root = dir.path().to_path_buf();
 
-    std::fs::create_dir_all(root1.join(".vac/checkpoints")).unwrap();
-    std::fs::create_dir_all(root1.join(".vac/sessions")).unwrap();
+    std::fs::create_dir_all(root.join(".vac/checkpoints")).unwrap();
+    std::fs::create_dir_all(root.join(".vac/sessions")).unwrap();
 
-    let session = vac_core::Session::new(root1.to_path_buf());
+    let session = vac_core::Session::new(root.clone());
     session.save().unwrap();
     let session_id = session.id;
 
@@ -34,14 +35,14 @@ fn bundle_redaction_and_round_trip() {
     state.approved_tools.insert("tc-1".to_string());
     state.stage = vil_swarm::run_state::RunStage::Completed;
 
-    let state_path = root1
+    let state_path = root
         .join(".vac/checkpoints")
         .join(format!("{session_id}_state.json"));
     state
         .save_checkpoint(&state_path, Some(session_id))
         .unwrap();
 
-    let store = vac_core::ApprovalStore::new(root1.to_path_buf());
+    let store = vac_core::ApprovalStore::new(root.clone());
     store
         .record_request(
             "tc-1".to_string(),
@@ -49,23 +50,43 @@ fn bundle_redaction_and_round_trip() {
             serde_json::json!({"secret_key":"supersecret","path":"x.txt"}),
             Some("needs approval".to_string()),
             Some(session_id),
-            Some(uuid::Uuid::new_v4()),
+            Some(Uuid::new_v4()),
         )
         .unwrap();
     store
         .record_decision("tc-1".to_string(), true, Some("ok".to_string()))
         .unwrap();
 
-    std::fs::write(
-        root1.join("summary.md"),
-        "Context summary with password=hunter2hunter2",
-    )
-    .unwrap();
+    if let Some(summary) = summary {
+        std::fs::write(root.join("summary.md"), summary).unwrap();
+    }
 
-    let out1 = root1.join(".vac/exports/b1.bundle.json");
-    let out1_path =
-        vac_core::bundle::export_bundle_to_path(root1, Some(session_id), Some(&out1), true)
-            .unwrap();
+    (dir, root, session_id)
+}
+
+fn export_bundle(root: &Path, session_id: Uuid, sign: bool) -> PathBuf {
+    let out = root
+        .join(".vac/exports")
+        .join(format!("{session_id}.bundle.json"));
+    vac_core::bundle::export_bundle_to_path_with_options(
+        root,
+        Some(session_id),
+        Some(&out),
+        vac_core::bundle::BundleExportOptions {
+            redact_secrets: true,
+            sign,
+        },
+    )
+    .unwrap()
+}
+
+#[test]
+fn bundle_redaction_and_round_trip() {
+    let (_dir1, root1, session_id) = seed_source_project(Some(
+        "Context summary with password=hunter2hunter2".to_string(),
+    ));
+
+    let out1_path = export_bundle(&root1, session_id, false);
     let raw1 = std::fs::read_to_string(&out1_path).unwrap();
     assert!(!raw1.contains("sk_test_1234567890abcdefghij"));
     assert!(!raw1.contains("hunter2hunter2"));
@@ -75,10 +96,7 @@ fn bundle_redaction_and_round_trip() {
     let root2 = dir2.path();
     vac_core::bundle::import_bundle_from_path(root2, &out1_path).unwrap();
 
-    let out2 = root2.join(".vac/exports/b2.bundle.json");
-    let out2_path =
-        vac_core::bundle::export_bundle_to_path(root2, Some(session_id), Some(&out2), true)
-            .unwrap();
+    let out2_path = export_bundle(root2, session_id, false);
 
     let b1: vac_core::VacBundle = serde_json::from_str(&raw1).unwrap();
     let raw2 = std::fs::read_to_string(&out2_path).unwrap();
@@ -102,4 +120,85 @@ fn bundle_redaction_and_round_trip() {
         serde_json::to_value(&b1.context_summary).unwrap(),
         serde_json::to_value(&b2.context_summary).unwrap()
     );
+}
+
+#[test]
+fn signed_bundle_round_trips_and_requires_explicit_trust_for_approvals() {
+    let (_dir1, root1, session_id) = seed_source_project(Some(
+        "Context summary with password=hunter2hunter2".to_string(),
+    ));
+
+    let out1_path = export_bundle(&root1, session_id, true);
+    let bundle: vac_core::VacBundle =
+        serde_json::from_str(&std::fs::read_to_string(&out1_path).unwrap()).unwrap();
+    assert!(bundle.metadata.signature.is_some());
+
+    let dir2 = tempdir().unwrap();
+    let root2 = dir2.path();
+    vac_core::bundle::import_bundle_from_path_with_options(
+        root2,
+        &out1_path,
+        vac_core::bundle::BundleImportOptions {
+            require_signed: true,
+            overwrite_session: false,
+            trust_approvals: false,
+            redact_on_import: true,
+        },
+    )
+    .unwrap();
+
+    let state_path = root2
+        .join(".vac/checkpoints")
+        .join(format!("{session_id}_state.json"));
+    let state = vil_swarm::run_state::AgentRunState::from_checkpoint(&state_path).unwrap();
+    assert!(state.approved_tools.is_empty());
+
+    let out2_path = export_bundle(root2, session_id, false);
+    let raw2 = std::fs::read_to_string(&out2_path).unwrap();
+    let b2: vac_core::VacBundle = serde_json::from_str(&raw2).unwrap();
+    assert_eq!(bundle.transcript.len(), b2.transcript.len());
+}
+
+#[test]
+fn import_rejects_session_collision_without_overwrite() {
+    let (_dir1, root1, session_id) = seed_source_project(None);
+    let out1_path = export_bundle(&root1, session_id, false);
+
+    let dir2 = tempdir().unwrap();
+    let root2 = dir2.path();
+    vac_core::bundle::import_bundle_from_path(root2, &out1_path).unwrap();
+
+    let err = vac_core::bundle::import_bundle_from_path(root2, &out1_path).unwrap_err();
+    let msg = err.to_string();
+    assert!(msg.contains("already exists"));
+}
+
+#[test]
+fn import_rejects_malformed_json_and_oversized_summary() {
+    let dir = tempdir().unwrap();
+    let root = dir.path();
+
+    let malformed = root.join("malformed.bundle.json");
+    std::fs::write(&malformed, "{not json").unwrap();
+    assert!(vac_core::bundle::import_bundle_from_path(root, &malformed).is_err());
+
+    let huge_summary = "x".repeat(10 * 1024 * 1024 + 1);
+    let bundle = vac_core::VacBundle {
+        metadata: vac_core::BundleMetadata {
+            version: "0.1.0".to_string(),
+            session_id: Uuid::new_v4(),
+            created_at: chrono::Utc::now(),
+            exported_at: chrono::Utc::now(),
+            redacted: true,
+            session_metadata: Default::default(),
+            signature: None,
+        },
+        transcript: Vec::new(),
+        approvals: Vec::new(),
+        context_summary: Some(huge_summary),
+    };
+    let oversized = root.join("oversized.bundle.json");
+    std::fs::write(&oversized, serde_json::to_string_pretty(&bundle).unwrap()).unwrap();
+    let err = vac_core::bundle::import_bundle_from_path(root, &oversized).unwrap_err();
+    assert!(err.to_string().contains("byte cap"));
 }
