@@ -252,6 +252,9 @@ impl GeminiProvider {
                 prompt_tokens: usage.prompt_token_count,
                 completion_tokens: usage.candidates_token_count,
                 total_tokens: usage.total_token_count,
+                cached_tokens: 0,
+                cache_creation_tokens: 0,
+                cache_hit_rate: 0.0,
             },
             tool_calls,
         }
@@ -429,6 +432,9 @@ impl LlmProvider for GeminiProvider {
                         prompt_tokens: usage.prompt_token_count,
                         completion_tokens: usage.candidates_token_count,
                         total_tokens: usage.total_token_count,
+                        cached_tokens: 0,
+                        cache_creation_tokens: 0,
+                        cache_hit_rate: 0.0,
                     },
                     finish_reason,
                 })

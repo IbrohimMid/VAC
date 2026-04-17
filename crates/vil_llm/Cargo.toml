@@ -21,6 +21,14 @@ tokio-stream = { workspace = true }
 futures = { workspace = true }
 bytes = { workspace = true }
 toml = { workspace = true }
+tiktoken-rs = { workspace = true }
+once_cell = "1"
+
+[features]
+default = []
+# Sketch of an Anthropic `/v1/messages/count_tokens`-backed tokenizer. The
+# implementation is a TODO stub; flip this on once the HTTP path lands.
+anthropic-count-tokens = []
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }

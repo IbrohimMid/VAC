@@ -75,12 +75,24 @@ impl AnthropicProvider {
         Ok(headers)
     }
 
-    fn map_message(msg: &Message) -> OpenAiMessage {
-        // Determine content: if images present, use content blocks array for multimodal
+    fn map_message(msg: &Message, cache_marked: bool) -> OpenAiMessage {
+        // Determine content: if images present or the block must carry
+        // cache_control, emit a content-blocks array; otherwise keep the
+        // compact string form.
         let content_value = if !msg.image_parts.is_empty() && msg.role == Role::User {
             let mut blocks = Vec::new();
             if !msg.content.is_empty() {
-                blocks.push(serde_json::json!({"type": "text", "text": msg.content}));
+                let mut text_block =
+                    serde_json::json!({"type": "text", "text": msg.content});
+                if cache_marked {
+                    if let Some(obj) = text_block.as_object_mut() {
+                        obj.insert(
+                            "cache_control".to_string(),
+                            serde_json::json!({"type": "ephemeral"}),
+                        );
+                    }
+                }
+                blocks.push(text_block);
             }
             for img in &msg.image_parts {
                 blocks.push(serde_json::json!({
@@ -94,9 +106,21 @@ impl AnthropicProvider {
         } else if matches!(msg.role, Role::Assistant) && !msg.tool_calls.is_empty() {
             if msg.content.is_empty() {
                 None
+            } else if cache_marked {
+                Some(serde_json::Value::Array(vec![serde_json::json!({
+                    "type": "text",
+                    "text": msg.content,
+                    "cache_control": {"type": "ephemeral"},
+                })]))
             } else {
                 Some(serde_json::Value::String(msg.content.clone()))
             }
+        } else if cache_marked {
+            Some(serde_json::Value::Array(vec![serde_json::json!({
+                "type": "text",
+                "text": msg.content,
+                "cache_control": {"type": "ephemeral"},
+            })]))
         } else {
             Some(serde_json::Value::String(msg.content.clone()))
         };
@@ -155,7 +179,12 @@ impl AnthropicProvider {
                 .as_deref()
                 .unwrap_or(&self.model)
                 .to_string(),
-            messages: llm_request.messages.iter().map(Self::map_message).collect(),
+            messages: llm_request
+                .messages
+                .iter()
+                .enumerate()
+                .map(|(i, m)| Self::map_message(m, llm_request.is_cache_marked(i)))
+                .collect(),
             max_tokens: llm_request.max_tokens.unwrap_or(4096),
             stream: false,
             tools: if llm_request.tools.is_empty() {
@@ -272,18 +301,26 @@ impl LlmProvider for AnthropicProvider {
             model = %response.model,
             prompt_tokens = usage.prompt_tokens,
             completion_tokens = usage.completion_tokens,
+            cache_read = usage.cache_read_input_tokens,
+            cache_creation = usage.cache_creation_input_tokens,
             "Kilo Gateway request completed"
         );
+
+        let mut token_usage = TokenUsage {
+            prompt_tokens: usage.prompt_tokens,
+            completion_tokens: usage.completion_tokens,
+            total_tokens: usage.total_tokens,
+            cached_tokens: usage.cache_read_input_tokens,
+            cache_creation_tokens: usage.cache_creation_input_tokens,
+            cache_hit_rate: 0.0,
+        };
+        token_usage.recompute_cache_hit_rate();
 
         Ok(LlmResponse {
             content: choice.message.content.unwrap_or_default(),
             model: response.model,
             finish_reason,
-            usage: TokenUsage {
-                prompt_tokens: usage.prompt_tokens,
-                completion_tokens: usage.completion_tokens,
-                total_tokens: usage.total_tokens,
-            },
+            usage: token_usage,
             tool_calls,
         })
     }
@@ -364,6 +401,14 @@ impl LlmProvider for AnthropicProvider {
                             .get("total_tokens")
                             .and_then(|v| v.as_u64())
                             .unwrap_or(usage.total_tokens);
+                        usage.cache_read_input_tokens = u
+                            .get("cache_read_input_tokens")
+                            .and_then(|v| v.as_u64())
+                            .unwrap_or(usage.cache_read_input_tokens);
+                        usage.cache_creation_input_tokens = u
+                            .get("cache_creation_input_tokens")
+                            .and_then(|v| v.as_u64())
+                            .unwrap_or(usage.cache_creation_input_tokens);
                     }
 
                     let Some(choices) = val.get("choices").and_then(|c| c.as_array()) else {
@@ -449,13 +494,18 @@ impl LlmProvider for AnthropicProvider {
                 let _ = tx.send(StreamChunk::ToolCallComplete(finalized)).await;
             }
 
+            let mut done_usage = TokenUsage {
+                prompt_tokens: usage.prompt_tokens,
+                completion_tokens: usage.completion_tokens,
+                total_tokens: usage.total_tokens,
+                cached_tokens: usage.cache_read_input_tokens,
+                cache_creation_tokens: usage.cache_creation_input_tokens,
+                cache_hit_rate: 0.0,
+            };
+            done_usage.recompute_cache_hit_rate();
             let _ = tx
                 .send(StreamChunk::Done {
-                    usage: TokenUsage {
-                        prompt_tokens: usage.prompt_tokens,
-                        completion_tokens: usage.completion_tokens,
-                        total_tokens: usage.total_tokens,
-                    },
+                    usage: done_usage,
                     finish_reason,
                 })
                 .await;
@@ -548,4 +598,123 @@ struct OpenAiUsage {
     completion_tokens: u64,
     #[serde(default)]
     total_tokens: u64,
+    /// Anthropic-native prompt-cache fields. The gateway proxies them through
+    /// verbatim when they're present. Both default to `0` on providers that
+    /// don't emit them.
+    #[serde(default)]
+    cache_read_input_tokens: u64,
+    #[serde(default)]
+    cache_creation_input_tokens: u64,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::provider::{LlmRequest, Message};
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    #[test]
+    fn cache_marked_message_serializes_with_cache_control() {
+        let msg = Message::system("frozen system prompt");
+        let mapped = AnthropicProvider::map_message(&msg, true);
+        let content = mapped.content.unwrap();
+        // Should be an array with a text block carrying cache_control
+        let arr = content.as_array().expect("content should be array");
+        assert_eq!(arr.len(), 1);
+        assert_eq!(arr[0]["type"], "text");
+        assert_eq!(arr[0]["cache_control"]["type"], "ephemeral");
+    }
+
+    #[test]
+    fn unmarked_message_stays_as_string() {
+        let msg = Message::user("hi");
+        let mapped = AnthropicProvider::map_message(&msg, false);
+        assert!(matches!(
+            mapped.content,
+            Some(serde_json::Value::String(_))
+        ));
+    }
+
+    #[test]
+    fn build_request_applies_cache_control_at_flagged_indices() {
+        let provider = AnthropicProvider::new().with_api_key("test-key");
+        let req = LlmRequest::new(vec![
+            Message::system("shared"),
+            Message::user("varies"),
+        ])
+        .with_cache_control([0]);
+
+        let built = provider.build_request(&req);
+        // Message 0 should be content-blocks with cache_control.
+        let m0_content = built.messages[0].content.as_ref().unwrap();
+        assert!(m0_content.is_array(), "idx 0 should be blocks");
+        assert_eq!(
+            m0_content.as_array().unwrap()[0]["cache_control"]["type"],
+            "ephemeral"
+        );
+        // Message 1 should stay as string (unmarked).
+        let m1_content = built.messages[1].content.as_ref().unwrap();
+        assert!(m1_content.is_string(), "idx 1 should be string");
+    }
+
+    #[tokio::test]
+    async fn complete_parses_cache_tokens_and_hit_rate() {
+        let server = MockServer::start().await;
+        let body = serde_json::json!({
+            "model": "kilo-auto/free",
+            "choices": [{
+                "finish_reason": "stop",
+                "message": {"content": "ok"},
+            }],
+            "usage": {
+                "prompt_tokens": 100,
+                "completion_tokens": 50,
+                "total_tokens": 250,
+                "cache_read_input_tokens": 900,
+                "cache_creation_input_tokens": 75,
+            },
+        });
+        Mock::given(method("POST"))
+            .and(path("/api/gateway/chat/completions"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(body))
+            .mount(&server)
+            .await;
+
+        let provider = AnthropicProvider::new()
+            .with_api_key("test-key")
+            .with_base_url(&server.uri());
+        let req = LlmRequest::new(vec![Message::user("hello")]);
+        let resp = provider.complete(&req).await.expect("request should succeed");
+
+        assert_eq!(resp.usage.prompt_tokens, 100);
+        assert_eq!(resp.usage.completion_tokens, 50);
+        assert_eq!(resp.usage.cached_tokens, 900);
+        assert_eq!(resp.usage.cache_creation_tokens, 75);
+        // 900 / (100 + 900) = 0.9
+        assert!((resp.usage.cache_hit_rate - 0.9).abs() < 1e-9);
+    }
+
+    #[test]
+    fn cache_hit_rate_zero_on_empty_usage() {
+        let usage = crate::provider::TokenUsage::default();
+        assert_eq!(usage.cache_hit_rate, 0.0);
+    }
+
+    #[test]
+    fn recompute_handles_zero_safely() {
+        let mut u = crate::provider::TokenUsage::default();
+        u.recompute_cache_hit_rate();
+        assert_eq!(u.cache_hit_rate, 0.0);
+
+        u.prompt_tokens = 10;
+        u.cached_tokens = 0;
+        u.recompute_cache_hit_rate();
+        assert_eq!(u.cache_hit_rate, 0.0);
+
+        u.prompt_tokens = 0;
+        u.cached_tokens = 10;
+        u.recompute_cache_hit_rate();
+        assert!((u.cache_hit_rate - 1.0).abs() < 1e-9);
+    }
 }
