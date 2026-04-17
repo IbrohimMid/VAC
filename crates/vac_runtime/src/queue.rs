@@ -3,6 +3,7 @@ use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use tracing::warn;
 use uuid::Uuid;
 
 use crate::jobs::{Job, JobStatus};
@@ -30,11 +31,19 @@ impl TaskQueue {
     pub fn with_storage(path: PathBuf) -> Self {
         let mut loaded = VecDeque::new();
         if path.exists() {
-            if let Ok(content) = std::fs::read_to_string(&path) {
-                if let Ok(jobs) = serde_json::from_str::<Vec<Job>>(&content) {
-                    for job in jobs {
-                        loaded.push_back(job);
+            match std::fs::read_to_string(&path) {
+                Ok(content) => match serde_json::from_str::<Vec<Job>>(&content) {
+                    Ok(jobs) => {
+                        for job in jobs {
+                            loaded.push_back(job);
+                        }
                     }
+                    Err(e) => {
+                        warn!(?path, error = %e, "task_queue: failed to parse queue storage; starting empty");
+                    }
+                },
+                Err(e) => {
+                    warn!(?path, error = %e, "task_queue: failed to read queue storage; starting empty");
                 }
             }
         }
@@ -48,7 +57,10 @@ impl TaskQueue {
     async fn persist(&self) {
         if let Some(path) = &self.storage_path {
             if let Some(parent) = path.parent() {
-                let _ = std::fs::create_dir_all(parent);
+                if let Err(e) = std::fs::create_dir_all(parent) {
+                    warn!(?path, error = %e, "task_queue: failed to create queue storage dir");
+                    return;
+                }
             }
             let jobs = self.jobs.read().await;
             let vec: Vec<Job> = jobs.iter().cloned().collect();
@@ -59,8 +71,12 @@ impl TaskQueue {
                         .and_then(|name| name.to_str())
                         .unwrap_or("queue.json")
                 ));
-                if std::fs::write(&tmp_path, json).is_ok() {
-                    let _ = std::fs::rename(&tmp_path, path);
+                if let Err(e) = std::fs::write(&tmp_path, json) {
+                    warn!(?tmp_path, error = %e, "task_queue: failed to write queue temp file");
+                    return;
+                }
+                if let Err(e) = std::fs::rename(&tmp_path, path) {
+                    warn!(?path, error = %e, "task_queue: failed to persist queue storage");
                 }
             }
         }

@@ -111,6 +111,18 @@ async fn queue_persistence_saves_and_loads() {
 }
 
 #[tokio::test]
+async fn queue_with_storage_handles_malformed_json() {
+    use tempfile::tempdir;
+
+    let dir = tempdir().expect("failed to create temp dir");
+    let file_path = dir.path().join("queue.json");
+    std::fs::write(&file_path, "{not valid json").expect("failed to write malformed queue file");
+
+    let queue = TaskQueue::with_storage(file_path);
+    assert!(queue.list().await.is_empty());
+}
+
+#[tokio::test]
 async fn runtime_queue_trait_reads_both_queue_types() {
     let task_queue = TaskQueue::new();
     task_queue.enqueue(Job::new(JobKind::DiagnosticSweep)).await;
