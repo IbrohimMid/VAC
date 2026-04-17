@@ -548,6 +548,13 @@ pub struct AppState {
     pub message_area_height: u16,
 
     pub input_tx: Option<tokio::sync::mpsc::Sender<crate::tui::app::events::InputEvent>>,
+
+    // ===== Unit 5 (Wave 3.1) — Attachment tray preview & reorder =====
+    /// Cursor in the paste tray; indexes into `pending_pastes`.
+    pub pending_paste_selected: usize,
+    /// When true, `J` / `K` swap the selected paste with its neighbor
+    /// (instead of selecting). Toggle with `r` while the tray is focused.
+    pub pending_paste_reorder_mode: bool,
 }
 
 /// Options for creating AppState
@@ -735,6 +742,9 @@ impl AppState {
             message_area_y: 0,
             message_area_height: 0,
             input_tx: None,
+            // Unit 5 (Wave 3.1) — Attachment tray preview & reorder
+            pending_paste_selected: 0,
+            pending_paste_reorder_mode: false,
         }
     }
 
