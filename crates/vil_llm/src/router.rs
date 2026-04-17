@@ -12,7 +12,10 @@ use tokio::sync::{RwLock, mpsc};
 use tracing::{info, warn};
 
 use crate::providers::anthropic::AnthropicProvider;
+use crate::providers::gemini::GeminiProvider;
 use crate::providers::openai::OpenAiProvider;
+use crate::providers::openai_compat::OpenAiCompatProvider;
+use crate::providers::{mistral, xai};
 
 fn is_retryable(e: &LlmError) -> bool {
     match e {
@@ -103,6 +106,26 @@ impl LlmRouter {
 
     pub fn with_openai(&mut self) -> &mut Self {
         self.add_provider(Arc::new(OpenAiProvider::new()));
+        self
+    }
+
+    pub fn with_gemini(&mut self) -> &mut Self {
+        self.add_provider(Arc::new(GeminiProvider::new()));
+        self
+    }
+
+    pub fn with_xai(&mut self) -> &mut Self {
+        self.add_provider(Arc::new(xai::new()));
+        self
+    }
+
+    pub fn with_mistral(&mut self) -> &mut Self {
+        self.add_provider(Arc::new(mistral::new()));
+        self
+    }
+
+    pub fn with_openai_compat(&mut self) -> &mut Self {
+        self.add_provider(Arc::new(OpenAiCompatProvider::new()));
         self
     }
 
