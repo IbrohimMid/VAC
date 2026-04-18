@@ -648,6 +648,14 @@ pub struct AppState {
     /// When true, `J` / `K` swap the selected paste with its neighbor
     /// (instead of selecting). Toggle with `r` while the tray is focused.
     pub pending_paste_reorder_mode: bool,
+
+    // ===== Context Composer (Wave 3) =====
+    pub context_composer_visible: bool,
+    pub pinned_files: Vec<String>,
+    pub pinned_diffs: Vec<String>,
+    pub pinned_diagnostics: Vec<String>,
+    pub pinned_runtime_items: Vec<String>,
+    pub pinned_plan_items: Vec<String>,
 }
 
 /// Options for creating AppState
@@ -859,6 +867,13 @@ impl AppState {
             // Unit 5 (Wave 3.1) — Attachment tray preview & reorder
             pending_paste_selected: 0,
             pending_paste_reorder_mode: false,
+            // Context Composer
+            context_composer_visible: false,
+            pinned_files: Vec::new(),
+            pinned_diffs: Vec::new(),
+            pinned_diagnostics: Vec::new(),
+            pinned_runtime_items: Vec::new(),
+            pinned_plan_items: Vec::new(),
         }
     }
 

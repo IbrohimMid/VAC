@@ -53,9 +53,6 @@ pub fn map_crossterm_event_to_input_event(event: Event) -> Option<InputEvent> {
                 KeyCode::Char('g') if key.modifiers == (KeyModifiers::CONTROL) => {
                     Some(InputEvent::ReviewOpen)
                 }
-                KeyCode::Char('e') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                    Some(InputEvent::InputCursorEnd)
-                }
                 KeyCode::Char('x') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                     Some(InputEvent::ReviewRevertSelected)
                 }
@@ -74,10 +71,7 @@ pub fn map_crossterm_event_to_input_event(event: Event) -> Option<InputEvent> {
                 KeyCode::Char('w') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                     Some(InputEvent::InputDeleteWord)
                 }
-                KeyCode::Char('v') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                    Some(InputEvent::HandleClipboardImagePaste)
-                }
-                KeyCode::Char('x') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                KeyCode::Char('i') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                     Some(InputEvent::ShowIsolationSwitcher)
                 }
                 KeyCode::Char('o') if key.modifiers.contains(KeyModifiers::CONTROL) => {

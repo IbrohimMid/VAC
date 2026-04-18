@@ -38,6 +38,9 @@ pub use adapter::VacEngineAdapter;
 pub use terminal::TerminalGuard;
 
 // App module
+pub mod controller;
+pub mod action_registry;
+pub mod overlay;
 pub mod app;
 mod event;
 

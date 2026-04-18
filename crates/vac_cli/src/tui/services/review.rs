@@ -10,6 +10,46 @@ pub struct DiffData {
     pub new_content: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DiffHunk {
+    pub old_start: usize,
+    pub old_lines: usize,
+    pub new_start: usize,
+    pub new_lines: usize,
+    pub lines: Vec<String>,
+    pub staged: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct PatchModel {
+    pub path: String,
+    pub hunks: Vec<DiffHunk>,
+}
+
+impl PatchModel {
+    pub fn stage_hunk(&mut self, index: usize) {
+        if let Some(hunk) = self.hunks.get_mut(index) {
+            hunk.staged = true;
+        }
+    }
+
+    pub fn unstage_hunk(&mut self, index: usize) {
+        if let Some(hunk) = self.hunks.get_mut(index) {
+            hunk.staged = false;
+        }
+    }
+
+    pub fn revert_hunk(&mut self, index: usize, original_content: &str) -> String {
+        // Simple partial revert placeholder: 
+        // in a real implementation this would apply the reverse of the hunk patch to the current content.
+        // For now, it marks the hunk as removed or returns the reconstructed string.
+        if let Some(hunk) = self.hunks.get_mut(index) {
+            hunk.staged = false; // logic to revert
+        }
+        original_content.to_string()
+    }
+}
+
 pub fn snapshot_path(project_root: &Path, session_id: Uuid, file_path: &str) -> PathBuf {
     let safe_name = format!("{}.bak", file_path.replace(['/', '\\'], "__"));
     project_root

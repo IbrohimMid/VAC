@@ -19,7 +19,8 @@ pub fn view(f: &mut Frame, state: &mut AppState) {
             Constraint::Length(1),
             Constraint::Length(banner_h),
             Constraint::Min(1),
-            Constraint::Length(1),
+            Constraint::Length(1), // statusline
+            Constraint::Length(1), // footer
         ])
         .split(f.area());
 
@@ -31,7 +32,8 @@ pub fn view(f: &mut Frame, state: &mut AppState) {
         state.banner_dismiss_region = None;
     }
     render_workspace(f, state, chunks[2]);
-    render_footer(f, state, chunks[3]);
+    crate::tui::services::statusline::render_statusline(f, state, chunks[3]);
+    render_footer(f, state, chunks[4]);
 
     if state.show_command_palette {
         render_command_palette(f, state);
@@ -1998,191 +2000,35 @@ fn render_footer(f: &mut Frame, state: &mut AppState, area: Rect) {
             Span::styled(
                 "SHELL ",
                 Style::default()
-                    .fg(Color::Cyan)
+                    .fg(Color::Blue)
                     .add_modifier(Modifier::BOLD),
             ),
             Span::styled(
-                "Input box sends to PTY  ",
+                "  Ctrl+Z: background  Esc: close  Ctrl+C: kill",
                 Style::default().fg(Color::DarkGray),
             ),
-            Span::styled("Enter", Style::default().fg(Color::Cyan)),
-            Span::styled(": send input  ", Style::default().fg(Color::DarkGray)),
-            Span::styled("Ctrl+Z", Style::default().fg(Color::Cyan)),
-            Span::styled(": background  ", Style::default().fg(Color::DarkGray)),
-            Span::styled("/shell-kill", Style::default().fg(Color::Cyan)),
-            Span::styled(": terminate", Style::default().fg(Color::DarkGray)),
         ];
         let widget = Paragraph::new(Line::from(hints)).wrap(Wrap { trim: true });
         f.render_widget(widget, area);
         return;
     }
 
-    if state.shell_backgrounded && state.active_shell_command.is_some() {
-        let hints = vec![
-            Span::styled(
-                "SHELL [BACKGROUND] ",
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::styled("Ctrl+Z", Style::default().fg(Color::Cyan)),
-            Span::styled(": refocus  ", Style::default().fg(Color::DarkGray)),
-            Span::styled("/shell-kill", Style::default().fg(Color::Cyan)),
-            Span::styled(": terminate", Style::default().fg(Color::DarkGray)),
-        ];
-        let widget = Paragraph::new(Line::from(hints)).wrap(Wrap { trim: true });
-        f.render_widget(widget, area);
-        return;
-    }
+    let registry = crate::tui::action_registry::ActionRegistry::new();
+    let ctx = crate::tui::action_registry::ActionContext::from_app_state(state);
+    let actions = registry.get_actions_for_context(ctx);
 
-    if !state.pending_approvals.is_empty() {
-        let idx = state
-            .approval_selected_idx
-            .min(state.pending_approvals.len().saturating_sub(1));
-        let tc = state.pending_approvals.get(idx);
-        let preview = tc
-            .map(crate::tui::services::approval_preview)
-            .unwrap_or_else(|| "approval".to_string());
-        let hints = vec![
-            Span::styled(
-                "APPROVAL ",
-                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(
-                format!("[{}/{}] ", idx + 1, state.pending_approvals.len()),
-                Style::default().fg(Color::Yellow),
-            ),
-            Span::raw(preview),
-            Span::raw("  "),
-            Span::styled("Ctrl+M", Style::default().fg(Color::Cyan)),
-            Span::styled(": approve  ", Style::default().fg(Color::DarkGray)),
-            Span::styled("Ctrl+Shift+M", Style::default().fg(Color::Cyan)),
-            Span::styled(": reject  ", Style::default().fg(Color::DarkGray)),
-            Span::styled("Alt+A", Style::default().fg(Color::Cyan)),
-            Span::styled(": approve-all  ", Style::default().fg(Color::DarkGray)),
-            Span::styled("Alt+R", Style::default().fg(Color::Cyan)),
-            Span::styled(": reject-all  ", Style::default().fg(Color::DarkGray)),
-            Span::styled("Ctrl+Tab", Style::default().fg(Color::Cyan)),
-            Span::styled(": tabs", Style::default().fg(Color::DarkGray)),
-        ];
-        let widget = Paragraph::new(Line::from(hints)).wrap(Wrap { trim: true });
-        f.render_widget(widget, area);
-        return;
+    let mut hints = Vec::new();
+    for action in actions {
+        if !hints.is_empty() {
+            hints.push(Span::raw("  "));
+        }
+        let key_str = action.keys.join("/");
+        hints.push(Span::styled(key_str, Style::default().fg(Color::Cyan)));
+        hints.push(Span::styled(
+            format!(": {}  ", action.description.to_lowercase()),
+            Style::default().fg(Color::DarkGray),
+        ));
     }
-
-    let hints: Vec<Span> = match state.focus {
-        WorkspaceFocus::Input => vec![
-            Span::styled("Enter", Style::default().fg(Color::Cyan)),
-            Span::styled(": send  ", Style::default().fg(Color::DarkGray)),
-            Span::styled("@", Style::default().fg(Color::Cyan)),
-            Span::styled(": file  ", Style::default().fg(Color::DarkGray)),
-            Span::styled("Ctrl+P", Style::default().fg(Color::Cyan)),
-            Span::styled(": commands  ", Style::default().fg(Color::DarkGray)),
-            Span::styled("Tab", Style::default().fg(Color::Cyan)),
-            Span::styled(": next pane  ", Style::default().fg(Color::DarkGray)),
-            Span::styled("Ctrl+Tab", Style::default().fg(Color::Cyan)),
-            Span::styled(": next tab", Style::default().fg(Color::DarkGray)),
-        ],
-        WorkspaceFocus::Conversation => vec![
-            Span::styled("↑/↓", Style::default().fg(Color::Cyan)),
-            Span::styled(": scroll  ", Style::default().fg(Color::DarkGray)),
-            Span::styled("Tab", Style::default().fg(Color::Cyan)),
-            Span::styled(": next pane", Style::default().fg(Color::DarkGray)),
-        ],
-        WorkspaceFocus::Activity => vec![
-            Span::styled("↑/↓", Style::default().fg(Color::Cyan)),
-            Span::styled(": scroll  ", Style::default().fg(Color::DarkGray)),
-            Span::styled("Tab", Style::default().fg(Color::Cyan)),
-            Span::styled(": next pane", Style::default().fg(Color::DarkGray)),
-        ],
-        WorkspaceFocus::Workbench => match state.workbench_tab {
-            WorkbenchTab::Approvals => vec![
-                Span::styled("↑/↓", Style::default().fg(Color::Cyan)),
-                Span::styled(": select  ", Style::default().fg(Color::DarkGray)),
-                Span::styled("a", Style::default().fg(Color::Cyan)),
-                Span::styled(": approve  ", Style::default().fg(Color::DarkGray)),
-                Span::styled("r", Style::default().fg(Color::Cyan)),
-                Span::styled(": reject  ", Style::default().fg(Color::DarkGray)),
-                Span::styled("Ctrl+Tab", Style::default().fg(Color::Cyan)),
-                Span::styled(": next tab  ", Style::default().fg(Color::DarkGray)),
-                Span::styled("Tab", Style::default().fg(Color::Cyan)),
-                Span::styled(": next pane", Style::default().fg(Color::DarkGray)),
-            ],
-            WorkbenchTab::Review => vec![
-                Span::styled("↑/↓", Style::default().fg(Color::Cyan)),
-                Span::styled(": select  ", Style::default().fg(Color::DarkGray)),
-                Span::styled("Enter", Style::default().fg(Color::Cyan)),
-                Span::styled(": diff  ", Style::default().fg(Color::DarkGray)),
-                Span::styled("Ctrl+x/y/z", Style::default().fg(Color::Cyan)),
-                Span::styled(": revert  ", Style::default().fg(Color::DarkGray)),
-                Span::styled("Ctrl+n", Style::default().fg(Color::Cyan)),
-                Span::styled(": edit  ", Style::default().fg(Color::DarkGray)),
-                Span::styled("Ctrl+Tab", Style::default().fg(Color::Cyan)),
-                Span::styled(": next tab", Style::default().fg(Color::DarkGray)),
-            ],
-            WorkbenchTab::Sessions => vec![
-                Span::styled("↑/↓", Style::default().fg(Color::Cyan)),
-                Span::styled(": select  ", Style::default().fg(Color::DarkGray)),
-                Span::styled("Enter", Style::default().fg(Color::Cyan)),
-                Span::styled(": restore  ", Style::default().fg(Color::DarkGray)),
-                Span::styled("r", Style::default().fg(Color::Cyan)),
-                Span::styled(
-                    ": resume checkpoint  ",
-                    Style::default().fg(Color::DarkGray),
-                ),
-                Span::styled("Ctrl+Tab", Style::default().fg(Color::Cyan)),
-                Span::styled(": next tab", Style::default().fg(Color::DarkGray)),
-            ],
-            WorkbenchTab::Agents => vec![
-                Span::styled("↑/↓", Style::default().fg(Color::Cyan)),
-                Span::styled(": select  ", Style::default().fg(Color::DarkGray)),
-                Span::styled("r", Style::default().fg(Color::Cyan)),
-                Span::styled(": refresh  ", Style::default().fg(Color::DarkGray)),
-                Span::styled("Ctrl+Tab", Style::default().fg(Color::Cyan)),
-                Span::styled(": next tab", Style::default().fg(Color::DarkGray)),
-            ],
-            WorkbenchTab::Runtime => vec![
-                Span::styled("↑/↓", Style::default().fg(Color::Cyan)),
-                Span::styled(": select  ", Style::default().fg(Color::DarkGray)),
-                Span::styled("r", Style::default().fg(Color::Cyan)),
-                Span::styled(": refresh  ", Style::default().fg(Color::DarkGray)),
-                Span::styled("c", Style::default().fg(Color::Cyan)),
-                Span::styled(": cancel  ", Style::default().fg(Color::DarkGray)),
-                Span::styled("t", Style::default().fg(Color::Cyan)),
-                Span::styled(": retry  ", Style::default().fg(Color::DarkGray)),
-                Span::styled("Ctrl+Tab", Style::default().fg(Color::Cyan)),
-                Span::styled(": next tab", Style::default().fg(Color::DarkGray)),
-            ],
-            WorkbenchTab::Plan => vec![
-                Span::styled("e", Style::default().fg(Color::Cyan)),
-                Span::styled(": edit  ", Style::default().fg(Color::DarkGray)),
-                Span::styled("a", Style::default().fg(Color::Cyan)),
-                Span::styled(": approve  ", Style::default().fg(Color::DarkGray)),
-                Span::styled("r", Style::default().fg(Color::Cyan)),
-                Span::styled(": request changes  ", Style::default().fg(Color::DarkGray)),
-                Span::styled("/plan-review", Style::default().fg(Color::Cyan)),
-                Span::styled(": overlay  ", Style::default().fg(Color::DarkGray)),
-                Span::styled("Ctrl+Tab", Style::default().fg(Color::Cyan)),
-                Span::styled(": next tab", Style::default().fg(Color::DarkGray)),
-            ],
-            WorkbenchTab::Vil => vec![
-                Span::styled("↑/↓", Style::default().fg(Color::Cyan)),
-                Span::styled(": select  ", Style::default().fg(Color::DarkGray)),
-                Span::styled("R", Style::default().fg(Color::Cyan)),
-                Span::styled(": repair  ", Style::default().fg(Color::DarkGray)),
-                Span::styled("A", Style::default().fg(Color::Cyan)),
-                Span::styled(": audit  ", Style::default().fg(Color::DarkGray)),
-                Span::styled("D", Style::default().fg(Color::Cyan)),
-                Span::styled(": ir-diff  ", Style::default().fg(Color::DarkGray)),
-                Span::styled("O", Style::default().fg(Color::Cyan)),
-                Span::styled(": open  ", Style::default().fg(Color::DarkGray)),
-                Span::styled("←/→", Style::default().fg(Color::Cyan)),
-                Span::styled(": filter  ", Style::default().fg(Color::DarkGray)),
-                Span::styled("Ctrl+Tab", Style::default().fg(Color::Cyan)),
-                Span::styled(": next tab", Style::default().fg(Color::DarkGray)),
-            ],
-        },
-    };
 
     let widget = Paragraph::new(Line::from(hints)).wrap(Wrap { trim: true });
     f.render_widget(widget, area);
@@ -2247,7 +2093,7 @@ fn render_shortcuts(f: &mut Frame, _state: &mut AppState) {
         "Ctrl+N - Open in editor (Review)",
         "PageUp/PageDown - Scroll diff (Review)",
         "Ctrl+G - Open review workstation",
-        "Ctrl+O - Toggle auto-approve",
+        "Ctrl+F - Toggle auto-approve",
         "Tab - Cycle focus panes",
         "Ctrl+Tab - Cycle workbench tabs",
         "a/r - Approve/Reject selected (Approvals tab)",

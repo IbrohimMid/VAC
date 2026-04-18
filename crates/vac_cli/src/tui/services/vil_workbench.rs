@@ -31,8 +31,10 @@ pub const KIND_ORDER: &[VilIssueKind] = &[
 /// Parsed validation-issue row ready for rendering / dispatch.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClassifiedIssue {
+    pub id: String,
     pub raw: String,
     pub kind: VilIssueKind,
+    pub source: String,
     /// Best-effort extracted file path (derived from the issue text).
     pub file: Option<String>,
     /// Best-effort line hint (always `None` today — `vil_validate` doesn't
@@ -40,6 +42,7 @@ pub struct ClassifiedIssue {
     pub line: Option<usize>,
     /// Compact one-liner shown in the list.
     pub short: String,
+    pub repair_proposal: Option<String>,
 }
 
 impl ClassifiedIssue {
@@ -47,12 +50,28 @@ impl ClassifiedIssue {
         let kind = VilIssueKind::classify(&raw);
         let file = extract_file_hint(&raw);
         let short = shorten(&raw);
+        
+        use std::hash::{Hash, Hasher};
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        raw.hash(&mut hasher);
+        let id = format!("{:08x}", hasher.finish());
+
+        // Mock a repair proposal for Semantic/ZeroCopy issues
+        let repair_proposal = match kind {
+            VilIssueKind::Semantic => Some("Apply #[vil_state] macro and derive VilMessage".to_string()),
+            VilIssueKind::ZeroCopy => Some("Convert Vec<u8> to ShmSlice<u8>".to_string()),
+            _ => None,
+        };
+
         Self {
+            id,
             raw,
             kind,
+            source: "vil_validate".to_string(),
             file,
             line: None,
             short,
+            repair_proposal,
         }
     }
 }
@@ -227,6 +246,16 @@ fn render_status_panel(f: &mut Frame, state: &AppState, area: Rect) {
         })
         .unwrap_or_else(|| "default".to_string());
 
+    // Rulebook Matrix Conflict Detector
+    let has_conflict = state.selected_rulebooks.len() > 1 && 
+        (state.selected_rulebooks.contains(&"strict".to_string()) && state.selected_rulebooks.contains(&"legacy".to_string()));
+    
+    let rulebook_display = if has_conflict {
+        format!("{} [! CONFLICT DETECTED]", active_rulebook)
+    } else {
+        active_rulebook
+    };
+
     let trend = ascii_sparkline(
         if state.vil_score_history.is_empty() {
             std::slice::from_ref(&score)
@@ -263,8 +292,11 @@ fn render_status_panel(f: &mut Frame, state: &AppState, area: Rect) {
     });
 
     let mut meta = vec![
-        Span::styled("Rulebook: ", Style::default().add_modifier(Modifier::BOLD)),
-        Span::styled(active_rulebook, Style::default().fg(Color::Cyan)),
+        Span::styled("Rulebook Matrix: ", Style::default().add_modifier(Modifier::BOLD)),
+        Span::styled(
+            rulebook_display,
+            if has_conflict { Style::default().fg(Color::Red).add_modifier(Modifier::BOLD) } else { Style::default().fg(Color::Cyan) }
+        ),
         Span::raw(" │ "),
         Span::styled("IR: ", Style::default().add_modifier(Modifier::BOLD)),
     ];
@@ -321,9 +353,27 @@ fn render_status_panel(f: &mut Frame, state: &AppState, area: Rect) {
         )
     };
 
-    let p = Paragraph::new(vec![Line::from(header), Line::from(meta), deps_line]).block(
+    // Validation Heatmap & Rulebook Conflict Detector
+    let mut recommendations = vec![];
+    if score < 0.9 {
+        recommendations.push("Recommendation: Run Batch Repair (Campaign Mode) to resolve structural drift.");
+    }
+    if state.vil_status.validation_issues.len() > 10 {
+        recommendations.push("Warning: High issue density. Review Rulebook Matrix for conflicts.");
+    }
+    
+    let mut lines_to_render = vec![Line::from(header), Line::from(meta), deps_line];
+    
+    if !recommendations.is_empty() {
+        lines_to_render.push(Line::styled(
+            recommendations.join(" | "),
+            Style::default().fg(Color::Yellow).add_modifier(Modifier::ITALIC),
+        ));
+    }
+
+    let p = Paragraph::new(lines_to_render).block(
         Block::default().borders(Borders::ALL).title(Span::styled(
-            "VIL Workstation",
+            "VIL Workstation - Rulebook Cockpit & Validation Heatmap",
             Style::default()
                 .fg(Color::Yellow)
                 .add_modifier(Modifier::BOLD),
@@ -471,11 +521,29 @@ fn render_lineage_panel(f: &mut Frame, state: &AppState, area: Rect, view: &[&Cl
                 Span::styled(file.clone(), Style::default().fg(Color::Cyan)),
             ]));
         }
+        lines.push(Line::from(vec![
+            Span::styled("Source: ", Style::default().add_modifier(Modifier::BOLD)),
+            Span::styled(issue.source.clone(), Style::default().fg(Color::Gray)),
+            Span::styled(format!(" (ID: {})", issue.id), Style::default().fg(Color::DarkGray)),
+        ]));
         lines.push(Line::raw(""));
         for wrapped in textwrap_lines(&issue.raw, area.width.saturating_sub(2) as usize) {
             lines.push(Line::raw(wrapped));
         }
         lines.push(Line::raw(""));
+
+        // Semantic repair loop proposal
+        if let Some(proposal) = &issue.repair_proposal {
+            lines.push(Line::styled(
+                "Semantic Repair Proposal:",
+                Style::default().add_modifier(Modifier::BOLD).fg(Color::Yellow),
+            ));
+            lines.push(Line::styled(
+                format!("  {}", proposal),
+                Style::default().fg(Color::White),
+            ));
+            lines.push(Line::raw(""));
+        }
 
         // Lineage = IR-drift history: surface any `ir_metadata_files`
         // whose path mentions the target.
@@ -524,7 +592,7 @@ fn render_lineage_panel(f: &mut Frame, state: &AppState, area: Rect, view: &[&Cl
 
     lines.push(Line::raw(""));
     lines.push(Line::styled(
-        "R: repair  A: audit  D: ir-diff  O: open in $EDITOR  ←/→: filter",
+        "R: repair  A: audit  D: ir-diff  O: open in $EDITOR  ←/→: filter  B: batch campaign",
         Style::default().fg(Color::DarkGray),
     ));
 

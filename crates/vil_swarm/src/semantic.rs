@@ -30,6 +30,24 @@ pub struct SemanticPlan {
     /// Knowledge base entries consulted during planning (required in strict mode)
     #[serde(default)]
     pub knowledge_refs: Vec<String>,
+    /// Task graph parent ID (if this is a subtask)
+    #[serde(default)]
+    pub parent_task_id: Option<String>,
+    /// Dependencies (other task IDs that must complete before this one)
+    #[serde(default)]
+    pub dependencies: Vec<String>,
+    /// Retry policy
+    #[serde(default)]
+    pub max_retries: Option<u32>,
+    /// Budget tokens
+    #[serde(default)]
+    pub budget_tokens: Option<u64>,
+    /// Optional worktree path for this subtask
+    #[serde(default)]
+    pub worktree_path: Option<String>,
+    /// Approval policy profile
+    #[serde(default)]
+    pub approval_policy: Option<String>,
 }
 
 impl SemanticPlan {
@@ -71,6 +89,8 @@ impl SemanticPlan {
             - **Forbidden Constructs:** {}\n\
             - **Required Patterns:** {}\n\
             - **Knowledge Refs:** {}\n\
+            - **Dependencies:** {}\n\
+            - **Approval Policy:** {}\n\
             - **Rationale:** {}\n",
             self.kind,
             self.semantic_roles.join(", "),
@@ -80,6 +100,8 @@ impl SemanticPlan {
             self.forbidden_constructs.join(", "),
             self.required_patterns.join(", "),
             self.knowledge_refs.join(", "),
+            self.dependencies.join(", "),
+            self.approval_policy.as_deref().unwrap_or("default"),
             self.rationale
         )
     }

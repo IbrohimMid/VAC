@@ -13,6 +13,14 @@ pub struct Model {
     pub name: String,
     pub provider: String,
     pub supports_reasoning: bool,
+    #[serde(default)]
+    pub supports_tool_calls: bool,
+    #[serde(default)]
+    pub supports_streaming: bool,
+    #[serde(default)]
+    pub context_window: usize,
+    #[serde(default)]
+    pub cost_class: String,
 }
 
 impl Default for Model {
@@ -22,6 +30,10 @@ impl Default for Model {
             name: "VAC Default".to_string(),
             provider: "vac".to_string(),
             supports_reasoning: false,
+            supports_tool_calls: true,
+            supports_streaming: true,
+            context_window: 128000,
+            cost_class: "standard".to_string(),
         }
     }
 }

@@ -103,6 +103,43 @@ pub fn run_audit(ctx: &mut HandlerContext) -> HandlerResult {
     Ok(())
 }
 
+/// Run a VIL Campaign (batch audit + repair) over all issues in the current filter.
+pub fn run_batch_campaign(ctx: &mut HandlerContext) -> HandlerResult {
+    let issues = vil_workbench::classify_issues(ctx.state);
+    let view = vil_workbench::filtered(ctx.state, &issues);
+    
+    if view.is_empty() {
+        ctx.state
+            .toasts
+            .push(Toast::info("No issues in current filter to run campaign on.".to_string()));
+        return Ok(());
+    }
+
+    let files: Vec<String> = view.iter()
+        .filter_map(|i| i.file.clone())
+        .collect::<std::collections::HashSet<_>>() // deduplicate
+        .into_iter()
+        .collect();
+
+    let kind_filter = match ctx.state.vil_workbench_group_filter {
+        Some(VilIssueKind::ZeroCopy) => "zero_copy",
+        Some(VilIssueKind::Plumbing) => "plumbing",
+        Some(VilIssueKind::Semantic) => "semantic",
+        _ => "all",
+    };
+
+    let args = serde_json::json!({
+        "campaign_mode": true,
+        "files": files,
+        "pass_filter": kind_filter,
+        "auto_repair": true,
+    });
+
+    ctx.state.push_activity(ActivityKind::Status, format!("Starting VIL Campaign: batch repair {} issues", view.len()));
+    invoke_tool(ctx, "vil_campaign", args);
+    Ok(())
+}
+
 /// Dispatch `vil_ir_diff` (HEAD vs working tree) for the selected issue's
 /// file.
 pub fn run_ir_diff(ctx: &mut HandlerContext) -> HandlerResult {
@@ -331,5 +368,23 @@ mod tests {
         assert!(run_repair(&mut ctx).is_ok());
         assert!(rx.try_recv().is_err());
         assert!(ctx.state.toasts.len() > before);
+    }
+
+    #[test]
+    fn run_batch_campaign_emits_vil_campaign() {
+        let (mut state, tx, mut rx) = make_ctx();
+        state.vil_workbench_group_filter = Some(VilIssueKind::ZeroCopy);
+        let mut ctx = HandlerContext::new(&mut state, &tx);
+        assert!(run_batch_campaign(&mut ctx).is_ok());
+        let event = rx.try_recv().expect("expected InvokeVilTool");
+        match event {
+            OutputEvent::InvokeVilTool(name, args) => {
+                assert_eq!(name, "vil_campaign");
+                assert_eq!(args["campaign_mode"], true);
+                assert_eq!(args["pass_filter"], "zero_copy");
+                assert!(args["files"].is_array());
+            }
+            other => panic!("unexpected event: {other:?}"),
+        }
     }
 }

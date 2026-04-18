@@ -35,6 +35,8 @@ pub enum AdapterInputEvent {
     SwitchToProfile(String),
     /// Request rulebook update
     UpdateRulebooks(Vec<String>),
+    /// Request TaskGraph inspection
+    InspectTaskGraph,
 }
 
 /// Output events to TUI (mapped to Stakpak OutputEvent)
@@ -56,6 +58,8 @@ pub enum AdapterOutputEvent {
     ModelsLoaded(Vec<Model>),
     /// Usage update
     UsageUpdate(LLMTokenUsage),
+    /// TaskGraph info loaded for Inspector UI
+    TaskGraphLoaded(vac_runtime::TaskGraph),
 }
 
 /// Session info for TUI
@@ -115,6 +119,14 @@ impl VacEngineAdapter {
                     let _ = self
                         .output_tx
                         .send(AdapterOutputEvent::SessionsLoaded(vec![]))
+                        .await;
+                }
+                AdapterInputEvent::InspectTaskGraph => {
+                    let _ = self
+                        .output_tx
+                        .send(AdapterOutputEvent::AssistantMessage(
+                            "TaskGraph inspection requested".to_string(),
+                        ))
                         .await;
                 }
                 _ => {}

@@ -11,12 +11,9 @@ use std::path::PathBuf;
 pub enum InputEvent {
     // Backend events
     AssistantMessage(String),
-    AddUserMessage(String),
     StreamAssistantMessage(Uuid, String),
     RunToolCall(ToolCall),
     ToolResult(ToolCallResult),
-    StreamToolResult(ToolCallResultProgress),
-    StreamToolCallProgress(Vec<ToolCallStreamInfo>),
     StartLoadingOperation(LoadingOperation),
     EndLoadingOperation(LoadingOperation),
     Error(String),
@@ -167,8 +164,6 @@ impl InputEvent {
                 | InputEvent::AssistantMessage(_)
                 | InputEvent::StartLoadingOperation(_)
                 | InputEvent::EndLoadingOperation(_)
-                | InputEvent::StreamToolResult(_)
-                | InputEvent::StreamToolCallProgress(_)
                 | InputEvent::Error(_)
                 | InputEvent::RunToolCall(_)
                 | InputEvent::ToolResult(_)
@@ -189,7 +184,6 @@ impl InputEvent {
                 | InputEvent::McpServerState(_, _)
                 | InputEvent::ShowBanner(_, _, _)
                 | InputEvent::SessionRestored { .. }
-                | InputEvent::AddUserMessage(_)
         )
     }
 }

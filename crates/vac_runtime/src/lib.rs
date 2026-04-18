@@ -7,7 +7,10 @@ pub mod jobs;
 pub mod queue;
 pub mod runtime_queue;
 pub mod scheduler;
+pub mod task_graph;
 pub mod watcher;
+
+pub use task_graph::{ApprovalPolicy, TaskGraph, TaskNode, TaskNodeStatus};
 
 pub use agent_scheduler::{
     AgentQueueCounts, AgentRole, AgentScheduler, AgentSchedulerConfig, AgentSchedulerStateFile,

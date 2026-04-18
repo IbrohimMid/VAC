@@ -81,6 +81,10 @@ pub struct TaskConstraints {
     pub max_files_modified: Option<usize>,
     /// Require human approval before applying changes
     pub require_approval: bool,
+    /// Approval policy profile (e.g., "read-only", "safe-edit", "require-all")
+    pub approval_policy: Option<String>,
+    /// Optional worktree path for this subtask to isolate changes
+    pub worktree_path: Option<String>,
 }
 
 /// Task execution status.
