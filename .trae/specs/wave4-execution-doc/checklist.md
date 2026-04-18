@@ -1,5 +1,0 @@
-- [x] Dokumen `docs/wave4_execution_program.md` telah dibuat.
-- [x] *Capability Matrix* yang memisahkan kapabilitas minimum dan diferensiasi utama disertakan dalam dokumen.
-- [x] *Milestones 4A–4E* terdefinisi dengan fokus dan *output* yang jelas.
-- [x] Kriteria *Acceptance Gates* (PASS/PARTIAL/BLOCKER) telah dipetakan ke dalam pengujian yang sesuai (*hard proofs*).
-- [x] *Execution Backlog* telah disusun berdasarkan prioritas dan gelombang eksekusi.

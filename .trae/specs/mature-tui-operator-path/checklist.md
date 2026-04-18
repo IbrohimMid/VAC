@@ -1,5 +1,0 @@
-- [x] README.md mencerminkan fitur lengkap VAC dan posisinya secara definitif sebagai VIL-native autonomous development engine.
-- [x] Arsitektur TUI Event Loop baru berhasil diluncurkan via `vac interactive` tanpa error dan mendukung asinkronisitas.
-- [x] TUI dapat menampilkan status panel dan metadata eksekusi (`active_tool_calls`, `trim_boundary`, dll.) secara real-time.
-- [x] TUI berhasil memunculkan dialog approval interaktif dan melanjutkan eksekusi sesuai input *accept/reject* dari user.
-- [x] TUI menyediakan command palette yang fungsional untuk berinteraksi dengan fitur engine dan manajemen sesi secara matang.

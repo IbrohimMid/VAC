@@ -1,6 +1,0 @@
-- [x] Field state `ask_user_question_kind`, `ask_user_multi_selected`, dan `ask_user_metadata` dapat diakses dan konsisten di `types.rs`
-- [x] Terdapat `WorkbenchTab::Vil` yang didedikasikan penuh untuk VIL Workstation pada `AppState`
-- [x] Output shell memiliki batasan buffer maksimum (bounded/circular buffer) agar tidak mengonsumsi memori tanpa batas
-- [x] Modul deteksi secret diperbarui melampaui metode naif (seperti penambahan validasi tambahan/regex pattern yang lebih baik)
-- [x] Pemanggilan LLM dilindungi oleh *rate limiting*
-- [x] Kegagalan koneksi MCP TLS ditampilkan kepada operator (misal melalui *Banner Queue*)

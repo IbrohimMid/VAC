@@ -82,8 +82,7 @@ vac interactive
 For full documentation and advanced usage, visit: [https://vastar.id/docs/vac](https://vastar.id/docs/vac)
 
 - [Onboarding Guide](docs/onboarding.md)
-- [Roadmap to 100/100 (v2)](docs/ROADMAP_TO_100_v2.md)
-- [Superbatch execution brief (cloud agent)](docs/SUPERBATCH_PHASE_3_TO_7.md)
+- [TUI Hardening Masterplan](docs/tui_hardening_masterplan.md)
 - [Threat Model](docs/THREAT_MODEL.md)
 - [Security Policy](docs/SECURITY.md)
 - [Runtime Queue Boundary](docs/RUNTIME_QUEUE_BOUNDARY.md)

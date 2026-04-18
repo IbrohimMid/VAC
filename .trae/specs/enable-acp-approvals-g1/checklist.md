@@ -1,5 +1,0 @@
-- [x] ACP tidak auto-reject secara default hanya karena channel approval ditutup
-- [x] ACP event `approval_required` bisa ditindaklanjuti dengan `approve_tool`/reject dan memengaruhi eksekusi task nyata
-- [x] Implementasi `approve_tool` tidak lagi stub “not supported” dan merutekan keputusan ke `VacEngine` approval plane existing
-- [x] Perubahan tidak mengubah behavior jalur non-ACP (`run`/`tui`) selain wiring yang diperlukan untuk compile
-- [x] `cargo test -p vac_core -p vac_cli` (atau `cargo test --workspace`) lulus

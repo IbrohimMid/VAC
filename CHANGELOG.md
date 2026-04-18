@@ -9,7 +9,7 @@ Versioning: [Semantic Versioning](https://semver.org/)
 ## [Unreleased]
 
 ### Added
-- `docs/ROADMAP_TO_100_v2.md` — codebase-grounded roadmap superseding v1.
+- `docs/tui_hardening_masterplan.md` — active source of truth for VAC control-plane hardening and operator-grade positioning.
 - `docs/SUPERBATCH_PHASE_3_TO_7.md` — long-running cloud-agent execution brief (base branch: `main`).
 - `docs/THREAT_MODEL.md`, `docs/RUNTIME_QUEUE_BOUNDARY.md` — security + architecture decision records.
 - Phase 1: hardened `secret_detector` (gitleaks-style provider rules, entropy filter, PII split, dedup), bundle import (signature, collision, redact-on-import, size cap, schema gate), policy gate classifier (shell-words parser, 100+ adversarial corpus), policy gate fail-closed semantics.
@@ -21,8 +21,7 @@ Versioning: [Semantic Versioning](https://semver.org/)
 ### Changed
 - `vac init` / memory bootstrap now use a file-backed redb path at `.vac/memory/vil_memory.db` instead of treating `.vac/memory` as the database file itself.
 - GitHub Actions workflows now override `CARGO_TARGET_DIR` so build, test, and smoke jobs do not depend on the repo-local absolute target-dir from developer machines.
-- Repo cleanup: stale milestone, wave, and audit-snapshot docs moved to `docs/archive/`.
-- `docs/ROADMAP_TO_100.md` (v1) renamed to `docs/archive/ROADMAP_TO_100_v1.md`.
+- Repo cleanup: stale roadmap/spec backlog removed in favor of the unified hardening masterplan.
 
 ### Removed
 - Stray top-level `output.json` and console-transcript dump.

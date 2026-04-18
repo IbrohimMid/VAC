@@ -1,6 +1,0 @@
-- [x] Audit arsitektur dan kapabilitas VAC selesai dilakukan secara menyeluruh dan didokumentasikan (mencakup TUI, UX, *Core*, MCP/LLM, dan VIL)
-- [x] Dimensi evaluasi kompetitif (*Agentic Autonomy*, *Context*, *Security*, dll.) telah ditentukan dengan jelas
-- [x] Profil kapabilitas *industry leaders* seperti Stakpak dan Claude Code berhasil dianalisis
-- [x] Matriks perbandingan *head-to-head* antara VAC, Stakpak, dan Claude Code telah disusun
-- [x] Laporan analisis komprehensif (`docs/COMPETITIVE_ANALYSIS.md`) telah dibuat dan tersimpan
-- [x] Dokumen roadmap strategis (`docs/ROADMAP.md`) dengan pembagian fase yang jelas (Jangka Pendek, Menengah, Panjang) telah dibuat dan tersimpan

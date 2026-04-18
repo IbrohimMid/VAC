@@ -1,6 +1,0 @@
-- [x] `spec.md` memuat kontrak produk Wave 4 yang eksplisit (3 mode operasi, operator clarity, trust boundary, privacy vault propagation, approval persistence, persistence state minimal, validation artifacts, repo intelligence, honest docs).
-- [x] Acceptance criteria produk/teknis/kompetitif terdefinisi sebagai “claim gates” yang dapat diaudit (bukan klaim naratif).
-- [x] Capability matrix target terdefinisi (parity minimum, target surpass, intentional differences) dan konsisten dengan positioning “VIL-native autonomous development engine”.
-- [x] Milestone eksekusi 4A–4E terdefinisi dengan gate PASS/PARTIAL/BLOCKER yang dapat diverifikasi.
-- [x] Setiap gate punya pemetaan ke bukti (hard proof tests, smoke tests) dan artifacts/dokumen pendukung yang jelas.
-- [x] Backlog prioritas tersusun (must-have before claim, competitive parity, differentiation) dengan dependensi yang eksplisit.

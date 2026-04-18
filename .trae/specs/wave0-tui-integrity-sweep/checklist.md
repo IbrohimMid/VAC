@@ -1,9 +1,0 @@
-- [ ] `ALL_KEY_BINDINGS` registry is implemented and keymap collisions are resolved.
-- [ ] `no_duplicate_bindings_in_same_context` test passes.
-- [ ] `CommandSource::Passthrough` is implemented and 6 passthrough commands are reclassified.
-- [ ] `builtin_commands_must_have_handlers` test passes.
-- [ ] All 7 dead key bindings are explicitly handled or removed.
-- [ ] `input_event_coverage_check` test passes.
-- [ ] Shortcuts popup and footer are dynamically generated from the registry and `vac_commands()`.
-- [ ] Missing commands are available.
-- [ ] `all_builtin_commands_available_in_palette` test passes.
