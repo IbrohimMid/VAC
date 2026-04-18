@@ -83,7 +83,7 @@ pub fn view(f: &mut Frame, state: &mut AppState) {
         crate::tui::services::ask_user::render_ask_user_popup(f, state);
     }
 
-    if state.shell.popup_visible {
+    if state.shell.session_store.popup_visible {
         render_shell_popup(f, state);
     }
 
@@ -838,41 +838,45 @@ fn render_operator_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
         ),
     ]));
 
-    if state.shell.active_command.is_some() || !state.shell.output.trim().is_empty() {
-        let shell_state = if state.shell.active_command.is_some() {
-            if state.shell.backgrounded {
-                "background"
+    if let Some(session) = state.shell.session_store.active() {
+        if session.command.is_some() || !session.output.trim().is_empty() {
+            let shell_state = if session.command.is_some() {
+                if session.backgrounded {
+                    "background"
+                } else {
+                    "active"
+                }
+            } else if let Some(code) = session.exit_code {
+                if code == 0 { "completed" } else { "failed" }
             } else {
-                "active"
-            }
-        } else if let Some(code) = state.shell.exit_code {
-            if code == 0 { "completed" } else { "failed" }
-        } else {
-            "idle"
-        };
-        lines.push(Line::from(vec![
-            Span::styled("shell ", Style::default().fg(Color::DarkGray)),
-            Span::styled(shell_state, Style::default().fg(Color::Cyan)),
-        ]));
-    }
-
-    if !state.shell.output.trim().is_empty() {
-        let last = state
-            .shell.output
-            .lines()
-            .rev()
-            .take(2)
-            .collect::<Vec<_>>()
-            .into_iter()
-            .rev()
-            .collect::<Vec<_>>()
-            .join("\n");
-        lines.push(Line::raw(""));
-        for l in last.lines() {
+                "idle"
+            };
             lines.push(Line::from(vec![
                 Span::styled("shell ", Style::default().fg(Color::DarkGray)),
-                Span::raw(l.to_string()),
+                Span::styled(shell_state, Style::default().fg(Color::Cyan)),
+                Span::raw("  "),
+                Span::styled(session.label.clone(), Style::default().fg(Color::DarkGray)),
             ]));
+        }
+
+        if !session.output.trim().is_empty() {
+            let last = session
+                .output
+                .lines()
+                .rev()
+                .take(2)
+                .collect::<Vec<_>>()
+                .into_iter()
+                .rev()
+                .collect::<Vec<_>>()
+                .join("\n");
+            lines.push(Line::raw(""));
+            for l in last.lines() {
+                lines.push(Line::from(vec![
+                    Span::styled("shell ", Style::default().fg(Color::DarkGray)),
+                    Span::raw(l.to_string()),
+                ]));
+            }
         }
     }
 
@@ -1178,20 +1182,27 @@ fn render_shell_popup(f: &mut Frame, state: &mut AppState) {
     let area = centered_rect(80, 55, f.area());
     f.render_widget(Clear, area);
 
-    let title = if let Some(shell) = &state.shell.active_command {
-        if state.shell.waiting_for_input {
-            format!("Shell [{}] waiting for input", shell.command)
+    let active_session = state.shell.session_store.active();
+    let title = if let Some(session) = active_session {
+        if let Some(shell) = &session.command {
+            if session.waiting_for_input {
+                format!("Shell [{}] waiting for input", shell.command)
+            } else {
+                format!("Shell [{}] active", shell.command)
+            }
+        } else if let Some(code) = session.exit_code {
+            format!("Shell {} completed (exit {code})", session.label)
         } else {
-            format!("Shell [{}] active", shell.command)
+            format!("Shell {}", session.label)
         }
-    } else if let Some(code) = state.shell.exit_code {
-        format!("Shell completed (exit {code})")
     } else {
         "Shell".to_string()
     };
 
     let mut lines: Vec<Line> = Vec::new();
-    let content: Vec<&str> = state.shell.output.lines().collect();
+    let content: Vec<&str> = active_session
+        .map(|session| session.output.lines().collect())
+        .unwrap_or_default();
     let max_lines = area.height.saturating_sub(4) as usize;
     let start = content.len().saturating_sub(max_lines);
     for line in content.into_iter().skip(start) {
@@ -1205,7 +1216,7 @@ fn render_shell_popup(f: &mut Frame, state: &mut AppState) {
         ));
     }
 
-    if let Some(err) = &state.shell.last_error {
+    if let Some(err) = active_session.and_then(|session| session.last_error.as_ref()) {
         lines.push(Line::raw(""));
         lines.push(Line::styled(
             format!("Last error: {err}"),
@@ -1482,7 +1493,8 @@ fn render_agents_pane(f: &mut Frame, state: &mut AppState, area: Rect) {
     }
 
     let items: Vec<ListItem> = state
-        .runtime.agent_tasks
+        .runtime
+        .agent_tasks
         .iter()
         .enumerate()
         .map(|(idx, task)| {
@@ -1685,7 +1697,8 @@ fn render_runtime_pane(f: &mut Frame, state: &mut AppState, area: Rect) {
     }
 
     let items: Vec<ListItem> = state
-        .runtime.jobs
+        .runtime
+        .jobs
         .iter()
         .enumerate()
         .map(|(idx, job)| {
@@ -1851,6 +1864,51 @@ fn render_runtime_pane(f: &mut Frame, state: &mut AppState, area: Rect) {
         lines.push(Line::raw(""));
     }
 
+    if let Some(projection) = &state.runtime.task_projection {
+        lines.push(Line::from(vec![Span::styled(
+            "Task Graph:",
+            Style::default().add_modifier(Modifier::BOLD),
+        )]));
+        lines.push(Line::from(vec![
+            Span::styled("  Nodes: ", Style::default().fg(Color::DarkGray)),
+            Span::raw(projection.nodes.len().to_string()),
+            Span::styled("  Roots: ", Style::default().fg(Color::DarkGray)),
+            Span::raw(projection.root_ids.len().to_string()),
+        ]));
+        for node in projection.nodes.iter().take(5) {
+            let status_color = match &node.status {
+                vac_runtime::TaskStatus::Pending => Color::DarkGray,
+                vac_runtime::TaskStatus::Running => Color::Cyan,
+                vac_runtime::TaskStatus::Completed => Color::Green,
+                vac_runtime::TaskStatus::Failed(_) => Color::Red,
+                vac_runtime::TaskStatus::Blocked => Color::Yellow,
+            };
+            let status_label = match &node.status {
+                vac_runtime::TaskStatus::Pending => "P",
+                vac_runtime::TaskStatus::Running => "R",
+                vac_runtime::TaskStatus::Completed => "C",
+                vac_runtime::TaskStatus::Failed(_) => "F",
+                vac_runtime::TaskStatus::Blocked => "B",
+            };
+            let approval = if node.approval_required { "⚠" } else { "" };
+            lines.push(Line::from(vec![
+                Span::styled(
+                    format!("    [{}] ", status_label),
+                    Style::default().fg(status_color),
+                ),
+                Span::raw(node.label.chars().take(24).collect::<String>()),
+                Span::styled(approval.to_string(), Style::default().fg(Color::Yellow)),
+            ]));
+        }
+        if projection.nodes.len() > 5 {
+            lines.push(Line::styled(
+                format!("    … and {} more", projection.nodes.len() - 5),
+                Style::default().fg(Color::DarkGray),
+            ));
+        }
+        lines.push(Line::raw(""));
+    }
+
     if let Some(job) = state.runtime.jobs.get(state.runtime.selected_idx) {
         lines.push(Line::from(vec![
             Span::styled("Job: ", Style::default().add_modifier(Modifier::BOLD)),
@@ -1995,7 +2053,14 @@ fn render_footer(f: &mut Frame, state: &mut AppState, area: Rect) {
         return;
     }
 
-    if state.shell.popup_visible && state.shell.active_command.is_some() {
+    if state.shell.session_store.popup_visible
+        && state
+            .shell
+            .session_store
+            .active()
+            .and_then(|session| session.command.as_ref())
+            .is_some()
+    {
         let hints = vec![
             Span::styled(
                 "SHELL ",
@@ -2137,6 +2202,18 @@ mod tests {
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
 
+    fn render_to_string(terminal: &Terminal<TestBackend>) -> String {
+        let buf = terminal.backend().buffer();
+        let mut s = String::new();
+        for y in 0..buf.area.height {
+            for x in 0..buf.area.width {
+                s.push_str(buf[(x, y)].symbol());
+            }
+            s.push('\n');
+        }
+        s
+    }
+
     #[test]
     fn view_smoke_renders() {
         let backend = TestBackend::new(120, 40);
@@ -2175,5 +2252,26 @@ mod tests {
         state.modified_files = state.changeset_store.modified_files();
 
         terminal.draw(|f| view(f, &mut state)).unwrap();
+    }
+
+    #[test]
+    fn pinned_context_visible_in_view() {
+        let backend = TestBackend::new(120, 40);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        let mut state = AppState::new(AppStateOptions {
+            model: None,
+            session_id: Some(uuid::Uuid::new_v4().to_string()),
+            checkpoint_path: None,
+            project_root: std::env::current_dir().unwrap(),
+        });
+        state.side_panel_visible = true;
+        state.pinned_files.push("src/lib.rs".to_string());
+        state.pinned_diagnostics.push("src/main.rs".to_string());
+
+        terminal.draw(|f| view(f, &mut state)).unwrap();
+        let rendered = render_to_string(&terminal);
+        assert!(rendered.contains("src/lib.rs"));
+        assert!(rendered.contains("src/main.rs"));
     }
 }

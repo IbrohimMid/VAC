@@ -1,28 +1,13 @@
 //! Event Loop Module
 
-use crate::tui::Model;
-use crate::tui::app::{AppState, AppStateOptions, InputEvent, OutputEvent};
-use crate::tui::event::map_crossterm_event_to_input_event;
-use crate::tui::services::helper_block::welcome_messages;
-use crate::tui::terminal::TerminalGuard;
-use crate::tui::view::view;
-use crossterm::{
-    event::{EnableBracketedPaste, EnableMouseCapture},
-    execute,
-    terminal::{EnterAlternateScreen, enable_raw_mode},
-};
-use ratatui::{Terminal, backend::CrosstermBackend};
-use std::io;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
-use tokio::sync::mpsc::{Receiver, Sender};
-use tokio::time::interval;
+use crate::tui::app::{AppState, InputEvent, OutputEvent};
+use tokio::sync::mpsc::Sender;
 
 use crate::tui::handlers::HandlerContext;
 use crate::tui::handlers::{
     approval, changeset as changeset_handler, file_search, isolation_switcher, message_action,
     model_switcher, profile_switcher, review as review_handler, rulebook_switcher,
+    shell as shell_handler,
 };
 
 /// Rulebook configuration
@@ -1147,28 +1132,16 @@ pub fn handle_input_event(
         }
         InputEvent::InputSubmitted => {
             if state.focus == crate::tui::app::WorkspaceFocus::Input
-                && state.shell.popup_visible
-                && state.shell.active_command.is_some()
+                && state.shell.session_store.popup_visible
+                && state
+                    .shell
+                    .session_store
+                    .active()
+                    .and_then(|session| session.command.as_ref())
+                    .is_some()
             {
-                let text = state.input.get_content();
-                let payload = if text.is_empty() {
-                    "\n".to_string()
-                } else {
-                    if state.shell.history.last() != Some(&text) {
-                        state.shell.history.push(text.clone());
-                    }
-                    state.shell.history_idx = None;
-                    format!("{text}\n")
-                };
-                if let Some(shell) = state.shell.active_command.clone() {
-                    shell.send_input(payload);
-                    state.input.clear();
-                    state.shell.waiting_for_input = false;
-                    state.push_activity(
-                        crate::tui::app::ActivityKind::Status,
-                        "Sent input to shell",
-                    );
-                }
+                let _ =
+                    shell_handler::handle_shell_key(state, output_tx, &InputEvent::InputSubmitted);
                 return;
             }
 
@@ -1337,20 +1310,8 @@ pub fn handle_input_event(
         }
         InputEvent::Up => match state.focus {
             crate::tui::app::WorkspaceFocus::Input => {
-                if state.shell.popup_visible
-                    && state.shell.active_command.is_some()
-                    && !state.shell.history.is_empty()
-                {
-                    let max_idx = state.shell.history.len() - 1;
-                    let next_idx = match state.shell.history_idx {
-                        Some(idx) => idx.saturating_sub(1),
-                        None => max_idx,
-                    };
-                    state.shell.history_idx = Some(next_idx);
-                    if let Some(cmd) = state.shell.history.get(next_idx) {
-                        state.input.set_content(cmd);
-                        state.input.move_cursor_end();
-                    }
+                if shell_handler::handle_shell_key(state, output_tx, &InputEvent::Up) {
+                    state.input.move_cursor_end();
                 } else {
                     state.input.move_cursor_up();
                 }
@@ -1390,21 +1351,8 @@ pub fn handle_input_event(
         },
         InputEvent::Down => match state.focus {
             crate::tui::app::WorkspaceFocus::Input => {
-                if state.shell.popup_visible
-                    && state.shell.active_command.is_some()
-                    && state.shell.history_idx.is_some()
-                {
-                    let next_idx = state.shell.history_idx.unwrap() + 1;
-                    if next_idx >= state.shell.history.len() {
-                        state.shell.history_idx = None;
-                        state.input.clear();
-                    } else {
-                        state.shell.history_idx = Some(next_idx);
-                        if let Some(cmd) = state.shell.history.get(next_idx) {
-                            state.input.set_content(cmd);
-                            state.input.move_cursor_end();
-                        }
-                    }
+                if shell_handler::handle_shell_key(state, output_tx, &InputEvent::Down) {
+                    state.input.move_cursor_end();
                 } else {
                     state.input.move_cursor_down();
                 }
@@ -1473,9 +1421,15 @@ pub fn handle_input_event(
             } else if state.show_changeset {
                 let mut ctx = HandlerContext::new(state, output_tx);
                 let _ = changeset_handler::close(&mut ctx);
-            } else if state.shell.popup_visible && state.shell.active_command.is_some() {
-                state.shell.popup_visible = false;
-                state.shell.backgrounded = true;
+            } else if state.shell.session_store.popup_visible
+                && state
+                    .shell
+                    .session_store
+                    .active()
+                    .and_then(|session| session.command.as_ref())
+                    .is_some()
+            {
+                shell_handler::background(state);
             } else if state.is_streaming {
                 let _ = output_tx.try_send(OutputEvent::CancelStream);
                 state.is_streaming = false;
@@ -1487,33 +1441,33 @@ pub fn handle_input_event(
             }
         }
         InputEvent::HandleCtrlZ => {
-            if state.shell.active_command.is_some() {
-                if state.shell.popup_visible {
-                    state.shell.popup_visible = false;
-                    state.shell.backgrounded = true;
+            if state
+                .shell
+                .session_store
+                .active()
+                .and_then(|session| session.command.as_ref())
+                .is_some()
+            {
+                if state.shell.session_store.popup_visible {
+                    shell_handler::background(state);
                 } else {
-                    state.shell.popup_visible = true;
-                    state.shell.backgrounded = false;
+                    shell_handler::foreground(state);
                 }
-                state.shell.history_idx = None;
+                if let Some(session) = state.shell.session_store.active_mut() {
+                    session.history_idx = None;
+                }
             }
         }
         InputEvent::BackgroundShell => {
-            if state.shell.active_command.is_some() {
-                state.shell.popup_visible = false;
-                state.shell.backgrounded = true;
-            }
+            shell_handler::background(state);
         }
         InputEvent::FocusShell => {
-            if state.shell.active_command.is_some() {
-                state.shell.popup_visible = true;
-                state.shell.backgrounded = false;
-            }
+            shell_handler::foreground(state);
         }
         InputEvent::ShellKill => {
-            if let Some(shell) = state.shell.active_command.clone() {
-                let _ = shell.kill();
-                state.shell.waiting_for_input = false;
+            shell_handler::kill(state);
+            if let Some(session) = state.shell.session_store.active_mut() {
+                session.waiting_for_input = false;
             }
         }
         InputEvent::AutoApproveCurrentTool => {
@@ -2053,6 +2007,13 @@ pub fn handle_backend_event(
 
             state.runtime.snapshot = snapshot;
         }
+        InputEvent::SetTaskGraphProjection(projection) => {
+            state.runtime.task_projection = projection;
+            state.push_activity(
+                crate::tui::app::ActivityKind::Status,
+                "Task graph projection updated",
+            );
+        }
         InputEvent::FileIndexReady(files) => {
             state.all_files = files;
             state.file_search_results = state.all_files.iter().take(50).cloned().collect();
@@ -2061,86 +2022,88 @@ pub fn handle_backend_event(
             ));
         }
         InputEvent::ShellStarted(shell) => {
-            state.shell.active_command = Some(shell.clone());
-            state.shell.popup_visible = true;
-            state.shell.backgrounded = false;
-            state.shell.waiting_for_input = false;
-            state.shell.exit_code = None;
-            state.shell.last_error = None;
-            state.shell.output.clear();
-            state.shell.history_idx = None;
+            let label = if shell.command.trim().is_empty() {
+                format!("shell-{}", state.shell.session_store.sessions.len() + 1)
+            } else {
+                shell.command.clone()
+            };
+            let idx = state.shell.session_store.push_new(label);
+            if let Some(session) = state.shell.session_store.sessions.get_mut(idx) {
+                session.command = Some(shell.clone());
+                session.backgrounded = false;
+                session.waiting_for_input = false;
+                session.exit_code = None;
+                session.last_error = None;
+                session.output.clear();
+                session.history_idx = None;
+                session.prompt_ready = false;
+                session.password_mode = false;
+                session.lifecycle = crate::tui::services::shell_mode::ShellLifecycle::Running;
+            }
+            state.shell.session_store.popup_visible = true;
             state.push_activity(
                 crate::tui::app::ActivityKind::Shell,
                 format!("Shell started: {}", shell.command),
             );
         }
         InputEvent::ShellOutput(id, text) => {
-            if state
-                .shell
-                .active_command
-                .as_ref()
-                .is_some_and(|cmd| cmd.id == id)
-                || id == "system"
-            {
-                state.shell.output.push_str(&text);
+            let target = if id == "system" {
+                state.shell.session_store.active_mut()
+            } else {
+                state.shell.session_store.find_by_command_id_mut(&id)
+            };
+            if let Some(session) = target {
+                session.output.push_str(&text);
 
-                // Truncate to 1MB circular buffer
                 let max_size = 1024 * 1024;
-                if state.shell.output.len() > max_size {
-                    let keep_len = max_size - 128 * 1024; // Keep ~900KB to avoid shifting on every push
-                    let mut safe_idx = state.shell.output.len() - keep_len;
-                    while safe_idx < state.shell.output.len()
-                        && !state.shell.output.is_char_boundary(safe_idx)
+                if session.output.len() > max_size {
+                    let keep_len = max_size - 128 * 1024;
+                    let mut safe_idx = session.output.len() - keep_len;
+                    while safe_idx < session.output.len()
+                        && !session.output.is_char_boundary(safe_idx)
                     {
                         safe_idx += 1;
                     }
-                    state.shell.output = state.shell.output[safe_idx..].to_string();
+                    session.output = session.output[safe_idx..].to_string();
                 }
 
-                // Unit 6: detect prompt-ready and password-mode from output
-                state.shell.prompt_ready =
-                    crate::tui::services::shell_mode::detect_prompt_ready(&state.shell.output);
-                state.shell.password_mode =
+                session.prompt_ready =
+                    crate::tui::services::shell_mode::detect_prompt_ready(&session.output);
+                session.password_mode =
                     crate::tui::services::shell_mode::detect_password_prompt(&text);
-                if state.shell.prompt_ready {
-                    state.shell.lifecycle =
-                        crate::tui::services::shell_mode::ShellLifecycle::PromptReady;
+                session.lifecycle = if session.prompt_ready {
+                    crate::tui::services::shell_mode::ShellLifecycle::PromptReady
                 } else {
-                    state.shell.lifecycle =
-                        crate::tui::services::shell_mode::ShellLifecycle::Running;
-                }
+                    crate::tui::services::shell_mode::ShellLifecycle::Running
+                };
             }
         }
         InputEvent::ShellError(id, text) => {
-            if state
-                .shell
-                .active_command
-                .as_ref()
-                .is_some_and(|cmd| cmd.id == id)
-                || id == "system"
-            {
-                if !state.shell.output.ends_with('\n') && !state.shell.output.is_empty() {
-                    state.shell.output.push('\n');
+            let target = if id == "system" {
+                state.shell.session_store.active_mut()
+            } else {
+                state.shell.session_store.find_by_command_id_mut(&id)
+            };
+            if let Some(session) = target {
+                if !session.output.ends_with('\n') && !session.output.is_empty() {
+                    session.output.push('\n');
                 }
-                state
-                    .shell
-                    .output
-                    .push_str(&format!("[shell error] {text}\n"));
+                session.output.push_str(&format!("[shell error] {text}\n"));
 
                 let max_size = 1024 * 1024;
-                if state.shell.output.len() > max_size {
+                if session.output.len() > max_size {
                     let keep_len = max_size - 128 * 1024;
-                    let mut safe_idx = state.shell.output.len() - keep_len;
-                    while safe_idx < state.shell.output.len()
-                        && !state.shell.output.is_char_boundary(safe_idx)
+                    let mut safe_idx = session.output.len() - keep_len;
+                    while safe_idx < session.output.len()
+                        && !session.output.is_char_boundary(safe_idx)
                     {
                         safe_idx += 1;
                     }
-                    state.shell.output = state.shell.output[safe_idx..].to_string();
+                    session.output = session.output[safe_idx..].to_string();
                 }
 
-                state.shell.last_error = Some(text.clone());
-                state.shell.lifecycle =
+                session.last_error = Some(text.clone());
+                session.lifecycle =
                     crate::tui::services::shell_mode::ShellLifecycle::Error(text.clone());
             }
             state.push_activity(
@@ -2149,20 +2112,18 @@ pub fn handle_backend_event(
             );
         }
         InputEvent::ShellCompleted(id, code) => {
-            if state
-                .shell
-                .active_command
-                .as_ref()
-                .is_some_and(|cmd| cmd.id == id)
-                || id == "system"
-            {
-                state.shell.exit_code = Some(code);
-                state.shell.waiting_for_input = false;
-                state.shell.active_command = None;
-                state.shell.prompt_ready = false;
-                state.shell.password_mode = false;
-                // Unit 6: distinguish normal exit from killed (code -1 or 137)
-                state.shell.lifecycle = if code == -1 || code == 137 {
+            let target = if id == "system" {
+                state.shell.session_store.active_mut()
+            } else {
+                state.shell.session_store.find_by_command_id_mut(&id)
+            };
+            if let Some(session) = target {
+                session.exit_code = Some(code);
+                session.waiting_for_input = false;
+                session.command = None;
+                session.prompt_ready = false;
+                session.password_mode = false;
+                session.lifecycle = if code == -1 || code == 137 {
                     crate::tui::services::shell_mode::ShellLifecycle::Killed
                 } else {
                     crate::tui::services::shell_mode::ShellLifecycle::Exited(code)
@@ -2175,14 +2136,13 @@ pub fn handle_backend_event(
             );
         }
         InputEvent::ShellWaitingForInput(id) => {
-            if state
-                .shell
-                .active_command
-                .as_ref()
-                .is_some_and(|cmd| cmd.id == id)
-                || id == "system"
-            {
-                state.shell.waiting_for_input = true;
+            let target = if id == "system" {
+                state.shell.session_store.active_mut()
+            } else {
+                state.shell.session_store.find_by_command_id_mut(&id)
+            };
+            if let Some(session) = target {
+                session.waiting_for_input = true;
             }
         }
         InputEvent::McpConnected { name, tools } => {
@@ -2327,14 +2287,7 @@ pub fn handle_backend_event(
             state.review.diff = None;
             state.review.selected_idx = 0;
             state.review.selected_path = None;
-            state.shell.active_command = None;
-            state.shell.popup_visible = false;
-            state.shell.output.clear();
-            state.shell.waiting_for_input = false;
-            state.shell.backgrounded = false;
-            state.shell.exit_code = None;
-            state.shell.last_error = None;
-            state.shell.history_idx = None;
+            state.shell = crate::tui::app::ShellState::default();
             state.runtime.jobs.clear();
             state.runtime.selected_idx = 0;
             state.runtime.filter.clear();
@@ -2557,18 +2510,38 @@ pub fn dispatch_builtin_command(
                         ));
                     }
                 } else if cmd.command == "/shell-focus" {
-                    if state.shell.active_command.is_some() {
-                        state.shell.popup_visible = true;
-                        state.shell.backgrounded = false;
-                    }
+                    shell_handler::foreground(state);
                 } else if cmd.command == "/shell-bg" {
-                    if state.shell.active_command.is_some() {
-                        state.shell.popup_visible = false;
-                        state.shell.backgrounded = true;
-                    }
+                    shell_handler::background(state);
                 } else if cmd.command == "/shell-kill" {
-                    if let Some(shell) = state.shell.active_command.clone() {
-                        let _ = shell.kill();
+                    shell_handler::kill(state);
+                } else if cmd.command == "/context" {
+                    state.add_user_message(trimmed.clone());
+                    match cmd_args {
+                        Some(args) if args.starts_with("pin ") => {
+                            let file = args.trim_start_matches("pin ").trim();
+                            if file.is_empty() {
+                                state.add_assistant_message(
+                                    "Usage: /context pin <file>".to_string(),
+                                );
+                            } else if state.pinned_files.iter().any(|p| p == file) {
+                                state.add_assistant_message(format!(
+                                    "Already pinned in context: {file}"
+                                ));
+                            } else {
+                                state.pinned_files.push(file.to_string());
+                                state.push_activity(
+                                    crate::tui::app::ActivityKind::Status,
+                                    format!("Pinned context file: {file}"),
+                                );
+                                state.add_assistant_message(format!(
+                                    "Pinned file into context: {file}"
+                                ));
+                            }
+                        }
+                        _ => {
+                            state.add_assistant_message("Usage: /context pin <file>".to_string());
+                        }
                     }
                 } else if cmd.command == "/new" {
                     let _ = output_tx.try_send(OutputEvent::NewSession);

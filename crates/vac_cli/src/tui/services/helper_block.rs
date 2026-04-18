@@ -68,10 +68,10 @@ pub fn vac_commands() -> Vec<HelperCommand> {
         },
         HelperCommand {
             command: "/context".to_string(),
-            description: "Ask agent about context budget".to_string(),
-            source: CommandSource::Passthrough,
+            description: "Pin files into the context composer".to_string(),
+            source: CommandSource::BuiltIn,
             shortcut: None,
-            wired: false,
+            wired: true,
         },
         HelperCommand {
             command: "/rulebook".to_string(),
