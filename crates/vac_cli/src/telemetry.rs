@@ -49,10 +49,14 @@ pub fn init(
 
         eprintln!("{}", crash_json);
 
-        // Write to dump file if needed
-        let dump_path = std::env::current_dir()
-            .unwrap_or_default()
-            .join("crash_dump.json");
+        // Write to ~/.vac/crashes/<ts>.json
+        let crash_dir = dirs::home_dir()
+            .unwrap_or_else(|| std::path::PathBuf::from("."))
+            .join(".vac")
+            .join("crashes");
+        let _ = std::fs::create_dir_all(&crash_dir);
+        let ts = chrono::Utc::now().format("%Y%m%dT%H%M%SZ");
+        let dump_path = crash_dir.join(format!("{}.json", ts));
         let _ = std::fs::write(
             &dump_path,
             serde_json::to_string_pretty(&crash_json).unwrap_or_default(),

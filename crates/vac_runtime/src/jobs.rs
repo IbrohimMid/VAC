@@ -33,6 +33,9 @@ pub enum JobStatus {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Job {
+    /// Schema version for forward/backward compatibility.
+    #[serde(default)]
+    pub schema_version: u32,
     pub id: Uuid,
     pub kind: JobKind,
     pub trigger: JobTrigger,
@@ -49,6 +52,7 @@ pub struct Job {
 impl Job {
     pub fn new(kind: JobKind) -> Self {
         Self {
+            schema_version: 1,
             id: Uuid::new_v4(),
             kind,
             trigger: JobTrigger::OneShot,

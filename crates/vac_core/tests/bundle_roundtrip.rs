@@ -310,4 +310,15 @@ proptest! {
             serde_json::to_value(&b2.context_summary).unwrap()
         );
     }
+
+    #[test]
+    fn secret_substitution_idempotence(input in ".*") {
+        let mut sub = vac_core::security::SecretSubstitution::new();
+        let first = sub.substitute(&input);
+        let second = sub.substitute(&first);
+        // After first substitution, a second pass must not change the output
+        // (placeholders like [SECRET_N] must not themselves be detected as secrets).
+        prop_assert_eq!(&first, &second,
+            "secret substitution must be idempotent: input={:?}", input);
+    }
 }

@@ -1,17 +1,18 @@
-FROM rust:1.85-slim-bookworm as builder
+FROM rust:1.85-slim-bookworm AS builder
 
-WORKDIR /usr/src/vac
+RUN apt-get update && \
+    apt-get install -y musl-tools && \
+    rm -rf /var/lib/apt/lists/* && \
+    rustup target add x86_64-unknown-linux-musl
+
+WORKDIR /build
 COPY . .
 
-# Build with optimizations
-RUN cargo build --release --workspace
+RUN cargo build -p vac_cli --release --target x86_64-unknown-linux-musl
 
-# Runtime image
-FROM debian:bookworm-slim
+FROM gcr.io/distroless/static-debian12:nonroot
 
-RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+COPY --from=builder /build/target/x86_64-unknown-linux-musl/release/vac /usr/local/bin/vac
 
-COPY --from=builder /usr/src/vac/target/release/vac /usr/local/bin/vac
-
-ENTRYPOINT ["vac"]
+ENTRYPOINT ["/usr/local/bin/vac"]
 CMD ["--help"]

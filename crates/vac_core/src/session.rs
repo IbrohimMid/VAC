@@ -10,6 +10,10 @@ use uuid::Uuid;
 /// A VAC session representing a continuous work period.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Session {
+    /// Schema version for forward/backward compatibility.
+    /// Missing in older serializations → defaults to 0.
+    #[serde(default)]
+    pub schema_version: u32,
     pub id: Uuid,
     pub project_root: PathBuf,
     pub created_at: DateTime<Utc>,
@@ -36,6 +40,7 @@ impl Session {
     pub fn new(project_root: PathBuf) -> Self {
         let now = Utc::now();
         Self {
+            schema_version: 1,
             id: Uuid::new_v4(),
             project_root,
             created_at: now,

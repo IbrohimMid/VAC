@@ -272,6 +272,15 @@ impl VacEngine {
         let mut warnings = Vec::new();
         info!("Initializing VAC subsystems...");
 
+        // Apply resource governance (P4.1)
+        if let Some(cap) = self.config.memory_cap_bytes {
+            if let Err(e) = vac_tools::resource_limits::apply_rlimit_as(cap) {
+                warn!("Could not set memory cap ({cap} bytes): {e}");
+            } else {
+                info!(memory_cap_bytes = cap, "Memory cap applied");
+            }
+        }
+
         info!("Initializing IR pipeline...");
         let ir = vil_ir::IrPipeline::new(&self.project_root)?;
         self.ir_pipeline = Some(ir);

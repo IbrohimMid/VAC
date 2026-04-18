@@ -39,6 +39,12 @@ pub struct VacConfig {
     /// MCP preset instances (expanded to mcp_servers at runtime)
     #[serde(default)]
     pub mcp_presets: Vec<vac_tools::mcp::McpPresetInstanceConfig>,
+    /// Maximum virtual memory (bytes) enforced via setrlimit(RLIMIT_AS).
+    #[serde(default)]
+    pub memory_cap_bytes: Option<u64>,
+    /// Maximum disk usage (bytes) for the .vac/ directory.
+    #[serde(default)]
+    pub disk_quota_bytes: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -302,6 +308,8 @@ impl Default for VacConfig {
             runtime: RuntimeConfig::default(),
             mcp_servers: None,
             mcp_presets: vec![],
+            memory_cap_bytes: None,
+            disk_quota_bytes: None,
         }
     }
 }

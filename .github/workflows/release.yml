@@ -28,23 +28,48 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+
       - name: Run cargo-dist
         run: |
           cargo install cargo-dist
           cargo dist build
+
+      - name: Install minisign
+        run: |
+          curl -sSL https://github.com/jedisct1/minisign/releases/download/0.11/minisign-0.11-linux.tar.gz \
+            | tar xz -C /tmp
+          sudo install -m 755 /tmp/minisign-linux/x86_64/minisign /usr/local/bin/minisign
+
       - name: Sign artifacts with minisign
+        if: env.MINISIGN_SECRET_KEY != ''
+        env:
+          MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
         run: |
-          echo "Signing artifacts with minisign..."
-          # minisign -Sm vac-linux.tar.gz
-      - name: Sign container with cosign
+          echo "$MINISIGN_SECRET_KEY" > /tmp/minisign.key
+          for f in target/dist/*.tar.gz target/dist/*.zip; do
+            [ -f "$f" ] && minisign -Sm "$f" -s /tmp/minisign.key
+          done
+          rm -f /tmp/minisign.key
+
+      - name: Generate SBOM
         run: |
-          echo "Signing container with cosign..."
-          # cosign sign --key cosign.key ghcr.io/namespace/vac
+          cargo install cargo-cyclonedx --locked
+          cargo cyclonedx --format json -o target/dist/vac-sbom.json
+
+      - name: Generate SHA256 checksums
+        run: |
+          cd target/dist
+          sha256sum *.tar.gz *.zip 2>/dev/null > SHA256SUMS.txt || true
+
       - name: Upload Release
         uses: softprops/action-gh-release@v1
         with:
           body: ${{ needs.generate-release-notes.outputs.notes }}
           files: |
             target/dist/*
+            target/dist/*.minisig
+            target/dist/vac-sbom.json
+            target/dist/SHA256SUMS.txt

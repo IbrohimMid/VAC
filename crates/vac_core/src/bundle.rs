@@ -448,6 +448,7 @@ pub fn import_bundle_from_path_with_options(
     std::fs::create_dir_all(project_root.join(".vac/exports"))?;
 
     let session = Session {
+        schema_version: 1,
         id: sid,
         project_root: project_root.to_path_buf(),
         created_at: bundle.metadata.created_at,

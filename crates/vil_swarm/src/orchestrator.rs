@@ -1368,6 +1368,20 @@ mod tests {
     use crate::reasoning_fsm::ReasoningPhase;
 
     #[test]
+    fn successful_run_does_not_emit_set_retry() {
+        // A single successful iteration (iterations=1) must NOT produce a Retry phase.
+        let mut state = crate::run_state::AgentRunState::new(vec![], None);
+        state.iterations = 1;
+        let transitions = begin_reasoning_iteration(&mut state).unwrap();
+        for t in &transitions {
+            assert_ne!(t.to, ReasoningPhase::Retry,
+                "first iteration must not transition to Retry");
+        }
+        assert_ne!(state.reasoning.phase, ReasoningPhase::Retry);
+        assert_eq!(state.reasoning.phase, ReasoningPhase::Attempt);
+    }
+
+    #[test]
     fn begin_reasoning_iteration_only_marks_retry_before_followup_attempts() {
         let mut state = crate::run_state::AgentRunState::new(vec![], None);
 

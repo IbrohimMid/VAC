@@ -1,0 +1,18 @@
+# Maintainer: Vastar Team <team@vastar.id>
+pkgname=vac-bin
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="VAC — Vastar Agentic CLI: Autonomous development CLI built on VIL Engine"
+arch=('x86_64')
+url="https://github.com/IbrohimMid/VAC"
+license=('MIT')
+provides=('vac')
+conflicts=('vac')
+depends=('gcc-libs')
+source_x86_64=("${pkgname}-${pkgver}.tar.gz::https://github.com/IbrohimMid/VAC/releases/download/v${pkgver}/vac-v${pkgver}-x86_64-unknown-linux-musl.tar.gz")
+sha256sums_x86_64=('SKIP')
+
+package() {
+    install -Dm755 "${srcdir}/vac" "${pkgdir}/usr/bin/vac"
+    install -Dm644 "${srcdir}/LICENSE" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE" 2>/dev/null || true
+}

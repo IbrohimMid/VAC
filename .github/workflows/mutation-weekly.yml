@@ -31,7 +31,12 @@ jobs:
         run: cargo install cargo-mutants --locked
 
       - name: Run mutation test
-        run: cargo mutants -f ${{ matrix.file }} | tee mutants-${{ matrix.name }}.log
+        run: |
+          cargo mutants -f ${{ matrix.file }} --json > /tmp/mutants-result.json 2>&1 || true
+          cargo mutants -f ${{ matrix.file }} | tee mutants-${{ matrix.name }}.log
+
+      - name: Check mutation score gate
+        run: python3 scripts/check_mutants_score.py /tmp/mutants-result.json 80
 
       - name: Upload mutation logs
         if: always()
