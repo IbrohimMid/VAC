@@ -1,0 +1,59 @@
+# Tasks
+
+- [x] Task 1: Wave 0 — Freeze and debt register
+  - [x] SubTask 1.1: Hapus semua backlog/spec plan lama dari source tree
+  - [x] SubTask 1.2: Putuskan per file di `crates/vac_cli/src/tui/services_stakpak_disabled/**` (integrate, replace, atau delete)
+- [x] Task 2: Wave 1 — TUI kernel refactor
+  - [x] SubTask 2.1: Tambah file handlers baru (`update.rs`, `handlers/input.rs`, `handlers/popup.rs`, dll)
+  - [x] SubTask 2.2: Refactor `controller.rs` menjadi façade tipis
+- [x] Task 3: Wave 2 — Unified command system
+  - [x] SubTask 3.1: Tambah `crates/vac_cli/src/tui/services/commands.rs` dengan definisi `CommandId`, `CommandAction`, dll
+  - [x] SubTask 3.2: Reklasifikasi command lama dan hilangkan phantom commands
+- [x] Task 4: Wave 3 — Startup hydration and truthful boot
+  - [x] SubTask 4.1: Tambah `StartupSnapshot` dan hydrate status sejak boot
+  - [x] SubTask 4.2: Update runner, event_loop, statusline, helper_block, view agar tidak menampilkan state ambigu (`unknown`, `none`)
+- [x] Task 5: Wave 4 — Input/output reliability and backpressure
+  - [x] SubTask 5.1: Tambah `PendingUserMessage` dan outbound queue `VecDeque`
+  - [x] SubTask 5.2: Implementasi `flush_if_idle()` dan merge buffered messages
+- [x] Task 6: Wave 5 — Approval subsystem extraction
+  - [x] SubTask 6.1: Buat crate `crates/vac_approvals` beserta domain types nya
+  - [x] SubTask 6.2: Pisahkan approval state machine dari UI
+- [x] Task 7: Wave 6 — Shell runtime hardening
+  - [x] SubTask 7.1: Tambah `crates/vac_cli/src/tui/services/shell_runtime.rs`
+  - [x] SubTask 7.2: Refactor `handlers/shell.rs` menjadi UI-only dan perjelas state diagram shell
+- [x] Task 8: Wave 7 — Runtime telemetry surfacing
+  - [x] SubTask 8.1: Perluas mapping `RuntimeUpdate -> InputEvent` untuk telemetry (validation score, cancel reason, LSP diagnostics, dll)
+  - [x] SubTask 8.2: Update UI untuk menampilkan capability engine secara akurat
+- [x] Task 9: Wave 8 — Model/profile/rulebook switcher hardening
+  - [x] SubTask 9.1: Buat lifecycle lengkap untuk setiap switcher popup
+  - [x] SubTask 9.2: Implementasi request-on-open dan preselect active item
+- [x] Task 10: Wave 9 — Changeset/review/editor unification
+  - [x] SubTask 10.1: Tambah `services/changeset_domain.rs` sebagai single changeset store
+  - [x] SubTask 10.2: Integrasikan ke side panel, workbench, popup file changes, dan editor
+- [x] Task 11: Wave 10 — Workspace split for control-plane infra
+  - [x] SubTask 11.1: Ekstrak workspace ke crates baru (`vac_tui_runtime`, `vac_approvals`, `vac_shell`, `vac_changeset`, `vac_session_control`)
+- [x] Task 12: Wave 11 — Testing and evidence hardening
+  - [x] SubTask 12.1: Tambahkan tests (command parity, popup interception, startup snapshot, queue, approval, shell lifecycle, dll)
+- [x] Task 13: Wave 12 — Product truthfulness polish
+  - [x] SubTask 13.1: Rewrite banner, empty-state, activity taxonomy, dll setelah arsitektur selesai
+- [x] Task 14: Parallel Track B — Trust and release hardening
+  - [x] SubTask 14.1: B1 - Mutation gate fail-closed
+  - [x] SubTask 14.2: B2 - Release trust chain closure
+  - [x] SubTask 14.3: B3 - Operability enforcement closure
+  - [x] SubTask 14.4: B4 - Trace redaction end-to-end
+  - [x] SubTask 14.5: B5 - Evidence gate (stabilitas 4 minggu)
+
+# Task Dependencies
+- [Task 2] depends on [Task 1]
+- [Task 3] depends on [Task 2]
+- [Task 4] depends on [Task 3]
+- [Task 5] depends on [Task 4]
+- [Task 6] depends on [Task 5]
+- [Task 7] depends on [Task 6]
+- [Task 8] depends on [Task 7]
+- [Task 9] depends on [Task 8]
+- [Task 10] depends on [Task 9]
+- [Task 11] depends on [Task 10]
+- [Task 12] depends on [Task 11]
+- [Task 13] depends on [Task 12]
+- [Task 14] can run in parallel with Wave 4-12

@@ -1,6 +1,7 @@
 //! Session recorder — captures task events, tool calls, and messages.
 
 use crate::error::TraceResult;
+use crate::redaction::RedactionEngine;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -12,6 +13,7 @@ pub struct TraceRecorder {
     output_path: PathBuf,
     #[allow(dead_code)]
     enable_signing: bool,
+    redaction: Option<RedactionEngine>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -55,15 +57,24 @@ impl TraceRecorder {
             records: Vec::new(),
             output_path,
             enable_signing,
+            redaction: None,
         })
+    }
+
+    pub fn with_redaction(mut self, strip_paths: bool, custom_patterns: &[String]) -> Self {
+        self.redaction = Some(RedactionEngine::new(strip_paths, custom_patterns));
+        self
     }
 
     pub fn record(
         &mut self,
         record_type: RecordType,
         agent_id: Option<&str>,
-        content: serde_json::Value,
+        mut content: serde_json::Value,
     ) {
+        if let Some(engine) = &self.redaction {
+            content = engine.redact_value(&content);
+        }
         self.records.push(TraceRecord {
             id: Uuid::new_v4(),
             timestamp: Utc::now(),

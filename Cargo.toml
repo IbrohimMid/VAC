@@ -15,7 +15,7 @@ members = [
     "crates/vac_tools",
     "crates/vac_trace",
     "crates/vac_cli",
-    "crates/vac_runtime",
+    "crates/vac_runtime", "crates/vac_approvals", "crates/vac_changeset", "crates/vac_shell", "crates/vac_session_control", "crates/vac_tui_runtime",
 ]
 resolver = "2"
 
@@ -54,11 +54,9 @@ quote = "1.0"
 
 # HTTP & networking
 reqwest = { version = "0.12", features = ["json", "stream", "rustls-tls"], default-features = false }
-tokio-tungstenite = "0.24"
 
 # Shared memory & mmap
 memmap2 = "0.9"
-shared_memory = "0.12"
 
 # Embedded database
 redb = "2.4"
@@ -69,9 +67,6 @@ notify = "6"
 
 # Tokenization
 tiktoken-rs = "0.6"
-
-# Embedding & ML
-ort = { version = "2.0", features = ["cuda", "tensorrt"] }
 fastembed = "4.4"
 
 # Crypto & signing
@@ -79,6 +74,7 @@ coset = "0.3"
 sha2 = "0.10"
 rand = "0.8"
 ed25519-dalek = { version = "2.0", features = ["rand_core"] }
+blake3 = "1.5"
 
 # Logging & tracing
 tracing = "0.1"

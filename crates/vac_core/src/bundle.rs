@@ -1,4 +1,4 @@
-use crate::approval::{ApprovalRecord, ApprovalState, ApprovalStore};
+use vac_approvals::{ApprovalRecord, ApprovalState, ApprovalStore};
 use crate::error::{VacError, VacResult};
 use crate::session::{Session, SessionMetadata};
 use base64::Engine as _;

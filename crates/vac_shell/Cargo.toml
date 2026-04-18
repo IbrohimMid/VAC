@@ -1,0 +1,16 @@
+[package]
+name = "vac_shell"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description.workspace = true
+
+[dependencies]
+portable-pty = "0.9.0"
+tokio = { workspace = true, features = ["full"] }
+uuid = { workspace = true, features = ["v4"] }
+vac_runtime = { version = "0.1.0", path = "../vac_runtime" }

@@ -18,6 +18,7 @@ vil_validate = { workspace = true }
 vil_knowledge = { workspace = true }
 vac_tools = { workspace = true }
 vac_trace = { workspace = true }
+vac_approvals = { path = "../vac_approvals" }
 
 async-trait = { workspace = true }
 tokio = { workspace = true }

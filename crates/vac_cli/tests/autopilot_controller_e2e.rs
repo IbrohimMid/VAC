@@ -161,7 +161,7 @@ fn autopilot_waiting_approval_state_is_observable_and_unblocks_on_store_intent()
     assert!(waiting_ok);
     let tool_call_id = tool_call_id.unwrap();
 
-    let store = vac_core::ApprovalStore::new(root.to_path_buf());
+    let store = vac_approvals::ApprovalStore::new(root.to_path_buf());
     let record_ok = wait_until(Duration::from_secs(4), || {
         store.load(&tool_call_id).ok().flatten().is_some()
     });
@@ -224,7 +224,7 @@ fn autopilot_toolcall_reject_flow_blocks_execution() {
     assert!(waiting_ok);
     let tool_call_id = tool_call_id.unwrap();
 
-    let store = vac_core::ApprovalStore::new(root.to_path_buf());
+    let store = vac_approvals::ApprovalStore::new(root.to_path_buf());
     let record_ok = wait_until(Duration::from_secs(4), || {
         store.load(&tool_call_id).ok().flatten().is_some()
     });
@@ -286,7 +286,7 @@ fn autopilot_toolcall_stale_approval_errors_and_does_not_resolve_record() {
     assert!(waiting_ok);
     let tool_call_id = tool_call_id.unwrap();
 
-    let store = vac_core::ApprovalStore::new(root.to_path_buf());
+    let store = vac_approvals::ApprovalStore::new(root.to_path_buf());
     let record_ok = wait_until(Duration::from_secs(4), || {
         store.load(&tool_call_id).ok().flatten().is_some()
     });
@@ -294,9 +294,9 @@ fn autopilot_toolcall_stale_approval_errors_and_does_not_resolve_record() {
 
     run_vac(root, &["autopilot", "down"]).success();
 
-    let approvals = vac_core::ApprovalHandle::new(
+    let approvals = vac_approvals::ApprovalHandle::new(
         root.to_path_buf(),
-        vac_core::approval::ActiveApprovalRegistry::new(),
+        vac_approvals::ActiveApprovalRegistry::new(),
     );
     let err = tokio::runtime::Runtime::new()
         .unwrap()
@@ -305,7 +305,7 @@ fn autopilot_toolcall_stale_approval_errors_and_does_not_resolve_record() {
     assert!(err.to_string().contains("No active approval channel"));
 
     let rec = store.load(&tool_call_id).unwrap().unwrap();
-    assert_eq!(rec.state, vac_core::ApprovalState::Pending);
+    assert_eq!(rec.state, vac_approvals::ApprovalState::Pending);
 }
 
 #[test]
@@ -343,7 +343,7 @@ fn autopilot_toolcall_wrong_target_isolation() {
     assert!(waiting_ok);
     let tool_call_id = tool_call_id.unwrap();
 
-    let store = vac_core::ApprovalStore::new(root.to_path_buf());
+    let store = vac_approvals::ApprovalStore::new(root.to_path_buf());
     let record_ok = wait_until(Duration::from_secs(4), || {
         store.load(&tool_call_id).ok().flatten().is_some()
     });
@@ -377,7 +377,7 @@ fn autopilot_toolcall_wrong_target_isolation() {
     assert!(!root.join("autopilot_wrong_target_test.txt").exists());
 
     let rec = store.load(&tool_call_id).unwrap().unwrap();
-    assert_eq!(rec.state, vac_core::ApprovalState::Pending);
+    assert_eq!(rec.state, vac_approvals::ApprovalState::Pending);
 
     run_vac(root, &["autopilot", "down"]).success();
 }

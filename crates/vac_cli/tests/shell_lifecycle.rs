@@ -1,7 +1,7 @@
 //! Shell lifecycle tests
 
 use tokio::sync::mpsc;
-use vac_cli::tui::services::{ShellEvent, run_pty_command};
+use vac_shell::{ShellEvent, run_pty_command};
 
 #[tokio::test]
 async fn test_shell_basic_execution() {
@@ -70,7 +70,7 @@ async fn test_shell_cleanup_on_kill() {
 
 #[tokio::test]
 async fn test_shell_state_cleanup() {
-    use vac_cli::tui::app::AppState;
+    use vac_tui_runtime::app::AppState;
 
     let mut state = AppState::default();
 

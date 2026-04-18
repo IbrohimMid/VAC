@@ -42,7 +42,7 @@ fn seed_source_project(summary: Option<String>) -> (tempfile::TempDir, PathBuf, 
         .save_checkpoint(&state_path, Some(session_id))
         .unwrap();
 
-    let store = vac_core::ApprovalStore::new(root.clone());
+    let store = vac_approvals::ApprovalStore::new(root.clone());
     store
         .record_request(
             "tc-1".to_string(),

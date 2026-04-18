@@ -9,6 +9,7 @@ use crate::executor::{EnvironmentMode, OperatingMode, TaskExecutor};
 use crate::jobs::{Job, JobKind, JobStatus};
 use crate::queue::TaskQueue;
 use crate::scheduler::{AutopilotEvent, AutopilotState, AutopilotStateFile};
+use vac_approvals::{ApprovalStore, ApprovalIntent, ApprovalState};
 
 pub struct AutopilotController {
     project_root: PathBuf,
@@ -363,7 +364,7 @@ impl AutopilotController {
                                             .await
                                     };
 
-                                    if let Err(e) = res {
+                                    if let Err(e) = res as Result<(), vac_approvals::ApprovalError> {
                                         let store = store.clone();
                                         let id = tool_call_id.clone();
                                         let _ = tokio::task::spawn_blocking(move || {
@@ -527,9 +528,9 @@ impl AutopilotController {
             Err(vac_tools::error::ToolError::ApprovalRequired(reason)) => {
                 let session_id = resolve_or_create_session_id(&self.project_root);
                 let task_id = job.id;
-                let active = vac_core::approval::ActiveApprovalRegistry::new();
+                let active = vac_approvals::ActiveApprovalRegistry::new();
                 let approvals =
-                    vac_core::ApprovalHandle::new(self.project_root.clone(), active.clone());
+                    vac_approvals::ApprovalHandle::new(self.project_root.clone(), active.clone());
                 let store = approvals.store().clone();
 
                 let (approval_tx, _approval_rx) =
@@ -623,10 +624,10 @@ fn resolve_or_create_session_id(project_root: &Path) -> uuid::Uuid {
 }
 
 async fn wait_for_approval_intent(
-    store: &vac_core::ApprovalStore,
+    store: &ApprovalStore,
     tool_call_id: &str,
     shutdown: &mut tokio::sync::watch::Receiver<bool>,
-) -> anyhow::Result<vac_core::approval::ApprovalIntent> {
+) -> anyhow::Result<ApprovalIntent> {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(300);
 
     loop {
@@ -639,14 +640,15 @@ async fn wait_for_approval_intent(
             let id = tool_call_id.to_string();
             tokio::task::spawn_blocking(move || store.load(&id))
                 .await
-                .map_err(|e| anyhow::anyhow!(e))??
+                .map_err(|e: tokio::task::JoinError| anyhow::anyhow!(e))?
+                .map_err(|e: vac_approvals::ApprovalError| anyhow::anyhow!(e))?
         };
 
         let Some(record) = record else {
             anyhow::bail!("Unknown tool_call_id (no approval record found): {tool_call_id}");
         };
 
-        if record.state != vac_core::ApprovalState::Pending {
+        if record.state != ApprovalState::Pending {
             anyhow::bail!(
                 "Approval is not pending (tool_call_id={}, state={:?})",
                 tool_call_id,
@@ -685,8 +687,8 @@ mod tests {
         let tc_a = format!("tc-{task_a}");
         let tc_b = format!("tc-{task_b}");
 
-        let active = vac_core::approval::ActiveApprovalRegistry::new();
-        let approvals = vac_core::ApprovalHandle::new(root.clone(), active.clone());
+        let active = ActiveApprovalRegistry::new();
+        let approvals = ApprovalHandle::new(root.clone(), active.clone());
         let store = approvals.store().clone();
 
         let (tx_a, mut rx_a) = mpsc::unbounded_channel::<vil_swarm::ApprovalResponse>();

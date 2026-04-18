@@ -40,6 +40,9 @@ pub enum VacError {
     #[error("Serialization error: {0}")]
     Serialization(#[from] serde_json::Error),
 
+    #[error("approval error: {0}")]
+    Approval(#[from] vac_approvals::ApprovalError),
+
     #[error(transparent)]
     Other(#[from] anyhow::Error),
 }

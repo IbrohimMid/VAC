@@ -1,4 +1,4 @@
-use vac_core::{ApprovalState, ApprovalStateMachine, ApprovalStore};
+use vac_approvals::{ApprovalState, ApprovalStateMachine, ApprovalStore};
 
 #[test]
 fn approval_state_machine_rejects_double_resolution() {

@@ -32,7 +32,7 @@ jobs:
 
       - name: Run mutation test
         run: |
-          cargo mutants -f ${{ matrix.file }} --json > /tmp/mutants-result.json 2>&1 || true
+          cargo mutants -f ${{ matrix.file }} --json > /tmp/mutants-result.json 2>&1
           cargo mutants -f ${{ matrix.file }} | tee mutants-${{ matrix.name }}.log
 
       - name: Check mutation score gate

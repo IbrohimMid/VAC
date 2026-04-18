@@ -1,7 +1,7 @@
 //! VacEngine — the main entry point for all VAC operations.
 
+use vac_approvals::{ActiveApprovalRegistry, ApprovalHandle, ApprovalStore};
 use crate::{
-    approval::{ActiveApprovalRegistry, ApprovalHandle, ApprovalStore},
     config::VacConfig,
     error::{VacError, VacResult},
     session::Session,
@@ -280,6 +280,13 @@ impl VacEngine {
                 info!(memory_cap_bytes = cap, "Memory cap applied");
             }
         }
+        if let Some(quota) = self.config.disk_quota_bytes {
+            if let Err(e) = vac_tools::resource_limits::apply_rlimit_fsize(quota) {
+                warn!("Could not set disk quota ({quota} bytes): {e}");
+            } else {
+                info!(disk_quota_bytes = quota, "Disk quota applied");
+            }
+        }
 
         info!("Initializing IR pipeline...");
         let ir = vil_ir::IrPipeline::new(&self.project_root)?;
@@ -397,7 +404,11 @@ impl VacEngine {
                 self.config.trace.output_path.clone(),
                 self.config.trace.enable_signing,
             )
-            .map_err(|e| VacError::Other(anyhow::anyhow!("Trace error: {}", e)))?;
+            .map_err(|e| VacError::Other(anyhow::anyhow!("Trace error: {}", e)))?
+            .with_redaction(
+                self.config.trace.redaction.strip_paths,
+                &self.config.trace.redaction.custom_patterns,
+            );
             self.trace_recorder = Some(std::sync::Arc::new(std::sync::Mutex::new(trace)));
         }
 
@@ -914,7 +925,8 @@ impl VacEngine {
                 .unwrap_or_default();
             let record = tokio::task::spawn_blocking(move || store.load(&first))
                 .await
-                .map_err(|e| VacError::Task(format!("Approval store task failed: {e}")))??;
+                .map_err(|e| VacError::Task(format!("Approval store task failed: {e}")))?
+                .map_err(|e| VacError::Task(format!("Approval store error: {e}")))?;
             resume_task_id = record.and_then(|r| r.task_id);
         }
         let resume_task_id = resume_task_id.unwrap_or_else(uuid::Uuid::new_v4);
@@ -1090,7 +1102,7 @@ impl VacEngine {
 
     /// Approve a pending tool call for the currently running task.
     pub async fn approve_tool_call(&self, tool_call_id: String) -> VacResult<()> {
-        self.approval_handle().approve(tool_call_id).await
+        Ok(self.approval_handle().approve(tool_call_id).await?)
     }
 
     /// Reject a pending tool call for the currently running task.
@@ -1099,7 +1111,7 @@ impl VacEngine {
         tool_call_id: String,
         reason: Option<String>,
     ) -> VacResult<()> {
-        self.approval_handle().reject(tool_call_id, reason).await
+        Ok(self.approval_handle().reject(tool_call_id, reason).await?)
     }
 }
 
@@ -1373,7 +1385,7 @@ async fn persist_approval_request(
     })
     .await
     .map_err(|e| VacError::Task(format!("Approval store task failed: {}", e)))
-    .and_then(|r| r)
+    .and_then(|r| r.map_err(|e| VacError::Task(format!("Approval store error: {}", e))))
     {
         warn!(error = %e, "Failed to persist approval request");
     }

@@ -55,9 +55,9 @@ async fn acp_approve_flow_end_to_end() {
     let root = dir.path().to_path_buf();
     std::fs::create_dir_all(root.join(".vac")).unwrap();
 
-    let registry = vac_core::approval::ActiveApprovalRegistry::new();
-    let approvals = vac_core::ApprovalHandle::new(root.clone(), registry.clone());
-    let store = vac_core::ApprovalStore::new(root.clone());
+    let registry = vac_approvals::ActiveApprovalRegistry::new();
+    let approvals = vac_approvals::ApprovalHandle::new(root.clone(), registry.clone());
+    let store = vac_approvals::ApprovalStore::new(root.clone());
     let store_for_handler = store.clone();
 
     let task_handler: vac_core::acp::TaskHandler = std::sync::Arc::new(move |_task, session_id| {
@@ -223,9 +223,9 @@ async fn acp_reject_flow_is_symmetric_and_blocks_tool_execution() {
     let root = dir.path().to_path_buf();
     std::fs::create_dir_all(root.join(".vac")).unwrap();
 
-    let registry = vac_core::approval::ActiveApprovalRegistry::new();
-    let approvals = vac_core::ApprovalHandle::new(root.clone(), registry.clone());
-    let store = vac_core::ApprovalStore::new(root.clone());
+    let registry = vac_approvals::ActiveApprovalRegistry::new();
+    let approvals = vac_approvals::ApprovalHandle::new(root.clone(), registry.clone());
+    let store = vac_approvals::ApprovalStore::new(root.clone());
     let store_for_handler = store.clone();
 
     let task_handler: vac_core::acp::TaskHandler = std::sync::Arc::new(move |_task, session_id| {
@@ -394,9 +394,9 @@ async fn acp_stale_or_wrong_target_approval_errors_and_does_not_mutate_state() {
     let root = dir.path().to_path_buf();
     std::fs::create_dir_all(root.join(".vac")).unwrap();
 
-    let registry = vac_core::approval::ActiveApprovalRegistry::new();
-    let approvals = vac_core::ApprovalHandle::new(root.clone(), registry.clone());
-    let store = vac_core::ApprovalStore::new(root.clone());
+    let registry = vac_approvals::ActiveApprovalRegistry::new();
+    let approvals = vac_approvals::ApprovalHandle::new(root.clone(), registry.clone());
+    let store = vac_approvals::ApprovalStore::new(root.clone());
     let store_for_handler = store.clone();
 
     let task_handler: vac_core::acp::TaskHandler = std::sync::Arc::new(move |_task, session_id| {
@@ -528,7 +528,7 @@ async fn acp_stale_or_wrong_target_approval_errors_and_does_not_mutate_state() {
     );
 
     let rec = store.load(&tool_call_id).unwrap().unwrap();
-    assert_eq!(rec.state, vac_core::ApprovalState::Pending);
+    assert_eq!(rec.state, vac_approvals::ApprovalState::Pending);
 
     server.stop().await;
 }
@@ -539,9 +539,9 @@ async fn acp_overlap_two_pending_approvals_do_not_cross_routes() {
     let root = dir.path().to_path_buf();
     std::fs::create_dir_all(root.join(".vac")).unwrap();
 
-    let registry = vac_core::approval::ActiveApprovalRegistry::new();
-    let approvals = vac_core::ApprovalHandle::new(root.clone(), registry.clone());
-    let store = vac_core::ApprovalStore::new(root.clone());
+    let registry = vac_approvals::ActiveApprovalRegistry::new();
+    let approvals = vac_approvals::ApprovalHandle::new(root.clone(), registry.clone());
+    let store = vac_approvals::ApprovalStore::new(root.clone());
 
     let task_handler: vac_core::acp::TaskHandler = std::sync::Arc::new(move |_task, session_id| {
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();

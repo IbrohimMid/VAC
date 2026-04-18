@@ -1,7 +1,6 @@
 //! VAC Core Engine
 
 pub mod acp;
-pub mod approval;
 pub mod auth;
 pub mod bundle;
 pub mod config;
@@ -20,8 +19,8 @@ pub mod spawn_subtask_tool;
 pub mod task;
 
 pub use acp::AcpServer;
-pub use approval::{
-    ApprovalHandle, ApprovalRecord, ApprovalState, ApprovalStateMachine, ApprovalStore,
+pub use vac_approvals::{
+    ActiveApprovalRegistry, ApprovalHandle, ApprovalRecord, ApprovalState, ApprovalStore,
 };
 pub use auth::{AuthStatus, StoredAuth};
 pub use bundle::{BundleMetadata, VacBundle};

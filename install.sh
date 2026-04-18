@@ -38,11 +38,12 @@ TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 curl -fsSL "$URL" -o "$TMP/$TARBALL"
 
-# SHA256 verification (optional, best-effort)
-if curl -fsSL "${URL}.sha256" -o "$TMP/${TARBALL}.sha256" 2>/dev/null; then
-    (cd "$TMP" && sha256sum -c "${TARBALL}.sha256")
+# SHA256 verification (mandatory)
+if curl -fsSL "${URL}.sha256" -o "$TMP/${TARBALL}.sha256"; then
+    (cd "$TMP" && sha256sum -c "${TARBALL}.sha256") || { echo "Error: checksum verification failed"; exit 1; }
 else
-    echo "Warning: SHA256 checksum not available, skipping verification."
+    echo "Error: SHA256 checksum not available, verification failed."
+    exit 1
 fi
 
 # Install

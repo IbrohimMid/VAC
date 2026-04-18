@@ -49,6 +49,12 @@ URL="https://github.com/your-org/vac/releases/download/${TAG}/vac-${TARGET}.tar.
 
 echo "Downloading $URL"
 curl -sL "$URL" -o vac.tar.gz
+
+# Checksum verification (mandatory)
+echo "Downloading checksum ${URL}.sha256"
+curl -sL "${URL}.sha256" -o vac.tar.gz.sha256
+sha256sum -c vac.tar.gz.sha256 || { echo "Error: checksum verification failed"; exit 1; }
+
 tar -xzf vac.tar.gz
 
 echo "Installing to /usr/local/bin"
