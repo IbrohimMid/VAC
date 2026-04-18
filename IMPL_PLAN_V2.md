@@ -1,23 +1,51 @@
 # Implementation Plan V2 — Remaining Waves
 
 **Terakhir diaudit**: 2026-04-18 (post-merge ke main `a0beb65`)  
-**Baseline**: main, 171 lib tests hijau, 0 clippy errors  
+**Selesai**: 2026-04-18 (commit `fda75be`)  
+**Baseline**: main, 171+ lib tests hijau, 0 clippy errors  
 **Sumber kebenaran**: `docs/ROADMAP_TO_100_v2.md`  
-**Prinsip**: compile dulu, test setiap item, jangan invent scope.
 
 ---
 
-## Status Audit (Codebase-Grounded)
+## Status Audit — SEMUA SELESAI ✅
 
-| Wave | Status | Catatan |
+| Wave | Status | Bukti |
 |---|---|---|
-| P0.1 FSM SetRetry guard | **PARTIAL** | Guard `if state.iterations > 1` sudah ada, tapi test `successful_run_does_not_emit_set_retry` belum ada |
-| P0.2 Crash dump path | **TODO** | `telemetry.rs` masih tulis ke `cwd/crash_dump.json`, bukan `~/.vac/crashes/<ts>.json` |
-| P1.1 Policy gate corpus ≥100 | **TODO** | 8 test functions, ~27 assertions (~12% dari target). Banyak bypass variant missing |
-| P1.2 Mutation score ≥80% + CI gate | **PARTIAL** | `mutants-secret-detector.md` ada tapi kosong (no score). `mutation-weekly.yml` jalan tapi tidak fail jika <80% |
-| P2.1 Bundle proptest + idempotence | **PARTIAL** | `bundle_roundtrip.rs` sudah pakai proptest untuk roundtrip. Secret detector idempotence belum ada |
-| P3.1 cargo-dist targets + installers | **PARTIAL** | 4 targets ada, missing `x86_64-linux-musl` + `aarch64-linux-gnu`. `installers = []` masih kosong |
-| P3.2 Dockerfile | **PARTIAL** | `Dockerfile` ada, tapi base image `debian:bookworm-slim`, bukan distroless |
+| P0.1 FSM SetRetry guard | ✅ **DONE** | test `successful_run_does_not_emit_set_retry` di `orchestrator.rs` |
+| P0.2 Crash dump path | ✅ **DONE** | `telemetry.rs` tulis ke `~/.vac/crashes/<ts>.json` |
+| P1.1 Policy gate corpus ≥100 | ✅ **DONE** | 14 test functions, 100+ assertions, covers eval/bash/xargs/find/git-alias/kubectl/terraform |
+| P1.2 Mutation score gate ≥80% | ✅ **DONE** | `mutation-weekly.yml` + `scripts/check_mutants_score.py` fail jika <80% |
+| P2.1 Secret detector idempotence | ✅ **DONE** | `secret_substitution_idempotence` proptest di `bundle_roundtrip.rs` |
+| P3.1 cargo-dist targets + installers | ✅ **DONE** | 6 targets (incl. musl + aarch64-linux), `installers=["shell","homebrew"]` |
+| P3.2 Dockerfile distroless | ✅ **DONE** | `gcr.io/distroless/static-debian12:nonroot`, musl build |
+| P3.3 install.sh | ✅ **DONE** | Platform detect + SHA256 verify + idempotent install |
+| P3.4 Artifact signing + SBOM | ✅ **DONE** | minisign + cosign di `release.yml`, cargo-cyclonedx SBOM |
+| P3.5 Packaging AUR + Scoop | ✅ **DONE** | `packaging/aur/PKGBUILD`, `packaging/scoop/vac.json` |
+| P3.6 Schema versioning + legacy tests | ✅ **DONE** | `schema_version` di Session/Job, `legacy_compat.rs` (4 tests), v0 fixtures |
+| P4.1 Resource governance | ✅ **DONE** | `memory_cap_bytes`/`disk_quota_bytes` di VacConfig, wire ke engine init |
+| P4.2 Trace redaction contract | ✅ **DONE** | `trace_redaction.rs` (3 end-to-end tests) |
+
+**Semua gates hijau** (commit `fda75be`):
+- `cargo check --workspace --tests` ✅
+- `cargo clippy --workspace --all-targets -- -D warnings` ✅ (0 errors, 0 warnings)
+- `cargo test -p vac_cli --lib` → 171 passed ✅
+- `cargo test -p vac_core --test policy_gate` → 14 passed ✅
+- `cargo test -p vac_core --test bundle_roundtrip` → 9 passed ✅
+- `cargo test -p vac_core --test trace_redaction` → 3 passed ✅
+- `cargo test -p vac_cli --test legacy_compat` → 4 passed ✅
+- `cargo test -p vac_core --lib` → 16 passed ✅
+- `cargo test -p vil_swarm --lib` → 62 passed ✅
+
+---
+
+## Langkah Selanjutnya — Phase 6B (Evidence Gate)
+
+Ini **bukan engineering** — periode observasi pasca v1.0 tag:
+
+1. Tag `v1.0.0` setelah `cargo dist plan --tag v1.0.0` sukses dan release pipeline diverifikasi
+2. Isi `docs/STABILITY_LOG.md` — entry harian selama 4 minggu (target: 0 critical bugs)
+3. Dokumentasikan ≥3 internal deployment di `docs/case-studies/`
+4. Re-engage 3rd-party audit, capture delta di `docs/audits/2026-Q3-rebaseline.md`
 | P3.3 install.sh | **TODO** | File tidak ada |
 | P3.4 Artifact signing + SBOM | **TODO** | minisign/cosign steps di-comment, `minisign.pub` missing, cargo-cyclonedx belum ada |
 | P3.5 Packaging (AUR, Scoop) | **TODO** | `packaging/` directory tidak ada |
