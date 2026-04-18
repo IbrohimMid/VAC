@@ -43,20 +43,188 @@ pub struct RenderMetrics {
     pub avg_render_time_us: u64,
 }
 
+// ========== Domain State Slices ==========
+
+#[derive(Debug, Clone)]
+pub struct ShellSession {
+    pub id: Uuid,
+    pub label: String,
+    pub command: Option<ShellCommand>,
+    pub output: String,
+    pub history: Vec<String>,
+    pub history_idx: Option<usize>,
+    pub waiting_for_input: bool,
+    pub backgrounded: bool,
+    pub exit_code: Option<i32>,
+    pub last_error: Option<String>,
+    pub prompt_ready: bool,
+    pub password_mode: bool,
+    pub lifecycle: crate::tui::services::shell_mode::ShellLifecycle,
+}
+
+impl ShellSession {
+    pub fn new(label: String) -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            label,
+            command: None,
+            output: String::new(),
+            history: Vec::new(),
+            history_idx: None,
+            waiting_for_input: false,
+            backgrounded: false,
+            exit_code: None,
+            last_error: None,
+            prompt_ready: false,
+            password_mode: false,
+            lifecycle: crate::tui::services::shell_mode::ShellLifecycle::Running,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ShellSessionStore {
+    pub sessions: Vec<ShellSession>,
+    pub active_idx: Option<usize>,
+    pub popup_visible: bool,
+}
+
+impl ShellSessionStore {
+    pub fn active(&self) -> Option<&ShellSession> {
+        self.active_idx.and_then(|idx| self.sessions.get(idx))
+    }
+
+    pub fn active_mut(&mut self) -> Option<&mut ShellSession> {
+        self.active_idx.and_then(|idx| self.sessions.get_mut(idx))
+    }
+
+    pub fn push_new(&mut self, label: String) -> usize {
+        self.sessions.push(ShellSession::new(label));
+        let idx = self.sessions.len().saturating_sub(1);
+        self.active_idx = Some(idx);
+        idx
+    }
+
+    pub fn remove(&mut self, idx: usize) {
+        if idx >= self.sessions.len() {
+            return;
+        }
+        self.sessions.remove(idx);
+        self.active_idx = match self.active_idx {
+            None => None,
+            Some(_) if self.sessions.is_empty() => None,
+            Some(active_idx) if active_idx == idx => Some(idx.min(self.sessions.len() - 1)),
+            Some(active_idx) if active_idx > idx => Some(active_idx - 1),
+            Some(active_idx) => Some(active_idx),
+        };
+    }
+
+    pub fn switch_to(&mut self, idx: usize) {
+        if idx < self.sessions.len() {
+            self.active_idx = Some(idx);
+        }
+    }
+
+    pub fn find_by_command_id(&self, command_id: &str) -> Option<usize> {
+        self.sessions.iter().position(|session| {
+            session
+                .command
+                .as_ref()
+                .is_some_and(|command| command.id == command_id)
+        })
+    }
+
+    pub fn find_by_command_id_mut(&mut self, command_id: &str) -> Option<&mut ShellSession> {
+        let idx = self.find_by_command_id(command_id)?;
+        self.sessions.get_mut(idx)
+    }
+}
+
+/// Shell-session domain state. Accessed via `app_state.shell`.
+#[derive(Debug, Clone, Default)]
+pub struct ShellState {
+    pub session_store: ShellSessionStore,
+}
+
+/// Git-review domain state. Accessed via `app_state.review`.
+#[derive(Debug, Clone, Default)]
+pub struct ReviewState {
+    pub open: bool,
+    pub filter: String,
+    pub selected_idx: usize,
+    pub selected_path: Option<String>,
+    pub items: HashMap<String, ReviewItem>,
+    pub diff: Option<ReviewDiffState>,
+    pub generation: u64,
+}
+
+/// Plan-mode domain state. Accessed via `app_state.plan`.
+#[derive(Debug, Clone, Default)]
+pub struct PlanState {
+    pub mode_active: bool,
+    pub metadata: Option<crate::tui::services::plan::PlanMetadata>,
+    pub draft: String,
+    pub review_open: bool,
+    pub review_selected: usize,
+    pub review_scroll: usize,
+    pub comments: Vec<PlanComment>,
+    pub existing_prompt: Option<ExistingPlanPrompt>,
+}
+
+/// VIL-engine domain state. Accessed via `app_state.vil`.
+#[derive(Debug, Clone, Default)]
+pub struct VilState {
+    pub status: VilStatusSnapshot,
+    pub last_score: Option<f64>,
+    pub score_history: Vec<f64>,
+    pub event_log: VecDeque<VilLogEntry>,
+    pub workbench_selected: usize,
+    pub workbench_group_filter: Option<VilIssueKind>,
+}
+
+/// Runtime / agent-scheduler domain state. Accessed via `app_state.runtime`.
+#[derive(Debug, Clone, Default)]
+pub struct RuntimeState {
+    pub jobs: Vec<vac_runtime::Job>,
+    pub selected_idx: usize,
+    pub filter: String,
+    pub detail_scroll: usize,
+    pub snapshot: Option<vac_runtime::AutopilotStateFile>,
+    pub agent_tasks: Vec<vac_runtime::AgentTask>,
+    pub agent_selected: usize,
+    pub agent_detail_scroll: usize,
+    pub agent_snapshot: Option<vac_runtime::AgentSchedulerStateFile>,
+    pub task_projection: Option<vac_core::engine::TaskGraphProjection>,
+}
+
 // ========== Helper Types ==========
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum CommandSource {
+    /// Slash command with a real TUI handler — does not send a user message.
     BuiltIn,
+    /// Slash command that prepends a canned prompt then sends to the agent.
     BuiltInWithPrompt { prompt_content: String },
+    /// User-defined command with a prompt template.
     Custom { prompt_content: String },
+    /// No TUI handler — the command text is forwarded verbatim to the agent.
+    Passthrough,
 }
 
+/// Canonical specification for a single slash command.
+///
+/// This is the single source of truth used by the command palette, shortcuts
+/// popup, footer help text, and the slash-command dispatcher.
 #[derive(Debug, Clone)]
 pub struct HelperCommand {
     pub command: String,
     pub description: String,
     pub source: CommandSource,
+    /// Display hint for an associated keyboard shortcut (empty = none).
+    pub shortcut: Option<String>,
+    /// Whether this command is actually wired to real functionality.
+    /// `false` = it will be forwarded as-is and may not do anything useful.
+    pub wired: bool,
 }
 
 // ========== Session Types ==========
@@ -309,8 +477,28 @@ pub enum SidePanelRowAction {
 
 // ========== VIL Issue classification (Unit 9, Wave 4.1) ==========
 
+/// Issue severity level for VIL validation issues.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum VilSeverity {
+    Error,
+    Warning,
+    Info,
+    Hint,
+}
+
+impl VilSeverity {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Error => "error",
+            Self::Warning => "warning",
+            Self::Info => "info",
+            Self::Hint => "hint",
+        }
+    }
+}
+
 /// Issue kind inferred from free-text validation issue strings.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum VilIssueKind {
     Semantic,
     ZeroCopy,
@@ -367,29 +555,103 @@ impl VilIssueKind {
     }
 }
 
+/// Structured VIL validation issue.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct VilIssue {
+    pub id: String,
+    pub kind: VilIssueKind,
+    pub severity: VilSeverity,
+    pub source: String,
+    pub message: String,
+    pub file: Option<String>,
+    pub line: Option<usize>,
+    pub column: Option<usize>,
+    pub raw: Option<String>,
+    pub repair_proposal: Option<String>,
+    pub inferred: bool,
+}
+
+impl VilIssue {
+    /// Create a VilIssue from a raw string, inferring kind and other fields.
+    pub fn from_raw(raw: String) -> Self {
+        use std::hash::{Hash, Hasher};
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        raw.hash(&mut hasher);
+        let id = format!("{:08x}", hasher.finish());
+
+        let kind = VilIssueKind::classify(&raw);
+        let file = extract_file_hint(&raw);
+        let message = shorten(&raw);
+
+        let repair_proposal = match kind {
+            VilIssueKind::Semantic => {
+                Some("Apply #[vil_state] macro and derive VilMessage".to_string())
+            }
+            VilIssueKind::ZeroCopy => Some("Convert Vec<u8> to ShmSlice<u8>".to_string()),
+            _ => None,
+        };
+
+        let severity = match kind {
+            VilIssueKind::Semantic | VilIssueKind::ZeroCopy => VilSeverity::Error,
+            VilIssueKind::Plumbing => VilSeverity::Warning,
+            VilIssueKind::IrDrift => VilSeverity::Warning,
+            VilIssueKind::CanonicalTerm => VilSeverity::Info,
+            VilIssueKind::Other => VilSeverity::Info,
+        };
+
+        Self {
+            id,
+            kind,
+            severity,
+            source: "vil_validate".to_string(),
+            message,
+            file,
+            line: None,
+            column: None,
+            raw: Some(raw),
+            repair_proposal,
+            inferred: true,
+        }
+    }
+}
+
+fn extract_file_hint(text: &str) -> Option<String> {
+    for (i, c) in text.char_indices() {
+        if c == '\'' {
+            let rest = &text[i + 1..];
+            if let Some(end) = rest.find('\'') {
+                let name = &rest[..end];
+                if !name.is_empty() {
+                    return Some(name.to_string());
+                }
+            }
+        }
+    }
+    None
+}
+
+pub fn shorten(text: &str) -> String {
+    let collapsed: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    const MAX: usize = 160;
+    if collapsed.len() <= MAX {
+        collapsed
+    } else {
+        let mut t = collapsed;
+        t.truncate(MAX.saturating_sub(3));
+        t.push('…');
+        t
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct VilStatusSnapshot {
     pub profile: Option<vac_core::detector::VilProjectProfile>,
     pub validation_score: f64,
-    pub validation_issues: Vec<String>,
+    pub validation_issues: Vec<VilIssue>,
     pub active_rulebook: Option<String>,
     pub semantic_mode: bool,
     pub ir_generation_active: bool,
     pub ir_metadata_files: Vec<String>,
-}
-
-#[derive(Debug, Clone)]
-pub struct ShellSession {
-    pub id: String,
-    pub title: String,
-    pub output: String,
-    pub command: Option<ShellCommand>,
-    pub waiting_for_input: bool,
-    pub backgrounded: bool,
-    pub exit_code: Option<i32>,
-    pub last_error: Option<String>,
-    pub history: Vec<String>,
-    pub history_idx: Option<usize>,
 }
 
 /// Main application state for TUI
@@ -437,20 +699,8 @@ pub struct AppState {
     pub approval_explanations: HashMap<String, Option<String>>,
     pub reject_reason_input: Option<String>, // Some(_) = reason prompt active
 
-    // Shell state
-    pub shell_popup_visible: bool,
-    pub shell_output: String,
-    pub active_shell_command: Option<ShellCommand>,
-    pub shell_waiting_for_input: bool,
-    pub shell_backgrounded: bool,
-    pub shell_exit_code: Option<i32>,
-    pub shell_last_error: Option<String>,
-    pub shell_history: Vec<String>,
-    pub shell_history_idx: Option<usize>,
-    // Unit 6 (Wave 3.4) — Prompt-aware shell polish
-    pub shell_prompt_ready: bool,
-    pub shell_password_mode: bool,
-    pub shell_lifecycle: crate::tui::services::shell_mode::ShellLifecycle,
+    // Shell domain state
+    pub shell: ShellState,
 
     // Streaming state
     pub is_streaming: bool,
@@ -504,24 +754,12 @@ pub struct AppState {
     pub modified_files: Vec<String>,
 
     pub workbench_tab: WorkbenchTab,
-    pub review_open: bool,
-    pub review_filter: String,
-    pub review_selected_idx: usize,
-    pub review_selected_path: Option<String>,
-    pub review_items: HashMap<String, ReviewItem>,
-    pub review_diff: Option<ReviewDiffState>,
-    pub review_generation: u64,
+    // Git-review domain state
+    pub review: ReviewState,
 
     pub sessions_selected_idx: usize,
-    pub agent_tasks: Vec<vac_runtime::AgentTask>,
-    pub agent_selected_idx: usize,
-    pub agent_detail_scroll: usize,
-    pub agent_state_snapshot: Option<vac_runtime::AgentSchedulerStateFile>,
-    pub runtime_jobs: Vec<vac_runtime::Job>,
-    pub runtime_selected_idx: usize,
-    pub runtime_filter: String,
-    pub runtime_detail_scroll: usize,
-    pub runtime_state_snapshot: Option<vac_runtime::AutopilotStateFile>,
+    // Runtime / agent-scheduler domain state
+    pub runtime: RuntimeState,
 
     pub activity: Vec<ActivityItem>,
     pub activity_scroll: usize,
@@ -558,11 +796,8 @@ pub struct AppState {
     // MCP
     pub mcp_server_states: HashMap<String, vac_tools::mcp::McpConnectionState>,
 
-    // VIL Status
-    pub vil_status: VilStatusSnapshot,
-    pub last_validation_score: Option<f64>,
-    pub vil_score_history: Vec<f64>,
-    pub vil_event_log: VecDeque<VilLogEntry>,
+    // VIL domain state
+    pub vil: VilState,
 
     // Pending image attachments for next message submission
     pub pending_image_parts: Vec<crate::tui::types::ContentPart>,
@@ -601,15 +836,8 @@ pub struct AppState {
     pub line_to_message_map: Vec<Uuid>,
     pub pending_revert_index: Option<usize>,
 
-    // Plan mode
-    pub plan_mode_active: bool,
-    pub plan_metadata: Option<crate::tui::services::plan::PlanMetadata>,
-    pub plan_draft: String,
-    pub plan_review_open: bool,
-    pub plan_review_selected: usize,
-    pub plan_review_scroll: usize,
-    pub plan_comments: Vec<PlanComment>,
-    pub existing_plan_prompt: Option<ExistingPlanPrompt>,
+    // Plan domain state
+    pub plan: PlanState,
 
     // Ask-User popup (triggered by `ask_user` tool call)
     pub show_ask_user_popup: bool,
@@ -638,9 +866,10 @@ pub struct AppState {
 
     pub input_tx: Option<tokio::sync::mpsc::Sender<crate::tui::app::events::InputEvent>>,
 
-    // ===== Unit 9 (Wave 4.1) — VIL Issue Workstation =====
-    pub vil_workbench_selected: usize,
-    pub vil_workbench_group_filter: Option<VilIssueKind>,
+    /// Overlay stack: tracks open modal overlays and their event-capture order.
+    pub overlay_manager: crate::tui::overlay::OverlayManager,
+
+    // vil_workbench fields moved to VilState.workbench_selected / .workbench_group_filter
 
     // ===== Unit 5 (Wave 3.1) — Attachment tray preview & reorder =====
     /// Cursor in the paste tray; indexes into `pending_pastes`.
@@ -709,18 +938,7 @@ impl AppState {
             approval_detail_scroll: 0,
             approval_explanations: HashMap::new(),
             reject_reason_input: None,
-            shell_popup_visible: false,
-            shell_output: String::new(),
-            active_shell_command: None,
-            shell_waiting_for_input: false,
-            shell_backgrounded: false,
-            shell_exit_code: None,
-            shell_last_error: None,
-            shell_history: Vec::new(),
-            shell_history_idx: None,
-            shell_prompt_ready: false,
-            shell_password_mode: false,
-            shell_lifecycle: crate::tui::services::shell_mode::ShellLifecycle::Running,
+            shell: ShellState::default(),
             is_streaming: false,
             cancel_requested: false,
             streaming_message_id: None,
@@ -766,23 +984,9 @@ impl AppState {
             changeset_store: crate::tui::services::ChangesetStore::new(),
             modified_files: Vec::new(),
             workbench_tab: WorkbenchTab::Approvals,
-            review_open: false,
-            review_filter: String::new(),
-            review_selected_idx: 0,
-            review_selected_path: None,
-            review_items: HashMap::new(),
-            review_diff: None,
-            review_generation: 0,
+            review: ReviewState::default(),
             sessions_selected_idx: 0,
-            agent_tasks: Vec::new(),
-            agent_selected_idx: 0,
-            agent_detail_scroll: 0,
-            agent_state_snapshot: None,
-            runtime_jobs: Vec::new(),
-            runtime_selected_idx: 0,
-            runtime_filter: String::new(),
-            runtime_detail_scroll: 0,
-            runtime_state_snapshot: None,
+            runtime: RuntimeState::default(),
             activity: Vec::new(),
             activity_scroll: 0,
             toasts: Vec::new(),
@@ -807,10 +1011,7 @@ impl AppState {
             auto_approve: false,
             project_root: options.project_root,
             mcp_server_states: HashMap::new(),
-            vil_status: VilStatusSnapshot::default(),
-            last_validation_score: None,
-            vil_score_history: Vec::new(),
-            vil_event_log: VecDeque::new(),
+            vil: VilState::default(),
             pending_image_parts: vec![],
             banner_message: None,
             banner_click_regions: Vec::new(),
@@ -831,14 +1032,7 @@ impl AppState {
             auth_display_info: (None, None, None),
             line_to_message_map: Vec::new(),
             pending_revert_index: None,
-            plan_mode_active: false,
-            plan_metadata: None,
-            plan_draft: String::new(),
-            plan_review_open: false,
-            plan_review_selected: 0,
-            plan_review_scroll: 0,
-            plan_comments: Vec::new(),
-            existing_plan_prompt: None,
+            plan: PlanState::default(),
             show_ask_user_popup: false,
             ask_user_question: None,
             ask_user_options: Vec::new(),
@@ -861,9 +1055,9 @@ impl AppState {
             message_area_y: 0,
             message_area_height: 0,
             input_tx: None,
+            overlay_manager: crate::tui::overlay::OverlayManager::new(),
             // Unit 9 (Wave 4.1) — VIL Issue Workstation
-            vil_workbench_selected: 0,
-            vil_workbench_group_filter: None,
+            // vil workbench fields are in vil: VilState::default()
             // Unit 5 (Wave 3.1) — Attachment tray preview & reorder
             pending_paste_selected: 0,
             pending_paste_reorder_mode: false,
@@ -918,26 +1112,26 @@ impl AppState {
     }
 
     pub fn record_vil_score(&mut self, score: f64) {
-        let should_push = match self.vil_score_history.last().copied() {
+        let should_push = match self.vil.score_history.last().copied() {
             Some(prev) => (prev - score).abs() > 0.0001,
             None => true,
         };
         if should_push {
-            self.vil_score_history.push(score);
-            if self.vil_score_history.len() > 60 {
-                let drain = self.vil_score_history.len().saturating_sub(60);
-                self.vil_score_history.drain(0..drain);
+            self.vil.score_history.push(score);
+            if self.vil.score_history.len() > 60 {
+                let drain = self.vil.score_history.len().saturating_sub(60);
+                self.vil.score_history.drain(0..drain);
             }
         }
     }
 
     pub fn push_vil_log(&mut self, message: impl Into<String>) {
-        self.vil_event_log.push_back(VilLogEntry {
+        self.vil.event_log.push_back(VilLogEntry {
             at: Utc::now(),
             message: message.into(),
         });
-        while self.vil_event_log.len() > 200 {
-            self.vil_event_log.pop_front();
+        while self.vil.event_log.len() > 200 {
+            self.vil.event_log.pop_front();
         }
     }
 
@@ -1038,7 +1232,8 @@ impl AppState {
             .map(|e| e.path.clone())
             .collect();
 
-        self.review_items
+        self.review
+            .items
             .retain(|k, v| active_paths.contains(k) || v.status != ReviewItemStatus::Pending);
 
         for entry in self.changeset_store.active_entries() {
@@ -1050,7 +1245,8 @@ impl AppState {
                 })
                 .unwrap_or(false);
 
-            self.review_items
+            self.review
+                .items
                 .entry(path.clone())
                 .and_modify(|it| {
                     it.has_snapshot = has_snapshot;
@@ -1068,7 +1264,7 @@ impl AppState {
     }
 
     pub fn review_filtered_paths(&self) -> Vec<String> {
-        let filter = self.review_filter.trim().to_lowercase();
+        let filter = self.review.filter.trim().to_lowercase();
         // Primary source: changeset_store active entries (insertion order preserved)
         let mut ordered: Vec<String> = vec![];
         let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
@@ -1081,7 +1277,8 @@ impl AppState {
 
         // Include any review_items not in store (e.g. Restored/Failed still visible)
         let mut extra: Vec<String> = self
-            .review_items
+            .review
+            .items
             .keys()
             .filter(|k| !seen.contains(*k))
             .cloned()
@@ -1104,44 +1301,44 @@ impl AppState {
     pub fn review_normalize_selection(&mut self) {
         let paths = self.review_filtered_paths();
         if paths.is_empty() {
-            self.review_selected_idx = 0;
-            self.review_selected_path = None;
-            self.review_diff = None;
+            self.review.selected_idx = 0;
+            self.review.selected_path = None;
+            self.review.diff = None;
             return;
         }
 
-        if let Some(path) = self.review_selected_path.clone() {
+        if let Some(path) = self.review.selected_path.clone() {
             if let Some(idx) = paths.iter().position(|p| p == &path) {
-                self.review_selected_idx = idx;
+                self.review.selected_idx = idx;
                 return;
             }
         }
 
-        if self.review_selected_idx >= paths.len() {
-            self.review_selected_idx = paths.len() - 1;
+        if self.review.selected_idx >= paths.len() {
+            self.review.selected_idx = paths.len() - 1;
         }
-        self.review_selected_path = Some(paths[self.review_selected_idx].clone());
+        self.review.selected_path = Some(paths[self.review.selected_idx].clone());
     }
 
     pub fn review_select_by_delta(&mut self, delta: isize) {
         let paths = self.review_filtered_paths();
         if paths.is_empty() {
-            self.review_selected_idx = 0;
-            self.review_selected_path = None;
-            self.review_diff = None;
+            self.review.selected_idx = 0;
+            self.review.selected_path = None;
+            self.review.diff = None;
             return;
         }
 
         let len = paths.len() as isize;
-        let mut idx = self.review_selected_idx as isize + delta;
+        let mut idx = self.review.selected_idx as isize + delta;
         if idx < 0 {
             idx = 0;
         }
         if idx >= len {
             idx = len - 1;
         }
-        self.review_selected_idx = idx as usize;
-        self.review_selected_path = Some(paths[self.review_selected_idx].clone());
+        self.review.selected_idx = idx as usize;
+        self.review.selected_path = Some(paths[self.review.selected_idx].clone());
     }
 
     pub fn approval_normalize_selection(&mut self) {

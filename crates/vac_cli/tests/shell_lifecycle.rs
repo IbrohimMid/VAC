@@ -74,32 +74,35 @@ async fn test_shell_state_cleanup() {
 
     let mut state = AppState::default();
 
-    // Simulate shell started
-    assert!(state.active_shell_command.is_none());
-    assert!(!state.shell_popup_visible);
-    assert!(state.shell_output.is_empty());
+    assert!(state.shell.session_store.active().is_none());
+    assert!(!state.shell.session_store.popup_visible);
 
-    // After shell starts
-    state.shell_popup_visible = true;
-    state.shell_output = "test output".to_string();
+    let idx = state.shell.session_store.push_new("shell-1".to_string());
+    state.shell.session_store.popup_visible = true;
+    let session = &mut state.shell.session_store.sessions[idx];
+    session.output = "test output".to_string();
+    session.waiting_for_input = true;
+    session.backgrounded = true;
+    session.exit_code = Some(1);
+    session.last_error = Some("boom".to_string());
 
-    // Cleanup
-    state.active_shell_command = None;
-    state.shell_popup_visible = false;
-    state.shell_output.clear();
-    state.shell_waiting_for_input = false;
-    state.shell_backgrounded = false;
-    state.shell_exit_code = None;
-    state.shell_last_error = None;
+    state.shell.session_store.popup_visible = false;
+    let session = &mut state.shell.session_store.sessions[idx];
+    session.command = None;
+    session.output.clear();
+    session.waiting_for_input = false;
+    session.backgrounded = false;
+    session.exit_code = None;
+    session.last_error = None;
 
-    // Verify cleanup
-    assert!(state.active_shell_command.is_none());
-    assert!(!state.shell_popup_visible);
-    assert!(state.shell_output.is_empty());
-    assert!(!state.shell_waiting_for_input);
-    assert!(!state.shell_backgrounded);
-    assert!(state.shell_exit_code.is_none());
-    assert!(state.shell_last_error.is_none());
+    let session = state.shell.session_store.active().unwrap();
+    assert!(session.command.is_none());
+    assert!(!state.shell.session_store.popup_visible);
+    assert!(session.output.is_empty());
+    assert!(!session.waiting_for_input);
+    assert!(!session.backgrounded);
+    assert!(session.exit_code.is_none());
+    assert!(session.last_error.is_none());
 }
 
 #[tokio::test]

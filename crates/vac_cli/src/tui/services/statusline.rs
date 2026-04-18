@@ -1,10 +1,10 @@
 use crate::tui::app::AppState;
 use ratatui::{
+    Frame,
     layout::{Alignment, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::Paragraph,
-    Frame,
 };
 
 pub fn render_statusline(f: &mut Frame, state: &AppState, area: Rect) {
@@ -32,12 +32,22 @@ pub fn render_statusline(f: &mut Frame, state: &AppState, area: Rect) {
                 .add_modifier(Modifier::BOLD),
         ),
         Span::raw(" | "),
-        Span::styled(format!("Model: {}", model_str), Style::default().fg(Color::Cyan)),
-        Span::raw(" | "),
-        Span::styled(format!("Tokens: {}", tokens), Style::default().fg(Color::Green)),
+        Span::styled(
+            format!("Model: {}", model_str),
+            Style::default().fg(Color::Cyan),
+        ),
         Span::raw(" | "),
         Span::styled(
-            if state.auto_approve { "AUTO-APPROVE" } else { "MANUAL" },
+            format!("Tokens: {}", tokens),
+            Style::default().fg(Color::Green),
+        ),
+        Span::raw(" | "),
+        Span::styled(
+            if state.auto_approve {
+                "AUTO-APPROVE"
+            } else {
+                "MANUAL"
+            },
             if state.auto_approve {
                 Style::default().fg(Color::Red)
             } else {

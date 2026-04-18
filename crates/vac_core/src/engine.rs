@@ -7,8 +7,40 @@ use crate::{
     session::Session,
     spawn_subtask_tool::SpawnSubtaskTool,
     task::{Task, TaskResult, TaskStatus},
+    ApprovalState,
 };
 use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum TaskNodeStatus {
+    Pending,
+    Running,
+    Blocked,
+    Completed,
+    Failed(String),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TaskNodeProjection {
+    pub id: String,
+    pub label: String,
+    pub status: TaskNodeStatus,
+    pub retry_count: u32,
+    pub dependencies: Vec<String>,
+    pub blockers: Vec<String>,
+    pub tools_used: Vec<String>,
+    pub shell_sessions: Vec<String>,
+    pub artifacts: Vec<String>,
+    pub approval_required: bool,
+    pub approval_state: ApprovalState,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TaskGraphProjection {
+    pub nodes: Vec<TaskNodeProjection>,
+    pub root_ids: Vec<String>,
+    pub snapshot_at: chrono::DateTime<chrono::Utc>,
+}
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::{RwLock, mpsc};
@@ -112,6 +144,89 @@ impl VacEngine {
             .collect();
         models.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
         models
+    }
+
+    pub fn task_graph_projection(&self) -> Option<TaskGraphProjection> {
+        let session = self.session.try_read().ok()?;
+        let inspector = self.inspector_ui.try_read().ok()?;
+        if session.tasks.is_empty() {
+            return None;
+        }
+        let mut nodes: Vec<TaskNodeProjection> = session
+            .tasks
+            .iter()
+            .map(|task| {
+                let artifacts = session
+                    .results
+                    .get(&task.id)
+                    .map(|r| {
+                        let mut a = r.modified_files.clone();
+                        a.extend(r.created_files.clone());
+                        a
+                    })
+                    .unwrap_or_default();
+                let approval_required =
+                    task.constraints.require_approval || task.constraints.approval_policy.is_some();
+                TaskNodeProjection {
+                    id: task.id.0.to_string(),
+                    label: task.description.clone(),
+                    status: match &task.status {
+                        crate::task::TaskStatus::Pending => TaskNodeStatus::Pending,
+                        crate::task::TaskStatus::Planning
+                        | crate::task::TaskStatus::Executing
+                        | crate::task::TaskStatus::Validating => TaskNodeStatus::Running,
+                        crate::task::TaskStatus::Completed => TaskNodeStatus::Completed,
+                        crate::task::TaskStatus::Failed(msg) => {
+                            TaskNodeStatus::Failed(msg.clone())
+                        }
+                        crate::task::TaskStatus::Cancelled => {
+                            TaskNodeStatus::Failed("cancelled".to_string())
+                        }
+                    },
+                    retry_count: 0,
+                    dependencies: task
+                        .parent_task
+                        .iter()
+                        .map(|p| p.0.to_string())
+                        .collect(),
+                    blockers: inspector
+                        .blockers
+                        .get(&task.id.0)
+                        .cloned()
+                        .unwrap_or_default(),
+                    tools_used: inspector
+                        .active_tools
+                        .get(&task.id.0)
+                        .cloned()
+                        .unwrap_or_default(),
+                    shell_sessions: inspector
+                        .shell_sessions
+                        .get(&task.id.0)
+                        .cloned()
+                        .unwrap_or_default(),
+                    artifacts,
+                    approval_required,
+                    approval_state: if approval_required {
+                        ApprovalState::Pending
+                    } else {
+                        ApprovalState::Approved
+                    },
+                }
+            })
+            .collect();
+        nodes.sort_by(|a, b| a.id.cmp(&b.id));
+        let mut root_ids: Vec<String> = session
+            .tasks
+            .iter()
+            .filter(|t| t.parent_task.is_none())
+            .map(|t| t.id.0.to_string())
+            .collect();
+        root_ids.sort();
+        Some(TaskGraphProjection {
+            nodes,
+            root_ids,
+            snapshot_at: chrono::Utc::now(),
+        })
     }
 
     fn build_llm_router(&self) -> LlmRouter {
@@ -992,6 +1107,7 @@ fn convert_archetype(a: &crate::detector::VilArchetype) -> vil_swarm::VilArchety
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn spawn_agent_event_bridge(
     mut swarm_rx: mpsc::UnboundedReceiver<vil_swarm::AgentLoopEvent>,
     trace_handle: Option<std::sync::Arc<std::sync::Mutex<vac_trace::TraceRecorder>>>,
@@ -1005,7 +1121,7 @@ fn spawn_agent_event_bridge(
     tokio::spawn(async move {
         while let Some(event) = swarm_rx.recv().await {
             record_agent_event(trace_handle.as_ref(), &event);
-            
+
             // Track Inspector UI metrics
             match &event {
                 vil_swarm::AgentLoopEvent::ToolCall { name, .. } => {

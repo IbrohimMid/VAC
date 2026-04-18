@@ -25,17 +25,17 @@ pub fn select_next(ctx: &mut HandlerContext) -> HandlerResult {
     let issues = vil_workbench::classify_issues(ctx.state);
     let view_len = vil_workbench::filtered(ctx.state, &issues).len();
     if view_len == 0 {
-        ctx.state.vil_workbench_selected = 0;
+        ctx.state.vil.workbench_selected = 0;
         return Ok(());
     }
-    let next = ctx.state.vil_workbench_selected.saturating_add(1);
-    ctx.state.vil_workbench_selected = next.min(view_len - 1);
+    let next = ctx.state.vil.workbench_selected.saturating_add(1);
+    ctx.state.vil.workbench_selected = next.min(view_len - 1);
     Ok(())
 }
 
 /// Select previous issue within the active filter.
 pub fn select_prev(ctx: &mut HandlerContext) -> HandlerResult {
-    ctx.state.vil_workbench_selected = ctx.state.vil_workbench_selected.saturating_sub(1);
+    ctx.state.vil.workbench_selected = ctx.state.vil.workbench_selected.saturating_sub(1);
     Ok(())
 }
 
@@ -45,7 +45,7 @@ pub fn cycle_filter(ctx: &mut HandlerContext, forward: bool) -> HandlerResult {
     let order = vil_workbench::KIND_ORDER;
     // Slot order in the top strip: [KIND_ORDER..., None (= All)]
     let total = order.len() + 1;
-    let current: usize = match ctx.state.vil_workbench_group_filter {
+    let current: usize = match ctx.state.vil.workbench_group_filter {
         Some(kind) => order.iter().position(|k| *k == kind).unwrap_or(total - 1),
         None => total - 1,
     };
@@ -54,12 +54,12 @@ pub fn cycle_filter(ctx: &mut HandlerContext, forward: bool) -> HandlerResult {
     } else {
         (current + total - 1) % total
     };
-    ctx.state.vil_workbench_group_filter = if next == total - 1 {
+    ctx.state.vil.workbench_group_filter = if next == total - 1 {
         None
     } else {
         Some(order[next])
     };
-    ctx.state.vil_workbench_selected = 0;
+    ctx.state.vil.workbench_selected = 0;
     Ok(())
 }
 
@@ -107,21 +107,22 @@ pub fn run_audit(ctx: &mut HandlerContext) -> HandlerResult {
 pub fn run_batch_campaign(ctx: &mut HandlerContext) -> HandlerResult {
     let issues = vil_workbench::classify_issues(ctx.state);
     let view = vil_workbench::filtered(ctx.state, &issues);
-    
+
     if view.is_empty() {
-        ctx.state
-            .toasts
-            .push(Toast::info("No issues in current filter to run campaign on.".to_string()));
+        ctx.state.toasts.push(Toast::info(
+            "No issues in current filter to run campaign on.".to_string(),
+        ));
         return Ok(());
     }
 
-    let files: Vec<String> = view.iter()
+    let files: Vec<String> = view
+        .iter()
         .filter_map(|i| i.file.clone())
         .collect::<std::collections::HashSet<_>>() // deduplicate
         .into_iter()
         .collect();
 
-    let kind_filter = match ctx.state.vil_workbench_group_filter {
+    let kind_filter = match ctx.state.vil.workbench_group_filter {
         Some(VilIssueKind::ZeroCopy) => "zero_copy",
         Some(VilIssueKind::Plumbing) => "plumbing",
         Some(VilIssueKind::Semantic) => "semantic",
@@ -135,7 +136,10 @@ pub fn run_batch_campaign(ctx: &mut HandlerContext) -> HandlerResult {
         "auto_repair": true,
     });
 
-    ctx.state.push_activity(ActivityKind::Status, format!("Starting VIL Campaign: batch repair {} issues", view.len()));
+    ctx.state.push_activity(
+        ActivityKind::Status,
+        format!("Starting VIL Campaign: batch repair {} issues", view.len()),
+    );
     invoke_tool(ctx, "vil_campaign", args);
     Ok(())
 }
@@ -235,7 +239,7 @@ fn invoke_tool(ctx: &mut HandlerContext, tool_name: &str, args: serde_json::Valu
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tui::app::{AppState, AppStateOptions, OutputEvent};
+    use crate::tui::app::{AppState, AppStateOptions, OutputEvent, VilIssue};
     use tokio::sync::mpsc;
 
     fn make_ctx() -> (
@@ -249,13 +253,13 @@ mod tests {
             checkpoint_path: None,
             project_root: std::env::current_dir().unwrap_or_default(),
         });
-        state.vil_status.validation_issues = vec![
-            "Handler 'create_user' param 'body' contains owned-bytes type 'Vec<u8>' on Network boundary — zero-copy violation".into(),
-            "Struct 'Response' manually implements 'VilMessage' — remove plumbing".into(),
-            "Struct 'Event' has no VIL role macro — add #[vil_state]".into(),
-            "IR drift detected between HEAD and working tree on src/lib.rs".into(),
-            "Canonical term violation: use 'changeset' not 'diff-set'".into(),
-        ];
+        state.vil.status.validation_issues = vec![
+            "Handler 'create_user' param 'body' contains owned-bytes type 'Vec<u8>' on Network boundary — zero-copy violation",
+            "Struct 'Response' manually implements 'VilMessage' — remove plumbing",
+            "Struct 'Event' has no VIL role macro — add #[vil_state]",
+            "IR drift detected between HEAD and working tree on src/lib.rs",
+            "Canonical term violation: use 'changeset' not 'diff-set'",
+        ].into_iter().map(|s| VilIssue::from_raw(s.to_string())).collect();
         let (tx, rx) = mpsc::channel(16);
         (state, tx, rx)
     }
@@ -274,19 +278,19 @@ mod tests {
         let (mut state, tx, _rx) = make_ctx();
         let mut ctx = HandlerContext::new(&mut state, &tx);
         // Start at `None` ("All"). Forward wraps to the first kind.
-        assert_eq!(ctx.state.vil_workbench_group_filter, None);
+        assert_eq!(ctx.state.vil.workbench_group_filter, None);
         assert!(cycle_filter(&mut ctx, true).is_ok());
         assert_eq!(
-            ctx.state.vil_workbench_group_filter,
+            ctx.state.vil.workbench_group_filter,
             Some(vil_workbench::KIND_ORDER[0])
         );
         // Back from first kind goes to `None` (All).
         assert!(cycle_filter(&mut ctx, false).is_ok());
-        assert_eq!(ctx.state.vil_workbench_group_filter, None);
+        assert_eq!(ctx.state.vil.workbench_group_filter, None);
         // Back once more wraps around to the last concrete kind.
         assert!(cycle_filter(&mut ctx, false).is_ok());
         assert_eq!(
-            ctx.state.vil_workbench_group_filter,
+            ctx.state.vil.workbench_group_filter,
             Some(*vil_workbench::KIND_ORDER.last().unwrap())
         );
     }
@@ -294,21 +298,21 @@ mod tests {
     #[test]
     fn select_next_respects_filter_bounds() {
         let (mut state, tx, _rx) = make_ctx();
-        state.vil_workbench_group_filter = Some(VilIssueKind::ZeroCopy);
+        state.vil.workbench_group_filter = Some(VilIssueKind::ZeroCopy);
         let mut ctx = HandlerContext::new(&mut state, &tx);
         // Only 1 zero-copy issue in the fixture — select_next clamps at 0.
         assert!(select_next(&mut ctx).is_ok());
-        assert_eq!(ctx.state.vil_workbench_selected, 0);
+        assert_eq!(ctx.state.vil.workbench_selected, 0);
         assert!(select_next(&mut ctx).is_ok());
-        assert_eq!(ctx.state.vil_workbench_selected, 0);
+        assert_eq!(ctx.state.vil.workbench_selected, 0);
     }
 
     #[test]
     fn run_repair_emits_invoke_vil_tool_with_repair_name() {
         let (mut state, tx, mut rx) = make_ctx();
         // Select the zero-copy issue (index 0 with ZeroCopy filter).
-        state.vil_workbench_group_filter = Some(VilIssueKind::ZeroCopy);
-        state.vil_workbench_selected = 0;
+        state.vil.workbench_group_filter = Some(VilIssueKind::ZeroCopy);
+        state.vil.workbench_selected = 0;
         let mut ctx = HandlerContext::new(&mut state, &tx);
         assert!(run_repair(&mut ctx).is_ok());
 
@@ -328,8 +332,8 @@ mod tests {
     #[test]
     fn run_audit_emits_vil_audit_with_pass_filter() {
         let (mut state, tx, mut rx) = make_ctx();
-        state.vil_workbench_group_filter = Some(VilIssueKind::ZeroCopy);
-        state.vil_workbench_selected = 0;
+        state.vil.workbench_group_filter = Some(VilIssueKind::ZeroCopy);
+        state.vil.workbench_selected = 0;
         let mut ctx = HandlerContext::new(&mut state, &tx);
         assert!(run_audit(&mut ctx).is_ok());
         let event = rx.try_recv().expect("expected InvokeVilTool");
@@ -346,8 +350,8 @@ mod tests {
     #[test]
     fn run_ir_diff_emits_vil_ir_diff() {
         let (mut state, tx, mut rx) = make_ctx();
-        state.vil_workbench_group_filter = Some(VilIssueKind::IrDrift);
-        state.vil_workbench_selected = 0;
+        state.vil.workbench_group_filter = Some(VilIssueKind::IrDrift);
+        state.vil.workbench_selected = 0;
         let mut ctx = HandlerContext::new(&mut state, &tx);
         assert!(run_ir_diff(&mut ctx).is_ok());
         let event = rx.try_recv().expect("expected InvokeVilTool");
@@ -362,7 +366,7 @@ mod tests {
     #[test]
     fn run_repair_without_selection_emits_nothing_and_toasts() {
         let (mut state, tx, mut rx) = make_ctx();
-        state.vil_status.validation_issues.clear();
+        state.vil.status.validation_issues.clear();
         let before = state.toasts.len();
         let mut ctx = HandlerContext::new(&mut state, &tx);
         assert!(run_repair(&mut ctx).is_ok());
@@ -373,7 +377,7 @@ mod tests {
     #[test]
     fn run_batch_campaign_emits_vil_campaign() {
         let (mut state, tx, mut rx) = make_ctx();
-        state.vil_workbench_group_filter = Some(VilIssueKind::ZeroCopy);
+        state.vil.workbench_group_filter = Some(VilIssueKind::ZeroCopy);
         let mut ctx = HandlerContext::new(&mut state, &tx);
         assert!(run_batch_campaign(&mut ctx).is_ok());
         let event = rx.try_recv().expect("expected InvokeVilTool");

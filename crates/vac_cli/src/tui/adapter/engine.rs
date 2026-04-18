@@ -3,7 +3,8 @@
 //! Bridges the Stakpak TUI shell with VAC's engine/runtime.
 
 use crate::tui::adapter::types::*;
-use tokio::sync::mpsc;
+use std::sync::Arc;
+use tokio::sync::{RwLock, mpsc};
 use uuid::Uuid;
 
 /// Adapter that bridges TUI events with VacEngine
@@ -12,6 +13,8 @@ pub struct VacEngineAdapter {
     input_rx: mpsc::Receiver<AdapterInputEvent>,
     /// Sender for output events to TUI
     output_tx: mpsc::Sender<AdapterOutputEvent>,
+    /// Optional engine reference for projection queries
+    engine: Option<Arc<RwLock<vac_core::VacEngine>>>,
 }
 
 /// Input events from TUI (mapped from Stakpak InputEvent)
@@ -60,6 +63,8 @@ pub enum AdapterOutputEvent {
     UsageUpdate(LLMTokenUsage),
     /// TaskGraph info loaded for Inspector UI
     TaskGraphLoaded(vac_runtime::TaskGraph),
+    /// TaskGraph projection for runtime inspector
+    TaskGraphProjection(vac_core::engine::TaskGraphProjection),
 }
 
 /// Session info for TUI
@@ -79,7 +84,13 @@ impl VacEngineAdapter {
         Self {
             input_rx,
             output_tx,
+            engine: None,
         }
+    }
+
+    pub fn with_engine(mut self, engine: Arc<RwLock<vac_core::VacEngine>>) -> Self {
+        self.engine = Some(engine);
+        self
     }
 
     /// Process incoming events from TUI and forward to VacEngine
@@ -122,12 +133,15 @@ impl VacEngineAdapter {
                         .await;
                 }
                 AdapterInputEvent::InspectTaskGraph => {
-                    let _ = self
-                        .output_tx
-                        .send(AdapterOutputEvent::AssistantMessage(
-                            "TaskGraph inspection requested".to_string(),
-                        ))
-                        .await;
+                    if let Some(engine_arc) = &self.engine {
+                        let guard = engine_arc.read().await;
+                        if let Some(proj) = guard.task_graph_projection() {
+                            let _ = self
+                                .output_tx
+                                .send(AdapterOutputEvent::TaskGraphProjection(proj))
+                                .await;
+                        }
+                    }
                 }
                 _ => {}
             }

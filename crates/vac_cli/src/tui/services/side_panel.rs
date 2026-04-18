@@ -47,10 +47,13 @@ pub fn render_side_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
         .contains(&SidePanelSection::Usage);
 
     let collapsed_height = 1;
+    let context_extra = (!state.pinned_files.is_empty()) as u16
+        + (!state.pinned_diffs.is_empty()) as u16
+        + (!state.pinned_diagnostics.is_empty()) as u16;
     let context_height = if context_collapsed {
         collapsed_height
     } else {
-        5
+        5 + context_extra
     };
     let runtime_height = if runtime_collapsed {
         collapsed_height
@@ -298,7 +301,35 @@ fn render_context_section(f: &mut Frame, state: &AppState, area: Rect, collapsed
         ]));
     }
 
+    if !state.pinned_files.is_empty() {
+        lines.push(Line::from(vec![
+            Span::styled("    Files: ", Style::default().fg(Color::DarkGray)),
+            Span::raw(compact_items(&state.pinned_files, 2)),
+        ]));
+    }
+    if !state.pinned_diffs.is_empty() {
+        lines.push(Line::from(vec![
+            Span::styled("    Diffs: ", Style::default().fg(Color::DarkGray)),
+            Span::raw(compact_items(&state.pinned_diffs, 2)),
+        ]));
+    }
+    if !state.pinned_diagnostics.is_empty() {
+        lines.push(Line::from(vec![
+            Span::styled("    Diagnostics: ", Style::default().fg(Color::DarkGray)),
+            Span::raw(compact_items(&state.pinned_diagnostics, 2)),
+        ]));
+    }
+
     f.render_widget(Paragraph::new(lines), area);
+}
+
+fn compact_items(items: &[String], max: usize) -> String {
+    let shown = items.iter().take(max).cloned().collect::<Vec<_>>();
+    if items.len() > max {
+        format!("{}, +{}", shown.join(", "), items.len() - max)
+    } else {
+        shown.join(", ")
+    }
 }
 
 fn render_sessions_section(f: &mut Frame, state: &mut AppState, area: Rect, collapsed: bool) {
@@ -476,7 +507,7 @@ fn render_runtime_section(f: &mut Frame, state: &AppState, area: Rect, collapsed
     let mut running = 0;
     let mut completed = 0;
     let mut failed = 0;
-    for job in &state.runtime_jobs {
+    for job in &state.runtime.jobs {
         match &job.status {
             vac_runtime::JobStatus::Queued => queued += 1,
             vac_runtime::JobStatus::Running => running += 1,

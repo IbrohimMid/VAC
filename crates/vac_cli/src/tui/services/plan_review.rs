@@ -52,7 +52,7 @@ pub fn render_plan_review(f: &mut Frame, state: &AppState) {
 }
 
 fn render_title(f: &mut Frame, state: &AppState, area: Rect) {
-    let (title, status, version) = match &state.plan_metadata {
+    let (title, status, version) = match &state.plan.metadata {
         Some(m) => (m.title.clone(), m.status, m.version),
         None => ("Untitled Plan".to_string(), PlanStatus::Drafting, 1),
     };
@@ -63,7 +63,7 @@ fn render_title(f: &mut Frame, state: &AppState, area: Rect) {
         PlanStatus::Approved => ("APPROVED", Color::Green),
     };
 
-    let comment_count = state.plan_comments.len();
+    let comment_count = state.plan.comments.len();
     let line1 = Line::from(vec![
         Span::styled("  Plan: ", Style::default().fg(ThemeColors::dark_gray())),
         Span::styled(
@@ -101,11 +101,11 @@ fn render_title(f: &mut Frame, state: &AppState, area: Rect) {
 }
 
 fn render_body(f: &mut Frame, state: &AppState, area: Rect) {
-    let body = crate::tui::services::plan::extract_plan_body(&state.plan_draft);
+    let body = crate::tui::services::plan::extract_plan_body(&state.plan.draft);
     let lines_iter = body.lines();
     let mut lines: Vec<Line> = Vec::new();
     for (i, line_str) in lines_iter.enumerate() {
-        let is_selected = i == state.plan_review_selected;
+        let is_selected = i == state.plan.review_selected;
         let num_style = if is_selected {
             Style::default()
                 .fg(ThemeColors::yellow())
@@ -128,7 +128,7 @@ fn render_body(f: &mut Frame, state: &AppState, area: Rect) {
 
     let para = Paragraph::new(lines)
         .wrap(Wrap { trim: false })
-        .scroll((state.plan_review_scroll as u16, 0));
+        .scroll((state.plan.review_scroll as u16, 0));
     f.render_widget(para, area);
 }
 
@@ -153,7 +153,7 @@ fn render_footer(f: &mut Frame, area: Rect) {
 }
 
 fn count_body_lines(state: &AppState) -> usize {
-    crate::tui::services::plan::extract_plan_body(&state.plan_draft)
+    crate::tui::services::plan::extract_plan_body(&state.plan.draft)
         .lines()
         .count()
 }

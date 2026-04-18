@@ -38,11 +38,11 @@ pub use adapter::VacEngineAdapter;
 pub use terminal::TerminalGuard;
 
 // App module
-pub mod controller;
 pub mod action_registry;
-pub mod overlay;
 pub mod app;
+pub mod controller;
 mod event;
+pub mod overlay;
 
 pub use app::{InputEvent, LoadingOperation, OutputEvent};
 pub use event::map_crossterm_event_to_input_event;

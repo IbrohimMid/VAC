@@ -25,6 +25,7 @@ pub enum InputEvent {
     SetAgentState(Option<vac_runtime::AgentSchedulerStateFile>),
     SetRuntimeJobs(Vec<vac_runtime::Job>),
     SetRuntimeState(Option<vac_runtime::AutopilotStateFile>),
+    SetTaskGraphProjection(Option<vac_core::engine::TaskGraphProjection>),
     FileIndexReady(Vec<String>),
     McpConnected {
         name: String,
@@ -154,7 +155,7 @@ pub enum InputEvent {
     MouseMove(u16, u16),
     MouseRightClick(u16, u16),
     TaskCompleted(vac_core::task::TaskResult),
-    
+
     // Raw Crossterm event mapped dynamically
     CrosstermEvent(crossterm::event::Event),
 }
@@ -178,6 +179,7 @@ impl InputEvent {
                 | InputEvent::SetAgentState(_)
                 | InputEvent::SetRuntimeJobs(_)
                 | InputEvent::SetRuntimeState(_)
+                | InputEvent::SetTaskGraphProjection(_)
                 | InputEvent::FileIndexReady(_)
                 | InputEvent::ShellStarted(_)
                 | InputEvent::ShellOutput(_, _)

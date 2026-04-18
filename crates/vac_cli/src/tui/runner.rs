@@ -184,10 +184,27 @@ async fn handle_runtime_update(
         }
         RuntimeUpdate::ModelInfo { provider, model } => {
             // Provide a simple capability matrix based on model name
-            let is_reasoning = model.contains("o1") || model.contains("o3") || model.contains("r1") || model.contains("deepseek");
+            let is_reasoning = model.contains("o1")
+                || model.contains("o3")
+                || model.contains("r1")
+                || model.contains("deepseek");
             let is_streaming = !is_reasoning;
-            let context_window = if model.contains("opus") || model.contains("sonnet") || model.contains("gemini") { 200000 } else { 128000 };
-            let cost_class = if model.contains("opus") || model.contains("o1") || model.contains("r1") { "premium".to_string() } else if model.contains("haiku") || model.contains("mini") || model.contains("flash") { "cheap".to_string() } else { "standard".to_string() };
+            let context_window =
+                if model.contains("opus") || model.contains("sonnet") || model.contains("gemini") {
+                    200000
+                } else {
+                    128000
+                };
+            let cost_class = if model.contains("opus")
+                || model.contains("o1")
+                || model.contains("r1")
+            {
+                "premium".to_string()
+            } else if model.contains("haiku") || model.contains("mini") || model.contains("flash") {
+                "cheap".to_string()
+            } else {
+                "standard".to_string()
+            };
 
             let _ = input_tx_inner
                 .send(InputEvent::SetCurrentModel(crate::tui::Model {
@@ -997,10 +1014,30 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
             .available_models()
             .into_iter()
             .map(|(provider, model)| {
-                let is_reasoning = model.contains("o1") || model.contains("o3") || model.contains("r1") || model.contains("deepseek");
+                let is_reasoning = model.contains("o1")
+                    || model.contains("o3")
+                    || model.contains("r1")
+                    || model.contains("deepseek");
                 let is_streaming = !is_reasoning;
-                let context_window = if model.contains("opus") || model.contains("sonnet") || model.contains("gemini") { 200000 } else { 128000 };
-                let cost_class = if model.contains("opus") || model.contains("o1") || model.contains("r1") { "premium".to_string() } else if model.contains("haiku") || model.contains("mini") || model.contains("flash") { "cheap".to_string() } else { "standard".to_string() };
+                let context_window = if model.contains("opus")
+                    || model.contains("sonnet")
+                    || model.contains("gemini")
+                {
+                    200000
+                } else {
+                    128000
+                };
+                let cost_class =
+                    if model.contains("opus") || model.contains("o1") || model.contains("r1") {
+                        "premium".to_string()
+                    } else if model.contains("haiku")
+                        || model.contains("mini")
+                        || model.contains("flash")
+                    {
+                        "cheap".to_string()
+                    } else {
+                        "standard".to_string()
+                    };
                 crate::tui::Model {
                     id: model.clone(),
                     name: model,
