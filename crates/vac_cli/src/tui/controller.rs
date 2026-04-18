@@ -3,11 +3,6 @@
 use crate::tui::Model;
 use crate::tui::app::{AppState, AppStateOptions, InputEvent, OutputEvent};
 use crate::tui::event::map_crossterm_event_to_input_event;
-use crate::tui::handlers::HandlerContext;
-use crate::tui::handlers::{
-    approval, changeset as changeset_handler, file_search, isolation_switcher, message_action,
-    model_switcher, profile_switcher, review as review_handler, rulebook_switcher,
-};
 use crate::tui::services::helper_block::welcome_messages;
 use crate::tui::terminal::TerminalGuard;
 use crate::tui::view::view;
@@ -23,6 +18,12 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::time::interval;
+
+use crate::tui::handlers::HandlerContext;
+use crate::tui::handlers::{
+    approval, changeset as changeset_handler, file_search, isolation_switcher, message_action,
+    model_switcher, profile_switcher, review as review_handler, rulebook_switcher,
+};
 
 /// Rulebook configuration
 #[derive(Clone, Debug, Default)]
@@ -83,7 +84,11 @@ fn handle_paste_tray_key(state: &mut AppState, c: char) -> bool {
 }
 
 /// Handle input events from user
-pub fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, event: InputEvent) {
+pub fn handle_input_event(
+    state: &mut AppState,
+    output_tx: &Sender<OutputEvent>,
+    event: InputEvent,
+) {
     // Reject reason prompt intercepts all input when active
     if state.reject_reason_input.is_some() {
         let mut ctx = HandlerContext::new(state, output_tx);
@@ -1861,7 +1866,11 @@ fn policy_gate_allows_shell_command(state: &mut AppState, cmd: &str) -> bool {
     }
 }
 
-pub fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent>, event: InputEvent) {
+pub fn handle_backend_event(
+    state: &mut AppState,
+    output_tx: &Sender<OutputEvent>,
+    event: InputEvent,
+) {
     match event {
         InputEvent::AssistantMessage(msg) => {
             let extracted = crate::tui::services::todo_extractor::extract_todos(&msg);
@@ -2067,7 +2076,8 @@ pub fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent
         }
         InputEvent::ShellOutput(id, text) => {
             if state
-                .shell.active_command
+                .shell
+                .active_command
                 .as_ref()
                 .is_some_and(|cmd| cmd.id == id)
                 || id == "system"
@@ -2103,7 +2113,8 @@ pub fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent
         }
         InputEvent::ShellError(id, text) => {
             if state
-                .shell.active_command
+                .shell
+                .active_command
                 .as_ref()
                 .is_some_and(|cmd| cmd.id == id)
                 || id == "system"
@@ -2112,7 +2123,8 @@ pub fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent
                     state.shell.output.push('\n');
                 }
                 state
-                    .shell.output
+                    .shell
+                    .output
                     .push_str(&format!("[shell error] {text}\n"));
 
                 let max_size = 1024 * 1024;
@@ -2138,7 +2150,8 @@ pub fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent
         }
         InputEvent::ShellCompleted(id, code) => {
             if state
-                .shell.active_command
+                .shell
+                .active_command
                 .as_ref()
                 .is_some_and(|cmd| cmd.id == id)
                 || id == "system"
@@ -2163,7 +2176,8 @@ pub fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent
         }
         InputEvent::ShellWaitingForInput(id) => {
             if state
-                .shell.active_command
+                .shell
+                .active_command
                 .as_ref()
                 .is_some_and(|cmd| cmd.id == id)
                 || id == "system"
@@ -2493,8 +2507,6 @@ pub fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent
     }
 }
 
-
-
 pub fn dispatch_builtin_command(
     state: &mut AppState,
     output_tx: &tokio::sync::mpsc::Sender<OutputEvent>,
@@ -2506,16 +2518,21 @@ pub fn dispatch_builtin_command(
     } else {
         cmd_word.to_string()
     };
-    if let Some(cmd) = state.commands.iter().find(|c| c.command == cmd_word).cloned() {
+    if let Some(cmd) = state
+        .commands
+        .iter()
+        .find(|c| c.command == cmd_word)
+        .cloned()
+    {
         match cmd.source {
             crate::tui::app::CommandSource::BuiltIn => {
                 if cmd.command == "/clear" {
                     state.messages.clear();
-                    state.messages.extend(
-                        crate::tui::services::helper_block::welcome_messages(
+                    state
+                        .messages
+                        .extend(crate::tui::services::helper_block::welcome_messages(
                             None, state,
-                        ),
-                    );
+                        ));
                 } else if cmd.command == "/sessions" {
                     state.workbench_tab = crate::tui::app::WorkbenchTab::Sessions;
                     state.focus = crate::tui::app::WorkspaceFocus::Workbench;
@@ -2567,24 +2584,19 @@ pub fn dispatch_builtin_command(
                             }
                         })
                         .unwrap_or_else(|| {
-                            state
-                                .project_root
-                                .join(".vac/exports/session.bundle.json")
+                            state.project_root.join(".vac/exports/session.bundle.json")
                         });
                     state.toasts.push(crate::tui::services::Toast::info(
                         "Mengekspor bundle...".to_string(),
                     ));
-                    let _ =
-                        output_tx.try_send(OutputEvent::ExportBundle(output_path));
+                    let _ = output_tx.try_send(OutputEvent::ExportBundle(output_path));
                 } else if cmd.command == "/import" {
                     state.add_user_message(trimmed.clone());
                     let Some(arg) = cmd_args else {
                         state.toasts.push(crate::tui::services::Toast::error(
                             "Gunakan: /import <path>".to_string(),
                         ));
-                        state.add_assistant_message(
-                            "Gunakan: /import <path>".to_string(),
-                        );
+                        state.add_assistant_message("Gunakan: /import <path>".to_string());
                         return true;
                     };
                     let mut input_path = std::path::PathBuf::from(arg);
@@ -2594,8 +2606,7 @@ pub fn dispatch_builtin_command(
                     state.toasts.push(crate::tui::services::Toast::info(
                         "Mengimpor bundle...".to_string(),
                     ));
-                    let _ =
-                        output_tx.try_send(OutputEvent::ImportBundle(input_path));
+                    let _ = output_tx.try_send(OutputEvent::ImportBundle(input_path));
                 } else if cmd.command == "/review" {
                     state.add_user_message(trimmed.clone());
                     let mut ctx = HandlerContext::new(state, output_tx);
@@ -2630,21 +2641,14 @@ pub fn dispatch_builtin_command(
                             .session_title
                             .clone()
                             .unwrap_or_else(|| "Session Plan".to_string());
-                        let tmpl =
-                            crate::tui::services::plan::new_plan_template(&title);
-                        if let Err(e) = crate::tui::services::plan::write_plan_file(
-                            &project_root,
-                            &tmpl,
-                        ) {
-                            state.add_assistant_message(format!(
-                                "Failed to create plan: {}",
-                                e
-                            ));
+                        let tmpl = crate::tui::services::plan::new_plan_template(&title);
+                        if let Err(e) =
+                            crate::tui::services::plan::write_plan_file(&project_root, &tmpl)
+                        {
+                            state.add_assistant_message(format!("Failed to create plan: {}", e));
                         } else {
                             state.plan.metadata =
-                                crate::tui::services::plan::parse_plan_front_matter(
-                                    &tmpl,
-                                );
+                                crate::tui::services::plan::parse_plan_front_matter(&tmpl);
                             state.plan.draft = tmpl;
                         }
                     }
@@ -2662,9 +2666,7 @@ pub fn dispatch_builtin_command(
                         state.plan.review_selected = 0;
                         state.plan.review_scroll = 0;
                     } else {
-                        state.add_assistant_message(
-                            "No plan.md yet. Run /plan first.".to_string(),
-                        );
+                        state.add_assistant_message("No plan.md yet. Run /plan first.".to_string());
                     }
                 } else if cmd.command == "/plan-edit" {
                     state.add_user_message(trimmed.clone());
@@ -2673,35 +2675,25 @@ pub fn dispatch_builtin_command(
                     let expanded = state.expand_pending_pastes(&trimmed);
                     state.add_user_message(expanded.clone());
                     let parts = std::mem::take(&mut state.pending_image_parts);
-                    let _ = output_tx.try_send(OutputEvent::UserMessage(
-                        expanded, None, parts, None,
-                    ));
+                    let _ =
+                        output_tx.try_send(OutputEvent::UserMessage(expanded, None, parts, None));
                 }
             }
-            crate::tui::app::CommandSource::BuiltInWithPrompt {
-                prompt_content,
-            }
+            crate::tui::app::CommandSource::BuiltInWithPrompt { prompt_content }
             | crate::tui::app::CommandSource::Custom { prompt_content } => {
                 state.add_user_message(trimmed.clone());
                 let prompt = match cmd_args {
                     Some(args) => format!("{}\n\n{}", prompt_content, args),
                     None => prompt_content,
                 };
-                let _ = output_tx.try_send(OutputEvent::UserMessage(
-                    prompt,
-                    None,
-                    vec![],
-                    None,
-                ));
+                let _ = output_tx.try_send(OutputEvent::UserMessage(prompt, None, vec![], None));
             }
             // Passthrough: no TUI handler; forward verbatim to the agent.
             crate::tui::app::CommandSource::Passthrough => {
                 let expanded = state.expand_pending_pastes(&trimmed);
                 state.add_user_message(expanded.clone());
                 let parts = std::mem::take(&mut state.pending_image_parts);
-                let _ = output_tx.try_send(OutputEvent::UserMessage(
-                    expanded, None, parts, None,
-                ));
+                let _ = output_tx.try_send(OutputEvent::UserMessage(expanded, None, parts, None));
             }
         }
         return true;
