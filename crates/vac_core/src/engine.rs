@@ -7,8 +7,40 @@ use crate::{
     session::Session,
     spawn_subtask_tool::SpawnSubtaskTool,
     task::{Task, TaskResult, TaskStatus},
+    ApprovalState,
 };
 use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum TaskNodeStatus {
+    Pending,
+    Running,
+    Blocked,
+    Completed,
+    Failed(String),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TaskNodeProjection {
+    pub id: String,
+    pub label: String,
+    pub status: TaskNodeStatus,
+    pub retry_count: u32,
+    pub dependencies: Vec<String>,
+    pub blockers: Vec<String>,
+    pub tools_used: Vec<String>,
+    pub shell_sessions: Vec<String>,
+    pub artifacts: Vec<String>,
+    pub approval_required: bool,
+    pub approval_state: ApprovalState,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TaskGraphProjection {
+    pub nodes: Vec<TaskNodeProjection>,
+    pub root_ids: Vec<String>,
+    pub snapshot_at: chrono::DateTime<chrono::Utc>,
+}
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::{RwLock, mpsc};
@@ -992,6 +1024,7 @@ fn convert_archetype(a: &crate::detector::VilArchetype) -> vil_swarm::VilArchety
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn spawn_agent_event_bridge(
     mut swarm_rx: mpsc::UnboundedReceiver<vil_swarm::AgentLoopEvent>,
     trace_handle: Option<std::sync::Arc<std::sync::Mutex<vac_trace::TraceRecorder>>>,
@@ -1005,7 +1038,7 @@ fn spawn_agent_event_bridge(
     tokio::spawn(async move {
         while let Some(event) = swarm_rx.recv().await {
             record_agent_event(trace_handle.as_ref(), &event);
-            
+
             // Track Inspector UI metrics
             match &event {
                 vil_swarm::AgentLoopEvent::ToolCall { name, .. } => {

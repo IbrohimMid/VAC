@@ -107,15 +107,16 @@ pub fn run_audit(ctx: &mut HandlerContext) -> HandlerResult {
 pub fn run_batch_campaign(ctx: &mut HandlerContext) -> HandlerResult {
     let issues = vil_workbench::classify_issues(ctx.state);
     let view = vil_workbench::filtered(ctx.state, &issues);
-    
+
     if view.is_empty() {
-        ctx.state
-            .toasts
-            .push(Toast::info("No issues in current filter to run campaign on.".to_string()));
+        ctx.state.toasts.push(Toast::info(
+            "No issues in current filter to run campaign on.".to_string(),
+        ));
         return Ok(());
     }
 
-    let files: Vec<String> = view.iter()
+    let files: Vec<String> = view
+        .iter()
         .filter_map(|i| i.file.clone())
         .collect::<std::collections::HashSet<_>>() // deduplicate
         .into_iter()
@@ -135,7 +136,10 @@ pub fn run_batch_campaign(ctx: &mut HandlerContext) -> HandlerResult {
         "auto_repair": true,
     });
 
-    ctx.state.push_activity(ActivityKind::Status, format!("Starting VIL Campaign: batch repair {} issues", view.len()));
+    ctx.state.push_activity(
+        ActivityKind::Status,
+        format!("Starting VIL Campaign: batch repair {} issues", view.len()),
+    );
     invoke_tool(ctx, "vil_campaign", args);
     Ok(())
 }

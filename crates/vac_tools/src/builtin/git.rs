@@ -73,12 +73,18 @@ impl GitTool {
         })
     }
 
-    pub async fn get_typed_status(
-        &self,
-        cwd: &PathBuf,
-    ) -> Result<GitStatusOutput, ToolError> {
-        let raw = self.run_git_command(cwd, &["status".to_string(), "--porcelain=v1".to_string(), "-b".to_string()]).await?;
-        
+    pub async fn get_typed_status(&self, cwd: &PathBuf) -> Result<GitStatusOutput, ToolError> {
+        let raw = self
+            .run_git_command(
+                cwd,
+                &[
+                    "status".to_string(),
+                    "--porcelain=v1".to_string(),
+                    "-b".to_string(),
+                ],
+            )
+            .await?;
+
         let mut entries = Vec::new();
         let mut branch = String::new();
 
@@ -90,7 +96,11 @@ impl GitTool {
             if line.len() > 3 {
                 let status = &line[0..2];
                 let path = line[3..].trim().to_string();
-                let staged = status.starts_with('A') || status.starts_with('M') || status.starts_with('D') || status.starts_with('R') || status.starts_with('C');
+                let staged = status.starts_with('A')
+                    || status.starts_with('M')
+                    || status.starts_with('D')
+                    || status.starts_with('R')
+                    || status.starts_with('C');
                 entries.push(GitStatusEntry {
                     path,
                     status: status.to_string(),
@@ -215,7 +225,12 @@ impl VilTool for GitTool {
                 "Git command '{}' completed: exit_code={}",
                 input.command, status_output.raw_output.exit_code
             );
-            return serde_json::to_value(status_output).map_err(ToolError::SerializationError);
+            return Ok(serde_json::json!({
+                "success": status_output.raw_output.exit_code == 0,
+                "branch": status_output.branch,
+                "entries": status_output.entries,
+                "raw_output": status_output.raw_output,
+            }));
         }
 
         let output = self

@@ -201,5 +201,5 @@ async fn smoke_test_git_tool() {
         .execute(json!({"command": "status"}), &context)
         .await
         .unwrap();
-    assert_eq!(status["success"], true);
+    assert!(status["success"].as_bool().unwrap_or(false));
 }

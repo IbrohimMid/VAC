@@ -1,7 +1,7 @@
 //! Shell-popup input handler.
 //!
 //! Handles keyboard events when the interactive shell popup is visible or
-//! when shell navigation keys are pressed.  Returns `true` when the event
+//! when shell navigation keys are pressed. Returns `true` when the event
 //! was consumed by the shell layer.
 
 use crate::tui::app::{AppState, InputEvent, OutputEvent};
@@ -14,97 +14,267 @@ pub fn handle_shell_key(
     output_tx: &Sender<OutputEvent>,
     event: &InputEvent,
 ) -> bool {
-    // Shell popup only captures events when visible with an active command.
-    if !state.shell.popup_visible || state.shell.active_command.is_none() {
+    if !state.shell.session_store.popup_visible {
+        return false;
+    }
+
+    let has_active_command = state
+        .shell
+        .session_store
+        .active()
+        .and_then(|session| session.command.as_ref())
+        .is_some();
+    if !has_active_command {
         return false;
     }
 
     match event {
         InputEvent::InputSubmitted => {
             let text = state.input.get_content().to_string();
-            if state.shell.history.last() != Some(&text) {
-                state.shell.history.push(text.clone());
+            let payload = if text.is_empty() {
+                "\n".to_string()
+            } else {
+                format!("{text}\n")
+            };
+
+            let mut command_to_send = None;
+            if let Some(session) = state.shell.session_store.active_mut() {
+                if !text.is_empty() && session.history.last() != Some(&text) {
+                    session.history.push(text.clone());
+                }
+                session.history_idx = None;
+                session.waiting_for_input = false;
+                command_to_send = session.command.clone();
             }
-            state.shell.history_idx = None;
-            let payload = format!("{}\n", text);
-            if let Some(shell) = state.shell.active_command.clone() {
+
+            if let Some(shell) = command_to_send {
                 shell.send_input(payload);
-                state.shell.waiting_for_input = false;
                 state.push_activity(crate::tui::app::ActivityKind::Status, "Sent input to shell");
             }
             state.input.clear();
-            return true;
+            true
         }
         InputEvent::Up | InputEvent::ScrollUp => {
-            if !state.shell.history.is_empty() {
-                let max_idx = state.shell.history.len() - 1;
-                let next_idx = match state.shell.history_idx {
+            if let Some(session) = state.shell.session_store.active_mut()
+                && !session.history.is_empty()
+            {
+                let max_idx = session.history.len() - 1;
+                let next_idx = match session.history_idx {
                     Some(i) => i.saturating_sub(1),
                     None => max_idx,
                 };
-                state.shell.history_idx = Some(next_idx);
-                if let Some(cmd) = state.shell.history.get(next_idx) {
+                session.history_idx = Some(next_idx);
+                if let Some(cmd) = session.history.get(next_idx) {
                     state.input.set_content(cmd);
                     state.cursor_position = state.input.get_content().len();
                 }
                 return true;
             }
+            false
         }
         InputEvent::Down | InputEvent::ScrollDown => {
-            if let Some(idx) = state.shell.history_idx {
+            if let Some(session) = state.shell.session_store.active_mut()
+                && let Some(idx) = session.history_idx
+            {
                 let next_idx = idx + 1;
-                if next_idx >= state.shell.history.len() {
-                    state.shell.history_idx = None;
+                if next_idx >= session.history.len() {
+                    session.history_idx = None;
                     state.input.clear();
                     state.cursor_position = 0;
                 } else {
-                    state.shell.history_idx = Some(next_idx);
-                    if let Some(cmd) = state.shell.history.get(next_idx) {
+                    session.history_idx = Some(next_idx);
+                    if let Some(cmd) = session.history.get(next_idx) {
                         state.input.set_content(cmd);
                         state.cursor_position = state.input.get_content().len();
                     }
                 }
                 return true;
             }
+            false
         }
-        _ => {}
+        _ => {
+            let _ = output_tx;
+            false
+        }
     }
-
-    // Unhandled — let it fall through
-    let _ = output_tx; // suppress unused warning
-    false
 }
 
 /// Background the active shell (keep running, hide popup).
 pub fn background(state: &mut AppState) {
-    if state.shell.active_command.is_some() {
-        state.shell.popup_visible = false;
-        state.shell.backgrounded = true;
+    if let Some(session) = state.shell.session_store.active_mut()
+        && session.command.is_some()
+    {
+        session.backgrounded = true;
+        state.shell.session_store.popup_visible = false;
     }
 }
 
 /// Bring the backgrounded shell back into the foreground.
 pub fn foreground(state: &mut AppState) {
-    if state.shell.active_command.is_some() {
-        state.shell.popup_visible = true;
-        state.shell.backgrounded = false;
+    if let Some(session) = state.shell.session_store.active_mut()
+        && session.command.is_some()
+    {
+        session.backgrounded = false;
+        state.shell.session_store.popup_visible = true;
     }
 }
 
 /// Kill the active shell.
 pub fn kill(state: &mut AppState) {
-    if let Some(shell) = state.shell.active_command.clone() {
+    if let Some(shell) = state
+        .shell
+        .session_store
+        .active()
+        .and_then(|session| session.command.clone())
+    {
         let _ = shell.kill();
     }
 }
 
-/// Reset all shell state (called when a shell session ends).
+/// Reset only the active shell session.
 pub fn reset(state: &mut AppState) {
-    state.shell.active_command = None;
-    state.shell.popup_visible = false;
-    state.shell.waiting_for_input = false;
-    state.shell.backgrounded = false;
-    state.shell.exit_code = None;
-    state.shell.last_error = None;
-    state.shell.output.clear();
+    if let Some(session) = state.shell.session_store.active_mut() {
+        session.command = None;
+        session.output.clear();
+        session.history.clear();
+        session.history_idx = None;
+        session.waiting_for_input = false;
+        session.backgrounded = false;
+        session.exit_code = None;
+        session.last_error = None;
+        session.prompt_ready = false;
+        session.password_mode = false;
+        session.lifecycle = crate::tui::services::shell_mode::ShellLifecycle::Running;
+    }
+    state.shell.session_store.popup_visible = false;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tui::app::AppStateOptions;
+    use std::path::PathBuf;
+
+    fn make_state() -> AppState {
+        AppState::new(AppStateOptions {
+            model: None,
+            session_id: None,
+            checkpoint_path: None,
+            project_root: PathBuf::from("."),
+        })
+    }
+
+    fn dummy_command(label: &str) -> crate::tui::services::ShellCommand {
+        let (stdin_tx, _stdin_rx) = tokio::sync::mpsc::channel(4);
+        crate::tui::services::ShellCommand {
+            id: format!("cmd-{label}"),
+            command: label.to_string(),
+            stdin_tx,
+        }
+    }
+
+    #[test]
+    fn active_session_switch_isolates_output() {
+        let mut state = make_state();
+        let first = state.shell.session_store.push_new("shell-1".to_string());
+        state.shell.session_store.sessions[first].output = "first".to_string();
+        let second = state.shell.session_store.push_new("shell-2".to_string());
+        state.shell.session_store.sessions[second].output = "second".to_string();
+
+        state.shell.session_store.switch_to(first);
+        assert_eq!(
+            state
+                .shell
+                .session_store
+                .active()
+                .map(|session| session.output.as_str()),
+            Some("first")
+        );
+
+        state.shell.session_store.switch_to(second);
+        assert_eq!(
+            state
+                .shell
+                .session_store
+                .active()
+                .map(|session| session.output.as_str()),
+            Some("second")
+        );
+    }
+
+    #[test]
+    fn history_isolated_per_session() {
+        let mut state = make_state();
+        let first = state.shell.session_store.push_new("shell-1".to_string());
+        state.shell.session_store.sessions[first].history = vec!["cargo check".to_string()];
+        let second = state.shell.session_store.push_new("shell-2".to_string());
+        state.shell.session_store.sessions[second].history = vec!["npm test".to_string()];
+
+        state.shell.session_store.switch_to(first);
+        assert_eq!(
+            state
+                .shell
+                .session_store
+                .active()
+                .map(|session| session.history.clone()),
+            Some(vec!["cargo check".to_string()])
+        );
+
+        state.shell.session_store.switch_to(second);
+        assert_eq!(
+            state
+                .shell
+                .session_store
+                .active()
+                .map(|session| session.history.clone()),
+            Some(vec!["npm test".to_string()])
+        );
+    }
+
+    #[test]
+    fn background_foreground_lifecycle() {
+        let mut state = make_state();
+        let idx = state.shell.session_store.push_new("shell-1".to_string());
+        state.shell.session_store.sessions[idx].command = Some(dummy_command("shell-1"));
+        state.shell.session_store.popup_visible = true;
+
+        background(&mut state);
+        assert!(!state.shell.session_store.popup_visible);
+        assert!(state.shell.session_store.sessions[idx].backgrounded);
+
+        foreground(&mut state);
+        assert!(state.shell.session_store.popup_visible);
+        assert!(!state.shell.session_store.sessions[idx].backgrounded);
+    }
+
+    #[test]
+    fn reset_session_does_not_affect_other_sessions() {
+        let mut state = make_state();
+        let first = state.shell.session_store.push_new("shell-1".to_string());
+        state.shell.session_store.sessions[first].output = "keep me".to_string();
+        state.shell.session_store.sessions[first].history = vec!["cargo test".to_string()];
+
+        let second = state.shell.session_store.push_new("shell-2".to_string());
+        state.shell.session_store.sessions[second].command = Some(dummy_command("shell-2"));
+        state.shell.session_store.sessions[second].output = "clear me".to_string();
+        state.shell.session_store.sessions[second].history = vec!["npm run dev".to_string()];
+        state.shell.session_store.switch_to(second);
+        state.shell.session_store.popup_visible = true;
+
+        reset(&mut state);
+
+        assert_eq!(state.shell.session_store.sessions[first].output, "keep me");
+        assert_eq!(
+            state.shell.session_store.sessions[first].history,
+            vec!["cargo test".to_string()]
+        );
+        assert!(state.shell.session_store.sessions[second].output.is_empty());
+        assert!(
+            state.shell.session_store.sessions[second]
+                .history
+                .is_empty()
+        );
+        assert!(state.shell.session_store.sessions[second].command.is_none());
+        assert!(!state.shell.session_store.popup_visible);
+    }
 }

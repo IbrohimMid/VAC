@@ -1,8 +1,7 @@
 //! VIL Issue Workstation renderer and grouping logic (Wave 4.1, Unit 9).
 //!
-//! Consumes `AppState.vil.status.validation_issues` (Vec<String>), infers an
-//! issue kind per entry via [`VilIssueKind::classify`], and renders a
-//! tabs-within-tab UI with a scrollable issue list on the left and a lineage
+//! Consumes `AppState.vil.status.validation_issues` (Vec<VilIssue>) and renders
+//! a tabs-within-tab UI with a scrollable issue list on the left and a lineage
 //! panel on the right.
 //!
 //! Quick-actions (`R`/`A`/`D`/`O`) are dispatched via the sibling handler
@@ -16,7 +15,7 @@ use ratatui::{
     widgets::{Block, Borders, List, ListItem, Paragraph, Tabs, Wrap},
 };
 
-use crate::tui::app::{AppState, VilIssueKind};
+use crate::tui::app::{AppState, VilIssue, VilIssueKind};
 
 /// Ordered list of kinds surfaced in the top strip.
 pub const KIND_ORDER: &[VilIssueKind] = &[
@@ -28,101 +27,13 @@ pub const KIND_ORDER: &[VilIssueKind] = &[
     VilIssueKind::Other,
 ];
 
-/// Parsed validation-issue row ready for rendering / dispatch.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ClassifiedIssue {
-    pub id: String,
-    pub raw: String,
-    pub kind: VilIssueKind,
-    pub source: String,
-    /// Best-effort extracted file path (derived from the issue text).
-    pub file: Option<String>,
-    /// Best-effort line hint (always `None` today — `vil_validate` doesn't
-    /// emit line numbers yet; reserved for future structured issues).
-    pub line: Option<usize>,
-    /// Compact one-liner shown in the list.
-    pub short: String,
-    pub repair_proposal: Option<String>,
-}
-
-impl ClassifiedIssue {
-    pub fn from_raw(raw: String) -> Self {
-        let kind = VilIssueKind::classify(&raw);
-        let file = extract_file_hint(&raw);
-        let short = shorten(&raw);
-        
-        use std::hash::{Hash, Hasher};
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        raw.hash(&mut hasher);
-        let id = format!("{:08x}", hasher.finish());
-
-        // Mock a repair proposal for Semantic/ZeroCopy issues
-        let repair_proposal = match kind {
-            VilIssueKind::Semantic => Some("Apply #[vil_state] macro and derive VilMessage".to_string()),
-            VilIssueKind::ZeroCopy => Some("Convert Vec<u8> to ShmSlice<u8>".to_string()),
-            _ => None,
-        };
-
-        Self {
-            id,
-            raw,
-            kind,
-            source: "vil_validate".to_string(),
-            file,
-            line: None,
-            short,
-            repair_proposal,
-        }
-    }
-}
-
-/// Try to extract a file name / handler name from the issue text.
-///
-/// `vil_validate` embeds identifiers in single quotes (e.g. `Handler
-/// 'create_user'` or `Module 'user'`). We return the first quoted token.
-fn extract_file_hint(text: &str) -> Option<String> {
-    for (i, c) in text.char_indices() {
-        if c == '\'' {
-            let rest = &text[i + 1..];
-            if let Some(end) = rest.find('\'') {
-                let name = &rest[..end];
-                if !name.is_empty() {
-                    return Some(name.to_string());
-                }
-            }
-        }
-    }
-    None
-}
-
-fn shorten(text: &str) -> String {
-    // Collapse internal whitespace and trim to a single line for the list row.
-    let collapsed: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
-    const MAX: usize = 160;
-    if collapsed.len() <= MAX {
-        collapsed
-    } else {
-        // '…' is 3 bytes in UTF-8, so trim to MAX-3 to stay within budget.
-        let mut t = collapsed;
-        t.truncate(MAX.saturating_sub(3));
-        t.push('…');
-        t
-    }
-}
-
-/// Group all issues from state into `ClassifiedIssue`s (in original order).
-pub fn classify_issues(state: &AppState) -> Vec<ClassifiedIssue> {
-    state
-        .vil.status
-        .validation_issues
-        .iter()
-        .cloned()
-        .map(ClassifiedIssue::from_raw)
-        .collect()
+/// Group all issues from state.
+pub fn classify_issues(state: &AppState) -> Vec<&VilIssue> {
+    state.vil.status.validation_issues.iter().collect()
 }
 
 /// Count issues per kind.
-pub fn group_counts(issues: &[ClassifiedIssue]) -> std::collections::HashMap<VilIssueKind, usize> {
+pub fn group_counts(issues: &[&VilIssue]) -> std::collections::HashMap<VilIssueKind, usize> {
     let mut m: std::collections::HashMap<VilIssueKind, usize> = std::collections::HashMap::new();
     for issue in issues {
         *m.entry(issue.kind).or_insert(0) += 1;
@@ -130,16 +41,16 @@ pub fn group_counts(issues: &[ClassifiedIssue]) -> std::collections::HashMap<Vil
     m
 }
 
-/// Apply the state's active filter to the classified issue list.
-pub fn filtered<'a>(state: &AppState, issues: &'a [ClassifiedIssue]) -> Vec<&'a ClassifiedIssue> {
+/// Apply the state's active filter to the issue list.
+pub fn filtered<'a>(state: &AppState, issues: &'a [&VilIssue]) -> Vec<&'a VilIssue> {
     match state.vil.workbench_group_filter {
-        Some(kind) => issues.iter().filter(|i| i.kind == kind).collect(),
-        None => issues.iter().collect(),
+        Some(kind) => issues.iter().filter(|i| i.kind == kind).copied().collect(),
+        None => issues.to_vec(),
     }
 }
 
 /// Return the currently-selected issue, if any, honoring the active filter.
-pub fn selected_issue(state: &AppState) -> Option<ClassifiedIssue> {
+pub fn selected_issue(state: &AppState) -> Option<VilIssue> {
     let issues = classify_issues(state);
     let view = filtered(state, &issues);
     view.get(state.vil.workbench_selected).map(|i| (*i).clone())
@@ -232,7 +143,8 @@ fn render_status_panel(f: &mut Frame, state: &AppState, area: Rect) {
     };
 
     let active_rulebook = state
-        .vil.status
+        .vil
+        .status
         .active_rulebook
         .clone()
         .or_else(|| {
@@ -247,9 +159,10 @@ fn render_status_panel(f: &mut Frame, state: &AppState, area: Rect) {
         .unwrap_or_else(|| "default".to_string());
 
     // Rulebook Matrix Conflict Detector
-    let has_conflict = state.selected_rulebooks.len() > 1 && 
-        (state.selected_rulebooks.contains(&"strict".to_string()) && state.selected_rulebooks.contains(&"legacy".to_string()));
-    
+    let has_conflict = state.selected_rulebooks.len() > 1
+        && (state.selected_rulebooks.contains("strict")
+            && state.selected_rulebooks.contains("legacy"));
+
     let rulebook_display = if has_conflict {
         format!("{} [! CONFLICT DETECTED]", active_rulebook)
     } else {
@@ -292,10 +205,17 @@ fn render_status_panel(f: &mut Frame, state: &AppState, area: Rect) {
     });
 
     let mut meta = vec![
-        Span::styled("Rulebook Matrix: ", Style::default().add_modifier(Modifier::BOLD)),
+        Span::styled(
+            "Rulebook Matrix: ",
+            Style::default().add_modifier(Modifier::BOLD),
+        ),
         Span::styled(
             rulebook_display,
-            if has_conflict { Style::default().fg(Color::Red).add_modifier(Modifier::BOLD) } else { Style::default().fg(Color::Cyan) }
+            if has_conflict {
+                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(Color::Cyan)
+            },
         ),
         Span::raw(" │ "),
         Span::styled("IR: ", Style::default().add_modifier(Modifier::BOLD)),
@@ -356,18 +276,21 @@ fn render_status_panel(f: &mut Frame, state: &AppState, area: Rect) {
     // Validation Heatmap & Rulebook Conflict Detector
     let mut recommendations = vec![];
     if score < 0.9 {
-        recommendations.push("Recommendation: Run Batch Repair (Campaign Mode) to resolve structural drift.");
+        recommendations
+            .push("Recommendation: Run Batch Repair (Campaign Mode) to resolve structural drift.");
     }
     if state.vil.status.validation_issues.len() > 10 {
         recommendations.push("Warning: High issue density. Review Rulebook Matrix for conflicts.");
     }
-    
+
     let mut lines_to_render = vec![Line::from(header), Line::from(meta), deps_line];
-    
+
     if !recommendations.is_empty() {
         lines_to_render.push(Line::styled(
             recommendations.join(" | "),
-            Style::default().fg(Color::Yellow).add_modifier(Modifier::ITALIC),
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::ITALIC),
         ));
     }
 
@@ -445,7 +368,7 @@ fn compact_list(items: &[String], max: usize) -> String {
     }
 }
 
-fn render_issue_list(f: &mut Frame, state: &AppState, area: Rect, view: &[&ClassifiedIssue]) {
+fn render_issue_list(f: &mut Frame, state: &AppState, area: Rect, view: &[&VilIssue]) {
     let empty_msg = if state.vil.status.validation_issues.is_empty() {
         "No validation issues. Run /vil-status or edit a watched file."
     } else {
@@ -464,7 +387,8 @@ fn render_issue_list(f: &mut Frame, state: &AppState, area: Rect, view: &[&Class
     }
 
     let sel = state
-        .vil.workbench_selected
+        .vil
+        .workbench_selected
         .min(view.len().saturating_sub(1));
     let items: Vec<ListItem> = view
         .iter()
@@ -489,7 +413,7 @@ fn render_issue_list(f: &mut Frame, state: &AppState, area: Rect, view: &[&Class
                 Span::styled(kind_tag, Style::default().fg(kind_color)),
                 Span::styled(locator, Style::default().fg(Color::Cyan)),
                 Span::raw(" "),
-                Span::styled(issue.short.clone(), style),
+                Span::styled(issue.message.clone(), style),
             ]))
         })
         .collect();
@@ -499,11 +423,12 @@ fn render_issue_list(f: &mut Frame, state: &AppState, area: Rect, view: &[&Class
     f.render_widget(list, area);
 }
 
-fn render_lineage_panel(f: &mut Frame, state: &AppState, area: Rect, view: &[&ClassifiedIssue]) {
+fn render_lineage_panel(f: &mut Frame, state: &AppState, area: Rect, view: &[&VilIssue]) {
     let mut lines: Vec<Line> = Vec::new();
 
     let sel = state
-        .vil.workbench_selected
+        .vil
+        .workbench_selected
         .min(view.len().saturating_sub(1));
     let current = view.get(sel).copied();
 
@@ -524,7 +449,10 @@ fn render_lineage_panel(f: &mut Frame, state: &AppState, area: Rect, view: &[&Cl
         lines.push(Line::from(vec![
             Span::styled("Source: ", Style::default().add_modifier(Modifier::BOLD)),
             Span::styled(issue.source.clone(), Style::default().fg(Color::Gray)),
-            Span::styled(format!(" (ID: {})", issue.id), Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                format!(" (ID: {})", issue.id),
+                Style::default().fg(Color::DarkGray),
+            ),
         ]));
         lines.push(Line::raw(""));
         for wrapped in textwrap_lines(&issue.raw, area.width.saturating_sub(2) as usize) {
@@ -536,7 +464,9 @@ fn render_lineage_panel(f: &mut Frame, state: &AppState, area: Rect, view: &[&Cl
         if let Some(proposal) = &issue.repair_proposal {
             lines.push(Line::styled(
                 "Semantic Repair Proposal:",
-                Style::default().add_modifier(Modifier::BOLD).fg(Color::Yellow),
+                Style::default()
+                    .add_modifier(Modifier::BOLD)
+                    .fg(Color::Yellow),
             ));
             lines.push(Line::styled(
                 format!("  {}", proposal),
@@ -549,7 +479,8 @@ fn render_lineage_panel(f: &mut Frame, state: &AppState, area: Rect, view: &[&Cl
         // whose path mentions the target.
         let needle = issue.file.clone().unwrap_or_else(|| issue.raw.clone());
         let related: Vec<&String> = state
-            .vil.status
+            .vil
+            .status
             .ir_metadata_files
             .iter()
             .filter(|f| {

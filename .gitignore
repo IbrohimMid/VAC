@@ -26,3 +26,6 @@ target/
 **/Cargo.toml.orig
 **/Cargo.toml.backup
 ```
+
+# Stakpak session files
+.stakpak/session*

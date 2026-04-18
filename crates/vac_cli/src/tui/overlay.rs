@@ -164,7 +164,7 @@ fn set_show_flag(state: &mut AppState, id: OverlayId, value: bool) {
         OverlayId::FileChanges => state.show_file_changes_popup = value,
         OverlayId::PlanReview => state.plan.review_open = value,
         OverlayId::AskUser => state.show_ask_user_popup = value,
-        OverlayId::ShellPopup => state.shell.popup_visible = value,
+        OverlayId::ShellPopup => state.shell.session_store.popup_visible = value,
         OverlayId::MessageAction => state.show_message_action_popup = value,
         OverlayId::HelperDropdown => state.show_helper_dropdown = value,
         OverlayId::AtDropdown => { /* at_trigger_active is not a plain bool toggle */ }

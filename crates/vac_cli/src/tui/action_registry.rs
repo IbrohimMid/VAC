@@ -3,7 +3,7 @@
 //! Provides a single source of truth for all TUI actions, their keybindings,
 //! descriptions, and contexts.
 
-use crate::tui::app::{InputEvent, WorkspaceFocus, WorkbenchTab};
+use crate::tui::app::{WorkbenchTab, WorkspaceFocus};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ActionContext {
@@ -33,7 +33,7 @@ impl ActionContext {
             || state.show_model_switcher
             || state.show_file_search
             || state.show_changeset
-            || state.shell.popup_visible
+            || state.shell.session_store.popup_visible
             || state.show_ask_user_popup
             || state.reject_reason_input.is_some()
             || state.plan.review_open
@@ -71,6 +71,12 @@ pub struct UiAction {
 
 pub struct ActionRegistry {
     actions: Vec<UiAction>,
+}
+
+impl Default for ActionRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ActionRegistry {

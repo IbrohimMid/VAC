@@ -3,7 +3,6 @@
 //! Provides essential UI services for TUI operation.
 
 pub mod approval_bar;
-pub mod statusline;
 pub mod ask_user;
 pub mod banner;
 pub mod bash_block;
@@ -28,6 +27,7 @@ pub mod rulebook_switcher;
 pub mod shell_mode;
 pub mod shortcuts_popup;
 pub mod side_panel;
+pub mod statusline;
 pub mod syntax_highlighter;
 pub mod text_selection;
 pub mod textarea;
