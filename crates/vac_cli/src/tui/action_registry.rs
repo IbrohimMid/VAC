@@ -33,10 +33,10 @@ impl ActionContext {
             || state.show_model_switcher
             || state.show_file_search
             || state.show_changeset
-            || state.shell_popup_visible
+            || state.shell.popup_visible
             || state.show_ask_user_popup
             || state.reject_reason_input.is_some()
-            || state.plan_review_open
+            || state.plan.review_open
             || state.show_file_changes_popup
             || state.show_helper_dropdown
             || state.at_trigger_active

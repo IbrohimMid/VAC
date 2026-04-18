@@ -75,7 +75,7 @@ pub fn view(f: &mut Frame, state: &mut AppState) {
         crate::tui::services::file_changes_popup::render_file_changes_popup(f, state);
     }
 
-    if state.plan_review_open {
+    if state.plan.review_open {
         crate::tui::services::plan_review::render_plan_review(f, state);
     }
 
@@ -83,7 +83,7 @@ pub fn view(f: &mut Frame, state: &mut AppState) {
         crate::tui::services::ask_user::render_ask_user_popup(f, state);
     }
 
-    if state.shell_popup_visible {
+    if state.shell.popup_visible {
         render_shell_popup(f, state);
     }
 
@@ -369,7 +369,7 @@ fn render_header(f: &mut Frame, state: &mut AppState, area: Rect) {
     ));
 
     // Runtime visibility badges
-    if let Some(snapshot) = &state.runtime_state_snapshot {
+    if let Some(snapshot) = &state.runtime.snapshot {
         spans.push(Span::raw("  "));
         let (exec_label, exec_color) = match snapshot.execution_environment {
             vac_core::ExecutionEnvironment::Host => ("host", Color::Yellow),
@@ -430,7 +430,7 @@ fn render_header(f: &mut Frame, state: &mut AppState, area: Rect) {
     ));
 
     // VIL Status Badge
-    let score = state.vil_status.validation_score;
+    let score = state.vil.status.validation_score;
     let score_label = if score >= 0.9 {
         "A"
     } else if score >= 0.7 {
@@ -838,14 +838,14 @@ fn render_operator_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
         ),
     ]));
 
-    if state.active_shell_command.is_some() || !state.shell_output.trim().is_empty() {
-        let shell_state = if state.active_shell_command.is_some() {
-            if state.shell_backgrounded {
+    if state.shell.active_command.is_some() || !state.shell.output.trim().is_empty() {
+        let shell_state = if state.shell.active_command.is_some() {
+            if state.shell.backgrounded {
                 "background"
             } else {
                 "active"
             }
-        } else if let Some(code) = state.shell_exit_code {
+        } else if let Some(code) = state.shell.exit_code {
             if code == 0 { "completed" } else { "failed" }
         } else {
             "idle"
@@ -856,9 +856,9 @@ fn render_operator_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
         ]));
     }
 
-    if !state.shell_output.trim().is_empty() {
+    if !state.shell.output.trim().is_empty() {
         let last = state
-            .shell_output
+            .shell.output
             .lines()
             .rev()
             .take(2)
@@ -961,7 +961,7 @@ fn render_workbench_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
         .constraints([Constraint::Length(2), Constraint::Min(1)])
         .split(area);
 
-    let plan_label = match &state.plan_metadata {
+    let plan_label = match &state.plan.metadata {
         Some(m) => format!("Plan [{}]", m.status),
         None => "Plan".to_string(),
     };
@@ -969,10 +969,10 @@ fn render_workbench_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
         format!("Approvals ({})", state.pending_approvals.len()),
         format!("Review ({})", state.changeset_store.active_entries().len()),
         format!("Sessions ({})", state.sessions.len()),
-        format!("Agents ({})", state.agent_tasks.len()),
-        format!("Runtime ({})", state.runtime_jobs.len()),
+        format!("Agents ({})", state.runtime.agent_tasks.len()),
+        format!("Runtime ({})", state.runtime.jobs.len()),
         plan_label,
-        format!("VIL ({})", state.vil_status.validation_issues.len()),
+        format!("VIL ({})", state.vil.status.validation_issues.len()),
     ];
     let idx = match state.workbench_tab {
         WorkbenchTab::Approvals => 0,
@@ -1009,14 +1009,14 @@ fn render_workbench_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
 }
 
 fn render_plan_pane(f: &mut Frame, state: &mut AppState, area: Rect) {
-    let body_text = if state.plan_draft.is_empty() {
+    let body_text = if state.plan.draft.is_empty() {
         "No plan loaded. Run /plan to create one.".to_string()
     } else {
-        crate::tui::services::plan::extract_plan_body(&state.plan_draft).to_string()
+        crate::tui::services::plan::extract_plan_body(&state.plan.draft).to_string()
     };
 
     let mut lines: Vec<Line> = Vec::new();
-    if let Some(meta) = &state.plan_metadata {
+    if let Some(meta) = &state.plan.metadata {
         lines.push(Line::from(vec![
             Span::styled("Title: ", Style::default().fg(Color::DarkGray)),
             Span::styled(
@@ -1178,20 +1178,20 @@ fn render_shell_popup(f: &mut Frame, state: &mut AppState) {
     let area = centered_rect(80, 55, f.area());
     f.render_widget(Clear, area);
 
-    let title = if let Some(shell) = &state.active_shell_command {
-        if state.shell_waiting_for_input {
+    let title = if let Some(shell) = &state.shell.active_command {
+        if state.shell.waiting_for_input {
             format!("Shell [{}] waiting for input", shell.command)
         } else {
             format!("Shell [{}] active", shell.command)
         }
-    } else if let Some(code) = state.shell_exit_code {
+    } else if let Some(code) = state.shell.exit_code {
         format!("Shell completed (exit {code})")
     } else {
         "Shell".to_string()
     };
 
     let mut lines: Vec<Line> = Vec::new();
-    let content: Vec<&str> = state.shell_output.lines().collect();
+    let content: Vec<&str> = state.shell.output.lines().collect();
     let max_lines = area.height.saturating_sub(4) as usize;
     let start = content.len().saturating_sub(max_lines);
     for line in content.into_iter().skip(start) {
@@ -1205,7 +1205,7 @@ fn render_shell_popup(f: &mut Frame, state: &mut AppState) {
         ));
     }
 
-    if let Some(err) = &state.shell_last_error {
+    if let Some(err) = &state.shell.last_error {
         lines.push(Line::raw(""));
         lines.push(Line::styled(
             format!("Last error: {err}"),
@@ -1232,7 +1232,7 @@ fn render_review_pane(f: &mut Frame, state: &mut AppState, area: Rect) {
         .split(area);
 
     let title = format!("Review ({})", state.review_filtered_paths().len());
-    let filter_line = if state.review_filter.is_empty() {
+    let filter_line = if state.review.filter.is_empty() {
         Line::from(vec![
             Span::styled("Filter: ", Style::default().fg(Color::Cyan)),
             Span::styled("type to filter…", Style::default().fg(Color::DarkGray)),
@@ -1241,7 +1241,7 @@ fn render_review_pane(f: &mut Frame, state: &mut AppState, area: Rect) {
         Line::from(vec![
             Span::styled("Filter: ", Style::default().fg(Color::Cyan)),
             Span::styled(
-                &state.review_filter,
+                &state.review.filter,
                 Style::default().add_modifier(Modifier::BOLD),
             ),
         ])
@@ -1261,7 +1261,7 @@ fn render_review_pane(f: &mut Frame, state: &mut AppState, area: Rect) {
         .iter()
         .enumerate()
         .map(|(idx, path)| {
-            let is_selected = idx == state.review_selected_idx;
+            let is_selected = idx == state.review.selected_idx;
             let style = if is_selected {
                 Style::default()
                     .fg(Color::Yellow)
@@ -1270,7 +1270,7 @@ fn render_review_pane(f: &mut Frame, state: &mut AppState, area: Rect) {
                 Style::default().fg(Color::White)
             };
 
-            let (status_span, snap_span) = match state.review_items.get(path) {
+            let (status_span, snap_span) = match state.review.items.get(path) {
                 Some(it) => {
                     let status = match it.status {
                         crate::tui::app::ReviewItemStatus::Pending => {
@@ -1308,13 +1308,13 @@ fn render_review_pane(f: &mut Frame, state: &mut AppState, area: Rect) {
     f.render_widget(list, body[0]);
 
     let diff_height = body[1].height.saturating_sub(2) as usize;
-    let diff_title = if let Some(path) = &state.review_selected_path {
+    let diff_title = if let Some(path) = &state.review.selected_path {
         format!("Diff: {path}")
     } else {
         "Diff".to_string()
     };
 
-    let diff_lines: Vec<Line> = if let Some(diff) = &state.review_diff {
+    let diff_lines: Vec<Line> = if let Some(diff) = &state.review.diff {
         if let (Some(old), Some(new)) = (diff.old_content.as_deref(), diff.new_content.as_deref()) {
             crate::tui::services::review::render_diff_viewport(
                 old,
@@ -1331,8 +1331,8 @@ fn render_review_pane(f: &mut Frame, state: &mut AppState, area: Rect) {
         } else {
             vec![Line::raw("No diff loaded.")]
         }
-    } else if let Some(path) = state.review_selected_path.clone()
-        && let Some(it) = state.review_items.get(&path)
+    } else if let Some(path) = state.review.selected_path.clone()
+        && let Some(it) = state.review.items.get(&path)
         && let Some(err) = &it.last_error
     {
         vec![Line::from(Span::styled(
@@ -1471,7 +1471,7 @@ fn render_agents_pane(f: &mut Frame, state: &mut AppState, area: Rect) {
     let mut completed = 0usize;
     let mut failed = 0usize;
     let mut cancelled = 0usize;
-    for task in &state.agent_tasks {
+    for task in &state.runtime.agent_tasks {
         match &task.status {
             vac_runtime::AgentTaskStatus::Queued => queued += 1,
             vac_runtime::AgentTaskStatus::Running => running += 1,
@@ -1482,11 +1482,11 @@ fn render_agents_pane(f: &mut Frame, state: &mut AppState, area: Rect) {
     }
 
     let items: Vec<ListItem> = state
-        .agent_tasks
+        .runtime.agent_tasks
         .iter()
         .enumerate()
         .map(|(idx, task)| {
-            let selected = idx == state.agent_selected_idx;
+            let selected = idx == state.runtime.agent_selected;
             let style = if selected {
                 Style::default()
                     .fg(Color::Yellow)
@@ -1552,7 +1552,7 @@ fn render_agents_pane(f: &mut Frame, state: &mut AppState, area: Rect) {
     ]));
     lines.push(Line::raw(""));
 
-    if let Some(snapshot) = &state.agent_state_snapshot {
+    if let Some(snapshot) = &state.runtime.agent_snapshot {
         lines.push(Line::styled(
             "Workers:",
             Style::default().add_modifier(Modifier::BOLD),
@@ -1614,7 +1614,7 @@ fn render_agents_pane(f: &mut Frame, state: &mut AppState, area: Rect) {
         lines.push(Line::raw(""));
     }
 
-    if let Some(task) = state.agent_tasks.get(state.agent_selected_idx) {
+    if let Some(task) = state.runtime.agent_tasks.get(state.runtime.agent_selected) {
         lines.push(Line::styled(
             "Selected:",
             Style::default().add_modifier(Modifier::BOLD),
@@ -1659,7 +1659,7 @@ fn render_agents_pane(f: &mut Frame, state: &mut AppState, area: Rect) {
     let detail = Paragraph::new(lines)
         .block(Block::default().borders(Borders::ALL).title("Agents"))
         .wrap(Wrap { trim: true })
-        .scroll((state.agent_detail_scroll as u16, 0));
+        .scroll((state.runtime.agent_detail_scroll as u16, 0));
     f.render_widget(detail, body[1]);
 }
 
@@ -1674,7 +1674,7 @@ fn render_runtime_pane(f: &mut Frame, state: &mut AppState, area: Rect) {
     let mut completed = 0usize;
     let mut failed = 0usize;
     let mut cancelled = 0usize;
-    for job in &state.runtime_jobs {
+    for job in &state.runtime.jobs {
         match &job.status {
             vac_runtime::JobStatus::Queued => queued += 1,
             vac_runtime::JobStatus::Running => running += 1,
@@ -1685,11 +1685,11 @@ fn render_runtime_pane(f: &mut Frame, state: &mut AppState, area: Rect) {
     }
 
     let items: Vec<ListItem> = state
-        .runtime_jobs
+        .runtime.jobs
         .iter()
         .enumerate()
         .map(|(idx, job)| {
-            let selected = idx == state.runtime_selected_idx;
+            let selected = idx == state.runtime.selected_idx;
             let style = if selected {
                 Style::default()
                     .fg(Color::Yellow)
@@ -1745,7 +1745,7 @@ fn render_runtime_pane(f: &mut Frame, state: &mut AppState, area: Rect) {
     ]));
     lines.push(Line::raw(""));
 
-    if let Some(snapshot) = &state.runtime_state_snapshot {
+    if let Some(snapshot) = &state.runtime.snapshot {
         lines.push(Line::from(vec![
             Span::styled("Autopilot: ", Style::default().add_modifier(Modifier::BOLD)),
             Span::raw(snapshot.mode.clone()),
@@ -1851,7 +1851,7 @@ fn render_runtime_pane(f: &mut Frame, state: &mut AppState, area: Rect) {
         lines.push(Line::raw(""));
     }
 
-    if let Some(job) = state.runtime_jobs.get(state.runtime_selected_idx) {
+    if let Some(job) = state.runtime.jobs.get(state.runtime.selected_idx) {
         lines.push(Line::from(vec![
             Span::styled("Job: ", Style::default().add_modifier(Modifier::BOLD)),
             Span::raw(job.id.to_string()),
@@ -1898,7 +1898,7 @@ fn render_runtime_pane(f: &mut Frame, state: &mut AppState, area: Rect) {
                 .title("Runtime Detail"),
         )
         .wrap(Wrap { trim: false })
-        .scroll((state.runtime_detail_scroll as u16, 0));
+        .scroll((state.runtime.detail_scroll as u16, 0));
     f.render_widget(detail, body[1]);
 }
 
@@ -1995,7 +1995,7 @@ fn render_footer(f: &mut Frame, state: &mut AppState, area: Rect) {
         return;
     }
 
-    if state.shell_popup_visible && state.active_shell_command.is_some() {
+    if state.shell.popup_visible && state.shell.active_command.is_some() {
         let hints = vec![
             Span::styled(
                 "SHELL ",

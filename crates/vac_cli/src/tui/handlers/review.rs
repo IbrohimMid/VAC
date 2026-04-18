@@ -6,10 +6,10 @@ use crate::tui::services::review;
 
 /// Open review workstation.
 pub fn open(ctx: &mut HandlerContext) -> HandlerResult {
-    ctx.state.review_open = true;
+    ctx.state.review.open = true;
     ctx.state.workbench_tab = crate::tui::app::WorkbenchTab::Review;
     ctx.state.focus = crate::tui::app::WorkspaceFocus::Workbench;
-    ctx.state.review_generation = ctx.state.review_generation.saturating_add(1);
+    ctx.state.review.generation = ctx.state.review.generation.saturating_add(1);
     ctx.state.review_sync_items();
     ctx.state.review_normalize_selection();
     Ok(())
@@ -17,16 +17,16 @@ pub fn open(ctx: &mut HandlerContext) -> HandlerResult {
 
 /// Close review workstation.
 pub fn close(ctx: &mut HandlerContext) -> HandlerResult {
-    ctx.state.review_open = false;
-    ctx.state.review_diff = None;
+    ctx.state.review.open = false;
+    ctx.state.review.diff = None;
     Ok(())
 }
 
 /// Select next file in review.
 pub fn select_next(ctx: &mut HandlerContext) -> HandlerResult {
-    let prev = ctx.state.review_selected_path.clone();
+    let prev = ctx.state.review.selected_path.clone();
     ctx.state.review_select_by_delta(1);
-    if ctx.state.review_diff.is_some() && prev != ctx.state.review_selected_path {
+    if ctx.state.review.diff.is_some() && prev != ctx.state.review.selected_path {
         load_diff_for_selected(ctx)?;
     }
     Ok(())
@@ -34,9 +34,9 @@ pub fn select_next(ctx: &mut HandlerContext) -> HandlerResult {
 
 /// Select previous file in review.
 pub fn select_prev(ctx: &mut HandlerContext) -> HandlerResult {
-    let prev = ctx.state.review_selected_path.clone();
+    let prev = ctx.state.review.selected_path.clone();
     ctx.state.review_select_by_delta(-1);
-    if ctx.state.review_diff.is_some() && prev != ctx.state.review_selected_path {
+    if ctx.state.review.diff.is_some() && prev != ctx.state.review.selected_path {
         load_diff_for_selected(ctx)?;
     }
     Ok(())
@@ -44,7 +44,7 @@ pub fn select_prev(ctx: &mut HandlerContext) -> HandlerResult {
 
 /// Revert selected file.
 pub fn revert_selected(ctx: &mut HandlerContext) -> HandlerResult {
-    let Some(path) = ctx.state.review_selected_path.clone() else {
+    let Some(path) = ctx.state.review.selected_path.clone() else {
         return Ok(());
     };
     let Ok(session_id) = uuid::Uuid::parse_str(&ctx.state.session_id) else {
@@ -57,7 +57,7 @@ pub fn revert_selected(ctx: &mut HandlerContext) -> HandlerResult {
         Ok(()) => {
             ctx.state.changeset_store.revert_success(&path);
             ctx.state.modified_files = ctx.state.changeset_store.modified_files();
-            ctx.state.review_items.entry(path.clone()).and_modify(|it| {
+            ctx.state.review.items.entry(path.clone()).and_modify(|it| {
                 it.status = ReviewItemStatus::Restored;
                 it.last_error = None;
                 it.dirty_generation = it.dirty_generation.saturating_add(1);
@@ -69,7 +69,7 @@ pub fn revert_selected(ctx: &mut HandlerContext) -> HandlerResult {
         }
         Err(e) => {
             ctx.state.changeset_store.revert_failed(&path, e.clone());
-            ctx.state.review_items.entry(path.clone()).and_modify(|it| {
+            ctx.state.review.items.entry(path.clone()).and_modify(|it| {
                 it.status = ReviewItemStatus::Failed;
                 it.last_error = Some(e.clone());
                 it.dirty_generation = it.dirty_generation.saturating_add(1);
@@ -81,7 +81,7 @@ pub fn revert_selected(ctx: &mut HandlerContext) -> HandlerResult {
         }
     }
 
-    ctx.state.review_generation = ctx.state.review_generation.saturating_add(1);
+    ctx.state.review.generation = ctx.state.review.generation.saturating_add(1);
     ctx.state.review_sync_items();
     ctx.state.review_normalize_selection();
     Ok(())
@@ -120,7 +120,7 @@ pub fn revert_filtered(ctx: &mut HandlerContext) -> HandlerResult {
             Ok(()) => {
                 success_count += 1;
                 ctx.state.changeset_store.revert_success(file);
-                ctx.state.review_items.entry(file.clone()).and_modify(|it| {
+                ctx.state.review.items.entry(file.clone()).and_modify(|it| {
                     it.status = ReviewItemStatus::Restored;
                     it.last_error = None;
                     it.dirty_generation = it.dirty_generation.saturating_add(1);
@@ -128,7 +128,7 @@ pub fn revert_filtered(ctx: &mut HandlerContext) -> HandlerResult {
             }
             Err(e) => {
                 ctx.state.changeset_store.revert_failed(file, e.clone());
-                ctx.state.review_items.entry(file.clone()).and_modify(|it| {
+                ctx.state.review.items.entry(file.clone()).and_modify(|it| {
                     it.status = ReviewItemStatus::Failed;
                     it.last_error = Some(e);
                     it.dirty_generation = it.dirty_generation.saturating_add(1);
@@ -144,7 +144,7 @@ pub fn revert_filtered(ctx: &mut HandlerContext) -> HandlerResult {
         ActivityKind::Review,
         format!("Reverted filtered: {success_count}/{}", files.len()),
     );
-    ctx.state.review_generation = ctx.state.review_generation.saturating_add(1);
+    ctx.state.review.generation = ctx.state.review.generation.saturating_add(1);
     ctx.state.review_sync_items();
     ctx.state.review_normalize_selection();
     Ok(())
@@ -171,7 +171,7 @@ pub fn revert_all(ctx: &mut HandlerContext) -> HandlerResult {
             Ok(()) => {
                 success_count += 1;
                 ctx.state.changeset_store.revert_success(file);
-                ctx.state.review_items.entry(file.clone()).and_modify(|it| {
+                ctx.state.review.items.entry(file.clone()).and_modify(|it| {
                     it.status = ReviewItemStatus::Restored;
                     it.last_error = None;
                     it.dirty_generation = it.dirty_generation.saturating_add(1);
@@ -179,7 +179,7 @@ pub fn revert_all(ctx: &mut HandlerContext) -> HandlerResult {
             }
             Err(e) => {
                 ctx.state.changeset_store.revert_failed(file, e.clone());
-                ctx.state.review_items.entry(file.clone()).and_modify(|it| {
+                ctx.state.review.items.entry(file.clone()).and_modify(|it| {
                     it.status = ReviewItemStatus::Failed;
                     it.last_error = Some(e);
                     it.dirty_generation = it.dirty_generation.saturating_add(1);
@@ -189,16 +189,16 @@ pub fn revert_all(ctx: &mut HandlerContext) -> HandlerResult {
     }
 
     ctx.state.modified_files = ctx.state.changeset_store.modified_files();
-    ctx.state.review_diff = None;
-    ctx.state.review_selected_idx = 0;
-    ctx.state.review_selected_path = None;
+    ctx.state.review.diff = None;
+    ctx.state.review.selected_idx = 0;
+    ctx.state.review.selected_path = None;
     ctx.state
         .add_assistant_message(format!("Reverted {}/{} files.", success_count, files.len()));
     ctx.state.push_activity(
         ActivityKind::Review,
         format!("Reverted all: {success_count}/{}", files.len()),
     );
-    ctx.state.review_generation = ctx.state.review_generation.saturating_add(1);
+    ctx.state.review.generation = ctx.state.review.generation.saturating_add(1);
     ctx.state.review_sync_items();
     ctx.state.review_normalize_selection();
     Ok(())
@@ -207,12 +207,12 @@ pub fn revert_all(ctx: &mut HandlerContext) -> HandlerResult {
 /// Load diff for currently selected file.
 fn load_diff_for_selected(ctx: &mut HandlerContext) -> HandlerResult {
     if let (Some(path), Ok(session_id)) = (
-        ctx.state.review_selected_path.clone(),
+        ctx.state.review.selected_path.clone(),
         uuid::Uuid::parse_str(&ctx.state.session_id),
     ) {
         match review::load_diff(&ctx.state.project_root, session_id, &path) {
             Ok(diff) => {
-                ctx.state.review_diff = Some(crate::tui::app::ReviewDiffState {
+                ctx.state.review.diff = Some(crate::tui::app::ReviewDiffState {
                     path: diff.path,
                     old_content: Some(diff.old_content),
                     new_content: Some(diff.new_content),
@@ -221,7 +221,7 @@ fn load_diff_for_selected(ctx: &mut HandlerContext) -> HandlerResult {
                 });
             }
             Err(e) => {
-                ctx.state.review_diff = Some(crate::tui::app::ReviewDiffState {
+                ctx.state.review.diff = Some(crate::tui::app::ReviewDiffState {
                     path: path.clone(),
                     old_content: None,
                     new_content: None,
@@ -236,9 +236,9 @@ fn load_diff_for_selected(ctx: &mut HandlerContext) -> HandlerResult {
 
 /// Push a char to the review filter and refresh selection/diff.
 pub fn filter_push(ctx: &mut HandlerContext, c: char) -> HandlerResult {
-    ctx.state.review_filter.push(c);
+    ctx.state.review.filter.push(c);
     ctx.state.review_normalize_selection();
-    if ctx.state.review_diff.is_some() {
+    if ctx.state.review.diff.is_some() {
         load_diff_for_selected(ctx)?;
     }
     Ok(())
@@ -246,9 +246,9 @@ pub fn filter_push(ctx: &mut HandlerContext, c: char) -> HandlerResult {
 
 /// Pop last char from review filter and refresh selection/diff.
 pub fn filter_pop(ctx: &mut HandlerContext) -> HandlerResult {
-    ctx.state.review_filter.pop();
+    ctx.state.review.filter.pop();
     ctx.state.review_normalize_selection();
-    if ctx.state.review_diff.is_some() {
+    if ctx.state.review.diff.is_some() {
         load_diff_for_selected(ctx)?;
     }
     Ok(())
@@ -256,11 +256,11 @@ pub fn filter_pop(ctx: &mut HandlerContext) -> HandlerResult {
 
 /// Toggle diff for selected file (load if not loaded, clear if already loaded).
 pub fn toggle_diff(ctx: &mut HandlerContext) -> HandlerResult {
-    let Some(path) = ctx.state.review_selected_path.clone() else {
+    let Some(path) = ctx.state.review.selected_path.clone() else {
         return Ok(());
     };
-    if ctx.state.review_diff.as_ref().map(|d| d.path.as_str()) == Some(path.as_str()) {
-        ctx.state.review_diff = None;
+    if ctx.state.review.diff.as_ref().map(|d| d.path.as_str()) == Some(path.as_str()) {
+        ctx.state.review.diff = None;
     } else {
         load_diff_for_selected(ctx)?;
     }
@@ -269,7 +269,7 @@ pub fn toggle_diff(ctx: &mut HandlerContext) -> HandlerResult {
 
 /// Scroll diff up by `step` lines.
 pub fn scroll_up(ctx: &mut HandlerContext, step: usize) -> HandlerResult {
-    if let Some(diff) = &mut ctx.state.review_diff {
+    if let Some(diff) = &mut ctx.state.review.diff {
         diff.scroll = diff.scroll.saturating_sub(step);
     }
     Ok(())
@@ -277,7 +277,7 @@ pub fn scroll_up(ctx: &mut HandlerContext, step: usize) -> HandlerResult {
 
 /// Scroll diff down by `step` lines.
 pub fn scroll_down(ctx: &mut HandlerContext, step: usize) -> HandlerResult {
-    if let Some(diff) = &mut ctx.state.review_diff {
+    if let Some(diff) = &mut ctx.state.review.diff {
         diff.scroll = diff.scroll.saturating_add(step);
         if let (Some(old), Some(new)) = (diff.old_content.as_deref(), diff.new_content.as_deref()) {
             let total = crate::tui::services::file_diff::render_diff(old, new, 120).len();
@@ -300,7 +300,7 @@ pub fn open_editor(ctx: &mut HandlerContext) -> HandlerResult {
         },
     };
 
-    let Some(path) = ctx.state.review_selected_path.clone() else {
+    let Some(path) = ctx.state.review.selected_path.clone() else {
         return Ok(());
     };
 

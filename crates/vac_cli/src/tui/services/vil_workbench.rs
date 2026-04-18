@@ -1,6 +1,6 @@
 //! VIL Issue Workstation renderer and grouping logic (Wave 4.1, Unit 9).
 //!
-//! Consumes `AppState.vil_status.validation_issues` (Vec<String>), infers an
+//! Consumes `AppState.vil.status.validation_issues` (Vec<String>), infers an
 //! issue kind per entry via [`VilIssueKind::classify`], and renders a
 //! tabs-within-tab UI with a scrollable issue list on the left and a lineage
 //! panel on the right.
@@ -113,7 +113,7 @@ fn shorten(text: &str) -> String {
 /// Group all issues from state into `ClassifiedIssue`s (in original order).
 pub fn classify_issues(state: &AppState) -> Vec<ClassifiedIssue> {
     state
-        .vil_status
+        .vil.status
         .validation_issues
         .iter()
         .cloned()
@@ -132,7 +132,7 @@ pub fn group_counts(issues: &[ClassifiedIssue]) -> std::collections::HashMap<Vil
 
 /// Apply the state's active filter to the classified issue list.
 pub fn filtered<'a>(state: &AppState, issues: &'a [ClassifiedIssue]) -> Vec<&'a ClassifiedIssue> {
-    match state.vil_workbench_group_filter {
+    match state.vil.workbench_group_filter {
         Some(kind) => issues.iter().filter(|i| i.kind == kind).collect(),
         None => issues.iter().collect(),
     }
@@ -142,7 +142,7 @@ pub fn filtered<'a>(state: &AppState, issues: &'a [ClassifiedIssue]) -> Vec<&'a 
 pub fn selected_issue(state: &AppState) -> Option<ClassifiedIssue> {
     let issues = classify_issues(state);
     let view = filtered(state, &issues);
-    view.get(state.vil_workbench_selected).map(|i| (*i).clone())
+    view.get(state.vil.workbench_selected).map(|i| (*i).clone())
 }
 
 /// Render the full VIL Issue Workstation tab body.
@@ -168,7 +168,7 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
         .collect();
     titles.push(format!("All ({})", issues.len()));
 
-    let selected_tab_idx = match state.vil_workbench_group_filter {
+    let selected_tab_idx = match state.vil.workbench_group_filter {
         Some(kind) => KIND_ORDER
             .iter()
             .position(|k| *k == kind)
@@ -214,7 +214,7 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
 }
 
 fn render_status_panel(f: &mut Frame, state: &AppState, area: Rect) {
-    let score = state.vil_status.validation_score;
+    let score = state.vil.status.validation_score;
     let score_label = if score >= 0.9 {
         "A"
     } else if score >= 0.7 {
@@ -232,7 +232,7 @@ fn render_status_panel(f: &mut Frame, state: &AppState, area: Rect) {
     };
 
     let active_rulebook = state
-        .vil_status
+        .vil.status
         .active_rulebook
         .clone()
         .or_else(|| {
@@ -257,10 +257,10 @@ fn render_status_panel(f: &mut Frame, state: &AppState, area: Rect) {
     };
 
     let trend = ascii_sparkline(
-        if state.vil_score_history.is_empty() {
+        if state.vil.score_history.is_empty() {
             std::slice::from_ref(&score)
         } else {
-            state.vil_score_history.as_slice()
+            state.vil.score_history.as_slice()
         },
         24,
     );
@@ -277,7 +277,7 @@ fn render_status_panel(f: &mut Frame, state: &AppState, area: Rect) {
         Span::styled(trend, Style::default().fg(Color::Cyan)),
         Span::raw(" │ "),
         Span::styled("Issues: ", Style::default().add_modifier(Modifier::BOLD)),
-        Span::raw(state.vil_status.validation_issues.len().to_string()),
+        Span::raw(state.vil.status.validation_issues.len().to_string()),
     ];
 
     header.push(Span::raw(" │ "));
@@ -285,7 +285,7 @@ fn render_status_panel(f: &mut Frame, state: &AppState, area: Rect) {
         "Semantic: ",
         Style::default().add_modifier(Modifier::BOLD),
     ));
-    header.push(if state.vil_status.semantic_mode {
+    header.push(if state.vil.status.semantic_mode {
         Span::styled("On", Style::default().fg(Color::Green))
     } else {
         Span::styled("Off", Style::default().fg(Color::DarkGray))
@@ -301,9 +301,9 @@ fn render_status_panel(f: &mut Frame, state: &AppState, area: Rect) {
         Span::styled("IR: ", Style::default().add_modifier(Modifier::BOLD)),
     ];
 
-    if state.vil_status.ir_generation_active {
+    if state.vil.status.ir_generation_active {
         meta.push(Span::styled(
-            format!("Active ({})", state.vil_status.ir_metadata_files.len()),
+            format!("Active ({})", state.vil.status.ir_metadata_files.len()),
             Style::default().fg(Color::Green),
         ));
     } else {
@@ -313,7 +313,7 @@ fn render_status_panel(f: &mut Frame, state: &AppState, area: Rect) {
         ));
     }
 
-    if let Some(profile) = &state.vil_status.profile {
+    if let Some(profile) = &state.vil.status.profile {
         meta.push(Span::raw(" │ "));
         meta.push(Span::styled(
             "Archetype: ",
@@ -325,7 +325,7 @@ fn render_status_panel(f: &mut Frame, state: &AppState, area: Rect) {
         ));
     }
 
-    let deps_line = if let Some(profile) = &state.vil_status.profile {
+    let deps_line = if let Some(profile) = &state.vil.status.profile {
         let deps = compact_list(&profile.vil_deps, 5);
         let constructs = compact_list(&profile.detected_constructs, 6);
         Line::from(vec![
@@ -358,7 +358,7 @@ fn render_status_panel(f: &mut Frame, state: &AppState, area: Rect) {
     if score < 0.9 {
         recommendations.push("Recommendation: Run Batch Repair (Campaign Mode) to resolve structural drift.");
     }
-    if state.vil_status.validation_issues.len() > 10 {
+    if state.vil.status.validation_issues.len() > 10 {
         recommendations.push("Warning: High issue density. Review Rulebook Matrix for conflicts.");
     }
     
@@ -386,7 +386,7 @@ fn render_status_panel(f: &mut Frame, state: &AppState, area: Rect) {
 fn render_vil_log_panel(f: &mut Frame, state: &AppState, area: Rect) {
     let max = area.height.saturating_sub(2) as usize;
     let mut lines: Vec<Line> = Vec::new();
-    let entries: Vec<_> = state.vil_event_log.iter().rev().take(max.max(1)).collect();
+    let entries: Vec<_> = state.vil.event_log.iter().rev().take(max.max(1)).collect();
     for entry in entries.into_iter().rev() {
         let ts = entry.at.format("%H:%M:%S").to_string();
         lines.push(Line::from(vec![
@@ -446,7 +446,7 @@ fn compact_list(items: &[String], max: usize) -> String {
 }
 
 fn render_issue_list(f: &mut Frame, state: &AppState, area: Rect, view: &[&ClassifiedIssue]) {
-    let empty_msg = if state.vil_status.validation_issues.is_empty() {
+    let empty_msg = if state.vil.status.validation_issues.is_empty() {
         "No validation issues. Run /vil-status or edit a watched file."
     } else {
         "No issues in the selected group."
@@ -464,7 +464,7 @@ fn render_issue_list(f: &mut Frame, state: &AppState, area: Rect, view: &[&Class
     }
 
     let sel = state
-        .vil_workbench_selected
+        .vil.workbench_selected
         .min(view.len().saturating_sub(1));
     let items: Vec<ListItem> = view
         .iter()
@@ -503,7 +503,7 @@ fn render_lineage_panel(f: &mut Frame, state: &AppState, area: Rect, view: &[&Cl
     let mut lines: Vec<Line> = Vec::new();
 
     let sel = state
-        .vil_workbench_selected
+        .vil.workbench_selected
         .min(view.len().saturating_sub(1));
     let current = view.get(sel).copied();
 
@@ -549,7 +549,7 @@ fn render_lineage_panel(f: &mut Frame, state: &AppState, area: Rect, view: &[&Cl
         // whose path mentions the target.
         let needle = issue.file.clone().unwrap_or_else(|| issue.raw.clone());
         let related: Vec<&String> = state
-            .vil_status
+            .vil.status
             .ir_metadata_files
             .iter()
             .filter(|f| {
@@ -648,7 +648,7 @@ mod tests {
             checkpoint_path: None,
             project_root: std::env::current_dir().unwrap_or_default(),
         });
-        s.vil_status.validation_issues = issues;
+        s.vil.status.validation_issues = issues;
         s
     }
 
@@ -714,7 +714,7 @@ mod tests {
         let all = classify_issues(&state);
         assert_eq!(filtered(&state, &all).len(), 3);
 
-        state.vil_workbench_group_filter = Some(VilIssueKind::ZeroCopy);
+        state.vil.workbench_group_filter = Some(VilIssueKind::ZeroCopy);
         let view = filtered(&state, &all);
         assert_eq!(view.len(), 2);
         assert!(view.iter().all(|i| i.kind == VilIssueKind::ZeroCopy));

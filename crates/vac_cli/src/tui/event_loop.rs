@@ -276,13 +276,13 @@ mod tests {
             .changeset_store
             .file_modified("b.txt".to_string(), "agent".to_string(), false);
         state.modified_files = state.changeset_store.modified_files();
-        state.review_open = true;
-        state.review_selected_path = Some("b.txt".to_string());
-        state.review_filter = "a".to_string();
+        state.review.open = true;
+        state.review.selected_path = Some("b.txt".to_string());
+        state.review.filter = "a".to_string();
         state.review_sync_items();
         state.review_normalize_selection();
-        assert_eq!(state.review_selected_path, Some("a.txt".to_string()));
-        assert_eq!(state.review_selected_idx, 0);
+        assert_eq!(state.review.selected_path, Some("a.txt".to_string()));
+        assert_eq!(state.review.selected_idx, 0);
     }
 
     #[tokio::test]
@@ -329,7 +329,7 @@ mod tests {
         state.modified_files = state.changeset_store.modified_files();
         state.input.set_content("/review");
         crate::tui::controller::handle_input_event(&mut state, &tx, InputEvent::InputSubmitted);
-        assert!(state.review_open);
+        assert!(state.review.open);
         assert_eq!(state.workbench_tab, crate::tui::app::WorkbenchTab::Review);
     }
 
@@ -338,10 +338,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let (tx, _rx) = tokio::sync::mpsc::channel(4);
         let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
-        state.review_open = true;
+        state.review.open = true;
         state.focus = crate::tui::app::WorkspaceFocus::Workbench;
         state.workbench_tab = crate::tui::app::WorkbenchTab::Review;
-        state.review_diff = Some(crate::tui::app::ReviewDiffState {
+        state.review.diff = Some(crate::tui::app::ReviewDiffState {
             path: "a.txt".to_string(),
             old_content: Some("old".to_string()),
             new_content: Some("new".to_string()),
@@ -349,8 +349,8 @@ mod tests {
             last_error: None,
         });
         crate::tui::controller::handle_input_event(&mut state, &tx, InputEvent::ReviewClose);
-        assert!(!state.review_open);
-        assert!(state.review_diff.is_none());
+        assert!(!state.review.open);
+        assert!(state.review.diff.is_none());
     }
 
     #[test]
@@ -358,10 +358,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let (tx, _rx) = tokio::sync::mpsc::channel(4);
         let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
-        state.review_open = true;
+        state.review.open = true;
         state.focus = crate::tui::app::WorkspaceFocus::Workbench;
         state.workbench_tab = crate::tui::app::WorkbenchTab::Review;
-        state.review_diff = Some(crate::tui::app::ReviewDiffState {
+        state.review.diff = Some(crate::tui::app::ReviewDiffState {
             path: "a.txt".to_string(),
             old_content: Some("a\nb\nc\nd\ne\n".to_string()),
             new_content: Some("a\nb\nX\nd\ne\n".to_string()),
@@ -369,7 +369,7 @@ mod tests {
             last_error: None,
         });
         crate::tui::controller::handle_input_event(&mut state, &tx, InputEvent::PageDown);
-        assert!(state.review_diff.as_ref().unwrap().scroll > 0);
+        assert!(state.review.diff.as_ref().unwrap().scroll > 0);
     }
 
     #[tokio::test]
@@ -479,8 +479,8 @@ mod tests {
             &tx,
             InputEvent::ShellOutput(shell.id.clone(), big),
         );
-        assert!(state.shell_output.len() <= 1024 * 1024);
-        assert!(state.shell_output.chars().all(|c| c == 'x'));
+        assert!(state.shell.output.len() <= 1024 * 1024);
+        assert!(state.shell.output.chars().all(|c| c == 'x'));
     }
 
     #[tokio::test]
@@ -597,18 +597,18 @@ mod tests {
             .changeset_store
             .file_modified(file_rel.to_string(), "agent".to_string(), true);
         state.modified_files = state.changeset_store.modified_files();
-        state.review_open = true;
+        state.review.open = true;
         state.focus = crate::tui::app::WorkspaceFocus::Workbench;
         state.workbench_tab = crate::tui::app::WorkbenchTab::Review;
         state.review_sync_items();
-        state.review_selected_path = Some(file_rel.to_string());
+        state.review.selected_path = Some(file_rel.to_string());
 
         crate::tui::controller::handle_input_event(&mut state, &tx, InputEvent::ReviewRevertSelected);
 
         let content = std::fs::read_to_string(root.join(file_rel)).unwrap();
         assert_eq!(content, "old");
         assert!(!state.modified_files.contains(&file_rel.to_string()));
-        let it = state.review_items.get(file_rel).unwrap();
+        let it = state.review.items.get(file_rel).unwrap();
         assert_eq!(it.status, crate::tui::app::ReviewItemStatus::Restored);
     }
 
@@ -637,10 +637,10 @@ mod tests {
             .changeset_store
             .file_modified("b.txt".to_string(), "agent".to_string(), true);
         state.modified_files = state.changeset_store.modified_files();
-        state.review_open = true;
+        state.review.open = true;
         state.focus = crate::tui::app::WorkspaceFocus::Workbench;
         state.workbench_tab = crate::tui::app::WorkbenchTab::Review;
-        state.review_filter = "a".to_string();
+        state.review.filter = "a".to_string();
         state.review_sync_items();
         state.review_normalize_selection();
 
@@ -989,12 +989,12 @@ mod tests {
         if let Some(cmd) = filtered.iter().find(|c| c.command == "/review") {
             // Simulate command execution
             state.add_user_message(cmd.command.clone());
-            state.review_open = true;
+            state.review.open = true;
             state.show_command_palette = false;
         }
 
         // Verify review opened, not sent as literal message
-        assert!(state.review_open);
+        assert!(state.review.open);
         assert!(!state.show_command_palette);
 
         // No output event should be sent for /review
@@ -1025,7 +1025,7 @@ mod tests {
             .changeset_store
             .file_modified("b.txt".to_string(), "agent".to_string(), true);
         state.modified_files = state.changeset_store.modified_files();
-        state.review_open = true;
+        state.review.open = true;
         state.focus = crate::tui::app::WorkspaceFocus::Workbench;
         state.workbench_tab = crate::tui::app::WorkbenchTab::Review;
         state.review_sync_items();
@@ -1043,11 +1043,11 @@ mod tests {
         );
         assert!(state.modified_files.is_empty());
         assert_eq!(
-            state.review_items.get("a.txt").unwrap().status,
+            state.review.items.get("a.txt").unwrap().status,
             crate::tui::app::ReviewItemStatus::Restored
         );
         assert_eq!(
-            state.review_items.get("b.txt").unwrap().status,
+            state.review.items.get("b.txt").unwrap().status,
             crate::tui::app::ReviewItemStatus::Restored
         );
     }
@@ -1218,7 +1218,7 @@ mod tests {
         let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
         state.input.set_content("/review");
         crate::tui::controller::handle_input_event(&mut state, &tx, InputEvent::InputSubmitted);
-        assert!(state.review_open);
+        assert!(state.review.open);
         assert_eq!(state.workbench_tab, crate::tui::app::WorkbenchTab::Review);
     }
 
@@ -1608,7 +1608,7 @@ mod tests {
 
         crate::tui::controller::handle_input_event(&mut state, &tx, InputEvent::ReviewOpen);
 
-        assert!(state.review_open);
+        assert!(state.review.open);
         assert_eq!(state.workbench_tab, crate::tui::app::WorkbenchTab::Review);
         assert_eq!(state.focus, crate::tui::app::WorkspaceFocus::Workbench);
     }
@@ -1618,14 +1618,14 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let (tx, _rx) = tokio::sync::mpsc::channel(4);
         let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
-        state.review_open = true;
+        state.review.open = true;
         state.focus = crate::tui::app::WorkspaceFocus::Workbench;
         state.workbench_tab = crate::tui::app::WorkbenchTab::Review;
 
         crate::tui::controller::handle_input_event(&mut state, &tx, InputEvent::ReviewClose);
 
-        assert!(!state.review_open);
-        assert!(state.review_diff.is_none());
+        assert!(!state.review.open);
+        assert!(state.review.diff.is_none());
     }
 
     #[test]
@@ -1633,16 +1633,16 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let (tx, _rx) = tokio::sync::mpsc::channel(4);
         let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
-        state.review_open = true;
+        state.review.open = true;
         state.focus = crate::tui::app::WorkspaceFocus::Workbench;
         state.workbench_tab = crate::tui::app::WorkbenchTab::Review;
 
         crate::tui::controller::handle_input_event(&mut state, &tx, InputEvent::ReviewFilterInput('a'));
         crate::tui::controller::handle_input_event(&mut state, &tx, InputEvent::ReviewFilterInput('b'));
-        assert_eq!(state.review_filter, "ab");
+        assert_eq!(state.review.filter, "ab");
 
         crate::tui::controller::handle_input_event(&mut state, &tx, InputEvent::ReviewFilterBackspace);
-        assert_eq!(state.review_filter, "a");
+        assert_eq!(state.review.filter, "a");
     }
 
     #[test]
@@ -1650,11 +1650,11 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let (tx, _rx) = tokio::sync::mpsc::channel(4);
         let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
-        state.review_open = true;
+        state.review.open = true;
         state.focus = crate::tui::app::WorkspaceFocus::Workbench;
         state.workbench_tab = crate::tui::app::WorkbenchTab::Review;
-        state.review_selected_path = Some("a.rs".to_string());
-        state.review_diff = Some(crate::tui::app::ReviewDiffState {
+        state.review.selected_path = Some("a.rs".to_string());
+        state.review.diff = Some(crate::tui::app::ReviewDiffState {
             path: "a.rs".to_string(),
             old_content: Some("old".to_string()),
             new_content: Some("new".to_string()),
@@ -1664,7 +1664,7 @@ mod tests {
 
         crate::tui::controller::handle_input_event(&mut state, &tx, InputEvent::ReviewToggleDiff);
 
-        assert!(state.review_diff.is_none());
+        assert!(state.review.diff.is_none());
     }
 
     #[test]
@@ -1672,10 +1672,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let (tx, _rx) = tokio::sync::mpsc::channel(4);
         let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
-        state.review_open = true;
+        state.review.open = true;
         state.focus = crate::tui::app::WorkspaceFocus::Workbench;
         state.workbench_tab = crate::tui::app::WorkbenchTab::Review;
-        state.review_diff = Some(crate::tui::app::ReviewDiffState {
+        state.review.diff = Some(crate::tui::app::ReviewDiffState {
             path: "a.rs".to_string(),
             old_content: Some("old".to_string()),
             new_content: Some("new".to_string()),
@@ -1684,10 +1684,10 @@ mod tests {
         });
 
         crate::tui::controller::handle_input_event(&mut state, &tx, InputEvent::PageUp);
-        assert_eq!(state.review_diff.as_ref().unwrap().scroll, 0);
+        assert_eq!(state.review.diff.as_ref().unwrap().scroll, 0);
 
         crate::tui::controller::handle_input_event(&mut state, &tx, InputEvent::PageDown);
-        assert!(state.review_diff.as_ref().unwrap().scroll > 0);
+        assert!(state.review.diff.as_ref().unwrap().scroll > 0);
     }
 
     #[tokio::test]
@@ -1736,8 +1736,8 @@ mod tests {
         };
 
         crate::tui::controller::handle_backend_event(&mut state, &tx, InputEvent::ShellStarted(shell.clone()));
-        assert!(state.active_shell_command.is_some());
-        assert!(state.shell_popup_visible);
+        assert!(state.shell.active_command.is_some());
+        assert!(state.shell.popup_visible);
 
         crate::tui::controller::handle_backend_event(
             &mut state,
@@ -1749,16 +1749,16 @@ mod tests {
             &tx,
             InputEvent::ShellWaitingForInput("shell-1".to_string()),
         );
-        assert!(state.shell_output.contains("hello"));
-        assert!(state.shell_waiting_for_input);
+        assert!(state.shell.output.contains("hello"));
+        assert!(state.shell.waiting_for_input);
 
         crate::tui::controller::handle_backend_event(
             &mut state,
             &tx,
             InputEvent::ShellCompleted("shell-1".to_string(), 0),
         );
-        assert!(state.active_shell_command.is_none());
-        assert_eq!(state.shell_exit_code, Some(0));
-        assert!(!state.shell_waiting_for_input);
+        assert!(state.shell.active_command.is_none());
+        assert_eq!(state.shell.exit_code, Some(0));
+        assert!(!state.shell.waiting_for_input);
     }
 }

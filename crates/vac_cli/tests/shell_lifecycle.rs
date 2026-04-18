@@ -75,31 +75,31 @@ async fn test_shell_state_cleanup() {
     let mut state = AppState::default();
 
     // Simulate shell started
-    assert!(state.active_shell_command.is_none());
-    assert!(!state.shell_popup_visible);
-    assert!(state.shell_output.is_empty());
+    assert!(state.shell.active_command.is_none());
+    assert!(!state.shell.popup_visible);
+    assert!(state.shell.output.is_empty());
 
     // After shell starts
-    state.shell_popup_visible = true;
-    state.shell_output = "test output".to_string();
+    state.shell.popup_visible = true;
+    state.shell.output = "test output".to_string();
 
     // Cleanup
-    state.active_shell_command = None;
-    state.shell_popup_visible = false;
-    state.shell_output.clear();
-    state.shell_waiting_for_input = false;
-    state.shell_backgrounded = false;
-    state.shell_exit_code = None;
-    state.shell_last_error = None;
+    state.shell.active_command = None;
+    state.shell.popup_visible = false;
+    state.shell.output.clear();
+    state.shell.waiting_for_input = false;
+    state.shell.backgrounded = false;
+    state.shell.exit_code = None;
+    state.shell.last_error = None;
 
     // Verify cleanup
-    assert!(state.active_shell_command.is_none());
-    assert!(!state.shell_popup_visible);
-    assert!(state.shell_output.is_empty());
-    assert!(!state.shell_waiting_for_input);
-    assert!(!state.shell_backgrounded);
-    assert!(state.shell_exit_code.is_none());
-    assert!(state.shell_last_error.is_none());
+    assert!(state.shell.active_command.is_none());
+    assert!(!state.shell.popup_visible);
+    assert!(state.shell.output.is_empty());
+    assert!(!state.shell.waiting_for_input);
+    assert!(!state.shell.backgrounded);
+    assert!(state.shell.exit_code.is_none());
+    assert!(state.shell.last_error.is_none());
 }
 
 #[tokio::test]

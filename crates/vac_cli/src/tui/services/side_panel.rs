@@ -476,7 +476,7 @@ fn render_runtime_section(f: &mut Frame, state: &AppState, area: Rect, collapsed
     let mut running = 0;
     let mut completed = 0;
     let mut failed = 0;
-    for job in &state.runtime_jobs {
+    for job in &state.runtime.jobs {
         match &job.status {
             vac_runtime::JobStatus::Queued => queued += 1,
             vac_runtime::JobStatus::Running => running += 1,

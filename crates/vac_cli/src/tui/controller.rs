@@ -321,52 +321,52 @@ pub fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>,
     }
 
     // Plan review overlay intercepts all input when visible
-    if state.plan_review_open {
-        let body = crate::tui::services::plan::extract_plan_body(&state.plan_draft).to_string();
+    if state.plan.review_open {
+        let body = crate::tui::services::plan::extract_plan_body(&state.plan.draft).to_string();
         let line_count = body.lines().count();
         match event {
             InputEvent::HandleEsc => {
-                state.plan_review_open = false;
+                state.plan.review_open = false;
                 return;
             }
             InputEvent::Up | InputEvent::ScrollUp => {
-                state.plan_review_selected = state.plan_review_selected.saturating_sub(1);
-                if state.plan_review_selected < state.plan_review_scroll {
-                    state.plan_review_scroll = state.plan_review_selected;
+                state.plan.review_selected = state.plan.review_selected.saturating_sub(1);
+                if state.plan.review_selected < state.plan.review_scroll {
+                    state.plan.review_scroll = state.plan.review_selected;
                 }
                 return;
             }
             InputEvent::Down | InputEvent::ScrollDown => {
-                if line_count > 0 && state.plan_review_selected + 1 < line_count {
-                    state.plan_review_selected += 1;
+                if line_count > 0 && state.plan.review_selected + 1 < line_count {
+                    state.plan.review_selected += 1;
                 }
                 return;
             }
             InputEvent::PageUp => {
-                state.plan_review_scroll = state.plan_review_scroll.saturating_sub(10);
-                state.plan_review_selected = state.plan_review_selected.saturating_sub(10);
+                state.plan.review_scroll = state.plan.review_scroll.saturating_sub(10);
+                state.plan.review_selected = state.plan.review_selected.saturating_sub(10);
                 return;
             }
             InputEvent::PageDown => {
                 // Clamp scroll so content can't disappear off the end when body is short.
                 let max_scroll = line_count.saturating_sub(1);
-                state.plan_review_scroll =
-                    state.plan_review_scroll.saturating_add(10).min(max_scroll);
+                state.plan.review_scroll =
+                    state.plan.review_scroll.saturating_add(10).min(max_scroll);
                 if line_count > 0 {
-                    state.plan_review_selected =
-                        (state.plan_review_selected + 10).min(line_count - 1);
+                    state.plan.review_selected =
+                        (state.plan.review_selected + 10).min(line_count - 1);
                 }
                 return;
             }
             InputEvent::InputChanged('a') => {
                 plan_write_status(state, crate::tui::services::plan::PlanStatus::Approved);
-                state.plan_review_open = false;
+                state.plan.review_open = false;
                 state.add_assistant_message("Plan approved.".to_string());
                 return;
             }
             InputEvent::InputChanged('r') => {
                 plan_write_status(state, crate::tui::services::plan::PlanStatus::Drafting);
-                state.plan_review_open = false;
+                state.plan.review_open = false;
                 state.add_assistant_message("Plan marked for revision.".to_string());
                 return;
             }
@@ -414,17 +414,17 @@ pub fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>,
             }
             InputEvent::ReviewRevertSelected => {
                 if let Some(path) = filtered.get(state.file_changes_selected).cloned() {
-                    let prior = state.review_selected_path.clone();
-                    state.review_selected_path = Some(path);
+                    let prior = state.review.selected_path.clone();
+                    state.review.selected_path = Some(path);
                     let mut ctx = HandlerContext::new(state, output_tx);
                     let _ = review_handler::revert_selected(&mut ctx);
-                    state.review_selected_path = prior;
+                    state.review.selected_path = prior;
                 }
                 return;
             }
             InputEvent::InputSubmitted => {
                 if let Some(path) = filtered.get(state.file_changes_selected).cloned() {
-                    state.review_selected_path = Some(path);
+                    state.review.selected_path = Some(path);
                     state.workbench_tab = crate::tui::app::WorkbenchTab::Review;
                     state.focus = crate::tui::app::WorkspaceFocus::Workbench;
                     state.show_file_changes_popup = false;
@@ -754,7 +754,7 @@ pub fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>,
         return;
     }
 
-    if state.review_open
+    if state.review.open
         && state.focus == crate::tui::app::WorkspaceFocus::Workbench
         && state.workbench_tab == crate::tui::app::WorkbenchTab::Review
     {
@@ -929,8 +929,8 @@ pub fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>,
                                     state.workbench_tab = crate::tui::app::WorkbenchTab::Runtime;
                                 }
                                 crate::tui::app::SidePanelRowAction::JumpToVilIssue(path) => {
-                                    state.review_selected_path = Some(path);
-                                    state.review_selected_idx = 0;
+                                    state.review.selected_path = Some(path);
+                                    state.review.selected_idx = 0;
                                     state.focus = crate::tui::app::WorkspaceFocus::Workbench;
                                     state.workbench_tab = crate::tui::app::WorkbenchTab::Review;
                                 }
@@ -1122,12 +1122,12 @@ pub fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>,
                             let _ = output_tx.try_send(OutputEvent::LoadRuntimeState);
                         }
                         'c' => {
-                            if let Some(job) = state.runtime_jobs.get(state.runtime_selected_idx) {
+                            if let Some(job) = state.runtime.jobs.get(state.runtime.selected_idx) {
                                 let _ = output_tx.try_send(OutputEvent::CancelRuntimeJob(job.id));
                             }
                         }
                         't' => {
-                            if let Some(job) = state.runtime_jobs.get(state.runtime_selected_idx) {
+                            if let Some(job) = state.runtime.jobs.get(state.runtime.selected_idx) {
                                 let _ = output_tx.try_send(OutputEvent::RetryRuntimeJob(job.id));
                             }
                         }
@@ -1193,23 +1193,23 @@ pub fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>,
         }
         InputEvent::InputSubmitted => {
             if state.focus == crate::tui::app::WorkspaceFocus::Input
-                && state.shell_popup_visible
-                && state.active_shell_command.is_some()
+                && state.shell.popup_visible
+                && state.shell.active_command.is_some()
             {
                 let text = state.input.get_content();
                 let payload = if text.is_empty() {
                     "\n".to_string()
                 } else {
-                    if state.shell_history.last() != Some(&text) {
-                        state.shell_history.push(text.clone());
+                    if state.shell.history.last() != Some(&text) {
+                        state.shell.history.push(text.clone());
                     }
-                    state.shell_history_idx = None;
+                    state.shell.history_idx = None;
                     format!("{text}\n")
                 };
-                if let Some(shell) = state.active_shell_command.clone() {
+                if let Some(shell) = state.shell.active_command.clone() {
                     shell.send_input(payload);
                     state.input.clear();
-                    state.shell_waiting_for_input = false;
+                    state.shell.waiting_for_input = false;
                     state.push_activity(
                         crate::tui::app::ActivityKind::Status,
                         "Sent input to shell",
@@ -1383,17 +1383,17 @@ pub fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>,
         }
         InputEvent::Up => match state.focus {
             crate::tui::app::WorkspaceFocus::Input => {
-                if state.shell_popup_visible
-                    && state.active_shell_command.is_some()
-                    && !state.shell_history.is_empty()
+                if state.shell.popup_visible
+                    && state.shell.active_command.is_some()
+                    && !state.shell.history.is_empty()
                 {
-                    let max_idx = state.shell_history.len() - 1;
-                    let next_idx = match state.shell_history_idx {
+                    let max_idx = state.shell.history.len() - 1;
+                    let next_idx = match state.shell.history_idx {
                         Some(idx) => idx.saturating_sub(1),
                         None => max_idx,
                     };
-                    state.shell_history_idx = Some(next_idx);
-                    if let Some(cmd) = state.shell_history.get(next_idx) {
+                    state.shell.history_idx = Some(next_idx);
+                    if let Some(cmd) = state.shell.history.get(next_idx) {
                         state.input.set_content(cmd);
                         state.input.move_cursor_end();
                     }
@@ -1416,12 +1416,12 @@ pub fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>,
                     state.sessions_selected_idx = state.sessions_selected_idx.saturating_sub(1);
                 }
                 crate::tui::app::WorkbenchTab::Agents => {
-                    state.agent_selected_idx = state.agent_selected_idx.saturating_sub(1);
-                    state.agent_detail_scroll = 0;
+                    state.runtime.agent_selected = state.runtime.agent_selected.saturating_sub(1);
+                    state.runtime.agent_detail_scroll = 0;
                 }
                 crate::tui::app::WorkbenchTab::Runtime => {
-                    state.runtime_selected_idx = state.runtime_selected_idx.saturating_sub(1);
-                    state.runtime_detail_scroll = 0;
+                    state.runtime.selected_idx = state.runtime.selected_idx.saturating_sub(1);
+                    state.runtime.detail_scroll = 0;
                 }
                 crate::tui::app::WorkbenchTab::Review => {
                     let mut ctx = HandlerContext::new(state, output_tx);
@@ -1436,17 +1436,17 @@ pub fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>,
         },
         InputEvent::Down => match state.focus {
             crate::tui::app::WorkspaceFocus::Input => {
-                if state.shell_popup_visible
-                    && state.active_shell_command.is_some()
-                    && state.shell_history_idx.is_some()
+                if state.shell.popup_visible
+                    && state.shell.active_command.is_some()
+                    && state.shell.history_idx.is_some()
                 {
-                    let next_idx = state.shell_history_idx.unwrap() + 1;
-                    if next_idx >= state.shell_history.len() {
-                        state.shell_history_idx = None;
+                    let next_idx = state.shell.history_idx.unwrap() + 1;
+                    if next_idx >= state.shell.history.len() {
+                        state.shell.history_idx = None;
                         state.input.clear();
                     } else {
-                        state.shell_history_idx = Some(next_idx);
-                        if let Some(cmd) = state.shell_history.get(next_idx) {
+                        state.shell.history_idx = Some(next_idx);
+                        if let Some(cmd) = state.shell.history.get(next_idx) {
                             state.input.set_content(cmd);
                             state.input.move_cursor_end();
                         }
@@ -1474,15 +1474,15 @@ pub fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>,
                     }
                 }
                 crate::tui::app::WorkbenchTab::Agents => {
-                    if state.agent_selected_idx + 1 < state.agent_tasks.len() {
-                        state.agent_selected_idx += 1;
-                        state.agent_detail_scroll = 0;
+                    if state.runtime.agent_selected + 1 < state.runtime.agent_tasks.len() {
+                        state.runtime.agent_selected += 1;
+                        state.runtime.agent_detail_scroll = 0;
                     }
                 }
                 crate::tui::app::WorkbenchTab::Runtime => {
-                    if state.runtime_selected_idx + 1 < state.runtime_jobs.len() {
-                        state.runtime_selected_idx += 1;
-                        state.runtime_detail_scroll = 0;
+                    if state.runtime.selected_idx + 1 < state.runtime.jobs.len() {
+                        state.runtime.selected_idx += 1;
+                        state.runtime.detail_scroll = 0;
                     }
                 }
                 crate::tui::app::WorkbenchTab::Review => {
@@ -1519,47 +1519,47 @@ pub fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>,
             } else if state.show_changeset {
                 let mut ctx = HandlerContext::new(state, output_tx);
                 let _ = changeset_handler::close(&mut ctx);
-            } else if state.shell_popup_visible && state.active_shell_command.is_some() {
-                state.shell_popup_visible = false;
-                state.shell_backgrounded = true;
+            } else if state.shell.popup_visible && state.shell.active_command.is_some() {
+                state.shell.popup_visible = false;
+                state.shell.backgrounded = true;
             } else if state.is_streaming {
                 let _ = output_tx.try_send(OutputEvent::CancelStream);
                 state.is_streaming = false;
             } else if state.focus == crate::tui::app::WorkspaceFocus::Workbench
                 && state.workbench_tab == crate::tui::app::WorkbenchTab::Review
             {
-                state.review_open = false;
-                state.review_diff = None;
+                state.review.open = false;
+                state.review.diff = None;
             }
         }
         InputEvent::HandleCtrlZ => {
-            if state.active_shell_command.is_some() {
-                if state.shell_popup_visible {
-                    state.shell_popup_visible = false;
-                    state.shell_backgrounded = true;
+            if state.shell.active_command.is_some() {
+                if state.shell.popup_visible {
+                    state.shell.popup_visible = false;
+                    state.shell.backgrounded = true;
                 } else {
-                    state.shell_popup_visible = true;
-                    state.shell_backgrounded = false;
+                    state.shell.popup_visible = true;
+                    state.shell.backgrounded = false;
                 }
-                state.shell_history_idx = None;
+                state.shell.history_idx = None;
             }
         }
         InputEvent::BackgroundShell => {
-            if state.active_shell_command.is_some() {
-                state.shell_popup_visible = false;
-                state.shell_backgrounded = true;
+            if state.shell.active_command.is_some() {
+                state.shell.popup_visible = false;
+                state.shell.backgrounded = true;
             }
         }
         InputEvent::FocusShell => {
-            if state.active_shell_command.is_some() {
-                state.shell_popup_visible = true;
-                state.shell_backgrounded = false;
+            if state.shell.active_command.is_some() {
+                state.shell.popup_visible = true;
+                state.shell.backgrounded = false;
             }
         }
         InputEvent::ShellKill => {
-            if let Some(shell) = state.active_shell_command.clone() {
+            if let Some(shell) = state.shell.active_command.clone() {
                 let _ = shell.kill();
-                state.shell_waiting_for_input = false;
+                state.shell.waiting_for_input = false;
             }
         }
         InputEvent::AutoApproveCurrentTool => {
@@ -1776,8 +1776,8 @@ fn plan_open_editor(state: &mut AppState) {
 
     // Re-read to absorb edits the user just made.
     if let Some((meta, content)) = crate::tui::services::plan::read_plan_file(&project_root) {
-        state.plan_metadata = Some(meta);
-        state.plan_draft = content;
+        state.plan.metadata = Some(meta);
+        state.plan.draft = content;
         state.add_assistant_message("Plan updated from editor.".to_string());
     } else {
         state.add_assistant_message(
@@ -1793,7 +1793,7 @@ fn plan_write_status(state: &mut AppState, new_status: crate::tui::services::pla
     use crate::tui::services::plan;
     let on_disk = std::fs::read_to_string(plan::plan_file_path(&state.project_root)).ok();
     if let Some(disk_content) = on_disk.as_ref() {
-        if plan::compute_plan_hash(disk_content) != plan::compute_plan_hash(&state.plan_draft) {
+        if plan::compute_plan_hash(disk_content) != plan::compute_plan_hash(&state.plan.draft) {
             state.add_assistant_message(
                 "Plan file changed on disk since it was loaded. Reload with /plan-review first."
                     .to_string(),
@@ -1801,7 +1801,7 @@ fn plan_write_status(state: &mut AppState, new_status: crate::tui::services::pla
             return;
         }
     }
-    let Some(meta) = state.plan_metadata.as_mut() else {
+    let Some(meta) = state.plan.metadata.as_mut() else {
         state.add_assistant_message("No plan metadata loaded.".to_string());
         return;
     };
@@ -1812,13 +1812,13 @@ fn plan_write_status(state: &mut AppState, new_status: crate::tui::services::pla
         state.add_assistant_message("Failed to serialize plan metadata.".to_string());
         return;
     };
-    let body = plan::extract_plan_body(&state.plan_draft).to_string();
+    let body = plan::extract_plan_body(&state.plan.draft).to_string();
     let new_content = format!("---\n{}---\n\n{}", fm, body);
     if let Err(e) = plan::write_plan_file(&state.project_root, &new_content) {
         state.add_assistant_message(format!("Failed to write plan: {}", e));
         return;
     }
-    state.plan_draft = new_content;
+    state.plan.draft = new_content;
 }
 
 pub(crate) fn open_ask_user_popup(state: &mut AppState, tc: &crate::tui::types::ToolCall) {
@@ -1986,7 +1986,7 @@ fn policy_gate_allows_shell_command(state: &mut AppState, cmd: &str) -> bool {
         return true;
     };
     let decision =
-        vac_core::policy_gate::evaluate(&config.policy_gate, action, state.last_validation_score);
+        vac_core::policy_gate::evaluate(&config.policy_gate, action, state.vil.last_score);
     match decision {
         vac_core::policy_gate::PolicyGateDecision::Allow => true,
         vac_core::policy_gate::PolicyGateDecision::Warn(msg) => {
@@ -2110,20 +2110,20 @@ pub fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent
             state.push_activity(crate::tui::app::ActivityKind::Session, "Sessions updated");
         }
         InputEvent::SetAgentTasks(tasks) => {
-            state.agent_tasks = tasks;
-            if state.agent_selected_idx >= state.agent_tasks.len() {
-                state.agent_selected_idx = state.agent_tasks.len().saturating_sub(1);
+            state.runtime.agent_tasks = tasks;
+            if state.runtime.agent_selected >= state.runtime.agent_tasks.len() {
+                state.runtime.agent_selected = state.runtime.agent_tasks.len().saturating_sub(1);
             }
             state.push_activity(crate::tui::app::ActivityKind::Status, "Agent queue updated");
         }
         InputEvent::SetAgentState(snapshot) => {
-            state.agent_state_snapshot = snapshot;
+            state.runtime.agent_snapshot = snapshot;
             state.push_activity(crate::tui::app::ActivityKind::Status, "Agent state updated");
         }
         InputEvent::SetRuntimeJobs(jobs) => {
-            state.runtime_jobs = jobs;
-            if state.runtime_selected_idx >= state.runtime_jobs.len() {
-                state.runtime_selected_idx = state.runtime_jobs.len().saturating_sub(1);
+            state.runtime.jobs = jobs;
+            if state.runtime.selected_idx >= state.runtime.jobs.len() {
+                state.runtime.selected_idx = state.runtime.jobs.len().saturating_sub(1);
             }
             state.push_activity(
                 crate::tui::app::ActivityKind::Status,
@@ -2132,7 +2132,7 @@ pub fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent
         }
         InputEvent::SetRuntimeState(snapshot) => {
             // Detect significant state changes for activity logging
-            let prev_state = state.runtime_state_snapshot.as_ref().map(|s| &s.state);
+            let prev_state = state.runtime.snapshot.as_ref().map(|s| &s.state);
             let new_state = snapshot.as_ref().map(|s| &s.state);
 
             if let (Some(prev), Some(new)) = (prev_state, new_state) {
@@ -2170,7 +2170,7 @@ pub fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent
 
             // Detect execution environment changes
             if let Some(new_snapshot) = &snapshot {
-                if let Some(prev_snapshot) = &state.runtime_state_snapshot {
+                if let Some(prev_snapshot) = &state.runtime.snapshot {
                     if prev_snapshot.execution_environment != new_snapshot.execution_environment {
                         let env_name = match new_snapshot.execution_environment {
                             vac_core::ExecutionEnvironment::Host => "host",
@@ -2191,7 +2191,7 @@ pub fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent
                 }
             }
 
-            state.runtime_state_snapshot = snapshot;
+            state.runtime.snapshot = snapshot;
         }
         InputEvent::FileIndexReady(files) => {
             state.all_files = files;
@@ -2201,14 +2201,14 @@ pub fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent
             ));
         }
         InputEvent::ShellStarted(shell) => {
-            state.active_shell_command = Some(shell.clone());
-            state.shell_popup_visible = true;
-            state.shell_backgrounded = false;
-            state.shell_waiting_for_input = false;
-            state.shell_exit_code = None;
-            state.shell_last_error = None;
-            state.shell_output.clear();
-            state.shell_history_idx = None;
+            state.shell.active_command = Some(shell.clone());
+            state.shell.popup_visible = true;
+            state.shell.backgrounded = false;
+            state.shell.waiting_for_input = false;
+            state.shell.exit_code = None;
+            state.shell.last_error = None;
+            state.shell.output.clear();
+            state.shell.history_idx = None;
             state.push_activity(
                 crate::tui::app::ActivityKind::Shell,
                 format!("Shell started: {}", shell.command),
@@ -2216,68 +2216,68 @@ pub fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent
         }
         InputEvent::ShellOutput(id, text) => {
             if state
-                .active_shell_command
+                .shell.active_command
                 .as_ref()
                 .is_some_and(|cmd| cmd.id == id)
                 || id == "system"
             {
-                state.shell_output.push_str(&text);
+                state.shell.output.push_str(&text);
 
                 // Truncate to 1MB circular buffer
                 let max_size = 1024 * 1024;
-                if state.shell_output.len() > max_size {
+                if state.shell.output.len() > max_size {
                     let keep_len = max_size - 128 * 1024; // Keep ~900KB to avoid shifting on every push
-                    let mut safe_idx = state.shell_output.len() - keep_len;
-                    while safe_idx < state.shell_output.len()
-                        && !state.shell_output.is_char_boundary(safe_idx)
+                    let mut safe_idx = state.shell.output.len() - keep_len;
+                    while safe_idx < state.shell.output.len()
+                        && !state.shell.output.is_char_boundary(safe_idx)
                     {
                         safe_idx += 1;
                     }
-                    state.shell_output = state.shell_output[safe_idx..].to_string();
+                    state.shell.output = state.shell.output[safe_idx..].to_string();
                 }
 
                 // Unit 6: detect prompt-ready and password-mode from output
-                state.shell_prompt_ready =
-                    crate::tui::services::shell_mode::detect_prompt_ready(&state.shell_output);
-                state.shell_password_mode =
+                state.shell.prompt_ready =
+                    crate::tui::services::shell_mode::detect_prompt_ready(&state.shell.output);
+                state.shell.password_mode =
                     crate::tui::services::shell_mode::detect_password_prompt(&text);
-                if state.shell_prompt_ready {
-                    state.shell_lifecycle =
+                if state.shell.prompt_ready {
+                    state.shell.lifecycle =
                         crate::tui::services::shell_mode::ShellLifecycle::PromptReady;
                 } else {
-                    state.shell_lifecycle =
+                    state.shell.lifecycle =
                         crate::tui::services::shell_mode::ShellLifecycle::Running;
                 }
             }
         }
         InputEvent::ShellError(id, text) => {
             if state
-                .active_shell_command
+                .shell.active_command
                 .as_ref()
                 .is_some_and(|cmd| cmd.id == id)
                 || id == "system"
             {
-                if !state.shell_output.ends_with('\n') && !state.shell_output.is_empty() {
-                    state.shell_output.push('\n');
+                if !state.shell.output.ends_with('\n') && !state.shell.output.is_empty() {
+                    state.shell.output.push('\n');
                 }
                 state
-                    .shell_output
+                    .shell.output
                     .push_str(&format!("[shell error] {text}\n"));
 
                 let max_size = 1024 * 1024;
-                if state.shell_output.len() > max_size {
+                if state.shell.output.len() > max_size {
                     let keep_len = max_size - 128 * 1024;
-                    let mut safe_idx = state.shell_output.len() - keep_len;
-                    while safe_idx < state.shell_output.len()
-                        && !state.shell_output.is_char_boundary(safe_idx)
+                    let mut safe_idx = state.shell.output.len() - keep_len;
+                    while safe_idx < state.shell.output.len()
+                        && !state.shell.output.is_char_boundary(safe_idx)
                     {
                         safe_idx += 1;
                     }
-                    state.shell_output = state.shell_output[safe_idx..].to_string();
+                    state.shell.output = state.shell.output[safe_idx..].to_string();
                 }
 
-                state.shell_last_error = Some(text.clone());
-                state.shell_lifecycle =
+                state.shell.last_error = Some(text.clone());
+                state.shell.lifecycle =
                     crate::tui::services::shell_mode::ShellLifecycle::Error(text.clone());
             }
             state.push_activity(
@@ -2287,18 +2287,18 @@ pub fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent
         }
         InputEvent::ShellCompleted(id, code) => {
             if state
-                .active_shell_command
+                .shell.active_command
                 .as_ref()
                 .is_some_and(|cmd| cmd.id == id)
                 || id == "system"
             {
-                state.shell_exit_code = Some(code);
-                state.shell_waiting_for_input = false;
-                state.active_shell_command = None;
-                state.shell_prompt_ready = false;
-                state.shell_password_mode = false;
+                state.shell.exit_code = Some(code);
+                state.shell.waiting_for_input = false;
+                state.shell.active_command = None;
+                state.shell.prompt_ready = false;
+                state.shell.password_mode = false;
                 // Unit 6: distinguish normal exit from killed (code -1 or 137)
-                state.shell_lifecycle = if code == -1 || code == 137 {
+                state.shell.lifecycle = if code == -1 || code == 137 {
                     crate::tui::services::shell_mode::ShellLifecycle::Killed
                 } else {
                     crate::tui::services::shell_mode::ShellLifecycle::Exited(code)
@@ -2312,12 +2312,12 @@ pub fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent
         }
         InputEvent::ShellWaitingForInput(id) => {
             if state
-                .active_shell_command
+                .shell.active_command
                 .as_ref()
                 .is_some_and(|cmd| cmd.id == id)
                 || id == "system"
             {
-                state.shell_waiting_for_input = true;
+                state.shell.waiting_for_input = true;
             }
         }
         InputEvent::McpConnected { name, tools } => {
@@ -2360,7 +2360,7 @@ pub fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent
                 snapshot.validation_score,
                 snapshot.validation_issues.len()
             ));
-            state.vil_status = snapshot;
+            state.vil.status = snapshot;
             state.push_activity(
                 crate::tui::app::ActivityKind::Status,
                 "VIL status updated".to_string(),
@@ -2457,24 +2457,24 @@ pub fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent
             state.streaming_message_id = None;
             state.scroll = 0;
             state.input.clear();
-            state.review_open = false;
-            state.review_filter.clear();
-            state.review_diff = None;
-            state.review_selected_idx = 0;
-            state.review_selected_path = None;
-            state.active_shell_command = None;
-            state.shell_popup_visible = false;
-            state.shell_output.clear();
-            state.shell_waiting_for_input = false;
-            state.shell_backgrounded = false;
-            state.shell_exit_code = None;
-            state.shell_last_error = None;
-            state.shell_history_idx = None;
-            state.runtime_jobs.clear();
-            state.runtime_selected_idx = 0;
-            state.runtime_filter.clear();
-            state.runtime_detail_scroll = 0;
-            state.runtime_state_snapshot = None;
+            state.review.open = false;
+            state.review.filter.clear();
+            state.review.diff = None;
+            state.review.selected_idx = 0;
+            state.review.selected_path = None;
+            state.shell.active_command = None;
+            state.shell.popup_visible = false;
+            state.shell.output.clear();
+            state.shell.waiting_for_input = false;
+            state.shell.backgrounded = false;
+            state.shell.exit_code = None;
+            state.shell.last_error = None;
+            state.shell.history_idx = None;
+            state.runtime.jobs.clear();
+            state.runtime.selected_idx = 0;
+            state.runtime.filter.clear();
+            state.runtime.detail_scroll = 0;
+            state.runtime.snapshot = None;
             state.activity.clear();
             state.activity_scroll = 0;
             state.toasts.clear();
@@ -2492,9 +2492,9 @@ pub fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent
             state.changeset_store.clear();
             state.modified_files = state.changeset_store.modified_files(); // derived: empty after clear
             state.changeset_diff = None;
-            state.vil_score_history.clear();
-            state.vil_event_log.clear();
-            state.last_validation_score = None;
+            state.vil.score_history.clear();
+            state.vil.event_log.clear();
+            state.vil.last_score = None;
             state.workbench_tab = crate::tui::app::WorkbenchTab::Approvals;
             state.focus = crate::tui::app::WorkspaceFocus::Input;
             state.push_activity(crate::tui::app::ActivityKind::Session, "Session restored");
@@ -2580,7 +2580,7 @@ pub fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent
             }
         }
         InputEvent::TaskCompleted(result) => {
-            state.last_validation_score = result.validation_score;
+            state.vil.last_score = result.validation_score;
             // Real usage wiring: `vac_core::task::TaskResult.total_tokens_used`
             // is the authoritative producer. We record this turn's total, add
             // to session running total, and derive a coarse context %.
@@ -2628,8 +2628,8 @@ pub fn handle_backend_event(state: &mut AppState, output_tx: &Sender<OutputEvent
                 }
             }
 
-            if state.review_open {
-                state.review_generation = state.review_generation.saturating_add(1);
+            if state.review.open {
+                state.review.generation = state.review.generation.saturating_add(1);
                 state.review_sync_items();
                 state.review_normalize_selection();
             }
@@ -2689,17 +2689,17 @@ pub fn dispatch_builtin_command(
                         ));
                     }
                 } else if cmd.command == "/shell-focus" {
-                    if state.active_shell_command.is_some() {
-                        state.shell_popup_visible = true;
-                        state.shell_backgrounded = false;
+                    if state.shell.active_command.is_some() {
+                        state.shell.popup_visible = true;
+                        state.shell.backgrounded = false;
                     }
                 } else if cmd.command == "/shell-bg" {
-                    if state.active_shell_command.is_some() {
-                        state.shell_popup_visible = false;
-                        state.shell_backgrounded = true;
+                    if state.shell.active_command.is_some() {
+                        state.shell.popup_visible = false;
+                        state.shell.backgrounded = true;
                     }
                 } else if cmd.command == "/shell-kill" {
-                    if let Some(shell) = state.active_shell_command.clone() {
+                    if let Some(shell) = state.shell.active_command.clone() {
                         let _ = shell.kill();
                     }
                 } else if cmd.command == "/new" {
@@ -2772,8 +2772,8 @@ pub fn dispatch_builtin_command(
                     if let Some((meta, content)) =
                         crate::tui::services::plan::read_plan_file(&project_root)
                     {
-                        state.plan_metadata = Some(meta);
-                        state.plan_draft = content;
+                        state.plan.metadata = Some(meta);
+                        state.plan.draft = content;
                     } else {
                         let title = state
                             .session_title
@@ -2790,14 +2790,14 @@ pub fn dispatch_builtin_command(
                                 e
                             ));
                         } else {
-                            state.plan_metadata =
+                            state.plan.metadata =
                                 crate::tui::services::plan::parse_plan_front_matter(
                                     &tmpl,
                                 );
-                            state.plan_draft = tmpl;
+                            state.plan.draft = tmpl;
                         }
                     }
-                    state.plan_mode_active = true;
+                    state.plan.mode_active = true;
                     state.workbench_tab = crate::tui::app::WorkbenchTab::Plan;
                     state.focus = crate::tui::app::WorkspaceFocus::Workbench;
                 } else if cmd.command == "/plan-review" {
@@ -2805,11 +2805,11 @@ pub fn dispatch_builtin_command(
                     if let Some((meta, content)) =
                         crate::tui::services::plan::read_plan_file(&project_root)
                     {
-                        state.plan_metadata = Some(meta);
-                        state.plan_draft = content;
-                        state.plan_review_open = true;
-                        state.plan_review_selected = 0;
-                        state.plan_review_scroll = 0;
+                        state.plan.metadata = Some(meta);
+                        state.plan.draft = content;
+                        state.plan.review_open = true;
+                        state.plan.review_selected = 0;
+                        state.plan.review_scroll = 0;
                     } else {
                         state.add_assistant_message(
                             "No plan.md yet. Run /plan first.".to_string(),
