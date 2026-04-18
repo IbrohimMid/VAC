@@ -1877,18 +1877,18 @@ fn render_runtime_pane(f: &mut Frame, state: &mut AppState, area: Rect) {
         ]));
         for node in projection.nodes.iter().take(5) {
             let status_color = match &node.status {
-                vac_runtime::TaskStatus::Pending => Color::DarkGray,
-                vac_runtime::TaskStatus::Running => Color::Cyan,
-                vac_runtime::TaskStatus::Completed => Color::Green,
-                vac_runtime::TaskStatus::Failed(_) => Color::Red,
-                vac_runtime::TaskStatus::Blocked => Color::Yellow,
+                vac_core::engine::TaskNodeStatus::Pending => Color::DarkGray,
+                vac_core::engine::TaskNodeStatus::Running => Color::Cyan,
+                vac_core::engine::TaskNodeStatus::Completed => Color::Green,
+                vac_core::engine::TaskNodeStatus::Failed(_) => Color::Red,
+                vac_core::engine::TaskNodeStatus::Blocked => Color::Yellow,
             };
             let status_label = match &node.status {
-                vac_runtime::TaskStatus::Pending => "P",
-                vac_runtime::TaskStatus::Running => "R",
-                vac_runtime::TaskStatus::Completed => "C",
-                vac_runtime::TaskStatus::Failed(_) => "F",
-                vac_runtime::TaskStatus::Blocked => "B",
+                vac_core::engine::TaskNodeStatus::Pending => "P",
+                vac_core::engine::TaskNodeStatus::Running => "R",
+                vac_core::engine::TaskNodeStatus::Completed => "C",
+                vac_core::engine::TaskNodeStatus::Failed(_) => "F",
+                vac_core::engine::TaskNodeStatus::Blocked => "B",
             };
             let approval = if node.approval_required { "⚠" } else { "" };
             lines.push(Line::from(vec![

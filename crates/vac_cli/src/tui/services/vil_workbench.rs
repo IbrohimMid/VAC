@@ -15,7 +15,7 @@ use ratatui::{
     widgets::{Block, Borders, List, ListItem, Paragraph, Tabs, Wrap},
 };
 
-use crate::tui::app::{AppState, VilIssue, VilIssueKind};
+use crate::tui::app::{AppState, VilIssue, VilIssueKind, VilSeverity};
 
 /// Ordered list of kinds surfaced in the top strip.
 pub const KIND_ORDER: &[VilIssueKind] = &[
@@ -47,6 +47,40 @@ pub fn filtered<'a>(state: &AppState, issues: &'a [&VilIssue]) -> Vec<&'a VilIss
         Some(kind) => issues.iter().filter(|i| i.kind == kind).copied().collect(),
         None => issues.to_vec(),
     }
+}
+
+/// Build a heatmap: file path → counts per severity.
+pub fn heatmap_by_file(
+    issues: &[&VilIssue],
+) -> std::collections::BTreeMap<String, std::collections::HashMap<VilSeverity, usize>> {
+    let mut map: std::collections::BTreeMap<String, std::collections::HashMap<VilSeverity, usize>> =
+        std::collections::BTreeMap::new();
+    for issue in issues {
+        if let Some(file) = &issue.file {
+            *map.entry(file.clone())
+                .or_default()
+                .entry(issue.severity)
+                .or_insert(0) += 1;
+        }
+    }
+    map
+}
+
+/// Detect overlapping/conflicting rulebooks: two active books that share a prefix.
+pub fn detect_rulebook_conflicts(active_rulebooks: &[String]) -> Vec<(String, String)> {
+    let mut conflicts = Vec::new();
+    for i in 0..active_rulebooks.len() {
+        for j in (i + 1)..active_rulebooks.len() {
+            let a = &active_rulebooks[i];
+            let b = &active_rulebooks[j];
+            let a_base = a.split('/').next().unwrap_or(a);
+            let b_base = b.split('/').next().unwrap_or(b);
+            if a_base == b_base {
+                conflicts.push((a.clone(), b.clone()));
+            }
+        }
+    }
+    conflicts
 }
 
 /// Return the currently-selected issue, if any, honoring the active filter.
@@ -455,8 +489,14 @@ fn render_lineage_panel(f: &mut Frame, state: &AppState, area: Rect, view: &[&Vi
             ),
         ]));
         lines.push(Line::raw(""));
-        for wrapped in textwrap_lines(&issue.raw, area.width.saturating_sub(2) as usize) {
-            lines.push(Line::raw(wrapped));
+        if let Some(raw) = &issue.raw {
+            for wrapped in textwrap_lines(raw, area.width.saturating_sub(2) as usize) {
+                lines.push(Line::raw(wrapped));
+            }
+        } else {
+            for wrapped in textwrap_lines(&issue.message, area.width.saturating_sub(2) as usize) {
+                lines.push(Line::raw(wrapped));
+            }
         }
         lines.push(Line::raw(""));
 
@@ -477,7 +517,7 @@ fn render_lineage_panel(f: &mut Frame, state: &AppState, area: Rect, view: &[&Vi
 
         // Lineage = IR-drift history: surface any `ir_metadata_files`
         // whose path mentions the target.
-        let needle = issue.file.clone().unwrap_or_else(|| issue.raw.clone());
+        let needle = issue.file.clone().unwrap_or_else(|| issue.message.clone());
         let related: Vec<&String> = state
             .vil
             .status
@@ -570,7 +610,7 @@ fn textwrap_lines(text: &str, width: usize) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tui::app::{AppState, AppStateOptions};
+    use crate::tui::app::{AppState, AppStateOptions, VilIssue};
 
     fn fresh_state(issues: Vec<String>) -> AppState {
         let mut s = AppState::new(AppStateOptions {
@@ -579,7 +619,7 @@ mod tests {
             checkpoint_path: None,
             project_root: std::env::current_dir().unwrap_or_default(),
         });
-        s.vil.status.validation_issues = issues;
+        s.vil.status.validation_issues = issues.into_iter().map(VilIssue::from_raw).collect();
         s
     }
 
@@ -642,27 +682,88 @@ mod tests {
             "Struct 'B' manually implements 'VilMessage'".into(),
             "Handler 'c' owned-bytes type 'Vec<u8>'".into(),
         ]);
-        let all = classify_issues(&state);
-        assert_eq!(filtered(&state, &all).len(), 3);
-
+        state.vil.workbench_group_filter = None;
+        {
+            let all = classify_issues(&state);
+            assert_eq!(filtered(&state, &all).len(), 3);
+        }
         state.vil.workbench_group_filter = Some(VilIssueKind::ZeroCopy);
-        let view = filtered(&state, &all);
-        assert_eq!(view.len(), 2);
-        assert!(view.iter().all(|i| i.kind == VilIssueKind::ZeroCopy));
+        {
+            let all = classify_issues(&state);
+            let view = filtered(&state, &all);
+            assert_eq!(view.len(), 2);
+            assert!(view.iter().all(|i| i.kind == VilIssueKind::ZeroCopy));
+        }
     }
 
     #[test]
-    fn extract_file_hint_grabs_quoted_identifier() {
-        let issue = "Handler 'create_user' is on Network boundary but is not zero-copy eligible.";
-        let c = ClassifiedIssue::from_raw(issue.to_string());
-        assert_eq!(c.file.as_deref(), Some("create_user"));
-        assert_eq!(c.kind, VilIssueKind::ZeroCopy);
+    fn vil_issue_from_raw_extracts_file_and_kind() {
+        let raw = "Handler 'create_user' is on Network boundary but is not zero-copy eligible.";
+        let issue = VilIssue::from_raw(raw.to_string());
+        assert_eq!(issue.file.as_deref(), Some("create_user"));
+        assert_eq!(issue.kind, VilIssueKind::ZeroCopy);
     }
 
     #[test]
     fn short_collapses_whitespace_and_truncates() {
         let long = "a ".repeat(200);
-        let short = shorten(&long);
+        let short = crate::tui::app::shorten(&long);
         assert!(short.len() <= 160);
+    }
+
+    #[test]
+    fn heatmap_aggregates_per_file() {
+        let issues: Vec<VilIssue> = vec![
+            VilIssue::from_raw("Handler 'create_user' zero-copy violation".to_string()),
+            VilIssue::from_raw("Handler 'create_user' owned-bytes type Vec<u8>".to_string()),
+            VilIssue::from_raw("Struct 'Foo' no VIL role macro in delete_user".to_string()),
+        ];
+        let refs: Vec<&VilIssue> = issues.iter().collect();
+        let map = heatmap_by_file(&refs);
+        let create_user_count: usize = map
+            .get("create_user")
+            .map(|m| m.values().sum())
+            .unwrap_or(0);
+        assert_eq!(create_user_count, 2);
+    }
+
+    #[test]
+    fn conflict_detector_flags_overlapping_rules() {
+        let books = vec![
+            "security/auth".to_string(),
+            "security/crypto".to_string(),
+            "performance/alloc".to_string(),
+        ];
+        let conflicts = detect_rulebook_conflicts(&books);
+        assert_eq!(conflicts.len(), 1);
+        assert!(conflicts[0].0.starts_with("security/") || conflicts[0].1.starts_with("security/"));
+    }
+
+    #[test]
+    fn repair_preview_uses_typed_proposal() {
+        let issue = VilIssue::from_raw(
+            "Handler 'send' param 'buf' contains owned-bytes type 'Vec<u8>'".to_string(),
+        );
+        assert!(issue.repair_proposal.is_some());
+        assert!(
+            issue
+                .repair_proposal
+                .as_deref()
+                .unwrap()
+                .contains("ShmSlice")
+        );
+    }
+
+    #[test]
+    fn grouped_issue_rendering_by_kind() {
+        let state = fresh_state(vec![
+            "Handler 'a' owned-bytes type Vec<u8>".into(),
+            "Struct 'B' manually implements VilMessage".into(),
+            "Handler 'c' owned-bytes type Vec<u8>".into(),
+        ]);
+        let issues = classify_issues(&state);
+        let counts = group_counts(&issues);
+        assert_eq!(counts.get(&VilIssueKind::ZeroCopy).copied().unwrap_or(0), 2);
+        assert_eq!(counts.get(&VilIssueKind::Plumbing).copied().unwrap_or(0), 1);
     }
 }

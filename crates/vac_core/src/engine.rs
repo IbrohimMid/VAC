@@ -146,6 +146,89 @@ impl VacEngine {
         models
     }
 
+    pub fn task_graph_projection(&self) -> Option<TaskGraphProjection> {
+        let session = self.session.try_read().ok()?;
+        let inspector = self.inspector_ui.try_read().ok()?;
+        if session.tasks.is_empty() {
+            return None;
+        }
+        let mut nodes: Vec<TaskNodeProjection> = session
+            .tasks
+            .iter()
+            .map(|task| {
+                let artifacts = session
+                    .results
+                    .get(&task.id)
+                    .map(|r| {
+                        let mut a = r.modified_files.clone();
+                        a.extend(r.created_files.clone());
+                        a
+                    })
+                    .unwrap_or_default();
+                let approval_required =
+                    task.constraints.require_approval || task.constraints.approval_policy.is_some();
+                TaskNodeProjection {
+                    id: task.id.0.to_string(),
+                    label: task.description.clone(),
+                    status: match &task.status {
+                        crate::task::TaskStatus::Pending => TaskNodeStatus::Pending,
+                        crate::task::TaskStatus::Planning
+                        | crate::task::TaskStatus::Executing
+                        | crate::task::TaskStatus::Validating => TaskNodeStatus::Running,
+                        crate::task::TaskStatus::Completed => TaskNodeStatus::Completed,
+                        crate::task::TaskStatus::Failed(msg) => {
+                            TaskNodeStatus::Failed(msg.clone())
+                        }
+                        crate::task::TaskStatus::Cancelled => {
+                            TaskNodeStatus::Failed("cancelled".to_string())
+                        }
+                    },
+                    retry_count: 0,
+                    dependencies: task
+                        .parent_task
+                        .iter()
+                        .map(|p| p.0.to_string())
+                        .collect(),
+                    blockers: inspector
+                        .blockers
+                        .get(&task.id.0)
+                        .cloned()
+                        .unwrap_or_default(),
+                    tools_used: inspector
+                        .active_tools
+                        .get(&task.id.0)
+                        .cloned()
+                        .unwrap_or_default(),
+                    shell_sessions: inspector
+                        .shell_sessions
+                        .get(&task.id.0)
+                        .cloned()
+                        .unwrap_or_default(),
+                    artifacts,
+                    approval_required,
+                    approval_state: if approval_required {
+                        ApprovalState::Pending
+                    } else {
+                        ApprovalState::Approved
+                    },
+                }
+            })
+            .collect();
+        nodes.sort_by(|a, b| a.id.cmp(&b.id));
+        let mut root_ids: Vec<String> = session
+            .tasks
+            .iter()
+            .filter(|t| t.parent_task.is_none())
+            .map(|t| t.id.0.to_string())
+            .collect();
+        root_ids.sort();
+        Some(TaskGraphProjection {
+            nodes,
+            root_ids,
+            snapshot_at: chrono::Utc::now(),
+        })
+    }
+
     fn build_llm_router(&self) -> LlmRouter {
         LlmRouter::from_config(&self.config.llm)
             .with_rate_limit(self.config.llm.requests_per_minute)

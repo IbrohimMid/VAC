@@ -25,7 +25,7 @@ pub enum InputEvent {
     SetAgentState(Option<vac_runtime::AgentSchedulerStateFile>),
     SetRuntimeJobs(Vec<vac_runtime::Job>),
     SetRuntimeState(Option<vac_runtime::AutopilotStateFile>),
-    SetTaskGraphProjection(Option<vac_runtime::TaskGraphProjection>),
+    SetTaskGraphProjection(Option<vac_core::engine::TaskGraphProjection>),
     FileIndexReady(Vec<String>),
     McpConnected {
         name: String,
