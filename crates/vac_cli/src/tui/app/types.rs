@@ -764,6 +764,9 @@ pub struct AppState {
 
     pub input_tx: Option<tokio::sync::mpsc::Sender<crate::tui::app::events::InputEvent>>,
 
+    /// Overlay stack: tracks open modal overlays and their event-capture order.
+    pub overlay_manager: crate::tui::overlay::OverlayManager,
+
     // vil_workbench fields moved to VilState.workbench_selected / .workbench_group_filter
 
     // ===== Unit 5 (Wave 3.1) — Attachment tray preview & reorder =====
@@ -950,6 +953,7 @@ impl AppState {
             message_area_y: 0,
             message_area_height: 0,
             input_tx: None,
+            overlay_manager: crate::tui::overlay::OverlayManager::new(),
             // Unit 9 (Wave 4.1) — VIL Issue Workstation
             // vil workbench fields are in vil: VilState::default()
             // Unit 5 (Wave 3.1) — Attachment tray preview & reorder

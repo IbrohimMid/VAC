@@ -320,60 +320,9 @@ pub fn handle_input_event(state: &mut AppState, output_tx: &Sender<OutputEvent>,
         }
     }
 
-    // Plan review overlay intercepts all input when visible
-    if state.plan.review_open {
-        let body = crate::tui::services::plan::extract_plan_body(&state.plan.draft).to_string();
-        let line_count = body.lines().count();
-        match event {
-            InputEvent::HandleEsc => {
-                state.plan.review_open = false;
-                return;
-            }
-            InputEvent::Up | InputEvent::ScrollUp => {
-                state.plan.review_selected = state.plan.review_selected.saturating_sub(1);
-                if state.plan.review_selected < state.plan.review_scroll {
-                    state.plan.review_scroll = state.plan.review_selected;
-                }
-                return;
-            }
-            InputEvent::Down | InputEvent::ScrollDown => {
-                if line_count > 0 && state.plan.review_selected + 1 < line_count {
-                    state.plan.review_selected += 1;
-                }
-                return;
-            }
-            InputEvent::PageUp => {
-                state.plan.review_scroll = state.plan.review_scroll.saturating_sub(10);
-                state.plan.review_selected = state.plan.review_selected.saturating_sub(10);
-                return;
-            }
-            InputEvent::PageDown => {
-                // Clamp scroll so content can't disappear off the end when body is short.
-                let max_scroll = line_count.saturating_sub(1);
-                state.plan.review_scroll =
-                    state.plan.review_scroll.saturating_add(10).min(max_scroll);
-                if line_count > 0 {
-                    state.plan.review_selected =
-                        (state.plan.review_selected + 10).min(line_count - 1);
-                }
-                return;
-            }
-            InputEvent::InputChanged('a') => {
-                plan_write_status(state, crate::tui::services::plan::PlanStatus::Approved);
-                state.plan.review_open = false;
-                state.add_assistant_message("Plan approved.".to_string());
-                return;
-            }
-            InputEvent::InputChanged('r') => {
-                plan_write_status(state, crate::tui::services::plan::PlanStatus::Drafting);
-                state.plan.review_open = false;
-                state.add_assistant_message("Plan marked for revision.".to_string());
-                return;
-            }
-            // Trap every other key so typing doesn't leak into the input
-            // behind the modal overlay.
-            _ => return,
-        }
+    // Plan review overlay intercepts all input when visible — delegate to domain handler.
+    if crate::tui::handlers::plan::handle_plan_review_key(state, &event) {
+        return;
     }
 
     // File changes popup intercepts most input when visible
@@ -1716,109 +1665,11 @@ fn estimate_context_percent(model: Option<&crate::tui::types::Model>, tokens_use
 /// return. Mirrors `handlers::review::open_editor` so editor integration stays
 /// consistent across the app.
 fn plan_open_editor(state: &mut AppState) {
-    use crossterm::{
-        event::{EnableBracketedPaste, EnableMouseCapture},
-        execute,
-        terminal::{
-            Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode,
-            enable_raw_mode,
-        },
-    };
-
-    let project_root = state.project_root.clone();
-    let plan_path = crate::tui::services::plan::plan_file_path(&project_root);
-    if !plan_path.exists() {
-        // Seed a minimal template so the editor has something to open.
-        let title = state
-            .session_title
-            .clone()
-            .unwrap_or_else(|| "Session Plan".to_string());
-        let tmpl = crate::tui::services::plan::new_plan_template(&title);
-        if let Err(e) = crate::tui::services::plan::write_plan_file(&project_root, &tmpl) {
-            state.add_assistant_message(format!("Failed to create plan: {}", e));
-            return;
-        }
-    }
-
-    let preferred = std::env::var("VAC_EDITOR")
-        .ok()
-        .filter(|s| !s.trim().is_empty())
-        .or_else(|| {
-            std::env::var("EDITOR")
-                .ok()
-                .filter(|s| !s.trim().is_empty())
-        })
-        .and_then(|s| s.split_whitespace().next().map(|t| t.to_string()));
-
-    let Some(editor) = crate::tui::services::review::detect_editor(preferred) else {
-        state.add_assistant_message(
-            "No editor available. Set VAC_EDITOR/EDITOR or install nvim/vim/nano.".to_string(),
-        );
-        return;
-    };
-
-    state.push_activity(
-        crate::tui::app::ActivityKind::Review,
-        format!("Open editor on plan.md: {editor}"),
-    );
-
-    let _ = disable_raw_mode();
-    let _ = execute!(std::io::stdout(), LeaveAlternateScreen);
-    let _ = std::process::Command::new(editor).arg(&plan_path).status();
-    let _ = execute!(
-        std::io::stdout(),
-        EnterAlternateScreen,
-        EnableBracketedPaste,
-        EnableMouseCapture,
-        Clear(ClearType::All)
-    );
-    let _ = enable_raw_mode();
-
-    // Re-read to absorb edits the user just made.
-    if let Some((meta, content)) = crate::tui::services::plan::read_plan_file(&project_root) {
-        state.plan.metadata = Some(meta);
-        state.plan.draft = content;
-        state.add_assistant_message("Plan updated from editor.".to_string());
-    } else {
-        state.add_assistant_message(
-            "Plan saved but front matter couldn't be parsed — fix YAML and reload.".to_string(),
-        );
-    }
+    crate::tui::handlers::plan::open_editor(state);
 }
 
-/// Rewrite plan.md with a new status. Detects concurrent external edits by
-/// hashing the on-disk content against the last-read draft — if they diverge,
-/// refuses to overwrite and surfaces a warning to the user.
 fn plan_write_status(state: &mut AppState, new_status: crate::tui::services::plan::PlanStatus) {
-    use crate::tui::services::plan;
-    let on_disk = std::fs::read_to_string(plan::plan_file_path(&state.project_root)).ok();
-    if let Some(disk_content) = on_disk.as_ref() {
-        if plan::compute_plan_hash(disk_content) != plan::compute_plan_hash(&state.plan.draft) {
-            state.add_assistant_message(
-                "Plan file changed on disk since it was loaded. Reload with /plan-review first."
-                    .to_string(),
-            );
-            return;
-        }
-    }
-    let Some(meta) = state.plan.metadata.as_mut() else {
-        state.add_assistant_message("No plan metadata loaded.".to_string());
-        return;
-    };
-    meta.status = new_status;
-    meta.updated = Some(chrono::Utc::now());
-    meta.version = meta.version.saturating_add(1);
-    let Ok(fm) = serde_yaml::to_string(meta) else {
-        state.add_assistant_message("Failed to serialize plan metadata.".to_string());
-        return;
-    };
-    let body = plan::extract_plan_body(&state.plan.draft).to_string();
-    let new_content = format!("---\n{}---\n\n{}", fm, body);
-    if let Err(e) = plan::write_plan_file(&state.project_root, &new_content) {
-        state.add_assistant_message(format!("Failed to write plan: {}", e));
-        return;
-    }
-    state.plan.draft = new_content;
+    crate::tui::handlers::plan::write_plan_status(state, new_status);
 }
 
 pub(crate) fn open_ask_user_popup(state: &mut AppState, tc: &crate::tui::types::ToolCall) {

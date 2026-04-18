@@ -34,9 +34,11 @@ pub mod file_search;
 pub mod isolation_switcher;
 pub mod message_action;
 pub mod model_switcher;
+pub mod plan;
 pub mod profile_switcher;
 pub mod review;
 pub mod rulebook_switcher;
+pub mod shell;
 pub mod vil_workbench;
 
 use crate::tui::app::{AppState, OutputEvent};
