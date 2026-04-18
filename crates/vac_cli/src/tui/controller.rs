@@ -2843,6 +2843,15 @@ pub fn dispatch_builtin_command(
                     None,
                 ));
             }
+            // Passthrough: no TUI handler; forward verbatim to the agent.
+            crate::tui::app::CommandSource::Passthrough => {
+                let expanded = state.expand_pending_pastes(&trimmed);
+                state.add_user_message(expanded.clone());
+                let parts = std::mem::take(&mut state.pending_image_parts);
+                let _ = output_tx.try_send(OutputEvent::UserMessage(
+                    expanded, None, parts, None,
+                ));
+            }
         }
         return true;
     }

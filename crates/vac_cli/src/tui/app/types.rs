@@ -47,16 +47,30 @@ pub struct RenderMetrics {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum CommandSource {
+    /// Slash command with a real TUI handler — does not send a user message.
     BuiltIn,
+    /// Slash command that prepends a canned prompt then sends to the agent.
     BuiltInWithPrompt { prompt_content: String },
+    /// User-defined command with a prompt template.
     Custom { prompt_content: String },
+    /// No TUI handler — the command text is forwarded verbatim to the agent.
+    Passthrough,
 }
 
+/// Canonical specification for a single slash command.
+///
+/// This is the single source of truth used by the command palette, shortcuts
+/// popup, footer help text, and the slash-command dispatcher.
 #[derive(Debug, Clone)]
 pub struct HelperCommand {
     pub command: String,
     pub description: String,
     pub source: CommandSource,
+    /// Display hint for an associated keyboard shortcut (empty = none).
+    pub shortcut: Option<String>,
+    /// Whether this command is actually wired to real functionality.
+    /// `false` = it will be forwarded as-is and may not do anything useful.
+    pub wired: bool,
 }
 
 // ========== Session Types ==========

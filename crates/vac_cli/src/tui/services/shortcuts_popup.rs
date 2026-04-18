@@ -41,7 +41,8 @@ pub enum CommandAction {
     InsertSlashCommand(String),
 }
 
-fn get_all_commands() -> Vec<Command> {
+/// Static UI-action entries that have no slash-command equivalent.
+fn ui_action_commands() -> Vec<Command> {
     vec![
         Command {
             name: "Switch Profile".into(),
@@ -91,32 +92,36 @@ fn get_all_commands() -> Vec<Command> {
             shortcut: "Ctrl+C".into(),
             action: CommandAction::Quit,
         },
-        // Helpful slash commands
-        Command {
-            name: "Help".into(),
-            description: "Show available slash commands".into(),
-            shortcut: "".into(),
-            action: CommandAction::InsertSlashCommand("/help".into()),
-        },
-        Command {
-            name: "Status".into(),
-            description: "Show account & connection status".into(),
-            shortcut: "".into(),
-            action: CommandAction::InsertSlashCommand("/status".into()),
-        },
-        Command {
-            name: "Model".into(),
-            description: "Switch AI model".into(),
-            shortcut: "".into(),
-            action: CommandAction::InsertSlashCommand("/model".into()),
-        },
-        Command {
-            name: "Usage".into(),
-            description: "Show token usage statistics".into(),
-            shortcut: "".into(),
-            action: CommandAction::InsertSlashCommand("/usage".into()),
-        },
     ]
+}
+
+/// Build the full command list from UI-action commands plus slash commands
+/// derived from the canonical `vac_commands()` registry.
+fn get_all_commands() -> Vec<Command> {
+    let mut cmds = ui_action_commands();
+    // Derive InsertSlashCommand entries from the single canonical registry so
+    // the palette never lists phantom commands or drifts from the dispatcher.
+    for spec in crate::tui::services::helper_block::vac_commands() {
+        let display_name = spec
+            .command
+            .strip_prefix('/')
+            .map(|s| {
+                let mut c = s.chars();
+                match c.next() {
+                    Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+                    None => s.to_string(),
+                }
+            })
+            .unwrap_or_else(|| spec.command.clone());
+        let shortcut = spec.shortcut.clone().unwrap_or_default();
+        cmds.push(Command {
+            name: display_name,
+            description: spec.description.clone(),
+            shortcut,
+            action: CommandAction::InsertSlashCommand(spec.command.clone()),
+        });
+    }
+    cmds
 }
 
 pub fn filter_commands(query: &str, state: &crate::tui::app::AppState) -> Vec<Command> {

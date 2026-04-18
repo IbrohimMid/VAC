@@ -45,144 +45,200 @@ pub fn welcome_messages(version: Option<&str>, state: &crate::tui::app::AppState
     ))]
 }
 
-/// Default VAC commands
+/// Default VAC commands.
+///
+/// This is the single source of truth consumed by the command palette,
+/// shortcuts popup, footer help, and slash-command dispatcher.
 pub fn vac_commands() -> Vec<HelperCommand> {
     let mut commands = vec![
-        // VIL-specific commands
+        // --- Passthrough (no TUI handler; forwarded to agent as-is) ---
         HelperCommand {
             command: "/vil".to_string(),
-            description: "Show VIL engine status".to_string(),
-            source: CommandSource::BuiltIn,
+            description: "Ask agent about VIL engine status".to_string(),
+            source: CommandSource::Passthrough,
+            shortcut: None,
+            wired: false,
         },
         HelperCommand {
             command: "/swarm".to_string(),
-            description: "Show swarm status".to_string(),
-            source: CommandSource::BuiltIn,
-        },
-        HelperCommand {
-            command: "/rulebook".to_string(),
-            description: "Manage rulebooks".to_string(),
-            source: CommandSource::BuiltIn,
+            description: "Ask agent about swarm status".to_string(),
+            source: CommandSource::Passthrough,
+            shortcut: None,
+            wired: false,
         },
         HelperCommand {
             command: "/context".to_string(),
-            description: "Show context budget".to_string(),
-            source: CommandSource::BuiltIn,
+            description: "Ask agent about context budget".to_string(),
+            source: CommandSource::Passthrough,
+            shortcut: None,
+            wired: false,
         },
         HelperCommand {
+            command: "/rulebook".to_string(),
+            description: "Ask agent to manage rulebooks".to_string(),
+            source: CommandSource::Passthrough,
+            shortcut: None,
+            wired: false,
+        },
+        HelperCommand {
+            command: "/resume".to_string(),
+            description: "Ask agent to resume from checkpoint".to_string(),
+            source: CommandSource::Passthrough,
+            shortcut: None,
+            wired: false,
+        },
+        HelperCommand {
+            command: "/help".to_string(),
+            description: "Ask agent for help with available commands".to_string(),
+            source: CommandSource::Passthrough,
+            shortcut: Some("?".to_string()),
+            wired: false,
+        },
+        // --- BuiltIn: wired to TUI handlers ---
+        HelperCommand {
             command: "/runtime".to_string(),
-            description: "Show runtime status".to_string(),
+            description: "Show runtime inspector".to_string(),
             source: CommandSource::BuiltIn,
+            shortcut: None,
+            wired: true,
         },
         HelperCommand {
             command: "/agents".to_string(),
             description: "Show multi-agent queue".to_string(),
             source: CommandSource::BuiltIn,
+            shortcut: None,
+            wired: true,
         },
         HelperCommand {
             command: "/shell".to_string(),
             description: "Run interactive shell command".to_string(),
             source: CommandSource::BuiltIn,
+            shortcut: None,
+            wired: true,
         },
         HelperCommand {
             command: "/shell-focus".to_string(),
             description: "Refocus background shell".to_string(),
             source: CommandSource::BuiltIn,
+            shortcut: None,
+            wired: true,
         },
         HelperCommand {
             command: "/shell-bg".to_string(),
             description: "Background active shell".to_string(),
             source: CommandSource::BuiltIn,
+            shortcut: None,
+            wired: true,
         },
         HelperCommand {
             command: "/shell-kill".to_string(),
             description: "Terminate active shell".to_string(),
             source: CommandSource::BuiltIn,
+            shortcut: None,
+            wired: true,
         },
-        // Session commands
+        // --- Session commands ---
         HelperCommand {
             command: "/clear".to_string(),
             description: "Clear conversation".to_string(),
             source: CommandSource::BuiltIn,
+            shortcut: None,
+            wired: true,
         },
         HelperCommand {
             command: "/new".to_string(),
             description: "Start new session".to_string(),
             source: CommandSource::BuiltIn,
+            shortcut: None,
+            wired: true,
         },
         HelperCommand {
             command: "/sessions".to_string(),
             description: "List sessions".to_string(),
             source: CommandSource::BuiltIn,
-        },
-        HelperCommand {
-            command: "/resume".to_string(),
-            description: "Resume from checkpoint".to_string(),
-            source: CommandSource::BuiltIn,
+            shortcut: None,
+            wired: true,
         },
         HelperCommand {
             command: "/export".to_string(),
             description: "Export bundle JSON (redacted): /export [path]".to_string(),
             source: CommandSource::BuiltIn,
+            shortcut: None,
+            wired: true,
         },
         HelperCommand {
             command: "/import".to_string(),
             description: "Import bundle JSON: /import <path>".to_string(),
             source: CommandSource::BuiltIn,
+            shortcut: None,
+            wired: true,
         },
-        // Help
-        HelperCommand {
-            command: "/help".to_string(),
-            description: "Show available commands".to_string(),
-            source: CommandSource::BuiltIn,
-        },
-        // Project/Task Commands
+        // --- Project / Task commands ---
         HelperCommand {
             command: "/review".to_string(),
             description: "Review current changes".to_string(),
             source: CommandSource::BuiltIn,
+            shortcut: None,
+            wired: true,
         },
         HelperCommand {
             command: "/model".to_string(),
             description: "Switch active model".to_string(),
             source: CommandSource::BuiltIn,
+            shortcut: None,
+            wired: true,
         },
         HelperCommand {
             command: "/files".to_string(),
             description: "Search files in workspace".to_string(),
             source: CommandSource::BuiltIn,
+            shortcut: None,
+            wired: true,
         },
         HelperCommand {
             command: "/changes".to_string(),
             description: "Review current changeset".to_string(),
             source: CommandSource::BuiltIn,
+            shortcut: None,
+            wired: true,
         },
         HelperCommand {
             command: "/file-changes".to_string(),
             description: "Searchable popup of changed files".to_string(),
             source: CommandSource::BuiltIn,
+            shortcut: None,
+            wired: true,
         },
         HelperCommand {
             command: "/plan".to_string(),
             description: "Open or create the session plan".to_string(),
             source: CommandSource::BuiltIn,
+            shortcut: None,
+            wired: true,
         },
         HelperCommand {
             command: "/plan-review".to_string(),
             description: "Open the plan review overlay".to_string(),
             source: CommandSource::BuiltIn,
+            shortcut: None,
+            wired: true,
         },
         HelperCommand {
             command: "/plan-edit".to_string(),
             description: "Edit plan.md in $EDITOR".to_string(),
             source: CommandSource::BuiltIn,
+            shortcut: None,
+            wired: true,
         },
+        // --- BuiltInWithPrompt: sends canned prompt to agent ---
         HelperCommand {
             command: "/fix".to_string(),
             description: "Fix linter/build errors".to_string(),
             source: CommandSource::BuiltInWithPrompt {
                 prompt_content: "Fix linter/build errors in this repo. If needed, run the appropriate checks and apply minimal safe changes.".to_string(),
             },
+            shortcut: None,
+            wired: true,
         },
         HelperCommand {
             command: "/explain".to_string(),
@@ -190,6 +246,8 @@ pub fn vac_commands() -> Vec<HelperCommand> {
             source: CommandSource::BuiltInWithPrompt {
                 prompt_content: "Explain the relevant code or concept. Ask for the specific file/path and what to explain if unclear.".to_string(),
             },
+            shortcut: None,
+            wired: true,
         },
     ];
 
@@ -292,6 +350,8 @@ fn parse_command_file(path: &Path, command_name: &str) -> Option<HelperCommand> 
         source: CommandSource::Custom {
             prompt_content: prompt_content.to_string(),
         },
+        shortcut: None,
+        wired: false,
     })
 }
 
