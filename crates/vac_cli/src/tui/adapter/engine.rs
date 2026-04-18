@@ -60,6 +60,8 @@ pub enum AdapterOutputEvent {
     UsageUpdate(LLMTokenUsage),
     /// TaskGraph info loaded for Inspector UI
     TaskGraphLoaded(vac_runtime::TaskGraph),
+    /// TaskGraph projection for runtime inspector
+    TaskGraphProjection(vac_runtime::TaskGraphProjection),
 }
 
 /// Session info for TUI
@@ -122,6 +124,8 @@ impl VacEngineAdapter {
                         .await;
                 }
                 AdapterInputEvent::InspectTaskGraph => {
+                    // In a real integration, this would query the engine for the projection.
+                    // For now we emit a placeholder acknowledgment.
                     let _ = self
                         .output_tx
                         .send(AdapterOutputEvent::AssistantMessage(

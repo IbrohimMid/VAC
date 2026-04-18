@@ -10,7 +10,10 @@ pub mod scheduler;
 pub mod task_graph;
 pub mod watcher;
 
-pub use task_graph::{ApprovalPolicy, TaskGraph, TaskNode, TaskNodeStatus};
+pub use task_graph::{
+    ApprovalPolicy, TaskGraph, TaskGraphProjection, TaskNode, TaskNodeProjection, TaskNodeStatus,
+    TaskStatus, convert_task_status, project_session,
+};
 
 pub use agent_scheduler::{
     AgentQueueCounts, AgentRole, AgentScheduler, AgentSchedulerConfig, AgentSchedulerStateFile,

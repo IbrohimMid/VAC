@@ -45,35 +45,36 @@ pub struct RenderMetrics {
 
 // ========== Domain State Slices ==========
 
-/// Shell-session domain state. Accessed via `app_state.shell`.
 #[derive(Debug, Clone)]
-pub struct ShellState {
-    pub popup_visible: bool,
+pub struct ShellSession {
+    pub id: Uuid,
+    pub label: String,
+    pub command: Option<ShellCommand>,
     pub output: String,
-    pub active_command: Option<ShellCommand>,
+    pub history: Vec<String>,
+    pub history_idx: Option<usize>,
     pub waiting_for_input: bool,
     pub backgrounded: bool,
     pub exit_code: Option<i32>,
     pub last_error: Option<String>,
-    pub history: Vec<String>,
-    pub history_idx: Option<usize>,
     pub prompt_ready: bool,
     pub password_mode: bool,
     pub lifecycle: crate::tui::services::shell_mode::ShellLifecycle,
 }
 
-impl Default for ShellState {
-    fn default() -> Self {
+impl ShellSession {
+    pub fn new(label: String) -> Self {
         Self {
-            popup_visible: false,
+            id: Uuid::new_v4(),
+            label,
+            command: None,
             output: String::new(),
-            active_command: None,
+            history: Vec::new(),
+            history_idx: None,
             waiting_for_input: false,
             backgrounded: false,
             exit_code: None,
             last_error: None,
-            history: Vec::new(),
-            history_idx: None,
             prompt_ready: false,
             password_mode: false,
             lifecycle: crate::tui::services::shell_mode::ShellLifecycle::Running,
@@ -81,8 +82,72 @@ impl Default for ShellState {
     }
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct ShellSessionStore {
+    pub sessions: Vec<ShellSession>,
+    pub active_idx: Option<usize>,
+    pub popup_visible: bool,
+}
+
+impl ShellSessionStore {
+    pub fn active(&self) -> Option<&ShellSession> {
+        self.active_idx.and_then(|idx| self.sessions.get(idx))
+    }
+
+    pub fn active_mut(&mut self) -> Option<&mut ShellSession> {
+        self.active_idx.and_then(|idx| self.sessions.get_mut(idx))
+    }
+
+    pub fn push_new(&mut self, label: String) -> usize {
+        self.sessions.push(ShellSession::new(label));
+        let idx = self.sessions.len().saturating_sub(1);
+        self.active_idx = Some(idx);
+        idx
+    }
+
+    pub fn remove(&mut self, idx: usize) {
+        if idx >= self.sessions.len() {
+            return;
+        }
+        self.sessions.remove(idx);
+        self.active_idx = match self.active_idx {
+            None => None,
+            Some(_) if self.sessions.is_empty() => None,
+            Some(active_idx) if active_idx == idx => Some(idx.min(self.sessions.len() - 1)),
+            Some(active_idx) if active_idx > idx => Some(active_idx - 1),
+            Some(active_idx) => Some(active_idx),
+        };
+    }
+
+    pub fn switch_to(&mut self, idx: usize) {
+        if idx < self.sessions.len() {
+            self.active_idx = Some(idx);
+        }
+    }
+
+    pub fn find_by_command_id(&self, command_id: &str) -> Option<usize> {
+        self.sessions.iter().position(|session| {
+            session
+                .command
+                .as_ref()
+                .is_some_and(|command| command.id == command_id)
+        })
+    }
+
+    pub fn find_by_command_id_mut(&mut self, command_id: &str) -> Option<&mut ShellSession> {
+        let idx = self.find_by_command_id(command_id)?;
+        self.sessions.get_mut(idx)
+    }
+}
+
+/// Shell-session domain state. Accessed via `app_state.shell`.
+#[derive(Debug, Clone, Default)]
+pub struct ShellState {
+    pub session_store: ShellSessionStore,
+}
+
 /// Git-review domain state. Accessed via `app_state.review`.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ReviewState {
     pub open: bool,
     pub filter: String,
@@ -93,22 +158,8 @@ pub struct ReviewState {
     pub generation: u64,
 }
 
-impl Default for ReviewState {
-    fn default() -> Self {
-        Self {
-            open: false,
-            filter: String::new(),
-            selected_idx: 0,
-            selected_path: None,
-            items: HashMap::new(),
-            diff: None,
-            generation: 0,
-        }
-    }
-}
-
 /// Plan-mode domain state. Accessed via `app_state.plan`.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct PlanState {
     pub mode_active: bool,
     pub metadata: Option<crate::tui::services::plan::PlanMetadata>,
@@ -120,23 +171,8 @@ pub struct PlanState {
     pub existing_prompt: Option<ExistingPlanPrompt>,
 }
 
-impl Default for PlanState {
-    fn default() -> Self {
-        Self {
-            mode_active: false,
-            metadata: None,
-            draft: String::new(),
-            review_open: false,
-            review_selected: 0,
-            review_scroll: 0,
-            comments: Vec::new(),
-            existing_prompt: None,
-        }
-    }
-}
-
 /// VIL-engine domain state. Accessed via `app_state.vil`.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct VilState {
     pub status: VilStatusSnapshot,
     pub last_score: Option<f64>,
@@ -146,21 +182,8 @@ pub struct VilState {
     pub workbench_group_filter: Option<VilIssueKind>,
 }
 
-impl Default for VilState {
-    fn default() -> Self {
-        Self {
-            status: VilStatusSnapshot::default(),
-            last_score: None,
-            score_history: Vec::new(),
-            event_log: VecDeque::new(),
-            workbench_selected: 0,
-            workbench_group_filter: None,
-        }
-    }
-}
-
 /// Runtime / agent-scheduler domain state. Accessed via `app_state.runtime`.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct RuntimeState {
     pub jobs: Vec<vac_runtime::Job>,
     pub selected_idx: usize,
@@ -171,22 +194,7 @@ pub struct RuntimeState {
     pub agent_selected: usize,
     pub agent_detail_scroll: usize,
     pub agent_snapshot: Option<vac_runtime::AgentSchedulerStateFile>,
-}
-
-impl Default for RuntimeState {
-    fn default() -> Self {
-        Self {
-            jobs: Vec::new(),
-            selected_idx: 0,
-            filter: String::new(),
-            detail_scroll: 0,
-            snapshot: None,
-            agent_tasks: Vec::new(),
-            agent_selected: 0,
-            agent_detail_scroll: 0,
-            agent_snapshot: None,
-        }
-    }
+    pub task_projection: Option<vac_runtime::TaskGraphProjection>,
 }
 
 // ========== Helper Types ==========
@@ -536,20 +544,6 @@ pub struct VilStatusSnapshot {
     pub semantic_mode: bool,
     pub ir_generation_active: bool,
     pub ir_metadata_files: Vec<String>,
-}
-
-#[derive(Debug, Clone)]
-pub struct ShellSession {
-    pub id: String,
-    pub title: String,
-    pub output: String,
-    pub command: Option<ShellCommand>,
-    pub waiting_for_input: bool,
-    pub backgrounded: bool,
-    pub exit_code: Option<i32>,
-    pub last_error: Option<String>,
-    pub history: Vec<String>,
-    pub history_idx: Option<usize>,
 }
 
 /// Main application state for TUI
@@ -1130,7 +1124,8 @@ impl AppState {
             .map(|e| e.path.clone())
             .collect();
 
-        self.review.items
+        self.review
+            .items
             .retain(|k, v| active_paths.contains(k) || v.status != ReviewItemStatus::Pending);
 
         for entry in self.changeset_store.active_entries() {
@@ -1142,7 +1137,8 @@ impl AppState {
                 })
                 .unwrap_or(false);
 
-            self.review.items
+            self.review
+                .items
                 .entry(path.clone())
                 .and_modify(|it| {
                     it.has_snapshot = has_snapshot;
@@ -1173,7 +1169,8 @@ impl AppState {
 
         // Include any review_items not in store (e.g. Restored/Failed still visible)
         let mut extra: Vec<String> = self
-            .review.items
+            .review
+            .items
             .keys()
             .filter(|k| !seen.contains(*k))
             .cloned()
