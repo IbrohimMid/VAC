@@ -20,17 +20,12 @@ impl PolicyGateAction {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum PolicyGateMode {
     Strict,
+    #[default]
     Soft,
-}
-
-impl Default for PolicyGateMode {
-    fn default() -> Self {
-        Self::Soft
-    }
 }
 
 impl PolicyGateMode {

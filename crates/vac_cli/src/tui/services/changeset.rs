@@ -43,12 +43,27 @@ impl ChangesetEntry {
     }
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct FileTreeNode {
+    pub name: String,
+    pub is_dir: bool,
+    pub children: Vec<FileTreeNode>,
+    pub state: Option<FileState>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct RepoNavigatorState {
+    pub file_tree: Vec<FileTreeNode>,
+    pub recent_files: Vec<String>,
+}
+
 /// Store for tracking all file changes in the current session.
 /// Provides a single source of truth for changeset state.
 #[derive(Debug, Clone, Default)]
 pub struct ChangesetStore {
     entries: Vec<ChangesetEntry>,
     generation: u32,
+    pub navigator: RepoNavigatorState,
 }
 
 impl ChangesetStore {

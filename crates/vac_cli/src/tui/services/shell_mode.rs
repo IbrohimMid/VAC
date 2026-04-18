@@ -135,6 +135,52 @@ impl ShellCommand {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct ShellSession {
+    pub id: String,
+    pub title: String,
+    pub command: Option<ShellCommand>,
+    pub output: String,
+    pub lifecycle: ShellLifecycle,
+    pub task_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ShellManager {
+    pub sessions: Vec<ShellSession>,
+    pub active_session_idx: usize,
+}
+
+impl ShellManager {
+    pub fn new_session(&mut self, title: String, task_id: Option<String>) -> String {
+        let id = uuid::Uuid::new_v4().to_string();
+        self.sessions.push(ShellSession {
+            id: id.clone(),
+            title,
+            command: None,
+            output: String::new(),
+            lifecycle: ShellLifecycle::Running,
+            task_id,
+        });
+        self.active_session_idx = self.sessions.len() - 1;
+        id
+    }
+
+    pub fn get_active(&self) -> Option<&ShellSession> {
+        self.sessions.get(self.active_session_idx)
+    }
+
+    pub fn get_active_mut(&mut self) -> Option<&mut ShellSession> {
+        self.sessions.get_mut(self.active_session_idx)
+    }
+
+    pub fn attach_command(&mut self, session_id: &str, command: ShellCommand) {
+        if let Some(session) = self.sessions.iter_mut().find(|s| s.id == session_id) {
+            session.command = Some(command);
+        }
+    }
+}
+
 pub fn run_pty_command(
     command: String,
     launch_spec: Option<IsolationLaunchSpec>,

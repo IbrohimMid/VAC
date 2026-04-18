@@ -30,6 +30,7 @@ pub struct VacEngine {
     vil_lsp: Option<Arc<crate::lsp::service::VilLspService>>,
     pub privacy_vault: Arc<RwLock<vac_tools::PrivacyVault>>,
     pub active_approvals: ActiveApprovalRegistry,
+    pub inspector_ui: Arc<RwLock<InspectorUI>>,
 }
 
 impl VacEngine {
@@ -55,6 +56,7 @@ impl VacEngine {
             vil_lsp: None,
             privacy_vault: Arc::new(RwLock::new(vac_tools::PrivacyVault::new())),
             active_approvals: ActiveApprovalRegistry::new(),
+            inspector_ui: Arc::new(RwLock::new(InspectorUI::default())),
         })
     }
 
@@ -615,6 +617,7 @@ impl VacEngine {
             approval_store,
             session_uuid,
             task_uuid,
+            self.inspector_ui.clone(),
         );
 
         let execution = swarm
@@ -833,6 +836,7 @@ impl VacEngine {
             approval_store,
             session_uuid,
             task_uuid,
+            self.inspector_ui.clone(),
         );
 
         state.cancel = cancel.clone();
@@ -882,6 +886,7 @@ impl VacEngine {
     }
     pub async fn status(&self) -> VacResult<EngineStatus> {
         let session = self.session.read().await;
+        let inspector = self.inspector_ui.read().await.clone();
         Ok(EngineStatus {
             project_root: self.project_root.clone(),
             session_id: session.id,
@@ -890,6 +895,7 @@ impl VacEngine {
             failed_tasks: session.metadata.total_tasks_failed,
             total_tokens_used: session.metadata.total_tokens_used,
             subsystems_initialized: self.swarm.is_some(),
+            inspector,
         })
     }
 
@@ -994,10 +1000,55 @@ fn spawn_agent_event_bridge(
     approval_store: ApprovalStore,
     session_uuid: uuid::Uuid,
     task_uuid: uuid::Uuid,
+    inspector_ui: Arc<RwLock<InspectorUI>>,
 ) {
     tokio::spawn(async move {
         while let Some(event) = swarm_rx.recv().await {
             record_agent_event(trace_handle.as_ref(), &event);
+            
+            // Track Inspector UI metrics
+            match &event {
+                vil_swarm::AgentLoopEvent::ToolCall { name, .. } => {
+                    let mut ui = inspector_ui.write().await;
+                    let tools = ui.active_tools.entry(task_uuid).or_default();
+                    tools.push(name.clone());
+                    if name == "shell" || name == "run_command" {
+                        let sessions = ui.shell_sessions.entry(task_uuid).or_default();
+                        sessions.push("shell_session_active".to_string());
+                    }
+                }
+                vil_swarm::AgentLoopEvent::ToolResult { name, .. } => {
+                    let mut ui = inspector_ui.write().await;
+                    if let Some(tools) = ui.active_tools.get_mut(&task_uuid) {
+                        if let Some(pos) = tools.iter().position(|x| x == name) {
+                            tools.remove(pos);
+                        }
+                    }
+                    if name == "shell" || name == "run_command" {
+                        if let Some(sessions) = ui.shell_sessions.get_mut(&task_uuid) {
+                            if !sessions.is_empty() {
+                                sessions.pop();
+                            }
+                        }
+                    }
+                }
+                vil_swarm::AgentLoopEvent::ApprovalRequired { tool_name, .. } => {
+                    let mut ui = inspector_ui.write().await;
+                    let blockers = ui.blockers.entry(task_uuid).or_default();
+                    blockers.push(format!("Pending approval for: {}", tool_name));
+                }
+                vil_swarm::AgentLoopEvent::ApprovalDecision { tool_name, .. } => {
+                    let mut ui = inspector_ui.write().await;
+                    if let Some(blockers) = ui.blockers.get_mut(&task_uuid) {
+                        let target = format!("Pending approval for: {}", tool_name);
+                        if let Some(pos) = blockers.iter().position(|x| x == &target) {
+                            blockers.remove(pos);
+                        }
+                    }
+                }
+                _ => {}
+            }
+
             if let Some(ref tx) = update_tx {
                 if let Some(update) = runtime_update_from_agent_event(
                     event,
@@ -1203,6 +1254,13 @@ async fn persist_approval_request(
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct InspectorUI {
+    pub active_tools: std::collections::HashMap<uuid::Uuid, Vec<String>>,
+    pub shell_sessions: std::collections::HashMap<uuid::Uuid, Vec<String>>,
+    pub blockers: std::collections::HashMap<uuid::Uuid, Vec<String>>,
+}
+
 /// Snapshot of engine status.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EngineStatus {
@@ -1213,6 +1271,7 @@ pub struct EngineStatus {
     pub failed_tasks: usize,
     pub total_tokens_used: u64,
     pub subsystems_initialized: bool,
+    pub inspector: InspectorUI,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
