@@ -157,6 +157,9 @@ pub enum InputEvent {
     MouseMove(u16, u16),
     MouseRightClick(u16, u16),
     TaskCompleted(vac_core::task::TaskResult),
+    
+    // Raw Crossterm event mapped dynamically
+    CrosstermEvent(crossterm::event::Event),
 }
 
 impl InputEvent {
