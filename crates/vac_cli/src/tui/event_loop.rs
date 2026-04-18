@@ -252,7 +252,9 @@ pub async fn run_tui(
 /// - Enter is handled via `InputSubmitted`, not here.
 #[cfg(test)]
 mod tests {
-    use crate::tui::app::{InputEvent, OutputEvent};
+    use crate::tui::app::{AppState, AppStateOptions, InputEvent, OutputEvent};
+    use crate::tui::{FunctionCall, ToolCall};
+    use crate::tui::controller::{classify_critical_banner, open_ask_user_popup};
 
     fn make_state(project_root: std::path::PathBuf, session_id: uuid::Uuid) -> AppState {
         AppState::new(AppStateOptions {

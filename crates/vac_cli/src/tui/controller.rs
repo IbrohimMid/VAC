@@ -1821,7 +1821,7 @@ fn plan_write_status(state: &mut AppState, new_status: crate::tui::services::pla
     state.plan_draft = new_content;
 }
 
-fn open_ask_user_popup(state: &mut AppState, tc: &crate::tui::types::ToolCall) {
+pub(crate) fn open_ask_user_popup(state: &mut AppState, tc: &crate::tui::types::ToolCall) {
     let args = crate::tui::services::ask_user::parse_args(&tc.function.arguments);
     // Default policy: allow free-text iff the caller opts in OR no options
     // were supplied (otherwise the user would have no way to answer).
@@ -1897,7 +1897,7 @@ fn truncate_banner_text(text: &str, max_chars: usize) -> String {
         .collect()
 }
 
-fn classify_critical_banner(
+pub(crate) fn classify_critical_banner(
     text: &str,
 ) -> Option<(
     crate::tui::services::banner::BannerStyle,

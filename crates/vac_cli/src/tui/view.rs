@@ -2163,6 +2163,7 @@ mod tests {
             name: "kilo-auto/free".to_string(),
             provider: "anthropic".to_string(),
             supports_reasoning: false,
+            ..Default::default()
         });
         state.show_model_switcher = true;
         state.show_file_search = true;
