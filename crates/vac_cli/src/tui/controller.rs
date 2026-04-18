@@ -2235,7 +2235,11 @@ pub fn handle_backend_event(
                             let snapshot = crate::tui::app::VilStatusSnapshot {
                                 profile: Some(profile),
                                 validation_score: report.score,
-                                validation_issues: report.issues,
+                                validation_issues: report
+                                    .issues
+                                    .into_iter()
+                                    .map(crate::tui::app::VilIssue::from_raw)
+                                    .collect(),
                                 active_rulebook,
                                 semantic_mode,
                                 ir_generation_active: true,

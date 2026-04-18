@@ -239,7 +239,7 @@ fn invoke_tool(ctx: &mut HandlerContext, tool_name: &str, args: serde_json::Valu
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tui::app::{AppState, AppStateOptions, OutputEvent};
+    use crate::tui::app::{AppState, AppStateOptions, OutputEvent, VilIssue};
     use tokio::sync::mpsc;
 
     fn make_ctx() -> (
@@ -254,12 +254,12 @@ mod tests {
             project_root: std::env::current_dir().unwrap_or_default(),
         });
         state.vil.status.validation_issues = vec![
-            "Handler 'create_user' param 'body' contains owned-bytes type 'Vec<u8>' on Network boundary — zero-copy violation".into(),
-            "Struct 'Response' manually implements 'VilMessage' — remove plumbing".into(),
-            "Struct 'Event' has no VIL role macro — add #[vil_state]".into(),
-            "IR drift detected between HEAD and working tree on src/lib.rs".into(),
-            "Canonical term violation: use 'changeset' not 'diff-set'".into(),
-        ];
+            "Handler 'create_user' param 'body' contains owned-bytes type 'Vec<u8>' on Network boundary — zero-copy violation",
+            "Struct 'Response' manually implements 'VilMessage' — remove plumbing",
+            "Struct 'Event' has no VIL role macro — add #[vil_state]",
+            "IR drift detected between HEAD and working tree on src/lib.rs",
+            "Canonical term violation: use 'changeset' not 'diff-set'",
+        ].into_iter().map(|s| VilIssue::from_raw(s.to_string())).collect();
         let (tx, rx) = mpsc::channel(16);
         (state, tx, rx)
     }
