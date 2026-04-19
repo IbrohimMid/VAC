@@ -1,0 +1,5 @@
+- [x] `SemanticChunker::new` telah divalidasi dan mencegah `chunk_size` = 0 serta `chunk_overlap` >= `chunk_size` menggunakan `debug_assert!`.
+- [x] Fungsi `chunk` telah diperbarui dengan increment pointer `start` yang dipastikan selalu maju (step minimal 1).
+- [x] Bug off-by-one byte count untuk padding spasi di *sliding window* telah diselesaikan.
+- [x] Pengujian (test) dengan skenario panjang teks persis sama atau sedikit melebihi `chunk_overlap` telah dibuat dan berhasil lulus (tidak loop selamanya).
+- [x] Semua unit test di `crates/vil_context/src/chunking.rs` berjalan hijau.
