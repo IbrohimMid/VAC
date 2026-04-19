@@ -179,7 +179,7 @@ fn autopilot_waiting_approval_state_is_observable_and_unblocks_on_store_intent()
             .map(|j| j.status == JobStatus::Completed || matches!(j.status, JobStatus::Failed(_)))
             .unwrap_or(false)
     });
-    assert!(done_ok);
+    if !done_ok { println!("LOGS:\n{}", std::fs::read_to_string(root.join(".vac/autopilot.log")).unwrap_or_default()); } assert!(done_ok);
     let status = read_queue(root)
         .iter()
         .find(|j| j.id == id)
@@ -242,7 +242,7 @@ fn autopilot_toolcall_reject_flow_blocks_execution() {
             .map(|j| j.status == JobStatus::Completed || matches!(j.status, JobStatus::Failed(_)))
             .unwrap_or(false)
     });
-    assert!(done_ok);
+    if !done_ok { println!("LOGS:\n{}", std::fs::read_to_string(root.join(".vac/autopilot.log")).unwrap_or_default()); } assert!(done_ok);
     let status = read_queue(root)
         .iter()
         .find(|j| j.id == id)
@@ -368,7 +368,7 @@ fn autopilot_toolcall_wrong_target_isolation() {
             .map(|j| j.status == JobStatus::Completed || matches!(j.status, JobStatus::Failed(_)))
             .unwrap_or(false)
     });
-    assert!(done_ok);
+    if !done_ok { println!("LOGS:\n{}", std::fs::read_to_string(root.join(".vac/autopilot.log")).unwrap_or_default()); } assert!(done_ok);
 
     let status = read_queue(root)
         .iter()

@@ -340,28 +340,29 @@ impl LlmRouter {
                             );
                             return Ok(response);
                         }
-                        Err(e) if is_retryable(&e) && attempt < self.retry_config.max_attempts => {
-                            let delay = if let LlmError::RateLimited(_, retry_after_secs) = &e {
-                                // Use retry-after from error, cap to max_backoff_ms
-                                let delay_ms = retry_after_secs
-                                    .saturating_mul(1_000)
-                                    .min(self.retry_config.max_backoff_ms);
-                                crate::retry::RetryDelay {
-                                    delay_ms,
-                                    source: crate::retry::RetryDelaySource::RetryAfterHeader,
+                        Err(e) if is_retryable(&e) => {
+                            let mut headers = std::collections::HashMap::new();
+                            if let LlmError::RateLimited(_, retry_after_secs) = &e {
+                                headers.insert("retry-after".to_string(), retry_after_secs.to_string());
+                            }
+                            match crate::retry::next_retry_decision(
+                                &headers,
+                                &self.retry_config,
+                                attempt,
+                                chrono::Utc::now(),
+                            ) {
+                                crate::retry::RetryDecision::Retry(mut delay) => {
+                                    delay.delay_ms = delay.delay_ms.min(self.retry_config.max_backoff_ms);
+                                    warn!(provider = provider_name, attempt, delay_ms = delay.delay_ms, error = %e, "Retrying after delay");
+                                    tokio::time::sleep(std::time::Duration::from_millis(delay.delay_ms))
+                                        .await;
                                 }
-                            } else {
-                                // Fallback to exponential backoff
-                                crate::retry::resolve_retry_delay_ms(
-                                    &std::collections::HashMap::new(),
-                                    &self.retry_config,
-                                    attempt,
-                                    chrono::Utc::now(),
-                                )
-                            };
-                            warn!(provider = provider_name, attempt, delay_ms = delay.delay_ms, error = %e, "Retrying after delay");
-                            tokio::time::sleep(std::time::Duration::from_millis(delay.delay_ms))
-                                .await;
+                                crate::retry::RetryDecision::GiveUp => {
+                                    warn!(provider = provider_name, error = %e, "Provider failed, trying next");
+                                    last_error = Some(e);
+                                    break;
+                                }
+                            }
                         }
                         Err(e) => {
                             warn!(provider = provider_name, error = %e, "Provider failed, trying next");
@@ -744,5 +745,43 @@ temperature = 0.25
 
         // Other error types are not retryable
         assert!(!is_retryable(&LlmError::AllProvidersFailed));
+    }
+
+    struct MockRetryProvider {
+        attempts: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    }
+
+    #[async_trait::async_trait]
+    impl crate::provider::LlmProvider for MockRetryProvider {
+        fn name(&self) -> &str {
+            "mock_retry"
+        }
+        async fn complete(&self, _req: &LlmRequest) -> LlmResult<crate::provider::LlmResponse> {
+            self.attempts.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Err(LlmError::RateLimited("mock".into(), 0))
+        }
+        async fn stream(&self, _req: &LlmRequest) -> LlmResult<tokio::sync::mpsc::Receiver<crate::provider::StreamChunk>> {
+            unimplemented!()
+        }
+    }
+
+    #[tokio::test]
+    async fn router_respects_max_attempts_limit() {
+        let attempts = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let provider = Arc::new(MockRetryProvider { attempts: attempts.clone() });
+        
+        let mut r = LlmRouter::new("mock_retry", 1_000);
+        r.add_provider(provider);
+        r.retry_config.max_attempts = 2;
+        r.retry_config.initial_backoff_ms = 1;
+        r.retry_config.max_backoff_ms = 1;
+        
+        let req = LlmRequest::new(vec![Message::user("hi")]);
+        let result = r.complete(&req).await;
+        
+        assert!(result.is_err());
+        // max_attempts = 2 allows attempt 1, 2 (which are retried) and attempt 3 (which gives up).
+        // Total provider calls = 3.
+        assert_eq!(attempts.load(std::sync::atomic::Ordering::SeqCst), 3);
     }
 }
