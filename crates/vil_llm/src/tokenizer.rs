@@ -251,12 +251,27 @@ mod tests {
         // documents and bounds its error band so consumers know what to expect.
         let repetitive = "word ".repeat(200);
         let corpus: Vec<(&str, &str)> = vec![
-            ("english", "The quick brown fox jumps over the lazy dog. Pack my box with five dozen liquor jugs."),
-            ("rust_code", "fn main() { let x: Vec<u32> = (0..10).collect(); println!(\"{:?}\", x); }"),
-            ("json", r#"{"name":"vac","version":"0.1.0","deps":["tokio","serde"]}"#),
-            ("cjk", "こんにちは世界。これはトークナイザのテストです。你好世界，这是分词器测试。"),
+            (
+                "english",
+                "The quick brown fox jumps over the lazy dog. Pack my box with five dozen liquor jugs.",
+            ),
+            (
+                "rust_code",
+                "fn main() { let x: Vec<u32> = (0..10).collect(); println!(\"{:?}\", x); }",
+            ),
+            (
+                "json",
+                r#"{"name":"vac","version":"0.1.0","deps":["tokio","serde"]}"#,
+            ),
+            (
+                "cjk",
+                "こんにちは世界。これはトークナイザのテストです。你好世界，这是分词器测试。",
+            ),
             ("emoji", "🚀🎉💡🔥✨ deploy shipped 🎊🥳🎈"),
-            ("mixed", "Hello 世界! 🌍 fn greet() -> &'static str { \"hi\" }"),
+            (
+                "mixed",
+                "Hello 世界! 🌍 fn greet() -> &'static str { \"hi\" }",
+            ),
             ("whitespace", "   \t\n   spaced   out   \n\n   content   "),
             ("repetitive", &repetitive),
         ];

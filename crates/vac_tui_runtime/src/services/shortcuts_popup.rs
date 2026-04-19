@@ -7,11 +7,11 @@
 
 use crate::services::detect_term::ThemeColors;
 use ratatui::{
+    Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph, Tabs},
-    Frame,
 };
 use std::sync::OnceLock;
 

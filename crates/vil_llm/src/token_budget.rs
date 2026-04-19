@@ -16,7 +16,7 @@ impl TokenBudget {
     }
 
     pub fn add_usage(&mut self, tokens: u64) {
-        self.used += tokens;
+        self.used = self.used.saturating_add(tokens);
     }
 
     pub fn is_exceeded(&self) -> bool {
@@ -40,5 +40,27 @@ impl TokenBudget {
 
     pub fn reset(&mut self) {
         self.used = 0;
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn add_usage_saturates_on_overflow() {
+        let mut budget = TokenBudget::new(u64::MAX);
+        budget.add_usage(u64::MAX);
+        budget.add_usage(1_000);
+        assert_eq!(budget.used(), u64::MAX);
+    }
+
+    #[test]
+    fn add_usage_accumulates_normally() {
+        let mut budget = TokenBudget::new(1000);
+        budget.add_usage(100);
+        budget.add_usage(200);
+        assert_eq!(budget.used(), 300);
     }
 }

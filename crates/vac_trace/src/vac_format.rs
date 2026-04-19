@@ -94,8 +94,9 @@ impl VacEnvelope {
     /// Returns `Err` if serialization fails rather than silently producing
     /// a checksum of an empty payload.
     pub fn new(session_id: &str, records: Vec<TraceRecord>) -> TraceResult<Self> {
-        let cbor_bytes = serde_cbor::to_vec(&records)
-            .map_err(|e| TraceError::Export(format!("CBOR serialization of records failed: {e}")))?;
+        let cbor_bytes = serde_cbor::to_vec(&records).map_err(|e| {
+            TraceError::Export(format!("CBOR serialization of records failed: {e}"))
+        })?;
         let checksum = format!("{:x}", Sha256::digest(&cbor_bytes));
 
         Ok(Self {
@@ -120,7 +121,7 @@ impl VacEnvelope {
     /// out-of-band trust store lookup.  The `key_id` in the protected header
     /// still carries `session_id` for correlation.
     pub fn sign(&self, keypair: &SigningKeyPair) -> TraceResult<Vec<u8>> {
-        use coset::{cbor::value::Value, CborSerializable, CoseSign1Builder, HeaderBuilder, iana};
+        use coset::{CborSerializable, CoseSign1Builder, HeaderBuilder, cbor::value::Value, iana};
 
         let payload = self.to_cbor()?;
 
@@ -166,7 +167,7 @@ impl VacEnvelope {
     /// verifies the Ed25519 signature, and deserializes the inner
     /// [`VacEnvelope`]. Returns `Err` on any failure.
     pub fn verify(cose_bytes: &[u8]) -> TraceResult<Self> {
-        use coset::{cbor::value::Value, CborSerializable, CoseSign1};
+        use coset::{CborSerializable, CoseSign1, cbor::value::Value};
         use ed25519_dalek::Verifier;
 
         let sign1 = CoseSign1::from_slice(cose_bytes)
@@ -193,15 +194,16 @@ impl VacEnvelope {
                 )
             })?;
 
-        let pk_arr: [u8; 32] = pubkey_bytes.try_into().map_err(|_| {
-            TraceError::Signing("vac_public_key must be 32 bytes".to_string())
-        })?;
+        let pk_arr: [u8; 32] = pubkey_bytes
+            .try_into()
+            .map_err(|_| TraceError::Signing("vac_public_key must be 32 bytes".to_string()))?;
         let verifying_key = VerifyingKey::from_bytes(&pk_arr)
             .map_err(|e| TraceError::Signing(format!("invalid public key: {e}")))?;
 
-        let payload = sign1.payload.as_deref().ok_or_else(|| {
-            TraceError::Signing("COSE_Sign1 has no payload".to_string())
-        })?;
+        let payload = sign1
+            .payload
+            .as_deref()
+            .ok_or_else(|| TraceError::Signing("COSE_Sign1 has no payload".to_string()))?;
 
         let sig_bytes: [u8; 64] = sign1
             .signature
@@ -264,7 +266,11 @@ mod tests {
         kp.save(&path).unwrap();
 
         let kp2 = SigningKeyPair::load(&path).unwrap();
-        assert_eq!(pubkey_before, kp2.public_key(), "public key must survive save/load");
+        assert_eq!(
+            pubkey_before,
+            kp2.public_key(),
+            "public key must survive save/load"
+        );
     }
 
     #[test]
@@ -288,8 +294,7 @@ mod tests {
         if let Ok(env) = result {
             assert!(!env.checksum.is_empty());
             assert_ne!(
-                env.checksum,
-                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                env.checksum, "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
                 "checksum must not be SHA256 of empty string"
             );
         }

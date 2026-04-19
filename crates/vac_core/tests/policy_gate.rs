@@ -238,34 +238,70 @@ fn extended_bypass_corpus_deploy_actions() {
         ("git push", PolicyGateAction::Deploy),
         ("git push origin main", PolicyGateAction::Deploy),
         ("git push --force origin main", PolicyGateAction::Deploy),
-        ("git push -u origin feature/branch", PolicyGateAction::Deploy),
+        (
+            "git push -u origin feature/branch",
+            PolicyGateAction::Deploy,
+        ),
         ("git push --tags", PolicyGateAction::Deploy),
         ("sudo git push origin main", PolicyGateAction::Deploy),
-        ("env GIT_SSH_COMMAND='ssh -i key' git push origin main", PolicyGateAction::Deploy),
+        (
+            "env GIT_SSH_COMMAND='ssh -i key' git push origin main",
+            PolicyGateAction::Deploy,
+        ),
         ("bash -c \"git push origin main\"", PolicyGateAction::Deploy),
         ("sh -c \"git push origin main\"", PolicyGateAction::Deploy),
         ("timeout 60 git push origin main", PolicyGateAction::Deploy),
         ("nohup git push origin main", PolicyGateAction::Deploy),
         // docker push variants
         ("docker push registry.io/app:v1", PolicyGateAction::Deploy),
-        ("sudo docker push registry.io/app:v1", PolicyGateAction::Deploy),
-        ("env DOCKER_HOST=tcp://0.0.0.0:2376 docker push img:latest", PolicyGateAction::Deploy),
-        ("bash -c \"docker push img:latest\"", PolicyGateAction::Deploy),
+        (
+            "sudo docker push registry.io/app:v1",
+            PolicyGateAction::Deploy,
+        ),
+        (
+            "env DOCKER_HOST=tcp://0.0.0.0:2376 docker push img:latest",
+            PolicyGateAction::Deploy,
+        ),
+        (
+            "bash -c \"docker push img:latest\"",
+            PolicyGateAction::Deploy,
+        ),
         // cargo publish variants
         ("cargo publish", PolicyGateAction::Deploy),
         ("cargo publish --allow-dirty", PolicyGateAction::Deploy),
         ("sudo cargo publish", PolicyGateAction::Deploy),
-        ("env CARGO_REGISTRY_TOKEN=xxx cargo publish", PolicyGateAction::Deploy),
+        (
+            "env CARGO_REGISTRY_TOKEN=xxx cargo publish",
+            PolicyGateAction::Deploy,
+        ),
         // helm upgrade variants
         ("helm upgrade app chart/", PolicyGateAction::Deploy),
-        ("helm upgrade --install app chart/ --set image.tag=v2", PolicyGateAction::Deploy),
+        (
+            "helm upgrade --install app chart/ --set image.tag=v2",
+            PolicyGateAction::Deploy,
+        ),
         ("sudo helm upgrade app chart/", PolicyGateAction::Deploy),
-        ("env KUBECONFIG=/etc/k8s/config helm upgrade app chart/", PolicyGateAction::Deploy),
+        (
+            "env KUBECONFIG=/etc/k8s/config helm upgrade app chart/",
+            PolicyGateAction::Deploy,
+        ),
         // kubectl rollout variants
-        ("kubectl rollout restart deployment/app", PolicyGateAction::Deploy),
-        ("kubectl rollout status deployment/app", PolicyGateAction::Deploy),
-        ("sudo kubectl rollout restart deployment/app", PolicyGateAction::Deploy),
-        ("kubectl -n production rollout restart deployment/app", PolicyGateAction::Deploy),
+        (
+            "kubectl rollout restart deployment/app",
+            PolicyGateAction::Deploy,
+        ),
+        (
+            "kubectl rollout status deployment/app",
+            PolicyGateAction::Deploy,
+        ),
+        (
+            "sudo kubectl rollout restart deployment/app",
+            PolicyGateAction::Deploy,
+        ),
+        (
+            "kubectl -n production rollout restart deployment/app",
+            PolicyGateAction::Deploy,
+        ),
     ];
 
     for (cmd, expected) in deploy_corpus {
@@ -284,7 +320,10 @@ fn extended_bypass_corpus_merge_actions() {
         ("git merge --no-ff feature/branch", PolicyGateAction::Merge),
         ("git merge --squash feature/branch", PolicyGateAction::Merge),
         ("sudo git merge main", PolicyGateAction::Merge),
-        ("env GIT_AUTHOR_NAME=bot git merge main", PolicyGateAction::Merge),
+        (
+            "env GIT_AUTHOR_NAME=bot git merge main",
+            PolicyGateAction::Merge,
+        ),
         ("bash -c \"git merge main\"", PolicyGateAction::Merge),
         ("sh -c \"git merge main\"", PolicyGateAction::Merge),
         ("timeout 30 git merge main", PolicyGateAction::Merge),
@@ -296,7 +335,10 @@ fn extended_bypass_corpus_merge_actions() {
         ("gh pr merge 42 --merge", PolicyGateAction::Merge),
         ("sudo gh pr merge 42", PolicyGateAction::Merge),
         ("bash -c \"gh pr merge 42\"", PolicyGateAction::Merge),
-        ("env GITHUB_TOKEN=xxx gh pr merge 100", PolicyGateAction::Merge),
+        (
+            "env GITHUB_TOKEN=xxx gh pr merge 100",
+            PolicyGateAction::Merge,
+        ),
     ];
 
     for (cmd, expected) in merge_corpus {
@@ -312,20 +354,47 @@ fn extended_bypass_corpus_merge_actions() {
 fn extended_bypass_corpus_apply_actions() {
     let apply_corpus: &[(&str, PolicyGateAction)] = &[
         ("kubectl apply -f manifest.yaml", PolicyGateAction::Apply),
-        ("kubectl apply -f - < manifest.yaml", PolicyGateAction::Apply),
+        (
+            "kubectl apply -f - < manifest.yaml",
+            PolicyGateAction::Apply,
+        ),
         ("kubectl apply -k overlays/prod", PolicyGateAction::Apply),
-        ("sudo kubectl apply -f manifest.yaml", PolicyGateAction::Apply),
-        ("bash -c \"kubectl apply -f manifest.yaml\"", PolicyGateAction::Apply),
-        ("env KUBECONFIG=/path/to/config kubectl apply -f manifest.yaml", PolicyGateAction::Apply),
-        ("kubectl --context=staging apply -f manifest.yaml", PolicyGateAction::Apply),
-        ("kubectl -n production apply -f manifest.yaml", PolicyGateAction::Apply),
+        (
+            "sudo kubectl apply -f manifest.yaml",
+            PolicyGateAction::Apply,
+        ),
+        (
+            "bash -c \"kubectl apply -f manifest.yaml\"",
+            PolicyGateAction::Apply,
+        ),
+        (
+            "env KUBECONFIG=/path/to/config kubectl apply -f manifest.yaml",
+            PolicyGateAction::Apply,
+        ),
+        (
+            "kubectl --context=staging apply -f manifest.yaml",
+            PolicyGateAction::Apply,
+        ),
+        (
+            "kubectl -n production apply -f manifest.yaml",
+            PolicyGateAction::Apply,
+        ),
         ("terraform apply", PolicyGateAction::Apply),
         ("terraform apply -auto-approve", PolicyGateAction::Apply),
         ("terraform apply plan.out", PolicyGateAction::Apply),
-        ("terraform -chdir=modules/vpc apply", PolicyGateAction::Apply),
+        (
+            "terraform -chdir=modules/vpc apply",
+            PolicyGateAction::Apply,
+        ),
         ("sudo terraform apply", PolicyGateAction::Apply),
-        ("bash -c \"terraform apply -auto-approve\"", PolicyGateAction::Apply),
-        ("env TF_VAR_region=us-east-1 terraform apply", PolicyGateAction::Apply),
+        (
+            "bash -c \"terraform apply -auto-approve\"",
+            PolicyGateAction::Apply,
+        ),
+        (
+            "env TF_VAR_region=us-east-1 terraform apply",
+            PolicyGateAction::Apply,
+        ),
         ("timeout 300 terraform apply", PolicyGateAction::Apply),
     ];
 
@@ -347,7 +416,10 @@ fn evaluate_edge_cases() {
         mode: PolicyGateMode::Strict,
         actions: vec![PolicyGateAction::Merge],
     };
-    assert_eq!(evaluate(&cfg, PolicyGateAction::Merge, Some(0.1)), PolicyGateDecision::Allow);
+    assert_eq!(
+        evaluate(&cfg, PolicyGateAction::Merge, Some(0.1)),
+        PolicyGateDecision::Allow
+    );
 
     // Empty actions list means all gated
     let cfg = PolicyGateConfig {
@@ -356,9 +428,18 @@ fn evaluate_edge_cases() {
         mode: PolicyGateMode::Strict,
         actions: vec![],
     };
-    assert!(matches!(evaluate(&cfg, PolicyGateAction::Deploy, Some(0.5)), PolicyGateDecision::Block(_)));
-    assert!(matches!(evaluate(&cfg, PolicyGateAction::Apply, Some(0.5)), PolicyGateDecision::Block(_)));
-    assert!(matches!(evaluate(&cfg, PolicyGateAction::Merge, Some(0.5)), PolicyGateDecision::Block(_)));
+    assert!(matches!(
+        evaluate(&cfg, PolicyGateAction::Deploy, Some(0.5)),
+        PolicyGateDecision::Block(_)
+    ));
+    assert!(matches!(
+        evaluate(&cfg, PolicyGateAction::Apply, Some(0.5)),
+        PolicyGateDecision::Block(_)
+    ));
+    assert!(matches!(
+        evaluate(&cfg, PolicyGateAction::Merge, Some(0.5)),
+        PolicyGateDecision::Block(_)
+    ));
 
     // Above threshold always allows
     let cfg = PolicyGateConfig {
@@ -367,10 +448,16 @@ fn evaluate_edge_cases() {
         mode: PolicyGateMode::Strict,
         actions: vec![PolicyGateAction::Deploy],
     };
-    assert_eq!(evaluate(&cfg, PolicyGateAction::Deploy, Some(0.95)), PolicyGateDecision::Allow);
+    assert_eq!(
+        evaluate(&cfg, PolicyGateAction::Deploy, Some(0.95)),
+        PolicyGateDecision::Allow
+    );
 
     // Exact threshold allows
-    assert_eq!(evaluate(&cfg, PolicyGateAction::Deploy, Some(0.8)), PolicyGateDecision::Allow);
+    assert_eq!(
+        evaluate(&cfg, PolicyGateAction::Deploy, Some(0.8)),
+        PolicyGateDecision::Allow
+    );
 
     // Ungated action always allows even with low score
     let cfg = PolicyGateConfig {
@@ -379,17 +466,32 @@ fn evaluate_edge_cases() {
         mode: PolicyGateMode::Strict,
         actions: vec![PolicyGateAction::Merge],
     };
-    assert_eq!(evaluate(&cfg, PolicyGateAction::Deploy, Some(0.1)), PolicyGateDecision::Allow);
+    assert_eq!(
+        evaluate(&cfg, PolicyGateAction::Deploy, Some(0.1)),
+        PolicyGateDecision::Allow
+    );
 }
 
 #[test]
 fn policy_gate_mode_parse() {
-    assert_eq!(PolicyGateMode::parse("strict"), Some(PolicyGateMode::Strict));
-    assert_eq!(PolicyGateMode::parse("Strict"), Some(PolicyGateMode::Strict));
-    assert_eq!(PolicyGateMode::parse("STRICT"), Some(PolicyGateMode::Strict));
+    assert_eq!(
+        PolicyGateMode::parse("strict"),
+        Some(PolicyGateMode::Strict)
+    );
+    assert_eq!(
+        PolicyGateMode::parse("Strict"),
+        Some(PolicyGateMode::Strict)
+    );
+    assert_eq!(
+        PolicyGateMode::parse("STRICT"),
+        Some(PolicyGateMode::Strict)
+    );
     assert_eq!(PolicyGateMode::parse("soft"), Some(PolicyGateMode::Soft));
     assert_eq!(PolicyGateMode::parse("Soft"), Some(PolicyGateMode::Soft));
-    assert_eq!(PolicyGateMode::parse("  strict  "), Some(PolicyGateMode::Strict));
+    assert_eq!(
+        PolicyGateMode::parse("  strict  "),
+        Some(PolicyGateMode::Strict)
+    );
     assert_eq!(PolicyGateMode::parse("unknown"), None);
     assert_eq!(PolicyGateMode::parse(""), None);
 }

@@ -7,8 +7,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::services::textarea::TextArea;
 use crate::services::Toast;
+use crate::services::textarea::TextArea;
 use crate::types::*;
 use vac_shell::ShellCommand;
 

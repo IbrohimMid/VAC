@@ -101,7 +101,10 @@ mod tests {
 
         assert!(redacted.contains("[REDACTED]"), "secret must be redacted");
         assert!(redacted.contains("[PATH]"), "path must be redacted");
-        assert!(!redacted.contains("sk-abc12345678901234567"), "raw secret must not appear");
+        assert!(
+            !redacted.contains("sk-abc12345678901234567"),
+            "raw secret must not appear"
+        );
     }
 
     #[test]
@@ -115,14 +118,21 @@ mod tests {
             redacted.contains("https://api.example.com/v1/resource"),
             "URL must be preserved: got {redacted}"
         );
-        assert!(!redacted.contains("/home/alice/app.log"), "raw path must not appear");
+        assert!(
+            !redacted.contains("/home/alice/app.log"),
+            "raw path must not appear"
+        );
     }
 
     #[test]
     fn does_not_strip_when_strip_paths_false() {
         let engine = RedactionEngine::new(false, &[]);
         let input = "/home/alice/app.log";
-        assert_eq!(engine.redact_string(input), input, "paths must not be touched");
+        assert_eq!(
+            engine.redact_string(input),
+            input,
+            "paths must not be touched"
+        );
     }
 
     #[test]

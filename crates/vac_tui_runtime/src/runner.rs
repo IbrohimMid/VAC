@@ -4,13 +4,13 @@ use anyhow::Result;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tokio::sync::{mpsc, Mutex};
-use vac_core::engine::VacEngine;
+use tokio::sync::{Mutex, mpsc};
 use vac_core::RuntimeUpdate;
+use vac_core::engine::VacEngine;
 
 use super::{
-    run_tui, FunctionCall, InputEvent, LoadingOperation, OutputEvent, ToolCall, ToolCallResult,
-    ToolCallResultStatus,
+    FunctionCall, InputEvent, LoadingOperation, OutputEvent, ToolCall, ToolCallResult,
+    ToolCallResultStatus, run_tui,
 };
 
 /// Shared handle to the active task's update channel for structured approval routing.
@@ -552,11 +552,7 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                             let profile =
                                 vac_core::detector::VilProjectProfile::detect(&project_root);
                             let s = profile.archetype.to_string();
-                            if s == "Unknown" {
-                                None
-                            } else {
-                                Some(s)
-                            }
+                            if s == "Unknown" { None } else { Some(s) }
                         };
                         let resolved = vac_core::rulebook::ResolvedRuleContext::build(
                             filtered,
@@ -873,8 +869,10 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                             .map(|s| {
                                 let id_str = s.id.to_string();
                                 let checkpoint_dir = std::path::Path::new(".vac/checkpoints");
-                                let has_checkpoint =
-                                    vac_session_control::has_checkpoint(&runtime_project_root, s.id);
+                                let has_checkpoint = vac_session_control::has_checkpoint(
+                                    &runtime_project_root,
+                                    s.id,
+                                );
                                 // Collect checkpoint files for this session (sorted newest first)
                                 let checkpoints: Vec<String> = if checkpoint_dir.exists() {
                                     let mut files: Vec<_> = std::fs::read_dir(checkpoint_dir)
@@ -1151,11 +1149,7 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
 
     let corpus_root = if let Ok(env_root) = std::env::var("VIL_KNOWLEDGE_ROOT") {
         let p = std::path::PathBuf::from(env_root);
-        if p.exists() {
-            Some(p)
-        } else {
-            None
-        }
+        if p.exists() { Some(p) } else { None }
     } else {
         let config_path = project_root.join(".vac/config.toml");
         read_toml_str(&config_path, &["knowledge", "root"])

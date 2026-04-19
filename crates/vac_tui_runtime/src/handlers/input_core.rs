@@ -1,8 +1,8 @@
 use crate::app::{AppState, InputEvent, OutputEvent};
+use crate::handlers::HandlerContext;
 use crate::handlers::input_commands::{dispatch_builtin_command, handle_paste_tray_key};
 use crate::handlers::input_editor::{message_at_row, plan_open_editor, plan_write_status};
 use crate::handlers::input_popup;
-use crate::handlers::HandlerContext;
 use crate::handlers::{
     approval, changeset as changeset_handler, file_search, model_switcher, profile_switcher,
     review as review_handler, rulebook_switcher, shell as shell_handler,
@@ -548,8 +548,8 @@ pub fn handle_input_event(
         }
         InputEvent::HandlePaste(text) => {
             use crate::services::clipboard_paste::{
-                extract_file_paths_from_text, is_long_paste, make_paste_id, text_placeholder,
-                PastedItem, PastedKind,
+                PastedItem, PastedKind, extract_file_paths_from_text, is_long_paste, make_paste_id,
+                text_placeholder,
             };
             // First try to extract file paths
             let paths = extract_file_paths_from_text(&text);
@@ -605,7 +605,7 @@ pub fn handle_input_event(
                                 state.input.insert_str("[image too large, max 10MB] ");
                             } else {
                                 use crate::services::clipboard_paste::{
-                                    image_placeholder, make_paste_id, PastedItem, PastedKind,
+                                    PastedItem, PastedKind, image_placeholder, make_paste_id,
                                 };
                                 use base64::Engine as _;
                                 let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);

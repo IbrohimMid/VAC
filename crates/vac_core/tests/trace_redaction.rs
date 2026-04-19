@@ -7,12 +7,23 @@ fn trace_containing_secrets_exports_zero_raw_secrets() {
     let secrets_and_values: &[(&str, &str)] = &[
         // (full line, value that must be redacted)
         ("AWS key: AKIAIOSFODNN7EXAMPLE", "AKIAIOSFODNN7EXAMPLE"),
-        ("token: sk_test_1234567890abcdefghij", "sk_test_1234567890abcdefghij"),
-        ("Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U",
-         "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"),
-        ("ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef12", "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef12"),
+        (
+            "token: sk_test_1234567890abcdefghij",
+            "sk_test_1234567890abcdefghij",
+        ),
+        (
+            "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U",
+            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9",
+        ),
+        (
+            "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef12",
+            "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef12",
+        ),
         ("glpat-xxxxxxxxxxxxxxxxxxxx", "glpat-xxxxxxxxxxxxxxxxxxxx"),
-        ("sk-ant-api03-1234567890abcdefghijklmnopqrstuvwxyz", "sk-ant-api03-1234567890abcdefghijklmnopqrstuvwxyz"),
+        (
+            "sk-ant-api03-1234567890abcdefghijklmnopqrstuvwxyz",
+            "sk-ant-api03-1234567890abcdefghijklmnopqrstuvwxyz",
+        ),
         ("Server IP: 192.168.1.100", "192.168.1.100"),
     ];
 

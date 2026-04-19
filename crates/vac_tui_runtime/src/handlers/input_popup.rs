@@ -19,8 +19,8 @@
 //! 16. review (workbench-focused review pane)
 
 use crate::app::{AppState, InputEvent, OutputEvent};
-use crate::handlers::input_commands::{dispatch_builtin_command, execute_shortcuts_command};
 use crate::handlers::HandlerContext;
+use crate::handlers::input_commands::{dispatch_builtin_command, execute_shortcuts_command};
 use crate::handlers::{
     approval, changeset as changeset_handler, file_search, isolation_switcher, message_action,
     model_switcher, profile_switcher, review as review_handler, rulebook_switcher,

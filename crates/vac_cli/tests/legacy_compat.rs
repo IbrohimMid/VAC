@@ -4,8 +4,8 @@ use std::path::Path;
 
 #[test]
 fn legacy_v0_session_loads_and_upgrades() {
-    let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures/legacy/v0_session.json");
+    let fixture =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/legacy/v0_session.json");
     let content = std::fs::read_to_string(&fixture).unwrap();
     let session: vac_core::Session = serde_json::from_str(&content).unwrap();
 
@@ -21,8 +21,7 @@ fn legacy_v0_session_loads_and_upgrades() {
 
 #[test]
 fn legacy_v0_queue_loads_and_upgrades() {
-    let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures/legacy/v0_queue.json");
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/legacy/v0_queue.json");
     let content = std::fs::read_to_string(&fixture).unwrap();
     let jobs: Vec<vac_runtime::Job> = serde_json::from_str(&content).unwrap();
 

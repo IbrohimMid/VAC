@@ -21,8 +21,7 @@ struct Patterns {
 fn patterns() -> &'static Patterns {
     static P: OnceLock<Patterns> = OnceLock::new();
     P.get_or_init(|| Patterns {
-        aws_key: Regex::new(r"AKIA[0-9A-Z]{16}")
-            .expect("privacy: failed to compile aws_key regex"),
+        aws_key: Regex::new(r"AKIA[0-9A-Z]{16}").expect("privacy: failed to compile aws_key regex"),
         api_key: Regex::new(r"sk-[A-Za-z0-9]{20,}")
             .expect("privacy: failed to compile api_key regex"),
         bearer: Regex::new(r"(?i)Bearer\s+([A-Za-z0-9\-._~+/]+=*)")
@@ -31,8 +30,10 @@ fn patterns() -> &'static Patterns {
             r"\b(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\b",
         )
         .expect("privacy: failed to compile ip regex"),
-        aws_account: Regex::new(r"(?i)(?:account[-_]?id|aws[-_]account|arn:aws:iam::)\D{0,10}(?P<id>\d{12})")
-            .expect("privacy: failed to compile aws_account regex"),
+        aws_account: Regex::new(
+            r"(?i)(?:account[-_]?id|aws[-_]account|arn:aws:iam::)\D{0,10}(?P<id>\d{12})",
+        )
+        .expect("privacy: failed to compile aws_account regex"),
     })
 }
 

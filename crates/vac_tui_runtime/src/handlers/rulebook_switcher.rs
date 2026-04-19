@@ -6,26 +6,31 @@ use crate::app::events::OutputEvent;
 /// Open rulebook switcher popup.
 pub fn open(ctx: &mut HandlerContext) -> HandlerResult {
     // Load available rulebooks on open
-    let config = vac_core::VacConfig::load_with_fallback(&ctx.state.project_root).unwrap_or_default();
+    let config =
+        vac_core::VacConfig::load_with_fallback(&ctx.state.project_root).unwrap_or_default();
     let books = vac_core::rulebook::RulebookLoader::load_all(
         &ctx.state.project_root,
         &config.rulebook.paths,
     );
-    ctx.state.available_rulebooks = books.into_iter().map(|b| crate::types::ListRuleBook {
-        id: b.id.clone(),
-        name: b.name.unwrap_or_else(|| b.id.clone()),
-        description: None,
-        tags: vec![],
-    }).collect();
+    ctx.state.available_rulebooks = books
+        .into_iter()
+        .map(|b| crate::types::ListRuleBook {
+            id: b.id.clone(),
+            name: b.name.unwrap_or_else(|| b.id.clone()),
+            description: None,
+            tags: vec![],
+        })
+        .collect();
 
     ctx.state.show_rulebook_switcher = true;
     ctx.state.rulebook_search_input.clear();
     let filtered = ctx.state.rulebook_switcher_filtered();
-    ctx.state.rulebook_switcher_selected = if let Some(active) = ctx.state.selected_rulebooks.iter().next() {
-        filtered.iter().position(|r| &r.id == active).unwrap_or(0)
-    } else {
-        0
-    };
+    ctx.state.rulebook_switcher_selected =
+        if let Some(active) = ctx.state.selected_rulebooks.iter().next() {
+            filtered.iter().position(|r| &r.id == active).unwrap_or(0)
+        } else {
+            0
+        };
     Ok(())
 }
 

@@ -98,8 +98,7 @@ impl EpisodicMemory {
             .map_err(|e| MemoryError::Storage(e.to_string()))?;
 
         // Count how many query terms each candidate episode matches.
-        let mut scores: std::collections::HashMap<String, usize> =
-            std::collections::HashMap::new();
+        let mut scores: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
 
         {
             let index = tx
@@ -122,10 +121,8 @@ impl EpisodicMemory {
         // Pick top-`limit` candidates by score via a max-heap.
         // Each element: (score, id) — Ord on tuples is lexicographic, so higher
         // score wins.
-        let mut heap: BinaryHeap<(usize, String)> = scores
-            .into_iter()
-            .map(|(id, score)| (score, id))
-            .collect();
+        let mut heap: BinaryHeap<(usize, String)> =
+            scores.into_iter().map(|(id, score)| (score, id)).collect();
 
         let episodes_table = tx
             .open_table(EPISODES_TABLE)
@@ -205,7 +202,9 @@ mod tests {
     #[tokio::test]
     async fn retrieve_respects_limit() {
         let dir = tempfile::tempdir().unwrap();
-        let mem = EpisodicMemory::new(&dir.path().join("ep.db")).await.unwrap();
+        let mem = EpisodicMemory::new(&dir.path().join("ep.db"))
+            .await
+            .unwrap();
         for i in 0..10 {
             mem.store_episode(make_entry(&format!("e{i}"), "rust memory test"))
                 .await

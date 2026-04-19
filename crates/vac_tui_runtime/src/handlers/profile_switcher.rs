@@ -15,7 +15,10 @@ pub fn open(ctx: &mut HandlerContext) -> HandlerResult {
     ctx.state.show_profile_switcher = true;
     ctx.state.profile_search_input.clear();
     let filtered = ctx.state.profile_switcher_filtered();
-    ctx.state.profile_switcher_selected = filtered.iter().position(|p| p == &ctx.state.active_profile).unwrap_or(0);
+    ctx.state.profile_switcher_selected = filtered
+        .iter()
+        .position(|p| p == &ctx.state.active_profile)
+        .unwrap_or(0);
     Ok(())
 }
 

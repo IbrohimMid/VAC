@@ -1,4 +1,8 @@
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::field_reassign_with_default)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::field_reassign_with_default
+)]
 
 //! Integration tests for TUI state flow.
 
@@ -12,7 +16,7 @@ use uuid::Uuid;
 use vac_tui_runtime::{
     app::ShortcutsPopupMode,
     app::{AppState, AppStateOptions, InputEvent, OutputEvent, PendingUserMessage, SessionInfo},
-    handlers::{input_core, profile_switcher, rulebook_switcher, HandlerContext},
+    handlers::{HandlerContext, input_core, profile_switcher, rulebook_switcher},
     services::{
         commands::{CommandAction, CommandSurface},
         helper_block, shortcuts_popup,
@@ -338,22 +342,28 @@ async fn sessions_tab_cleans_selected_session_artifacts_and_refreshes() {
     let (tx, mut rx) = mpsc::channel(8);
     input_core::handle_input_event(&mut state, &tx, InputEvent::InputChanged('d'));
 
-    assert!(!root
-        .join(".vac/sessions")
-        .join(format!("{session_id_str}.snapshot.json"))
-        .exists());
-    assert!(!root
-        .join(".vac/checkpoints")
-        .join(format!("{session_id_str}_state.json"))
-        .exists());
+    assert!(
+        !root
+            .join(".vac/sessions")
+            .join(format!("{session_id_str}.snapshot.json"))
+            .exists()
+    );
+    assert!(
+        !root
+            .join(".vac/checkpoints")
+            .join(format!("{session_id_str}_state.json"))
+            .exists()
+    );
     assert!(!root.join(".vac/approvals").join("approval.json").exists());
 
     match rx.try_recv().unwrap() {
         OutputEvent::ListSessions => {}
         other => panic!("unexpected output event: {other:?}"),
     }
-    assert!(state
-        .toasts
-        .iter()
-        .any(|toast| toast.message.contains("Cleaned session artifacts")));
+    assert!(
+        state
+            .toasts
+            .iter()
+            .any(|toast| toast.message.contains("Cleaned session artifacts"))
+    );
 }

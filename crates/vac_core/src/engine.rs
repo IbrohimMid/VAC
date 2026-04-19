@@ -1,15 +1,15 @@
 //! VacEngine — the main entry point for all VAC operations.
 
-use vac_approvals::{ActiveApprovalRegistry, ApprovalHandle, ApprovalStore};
 use crate::{
+    ApprovalState,
     config::VacConfig,
     error::{VacError, VacResult},
     session::Session,
     spawn_subtask_tool::SpawnSubtaskTool,
     task::{Task, TaskResult, TaskStatus},
-    ApprovalState,
 };
 use serde::{Deserialize, Serialize};
+use vac_approvals::{ActiveApprovalRegistry, ApprovalHandle, ApprovalStore};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum TaskNodeStatus {
@@ -176,19 +176,13 @@ impl VacEngine {
                         | crate::task::TaskStatus::Executing
                         | crate::task::TaskStatus::Validating => TaskNodeStatus::Running,
                         crate::task::TaskStatus::Completed => TaskNodeStatus::Completed,
-                        crate::task::TaskStatus::Failed(msg) => {
-                            TaskNodeStatus::Failed(msg.clone())
-                        }
+                        crate::task::TaskStatus::Failed(msg) => TaskNodeStatus::Failed(msg.clone()),
                         crate::task::TaskStatus::Cancelled => {
                             TaskNodeStatus::Failed("cancelled".to_string())
                         }
                     },
                     retry_count: 0,
-                    dependencies: task
-                        .parent_task
-                        .iter()
-                        .map(|p| p.0.to_string())
-                        .collect(),
+                    dependencies: task.parent_task.iter().map(|p| p.0.to_string()).collect(),
                     blockers: inspector
                         .blockers
                         .get(&task.id.0)

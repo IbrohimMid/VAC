@@ -258,13 +258,20 @@ impl SandboxRegistry {
             if let Some(parent) = dest.parent() {
                 let _ = std::fs::create_dir_all(parent);
             }
-            
+
             // Path traversal check
             let resolved = dest.canonicalize().unwrap_or_else(|_| dest.clone());
-            let canonical_working_dir = h.working_dir.canonicalize().unwrap_or_else(|_| h.working_dir.clone());
-            
+            let canonical_working_dir = h
+                .working_dir
+                .canonicalize()
+                .unwrap_or_else(|_| h.working_dir.clone());
+
             let normalized_rel = std::path::Component::ParentDir;
-            if Path::new(&rel_path).components().any(|c| c == normalized_rel) || !resolved.starts_with(&canonical_working_dir) {
+            if Path::new(&rel_path)
+                .components()
+                .any(|c| c == normalized_rel)
+                || !resolved.starts_with(&canonical_working_dir)
+            {
                 return Err(format!("path traversal attempt: {}", rel_path));
             }
 
@@ -402,7 +409,7 @@ mod tests {
         let patch = registry.build_patch(handle.id).await.unwrap();
         assert!(patch.modified_files.contains(&"test.txt".to_string()));
         assert!(patch.patch_summary.contains("+line3"));
-        
+
         std::fs::remove_file(&working_file).ok();
     }
 
@@ -422,7 +429,7 @@ mod tests {
         assert!(patch.modified_files.contains(&"test2.txt".to_string()));
         assert!(patch.patch_summary.contains("-line2"));
         assert!(patch.patch_summary.contains("-line3"));
-        
+
         std::fs::remove_file(&working_file).ok();
     }
 }

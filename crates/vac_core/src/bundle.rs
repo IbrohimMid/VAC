@@ -1,4 +1,3 @@
-use vac_approvals::{ApprovalRecord, ApprovalState, ApprovalStore};
 use crate::error::{VacError, VacResult};
 use crate::session::{Session, SessionMetadata};
 use base64::Engine as _;
@@ -9,6 +8,7 @@ use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
+use vac_approvals::{ApprovalRecord, ApprovalState, ApprovalStore};
 use vil_llm::provider::Message;
 
 const CURRENT_BUNDLE_SCHEMA_VERSION: &str = "0.1.0";

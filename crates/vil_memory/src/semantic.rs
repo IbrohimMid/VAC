@@ -11,8 +11,7 @@ const FACTS_TABLE: TableDefinition<&str, &str> = TableDefinition::new("facts");
 /// Inverted index: term → set of fact ids.  Uses MultimapTable so multiple
 /// facts sharing a term are all preserved (single-value TableDefinition would
 /// overwrite on each insert — the original bug).
-const INDEX_TABLE: MultimapTableDefinition<&str, &str> =
-    MultimapTableDefinition::new("fact_index");
+const INDEX_TABLE: MultimapTableDefinition<&str, &str> = MultimapTableDefinition::new("fact_index");
 
 pub struct SemanticMemory {
     db: Arc<RwLock<Database>>,
@@ -102,8 +101,7 @@ impl SemanticMemory {
             .map_err(|e| MemoryError::Storage(e.to_string()))?;
 
         // Count matching terms per candidate fact.
-        let mut scores: std::collections::HashMap<String, usize> =
-            std::collections::HashMap::new();
+        let mut scores: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
 
         {
             let index = tx
@@ -124,10 +122,8 @@ impl SemanticMemory {
         }
 
         // Top-`limit` by score.
-        let mut heap: BinaryHeap<(usize, String)> = scores
-            .into_iter()
-            .map(|(id, score)| (score, id))
-            .collect();
+        let mut heap: BinaryHeap<(usize, String)> =
+            scores.into_iter().map(|(id, score)| (score, id)).collect();
 
         let facts_table = tx
             .open_table(FACTS_TABLE)
@@ -184,7 +180,9 @@ mod tests {
     #[tokio::test]
     async fn two_facts_with_shared_term_both_retrievable() {
         let dir = tempfile::tempdir().unwrap();
-        let mem = SemanticMemory::new(&dir.path().join("mem.db")).await.unwrap();
+        let mem = SemanticMemory::new(&dir.path().join("mem.db"))
+            .await
+            .unwrap();
 
         mem.store_fact(make_entry("f1", "rust lifetime annotation"))
             .await
@@ -221,7 +219,9 @@ mod tests {
     #[tokio::test]
     async fn limit_truncates_results() {
         let dir = tempfile::tempdir().unwrap();
-        let mem = SemanticMemory::new(&dir.path().join("mem.db")).await.unwrap();
+        let mem = SemanticMemory::new(&dir.path().join("mem.db"))
+            .await
+            .unwrap();
         for i in 0..10 {
             mem.store_fact(make_entry(&format!("f{i}"), "rust memory management"))
                 .await

@@ -215,7 +215,9 @@ impl SwarmOrchestrator {
             privacy_vault,
             pending_images: vec![],
             active_profile: std::env::var("VAC_PROFILE").ok(),
-            loop_controller: crate::loop_control::LoopController::new(crate::loop_control::LoopConfig::default()),
+            loop_controller: crate::loop_control::LoopController::new(
+                crate::loop_control::LoopConfig::default(),
+            ),
         };
 
         let roles = [
@@ -1377,8 +1379,11 @@ mod tests {
         state.iterations = 1;
         let transitions = begin_reasoning_iteration(&mut state).unwrap();
         for t in &transitions {
-            assert_ne!(t.to, ReasoningPhase::Retry,
-                "first iteration must not transition to Retry");
+            assert_ne!(
+                t.to,
+                ReasoningPhase::Retry,
+                "first iteration must not transition to Retry"
+            );
         }
         assert_ne!(state.reasoning.phase, ReasoningPhase::Retry);
         assert_eq!(state.reasoning.phase, ReasoningPhase::Attempt);

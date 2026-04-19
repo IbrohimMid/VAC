@@ -4,7 +4,6 @@
 //! Complements the full-screen changeset workstation (`show_changeset`).
 
 use crate::app::AppState;
-use vac_changeset::FileState;
 use crate::services::detect_term::ThemeColors;
 use ratatui::{
     Frame,
@@ -13,6 +12,7 @@ use ratatui::{
     text::{Line, Span, Text},
     widgets::{Block, Borders, Clear, Paragraph},
 };
+use vac_changeset::FileState;
 
 pub fn filtered_paths(state: &AppState) -> Vec<String> {
     let query = state.file_changes_search.to_lowercase();

@@ -9,7 +9,7 @@ use crate::executor::{EnvironmentMode, OperatingMode, TaskExecutor};
 use crate::jobs::{Job, JobKind, JobStatus};
 use crate::queue::TaskQueue;
 use crate::scheduler::{AutopilotEvent, AutopilotState, AutopilotStateFile};
-use vac_approvals::{ApprovalStore, ApprovalIntent, ApprovalState};
+use vac_approvals::{ApprovalIntent, ApprovalState, ApprovalStore};
 
 pub struct AutopilotController {
     project_root: PathBuf,
@@ -364,7 +364,8 @@ impl AutopilotController {
                                             .await
                                     };
 
-                                    if let Err(e) = res as Result<(), vac_approvals::ApprovalError> {
+                                    if let Err(e) = res as Result<(), vac_approvals::ApprovalError>
+                                    {
                                         let store = store.clone();
                                         let id = tool_call_id.clone();
                                         let _ = tokio::task::spawn_blocking(move || {

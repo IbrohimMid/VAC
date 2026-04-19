@@ -1,4 +1,3 @@
-
 use crate::app::{AppState, InputEvent, OutputEvent};
 use tokio::sync::mpsc::Sender;
 
@@ -53,7 +52,9 @@ pub fn flush_pending_user_messages_if_idle(
             state.queue_metrics.flush_retries = 0;
             state.queue_metrics.last_flush_error = None;
 
-            if let Err(e) = input_tx.try_send(InputEvent::AddUserMessage(merged.user_message_text.clone())) {
+            if let Err(e) =
+                input_tx.try_send(InputEvent::AddUserMessage(merged.user_message_text.clone()))
+            {
                 log::warn!("Failed to send AddUserMessage event: {}", e);
                 state.add_user_message(merged.user_message_text);
             }
@@ -396,8 +397,8 @@ pub fn handle_backend_event(
             state.push_activity(crate::app::ActivityKind::Status, "Task cancelled");
         }
         InputEvent::ShowBanner(text, style, severity) => {
-            let msg = crate::services::banner::BannerMessage::new(text, style)
-                .with_severity(severity);
+            let msg =
+                crate::services::banner::BannerMessage::new(text, style).with_severity(severity);
             state.banner_queue.push(msg);
             state.banner_message = state.banner_queue.current().cloned();
         }
@@ -436,10 +437,7 @@ pub fn handle_backend_event(
             if state.runtime.selected_idx >= state.runtime.jobs.len() {
                 state.runtime.selected_idx = state.runtime.jobs.len().saturating_sub(1);
             }
-            state.push_activity(
-                crate::app::ActivityKind::Status,
-                "Runtime jobs updated",
-            );
+            state.push_activity(crate::app::ActivityKind::Status, "Runtime jobs updated");
         }
         InputEvent::SetRuntimeState(snapshot) => {
             // Detect significant state changes for activity logging
@@ -564,10 +562,8 @@ pub fn handle_backend_event(
                     session.output = session.output[safe_idx..].to_string();
                 }
 
-                session.prompt_ready =
-                    vac_shell::detect_prompt_ready(&session.output);
-                session.password_mode =
-                    vac_shell::detect_password_prompt(&text);
+                session.prompt_ready = vac_shell::detect_prompt_ready(&session.output);
+                session.password_mode = vac_shell::detect_password_prompt(&text);
                 session.lifecycle = if session.prompt_ready {
                     vac_shell::ShellLifecycle::PromptReady
                 } else {
@@ -600,8 +596,7 @@ pub fn handle_backend_event(
                 }
 
                 session.last_error = Some(text.clone());
-                session.lifecycle =
-                    vac_shell::ShellLifecycle::Error(text.clone());
+                session.lifecycle = vac_shell::ShellLifecycle::Error(text.clone());
             }
             state.push_activity(
                 crate::app::ActivityKind::Shell,
@@ -963,4 +958,3 @@ pub fn handle_backend_event(
         _ => {}
     }
 }
-

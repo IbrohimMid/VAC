@@ -9,7 +9,10 @@ pub fn open(ctx: &mut HandlerContext) -> HandlerResult {
     ctx.state.model_switcher_filter.clear();
     let filtered = ctx.state.model_switcher_filtered();
     ctx.state.model_switcher_selected_idx = if let Some(current) = &ctx.state.current_model {
-        filtered.iter().position(|m| m.id == current.id).unwrap_or(0)
+        filtered
+            .iter()
+            .position(|m| m.id == current.id)
+            .unwrap_or(0)
     } else {
         0
     };

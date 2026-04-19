@@ -64,9 +64,7 @@ fn dispatch_action(ctx: &mut HandlerContext, action: MessageAction) {
                         }
                     }
                     if !code.is_empty() {
-                        if let Err(e) =
-                            crate::services::clipboard_paste::copy_to_clipboard(&code)
-                        {
+                        if let Err(e) = crate::services::clipboard_paste::copy_to_clipboard(&code) {
                             log::warn!("Failed to copy code: {}", e);
                         }
                     }

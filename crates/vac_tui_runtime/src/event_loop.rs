@@ -1,5 +1,6 @@
 //! Event Loop Module
 
+use crate::Model;
 use crate::app::{
     AppState, AppStateOptions, InputEvent, OutputEvent, SidePanelSection, WorkbenchTab,
     WorkspaceFocus,
@@ -8,16 +9,15 @@ use crate::event::map_crossterm_event_to_input_event;
 use crate::services::helper_block::welcome_messages;
 use crate::terminal::TerminalGuard;
 use crate::view::view;
-use crate::Model;
 use crossterm::{
     event::{EnableBracketedPaste, EnableMouseCapture},
     execute,
-    terminal::{enable_raw_mode, EnterAlternateScreen},
+    terminal::{EnterAlternateScreen, enable_raw_mode},
 };
-use ratatui::{backend::CrosstermBackend, Terminal};
+use ratatui::{Terminal, backend::CrosstermBackend};
 use std::io;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::time::interval;
@@ -572,9 +572,11 @@ mod tests {
         assert_eq!(restored.focus, WorkspaceFocus::Workbench);
         assert_eq!(restored.workbench_tab, WorkbenchTab::Runtime);
         assert_eq!(restored.sessions_selected_idx, 3);
-        assert!(restored
-            .side_panel_section_collapsed
-            .contains(&SidePanelSection::Runtime));
+        assert!(
+            restored
+                .side_panel_section_collapsed
+                .contains(&SidePanelSection::Runtime)
+        );
         assert_eq!(restored.total_session_usage.total_tokens, 0);
         assert_eq!(restored.startup.provider_status, "initializing");
         assert_eq!(
@@ -1427,7 +1429,7 @@ mod tests {
         let active = state.changeset_store.active_entries().len();
         // All three surfaces must read the same count
         assert_eq!(active, 2); // x.rs + y.rs; z.rs is reverted
-                               // review_filtered_paths also driven by active_entries
+        // review_filtered_paths also driven by active_entries
         state.review_sync_items();
         assert_eq!(state.review_filtered_paths().len(), 2);
     }

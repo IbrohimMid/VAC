@@ -16,7 +16,9 @@ pub fn filter_helpers_sync(state: &mut AppState) {
     let query = input.trim_start_matches('/');
     if query.is_empty() {
         // Sort by recency/frequency when query is empty
-        let mut cmds: Vec<_> = state.commands.iter()
+        let mut cmds: Vec<_> = state
+            .commands
+            .iter()
             .filter(|c| c.surface != crate::services::commands::CommandSurface::Hidden)
             .cloned()
             .collect();

@@ -35,8 +35,17 @@ pub fn redact_secrets(text: &str) -> String {
 fn is_sensitive_key(k: &str) -> bool {
     matches!(
         k,
-        "api_key" | "apikey" | "secret" | "password" | "token" | "authorization"
-            | "auth" | "credential" | "private_key" | "access_key" | "secret_key"
+        "api_key"
+            | "apikey"
+            | "secret"
+            | "password"
+            | "token"
+            | "authorization"
+            | "auth"
+            | "credential"
+            | "private_key"
+            | "access_key"
+            | "secret_key"
             | "signing_key"
     )
 }

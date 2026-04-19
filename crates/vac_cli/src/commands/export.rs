@@ -72,13 +72,17 @@ pub async fn execute(
             let signing_key: Option<&vac_trace::vac_format::SigningKeyPair> = if sign {
                 let key_path = dirs::home_dir()
                     .map(|h| h.join(".vac/keys/default.key"))
-                    .ok_or_else(|| anyhow::anyhow!("Cannot determine home directory for signing key lookup"))?;
-                keypair_storage = vac_trace::vac_format::SigningKeyPair::load(&key_path)
-                    .map_err(|e| anyhow::anyhow!(
-                        "Signing requested but no key found at {}: {e}\n\
+                    .ok_or_else(|| {
+                        anyhow::anyhow!("Cannot determine home directory for signing key lookup")
+                    })?;
+                keypair_storage =
+                    vac_trace::vac_format::SigningKeyPair::load(&key_path).map_err(|e| {
+                        anyhow::anyhow!(
+                            "Signing requested but no key found at {}: {e}\n\
                          Hint: run `vac key generate` to create a default signing key.",
-                        key_path.display()
-                    ))?;
+                            key_path.display()
+                        )
+                    })?;
                 Some(&keypair_storage)
             } else {
                 None

@@ -19,9 +19,6 @@ pub mod spawn_subtask_tool;
 pub mod task;
 
 pub use acp::AcpServer;
-pub use vac_approvals::{
-    ActiveApprovalRegistry, ApprovalHandle, ApprovalRecord, ApprovalState, ApprovalStore,
-};
 pub use auth::{AuthStatus, StoredAuth};
 pub use bundle::{BundleMetadata, VacBundle};
 pub use config::{
@@ -37,3 +34,6 @@ pub use security::{SecretDetector, SecretSubstitution};
 pub use session::Session;
 pub use spawn_subtask_tool::SpawnSubtaskTool;
 pub use task::{Priority, Task, TaskConstraints, TaskResult, TaskStatus};
+pub use vac_approvals::{
+    ActiveApprovalRegistry, ApprovalHandle, ApprovalRecord, ApprovalState, ApprovalStore,
+};

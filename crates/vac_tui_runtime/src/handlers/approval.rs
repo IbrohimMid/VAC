@@ -215,10 +215,7 @@ mod tests {
         let mut ctx = HandlerContext::new(&mut state, &tx);
 
         assert!(open(&mut ctx).is_ok());
-        assert_eq!(
-            ctx.state.workbench_tab,
-            crate::app::WorkbenchTab::Approvals
-        );
+        assert_eq!(ctx.state.workbench_tab, crate::app::WorkbenchTab::Approvals);
         assert_eq!(ctx.state.focus, crate::app::WorkspaceFocus::Workbench);
     }
 

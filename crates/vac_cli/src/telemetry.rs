@@ -31,10 +31,7 @@ pub fn init(
     // so the user's shell is not left in raw / alternate-screen mode.
     std::panic::set_hook(Box::new(|info| {
         let _ = crossterm::terminal::disable_raw_mode();
-        let _ = crossterm::execute!(
-            std::io::stdout(),
-            crossterm::terminal::LeaveAlternateScreen
-        );
+        let _ = crossterm::execute!(std::io::stdout(), crossterm::terminal::LeaveAlternateScreen);
 
         let payload = if let Some(s) = info.payload().downcast_ref::<&str>() {
             *s
@@ -108,12 +105,10 @@ pub fn init(
     }
 
     if let Some(addr) = metrics_addr {
-        let addr: std::net::SocketAddr = addr
-            .parse()
-            .unwrap_or_else(|_| {
-                #[allow(clippy::expect_used)]
-                "0.0.0.0:9000".parse().expect("hardcoded valid SocketAddr")
-            });
+        let addr: std::net::SocketAddr = addr.parse().unwrap_or_else(|_| {
+            #[allow(clippy::expect_used)]
+            "0.0.0.0:9000".parse().expect("hardcoded valid SocketAddr")
+        });
         metrics_exporter_prometheus::PrometheusBuilder::new()
             .with_http_listener(addr)
             .install()?;

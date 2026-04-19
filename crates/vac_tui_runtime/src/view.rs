@@ -3,11 +3,11 @@
 use crate::app::{ActivityKind, AppState, WorkbenchTab, WorkspaceFocus};
 use crate::services::ToastStyle;
 use ratatui::{
+    Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Tabs, Wrap},
-    Frame,
 };
 
 /// Main view function
@@ -692,7 +692,7 @@ pub(crate) fn paste_tray_rows(n: usize) -> u16 {
 
 fn render_paste_tray(f: &mut Frame, state: &AppState, area: Rect) {
     use crate::services::clipboard_paste::{
-        kind_badge, preview_text, size_label, token_estimate, PastedKind,
+        PastedKind, kind_badge, preview_text, size_label, token_estimate,
     };
 
     // Header line: paste count + reorder-mode hint + clear hint.
@@ -847,11 +847,7 @@ fn render_operator_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
                     "active"
                 }
             } else if let Some(code) = session.exit_code {
-                if code == 0 {
-                    "completed"
-                } else {
-                    "failed"
-                }
+                if code == 0 { "completed" } else { "failed" }
             } else {
                 "idle"
             };
@@ -2232,8 +2228,8 @@ fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
 mod tests {
     use super::*;
     use crate::app::AppStateOptions;
-    use ratatui::backend::TestBackend;
     use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
 
     fn render_to_string(terminal: &Terminal<TestBackend>) -> String {
         let buf = terminal.backend().buffer();

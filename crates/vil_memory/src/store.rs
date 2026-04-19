@@ -152,12 +152,11 @@ impl WorkingMemory {
         if self.entries.len() >= self.capacity {
             // Evict the entry with the lowest importance to make room.
             // Sort ascending so index 0 = lowest importance, then remove it.
-            self.entries
-                .sort_by(|a, b| {
-                    a.importance
-                        .partial_cmp(&b.importance)
-                        .unwrap_or(std::cmp::Ordering::Equal)
-                });
+            self.entries.sort_by(|a, b| {
+                a.importance
+                    .partial_cmp(&b.importance)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
             self.entries.remove(0);
         }
         self.entries.push(entry);

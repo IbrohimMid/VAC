@@ -161,7 +161,9 @@ pub fn migrate_snapshot(mut snapshot: SessionSnapshot) -> Result<SessionSnapshot
         0 => {
             // v0 → v1: add default tui_state and metadata
             if snapshot.metadata.is_empty() {
-                snapshot.metadata.insert("migrated_from".into(), "v0".into());
+                snapshot
+                    .metadata
+                    .insert("migrated_from".into(), "v0".into());
             }
             snapshot.schema_version = 1;
             Ok(snapshot)
