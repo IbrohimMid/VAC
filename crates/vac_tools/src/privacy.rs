@@ -31,7 +31,7 @@ fn patterns() -> &'static Patterns {
             r"\b(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\b",
         )
         .expect("privacy: failed to compile ip regex"),
-        aws_account: Regex::new(r"\b\d{12}\b")
+        aws_account: Regex::new(r"(?i)(?:account[-_]?id|aws[-_]account|arn:aws:iam::)\D{0,10}(?P<id>\d{12})")
             .expect("privacy: failed to compile aws_account regex"),
     })
 }
@@ -85,7 +85,10 @@ impl PrivacyVault {
         out = p
             .aws_account
             .replace_all(&out, |caps: &regex::Captures| {
-                self.alias("AWS_ACCOUNT_ID", &caps[0])
+                let id = caps.name("id").unwrap().as_str();
+                let full_match = caps.get(0).unwrap().as_str();
+                let alias = self.alias("AWS_ACCOUNT_ID", id);
+                full_match.replace(id, &alias)
             })
             .into_owned();
         out =
@@ -205,6 +208,24 @@ mod tests {
         assert!(p.api_key.is_match("sk-abcdefghij1234567890"));
         assert!(p.bearer.is_match("Bearer eyJtoken"));
         assert!(p.ip.is_match("192.168.1.1"));
-        assert!(p.aws_account.is_match("123456789012"));
+        assert!(p.aws_account.is_match("aws_account: 123456789012"));
+    }
+
+    #[test]
+    fn privacy_does_not_redact_phone_number() {
+        let mut vault = PrivacyVault::new();
+        let text = "Phone: +1 123456789012";
+        let sub = vault.substitute(text);
+        assert!(!sub.contains("SECRET_AWS_ACCOUNT_ID_1"));
+        assert!(sub.contains("123456789012"));
+    }
+
+    #[test]
+    fn privacy_redacts_aws_account_id_in_arn_context() {
+        let mut vault = PrivacyVault::new();
+        let text = "arn:aws:iam::123456789012:user/Bob aws_account 123456789012";
+        let sub = vault.substitute(text);
+        assert!(sub.contains("aws_account SECRET_AWS_ACCOUNT_ID_2"));
+        assert!(!sub.contains("aws_account 123456789012"));
     }
 }
