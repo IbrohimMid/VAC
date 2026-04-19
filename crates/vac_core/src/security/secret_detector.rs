@@ -66,6 +66,7 @@ struct PatternRule {
 }
 
 impl PatternRule {
+    #[allow(clippy::unwrap_used)] // Compile-time-constant regexes; panic at init is intentional.
     fn new(kind: DetectionKind, pattern: &str, capture_group: usize) -> Self {
         Self {
             kind,
@@ -224,6 +225,7 @@ pub fn get_detector() -> &'static SecretDetector {
     DETECTOR.get_or_init(SecretDetector::new)
 }
 
+#[allow(clippy::unwrap_used)] // Compile-time-constant regex in OnceLock; panic at init is intentional.
 fn detect_jwt_candidates(text: &str, out: &mut Vec<DetectedSecret>) {
     static JWT_RE: OnceLock<Regex> = OnceLock::new();
     let regex = JWT_RE.get_or_init(|| {
@@ -287,6 +289,7 @@ fn detect_private_key_blocks(text: &str, out: &mut Vec<DetectedSecret>) {
     }
 }
 
+#[allow(clippy::unwrap_used)] // Compile-time-constant regex in OnceLock; panic at init is intentional.
 fn detect_high_entropy_tokens(text: &str, out: &mut Vec<DetectedSecret>) {
     static CANDIDATE_RE: OnceLock<Regex> = OnceLock::new();
     let regex = CANDIDATE_RE.get_or_init(|| Regex::new(r"\b[A-Za-z0-9+/=_-]{20,}\b").unwrap());
@@ -509,6 +512,7 @@ fn pick_best(group: &mut Vec<DetectedSecret>) -> DetectedSecret {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     use base64::engine::general_purpose::URL_SAFE_NO_PAD;

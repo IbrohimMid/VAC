@@ -26,8 +26,16 @@ pub fn init(
     // Choose format
     let registry = tracing_subscriber::registry().with(env_filter);
 
-    // Set up crash hook
+    // Set up crash hook. Under `panic = "abort"` (release profile),
+    // TerminalGuard::drop() will NOT run. Restore terminal state here
+    // so the user's shell is not left in raw / alternate-screen mode.
     std::panic::set_hook(Box::new(|info| {
+        let _ = crossterm::terminal::disable_raw_mode();
+        let _ = crossterm::execute!(
+            std::io::stdout(),
+            crossterm::terminal::LeaveAlternateScreen
+        );
+
         let payload = if let Some(s) = info.payload().downcast_ref::<&str>() {
             *s
         } else if let Some(s) = info.payload().downcast_ref::<String>() {
@@ -102,7 +110,10 @@ pub fn init(
     if let Some(addr) = metrics_addr {
         let addr: std::net::SocketAddr = addr
             .parse()
-            .unwrap_or_else(|_| "0.0.0.0:9000".parse().unwrap());
+            .unwrap_or_else(|_| {
+                #[allow(clippy::expect_used)]
+                "0.0.0.0:9000".parse().expect("hardcoded valid SocketAddr")
+            });
         metrics_exporter_prometheus::PrometheusBuilder::new()
             .with_http_listener(addr)
             .install()?;
@@ -112,6 +123,7 @@ pub fn init(
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 

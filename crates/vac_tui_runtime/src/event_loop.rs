@@ -505,6 +505,7 @@ pub async fn run_tui(
 /// - `J` / `K` (only in reorder mode) — swap with next / prev
 /// - Enter is handled via `InputSubmitted`, not here.
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::{apply_session_snapshot, build_session_snapshot, load_session_snapshot};
     use crate::app::{

@@ -497,6 +497,7 @@ fn is_light_color(color: Color) -> bool {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     use ratatui::style::Style;

@@ -68,6 +68,7 @@ impl AnthropicProvider {
             HeaderValue::from_str(&format!("Bearer {}", self.api_key)).map_err(|e| {
                 LlmError::Provider {
                     provider: "anthropic".to_string(),
+                    status: None,
                     message: format!("Invalid API key: {}", e),
                 }
             })?,
@@ -220,6 +221,7 @@ impl AnthropicProvider {
             error!(status = %status, body = %body, "Kilo Gateway API error");
             return Err(LlmError::Provider {
                 provider: "anthropic".to_string(),
+                status: Some(status.as_u16()),
                 message: format!("API error {}: {}", status, body),
             });
         }
@@ -271,6 +273,7 @@ impl LlmProvider for AnthropicProvider {
             .next()
             .ok_or_else(|| LlmError::Provider {
                 provider: "anthropic".to_string(),
+                status: None,
                 message: "No choices returned by provider".to_string(),
             })?;
 
@@ -351,6 +354,7 @@ impl LlmProvider for AnthropicProvider {
             let body = response.text().await.unwrap_or_default();
             return Err(LlmError::Provider {
                 provider: "anthropic".to_string(),
+                status: Some(status.as_u16()),
                 message: format!("API error {}: {}", status, body),
             });
         }
@@ -610,6 +614,7 @@ struct OpenAiUsage {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     use crate::provider::{LlmRequest, Message};

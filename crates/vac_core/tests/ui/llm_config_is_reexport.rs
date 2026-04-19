@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 use vac_core::config::LlmConfig;
 
 // If LlmConfig is defined in vac_core, this will compile successfully.

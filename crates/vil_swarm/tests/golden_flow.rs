@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 //! Golden flow integration test — end-to-end control-plane validation.
 //!
 //! Tests:
@@ -9,6 +11,7 @@
 //! - File tracking
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use vil_llm::provider::Message;
     use vil_swarm::run_state::{AgentRunState, RunStage};

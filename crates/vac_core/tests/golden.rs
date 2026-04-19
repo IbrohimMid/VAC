@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 //! Golden task suite runner.
 //!
 //! Validates VAC agent behavior against fixture-based regression tests.

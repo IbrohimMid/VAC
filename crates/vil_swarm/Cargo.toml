@@ -35,3 +35,6 @@ tiktoken-rs = { workspace = true }
 proptest = "1.11.0"
 tempfile = "3"
 tokio = { workspace = true, features = ["test-util"] }
+
+[lints]
+workspace = true

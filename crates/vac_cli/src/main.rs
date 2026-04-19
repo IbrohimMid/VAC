@@ -267,7 +267,10 @@ async fn main() -> anyhow::Result<()> {
 
     let project_root = cli
         .project
-        .unwrap_or_else(|| std::env::current_dir().expect("Failed to get current directory"));
+        .unwrap_or_else(|| {
+            #[allow(clippy::expect_used)]
+            std::env::current_dir().expect("Failed to get current directory")
+        });
 
     match cli.command {
         Commands::Doctor {

@@ -34,6 +34,8 @@ impl CheckpointEnvelope {
 pub enum CheckpointError {
     #[error("invalid checkpoint payload: {0}")]
     InvalidPayload(#[from] serde_json::Error),
+    #[error("checkpoint io error: {0}")]
+    Io(#[from] std::io::Error),
     #[error("checkpoint payload is missing version")]
     MissingVersion,
     #[error("unsupported checkpoint version: {0}")]
@@ -98,8 +100,10 @@ pub fn save_checkpoint_to_file(
     envelope: &CheckpointEnvelope,
 ) -> Result<(), CheckpointError> {
     let bytes = serialize_checkpoint(envelope)?;
-    std::fs::write(path, bytes)
-        .map_err(|e| CheckpointError::InvalidPayload(serde_json::Error::io(e)))?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(path, bytes)?;
     Ok(())
 }
 
@@ -107,8 +111,7 @@ pub fn save_checkpoint_to_file(
 pub fn load_checkpoint_from_file(
     path: &std::path::Path,
 ) -> Result<CheckpointEnvelope, CheckpointError> {
-    let bytes = std::fs::read(path)
-        .map_err(|e| CheckpointError::InvalidPayload(serde_json::Error::io(e)))?;
+    let bytes = std::fs::read(path)?;
     deserialize_checkpoint(&bytes)
 }
 
@@ -204,6 +207,7 @@ pub struct SessionInfo {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     use vil_llm::provider::Message;
@@ -288,6 +292,27 @@ mod tests {
         assert!(
             err.to_string()
                 .contains("unsupported checkpoint format: legacy")
+        );
+    }
+
+    #[test]
+    fn save_returns_io_error_on_missing_parent() {
+        let path = std::path::Path::new("/nonexistent_dir_vac_test/session.json");
+        let env = CheckpointEnvelope::new(None, vec![], serde_json::json!({}));
+        let err = save_checkpoint_to_file(path, &env).unwrap_err();
+        assert!(
+            matches!(err, CheckpointError::Io(_)),
+            "expected Io variant, got: {err}"
+        );
+    }
+
+    #[test]
+    fn load_returns_io_error_on_missing_file() {
+        let path = std::path::Path::new("/nonexistent_vac_checkpoint_1234.json");
+        let err = load_checkpoint_from_file(path).unwrap_err();
+        assert!(
+            matches!(err, CheckpointError::Io(_)),
+            "expected Io variant, got: {err}"
         );
     }
 

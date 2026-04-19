@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 use std::sync::Arc;
 use std::{future::Future, pin::Pin};
 

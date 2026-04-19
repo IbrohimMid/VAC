@@ -132,6 +132,7 @@ pub fn resolve_mcp_presets(
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     use std::sync::Mutex;

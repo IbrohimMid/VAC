@@ -11,6 +11,16 @@ env:
   CARGO_TARGET_DIR: ${{ github.workspace }}/target
 
 jobs:
+  layering:
+    name: Architectural layering
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+      - name: Check vil_* -> vac_* layering
+        run: bash scripts/check_layering.sh
+
   build:
     name: Build & Check
     runs-on: ubuntu-latest

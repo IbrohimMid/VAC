@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 //! Tests for vil_validate semantic passes.
 
 use vil_ir::types::{FnParam, IrFunction, IrModule, IrUse, TypeRef, Visibility};

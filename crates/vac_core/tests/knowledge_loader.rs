@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 //! Tests for vil_knowledge corpus loader and fallback behavior.
 
 use std::fs;

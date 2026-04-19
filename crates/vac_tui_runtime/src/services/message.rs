@@ -83,6 +83,8 @@ pub fn extract_full_command_arguments(tool_call: &ToolCall) -> String {
             let mut results = Vec::new();
             for caps in re.captures_iter(args) {
                 if caps.len() >= 3 {
+                    // Safe: caps.len() >= 3 guarantees groups 1 and 2 exist.
+                    #[allow(clippy::unwrap_used)]
                     results.push(format!(
                         "{} = {}",
                         caps.get(1).unwrap().as_str(),
@@ -147,6 +149,8 @@ pub fn split_content_segments(content: &str) -> Vec<ContentSegment> {
         if !in_block {
             let trimmed = line.trim_start();
             if trimmed.starts_with("```") {
+                // Safe: starts_with("```") guard above guarantees strip_prefix succeeds.
+                #[allow(clippy::unwrap_used)]
                 let fence = trimmed.strip_prefix("```").unwrap();
                 if !current_text.is_empty() {
                     segments.push(ContentSegment::Text(std::mem::take(&mut current_text)));

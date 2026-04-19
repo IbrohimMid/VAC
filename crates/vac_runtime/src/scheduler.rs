@@ -101,10 +101,21 @@ impl Scheduler {
 
     fn write_state(&self, state: &AutopilotStateFile) {
         if let Some(parent) = self.state_file.parent() {
-            let _ = std::fs::create_dir_all(parent);
+            if let Err(e) = std::fs::create_dir_all(parent) {
+                warn!(error = %e, path = %parent.display(), "autopilot: failed to create state dir");
+            }
         }
-        if let Ok(json) = serde_json::to_string_pretty(state) {
-            let _ = std::fs::write(&self.state_file, json);
+        match serde_json::to_string_pretty(state) {
+            Ok(json) => {
+                if let Err(e) = std::fs::write(&self.state_file, &json) {
+                    warn!(error = %e, path = %self.state_file.display(), "autopilot: state write failed");
+                    metrics::counter!("vac_autopilot_state_write_errors_total").increment(1);
+                }
+            }
+            Err(e) => {
+                warn!(error = %e, "autopilot: state serialization failed");
+                metrics::counter!("vac_autopilot_state_write_errors_total").increment(1);
+            }
         }
     }
 
@@ -137,8 +148,17 @@ impl Scheduler {
             info!("VAC runtime scheduler started");
             let poll_interval = std::time::Duration::from_secs(config.poll_interval_secs.max(1));
             let update_state = |state: &AutopilotStateFile| {
-                if let Ok(json) = serde_json::to_string_pretty(state) {
-                    let _ = std::fs::write(&state_file, json);
+                match serde_json::to_string_pretty(state) {
+                    Ok(json) => {
+                        if let Err(e) = std::fs::write(&state_file, &json) {
+                            warn!(error = %e, path = %state_file.display(), "autopilot: state write failed");
+                            metrics::counter!("vac_autopilot_state_write_errors_total").increment(1);
+                        }
+                    }
+                    Err(e) => {
+                        warn!(error = %e, "autopilot: state serialization failed");
+                        metrics::counter!("vac_autopilot_state_write_errors_total").increment(1);
+                    }
                 }
             };
 
@@ -302,6 +322,7 @@ impl Scheduler {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     use crate::executor::OperatingMode;

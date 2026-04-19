@@ -14,3 +14,6 @@ portable-pty = "0.9.0"
 tokio = { workspace = true, features = ["full"] }
 uuid = { workspace = true, features = ["v4"] }
 vac_runtime = { version = "0.1.0", path = "../vac_runtime" }
+
+[lints]
+workspace = true

@@ -51,3 +51,6 @@ vac_tools = { workspace = true }
 vac_runtime = { workspace = true }
 trybuild = "1.0.116"
 proptest = "1.11.0"
+
+[lints]
+workspace = true

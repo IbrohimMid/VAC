@@ -65,12 +65,29 @@ pub async fn execute(
             if records.is_empty() {
                 println!("   ⚠️  No trace records found for this session.");
             }
+            // Resolve signing keypair: if --sign was requested, look for the
+            // default key at ~/.vac/keys/default.key.  Generate it first with
+            // `vac key generate` if it doesn't exist yet.
+            let keypair_storage;
+            let signing_key: Option<&vac_trace::vac_format::SigningKeyPair> = if sign {
+                let key_path = dirs::home_dir()
+                    .map(|h| h.join(".vac/keys/default.key"))
+                    .ok_or_else(|| anyhow::anyhow!("Cannot determine home directory for signing key lookup"))?;
+                keypair_storage = vac_trace::vac_format::SigningKeyPair::load(&key_path)
+                    .map_err(|e| anyhow::anyhow!(
+                        "Signing requested but no key found at {}: {e}\n\
+                         Hint: run `vac key generate` to create a default signing key.",
+                        key_path.display()
+                    ))?;
+                Some(&keypair_storage)
+            } else {
+                None
+            };
             vac_trace::exporter::export_vac(
                 &session.id.to_string(),
                 records,
                 &output_path,
-                sign,
-                None,
+                signing_key,
             )
             .map_err(|e| anyhow::anyhow!("Failed to export VAC CBOR: {}", e))?;
             println!("   ✓ Exported as VAC CBOR");

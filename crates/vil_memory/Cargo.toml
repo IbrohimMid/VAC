@@ -19,6 +19,9 @@ anyhow = { workspace = true }
 chrono = { workspace = true }
 uuid = { workspace = true }
 tokio = { workspace = true }
+dirs-next = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3.14"
+[lints]
+workspace = true

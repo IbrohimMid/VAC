@@ -105,6 +105,7 @@ pub async fn collect_text_checked_wrapper(rx: mpsc::Receiver<StreamChunk>) -> Sw
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     use vil_llm::provider::{FinishReason, StreamChunk, TokenUsage};

@@ -1,13 +1,15 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 use vac_approvals::{ApprovalState, ApprovalStateMachine, ApprovalStore};
 
 #[test]
 fn approval_state_machine_rejects_double_resolution() {
     let sm = ApprovalStateMachine::new("tc-1".to_string());
     let sm = sm
-        .apply(vac_core::approval::ApprovalEvent::Approve { reason: None })
+        .apply(vac_approvals::ApprovalEvent::Approve { reason: None })
         .unwrap();
     let err = sm
-        .apply(vac_core::approval::ApprovalEvent::Reject { reason: None })
+        .apply(vac_approvals::ApprovalEvent::Reject { reason: None })
         .unwrap_err();
     assert_eq!(err.to_string(), "approval already resolved");
 }

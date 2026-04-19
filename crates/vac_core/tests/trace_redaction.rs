@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 use vac_core::security::SecretSubstitution;
 
 #[test]

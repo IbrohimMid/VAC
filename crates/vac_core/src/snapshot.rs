@@ -145,6 +145,7 @@ fn compute_file_hash(path: &Path) -> Result<String> {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 

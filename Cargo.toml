@@ -29,6 +29,10 @@ repository = "https://github.com/IbrohimMid/VAC"
 homepage = "https://vastar.id/products/vac"
 description = "VAC — Vastar Agentic CLI: Autonomous development CLI built on VIL Engine"
 
+[workspace.lints.clippy]
+unwrap_used = "warn"
+expect_used = "warn"
+
 [workspace.dependencies]
 # Async runtime
 tokio = { version = "1.43", features = ["full"] }

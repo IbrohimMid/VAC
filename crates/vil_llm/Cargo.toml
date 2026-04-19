@@ -34,3 +34,5 @@ anthropic-count-tokens = []
 tokio = { workspace = true, features = ["test-util"] }
 wiremock = "0.6"
 tempfile = "3"
+[lints]
+workspace = true

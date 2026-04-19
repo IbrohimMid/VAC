@@ -372,6 +372,7 @@ pub fn render_banner(f: &mut Frame, area: Rect, state: &mut AppState) {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 

@@ -309,6 +309,7 @@ pub fn inject_workspace_context(messages: &mut Vec<vil_llm::provider::Message>, 
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     use tempfile::tempdir;

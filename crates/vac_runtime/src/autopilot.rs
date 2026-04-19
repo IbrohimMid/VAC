@@ -672,6 +672,7 @@ async fn wait_for_approval_intent(
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use tokio::sync::mpsc;
 
@@ -687,8 +688,8 @@ mod tests {
         let tc_a = format!("tc-{task_a}");
         let tc_b = format!("tc-{task_b}");
 
-        let active = ActiveApprovalRegistry::new();
-        let approvals = ApprovalHandle::new(root.clone(), active.clone());
+        let active = vac_approvals::ActiveApprovalRegistry::new();
+        let approvals = vac_approvals::ApprovalHandle::new(root.clone(), active.clone());
         let store = approvals.store().clone();
 
         let (tx_a, mut rx_a) = mpsc::unbounded_channel::<vil_swarm::ApprovalResponse>();

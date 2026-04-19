@@ -281,6 +281,8 @@ fn pass_generated_plumbing(module: &IrModule, issues: &mut Vec<String>) -> f64 {
     let mut score = 1.0;
 
     for imp in &module.impls {
+        // Safe: the match arm only fires when trait_name is Some.
+        #[allow(clippy::unwrap_used)]
         let trait_name = match imp.trait_name.as_deref() {
             Some("VilMessage") | Some("VilState") | Some("VilEvent") => {
                 imp.trait_name.as_ref().unwrap()

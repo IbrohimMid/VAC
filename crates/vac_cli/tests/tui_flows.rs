@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::field_reassign_with_default)]
+
 //! Integration tests for TUI state flow.
 
 use std::collections::HashSet;

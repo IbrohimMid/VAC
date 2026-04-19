@@ -119,6 +119,7 @@ pub fn render_statusline(f: &mut Frame, state: &AppState, area: Rect) {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     use crate::app::{AppState, AppStateOptions};

@@ -148,6 +148,8 @@ pub fn diff_modules(old: Option<&IrModule>, new: Option<&IrModule>) -> Option<Mo
         return None;
     }
 
+    // Safe: the early return above guarantees at least one of old/new is Some.
+    #[allow(clippy::unwrap_used)]
     let path = old
         .map(|m| m.path.clone())
         .unwrap_or_else(|| new.unwrap().path.clone());
@@ -341,6 +343,7 @@ pub fn diff_modules(old: Option<&IrModule>, new: Option<&IrModule>) -> Option<Mo
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     use crate::types::{FnParam, IrFunction, IrModule, TypeRef, Visibility};

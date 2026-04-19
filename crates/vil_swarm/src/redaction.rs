@@ -3,16 +3,21 @@
 use once_cell::sync::Lazy;
 use regex::Regex;
 
+#[allow(clippy::expect_used)] // Compile-time-constant regexes; panic at init is intentional.
 static SECRET_PATTERNS: Lazy<Vec<(Regex, &'static str)>> = Lazy::new(|| {
     vec![
         // AWS keys - replace entire match
-        (Regex::new(r"AKIA[0-9A-Z]{16}").unwrap(), "[REDACTED]"),
+        (Regex::new(r"AKIA[0-9A-Z]{16}")
+            .expect("redaction: failed to compile aws_key regex"), "[REDACTED]"),
         // API keys - keep prefix, redact value
-        (Regex::new(r#"(?i)(api[_-]?key|apikey|access[_-]?token|secret[_-]?key)["']?\s*[:=]\s*["']?([a-zA-Z0-9_\-]{20,})"#).unwrap(), "$1=[REDACTED]"),
+        (Regex::new(r#"(?i)(api[_-]?key|apikey|access[_-]?token|secret[_-]?key)["']?\s*[:=]\s*["']?([a-zA-Z0-9_\-]{20,})"#)
+            .expect("redaction: failed to compile api_key regex"), "$1=[REDACTED]"),
         // Bearer tokens
-        (Regex::new(r#"(?i)(bearer\s+)([a-zA-Z0-9_\-\.]{20,})"#).unwrap(), "$1[REDACTED]"),
+        (Regex::new(r#"(?i)(bearer\s+)([a-zA-Z0-9_\-\.]{20,})"#)
+            .expect("redaction: failed to compile bearer regex"), "$1[REDACTED]"),
         // Passwords
-        (Regex::new(r#"(?i)(password|passwd|pwd)["']?\s*[:=]\s*["']?([^\s"']{8,})"#).unwrap(), "$1=[REDACTED]"),
+        (Regex::new(r#"(?i)(password|passwd|pwd)["']?\s*[:=]\s*["']?([^\s"']{8,})"#)
+            .expect("redaction: failed to compile password regex"), "$1=[REDACTED]"),
     ]
 });
 
@@ -56,6 +61,7 @@ pub fn redact_json(value: &mut serde_json::Value) {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 
@@ -81,6 +87,12 @@ mod tests {
         let redacted = redact_secrets(text);
         assert!(redacted.contains("[REDACTED]"));
         assert!(!redacted.contains("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"));
+    }
+
+    #[test]
+    fn all_redaction_patterns_compile() {
+        // Force Lazy evaluation and verify all patterns compiled
+        assert_eq!(SECRET_PATTERNS.len(), 4, "expected 4 redaction patterns");
     }
 
     #[test]

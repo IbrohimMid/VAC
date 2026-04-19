@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 use vac_core::config::{PolicyGateConfig, VacConfig};
 use vac_core::policy_gate::{
     PolicyGateAction, PolicyGateDecision, PolicyGateMode, classify_shell_command, evaluate,

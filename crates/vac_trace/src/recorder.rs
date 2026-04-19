@@ -187,7 +187,10 @@ impl TraceRecorder {
         let path = self.output_path.join(format!("{}.json", self.session_id));
         let content = serde_json::to_string_pretty(&self.records)
             .map_err(|e| crate::error::TraceError::Recording(e.to_string()))?;
-        std::fs::write(path, content)?;
+        // Atomic write: write to .tmp → fsync → rename, so a crash mid-write
+        // never corrupts the existing snapshot.  Important because release
+        // builds use `panic = "abort"` which skips Drop.
+        crate::vac_format::atomic_write(&path, content.as_bytes())?;
         Ok(())
     }
 

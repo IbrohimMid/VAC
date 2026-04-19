@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 //! Tests for vac_core::rulebook multi-rulebook engine.
 
 use std::fs;

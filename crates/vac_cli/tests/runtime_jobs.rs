@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 //! Runtime jobs interaction tests
 
 use tempfile::TempDir;

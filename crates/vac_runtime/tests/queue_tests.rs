@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 //! Tests for vac_runtime queue and scheduler.
 
 use vac_runtime::{AgentRole, AgentTask, AgentTaskQueue, Job, JobKind, JobStatus, TaskQueue};

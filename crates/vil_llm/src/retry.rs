@@ -104,6 +104,7 @@ fn find_header<'a>(headers: &'a HashMap<String, String>, key: &str) -> Option<&'
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     use chrono::Duration;

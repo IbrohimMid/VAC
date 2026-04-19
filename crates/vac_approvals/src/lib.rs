@@ -228,6 +228,8 @@ impl ApprovalStore {
             Ok(sm) => sm,
             Err(ApprovalTransitionError::AlreadyResolved) => {
                 warn!(tool_call_id = %tool_call_id, "Approval decision ignored: already resolved");
+                // Safe: we just loaded this record successfully above; it must still exist.
+                #[allow(clippy::unwrap_used)]
                 return Ok(self.load(&tool_call_id)?.unwrap());
             }
         };
@@ -584,6 +586,7 @@ impl ActiveApprovalRegistry {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     use tempfile::TempDir;
@@ -603,7 +606,7 @@ mod tests {
         let mut ids = Vec::new();
         for i in 0..5 {
             let tool_call_id = format!("tc-{}", i);
-            let record = store
+            let _record = store
                 .record_request(
                     tool_call_id.clone(),
                     format!("tool_{}", i),

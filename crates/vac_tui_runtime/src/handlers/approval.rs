@@ -188,6 +188,7 @@ pub fn toggle_auto_approve(ctx: &mut HandlerContext) -> HandlerResult {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     use crate::app::{AppState, AppStateOptions, OutputEvent};

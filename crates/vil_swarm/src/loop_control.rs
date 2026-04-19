@@ -35,6 +35,7 @@ pub fn emergency_trim_boundary(message_count: usize, current_boundary: usize) ->
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 

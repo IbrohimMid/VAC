@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 //! Tests for config contract: vac init template must parse to VacConfig.
 
 use vac_core::VacConfig;

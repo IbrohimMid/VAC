@@ -310,6 +310,7 @@ impl LlmProvider for GeminiProvider {
             error!(status = %status, body = %body, "Gemini API error");
             return Err(LlmError::Provider {
                 provider: PROVIDER_NAME.to_string(),
+                status: Some(status.as_u16()),
                 message: format!("API error {}: {}", status, body),
             });
         }
@@ -345,6 +346,7 @@ impl LlmProvider for GeminiProvider {
             let body = response.text().await.unwrap_or_default();
             return Err(LlmError::Provider {
                 provider: PROVIDER_NAME.to_string(),
+                status: Some(status.as_u16()),
                 message: format!("API error {}: {}", status, body),
             });
         }
@@ -632,6 +634,7 @@ struct GeminiUsageMetadata {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     use crate::provider::{LlmRequest, Message};

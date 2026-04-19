@@ -245,6 +245,7 @@ pub fn is_stale(snapshot: &SessionSnapshot, max_age: chrono::Duration) -> bool {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 

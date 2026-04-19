@@ -702,6 +702,7 @@ pub fn swap_with_prev(pastes: &mut [PastedItem], selected: usize) -> usize {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 

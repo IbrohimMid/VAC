@@ -132,6 +132,8 @@ impl AgentRunState {
     ) -> Result<Self, crate::checkpoint::CheckpointError> {
         let envelope = crate::checkpoint::load_checkpoint_from_file(path)?;
         let Some(metadata) = envelope.metadata.as_object() else {
+            // Fabricate a serde_json::Error for the InvalidPayload variant.
+            #[allow(clippy::unwrap_used)]
             return Err(crate::checkpoint::CheckpointError::InvalidPayload(
                 serde_json::from_str::<serde_json::Value>("{}").unwrap_err(),
             ));
@@ -222,6 +224,7 @@ impl AgentRunState {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     use vil_llm::provider::Message;

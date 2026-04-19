@@ -5408,6 +5408,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "cron",
+ "metrics",
  "notify",
  "proptest",
  "serde",
@@ -5654,6 +5655,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "chrono",
+ "dirs-next",
  "redb",
  "serde",
  "serde_json",

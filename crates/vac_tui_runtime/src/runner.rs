@@ -1209,6 +1209,7 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     use tokio::time::timeout;

@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 //! Tests for vil_swarm::semantic planner gate.
 
 use vil_swarm::semantic::{PlannerGateResult, TaskSemanticKind, evaluate_planner_output};

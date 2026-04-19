@@ -15,12 +15,13 @@ use tracing::{info, warn};
 fn is_retryable(e: &LlmError) -> bool {
     match e {
         LlmError::RateLimited(_, _) => true,
-        LlmError::Provider { message, .. } => {
-            message.contains("429") || message.contains("503") || message.contains("502")
-        }
+        LlmError::Provider {
+            status: Some(s), ..
+        } => matches!(s, 429 | 502 | 503 | 504),
+        LlmError::Provider { status: None, .. } => false,
         LlmError::Request(re) => re
             .status()
-            .is_some_and(|s| s.as_u16() == 429 || s.as_u16() == 503 || s.as_u16() == 502),
+            .is_some_and(|s| matches!(s.as_u16(), 429 | 502 | 503 | 504)),
         _ => false,
     }
 }
@@ -57,9 +58,17 @@ impl SimpleRateLimiter {
                 if guard.request_timestamps.len() < guard.requests_per_minute as usize {
                     guard.request_timestamps.push_back(now);
                     None
+                } else if let Some(&oldest) = guard.request_timestamps.front() {
+                    Some(oldest + std::time::Duration::from_secs(60) - now)
                 } else {
-                    let oldest = guard.request_timestamps.front().unwrap();
-                    Some(*oldest + std::time::Duration::from_secs(60) - now)
+                    // Invariant: deque should not be empty when len >= rpm.
+                    // Defensive recovery: treat as non-saturated.
+                    debug_assert!(
+                        false,
+                        "request_timestamps empty but len >= requests_per_minute"
+                    );
+                    guard.request_timestamps.push_back(now);
+                    None
                 }
             };
             if let Some(w) = wait_time {
@@ -113,10 +122,15 @@ impl LlmRouter {
     }
 
     pub fn with_rate_limit(mut self, requests_per_minute: u32) -> Self {
-        Arc::get_mut(&mut self.rate_limiter)
-            .expect("rate limiter should be unshared during router configuration")
-            .get_mut()
-            .requests_per_minute = requests_per_minute;
+        match Arc::get_mut(&mut self.rate_limiter) {
+            Some(inner) => inner.get_mut().requests_per_minute = requests_per_minute,
+            None => {
+                // Arc has been cloned; create a fresh rate limiter instead of panicking.
+                self.rate_limiter = Arc::new(tokio::sync::Mutex::new(
+                    SimpleRateLimiter::new(requests_per_minute),
+                ));
+            }
+        }
         self
     }
 
@@ -354,6 +368,7 @@ impl LlmRouter {
                 .get(&self.default_provider)
                 .ok_or_else(|| LlmError::Provider {
                     provider: self.default_provider.clone(),
+                    status: None,
                     message: "Default provider not found".into(),
                 })?;
 
@@ -382,6 +397,7 @@ impl LlmRouter {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     use crate::config::LlmConfig;
@@ -487,6 +503,29 @@ mod tests {
 
         tokio::time::advance(std::time::Duration::from_secs(60)).await;
         let _ = handle.await;
+    }
+
+    #[tokio::test]
+    async fn rate_limiter_zero_rpm_returns_immediately() {
+        let limiter = Arc::new(tokio::sync::Mutex::new(SimpleRateLimiter::new(0)));
+        // Should return immediately — zero RPM means no rate limiting.
+        SimpleRateLimiter::acquire(&limiter).await;
+    }
+
+    #[tokio::test]
+    async fn rate_limiter_prune_to_empty_does_not_panic() {
+        tokio::time::pause();
+        let limiter = Arc::new(tokio::sync::Mutex::new(SimpleRateLimiter::new(2)));
+
+        // Fill the window
+        SimpleRateLimiter::acquire(&limiter).await;
+        SimpleRateLimiter::acquire(&limiter).await;
+
+        // Advance past the window so all timestamps get pruned
+        tokio::time::advance(std::time::Duration::from_secs(61)).await;
+
+        // Should succeed without panic — timestamps were pruned to empty
+        SimpleRateLimiter::acquire(&limiter).await;
     }
 
     #[test]
@@ -621,5 +660,57 @@ temperature = 0.25
         assert_eq!(resp.content, "hello");
         assert_eq!(resp.model, "llama3.1");
         assert_eq!(resp.usage.total_tokens, 3);
+    }
+
+    #[test]
+    fn with_rate_limit_does_not_panic() {
+        let r = router().with_rate_limit(60);
+        // Verify RPM was set by acquiring (synchronous check)
+        let limiter = r.rate_limiter.clone();
+        let guard = limiter.try_lock().unwrap();
+        assert_eq!(guard.requests_per_minute, 60);
+    }
+
+    #[test]
+    fn is_retryable_structured_status() {
+        // Retryable status codes
+        for code in [429, 502, 503, 504] {
+            let err = LlmError::Provider {
+                provider: "test".into(),
+                status: Some(code),
+                message: "doesn't matter".into(),
+            };
+            assert!(is_retryable(&err), "status {code} should be retryable");
+        }
+
+        // Non-retryable status codes
+        for code in [200, 400, 401, 403, 404, 500] {
+            let err = LlmError::Provider {
+                provider: "test".into(),
+                status: Some(code),
+                message: "error 503 429".into(), // misleading message
+            };
+            assert!(
+                !is_retryable(&err),
+                "status {code} should NOT be retryable even with misleading message"
+            );
+        }
+
+        // No status → not retryable
+        let err = LlmError::Provider {
+            provider: "test".into(),
+            status: None,
+            message: "error 503".into(),
+        };
+        assert!(
+            !is_retryable(&err),
+            "None status should NOT be retryable even with status-like message"
+        );
+
+        // RateLimited is always retryable
+        assert!(is_retryable(&LlmError::RateLimited("test".into(), 5)));
+
+        // Other error types are not retryable
+        assert!(!is_retryable(&LlmError::AllProvidersFailed));
     }
 }

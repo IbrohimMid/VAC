@@ -121,6 +121,7 @@ impl OpenAiCompatProvider {
                 HeaderValue::from_str(&format!("Bearer {}", self.api_key)).map_err(|e| {
                     LlmError::Provider {
                         provider: self.provider_name.clone(),
+                        status: None,
                         message: format!("Invalid API key: {}", e),
                     }
                 })?,
@@ -133,6 +134,7 @@ impl OpenAiCompatProvider {
         if self.base_url.is_empty() {
             return Err(LlmError::Provider {
                 provider: self.provider_name.clone(),
+                status: None,
                 message: format!("{} not configured", self.base_url_env),
             });
         }
@@ -163,6 +165,7 @@ impl OpenAiCompatProvider {
             error!(status = %status, body = %body, provider = %self.provider_name, "OpenAI-compat API error");
             return Err(LlmError::Provider {
                 provider: self.provider_name.clone(),
+                status: Some(status.as_u16()),
                 message: format!("API error {}: {}", status, body),
             });
         }
@@ -343,6 +346,7 @@ pub(crate) fn openai_response_to_llm(
         .next()
         .ok_or_else(|| LlmError::Provider {
             provider: provider_name.to_string(),
+            status: None,
             message: "No choices returned by provider".to_string(),
         })?;
 
@@ -413,6 +417,7 @@ pub(crate) async fn openai_stream(
         let body = response.text().await.unwrap_or_default();
         return Err(LlmError::Provider {
             provider: provider_name,
+            status: Some(status.as_u16()),
             message: format!("API error {}: {}", status, body),
         });
     }
@@ -635,6 +640,7 @@ pub(crate) struct OpenAiUsage {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     use crate::provider::{LlmRequest, Message};

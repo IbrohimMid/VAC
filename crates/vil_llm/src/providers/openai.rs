@@ -72,6 +72,7 @@ impl OpenAiProvider {
             HeaderValue::from_str(&format!("Bearer {}", self.api_key)).map_err(|e| {
                 LlmError::Provider {
                     provider: PROVIDER_NAME.to_string(),
+                    status: None,
                     message: format!("Invalid API key: {}", e),
                 }
             })?,
@@ -224,6 +225,7 @@ impl LlmProvider for OpenAiProvider {
             }
             return Err(LlmError::Provider {
                 provider: PROVIDER_NAME.to_string(),
+                status: Some(status.as_u16()),
                 message: format!("API error {}: {}", status, err_body),
             });
         }
@@ -236,6 +238,7 @@ impl LlmProvider for OpenAiProvider {
             .next()
             .ok_or_else(|| LlmError::Provider {
                 provider: PROVIDER_NAME.to_string(),
+                status: None,
                 message: "No choices returned by provider".to_string(),
             })?;
 
@@ -309,6 +312,7 @@ impl LlmProvider for OpenAiProvider {
             }
             return Err(LlmError::Provider {
                 provider: PROVIDER_NAME.to_string(),
+                status: Some(status.as_u16()),
                 message: format!("API error {}: {}", status, err_body),
             });
         }
@@ -529,6 +533,7 @@ struct OpenAiUsage {
 // --- Tests ------------------------------------------------------------------
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     use crate::provider::{CacheControlHint, Message, ToolDefinition};

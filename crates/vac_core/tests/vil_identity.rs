@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 //! Integration tests for VIL-native agent identity (Phase 5).
 //!
 //! These tests verify that:

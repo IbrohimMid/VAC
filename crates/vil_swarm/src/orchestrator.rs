@@ -1363,6 +1363,7 @@ fn observe_tool_results(
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     use crate::reasoning_fsm::ReasoningPhase;

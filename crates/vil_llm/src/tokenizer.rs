@@ -12,11 +12,10 @@
 //!   fallback and for unit tests that must compile without the tiktoken
 //!   dependency on hot paths.
 //!
-//! A third, stubbed [`AnthropicApiTokenizer`] sits behind the
-//! `anthropic-count-tokens` feature flag for the upcoming
-//! `POST /v1/messages/count_tokens` integration. It is intentionally a TODO
-//! skeleton so the trait surface is in place without wiring an HTTP call
-//! that isn't ready to be production-correct.
+//! The `anthropic-count-tokens` feature flag is **disabled** via
+//! `compile_error!`. It previously held a stub that silently delegated to
+//! the tiktoken adapter, which was misleading. Enable the flag only after
+//! wiring the real `POST /v1/messages/count_tokens` HTTP call.
 
 use crate::provider::Message;
 use once_cell::sync::Lazy;
@@ -46,6 +45,7 @@ pub trait Tokenizer: Send + Sync {
 
 // --- Tiktoken adapter --------------------------------------------------------
 
+#[allow(clippy::expect_used)] // BPE init is infallible with bundled data; panic at init is intentional.
 static CL100K: Lazy<tiktoken_rs::CoreBPE> =
     Lazy::new(|| tiktoken_rs::cl100k_base().expect("cl100k_base BPE initialization failed"));
 
@@ -88,9 +88,18 @@ impl Tokenizer for TiktokenAdapter {
 
 // --- Heuristic adapter -------------------------------------------------------
 
-/// Fallback tokenizer that uses the classic `chars / 4` heuristic. Useful in
-/// environments where pulling in the full BPE table is undesirable (tests,
-/// lightweight TUI estimates) and as a parity fixture.
+/// Fallback tokenizer that uses the classic `chars / 4` heuristic.
+///
+/// **Fallback-only.** Use [`TiktokenAdapter`] for any budget, billing, or
+/// truncation decisions. The heuristic's documented error band vs tiktoken
+/// is roughly 0.5×–3× depending on input corpus:
+/// * English prose: typically 0.7–1.3× true count
+/// * Source code: often over-counts (more punctuation per token)
+/// * CJK / emoji: under-counts (one tiktoken token ≈ 2–4 chars)
+/// * Whitespace-heavy: over-counts
+///
+/// The `heuristic_error_rate_across_corpus` test in this module asserts the
+/// max relative error stays within a 5× band across a representative corpus.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct HeuristicAdapter;
 
@@ -125,56 +134,19 @@ impl Tokenizer for HeuristicAdapter {
     }
 }
 
-// --- Anthropic API tokenizer (feature-gated stub) ---------------------------
+// --- Anthropic API tokenizer (feature-gated — BLOCKED) ----------------------
 
-/// Skeleton for a tokenizer backed by Anthropic's
-/// `POST /v1/messages/count_tokens` endpoint. The HTTP call itself is a TODO —
-/// flipping the `anthropic-count-tokens` feature on makes the type available
-/// so code can reference it, but `count_message`/`count_text` currently fall
-/// back to the tiktoken adapter. Replace the bodies with a real blocking HTTP
-/// call (or async + `block_on`) once the endpoint contract is finalized.
+// The `anthropic-count-tokens` feature previously held a stub that silently
+// delegated to TiktokenAdapter. This was misleading: callers believed they
+// were getting Anthropic-native counts, but received local BPE estimates.
+// The feature is now blocked at compile time. Re-enable it only after
+// implementing the real HTTP call to POST /v1/messages/count_tokens.
 #[cfg(feature = "anthropic-count-tokens")]
-pub struct AnthropicApiTokenizer {
-    api_key: String,
-    base_url: String,
-    model: String,
-    fallback: TiktokenAdapter,
-}
-
-#[cfg(feature = "anthropic-count-tokens")]
-impl AnthropicApiTokenizer {
-    pub fn new(
-        api_key: impl Into<String>,
-        base_url: impl Into<String>,
-        model: impl Into<String>,
-    ) -> Self {
-        Self {
-            api_key: api_key.into(),
-            base_url: base_url.into(),
-            model: model.into(),
-            fallback: TiktokenAdapter::new(),
-        }
-    }
-}
-
-#[cfg(feature = "anthropic-count-tokens")]
-impl Tokenizer for AnthropicApiTokenizer {
-    fn count_message(&self, msg: &Message) -> usize {
-        // TODO: POST to {base_url}/v1/messages/count_tokens with {api_key}
-        // and {model}. For now delegate to the local estimator to keep
-        // callers correct under load-shedding / offline conditions.
-        let _ = (&self.api_key, &self.base_url, &self.model);
-        self.fallback.count_message(msg)
-    }
-
-    fn count_text(&self, text: &str) -> usize {
-        self.fallback.count_text(text)
-    }
-
-    fn name(&self) -> &'static str {
-        "anthropic-count-tokens:stub"
-    }
-}
+compile_error!(
+    "The `anthropic-count-tokens` feature is a stub. \
+     Do not enable until the HTTP call to /v1/messages/count_tokens is implemented. \
+     See crates/vil_llm/src/tokenizer.rs for context."
+);
 
 // --- Helpers -----------------------------------------------------------------
 
@@ -192,6 +164,7 @@ pub fn default_tokenizer() -> TiktokenAdapter {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     use crate::provider::{Message, Role, ToolCall};
@@ -269,6 +242,45 @@ mod tests {
             let ratio = (*tc.max(hc) as f64) / (*tc.min(hc).max(&1) as f64);
             assert!(ratio < 3.0, "tc={} hc={} ratio={}", tc, hc, ratio);
         }
+    }
+
+    #[test]
+    fn heuristic_error_rate_across_corpus() {
+        // Measures HeuristicAdapter accuracy vs TiktokenAdapter across a
+        // representative corpus. The heuristic is fallback-only; this test
+        // documents and bounds its error band so consumers know what to expect.
+        let repetitive = "word ".repeat(200);
+        let corpus: Vec<(&str, &str)> = vec![
+            ("english", "The quick brown fox jumps over the lazy dog. Pack my box with five dozen liquor jugs."),
+            ("rust_code", "fn main() { let x: Vec<u32> = (0..10).collect(); println!(\"{:?}\", x); }"),
+            ("json", r#"{"name":"vac","version":"0.1.0","deps":["tokio","serde"]}"#),
+            ("cjk", "こんにちは世界。これはトークナイザのテストです。你好世界，这是分词器测试。"),
+            ("emoji", "🚀🎉💡🔥✨ deploy shipped 🎊🥳🎈"),
+            ("mixed", "Hello 世界! 🌍 fn greet() -> &'static str { \"hi\" }"),
+            ("whitespace", "   \t\n   spaced   out   \n\n   content   "),
+            ("repetitive", &repetitive),
+        ];
+
+        let t = TiktokenAdapter::new();
+        let h = HeuristicAdapter::new();
+
+        let mut max_ratio: f64 = 1.0;
+        for (label, text) in &corpus {
+            let tc = t.count_text(text).max(1);
+            let hc = h.count_text(text).max(1);
+            let ratio = (tc.max(hc) as f64) / (tc.min(hc) as f64);
+            eprintln!("{label:>12}: tiktoken={tc:>4} heuristic={hc:>4} ratio={ratio:.2}");
+            max_ratio = max_ratio.max(ratio);
+        }
+
+        // Documented error band: heuristic stays within 5× of tiktoken across
+        // our representative corpus. Emoji and CJK are the weak spots (one
+        // tiktoken token can span 4+ chars). Tightening this requires a real
+        // BPE-aware estimator.
+        assert!(
+            max_ratio < 5.0,
+            "heuristic error exceeds 5x bound: max_ratio={max_ratio:.2}"
+        );
     }
 
     #[test]

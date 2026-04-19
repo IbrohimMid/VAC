@@ -2,8 +2,12 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum LlmError {
-    #[error("Provider '{provider}' error: {message}")]
-    Provider { provider: String, message: String },
+    #[error("Provider '{provider}' error (status {status:?}): {message}")]
+    Provider {
+        provider: String,
+        status: Option<u16>,
+        message: String,
+    },
 
     #[error("API key not found for provider '{0}' (env: {1})")]
     ApiKeyMissing(String, String),

@@ -5,29 +5,31 @@ use crate::recorder::{RecordType, TraceRecord};
 use crate::vac_format::{SigningKeyPair, VacEnvelope};
 use std::path::Path;
 
+/// Export a VAC audit artifact to `output_path`.
+///
+/// * `sign = Some(kp)` — produce a COSE_Sign1 signed CBOR artifact with the
+///   provided key pair.  The public key is embedded in the artifact header so
+///   verifiers can authenticate without an out-of-band trust store.
+/// * `sign = None` — produce an unsigned CBOR artifact.
+///
+/// There is no "sign with a throwaway key" path: signing with an ephemeral
+/// key that is immediately discarded is indistinguishable from not signing at
+/// all (the signature cannot be verified), so that path has been removed.
 pub fn export_vac(
     session_id: &str,
     records: Vec<TraceRecord>,
     output_path: &Path,
-    sign: bool,
-    keypair: Option<&SigningKeyPair>,
+    sign: Option<&SigningKeyPair>,
 ) -> TraceResult<()> {
-    let envelope = VacEnvelope::new(session_id, records);
+    let envelope = VacEnvelope::new(session_id, records)?;
 
-    let bytes = if sign {
-        if let Some(kp) = keypair {
-            envelope.sign(kp)?
-        } else {
-            tracing::info!("No keypair provided, generating one for signing");
-            let kp = SigningKeyPair::generate();
-            envelope.sign(&kp)?
-        }
-    } else {
-        envelope.to_cbor()?
+    let bytes = match sign {
+        Some(kp) => envelope.sign(kp)?,
+        None => envelope.to_cbor()?,
     };
 
     std::fs::write(output_path, &bytes)?;
-    tracing::info!(path = %output_path.display(), size = bytes.len(), "VAC artifact exported");
+    tracing::info!(path = %output_path.display(), size = bytes.len(), signed = sign.is_some(), "VAC artifact exported");
     Ok(())
 }
 
@@ -38,11 +40,21 @@ pub fn export_opencode_json(records: &[TraceRecord], output_path: &Path) -> Trac
     Ok(())
 }
 
+/// Export records as newline-delimited JSON.
+///
+/// Fails loudly if any record cannot be serialized, rather than silently
+/// dropping it, so the output line count always equals `records.len()`.
 pub fn export_claude_jsonl(records: &[TraceRecord], output_path: &Path) -> TraceResult<()> {
-    let lines: Vec<String> = records
-        .iter()
-        .filter_map(|r| serde_json::to_string(r).ok())
-        .collect();
+    let mut lines = Vec::with_capacity(records.len());
+    for (i, r) in records.iter().enumerate() {
+        let line = serde_json::to_string(r).map_err(|e| {
+            TraceError::Export(format!(
+                "record #{i} (id={}) failed to serialize: {e}",
+                r.id
+            ))
+        })?;
+        lines.push(line);
+    }
     std::fs::write(output_path, lines.join("\n"))?;
     Ok(())
 }
@@ -87,57 +99,120 @@ pub fn export_summary(
     summary.push_str("| Time | Type | Details |\n");
     summary.push_str("|------|------|---------|\n");
 
-    for record in records.iter().take(50) {
+    for record in records {
         let time = record.timestamp.format("%H:%M:%S").to_string();
-        let type_str = match &record.record_type {
-            RecordType::TaskStart => "TaskStart",
-            RecordType::TaskComplete => "TaskComplete",
-            RecordType::TaskFailed => "TaskFailed",
-            RecordType::ToolCall => "ToolCall",
-            RecordType::ToolResult => "ToolResult",
-            RecordType::LlmRequest => "LlmRequest",
-            RecordType::LlmResponse => "LlmResponse",
-            RecordType::AgentMessage => "AgentMessage",
-            RecordType::ContextRetrieval => "ContextRetrieval",
-            RecordType::ValidationResult => "Validation",
-            RecordType::PolicyDecision => "Policy",
-            RecordType::LspStarted => "LspStarted",
-            RecordType::LspDiagnosticsSnapshot => "LspDiagnostics",
-            RecordType::LspPostEditRecheck => "LspRecheck",
-            RecordType::SubagentSpawned => "SubagentSpawned",
-            RecordType::SandboxCreated => "SandboxCreated",
-            RecordType::SandboxDestroyed => "SandboxDestroyed",
-            RecordType::PatchProposed => "PatchProposed",
-            RecordType::PatchMerged => "PatchMerged",
-            RecordType::Error => "Error",
-        };
-
-        let details = match &record.content {
-            serde_json::Value::Object(obj) => {
-                if let Some(task_id) = obj.get("task_id") {
-                    format!("task: {}", task_id)
-                } else if let Some(tool) = obj.get("tool") {
-                    format!("tool: {}", tool)
-                } else if let Some(provider) = obj.get("provider") {
-                    format!("provider: {}", provider)
-                } else {
-                    "...".to_string()
-                }
-            }
-            _ => "...".to_string(),
-        };
-
+        let type_str = record_type_label(&record.record_type);
+        let details = extract_details(&record.content);
         summary.push_str(&format!("| {} | {} | {} |\n", time, type_str, details));
-    }
-
-    if records.len() > 50 {
-        summary.push_str(&format!(
-            "\n*... and {} more records*\n",
-            records.len() - 50
-        ));
     }
 
     std::fs::write(output_path, &summary)?;
     tracing::info!(path = %output_path.display(), "Markdown summary exported");
     Ok(())
+}
+
+fn record_type_label(rt: &RecordType) -> &'static str {
+    match rt {
+        RecordType::TaskStart => "TaskStart",
+        RecordType::TaskComplete => "TaskComplete",
+        RecordType::TaskFailed => "TaskFailed",
+        RecordType::ToolCall => "ToolCall",
+        RecordType::ToolResult => "ToolResult",
+        RecordType::LlmRequest => "LlmRequest",
+        RecordType::LlmResponse => "LlmResponse",
+        RecordType::AgentMessage => "AgentMessage",
+        RecordType::ContextRetrieval => "ContextRetrieval",
+        RecordType::ValidationResult => "Validation",
+        RecordType::PolicyDecision => "Policy",
+        RecordType::LspStarted => "LspStarted",
+        RecordType::LspDiagnosticsSnapshot => "LspDiagnostics",
+        RecordType::LspPostEditRecheck => "LspRecheck",
+        RecordType::SubagentSpawned => "SubagentSpawned",
+        RecordType::SandboxCreated => "SandboxCreated",
+        RecordType::SandboxDestroyed => "SandboxDestroyed",
+        RecordType::PatchProposed => "PatchProposed",
+        RecordType::PatchMerged => "PatchMerged",
+        RecordType::Error => "Error",
+    }
+}
+
+fn extract_details(content: &serde_json::Value) -> String {
+    match content {
+        serde_json::Value::Object(obj) => {
+            if let Some(v) = obj.get("task_id") {
+                format!("task: {v}")
+            } else if let Some(v) = obj.get("tool") {
+                format!("tool: {v}")
+            } else if let Some(v) = obj.get("provider") {
+                format!("provider: {v}")
+            } else {
+                "...".to_string()
+            }
+        }
+        _ => "...".to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[allow(clippy::unwrap_used, clippy::expect_used)]
+    use super::*;
+    use crate::recorder::{RecordType, TraceRecord};
+
+    fn make_record(content: serde_json::Value) -> TraceRecord {
+        TraceRecord {
+            id: uuid::Uuid::new_v4(),
+            timestamp: chrono::Utc::now(),
+            record_type: RecordType::ToolCall,
+            agent_id: None,
+            content,
+        }
+    }
+
+    #[test]
+    fn export_jsonl_preserves_all_records() {
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("out.jsonl");
+        let records: Vec<TraceRecord> = (0..5)
+            .map(|i| make_record(serde_json::json!({ "n": i })))
+            .collect();
+        export_claude_jsonl(&records, &out).unwrap();
+        let content = std::fs::read_to_string(&out).unwrap();
+        assert_eq!(content.lines().count(), 5, "all records must be exported");
+    }
+
+    #[test]
+    fn export_vac_unsigned_roundtrips() {
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("out.vac");
+        export_vac("sess-1", vec![], &out, None).unwrap();
+        let bytes = std::fs::read(&out).unwrap();
+        let envelope: VacEnvelope = serde_cbor::from_slice(&bytes).unwrap();
+        assert_eq!(envelope.session_id, "sess-1");
+    }
+
+    #[test]
+    fn export_vac_signed_verifies() {
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("out.vac");
+        let kp = SigningKeyPair::generate();
+        export_vac("sess-signed", vec![], &out, Some(&kp)).unwrap();
+        let bytes = std::fs::read(&out).unwrap();
+        let envelope = VacEnvelope::verify(&bytes).unwrap();
+        assert_eq!(envelope.session_id, "sess-signed");
+    }
+
+    #[test]
+    fn export_vac_no_throwaway_signing_path() {
+        // Confirm the old "sign=true, keypair=None → throwaway key" path is gone.
+        // The new API makes `sign` an `Option<&SigningKeyPair>` — there is no bool.
+        // This test documents the API contract by calling with None (unsigned).
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("unsigned.vac");
+        export_vac("no-sign", vec![], &out, None).unwrap();
+        let bytes = std::fs::read(&out).unwrap();
+        // Unsigned artifacts can be deserialized directly as VacEnvelope CBOR.
+        let envelope: VacEnvelope = serde_cbor::from_slice(&bytes).unwrap();
+        assert_eq!(envelope.session_id, "no-sign");
+    }
 }

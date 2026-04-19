@@ -552,6 +552,7 @@ fn join_lines(lines: &[String], had_trailing_newline: bool) -> String {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     use tempfile::tempdir;

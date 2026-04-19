@@ -17,17 +17,22 @@ struct Patterns {
     aws_account: Regex,
 }
 
+#[allow(clippy::expect_used)] // Compile-time-constant regexes; panic at init is intentional.
 fn patterns() -> &'static Patterns {
     static P: OnceLock<Patterns> = OnceLock::new();
     P.get_or_init(|| Patterns {
-        aws_key: Regex::new(r"AKIA[0-9A-Z]{16}").unwrap(),
-        api_key: Regex::new(r"sk-[A-Za-z0-9]{20,}").unwrap(),
-        bearer: Regex::new(r"(?i)Bearer\s+([A-Za-z0-9\-._~+/]+=*)").unwrap(),
+        aws_key: Regex::new(r"AKIA[0-9A-Z]{16}")
+            .expect("privacy: failed to compile aws_key regex"),
+        api_key: Regex::new(r"sk-[A-Za-z0-9]{20,}")
+            .expect("privacy: failed to compile api_key regex"),
+        bearer: Regex::new(r"(?i)Bearer\s+([A-Za-z0-9\-._~+/]+=*)")
+            .expect("privacy: failed to compile bearer regex"),
         ip: Regex::new(
             r"\b(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\b",
         )
-        .unwrap(),
-        aws_account: Regex::new(r"\b\d{12}\b").unwrap(),
+        .expect("privacy: failed to compile ip regex"),
+        aws_account: Regex::new(r"\b\d{12}\b")
+            .expect("privacy: failed to compile aws_account regex"),
     })
 }
 
@@ -155,6 +160,7 @@ impl PrivacyVault {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 
@@ -189,5 +195,16 @@ mod tests {
         let sub_str = serde_json::to_string(&sub).unwrap();
         assert!(sub_str.contains("SECRET_API_KEY_1"));
         assert!(sub_str.contains("SECRET_IP_1"));
+    }
+
+    #[test]
+    fn all_privacy_patterns_compile() {
+        let p = patterns();
+        // Exercise each compiled regex with a no-op match to confirm init succeeds
+        assert!(p.aws_key.is_match("AKIAIOSFODNN7EXAMPLE"));
+        assert!(p.api_key.is_match("sk-abcdefghij1234567890"));
+        assert!(p.bearer.is_match("Bearer eyJtoken"));
+        assert!(p.ip.is_match("192.168.1.1"));
+        assert!(p.aws_account.is_match("123456789012"));
     }
 }

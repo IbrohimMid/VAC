@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 //! Shell lifecycle tests
 
 use tokio::sync::mpsc;

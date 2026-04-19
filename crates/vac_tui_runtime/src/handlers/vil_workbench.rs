@@ -237,6 +237,7 @@ fn invoke_tool(ctx: &mut HandlerContext, tool_name: &str, args: serde_json::Valu
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     use crate::app::{AppState, AppStateOptions, OutputEvent, VilIssue};

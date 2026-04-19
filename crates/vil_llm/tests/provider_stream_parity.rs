@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 use vil_llm::provider::{FinishReason, LlmProvider, LlmRequest, Message, StreamChunk};
 use vil_llm::providers::anthropic::AnthropicProvider;
 use vil_llm::providers::gemini::GeminiProvider;

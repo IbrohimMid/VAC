@@ -1,4 +1,9 @@
 //! Policy engine for tool gating and permission enforcement.
+//!
+//! The [`PolicyEngine`] evaluates a [`PolicyRequest`] against (in order):
+//! 1. explicit per-tool overrides,
+//! 2. priority-sorted [`PolicyRule`]s,
+//! 3. the configured [`DefaultPolicy`].
 
 use crate::error::{TrustError, TrustResult};
 use crate::zones::{RiskLevel, TrustZone};
@@ -6,39 +11,59 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tracing::{info, warn};
 
+/// Evaluates policy rules to produce a [`PolicyDecision`] for a given request.
 pub struct PolicyEngine {
     default_policy: DefaultPolicy,
     rules: Vec<PolicyRule>,
     tool_overrides: HashMap<String, PolicyDecision>,
 }
 
+/// What to do with a request that doesn't match any rule.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum DefaultPolicy {
+    /// Fall through to Allow — permissive default for trusted environments.
     Allow,
+    /// Fall through to Deny — secure default; callers must opt in via rules.
     Deny,
 }
 
+/// A named, prioritized rule that matches a [`PolicyRequest`] via its
+/// [`PolicyCondition`] and produces a [`PolicyDecision`].
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PolicyRule {
+    /// Human-readable name used in logs.
     pub name: String,
+    /// Condition that must match for this rule to fire.
     pub condition: PolicyCondition,
+    /// Decision to return when the rule matches.
     pub decision: PolicyDecision,
+    /// Higher values evaluate first.
     pub priority: i32,
 }
 
+/// Match condition for a [`PolicyRule`].
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum PolicyCondition {
+    /// Match when the request's tool name equals this string.
     ToolName(String),
+    /// Match when the request's risk level equals this variant.
     RiskLevel(RiskLevel),
+    /// Match when the agent is in this trust zone.
     TrustZone(TrustZone),
+    /// Match when the agent role equals this string.
     AgentRole(String),
+    /// Always matches.
     Always,
 }
 
+/// Outcome of evaluating a [`PolicyRequest`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PolicyDecision {
+    /// Allow the action without further gating.
     Allow,
+    /// Block the action.
     Deny,
+    /// Surface an approval prompt to a human.
     RequireApproval,
 }
 
@@ -74,6 +99,7 @@ impl Default for PolicyEngine {
 }
 
 impl PolicyEngine {
+    /// Creates a new engine with the given fall-through behaviour and no rules.
     pub fn new(default: DefaultPolicy) -> Self {
         Self {
             default_policy: default,
@@ -82,15 +108,20 @@ impl PolicyEngine {
         }
     }
 
+    /// Registers a rule. Rules are kept sorted by descending priority.
     pub fn add_rule(&mut self, rule: PolicyRule) {
         self.rules.push(rule);
         self.rules.sort_by(|a, b| b.priority.cmp(&a.priority));
     }
 
+    /// Sets a per-tool override that short-circuits rule evaluation for the
+    /// given tool name.
     pub fn set_tool_override(&mut self, tool_name: &str, decision: PolicyDecision) {
         self.tool_overrides.insert(tool_name.to_string(), decision);
     }
 
+    /// Evaluates a request and returns the resulting decision without
+    /// side-effects (other than log emission).
     pub fn evaluate(&self, request: &PolicyRequest) -> TrustResult<PolicyDecision> {
         if let Some(decision) = self.tool_overrides.get(&request.tool_name) {
             info!(tool = %request.tool_name, decision = ?decision, "Policy override applied");
@@ -111,6 +142,8 @@ impl PolicyEngine {
         Ok(decision)
     }
 
+    /// Like [`PolicyEngine::evaluate`] but converts Deny and RequireApproval
+    /// into `Err(TrustError::PermissionDenied)`.
     pub fn enforce(&self, request: &PolicyRequest) -> TrustResult<()> {
         match self.evaluate(request)? {
             PolicyDecision::Allow => Ok(()),
@@ -141,12 +174,19 @@ impl PolicyRule {
     }
 }
 
+/// Input to [`PolicyEngine::evaluate`] describing the action and the agent.
 #[derive(Debug, Clone)]
 pub struct PolicyRequest {
+    /// Name of the tool being invoked (e.g. `"file_write"`).
     pub tool_name: String,
+    /// Stable identifier of the agent making the request.
     pub agent_id: String,
+    /// Agent role/profile (e.g. `"coder"`, `"reviewer"`).
     pub agent_role: String,
+    /// Trust zone the agent currently runs in.
     pub agent_zone: TrustZone,
+    /// Inherent risk of the action, independent of agent identity.
     pub risk_level: RiskLevel,
+    /// Short human-readable summary of the arguments for logging / audit.
     pub arguments_summary: String,
 }
