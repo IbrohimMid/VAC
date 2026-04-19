@@ -191,8 +191,8 @@ impl SandboxRegistry {
         for entry in entries.flatten() {
             let overlay_path = entry.path();
             let file_name = overlay_path.file_name()?.to_string_lossy().to_string();
-            // Reverse the __ → / encoding used in journal
-            let rel_path = file_name.replace("__", "/");
+            // Reverse the \x1F → / encoding
+            let rel_path = file_name.replace('\x1F', "/");
             let original_path = h.working_dir.join(&rel_path);
 
             let overlay_content = std::fs::read_to_string(&overlay_path).unwrap_or_default();
@@ -201,20 +201,12 @@ impl SandboxRegistry {
                 let original_content = std::fs::read_to_string(&original_path).unwrap_or_default();
                 if original_content != overlay_content {
                     modified.push(rel_path.clone());
-                    diff_lines.push(format!("--- a/{rel_path}"));
-                    diff_lines.push(format!("+++ b/{rel_path}"));
-                    // Simple line-level diff
-                    for (i, (orig, new)) in original_content
-                        .lines()
-                        .zip(overlay_content.lines())
-                        .enumerate()
-                    {
-                        if orig != new {
-                            diff_lines.push(format!("@@ line {} @@", i + 1));
-                            diff_lines.push(format!("-{orig}"));
-                            diff_lines.push(format!("+{new}"));
-                        }
-                    }
+                    let diff = similar::TextDiff::from_lines(&original_content, &overlay_content);
+                    let unified = diff
+                        .unified_diff()
+                        .header(&format!("a/{rel_path}"), &format!("b/{rel_path}"))
+                        .to_string();
+                    diff_lines.push(unified.trim_end().to_string());
                 }
             } else {
                 created.push(rel_path.clone());
@@ -260,12 +252,22 @@ impl SandboxRegistry {
                 .and_then(|n| n.to_str())
                 .unwrap_or("")
                 .to_string();
-            let rel_path = file_name.replace("__", "/");
+            let rel_path = file_name.replace('\x1F', "/");
             let dest = h.working_dir.join(&rel_path);
 
             if let Some(parent) = dest.parent() {
                 let _ = std::fs::create_dir_all(parent);
             }
+            
+            // Path traversal check
+            let resolved = dest.canonicalize().unwrap_or_else(|_| dest.clone());
+            let canonical_working_dir = h.working_dir.canonicalize().unwrap_or_else(|_| h.working_dir.clone());
+            
+            let normalized_rel = std::path::Component::ParentDir;
+            if Path::new(&rel_path).components().any(|c| c == normalized_rel) || !resolved.starts_with(&canonical_working_dir) {
+                return Err(format!("path traversal attempt: {}", rel_path));
+            }
+
             std::fs::copy(&overlay_path, &dest)
                 .map_err(|e| format!("Failed to apply patch for {rel_path}: {e}"))?;
         }
@@ -355,5 +357,72 @@ mod tests {
         assert!(spec.is_tool_allowed("glob"));
         assert!(!spec.is_tool_allowed("file_write"));
         assert!(!spec.is_tool_allowed("bash"));
+    }
+
+    #[tokio::test]
+    async fn sandbox_encodes_dunder_module_correctly() {
+        let registry = SandboxRegistry::new(std::env::temp_dir());
+        let spec = SandboxSpec::default();
+        let handle = registry.spawn(&spec, "test task").await;
+
+        let overlay_file = handle.overlay_dir.join(format!("src\x1F__init__.py"));
+        std::fs::create_dir_all(overlay_file.parent().unwrap()).unwrap();
+        std::fs::write(&overlay_file, "def test(): pass").unwrap();
+
+        let patch = registry.build_patch(handle.id).await.unwrap();
+        assert!(patch.created_files.contains(&"src/__init__.py".to_string()));
+    }
+
+    #[tokio::test]
+    async fn merge_patch_rejects_traversal_path() {
+        let registry = SandboxRegistry::new(std::env::temp_dir());
+        let spec = SandboxSpec::default();
+        let handle = registry.spawn(&spec, "test task").await;
+
+        let overlay_file = handle.overlay_dir.join(format!("..\x1Fsecret.txt"));
+        std::fs::write(&overlay_file, "secret").unwrap();
+
+        let result = registry.merge_patch(handle.id).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("path traversal attempt"));
+    }
+
+    #[tokio::test]
+    async fn build_patch_captures_appended_lines() {
+        let registry = SandboxRegistry::new(std::env::temp_dir());
+        let spec = SandboxSpec::default();
+        let handle = registry.spawn(&spec, "test task").await;
+
+        let working_file = handle.working_dir.join("test.txt");
+        std::fs::write(&working_file, "line1\nline2\n").unwrap();
+
+        let overlay_file = handle.overlay_dir.join("test.txt");
+        std::fs::write(&overlay_file, "line1\nline2\nline3\n").unwrap();
+
+        let patch = registry.build_patch(handle.id).await.unwrap();
+        assert!(patch.modified_files.contains(&"test.txt".to_string()));
+        assert!(patch.patch_summary.contains("+line3"));
+        
+        std::fs::remove_file(&working_file).ok();
+    }
+
+    #[tokio::test]
+    async fn build_patch_captures_deleted_lines() {
+        let registry = SandboxRegistry::new(std::env::temp_dir());
+        let spec = SandboxSpec::default();
+        let handle = registry.spawn(&spec, "test task").await;
+
+        let working_file = handle.working_dir.join("test2.txt");
+        std::fs::write(&working_file, "line1\nline2\nline3\n").unwrap();
+
+        let overlay_file = handle.overlay_dir.join("test2.txt");
+        std::fs::write(&overlay_file, "line1\n").unwrap();
+
+        let patch = registry.build_patch(handle.id).await.unwrap();
+        assert!(patch.modified_files.contains(&"test2.txt".to_string()));
+        assert!(patch.patch_summary.contains("-line2"));
+        assert!(patch.patch_summary.contains("-line3"));
+        
+        std::fs::remove_file(&working_file).ok();
     }
 }

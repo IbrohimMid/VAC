@@ -133,6 +133,7 @@ pub struct SwarmOrchestrator {
     pending_images: Vec<vil_llm::provider::ImagePart>,
     /// Active profile name (e.g. "strict-vil", "spec-hardening"). Thread-safe alternative to env var.
     active_profile: Option<String>,
+    pub loop_controller: crate::loop_control::LoopController,
 }
 
 /// Lightweight diagnostic context from vil-lsp, decoupled from vac_core types.
@@ -214,6 +215,7 @@ impl SwarmOrchestrator {
             privacy_vault,
             pending_images: vec![],
             active_profile: std::env::var("VAC_PROFILE").ok(),
+            loop_controller: crate::loop_control::LoopController::new(crate::loop_control::LoopConfig::default()),
         };
 
         let roles = [
@@ -764,7 +766,7 @@ Rules:
                 return Err(SwarmError::Cancelled);
             }
             // Step 2: Iteration cap check
-            if let Err(e) = crate::loop_control::check_iteration_cap(state.iterations) {
+            if let Err(e) = self.loop_controller.check_iteration_cap(state.iterations) {
                 warn!(
                     iterations = state.iterations,
                     "Max iterations reached, terminating agent loop"

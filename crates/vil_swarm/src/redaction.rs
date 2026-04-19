@@ -32,6 +32,15 @@ pub fn redact_secrets(text: &str) -> String {
     result
 }
 
+fn is_sensitive_key(k: &str) -> bool {
+    matches!(
+        k,
+        "api_key" | "apikey" | "secret" | "password" | "token" | "authorization"
+            | "auth" | "credential" | "private_key" | "access_key" | "secret_key"
+            | "signing_key"
+    )
+}
+
 /// Redact secrets from JSON value.
 pub fn redact_json(value: &mut serde_json::Value) {
     match value {
@@ -40,11 +49,7 @@ pub fn redact_json(value: &mut serde_json::Value) {
         }
         serde_json::Value::Object(map) => {
             for (key, val) in map.iter_mut() {
-                if key.to_lowercase().contains("secret")
-                    || key.to_lowercase().contains("password")
-                    || key.to_lowercase().contains("token")
-                    || key.to_lowercase().contains("key")
-                {
+                if is_sensitive_key(&key.to_lowercase()) {
                     *val = serde_json::Value::String("[REDACTED]".to_string());
                 } else {
                     redact_json(val);
@@ -100,6 +105,8 @@ mod tests {
         let mut json = serde_json::json!({
             "api_key": "secret123",
             "data": "public",
+            "public_key": "not_redacted",
+            "keyboard_layout": "us",
             "nested": {
                 "password": "pass456"
             }
@@ -107,6 +114,8 @@ mod tests {
         redact_json(&mut json);
         assert_eq!(json["api_key"], "[REDACTED]");
         assert_eq!(json["data"], "public");
+        assert_eq!(json["public_key"], "not_redacted");
+        assert_eq!(json["keyboard_layout"], "us");
         assert_eq!(json["nested"]["password"], "[REDACTED]");
     }
 }

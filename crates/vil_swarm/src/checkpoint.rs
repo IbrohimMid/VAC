@@ -132,6 +132,7 @@ pub fn list_sessions(checkpoint_dir: &std::path::Path) -> Vec<SessionInfo> {
                 continue;
             };
             let Ok(checkpoint) = load_checkpoint_from_file(&checkpoint_path) else {
+                tracing::warn!(path = %checkpoint_path.display(), "skipping corrupt checkpoint");
                 continue;
             };
 
@@ -158,6 +159,7 @@ pub fn list_sessions(checkpoint_dir: &std::path::Path) -> Vec<SessionInfo> {
             });
 
             let Some(session_id) = session_id else {
+                tracing::warn!(path = %checkpoint_path.display(), "checkpoint has no parseable session UUID");
                 continue;
             };
 
