@@ -15,6 +15,15 @@ pub enum TrustError {
         required: String,
     },
 
+    /// The action requires explicit human approval before proceeding.
+    #[error("action '{action}' requires approval: {reason}")]
+    RequiresApproval {
+        /// The action (typically a tool name) that needs approval.
+        action: String,
+        /// Human-readable reason why approval is needed.
+        reason: String,
+    },
+
     /// The agent's trust zone does not permit the requested action.
     #[error("Trust zone violation: agent '{agent}' in zone '{zone}' cannot {action}")]
     ZoneViolation {

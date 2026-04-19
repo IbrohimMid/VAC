@@ -10,6 +10,7 @@ homepage.workspace = true
 description.workspace = true
 
 [dependencies]
+indexmap = "2"
 
 [lints]
 workspace = true

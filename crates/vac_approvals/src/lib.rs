@@ -2,8 +2,8 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use tokio::sync::mpsc;
+use std::sync::{Arc, Mutex};
+use tokio::sync::{Notify, mpsc};
 use tracing::warn;
 use uuid::Uuid;
 
@@ -162,12 +162,16 @@ impl ApprovalStateMachine {
 #[derive(Debug, Clone)]
 pub struct ApprovalStore {
     approvals_dir: PathBuf,
+    pending_records: Arc<Mutex<HashMap<String, ApprovalRecord>>>,
+    record_notifiers: Arc<Mutex<HashMap<String, Arc<Notify>>>>,
 }
 
 impl ApprovalStore {
     pub fn new(project_root: PathBuf) -> Self {
         Self {
             approvals_dir: project_root.join(".vac").join("approvals"),
+            pending_records: Arc::new(Mutex::new(HashMap::new())),
+            record_notifiers: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -203,7 +207,17 @@ impl ApprovalStore {
         };
 
         let record = sm.clone().into_record();
-        self.write(&record)?;
+        match self.write(&record) {
+            Ok(()) => {
+                self.cache_record(record.clone());
+                self.notify_record_ready(&record.tool_call_id);
+            }
+            Err(err) => {
+                self.remove_cached_record(&record.tool_call_id);
+                self.notify_record_ready(&record.tool_call_id);
+                return Err(err);
+            }
+        }
         Ok(record)
     }
 
@@ -236,6 +250,8 @@ impl ApprovalStore {
 
         let record = sm.clone().into_record();
         self.write(&record)?;
+        self.cache_record(record.clone());
+        self.notify_record_ready(&record.tool_call_id);
         Ok(record)
     }
 
@@ -267,6 +283,8 @@ impl ApprovalStore {
             created_at: Utc::now(),
         });
         self.write(&record)?;
+        self.cache_record(record.clone());
+        self.notify_record_ready(&record.tool_call_id);
         Ok(record)
     }
 
@@ -277,17 +295,40 @@ impl ApprovalStore {
         if record.intent.is_some() {
             record.intent = None;
             self.write(&record)?;
+            self.cache_record(record.clone());
+            self.notify_record_ready(&record.tool_call_id);
         }
         Ok(())
     }
 
     pub fn load(&self, tool_call_id: &str) -> ApprovalResult<Option<ApprovalRecord>> {
+        if let Some(record) = self.cached_record(tool_call_id) {
+            return Ok(Some(record));
+        }
         let path = self.approval_path(tool_call_id);
         if !path.exists() {
             return Ok(None);
         }
         let content = std::fs::read_to_string(path)?;
         Ok(Some(serde_json::from_str(&content)?))
+    }
+
+    async fn wait_for_record(
+        &self,
+        tool_call_id: &str,
+        timeout: std::time::Duration,
+    ) -> ApprovalResult<Option<ApprovalRecord>> {
+        if let Some(record) = self.load(tool_call_id)? {
+            return Ok(Some(record));
+        }
+
+        let notify = self.record_notifier(tool_call_id);
+        let _ = tokio::time::timeout(timeout, notify.notified()).await;
+        self.record_notifiers
+            .lock()
+            .expect("approval notifier cache poisoned")
+            .remove(tool_call_id);
+        self.load(tool_call_id)
     }
 
     pub fn write_record(&self, record: &ApprovalRecord) -> ApprovalResult<()> {
@@ -385,6 +426,50 @@ impl ApprovalStore {
         Ok(())
     }
 
+    fn cache_record(&self, record: ApprovalRecord) {
+        self.pending_records
+            .lock()
+            .expect("approval cache poisoned")
+            .insert(record.tool_call_id.clone(), record);
+    }
+
+    fn cached_record(&self, tool_call_id: &str) -> Option<ApprovalRecord> {
+        self.pending_records
+            .lock()
+            .expect("approval cache poisoned")
+            .get(tool_call_id)
+            .cloned()
+    }
+
+    fn remove_cached_record(&self, tool_call_id: &str) {
+        self.pending_records
+            .lock()
+            .expect("approval cache poisoned")
+            .remove(tool_call_id);
+    }
+
+    fn record_notifier(&self, tool_call_id: &str) -> Arc<Notify> {
+        let mut notifiers = self
+            .record_notifiers
+            .lock()
+            .expect("approval notifier cache poisoned");
+        notifiers
+            .entry(tool_call_id.to_string())
+            .or_insert_with(|| Arc::new(Notify::new()))
+            .clone()
+    }
+
+    fn notify_record_ready(&self, tool_call_id: &str) {
+        let notify = self
+            .record_notifiers
+            .lock()
+            .expect("approval notifier cache poisoned")
+            .remove(tool_call_id);
+        if let Some(notify) = notify {
+            notify.notify_waiters();
+        }
+    }
+
     fn approval_path(&self, tool_call_id: &str) -> PathBuf {
         let base = safe_filename(tool_call_id);
         self.approvals_dir.join(format!("{base}.json"))
@@ -423,25 +508,15 @@ impl ApprovalHandle {
         approved: bool,
         reason: Option<String>,
     ) -> ApprovalResult<()> {
-        let mut record = None;
-        for attempt in 0..5 {
-            let store = self.store.clone();
-            let id = tool_call_id.clone();
-            record = tokio::task::spawn_blocking(move || store.load(&id))
-                .await
-                .map_err(|e| ApprovalError::Task(format!("Approval store task failed: {e}")))??;
-            if record.is_some() {
-                break;
-            }
-            if attempt < 4 {
-                tokio::time::sleep(std::time::Duration::from_millis(25)).await;
-            }
-        }
-        let record = record.ok_or_else(|| {
-            ApprovalError::Task(format!(
-                "Unknown tool_call_id (no approval record found): {tool_call_id}"
-            ))
-        })?;
+        let record = self
+            .store
+            .wait_for_record(&tool_call_id, std::time::Duration::from_millis(500))
+            .await?
+            .ok_or_else(|| {
+                ApprovalError::Task(format!(
+                    "Unknown tool_call_id (no approval record found): {tool_call_id}"
+                ))
+            })?;
 
         if record.state != ApprovalState::Pending {
             return Err(ApprovalError::Task(format!(
@@ -692,5 +767,49 @@ mod tests {
         // Verify the fresh one is still pending
         let fresh = store.load(&fresh_id).unwrap().unwrap();
         assert_eq!(fresh.state, ApprovalState::Pending);
+    }
+
+    #[tokio::test]
+    async fn approve_waits_for_record_request() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().to_path_buf();
+
+        let active = ActiveApprovalRegistry::new();
+        let approvals = ApprovalHandle::new(root.clone(), active.clone());
+        let store = approvals.store().clone();
+
+        let session_id = Uuid::new_v4();
+        let task_id = Uuid::new_v4();
+        let tool_call_id = format!("tc-{task_id}");
+
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        active.register(task_id, session_id, tx).await;
+
+        let approvals_for_task = approvals.clone();
+        let tool_call_id_for_task = tool_call_id.clone();
+        let approve_task =
+            tokio::spawn(async move { approvals_for_task.approve(tool_call_id_for_task).await });
+
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+
+        store
+            .record_request(
+                tool_call_id.clone(),
+                "file_write".to_string(),
+                serde_json::json!({}),
+                Some("needs approval".to_string()),
+                Some(session_id),
+                Some(task_id),
+            )
+            .unwrap();
+
+        approve_task.await.unwrap().unwrap();
+
+        let response = tokio::time::timeout(std::time::Duration::from_millis(200), rx.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(response.approved);
+        assert_eq!(response.tool_call_id, tool_call_id);
     }
 }

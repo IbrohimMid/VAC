@@ -7,7 +7,7 @@ use crate::providers::build_provider_from_config;
 use crate::rulebook_hook::RulebookContext;
 use crate::sanitize;
 use crate::token_budget::TokenBudget;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::{RwLock, mpsc};
 use tracing::{info, warn};
@@ -126,9 +126,9 @@ impl LlmRouter {
             Some(inner) => inner.get_mut().requests_per_minute = requests_per_minute,
             None => {
                 // Arc has been cloned; create a fresh rate limiter instead of panicking.
-                self.rate_limiter = Arc::new(tokio::sync::Mutex::new(
-                    SimpleRateLimiter::new(requests_per_minute),
-                ));
+                self.rate_limiter = Arc::new(tokio::sync::Mutex::new(SimpleRateLimiter::new(
+                    requests_per_minute,
+                )));
             }
         }
         self
@@ -278,9 +278,22 @@ impl LlmRouter {
         merged
     }
 
-    pub async fn complete(&self, request: &LlmRequest) -> LlmResult<LlmResponse> {
-        SimpleRateLimiter::acquire(&self.rate_limiter).await;
+    fn provider_chain(&self) -> Vec<String> {
+        let mut chain = Vec::new();
+        let mut seen = HashSet::new();
 
+        for provider_name in std::iter::once(self.default_provider.as_str())
+            .chain(self.fallback_chain.iter().map(String::as_str))
+        {
+            if seen.insert(provider_name) {
+                chain.push(provider_name.to_string());
+            }
+        }
+
+        chain
+    }
+
+    pub async fn complete(&self, request: &LlmRequest) -> LlmResult<LlmResponse> {
         {
             let budget = self.budget.read().await;
             if budget.is_exceeded() {
@@ -291,8 +304,7 @@ impl LlmRouter {
             }
         }
 
-        let mut chain = vec![self.default_provider.clone()];
-        chain.extend(self.fallback_chain.iter().cloned());
+        let chain = self.provider_chain();
 
         let mut last_error = None;
 
@@ -316,6 +328,7 @@ impl LlmRouter {
                 let mut attempt = 0usize;
                 loop {
                     attempt += 1;
+                    SimpleRateLimiter::acquire(&self.rate_limiter).await;
                     match provider.complete(&sanitized_request).await {
                         Ok(response) => {
                             let mut budget = self.budget.write().await;
@@ -329,9 +342,12 @@ impl LlmRouter {
                         }
                         Err(e) if is_retryable(&e) && attempt < self.retry_config.max_attempts => {
                             let delay = if let LlmError::RateLimited(_, retry_after_secs) = &e {
-                                // Use retry-after from error
+                                // Use retry-after from error, cap to max_backoff_ms
+                                let delay_ms = retry_after_secs
+                                    .saturating_mul(1_000)
+                                    .min(self.retry_config.max_backoff_ms);
                                 crate::retry::RetryDelay {
-                                    delay_ms: retry_after_secs * 1000,
+                                    delay_ms,
                                     source: crate::retry::RetryDelaySource::RetryAfterHeader,
                                 }
                             } else {
@@ -669,6 +685,22 @@ temperature = 0.25
         let limiter = r.rate_limiter.clone();
         let guard = limiter.try_lock().unwrap();
         assert_eq!(guard.requests_per_minute, 60);
+    }
+
+    #[test]
+    fn provider_chain_deduplicates_default_and_fallback_entries() {
+        let mut r = router();
+        r.set_fallback_chain(vec![
+            "default_prov".to_string(),
+            "alt_prov".to_string(),
+            "default_prov".to_string(),
+            "alt_prov".to_string(),
+        ]);
+
+        assert_eq!(
+            r.provider_chain(),
+            vec!["default_prov".to_string(), "alt_prov".to_string()]
+        );
     }
 
     #[test]

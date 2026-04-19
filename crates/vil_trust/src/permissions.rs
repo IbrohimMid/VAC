@@ -55,21 +55,57 @@ impl PermissionSet {
     pub fn grant(&mut self, perm: Permission) {
         self.denied.remove(&perm);
         self.granted.insert(perm);
+        debug_assert!(self.granted.is_disjoint(&self.denied));
     }
 
     /// Denies the permission and removes any prior grant for it.
     pub fn deny(&mut self, perm: Permission) {
         self.granted.remove(&perm);
         self.denied.insert(perm);
+        debug_assert!(self.granted.is_disjoint(&self.denied));
     }
 
     /// Returns `true` iff the permission is granted and not denied.
     pub fn is_granted(&self, perm: &Permission) -> bool {
-        self.granted.contains(perm) && !self.denied.contains(perm)
+        // Invariant: grant()/deny() keep granted and denied disjoint.
+        self.granted.contains(perm)
     }
 
     /// Returns `true` iff the permission is explicitly denied.
     pub fn is_denied(&self, perm: &Permission) -> bool {
         self.denied.contains(perm)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn grant_then_deny_moves_permission_between_sets() {
+        let mut set = PermissionSet::new();
+        set.grant(Permission::FileRead);
+
+        assert!(set.is_granted(&Permission::FileRead));
+        assert!(!set.is_denied(&Permission::FileRead));
+
+        set.deny(Permission::FileRead);
+
+        assert!(!set.is_granted(&Permission::FileRead));
+        assert!(set.is_denied(&Permission::FileRead));
+    }
+
+    #[test]
+    fn deny_then_grant_reverses_state() {
+        let mut set = PermissionSet::new();
+        set.deny(Permission::ShellExec);
+
+        assert!(!set.is_granted(&Permission::ShellExec));
+        assert!(set.is_denied(&Permission::ShellExec));
+
+        set.grant(Permission::ShellExec);
+
+        assert!(set.is_granted(&Permission::ShellExec));
+        assert!(!set.is_denied(&Permission::ShellExec));
     }
 }

@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::time::SystemTime;
 
 /// Represents the lifecycle state of a file in the changeset.
@@ -62,6 +63,7 @@ pub struct RepoNavigatorState {
 #[derive(Debug, Clone, Default)]
 pub struct ChangesetStore {
     entries: Vec<ChangesetEntry>,
+    path_index: HashMap<String, usize>,
     generation: u32,
     pub navigator: RepoNavigatorState,
 }
@@ -71,10 +73,21 @@ impl ChangesetStore {
         Self::default()
     }
 
+    fn entry_index(&self, path: &str) -> Option<usize> {
+        self.path_index.get(path).copied()
+    }
+
+    fn push_entry(&mut self, entry: ChangesetEntry) {
+        let idx = self.entries.len();
+        self.path_index.insert(entry.path.clone(), idx);
+        self.entries.push(entry);
+    }
+
     /// Track a newly created file.
     pub fn file_created(&mut self, path: String, actor: String) {
         self.generation += 1;
-        if let Some(entry) = self.entries.iter_mut().find(|e| e.path == path) {
+        if let Some(idx) = self.entry_index(&path) {
+            let entry = self.entries.get_mut(idx).expect("path index out of sync");
             entry.state = FileState::Created;
             entry.dirty_generation = self.generation;
             entry.timestamp = SystemTime::now();
@@ -83,14 +96,15 @@ impl ChangesetStore {
         } else {
             let mut entry = ChangesetEntry::new(path, FileState::Created, actor);
             entry.dirty_generation = self.generation;
-            self.entries.push(entry);
+            self.push_entry(entry);
         }
     }
 
     /// Track a file modification. Preserves Created state if file was newly created.
     pub fn file_modified(&mut self, path: String, actor: String, has_snapshot: bool) {
         self.generation += 1;
-        if let Some(entry) = self.entries.iter_mut().find(|e| e.path == path) {
+        if let Some(idx) = self.entry_index(&path) {
+            let entry = self.entries.get_mut(idx).expect("path index out of sync");
             if entry.state != FileState::Created {
                 entry.state = FileState::Modified;
             }
@@ -103,14 +117,15 @@ impl ChangesetStore {
             let mut entry = ChangesetEntry::new(path, FileState::Modified, actor);
             entry.dirty_generation = self.generation;
             entry.has_snapshot = has_snapshot;
-            self.entries.push(entry);
+            self.push_entry(entry);
         }
     }
 
     /// Track a file removal/deletion.
     pub fn file_removed(&mut self, path: String, actor: String) {
         self.generation += 1;
-        if let Some(entry) = self.entries.iter_mut().find(|e| e.path == path) {
+        if let Some(idx) = self.entry_index(&path) {
+            let entry = self.entries.get_mut(idx).expect("path index out of sync");
             entry.state = FileState::Removed;
             entry.dirty_generation = self.generation;
             entry.timestamp = SystemTime::now();
@@ -119,14 +134,15 @@ impl ChangesetStore {
         } else {
             let mut entry = ChangesetEntry::new(path, FileState::Removed, actor);
             entry.dirty_generation = self.generation;
-            self.entries.push(entry);
+            self.push_entry(entry);
         }
     }
 
     /// Mark a file as successfully reverted. Creates entry if not exists.
     pub fn revert_success(&mut self, path: &str) {
         self.generation += 1;
-        if let Some(entry) = self.entries.iter_mut().find(|e| e.path == path) {
+        if let Some(idx) = self.entry_index(path) {
+            let entry = self.entries.get_mut(idx).expect("path index out of sync");
             entry.state = FileState::Reverted;
             entry.dirty_generation = self.generation;
             entry.timestamp = SystemTime::now();
@@ -136,14 +152,15 @@ impl ChangesetStore {
             let mut entry =
                 ChangesetEntry::new(path.to_string(), FileState::Reverted, "manual".to_string());
             entry.dirty_generation = self.generation;
-            self.entries.push(entry);
+            self.push_entry(entry);
         }
     }
 
     /// Mark a file revert as failed with error message. Creates entry if not exists.
     pub fn revert_failed(&mut self, path: &str, error: String) {
         self.generation += 1;
-        if let Some(entry) = self.entries.iter_mut().find(|e| e.path == path) {
+        if let Some(idx) = self.entry_index(path) {
+            let entry = self.entries.get_mut(idx).expect("path index out of sync");
             entry.state = FileState::FailedRestore;
             entry.dirty_generation = self.generation;
             entry.timestamp = SystemTime::now();
@@ -157,7 +174,7 @@ impl ChangesetStore {
             );
             entry.dirty_generation = self.generation;
             entry.last_error = Some(error);
-            self.entries.push(entry);
+            self.push_entry(entry);
         }
     }
 
@@ -210,6 +227,7 @@ impl ChangesetStore {
     /// Clear all changeset state (used on session restore).
     pub fn clear(&mut self) {
         self.entries.clear();
+        self.path_index.clear();
         self.generation = 0;
     }
 }
@@ -450,5 +468,18 @@ mod tests {
         assert_eq!(counts.get(&FileState::Created), Some(&1));
         assert_eq!(counts.get(&FileState::Modified), Some(&1));
         assert_eq!(counts.get(&FileState::Reverted), Some(&1));
+    }
+
+    #[test]
+    fn test_repeated_updates_keep_single_entry() {
+        let mut store = ChangesetStore::new();
+        store.file_modified("test.rs".to_string(), "agent-a".to_string(), true);
+        store.file_removed("test.rs".to_string(), "agent-b".to_string());
+
+        let entries = store.entries();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].path, "test.rs");
+        assert_eq!(entries[0].state, FileState::Removed);
+        assert_eq!(entries[0].actor, "agent-b");
     }
 }

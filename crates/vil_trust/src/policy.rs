@@ -142,8 +142,8 @@ impl PolicyEngine {
         Ok(decision)
     }
 
-    /// Like [`PolicyEngine::evaluate`] but converts Deny and RequireApproval
-    /// into `Err(TrustError::PermissionDenied)`.
+    /// Like [`PolicyEngine::evaluate`] but converts Deny to `PermissionDenied`
+    /// and RequireApproval to `RequiresApproval`.
     pub fn enforce(&self, request: &PolicyRequest) -> TrustResult<()> {
         match self.evaluate(request)? {
             PolicyDecision::Allow => Ok(()),
@@ -152,10 +152,10 @@ impl PolicyEngine {
                 required: format!("explicit allow for '{}'", request.tool_name),
             }),
             PolicyDecision::RequireApproval => {
-                warn!(tool = %request.tool_name, "Action requires human approval");
-                Err(TrustError::PermissionDenied {
+                warn!(tool = %request.tool_name, agent = %request.agent_id, "Action requires human approval");
+                Err(TrustError::RequiresApproval {
                     action: request.tool_name.clone(),
-                    required: "human approval".to_string(),
+                    reason: "human approval".to_string(),
                 })
             }
         }
@@ -189,4 +189,54 @@ pub struct PolicyRequest {
     pub risk_level: RiskLevel,
     /// Short human-readable summary of the arguments for logging / audit.
     pub arguments_summary: String,
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    use super::*;
+
+    fn make_request(tool_name: &str, risk_level: RiskLevel) -> PolicyRequest {
+        PolicyRequest {
+            tool_name: tool_name.to_string(),
+            agent_id: "test-agent".to_string(),
+            agent_role: "coder".to_string(),
+            agent_zone: TrustZone::Trusted,
+            risk_level,
+            arguments_summary: "test".to_string(),
+        }
+    }
+
+    #[test]
+    fn enforce_allow_returns_ok() {
+        let engine = PolicyEngine::default();
+        let req = make_request("file_read", RiskLevel::Safe);
+        assert!(engine.enforce(&req).is_ok());
+    }
+
+    #[test]
+    fn enforce_deny_returns_permission_denied_variant() {
+        let mut engine = PolicyEngine::new(DefaultPolicy::Deny);
+        engine.add_rule(PolicyRule {
+            name: "deny_all".into(),
+            condition: PolicyCondition::Always,
+            decision: PolicyDecision::Deny,
+            priority: 1,
+        });
+        let req = make_request("bash", RiskLevel::Dangerous);
+        let err = engine.enforce(&req).unwrap_err();
+        assert!(matches!(err, TrustError::PermissionDenied { .. }));
+    }
+
+    #[test]
+    fn enforce_require_approval_returns_requires_approval_variant() {
+        let engine = PolicyEngine::default();
+        let req = make_request("file_write", RiskLevel::NeedsApproval);
+        let err = engine.enforce(&req).unwrap_err();
+        assert!(matches!(err, TrustError::RequiresApproval { .. }));
+        if let TrustError::RequiresApproval { action, reason } = err {
+            assert_eq!(action, "file_write");
+            assert_eq!(reason, "human approval");
+        }
+    }
 }
