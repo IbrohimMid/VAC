@@ -79,8 +79,16 @@ impl ContextEngine {
         self.ingest_source(None, content).await
     }
 
-    pub async fn ingest_source(&self, source_id: Option<String>, content: &str) -> ContextResult<Vec<ContextEntry>> {
-        debug!("Ingesting content of length: {} with source_id: {:?}", content.len(), source_id);
+    pub async fn ingest_source(
+        &self,
+        source_id: Option<String>,
+        content: &str,
+    ) -> ContextResult<Vec<ContextEntry>> {
+        debug!(
+            "Ingesting content of length: {} with source_id: {:?}",
+            content.len(),
+            source_id
+        );
 
         if let Some(ref sid) = source_id {
             let mut index = self.index.write().await;
@@ -207,10 +215,6 @@ impl ContextEngine {
         Ok(())
     }
 
-    pub async fn shm_ptr(&self) -> *const u8 {
-        self.shm.as_ptr_async().await
-    }
-
     /// Return a cloned Arc to the SHM arena for wiring into ToolContext.
     pub fn shm_arc(&self) -> Option<Arc<crate::shm::ShmArena>> {
         Some(self.shm.clone())
@@ -257,19 +261,22 @@ mod context_index {
         ) -> Result<Vec<(ContextEntry, f32)>, String> {
             let query_keywords = Self::extract_keywords(query);
 
+            if query_keywords.is_empty() {
+                return Ok(Vec::new());
+            }
+
             let mut scored: Vec<_> = self
                 .entries
                 .values()
-                .map(|e| {
-                    let mut score = self.scores.get(&e.id).copied().unwrap_or(0.0);
-                    
-                    if !query_keywords.is_empty() {
-                        let entry_keywords = Self::extract_keywords(&e.content);
-                        let overlap = query_keywords.intersection(&entry_keywords).count() as f32;
-                        score += overlap;
+                .filter_map(|e| {
+                    let entry_keywords = Self::extract_keywords(&e.content);
+                    let overlap = query_keywords.intersection(&entry_keywords).count() as f32;
+                    if overlap == 0.0 {
+                        return None;
                     }
-                    
-                    (e.clone(), score)
+
+                    let score = self.scores.get(&e.id).copied().unwrap_or(0.0) + overlap;
+                    Some((e.clone(), score))
                 })
                 .collect();
 
@@ -313,23 +320,47 @@ mod tests {
     #[tokio::test]
     async fn test_ingest_and_retrieve_keywords() {
         let engine = ContextEngine::new(test_config()).await.unwrap();
-        
-        let content1 = "This is a test document about artificial intelligence and machine learning.";
-        let content2 = "Another document entirely focused on gardening and planting trees.";
-        
+
+        let content1 = "artificial intelligence and machine learning.";
+        let content2 = "Gardening and planting trees.";
+
         engine.ingest(content1).await.unwrap();
         engine.ingest(content2).await.unwrap();
 
         let window = engine.retrieve("intelligence machine", 1).await.unwrap();
         assert_eq!(window.entries.len(), 1);
-        assert!(window.entries[0].content.contains("artificial intelligence"));
+        assert!(
+            window.entries[0]
+                .content
+                .contains("artificial intelligence")
+        );
+    }
+
+    #[tokio::test]
+    async fn test_retrieve_requires_keyword_overlap() {
+        let engine = ContextEngine::new(test_config()).await.unwrap();
+
+        engine
+            .ingest("This is a test document about artificial intelligence and machine learning.")
+            .await
+            .unwrap();
+        engine
+            .ingest("Another document entirely focused on gardening and planting trees.")
+            .await
+            .unwrap();
+
+        let missing = engine.retrieve("basketball", 10).await.unwrap();
+        assert!(missing.entries.is_empty());
+
+        let empty_query = engine.retrieve("", 10).await.unwrap();
+        assert!(empty_query.entries.is_empty());
     }
 
     #[tokio::test]
     async fn test_shm_memory_release_on_clear_and_evict() {
         let engine = ContextEngine::new(test_config()).await.unwrap();
         let content = "Some content to allocate in SHM";
-        
+
         let entries = engine.ingest(content).await.unwrap();
         assert!(!entries.is_empty());
         let allocated_bytes = engine.shm.bytes_allocated().await;
@@ -338,31 +369,37 @@ mod tests {
         // Test evict
         let entry_id = &entries[0].id;
         engine.evict(entry_id).await.unwrap();
-        
+
         let after_evict_bytes = engine.shm.bytes_allocated().await;
         assert!(after_evict_bytes < allocated_bytes);
 
         // Test clear
         engine.ingest("More content").await.unwrap();
         assert!(engine.shm.bytes_allocated().await > 0);
-        
+
         engine.clear().await.unwrap();
         assert_eq!(engine.shm.bytes_allocated().await, 0);
     }
-    
+
     #[tokio::test]
     async fn test_reingest_source() {
         let engine = ContextEngine::new(test_config()).await.unwrap();
         let source_id = Some("source_1".to_string());
-        
-        engine.ingest_source(source_id.clone(), "Version 1 of the document").await.unwrap();
+
+        engine
+            .ingest_source(source_id.clone(), "Version 1 of the document")
+            .await
+            .unwrap();
         let allocated_v1 = engine.shm.bytes_allocated().await;
         assert!(allocated_v1 > 0);
-        
+
         // Re-ingest with the same source_id
-        engine.ingest_source(source_id.clone(), "V2 doc").await.unwrap();
-        
-        // It should have freed v1 and allocated v2. 
+        engine
+            .ingest_source(source_id.clone(), "V2 doc")
+            .await
+            .unwrap();
+
+        // It should have freed v1 and allocated v2.
         // We verify that total entries in index are for V2 only
         let window = engine.retrieve("doc", 10).await.unwrap();
         assert!(!window.entries.is_empty());

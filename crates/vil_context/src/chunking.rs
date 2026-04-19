@@ -30,11 +30,11 @@ impl SemanticChunker {
             for word in words.iter().skip(start) {
                 let word_len = word.len();
                 let added_len = if count == 0 { word_len } else { word_len + 1 };
-                
+
                 if count + added_len > self.chunk_size && count > 0 {
                     break;
                 }
-                
+
                 window.push(*word);
                 count += added_len;
             }
@@ -68,4 +68,3 @@ mod tests {
         assert_eq!(chunks, vec!["a b", "b c", "c d", "d e", "e"]);
     }
 }
-

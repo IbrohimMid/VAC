@@ -153,7 +153,11 @@ impl ShmArena {
     }
 
     pub async fn write(&self, offset: usize, data: &[u8]) -> ContextResult<usize> {
-        if offset.checked_add(data.len()).map(|end| end > self.size).unwrap_or(true) {
+        if offset
+            .checked_add(data.len())
+            .map(|end| end > self.size)
+            .unwrap_or(true)
+        {
             return Err(ContextError::OutOfBounds(
                 "Write would exceed arena bounds".to_string(),
             ));
@@ -165,7 +169,11 @@ impl ShmArena {
     }
 
     pub async fn read(&self, offset: usize, len: usize) -> ContextResult<Vec<u8>> {
-        if offset.checked_add(len).map(|end| end > self.size).unwrap_or(true) {
+        if offset
+            .checked_add(len)
+            .map(|end| end > self.size)
+            .unwrap_or(true)
+        {
             return Err(ContextError::OutOfBounds(
                 "Read would exceed arena bounds".to_string(),
             ));
@@ -184,8 +192,8 @@ impl ShmArena {
         String::from_utf8(bytes).map_err(|e| ContextError::Retrieval(e.to_string()))
     }
 
-    pub async fn as_ptr_async(&self) -> *const u8 {
-        self.mmap.read().await.as_ptr()
+    pub async fn as_ptr_async(&self) -> tokio::sync::OwnedRwLockReadGuard<MmapMut> {
+        self.mmap.clone().read_owned().await
     }
 
     pub fn size(&self) -> usize {
@@ -212,22 +220,22 @@ mod tests {
     async fn test_shm_write_read_bounds() {
         let temp = NamedTempFile::new().unwrap();
         let arena = ShmArena::new(temp.path(), 100).unwrap();
-        
+
         // Write within bounds
         assert!(arena.write(0, &[1, 2, 3]).await.is_ok());
-        
+
         // Write exactly at bounds
         assert!(arena.write(97, &[1, 2, 3]).await.is_ok());
-        
+
         // Write out of bounds (overflows size)
         assert!(arena.write(98, &[1, 2, 3]).await.is_err());
-        
+
         // Write out of bounds (integer overflow)
         assert!(arena.write(usize::MAX - 1, &[1, 2, 3]).await.is_err());
 
         // Read within bounds
         assert!(arena.read(0, 3).await.is_ok());
-        
+
         // Read out of bounds (overflows size)
         assert!(arena.read(98, 3).await.is_err());
 
@@ -239,10 +247,11 @@ mod tests {
     async fn test_as_ptr_async() {
         let temp = NamedTempFile::new().unwrap();
         let arena = ShmArena::new(temp.path(), 100).unwrap();
-        
+
         arena.write(0, &[42, 43, 44]).await.unwrap();
-        
-        let ptr = arena.as_ptr_async().await;
+
+        let guard = arena.as_ptr_async().await;
+        let ptr = guard.as_ptr();
         unsafe {
             let slice = std::slice::from_raw_parts(ptr, 3);
             assert_eq!(slice, &[42, 43, 44]);

@@ -343,7 +343,10 @@ impl LlmRouter {
                         Err(e) if is_retryable(&e) => {
                             let mut headers = std::collections::HashMap::new();
                             if let LlmError::RateLimited(_, retry_after_secs) = &e {
-                                headers.insert("retry-after".to_string(), retry_after_secs.to_string());
+                                headers.insert(
+                                    "retry-after".to_string(),
+                                    retry_after_secs.to_string(),
+                                );
                             }
                             match crate::retry::next_retry_decision(
                                 &headers,
@@ -352,10 +355,13 @@ impl LlmRouter {
                                 chrono::Utc::now(),
                             ) {
                                 crate::retry::RetryDecision::Retry(mut delay) => {
-                                    delay.delay_ms = delay.delay_ms.min(self.retry_config.max_backoff_ms);
+                                    delay.delay_ms =
+                                        delay.delay_ms.min(self.retry_config.max_backoff_ms);
                                     warn!(provider = provider_name, attempt, delay_ms = delay.delay_ms, error = %e, "Retrying after delay");
-                                    tokio::time::sleep(std::time::Duration::from_millis(delay.delay_ms))
-                                        .await;
+                                    tokio::time::sleep(std::time::Duration::from_millis(
+                                        delay.delay_ms,
+                                    ))
+                                    .await;
                                 }
                                 crate::retry::RetryDecision::GiveUp => {
                                     warn!(provider = provider_name, error = %e, "Provider failed, trying next");
@@ -757,10 +763,14 @@ temperature = 0.25
             "mock_retry"
         }
         async fn complete(&self, _req: &LlmRequest) -> LlmResult<crate::provider::LlmResponse> {
-            self.attempts.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            self.attempts
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             Err(LlmError::RateLimited("mock".into(), 0))
         }
-        async fn stream(&self, _req: &LlmRequest) -> LlmResult<tokio::sync::mpsc::Receiver<crate::provider::StreamChunk>> {
+        async fn stream(
+            &self,
+            _req: &LlmRequest,
+        ) -> LlmResult<tokio::sync::mpsc::Receiver<crate::provider::StreamChunk>> {
             unimplemented!()
         }
     }
@@ -768,17 +778,19 @@ temperature = 0.25
     #[tokio::test]
     async fn router_respects_max_attempts_limit() {
         let attempts = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-        let provider = Arc::new(MockRetryProvider { attempts: attempts.clone() });
-        
+        let provider = Arc::new(MockRetryProvider {
+            attempts: attempts.clone(),
+        });
+
         let mut r = LlmRouter::new("mock_retry", 1_000);
         r.add_provider(provider);
         r.retry_config.max_attempts = 2;
         r.retry_config.initial_backoff_ms = 1;
         r.retry_config.max_backoff_ms = 1;
-        
+
         let req = LlmRequest::new(vec![Message::user("hi")]);
         let result = r.complete(&req).await;
-        
+
         assert!(result.is_err());
         // max_attempts = 2 allows attempt 1, 2 (which are retried) and attempt 3 (which gives up).
         // Total provider calls = 3.
