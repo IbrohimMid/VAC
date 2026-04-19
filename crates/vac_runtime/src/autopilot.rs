@@ -9,7 +9,7 @@ use crate::executor::{EnvironmentMode, OperatingMode, TaskExecutor};
 use crate::jobs::{Job, JobKind, JobStatus};
 use crate::queue::TaskQueue;
 use crate::scheduler::{AutopilotEvent, AutopilotState, AutopilotStateFile};
-use vac_approvals::{ApprovalIntent, ApprovalState, ApprovalStore};
+use vac_approvals::{ApprovalIntent, ApprovalStore};
 
 pub struct AutopilotController {
     project_root: PathBuf,
@@ -629,45 +629,22 @@ async fn wait_for_approval_intent(
     tool_call_id: &str,
     shutdown: &mut tokio::sync::watch::Receiver<bool>,
 ) -> anyhow::Result<ApprovalIntent> {
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(300);
+    if *shutdown.borrow() {
+        anyhow::bail!("Shutdown while waiting approval");
+    }
 
-    loop {
-        if *shutdown.borrow() {
+    let timeout = std::time::Duration::from_secs(300);
+
+    tokio::select! {
+        intent_res = store.wait_for_intent(tool_call_id, timeout) => {
+            match intent_res {
+                Ok(Some(intent)) => Ok(intent),
+                Ok(None) => anyhow::bail!("approval timeout"),
+                Err(e) => Err(anyhow::anyhow!(e)),
+            }
+        }
+        _ = shutdown.changed() => {
             anyhow::bail!("Shutdown while waiting approval");
-        }
-
-        let record = {
-            let store = store.clone();
-            let id = tool_call_id.to_string();
-            tokio::task::spawn_blocking(move || store.load(&id))
-                .await
-                .map_err(|e: tokio::task::JoinError| anyhow::anyhow!(e))?
-                .map_err(|e: vac_approvals::ApprovalError| anyhow::anyhow!(e))?
-        };
-
-        let Some(record) = record else {
-            anyhow::bail!("Unknown tool_call_id (no approval record found): {tool_call_id}");
-        };
-
-        if record.state != ApprovalState::Pending {
-            anyhow::bail!(
-                "Approval is not pending (tool_call_id={}, state={:?})",
-                tool_call_id,
-                record.state
-            );
-        }
-
-        if let Some(intent) = record.intent {
-            return Ok(intent);
-        }
-
-        if std::time::Instant::now() > deadline {
-            anyhow::bail!("approval timeout");
-        }
-
-        tokio::select! {
-            _ = tokio::time::sleep(std::time::Duration::from_millis(200)) => {}
-            _ = shutdown.changed() => {}
         }
     }
 }

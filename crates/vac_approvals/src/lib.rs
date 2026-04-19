@@ -289,7 +289,7 @@ impl ApprovalStore {
     }
 
     pub fn clear_intent(&self, tool_call_id: &str) -> ApprovalResult<()> {
-        let Some(mut record) = self.load(tool_call_id)? else {
+        let Some(mut record) = self.load_from_fs(tool_call_id)? else {
             return Ok(());
         };
         if record.intent.is_some() {
@@ -299,6 +299,15 @@ impl ApprovalStore {
             self.notify_record_ready(&record.tool_call_id);
         }
         Ok(())
+    }
+
+    pub fn load_from_fs(&self, tool_call_id: &str) -> ApprovalResult<Option<ApprovalRecord>> {
+        let path = self.approval_path(tool_call_id);
+        if !path.exists() {
+            return Ok(None);
+        }
+        let content = std::fs::read_to_string(path)?;
+        Ok(Some(serde_json::from_str(&content)?))
     }
 
     pub fn load(&self, tool_call_id: &str) -> ApprovalResult<Option<ApprovalRecord>> {
@@ -313,22 +322,70 @@ impl ApprovalStore {
         Ok(Some(serde_json::from_str(&content)?))
     }
 
-    async fn wait_for_record(
+    pub async fn wait_for_record(
         &self,
         tool_call_id: &str,
         timeout: std::time::Duration,
     ) -> ApprovalResult<Option<ApprovalRecord>> {
-        if let Some(record) = self.load(tool_call_id)? {
+        let notify = self.record_notifier(tool_call_id);
+        let notified = notify.notified();
+
+        if let Some(record) = self.load_from_fs(tool_call_id)? {
+            self.record_notifiers
+                .lock()
+                .expect("approval notifier cache poisoned")
+                .remove(tool_call_id);
             return Ok(Some(record));
         }
 
-        let notify = self.record_notifier(tool_call_id);
-        let _ = tokio::time::timeout(timeout, notify.notified()).await;
+        let _ = tokio::time::timeout(timeout, notified).await;
         self.record_notifiers
             .lock()
             .expect("approval notifier cache poisoned")
             .remove(tool_call_id);
-        self.load(tool_call_id)
+        self.load_from_fs(tool_call_id)
+    }
+
+    pub async fn wait_for_intent(
+        &self,
+        tool_call_id: &str,
+        total_timeout: std::time::Duration,
+    ) -> ApprovalResult<Option<ApprovalIntent>> {
+        let deadline = tokio::time::Instant::now() + total_timeout;
+        let slice = std::time::Duration::from_millis(500);
+
+        loop {
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            if remaining.is_zero() {
+                return Ok(None);
+            }
+
+            let notify = self.record_notifier(tool_call_id);
+            let notified = notify.notified();
+
+            if let Some(record) = self.load_from_fs(tool_call_id)? {
+                if let Some(intent) = record.intent {
+                    self.record_notifiers
+                        .lock()
+                        .expect("approval notifier cache poisoned")
+                        .remove(tool_call_id);
+                    return Ok(Some(intent));
+                }
+                if record.state != ApprovalState::Pending {
+                    self.record_notifiers
+                        .lock()
+                        .expect("approval notifier cache poisoned")
+                        .remove(tool_call_id);
+                    return Err(ApprovalError::Task(format!(
+                        "Approval is not pending (tool_call_id={}, state={:?})",
+                        tool_call_id, record.state
+                    )));
+                }
+            }
+
+            let wait_span = remaining.min(slice);
+            let _ = tokio::time::timeout(wait_span, notified).await;
+        }
     }
 
     pub fn write_record(&self, record: &ApprovalRecord) -> ApprovalResult<()> {
@@ -382,6 +439,10 @@ impl ApprovalStore {
                 std::fs::remove_file(&path)?;
                 removed += 1;
             }
+            self.record_notifiers
+                .lock()
+                .expect("approval notifier cache poisoned")
+                .remove(&record.tool_call_id);
         }
 
         Ok(removed)
@@ -770,7 +831,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn approve_waits_for_record_request() {
+    async fn test_approve_waits_for_record_request() {
         let tmp = TempDir::new().unwrap();
         let root = tmp.path().to_path_buf();
 
@@ -811,5 +872,67 @@ mod tests {
             .unwrap();
         assert!(response.approved);
         assert_eq!(response.tool_call_id, tool_call_id);
+    }
+
+    #[tokio::test]
+    async fn test_wait_for_intent_resolves() {
+        let (_tmp, store) = make_store();
+        let session_id = Uuid::new_v4();
+        let task_id = Uuid::new_v4();
+        let tool_call_id = "tc-intent-test".to_string();
+
+        let store_clone = store.clone();
+        let tc_id = tool_call_id.clone();
+        
+        let wait_task = tokio::spawn(async move {
+            store_clone.wait_for_intent(&tc_id, std::time::Duration::from_secs(5)).await
+        });
+
+        // Small sleep to ensure waiter is waiting
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        // Record request
+        store.record_request(
+            tool_call_id.clone(),
+            "test_tool".to_string(),
+            serde_json::json!({}),
+            None,
+            Some(session_id),
+            Some(task_id),
+        ).unwrap();
+
+        // Small sleep again, it should still be waiting since no intent
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        // Provide intent
+        store.record_intent(tool_call_id.clone(), true, Some("approved".to_string())).unwrap();
+
+        let intent = wait_task.await.unwrap().unwrap().expect("Should have intent");
+        assert!(intent.approved);
+        assert_eq!(intent.reason.as_deref(), Some("approved"));
+    }
+
+    #[tokio::test]
+    async fn test_wait_for_intent_timeout() {
+        let (_tmp, store) = make_store();
+        let session_id = Uuid::new_v4();
+        let task_id = Uuid::new_v4();
+        let tool_call_id = "tc-timeout-test".to_string();
+
+        // Record request but no intent
+        store.record_request(
+            tool_call_id.clone(),
+            "test_tool".to_string(),
+            serde_json::json!({}),
+            None,
+            Some(session_id),
+            Some(task_id),
+        ).unwrap();
+
+        let start = std::time::Instant::now();
+        let res = store.wait_for_intent(&tool_call_id, std::time::Duration::from_millis(100)).await.unwrap();
+        
+        assert!(res.is_none());
+        assert!(start.elapsed() >= std::time::Duration::from_millis(100));
     }
 }
