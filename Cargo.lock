@@ -5285,6 +5285,7 @@ dependencies = [
  "chrono",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
@@ -5427,6 +5428,15 @@ dependencies = [
 [[package]]
 name = "vac_session_control"
 version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tracing",
+ "uuid",
+]
 
 [[package]]
 name = "vac_shell"
@@ -5529,6 +5539,7 @@ dependencies = [
  "vac_changeset",
  "vac_core",
  "vac_runtime",
+ "vac_session_control",
  "vac_shell",
  "vac_tools",
  "vil_ir",

@@ -16,7 +16,10 @@ pub fn filter_helpers_sync(state: &mut AppState) {
     let query = input.trim_start_matches('/');
     if query.is_empty() {
         // Sort by recency/frequency when query is empty
-        let mut cmds = state.commands.clone();
+        let mut cmds: Vec<_> = state.commands.iter()
+            .filter(|c| c.surface != crate::services::commands::CommandSurface::Hidden)
+            .cloned()
+            .collect();
         cmds.sort_by_key(|c| {
             let freq = state
                 .recent_commands
@@ -42,6 +45,9 @@ pub fn filter_helpers_sync(state: &mut AppState) {
     let mut matches = Vec::new();
     let mut buf = Vec::new();
     for cmd in &state.commands {
+        if cmd.surface == crate::services::commands::CommandSurface::Hidden {
+            continue;
+        }
         let text = format!("{} {}", cmd.command, cmd.description);
         let utf32 = nucleo_matcher::Utf32Str::new(&text, &mut buf);
         if let Some(score) = pattern.score(utf32, &mut matcher) {

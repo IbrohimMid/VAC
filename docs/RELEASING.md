@@ -40,7 +40,9 @@ UI; the exact check names are defined by the workflow files in
 
 - `cargo-dist` for binary packaging and release plan generation
 - `git-cliff` for changelog derivation
-- signed artifacts and SBOM generation as the release pipeline matures
+- `SHA256SUMS.txt` verification for installer trust
+- SBOM generation is present in release workflow
+- artifact signing and public verification material are still being hardened
 
 ## Evidence
 

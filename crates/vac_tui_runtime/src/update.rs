@@ -11,13 +11,27 @@ pub fn flush_pending_user_messages_if_idle(
         return;
     }
 
+    // Bounded queue policy: if queue exceeds 64 items, drop oldest messages
+    const MAX_QUEUE_SIZE: usize = 64;
+    while state.pending_user_messages.len() > MAX_QUEUE_SIZE {
+        state.pending_user_messages.pop_front();
+        state.queue_metrics.total_dropped += 1;
+        log::warn!("Dropped oldest pending user message (queue overflow)");
+    }
+
     let mut merged = match state.pending_user_messages.pop_front() {
         Some(m) => m,
         None => return,
     };
 
+    state.queue_metrics.total_queued += 1;
+
+    let merge_count = state.pending_user_messages.len();
     while let Some(next) = state.pending_user_messages.pop_front() {
         merged.merge_from(next);
+    }
+    if merge_count > 0 {
+        state.queue_metrics.total_merged += merge_count as u64;
     }
 
     let revert_index = state.pending_revert_index.take();
@@ -35,14 +49,32 @@ pub fn flush_pending_user_messages_if_idle(
         revert_index,
     )) {
         Ok(()) => {
+            // Reset flush retries on success
+            state.queue_metrics.flush_retries = 0;
+            state.queue_metrics.last_flush_error = None;
+
             if let Err(e) = input_tx.try_send(InputEvent::AddUserMessage(merged.user_message_text.clone())) {
                 log::warn!("Failed to send AddUserMessage event: {}", e);
                 state.add_user_message(merged.user_message_text);
             }
         }
         Err(_) => {
-            log::warn!("Failed to flush buffered UserMessage event: output channel unavailable");
+            state.queue_metrics.flush_retries += 1;
+            let error_msg = "output channel unavailable".to_string();
+            state.queue_metrics.last_flush_error = Some(error_msg.clone());
+            log::warn!("Failed to flush buffered UserMessage event: {}", error_msg);
             state.pending_user_messages.push_front(merged);
+
+            // On repeated flush failure (3+ retries), push a toast to notify the operator
+            if state.queue_metrics.flush_retries >= 3 {
+                state.toasts.push(crate::services::Toast::error(format!(
+                    "Message queue flush failing ({} retries): {}",
+                    state.queue_metrics.flush_retries, error_msg
+                )));
+                if state.toasts.len() > 3 {
+                    state.toasts.drain(0..state.toasts.len().saturating_sub(3));
+                }
+            }
         }
     }
 }

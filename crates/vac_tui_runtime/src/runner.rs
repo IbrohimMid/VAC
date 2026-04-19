@@ -4,13 +4,13 @@ use anyhow::Result;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tokio::sync::{Mutex, mpsc};
-use vac_core::RuntimeUpdate;
+use tokio::sync::{mpsc, Mutex};
 use vac_core::engine::VacEngine;
+use vac_core::RuntimeUpdate;
 
 use super::{
-    FunctionCall, InputEvent, LoadingOperation, OutputEvent, ToolCall, ToolCallResult,
-    ToolCallResultStatus, run_tui,
+    run_tui, FunctionCall, InputEvent, LoadingOperation, OutputEvent, ToolCall, ToolCallResult,
+    ToolCallResultStatus,
 };
 
 /// Shared handle to the active task's update channel for structured approval routing.
@@ -323,7 +323,10 @@ async fn handle_runtime_update(
                 .send(InputEvent::ValidationResult(score, issues))
                 .await;
         }
-        RuntimeUpdate::LspStatus { available, binary_path } => {
+        RuntimeUpdate::LspStatus {
+            available,
+            binary_path,
+        } => {
             let _ = input_tx_inner
                 .send(InputEvent::LspStatus(available, binary_path))
                 .await;
@@ -549,7 +552,11 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                             let profile =
                                 vac_core::detector::VilProjectProfile::detect(&project_root);
                             let s = profile.archetype.to_string();
-                            if s == "Unknown" { None } else { Some(s) }
+                            if s == "Unknown" {
+                                None
+                            } else {
+                                Some(s)
+                            }
                         };
                         let resolved = vac_core::rulebook::ResolvedRuleContext::build(
                             filtered,
@@ -661,13 +668,13 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                                             Ok(spec) => Some(spec),
                                             Err(err) => {
                                                 let _ = input_tx
-                                                .send(InputEvent::ShellError(
-                                                    "system".to_string(),
-                                                    format!(
+                                                    .send(InputEvent::ShellError(
+                                                        "system".to_string(),
+                                                        format!(
                                                         "Failed to prepare isolated shell: {err}"
                                                     ),
-                                                ))
-                                                .await;
+                                                    ))
+                                                    .await;
                                                 continue;
                                             }
                                         }
@@ -795,12 +802,9 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                         match result {
                             Ok(out_path) => {
                                 let _ = input_tx
-                                    .send(InputEvent::ShowToast(
-                                        crate::services::Toast::success(format!(
-                                            "Bundle diekspor: {}",
-                                            out_path.display()
-                                        )),
-                                    ))
+                                    .send(InputEvent::ShowToast(crate::services::Toast::success(
+                                        format!("Bundle diekspor: {}", out_path.display()),
+                                    )))
                                     .await;
                                 let _ = input_tx
                                     .send(InputEvent::AssistantMessage(format!(
@@ -811,11 +815,9 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                             }
                             Err(e) => {
                                 let _ = input_tx
-                                    .send(InputEvent::ShowToast(
-                                        crate::services::Toast::error(format!(
-                                            "Gagal export bundle: {e}"
-                                        )),
-                                    ))
+                                    .send(InputEvent::ShowToast(crate::services::Toast::error(
+                                        format!("Gagal export bundle: {e}"),
+                                    )))
                                     .await;
                             }
                         }
@@ -836,12 +838,9 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                         match result {
                             Ok(session_id) => {
                                 let _ = input_tx
-                                    .send(InputEvent::ShowToast(
-                                        crate::services::Toast::success(format!(
-                                            "Bundle diimpor (session_id={})",
-                                            session_id
-                                        )),
-                                    ))
+                                    .send(InputEvent::ShowToast(crate::services::Toast::success(
+                                        format!("Bundle diimpor (session_id={})", session_id),
+                                    )))
                                     .await;
                                 let _ = input_tx
                                     .send(InputEvent::AssistantMessage(format!(
@@ -852,11 +851,9 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                             }
                             Err(e) => {
                                 let _ = input_tx
-                                    .send(InputEvent::ShowToast(
-                                        crate::services::Toast::error(format!(
-                                            "Gagal import bundle: {e}"
-                                        )),
-                                    ))
+                                    .send(InputEvent::ShowToast(crate::services::Toast::error(
+                                        format!("Gagal import bundle: {e}"),
+                                    )))
                                     .await;
                             }
                         }
@@ -865,14 +862,19 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                 OutputEvent::ListSessions => {
                     let eng = engine_clone.lock().await;
                     if let Ok(sessions) = eng.list_sessions().await {
+                        let snapshots = vac_session_control::list_snapshots(&runtime_project_root)
+                            .unwrap_or_default();
+                        let snapshot_by_id: std::collections::HashMap<_, _> = snapshots
+                            .into_iter()
+                            .map(|snapshot| (snapshot.session_id, snapshot))
+                            .collect();
                         let session_infos = sessions
                             .into_iter()
                             .map(|s| {
                                 let id_str = s.id.to_string();
                                 let checkpoint_dir = std::path::Path::new(".vac/checkpoints");
-                                let state_file =
-                                    checkpoint_dir.join(format!("{}_state.json", id_str));
-                                let has_checkpoint = state_file.exists();
+                                let has_checkpoint =
+                                    vac_session_control::has_checkpoint(&runtime_project_root, s.id);
                                 // Collect checkpoint files for this session (sorted newest first)
                                 let checkpoints: Vec<String> = if checkpoint_dir.exists() {
                                     let mut files: Vec<_> = std::fs::read_dir(checkpoint_dir)
@@ -895,6 +897,14 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                                 };
                                 let last_activity =
                                     s.updated_at.format("%Y-%m-%d %H:%M").to_string();
+                                let snapshot_present = snapshot_by_id.contains_key(&s.id);
+                                let snapshot_stale =
+                                    snapshot_by_id.get(&s.id).is_some_and(|snapshot| {
+                                        vac_session_control::is_stale(
+                                            snapshot,
+                                            chrono::Duration::days(30),
+                                        )
+                                    });
                                 crate::app::SessionInfo {
                                     id: id_str.clone(),
                                     title: format!("Session {}", &id_str[..8]),
@@ -903,6 +913,8 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                                     task_count: s.tasks.len(),
                                     last_activity,
                                     has_checkpoint,
+                                    snapshot_present,
+                                    snapshot_stale,
                                 }
                             })
                             .collect();
@@ -1073,7 +1085,56 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
             })
             .collect::<Vec<_>>();
         let _ = input_tx
-            .send(InputEvent::AvailableModelsLoaded(models))
+            .send(InputEvent::AvailableModelsLoaded(models.clone()))
+            .await;
+
+        // Phase 3: Send StartupHydrated with real runtime state
+        let active_model_name = models.first().map(|m| m.name.clone());
+        let default_model_id = models.first().map(|m| m.id.clone());
+        let session_count = eng.list_sessions().await.map(|s| s.len()).unwrap_or(0);
+        let status = eng.status().await.ok();
+        let provider_status = if status.as_ref().is_some_and(|s| s.subsystems_initialized) {
+            "ready".to_string()
+        } else {
+            "loading...".to_string()
+        };
+
+        let config = vac_core::VacConfig::load_with_fallback(&project_root).unwrap_or_default();
+        let mcp_server_count = config.mcp_servers.as_ref().map_or(0, |s| s.len());
+        let selected_rulebooks: Vec<String> = {
+            let books =
+                vac_core::rulebook::RulebookLoader::load_all(&project_root, &config.rulebook.paths);
+            books.iter().map(|b| b.id.clone()).collect()
+        };
+        let active_rulebook = if selected_rulebooks.is_empty() {
+            None
+        } else {
+            Some(selected_rulebooks.join(", "))
+        };
+
+        let startup_snapshot = crate::app::StartupSnapshot {
+            boot_time: chrono::Utc::now(),
+            version: env!("CARGO_PKG_VERSION").to_string(),
+            has_vil_engine: vac_core::detector::VilProjectProfile::detect(&project_root)
+                .is_vil_project,
+            active_rulebook,
+            environment: if cfg!(debug_assertions) {
+                "development".to_string()
+            } else {
+                "production".to_string()
+            },
+            active_model: active_model_name,
+            default_model: default_model_id,
+            active_profile: Some("default".to_string()),
+            selected_rulebooks,
+            mcp_server_count,
+            session_count,
+            pending_approvals_count: 0,
+            provider_status,
+            queue_depth: 0,
+        };
+        let _ = input_tx
+            .send(InputEvent::StartupHydrated(startup_snapshot))
             .await;
     }
 
@@ -1090,7 +1151,11 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
 
     let corpus_root = if let Ok(env_root) = std::env::var("VIL_KNOWLEDGE_ROOT") {
         let p = std::path::PathBuf::from(env_root);
-        if p.exists() { Some(p) } else { None }
+        if p.exists() {
+            Some(p)
+        } else {
+            None
+        }
     } else {
         let config_path = project_root.join(".vac/config.toml");
         read_toml_str(&config_path, &["knowledge", "root"])

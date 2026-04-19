@@ -7,6 +7,16 @@ use ratatui::{
     widgets::Paragraph,
 };
 
+pub(crate) fn model_label(state: &AppState) -> String {
+    match state.current_model.as_ref() {
+        Some(model) => model.name.clone(),
+        None => match state.startup.default_model.as_ref() {
+            Some(default) => format!("no active model selected (default: {default})"),
+            None => "no active model selected".to_string(),
+        },
+    }
+}
+
 pub fn render_statusline(f: &mut Frame, state: &AppState, area: Rect) {
     let mode_str = match state.focus {
         crate::app::WorkspaceFocus::Input => "INPUT",
@@ -15,11 +25,7 @@ pub fn render_statusline(f: &mut Frame, state: &AppState, area: Rect) {
         crate::app::WorkspaceFocus::Workbench => "WORKBENCH",
     };
 
-    let model_str = state
-        .current_model
-        .as_ref()
-        .map(|m| m.name.as_str())
-        .unwrap_or("Pending initialization");
+    let model_str = model_label(state);
 
     let tokens = state.total_session_usage.total_tokens;
 
@@ -70,6 +76,30 @@ pub fn render_statusline(f: &mut Frame, state: &AppState, area: Rect) {
         ));
     }
 
+    // Phase 3: Show provider/auth status from startup snapshot
+    {
+        let provider_status = &state.startup.provider_status;
+        let (provider_label, provider_color) = if provider_status.starts_with("ready") {
+            (provider_status.as_str(), Color::Green)
+        } else if provider_status == "initializing" || provider_status == "loading..." {
+            (provider_status.as_str(), Color::Yellow)
+        } else {
+            (provider_status.as_str(), Color::Red)
+        };
+        text.push(Span::raw(" | "));
+        text.push(Span::styled(
+            format!("Provider: {}", provider_label),
+            Style::default().fg(provider_color),
+        ));
+    }
+    if state.startup.mcp_server_count > 0 {
+        text.push(Span::raw(" | "));
+        text.push(Span::styled(
+            format!("MCP: {}", state.startup.mcp_server_count),
+            Style::default().fg(Color::Cyan),
+        ));
+    }
+
     if state.lsp_available {
         text.push(Span::raw(" | "));
         text.push(Span::styled("LSP", Style::default().fg(Color::Blue)));
@@ -86,4 +116,39 @@ pub fn render_statusline(f: &mut Frame, state: &AppState, area: Rect) {
 
     let widget = Paragraph::new(Line::from(text)).alignment(Alignment::Left);
     f.render_widget(widget, area);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::{AppState, AppStateOptions};
+
+    #[test]
+    fn model_label_prefers_active_model() {
+        let state = AppState::new(AppStateOptions {
+            model: Some(crate::types::Model {
+                id: "m1".to_string(),
+                name: "Primary".to_string(),
+                provider: "anthropic".to_string(),
+                supports_reasoning: false,
+                ..Default::default()
+            }),
+            session_id: None,
+            checkpoint_path: None,
+            project_root: std::env::current_dir().unwrap(),
+        });
+
+        assert_eq!(model_label(&state), "Primary");
+    }
+
+    #[test]
+    fn model_label_reports_missing_active_model_with_default_hint() {
+        let mut state = AppState::default();
+        state.startup.default_model = Some("claude-4".to_string());
+
+        assert_eq!(
+            model_label(&state),
+            "no active model selected (default: claude-4)"
+        );
+    }
 }

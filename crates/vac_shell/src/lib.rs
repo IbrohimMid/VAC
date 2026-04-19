@@ -20,10 +20,16 @@ fn get_process_registry() -> Arc<Mutex<HashMap<String, u32>>> {
 /// Lifecycle state shown in the shell footer strip.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ShellLifecycle {
+    /// Initial state before first output.
+    Starting,
     /// Shell is running, no special state.
     Running,
     /// Shell appears idle at a prompt (prompt-ready detection fired).
     PromptReady,
+    /// Shell is waiting for user input (password prompt, etc.).
+    WaitingInput,
+    /// Shell has been sent to the background by the user.
+    Backgrounded,
     /// Process exited normally.
     Exited(i32),
     /// Process was killed (SIGKILL / forced termination).
@@ -36,8 +42,11 @@ impl ShellLifecycle {
     /// Human-readable label for the footer hint.
     pub fn label(&self) -> String {
         match self {
+            Self::Starting => "Starting".into(),
             Self::Running => "Running".into(),
             Self::PromptReady => "Prompt ready".into(),
+            Self::WaitingInput => "Waiting for input".into(),
+            Self::Backgrounded => "Backgrounded".into(),
             Self::Exited(code) => format!("Exited({})", code),
             Self::Killed => "Killed".into(),
             Self::Error(msg) => format!("Error: {}", msg),
@@ -143,6 +152,8 @@ pub struct ShellSession {
     pub output: String,
     pub lifecycle: ShellLifecycle,
     pub task_id: Option<String>,
+    /// Reason for the most recent lifecycle transition (for diagnostics/UX).
+    pub transition_reason: Option<String>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -159,8 +170,9 @@ impl ShellManager {
             title,
             command: None,
             output: String::new(),
-            lifecycle: ShellLifecycle::Running,
+            lifecycle: ShellLifecycle::Starting,
             task_id,
+            transition_reason: Some("Session created".to_string()),
         });
         self.active_session_idx = self.sessions.len() - 1;
         id
@@ -177,6 +189,30 @@ impl ShellManager {
     pub fn attach_command(&mut self, session_id: &str, command: ShellCommand) {
         if let Some(session) = self.sessions.iter_mut().find(|s| s.id == session_id) {
             session.command = Some(command);
+        }
+    }
+
+    /// Move a session to the `Backgrounded` lifecycle state.
+    pub fn background_session(&mut self, session_id: &str) {
+        if let Some(session) = self.sessions.iter_mut().find(|s| s.id == session_id) {
+            session.lifecycle = ShellLifecycle::Backgrounded;
+            session.transition_reason = Some("Backgrounded by user".to_string());
+        }
+    }
+
+    /// Restore a backgrounded session to `Running` (or `PromptReady` if a
+    /// prompt is detected in the current output).
+    pub fn foreground_session(&mut self, session_id: &str) {
+        if let Some(session) = self.sessions.iter_mut().find(|s| s.id == session_id) {
+            if session.lifecycle == ShellLifecycle::Backgrounded {
+                let restored = if detect_prompt_ready(&session.output) {
+                    ShellLifecycle::PromptReady
+                } else {
+                    ShellLifecycle::Running
+                };
+                session.lifecycle = restored;
+                session.transition_reason = Some("Foregrounded by user".to_string());
+            }
         }
     }
 }
@@ -412,11 +448,76 @@ mod tests {
 
     #[test]
     fn lifecycle_labels_are_human_readable() {
+        assert_eq!(ShellLifecycle::Starting.label(), "Starting");
         assert_eq!(ShellLifecycle::Running.label(), "Running");
         assert_eq!(ShellLifecycle::PromptReady.label(), "Prompt ready");
+        assert_eq!(ShellLifecycle::WaitingInput.label(), "Waiting for input");
+        assert_eq!(ShellLifecycle::Backgrounded.label(), "Backgrounded");
         assert_eq!(ShellLifecycle::Exited(0).label(), "Exited(0)");
         assert_eq!(ShellLifecycle::Exited(1).label(), "Exited(1)");
         assert_eq!(ShellLifecycle::Killed.label(), "Killed");
         assert_eq!(ShellLifecycle::Error("boom".into()).label(), "Error: boom");
+    }
+
+    #[test]
+    fn test_lifecycle_starting_state() {
+        let mut manager = ShellManager::default();
+        let id = manager.new_session("test-session".to_string(), None);
+
+        let session = manager.get_active().unwrap();
+        assert_eq!(session.id, id);
+        assert_eq!(session.lifecycle, ShellLifecycle::Starting);
+        assert_eq!(
+            session.transition_reason.as_deref(),
+            Some("Session created")
+        );
+    }
+
+    #[test]
+    fn test_background_foreground_cycle() {
+        let mut manager = ShellManager::default();
+        let id = manager.new_session("test-session".to_string(), None);
+
+        // Simulate transition to Running
+        manager.get_active_mut().unwrap().lifecycle = ShellLifecycle::Running;
+
+        // Background the session
+        manager.background_session(&id);
+        let session = manager.get_active().unwrap();
+        assert_eq!(session.lifecycle, ShellLifecycle::Backgrounded);
+        assert_eq!(
+            session.transition_reason.as_deref(),
+            Some("Backgrounded by user")
+        );
+
+        // Foreground the session (no prompt detected in empty output → Running)
+        manager.foreground_session(&id);
+        let session = manager.get_active().unwrap();
+        assert_eq!(session.lifecycle, ShellLifecycle::Running);
+        assert_eq!(
+            session.transition_reason.as_deref(),
+            Some("Foregrounded by user")
+        );
+
+        // Now put output with a prompt and background→foreground again
+        manager.get_active_mut().unwrap().output = "user@host:~$ ".to_string();
+        manager.background_session(&id);
+        assert_eq!(
+            manager.get_active().unwrap().lifecycle,
+            ShellLifecycle::Backgrounded
+        );
+        manager.foreground_session(&id);
+        assert_eq!(
+            manager.get_active().unwrap().lifecycle,
+            ShellLifecycle::PromptReady
+        );
+
+        // Foreground on a non-backgrounded session should be a no-op
+        manager.get_active_mut().unwrap().lifecycle = ShellLifecycle::Running;
+        manager.foreground_session(&id);
+        assert_eq!(
+            manager.get_active().unwrap().lifecycle,
+            ShellLifecycle::Running
+        );
     }
 }

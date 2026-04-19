@@ -3,11 +3,11 @@
 use crate::app::{ActivityKind, AppState, WorkbenchTab, WorkspaceFocus};
 use crate::services::ToastStyle;
 use ratatui::{
-    Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Tabs, Wrap},
+    Frame,
 };
 
 /// Main view function
@@ -692,7 +692,7 @@ pub(crate) fn paste_tray_rows(n: usize) -> u16 {
 
 fn render_paste_tray(f: &mut Frame, state: &AppState, area: Rect) {
     use crate::services::clipboard_paste::{
-        PastedKind, kind_badge, preview_text, size_label, token_estimate,
+        kind_badge, preview_text, size_label, token_estimate, PastedKind,
     };
 
     // Header line: paste count + reorder-mode hint + clear hint.
@@ -847,7 +847,11 @@ fn render_operator_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
                     "active"
                 }
             } else if let Some(code) = session.exit_code {
-                if code == 0 { "completed" } else { "failed" }
+                if code == 0 {
+                    "completed"
+                } else {
+                    "failed"
+                }
             } else {
                 "idle"
             };
@@ -945,7 +949,7 @@ fn render_activity_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
     }
     if lines.is_empty() {
         lines.push(Line::styled(
-            "no activity yet",
+            "No activity yet. Events, approvals, and runtime updates will appear here.",
             Style::default().fg(Color::DarkGray),
         ));
     }
@@ -1014,7 +1018,8 @@ fn render_workbench_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
 
 fn render_plan_pane(f: &mut Frame, state: &mut AppState, area: Rect) {
     let body_text = if state.plan.draft.is_empty() {
-        "No plan loaded. Run /plan to create one.".to_string()
+        "No plan loaded yet. Run /plan to create one or /plan-review to inspect an existing plan."
+            .to_string()
     } else {
         crate::services::plan::extract_plan_body(&state.plan.draft).to_string()
     };
@@ -1032,9 +1037,7 @@ fn render_plan_pane(f: &mut Frame, state: &mut AppState, area: Rect) {
         ]));
         let (status_label, status_color) = match meta.status {
             crate::services::plan::PlanStatus::Drafting => ("drafting", Color::Yellow),
-            crate::services::plan::PlanStatus::PendingReview => {
-                ("pending_review", Color::Cyan)
-            }
+            crate::services::plan::PlanStatus::PendingReview => ("pending_review", Color::Cyan),
             crate::services::plan::PlanStatus::Approved => ("approved", Color::Green),
         };
         lines.push(Line::from(vec![
@@ -1052,7 +1055,7 @@ fn render_plan_pane(f: &mut Frame, state: &mut AppState, area: Rect) {
     }
     lines.push(Line::raw(""));
     lines.push(Line::from(Span::styled(
-        "  e: edit in $EDITOR  |  a: approve  |  r: request changes  |  /plan-review: overlay",
+        "  e: edit in $EDITOR | a: approve | r: request changes | /plan-review: overlay",
         Style::default().fg(Color::DarkGray),
     )));
 
@@ -1166,7 +1169,7 @@ fn render_approvals_workbench(f: &mut Frame, state: &mut AppState, area: Rect) {
         }
     } else {
         lines.push(Line::styled(
-            "No pending approvals",
+            "No pending approvals. Tool requests will appear here when confirmation is needed.",
             Style::default().fg(Color::DarkGray),
         ));
     }
@@ -1211,7 +1214,7 @@ fn render_shell_popup(f: &mut Frame, state: &mut AppState) {
 
     if lines.is_empty() {
         lines.push(Line::styled(
-            "Shell session started. Use the input box and press Enter to send input.",
+            "Shell session active. Type a command and press Enter to send input.",
             Style::default().fg(Color::DarkGray),
         ));
     }
@@ -1226,7 +1229,7 @@ fn render_shell_popup(f: &mut Frame, state: &mut AppState) {
 
     lines.push(Line::raw(""));
     lines.push(Line::styled(
-        "Ctrl+Z: background  /shell-focus: refocus  /shell-kill: terminate",
+        "Ctrl+Z backgrounds | /shell-focus restores | /shell-kill terminates",
         Style::default().fg(Color::DarkGray),
     ));
 
@@ -1380,6 +1383,20 @@ fn render_sessions_pane(f: &mut Frame, state: &mut AppState, area: Rect) {
                 Style::default()
             };
             let checkpoint_icon = if s.has_checkpoint { "●" } else { "○" };
+            let snapshot_icon = if s.snapshot_stale {
+                "!"
+            } else if s.snapshot_present {
+                "◆"
+            } else {
+                "○"
+            };
+            let snapshot_color = if s.snapshot_stale {
+                Color::Yellow
+            } else if s.snapshot_present {
+                Color::Cyan
+            } else {
+                Color::DarkGray
+            };
             ListItem::new(Line::from(vec![
                 Span::styled(
                     checkpoint_icon,
@@ -1389,6 +1406,8 @@ fn render_sessions_pane(f: &mut Frame, state: &mut AppState, area: Rect) {
                         Color::DarkGray
                     }),
                 ),
+                Span::raw(" "),
+                Span::styled(snapshot_icon, Style::default().fg(snapshot_color)),
                 Span::raw(" "),
                 Span::styled(&s.last_activity, Style::default().fg(Color::DarkGray)),
                 Span::raw(" "),
@@ -1437,7 +1456,20 @@ fn render_sessions_pane(f: &mut Frame, state: &mut AppState, area: Rect) {
             if sel.has_checkpoint {
                 Span::styled("available ●", Style::default().fg(Color::Green))
             } else {
-                Span::styled("none ○", Style::default().fg(Color::DarkGray))
+                Span::styled(
+                    "no checkpoint available ○",
+                    Style::default().fg(Color::DarkGray),
+                )
+            },
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled("Snapshot: ", Style::default().add_modifier(Modifier::BOLD)),
+            if sel.snapshot_stale {
+                Span::styled("stale !", Style::default().fg(Color::Yellow))
+            } else if sel.snapshot_present {
+                Span::styled("available ◆", Style::default().fg(Color::Cyan))
+            } else {
+                Span::styled("not saved ○", Style::default().fg(Color::DarkGray))
             },
         ]));
         if !sel.checkpoints.is_empty() {
@@ -1455,12 +1487,12 @@ fn render_sessions_pane(f: &mut Frame, state: &mut AppState, area: Rect) {
         }
         lines.push(Line::raw(""));
         lines.push(Line::styled(
-            "Enter: restore  r: resume checkpoint",
+            "Enter: restore  r: resume checkpoint  d: cleanup artifacts",
             Style::default().fg(Color::DarkGray),
         ));
     } else {
         lines.push(Line::styled(
-            "No sessions loaded (/sessions)",
+            "No sessions loaded yet. Run /sessions to open saved sessions.",
             Style::default().fg(Color::DarkGray),
         ));
     }
@@ -1944,7 +1976,7 @@ fn render_runtime_pane(f: &mut Frame, state: &mut AppState, area: Rect) {
         }
     } else {
         lines.push(Line::styled(
-            "No runtime jobs loaded. Press r to refresh.",
+            "No runtime jobs loaded yet. Press r to refresh the queue.",
             Style::default().fg(Color::DarkGray),
         ));
     }
@@ -2199,8 +2231,8 @@ fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
 mod tests {
     use super::*;
     use crate::app::AppStateOptions;
-    use ratatui::Terminal;
     use ratatui::backend::TestBackend;
+    use ratatui::Terminal;
 
     fn render_to_string(terminal: &Terminal<TestBackend>) -> String {
         let buf = terminal.backend().buffer();
@@ -2212,6 +2244,17 @@ mod tests {
             s.push('\n');
         }
         s
+    }
+
+    fn render_state_to_string(state: &mut AppState) -> String {
+        let backend = TestBackend::new(200, 60);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| view(f, state)).unwrap();
+        render_to_string(&terminal)
+    }
+
+    fn normalized_rendered(rendered: &str) -> String {
+        rendered.split_whitespace().collect::<Vec<_>>().join(" ")
     }
 
     #[test]
@@ -2273,5 +2316,44 @@ mod tests {
         let rendered = render_to_string(&terminal);
         assert!(rendered.contains("src/lib.rs"));
         assert!(rendered.contains("src/main.rs"));
+    }
+
+    #[test]
+    fn empty_states_use_explicit_copy() {
+        let mut state = AppState::new(AppStateOptions {
+            model: None,
+            session_id: Some(uuid::Uuid::new_v4().to_string()),
+            checkpoint_path: None,
+            project_root: std::env::current_dir().unwrap(),
+        });
+        state.workbench_tab = WorkbenchTab::Approvals;
+
+        let rendered = render_state_to_string(&mut state);
+        let rendered = normalized_rendered(&rendered);
+        assert!(rendered.contains("no active model selected"));
+        assert!(rendered.contains("No pending approvals"));
+
+        state.side_panel_visible = true;
+        let rendered = render_state_to_string(&mut state);
+        let rendered = normalized_rendered(&rendered);
+        assert!(rendered.contains("No pinned context yet"));
+        assert!(rendered.contains("No sessions loaded yet"));
+        assert!(rendered.contains("No MCP servers configured"));
+        assert!(rendered.contains("No tracked file changes"));
+
+        state.workbench_tab = WorkbenchTab::Sessions;
+        let rendered = render_state_to_string(&mut state);
+        let rendered = normalized_rendered(&rendered);
+        assert!(rendered.contains("No sessions loaded yet"));
+
+        state.workbench_tab = WorkbenchTab::Runtime;
+        let rendered = render_state_to_string(&mut state);
+        let rendered = normalized_rendered(&rendered);
+        assert!(rendered.contains("No runtime jobs loaded yet"));
+
+        state.workbench_tab = WorkbenchTab::Plan;
+        let rendered = render_state_to_string(&mut state);
+        let rendered = normalized_rendered(&rendered);
+        assert!(rendered.contains("No plan loaded yet"));
     }
 }

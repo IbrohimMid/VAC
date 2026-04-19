@@ -1,8 +1,17 @@
-use crate::app::AppState;
-use crate::app::OutputEvent;
-use tokio::sync::mpsc::Sender;
-
 pub type CommandId<'a> = &'a str;
+
+/// Describes where/how a command is visible in the TUI.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CommandSurface {
+    /// Visible as an operator-grade action (command palette, shortcuts popup, slash input).
+    OperatorAction,
+    /// Sent verbatim to the agent as a prompt directive.
+    AgentPrompt,
+    /// A prompt template with user-provided arguments.
+    Template,
+    /// Internal-only — not shown in any operator surface.
+    Hidden,
+}
 
 #[derive(Debug, Clone)]
 pub struct Command {
@@ -18,14 +27,8 @@ pub enum CommandAction {
     OpenRulebookSwitcher,
     OpenSessions,
     OpenShortcuts,
-    ToggleCollapsedMessages,
     ClearScreen,
     ToggleAutoApprove,
     Quit,
     InsertSlashCommand(String),
-}
-
-pub struct CommandContext<'a> {
-    pub state: &'a mut AppState,
-    pub output_tx: &'a Sender<OutputEvent>,
 }

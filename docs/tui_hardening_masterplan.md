@@ -34,7 +34,7 @@ menjadi:
 - Model/provider capability masih heuristic, belum registry contract nyata
 - Approval dan shell governance masih terlalu UI-centric
 - Input/output backpressure belum punya queue formal
-- Release trust chain, mutation fail-closed, redaction end-to-end, dan production evidence belum closed
+- Production evidence dan real deployment audit masih pending
 
 ## Hard rules
 
@@ -448,8 +448,9 @@ Track ini wajib jalan paralel dengan roadmap control-plane karena mempengaruhi t
 ### B5 — Evidence gate
 
 - stability log 4 minggu
-- internal deployment entries nyata
+- release smoke evidence yang bisa diaudit
 - re-audit delta yang bisa diverifikasi
+- internal deployment entries hanya jika memang tersedia dari channel internal yang nyata
 
 ## Recommended implementation order
 

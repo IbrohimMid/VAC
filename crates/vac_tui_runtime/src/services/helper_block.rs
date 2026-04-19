@@ -3,6 +3,7 @@
 //! Provides welcome messages and helper UI elements.
 
 use crate::app::{CommandSource, HelperCommand, Message};
+use crate::services::commands::CommandSurface;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
@@ -23,9 +24,16 @@ const VAC_LOGO: &str = r#"
 pub fn welcome_messages(version: Option<&str>, state: &crate::app::AppState) -> Vec<Message> {
     let version_str = version.unwrap_or(&state.startup.version);
     let permission_mode = if state.auto_approve {
-        "AUTO-APPROVE (Tools will run without confirmation)"
+        "AUTO-APPROVE (tool requests run without confirmation)"
     } else {
-        "PROMPT (You will be prompted for tool execution)"
+        "PROMPT (tool requests require confirmation)"
+    };
+
+    // Phase 3: Show model recovery hint if no active model
+    let model_hint = if state.startup.active_model.is_none() && state.current_model.is_none() {
+        "\n⚠ No active model configured. Use /model to select one."
+    } else {
+        ""
     };
 
     vec![Message::assistant(format!(
@@ -40,8 +48,8 @@ pub fn welcome_messages(version: Option<&str>, state: &crate::app::AppState) -> 
             • Ctrl+C - Quit\n\
             • Esc    - Cancel/Close\n\
             • Up/Down - Scroll\n\n\
-            Type your message and press Enter to start.",
-        VAC_LOGO, version_str, permission_mode
+            Type your message and press Enter to start.{}",
+        VAC_LOGO, version_str, permission_mode, model_hint
     ))]
 }
 
@@ -58,6 +66,7 @@ pub fn vac_commands() -> Vec<HelperCommand> {
             source: CommandSource::Passthrough,
             shortcut: None,
             wired: false,
+            surface: CommandSurface::Hidden,
         },
         HelperCommand {
             command: "/swarm".to_string(),
@@ -65,6 +74,7 @@ pub fn vac_commands() -> Vec<HelperCommand> {
             source: CommandSource::Passthrough,
             shortcut: None,
             wired: false,
+            surface: CommandSurface::Hidden,
         },
         HelperCommand {
             command: "/context".to_string(),
@@ -72,6 +82,7 @@ pub fn vac_commands() -> Vec<HelperCommand> {
             source: CommandSource::BuiltIn,
             shortcut: None,
             wired: true,
+            surface: CommandSurface::OperatorAction,
         },
         HelperCommand {
             command: "/rulebook".to_string(),
@@ -79,6 +90,7 @@ pub fn vac_commands() -> Vec<HelperCommand> {
             source: CommandSource::Passthrough,
             shortcut: None,
             wired: false,
+            surface: CommandSurface::Hidden,
         },
         HelperCommand {
             command: "/resume".to_string(),
@@ -86,6 +98,7 @@ pub fn vac_commands() -> Vec<HelperCommand> {
             source: CommandSource::Passthrough,
             shortcut: None,
             wired: false,
+            surface: CommandSurface::Hidden,
         },
         HelperCommand {
             command: "/help".to_string(),
@@ -93,6 +106,7 @@ pub fn vac_commands() -> Vec<HelperCommand> {
             source: CommandSource::Passthrough,
             shortcut: Some("?".to_string()),
             wired: false,
+            surface: CommandSurface::Hidden,
         },
         // --- BuiltIn: wired to TUI handlers ---
         HelperCommand {
@@ -101,6 +115,7 @@ pub fn vac_commands() -> Vec<HelperCommand> {
             source: CommandSource::BuiltIn,
             shortcut: None,
             wired: true,
+            surface: CommandSurface::OperatorAction,
         },
         HelperCommand {
             command: "/agents".to_string(),
@@ -108,6 +123,7 @@ pub fn vac_commands() -> Vec<HelperCommand> {
             source: CommandSource::BuiltIn,
             shortcut: None,
             wired: true,
+            surface: CommandSurface::OperatorAction,
         },
         HelperCommand {
             command: "/shell".to_string(),
@@ -115,6 +131,7 @@ pub fn vac_commands() -> Vec<HelperCommand> {
             source: CommandSource::BuiltIn,
             shortcut: None,
             wired: true,
+            surface: CommandSurface::OperatorAction,
         },
         HelperCommand {
             command: "/shell-focus".to_string(),
@@ -122,6 +139,7 @@ pub fn vac_commands() -> Vec<HelperCommand> {
             source: CommandSource::BuiltIn,
             shortcut: None,
             wired: true,
+            surface: CommandSurface::OperatorAction,
         },
         HelperCommand {
             command: "/shell-bg".to_string(),
@@ -129,6 +147,7 @@ pub fn vac_commands() -> Vec<HelperCommand> {
             source: CommandSource::BuiltIn,
             shortcut: None,
             wired: true,
+            surface: CommandSurface::OperatorAction,
         },
         HelperCommand {
             command: "/shell-kill".to_string(),
@@ -136,6 +155,7 @@ pub fn vac_commands() -> Vec<HelperCommand> {
             source: CommandSource::BuiltIn,
             shortcut: None,
             wired: true,
+            surface: CommandSurface::OperatorAction,
         },
         // --- Session commands ---
         HelperCommand {
@@ -144,6 +164,7 @@ pub fn vac_commands() -> Vec<HelperCommand> {
             source: CommandSource::BuiltIn,
             shortcut: None,
             wired: true,
+            surface: CommandSurface::OperatorAction,
         },
         HelperCommand {
             command: "/new".to_string(),
@@ -151,6 +172,7 @@ pub fn vac_commands() -> Vec<HelperCommand> {
             source: CommandSource::BuiltIn,
             shortcut: None,
             wired: true,
+            surface: CommandSurface::OperatorAction,
         },
         HelperCommand {
             command: "/sessions".to_string(),
@@ -158,6 +180,7 @@ pub fn vac_commands() -> Vec<HelperCommand> {
             source: CommandSource::BuiltIn,
             shortcut: None,
             wired: true,
+            surface: CommandSurface::OperatorAction,
         },
         HelperCommand {
             command: "/export".to_string(),
@@ -165,6 +188,7 @@ pub fn vac_commands() -> Vec<HelperCommand> {
             source: CommandSource::BuiltIn,
             shortcut: None,
             wired: true,
+            surface: CommandSurface::OperatorAction,
         },
         HelperCommand {
             command: "/import".to_string(),
@@ -172,6 +196,7 @@ pub fn vac_commands() -> Vec<HelperCommand> {
             source: CommandSource::BuiltIn,
             shortcut: None,
             wired: true,
+            surface: CommandSurface::OperatorAction,
         },
         // --- Project / Task commands ---
         HelperCommand {
@@ -180,6 +205,7 @@ pub fn vac_commands() -> Vec<HelperCommand> {
             source: CommandSource::BuiltIn,
             shortcut: None,
             wired: true,
+            surface: CommandSurface::OperatorAction,
         },
         HelperCommand {
             command: "/model".to_string(),
@@ -187,6 +213,7 @@ pub fn vac_commands() -> Vec<HelperCommand> {
             source: CommandSource::BuiltIn,
             shortcut: None,
             wired: true,
+            surface: CommandSurface::OperatorAction,
         },
         HelperCommand {
             command: "/files".to_string(),
@@ -194,6 +221,7 @@ pub fn vac_commands() -> Vec<HelperCommand> {
             source: CommandSource::BuiltIn,
             shortcut: None,
             wired: true,
+            surface: CommandSurface::OperatorAction,
         },
         HelperCommand {
             command: "/changes".to_string(),
@@ -201,6 +229,7 @@ pub fn vac_commands() -> Vec<HelperCommand> {
             source: CommandSource::BuiltIn,
             shortcut: None,
             wired: true,
+            surface: CommandSurface::OperatorAction,
         },
         HelperCommand {
             command: "/file-changes".to_string(),
@@ -208,6 +237,7 @@ pub fn vac_commands() -> Vec<HelperCommand> {
             source: CommandSource::BuiltIn,
             shortcut: None,
             wired: true,
+            surface: CommandSurface::OperatorAction,
         },
         HelperCommand {
             command: "/plan".to_string(),
@@ -215,6 +245,7 @@ pub fn vac_commands() -> Vec<HelperCommand> {
             source: CommandSource::BuiltIn,
             shortcut: None,
             wired: true,
+            surface: CommandSurface::OperatorAction,
         },
         HelperCommand {
             command: "/plan-review".to_string(),
@@ -222,6 +253,7 @@ pub fn vac_commands() -> Vec<HelperCommand> {
             source: CommandSource::BuiltIn,
             shortcut: None,
             wired: true,
+            surface: CommandSurface::OperatorAction,
         },
         HelperCommand {
             command: "/plan-edit".to_string(),
@@ -229,6 +261,7 @@ pub fn vac_commands() -> Vec<HelperCommand> {
             source: CommandSource::BuiltIn,
             shortcut: None,
             wired: true,
+            surface: CommandSurface::OperatorAction,
         },
         // --- BuiltInWithPrompt: sends canned prompt to agent ---
         HelperCommand {
@@ -239,6 +272,7 @@ pub fn vac_commands() -> Vec<HelperCommand> {
             },
             shortcut: None,
             wired: true,
+            surface: CommandSurface::Template,
         },
         HelperCommand {
             command: "/explain".to_string(),
@@ -248,6 +282,7 @@ pub fn vac_commands() -> Vec<HelperCommand> {
             },
             shortcut: None,
             wired: true,
+            surface: CommandSurface::Template,
         },
     ];
 
@@ -352,6 +387,7 @@ fn parse_command_file(path: &Path, command_name: &str) -> Option<HelperCommand> 
         },
         shortcut: None,
         wired: false,
+        surface: CommandSurface::Template,
     })
 }
 

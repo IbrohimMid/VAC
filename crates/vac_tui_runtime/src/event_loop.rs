@@ -1,21 +1,24 @@
 //! Event Loop Module
 
-use crate::Model;
-use crate::app::{AppState, AppStateOptions, InputEvent, OutputEvent};
+use crate::app::{
+    AppState, AppStateOptions, InputEvent, OutputEvent, SidePanelSection, WorkbenchTab,
+    WorkspaceFocus,
+};
 use crate::event::map_crossterm_event_to_input_event;
 use crate::services::helper_block::welcome_messages;
 use crate::terminal::TerminalGuard;
 use crate::view::view;
+use crate::Model;
 use crossterm::{
     event::{EnableBracketedPaste, EnableMouseCapture},
     execute,
-    terminal::{EnterAlternateScreen, enable_raw_mode},
+    terminal::{enable_raw_mode, EnterAlternateScreen},
 };
-use ratatui::{Terminal, backend::CrosstermBackend};
+use ratatui::{backend::CrosstermBackend, Terminal};
 use std::io;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::time::interval;
 
@@ -24,6 +27,218 @@ use tokio::time::interval;
 pub struct RulebookConfig {
     pub include: Option<Vec<String>>,
     pub exclude: Option<Vec<String>>,
+}
+
+fn workbench_tab_to_index(tab: WorkbenchTab) -> usize {
+    match tab {
+        WorkbenchTab::Approvals => 0,
+        WorkbenchTab::Review => 1,
+        WorkbenchTab::Sessions => 2,
+        WorkbenchTab::Agents => 3,
+        WorkbenchTab::Runtime => 4,
+        WorkbenchTab::Plan => 5,
+        WorkbenchTab::Vil => 6,
+    }
+}
+
+fn workbench_tab_from_index(index: usize) -> WorkbenchTab {
+    match index {
+        1 => WorkbenchTab::Review,
+        2 => WorkbenchTab::Sessions,
+        3 => WorkbenchTab::Agents,
+        4 => WorkbenchTab::Runtime,
+        5 => WorkbenchTab::Plan,
+        6 => WorkbenchTab::Vil,
+        _ => WorkbenchTab::Approvals,
+    }
+}
+
+fn focus_to_label(focus: WorkspaceFocus) -> &'static str {
+    match focus {
+        WorkspaceFocus::Conversation => "conversation",
+        WorkspaceFocus::Input => "input",
+        WorkspaceFocus::Workbench => "workbench",
+        WorkspaceFocus::Activity => "activity",
+    }
+}
+
+fn focus_from_label(label: &str) -> WorkspaceFocus {
+    match label {
+        "conversation" => WorkspaceFocus::Conversation,
+        "workbench" => WorkspaceFocus::Workbench,
+        "activity" => WorkspaceFocus::Activity,
+        _ => WorkspaceFocus::Input,
+    }
+}
+
+fn side_panel_section_to_label(section: SidePanelSection) -> &'static str {
+    match section {
+        SidePanelSection::Context => "context",
+        SidePanelSection::Runtime => "runtime",
+        SidePanelSection::Changeset => "changeset",
+        SidePanelSection::Mcp => "mcp",
+        SidePanelSection::Sessions => "sessions",
+        SidePanelSection::Todos => "todos",
+        SidePanelSection::Usage => "usage",
+    }
+}
+
+fn side_panel_section_from_label(label: &str) -> Option<SidePanelSection> {
+    Some(match label {
+        "context" => SidePanelSection::Context,
+        "runtime" => SidePanelSection::Runtime,
+        "changeset" => SidePanelSection::Changeset,
+        "mcp" => SidePanelSection::Mcp,
+        "sessions" => SidePanelSection::Sessions,
+        "todos" => SidePanelSection::Todos,
+        "usage" => SidePanelSection::Usage,
+        _ => return None,
+    })
+}
+
+fn build_session_snapshot(state: &AppState) -> Option<vac_session_control::SessionSnapshot> {
+    let session_id = uuid::Uuid::parse_str(&state.session_id).ok()?;
+    let mut snapshot =
+        vac_session_control::SessionSnapshot::new(session_id, state.project_root.clone());
+    let todo_pending = state
+        .todos
+        .iter()
+        .filter(|todo| matches!(todo.status, vac_changeset::TodoStatus::Pending))
+        .count();
+    let todo_in_progress = state
+        .todos
+        .iter()
+        .filter(|todo| matches!(todo.status, vac_changeset::TodoStatus::InProgress))
+        .count();
+    let todo_done = state
+        .todos
+        .iter()
+        .filter(|todo| matches!(todo.status, vac_changeset::TodoStatus::Done))
+        .count();
+
+    snapshot.active_model = state
+        .current_model
+        .as_ref()
+        .map(|model| model.name.clone())
+        .or_else(|| state.startup.active_model.clone());
+    snapshot.active_profile = Some(state.active_profile.clone());
+    let mut selected_rulebooks: Vec<String> = state.selected_rulebooks.iter().cloned().collect();
+    selected_rulebooks.sort();
+    snapshot.active_rulebooks = selected_rulebooks;
+    snapshot.task_count = state.todos.len();
+    snapshot.completed_tasks = todo_done;
+    snapshot.failed_tasks = 0;
+    snapshot.total_tokens = state.total_session_usage.total_tokens;
+    snapshot.modified_files = state.modified_files.len();
+    snapshot.tui_state.active_tab_idx = Some(workbench_tab_to_index(state.workbench_tab));
+    snapshot.tui_state.history_selection = Some(state.sessions_selected_idx);
+    snapshot.tui_state.last_focus = Some(focus_to_label(state.focus).to_string());
+    snapshot.tui_state.collapsed_sections = state
+        .side_panel_section_collapsed
+        .iter()
+        .map(|section| side_panel_section_to_label(*section).to_string())
+        .collect();
+    snapshot
+        .metadata
+        .insert("focus".into(), focus_to_label(state.focus).into());
+    snapshot
+        .metadata
+        .insert("active_profile".into(), state.active_profile.clone());
+    snapshot.metadata.insert(
+        "active_isolation_mode".into(),
+        state.active_isolation_mode.clone(),
+    );
+    snapshot.metadata.insert(
+        "provider_status".into(),
+        state.startup.provider_status.clone(),
+    );
+    snapshot.metadata.insert(
+        "pending_approvals".into(),
+        state.pending_approvals.len().to_string(),
+    );
+    snapshot.metadata.insert(
+        "queue_depth".into(),
+        state.pending_user_messages.len().to_string(),
+    );
+    snapshot
+        .metadata
+        .insert("todo_pending".into(), todo_pending.to_string());
+    snapshot
+        .metadata
+        .insert("todo_in_progress".into(), todo_in_progress.to_string());
+    snapshot
+        .metadata
+        .insert("todo_done".into(), todo_done.to_string());
+    Some(snapshot)
+}
+
+fn apply_session_snapshot(state: &mut AppState, snapshot: &vac_session_control::SessionSnapshot) {
+    state.startup.active_model = snapshot.active_model.clone();
+    state.startup.active_profile = snapshot.active_profile.clone();
+    state.startup.selected_rulebooks = snapshot.active_rulebooks.clone();
+    state.selected_rulebooks = snapshot.active_rulebooks.iter().cloned().collect();
+    state.startup.active_rulebook = if snapshot.active_rulebooks.is_empty() {
+        None
+    } else {
+        Some(snapshot.active_rulebooks.join(", "))
+    };
+    if let Some(idx) = snapshot.tui_state.active_tab_idx {
+        state.workbench_tab = workbench_tab_from_index(idx);
+    }
+    if let Some(selection) = snapshot.tui_state.history_selection {
+        state.sessions_selected_idx = selection;
+    }
+    if let Some(focus) = snapshot.tui_state.last_focus.as_deref() {
+        state.focus = focus_from_label(focus);
+    }
+    state.side_panel_section_collapsed = snapshot
+        .tui_state
+        .collapsed_sections
+        .iter()
+        .filter_map(|section| side_panel_section_from_label(section))
+        .collect();
+    state.active_profile = snapshot
+        .active_profile
+        .clone()
+        .unwrap_or_else(|| "default".to_string());
+    if let Some(provider_status) = snapshot.metadata.get("provider_status") {
+        state.startup.provider_status = provider_status.clone();
+    }
+}
+
+async fn persist_session_snapshot(state: &AppState) {
+    let Some(snapshot) = build_session_snapshot(state) else {
+        return;
+    };
+    let result =
+        tokio::task::spawn_blocking(move || vac_session_control::save_snapshot(&snapshot)).await;
+    if let Ok(Err(err)) = result {
+        tracing::warn!("failed to persist session snapshot: {err}");
+    }
+}
+
+fn load_session_snapshot(
+    project_root: &std::path::Path,
+    session_id: &str,
+) -> Option<vac_session_control::SessionSnapshot> {
+    let session_uuid = uuid::Uuid::parse_str(session_id).ok()?;
+    match vac_session_control::load_snapshot(project_root, session_uuid) {
+        Ok(snapshot) => Some(snapshot),
+        Err(vac_session_control::SessionControlError::UnsupportedSchema { .. }) => {
+            let raw = std::fs::read_to_string(vac_session_control::snapshot_path(
+                project_root,
+                session_uuid,
+            ))
+            .ok()?;
+            let snapshot: vac_session_control::SessionSnapshot = serde_json::from_str(&raw).ok()?;
+            vac_session_control::migrate_snapshot(snapshot).ok()
+        }
+        Err(vac_session_control::SessionControlError::NotFound(_)) => None,
+        Err(err) => {
+            tracing::warn!("failed to load session snapshot: {err}");
+            None
+        }
+    }
 }
 
 /// Run the TUI
@@ -74,15 +289,38 @@ pub async fn run_tui(
         project_root: project_root.clone(),
     });
     state.auth_display_info = auth_display_info;
-    
+
     // Hydrate startup state
-    state.startup.has_vil_engine = vac_core::detector::VilProjectProfile::detect(&project_root).is_vil_project;
+    state.startup.has_vil_engine =
+        vac_core::detector::VilProjectProfile::detect(&project_root).is_vil_project;
     if let Some(rb) = &_rulebook_config {
         if let Some(inc) = &rb.include {
             if !inc.is_empty() {
                 state.startup.active_rulebook = Some(inc.join(", "));
+                state.startup.selected_rulebooks = inc.clone();
             }
         }
+    }
+    // Hydrate model info from what's available at boot
+    state.startup.active_model = model.as_ref().map(|m| m.name.clone());
+    state.startup.default_model = model.as_ref().map(|m| m.id.clone());
+    // Hydrate profile from run_tui parameter
+    if !_current_profile_name.is_empty() {
+        state.startup.active_profile = Some(_current_profile_name.clone());
+    }
+    // Hydrate MCP server count from config
+    {
+        let config = vac_core::VacConfig::load_with_fallback(&project_root).unwrap_or_default();
+        state.startup.mcp_server_count = config.mcp_servers.as_ref().map_or(0, |s| s.len());
+    }
+    // Provider status from auth_display_info
+    state.startup.provider_status = match &state.auth_display_info.0 {
+        Some(provider) => format!("ready ({})", provider),
+        None => "loading...".to_string(),
+    };
+
+    if let Some(snapshot) = load_session_snapshot(&project_root, &state.session_id) {
+        apply_session_snapshot(&mut state, &snapshot);
     }
 
     // Add welcome messages
@@ -209,6 +447,7 @@ pub async fn run_tui(
     });
 
     let mut spinner_interval = interval(Duration::from_millis(150));
+    let mut last_session_snapshot_save = Instant::now();
 
     loop {
         // Handle internal events
@@ -239,8 +478,14 @@ pub async fn run_tui(
         // Render
         terminal.draw(|f| view(f, &mut state))?;
 
+        if last_session_snapshot_save.elapsed() >= Duration::from_secs(30) {
+            persist_session_snapshot(&state).await;
+            last_session_snapshot_save = Instant::now();
+        }
+
         // Check for quit
         if state.cancel_requested {
+            persist_session_snapshot(&state).await;
             break;
         }
     }
@@ -261,9 +506,13 @@ pub async fn run_tui(
 /// - Enter is handled via `InputSubmitted`, not here.
 #[cfg(test)]
 mod tests {
-    use crate::app::{AppState, AppStateOptions, InputEvent, OutputEvent};
+    use super::{apply_session_snapshot, build_session_snapshot, load_session_snapshot};
+    use crate::app::{
+        AppState, AppStateOptions, InputEvent, OutputEvent, SidePanelSection, WorkbenchTab,
+        WorkspaceFocus,
+    };
     use crate::controller::{classify_critical_banner, open_ask_user_popup};
-    use crate::{FunctionCall, ToolCall};
+    use crate::{FunctionCall, Model, ToolCall};
 
     fn make_state(project_root: std::path::PathBuf, session_id: uuid::Uuid) -> AppState {
         AppState::new(AppStateOptions {
@@ -272,6 +521,81 @@ mod tests {
             checkpoint_path: Some(project_root.join(".vac/checkpoints")),
             project_root,
         })
+    }
+
+    #[test]
+    fn session_snapshot_bridge_restores_tui_state() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().to_path_buf();
+        let session_id = uuid::Uuid::new_v4();
+
+        let mut state = make_state(root.clone(), session_id);
+        state.current_model = Some(Model {
+            id: "claude-sonnet-4".to_string(),
+            name: "claude-sonnet-4".to_string(),
+            provider: "anthropic".to_string(),
+            supports_reasoning: true,
+            supports_tool_calls: true,
+            supports_streaming: true,
+            context_window: 200000,
+            cost_class: "premium".to_string(),
+        });
+        state.active_profile = "strict-vil".to_string();
+        state.selected_rulebooks.insert("security".to_string());
+        state.focus = WorkspaceFocus::Workbench;
+        state.workbench_tab = WorkbenchTab::Runtime;
+        state.sessions_selected_idx = 3;
+        state
+            .side_panel_section_collapsed
+            .insert(SidePanelSection::Runtime);
+        state.total_session_usage.total_tokens = 2048;
+        state.modified_files = vec!["src/main.rs".to_string()];
+
+        let snapshot = build_session_snapshot(&state).unwrap();
+        vac_session_control::save_snapshot(&snapshot).unwrap();
+        let loaded = load_session_snapshot(&root, &state.session_id).unwrap();
+
+        let mut restored = make_state(root.clone(), session_id);
+        apply_session_snapshot(&mut restored, &loaded);
+
+        assert_eq!(
+            restored.current_model.as_ref().map(|m| m.name.as_str()),
+            None
+        );
+        assert_eq!(
+            restored.startup.active_model.as_deref(),
+            Some("claude-sonnet-4")
+        );
+        assert_eq!(restored.active_profile, "strict-vil");
+        assert!(restored.selected_rulebooks.contains("security"));
+        assert_eq!(restored.focus, WorkspaceFocus::Workbench);
+        assert_eq!(restored.workbench_tab, WorkbenchTab::Runtime);
+        assert_eq!(restored.sessions_selected_idx, 3);
+        assert!(restored
+            .side_panel_section_collapsed
+            .contains(&SidePanelSection::Runtime));
+        assert_eq!(restored.total_session_usage.total_tokens, 0);
+        assert_eq!(restored.startup.provider_status, "initializing");
+        assert_eq!(
+            restored.startup.active_rulebook.as_deref(),
+            Some("security")
+        );
+        assert_eq!(
+            restored.startup.active_profile.as_deref(),
+            Some("strict-vil")
+        );
+        assert_eq!(
+            loaded.metadata.get("todo_pending").map(String::as_str),
+            Some("0")
+        );
+        assert_eq!(
+            loaded.metadata.get("todo_in_progress").map(String::as_str),
+            Some("0")
+        );
+        assert_eq!(
+            loaded.metadata.get("todo_done").map(String::as_str),
+            Some("0")
+        );
     }
 
     #[test]
@@ -538,10 +862,7 @@ mod tests {
         assert_eq!(state.pending_approvals.len(), 2);
         assert_eq!(state.approval_selected_idx, 1);
         assert_eq!(state.focus, crate::app::WorkspaceFocus::Workbench);
-        assert_eq!(
-            state.workbench_tab,
-            crate::app::WorkbenchTab::Approvals
-        );
+        assert_eq!(state.workbench_tab, crate::app::WorkbenchTab::Approvals);
 
         crate::controller::handle_input_event(&mut state, &tx, InputEvent::InputChanged('a'));
         let ev = rx.recv().await.unwrap();
@@ -617,11 +938,7 @@ mod tests {
         state.review_sync_items();
         state.review.selected_path = Some(file_rel.to_string());
 
-        crate::controller::handle_input_event(
-            &mut state,
-            &tx,
-            InputEvent::ReviewRevertSelected,
-        );
+        crate::controller::handle_input_event(&mut state, &tx, InputEvent::ReviewRevertSelected);
 
         let content = std::fs::read_to_string(root.join(file_rel)).unwrap();
         assert_eq!(content, "old");
@@ -662,11 +979,7 @@ mod tests {
         state.review_sync_items();
         state.review_normalize_selection();
 
-        crate::controller::handle_input_event(
-            &mut state,
-            &tx,
-            InputEvent::ReviewRevertFiltered,
-        );
+        crate::controller::handle_input_event(&mut state, &tx, InputEvent::ReviewRevertFiltered);
 
         assert_eq!(
             std::fs::read_to_string(root.join("a.txt")).unwrap(),
@@ -698,11 +1011,7 @@ mod tests {
         });
 
         // Trigger Ctrl+M (AutoApproveCurrentTool)
-        crate::controller::handle_input_event(
-            &mut state,
-            &tx,
-            InputEvent::AutoApproveCurrentTool,
-        );
+        crate::controller::handle_input_event(&mut state, &tx, InputEvent::AutoApproveCurrentTool);
 
         // Verify approval processed
         assert_eq!(state.pending_approvals.len(), 0);
@@ -761,11 +1070,7 @@ mod tests {
         assert_eq!(state.pending_approvals.len(), 0);
 
         // Trigger hotkeys - should not panic
-        crate::controller::handle_input_event(
-            &mut state,
-            &tx,
-            InputEvent::AutoApproveCurrentTool,
-        );
+        crate::controller::handle_input_event(&mut state, &tx, InputEvent::AutoApproveCurrentTool);
         crate::controller::handle_input_event(&mut state, &tx, InputEvent::RejectCurrentTool);
 
         // State unchanged
@@ -1121,7 +1426,7 @@ mod tests {
         let active = state.changeset_store.active_entries().len();
         // All three surfaces must read the same count
         assert_eq!(active, 2); // x.rs + y.rs; z.rs is reverted
-        // review_filtered_paths also driven by active_entries
+                               // review_filtered_paths also driven by active_entries
         state.review_sync_items();
         assert_eq!(state.review_filtered_paths().len(), 2);
     }
@@ -1143,11 +1448,7 @@ mod tests {
             total_tokens_used: 0,
             agent_contributions: vec![],
         };
-        crate::controller::handle_backend_event(
-            &mut state,
-            &tx,
-            InputEvent::TaskCompleted(result),
-        );
+        crate::controller::handle_backend_event(&mut state, &tx, InputEvent::TaskCompleted(result));
 
         // modified_files must equal store's derived view - no independent writes
         assert_eq!(state.modified_files, state.changeset_store.modified_files());
@@ -1270,11 +1571,7 @@ mod tests {
             },
             metadata: None,
         });
-        crate::controller::handle_input_event(
-            &mut state,
-            &tx,
-            InputEvent::AutoApproveCurrentTool,
-        );
+        crate::controller::handle_input_event(&mut state, &tx, InputEvent::AutoApproveCurrentTool);
         assert_eq!(state.pending_approvals.len(), 0);
         assert_eq!(state.approved_tools.len(), 1);
         assert!(matches!(rx.try_recv().unwrap(), OutputEvent::AcceptTool(_)));
@@ -1319,6 +1616,8 @@ mod tests {
             task_count: 5,
             last_activity: "2026-04-16 09:00".to_string(),
             has_checkpoint: true,
+            snapshot_present: false,
+            snapshot_stale: false,
         };
         assert_eq!(s.task_count, 5);
         assert_eq!(s.last_activity, "2026-04-16 09:00");
@@ -1341,6 +1640,8 @@ mod tests {
                 task_count: 3,
                 last_activity: "2026-04-16 09:00".to_string(),
                 has_checkpoint: false,
+                snapshot_present: false,
+                snapshot_stale: false,
             },
             crate::app::SessionInfo {
                 id: "s2".to_string(),
@@ -1350,14 +1651,12 @@ mod tests {
                 task_count: 7,
                 last_activity: "2026-04-16 10:00".to_string(),
                 has_checkpoint: true,
+                snapshot_present: false,
+                snapshot_stale: false,
             },
         ];
 
-        crate::controller::handle_backend_event(
-            &mut state,
-            &tx,
-            InputEvent::SetSessions(sessions),
-        );
+        crate::controller::handle_backend_event(&mut state, &tx, InputEvent::SetSessions(sessions));
 
         assert_eq!(state.sessions.len(), 2);
         assert_eq!(state.sessions[0].task_count, 3);
@@ -1382,6 +1681,8 @@ mod tests {
             task_count: 2,
             last_activity: "2026-04-16 09:00".to_string(),
             has_checkpoint: true,
+            snapshot_present: false,
+            snapshot_stale: false,
         }];
         state.sessions_selected_idx = 0;
 
@@ -1406,6 +1707,8 @@ mod tests {
             task_count: 0,
             last_activity: "2026-04-16 09:00".to_string(),
             has_checkpoint: false,
+            snapshot_present: false,
+            snapshot_stale: false,
         }];
         state.sessions_selected_idx = 0;
 
@@ -1679,23 +1982,11 @@ mod tests {
         state.focus = crate::app::WorkspaceFocus::Workbench;
         state.workbench_tab = crate::app::WorkbenchTab::Review;
 
-        crate::controller::handle_input_event(
-            &mut state,
-            &tx,
-            InputEvent::ReviewFilterInput('a'),
-        );
-        crate::controller::handle_input_event(
-            &mut state,
-            &tx,
-            InputEvent::ReviewFilterInput('b'),
-        );
+        crate::controller::handle_input_event(&mut state, &tx, InputEvent::ReviewFilterInput('a'));
+        crate::controller::handle_input_event(&mut state, &tx, InputEvent::ReviewFilterInput('b'));
         assert_eq!(state.review.filter, "ab");
 
-        crate::controller::handle_input_event(
-            &mut state,
-            &tx,
-            InputEvent::ReviewFilterBackspace,
-        );
+        crate::controller::handle_input_event(&mut state, &tx, InputEvent::ReviewFilterBackspace);
         assert_eq!(state.review.filter, "a");
     }
 

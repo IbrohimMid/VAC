@@ -344,6 +344,36 @@ impl ApprovalStore {
         Ok(removed)
     }
 
+    /// Reject all pending approvals for a session that are older than `max_age`.
+    ///
+    /// Returns the list of tool_call_ids that were rejected as stale.
+    pub fn reject_stale(
+        &self,
+        session_id: Uuid,
+        max_age: chrono::Duration,
+    ) -> ApprovalResult<Vec<String>> {
+        let now = Utc::now();
+        let records = self.list_by_session(session_id)?;
+        let mut rejected_ids = Vec::new();
+
+        for record in records {
+            if record.state != ApprovalState::Pending {
+                continue;
+            }
+            let age = now.signed_duration_since(record.created_at);
+            if age > max_age {
+                self.record_decision(
+                    record.tool_call_id.clone(),
+                    false,
+                    Some("Stale approval auto-rejected".to_string()),
+                )?;
+                rejected_ids.push(record.tool_call_id);
+            }
+        }
+
+        Ok(rejected_ids)
+    }
+
     fn write(&self, record: &ApprovalRecord) -> ApprovalResult<()> {
         let path = self.approval_path(&record.tool_call_id);
         let tmp = path.with_extension("json.tmp");
@@ -550,5 +580,114 @@ impl ActiveApprovalRegistry {
 
     pub async fn is_active(&self, task_id: Uuid) -> bool {
         self.inner.lock().await.contains_key(&task_id)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    fn make_store() -> (TempDir, ApprovalStore) {
+        let tmp = TempDir::new().unwrap();
+        let store = ApprovalStore::new(tmp.path().to_path_buf());
+        (tmp, store)
+    }
+
+    #[test]
+    fn test_batch_ordering_deterministic() {
+        let (_tmp, store) = make_store();
+        let session_id = Uuid::new_v4();
+
+        // Create 5 approvals with known ordering
+        let mut ids = Vec::new();
+        for i in 0..5 {
+            let tool_call_id = format!("tc-{}", i);
+            let record = store
+                .record_request(
+                    tool_call_id.clone(),
+                    format!("tool_{}", i),
+                    serde_json::json!({}),
+                    None,
+                    Some(session_id),
+                    Some(Uuid::new_v4()),
+                )
+                .unwrap();
+            ids.push(tool_call_id);
+            // Small sleep to ensure distinct timestamps
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+
+        // Retrieve twice to verify determinism
+        let first = store.list_by_session(session_id).unwrap();
+        let second = store.list_by_session(session_id).unwrap();
+
+        assert_eq!(first.len(), 5);
+        assert_eq!(second.len(), 5);
+
+        // Both should be in created_at ascending order
+        let first_ids: Vec<String> = first.iter().map(|r| r.tool_call_id.clone()).collect();
+        let second_ids: Vec<String> = second.iter().map(|r| r.tool_call_id.clone()).collect();
+        assert_eq!(first_ids, second_ids);
+
+        // Verify ascending order: each created_at <= next
+        for window in first.windows(2) {
+            assert!(window[0].created_at <= window[1].created_at);
+        }
+    }
+
+    #[test]
+    fn test_stale_approval_rejection() {
+        let (_tmp, store) = make_store();
+        let session_id = Uuid::new_v4();
+
+        // Create a fresh approval
+        let fresh_id = "tc-fresh".to_string();
+        store
+            .record_request(
+                fresh_id.clone(),
+                "tool_fresh".to_string(),
+                serde_json::json!({}),
+                None,
+                Some(session_id),
+                Some(Uuid::new_v4()),
+            )
+            .unwrap();
+
+        // Create an old approval by manually writing a backdated record
+        let old_id = "tc-old".to_string();
+        let old_record = ApprovalRecord {
+            version: 1,
+            tool_call_id: old_id.clone(),
+            tool_name: "tool_old".to_string(),
+            scope: "tool_old".to_string(),
+            arguments: serde_json::json!({}),
+            explanation: None,
+            state: ApprovalState::Pending,
+            created_at: Utc::now() - chrono::Duration::hours(2),
+            resolved_at: None,
+            reason: None,
+            session_id: Some(session_id),
+            task_id: Some(Uuid::new_v4()),
+            intent: None,
+        };
+        store.write_record(&old_record).unwrap();
+
+        // Reject stale approvals older than 1 hour
+        let rejected = store
+            .reject_stale(session_id, chrono::Duration::hours(1))
+            .unwrap();
+
+        assert_eq!(rejected.len(), 1);
+        assert_eq!(rejected[0], old_id);
+
+        // Verify the old one is now rejected
+        let old = store.load(&old_id).unwrap().unwrap();
+        assert_eq!(old.state, ApprovalState::Rejected);
+        assert_eq!(old.reason.as_deref(), Some("Stale approval auto-rejected"));
+
+        // Verify the fresh one is still pending
+        let fresh = store.load(&fresh_id).unwrap().unwrap();
+        assert_eq!(fresh.state, ApprovalState::Pending);
     }
 }

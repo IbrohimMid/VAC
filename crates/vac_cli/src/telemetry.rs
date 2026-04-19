@@ -4,6 +4,8 @@ use opentelemetry_sdk::Resource;
 use opentelemetry_sdk::trace::TracerProvider;
 use tracing_subscriber::fmt;
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
+use vac_trace::redaction::RedactionEngine;
+use vil_swarm::redaction::redact_json as redact_secret_json;
 
 pub fn init(
     verbose: u8,
@@ -39,13 +41,15 @@ pub fn init(
             .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
             .unwrap_or_else(|| "unknown".to_string());
 
-        let crash_json = serde_json::json!({
+        let mut crash_json = serde_json::json!({
             "timestamp": chrono::Utc::now().to_rfc3339(),
             "level": "FATAL",
             "message": "Crash captured",
             "panic": payload,
             "location": location,
         });
+        redact_secret_json(&mut crash_json);
+        let crash_json = RedactionEngine::new(true, &[]).redact_value(&crash_json);
 
         eprintln!("{}", crash_json);
 
@@ -105,4 +109,28 @@ pub fn init(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn crash_json_is_redacted_before_serialization() {
+        let mut crash_json = serde_json::json!({
+            "timestamp": "2026-04-18T00:00:00Z",
+            "level": "FATAL",
+            "message": "Crash captured",
+            "panic": "panic at key=AKIAIOSFODNN7EXAMPLE path=/home/emp/Documents/VAC/project",
+            "location": "/home/emp/Documents/VAC/vastar-agentic-cli/crates/vac_cli/src/main.rs:10:5",
+        });
+
+        redact_secret_json(&mut crash_json);
+        let redacted = RedactionEngine::new(true, &[]).redact_value(&crash_json);
+        let text = serde_json::to_string(&redacted).unwrap();
+
+        assert!(!text.contains("AKIAIOSFODNN7EXAMPLE"));
+        assert!(!text.contains("/home/emp/Documents/VAC"));
+        assert!(text.contains("[REDACTED]") || text.contains("[PATH]"));
+    }
 }

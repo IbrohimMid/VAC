@@ -62,7 +62,7 @@ jobs:
       - name: Generate SHA256 checksums
         run: |
           cd target/dist
-          sha256sum *.tar.gz *.zip 2>/dev/null > SHA256SUMS.txt || true
+          sha256sum *.tar.gz *.zip > SHA256SUMS.txt
 
       - name: Upload Release
         uses: softprops/action-gh-release@v1

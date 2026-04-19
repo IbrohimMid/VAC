@@ -7,11 +7,11 @@
 
 use crate::services::detect_term::ThemeColors;
 use ratatui::{
-    Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph, Tabs},
+    Frame,
 };
 use std::sync::OnceLock;
 
@@ -47,12 +47,6 @@ fn ui_action_commands() -> Vec<Command> {
             action: CommandAction::OpenShortcuts,
         },
         Command {
-            name: "Toggle Messages".into(),
-            description: "Expand/collapse message history".into(),
-            shortcut: "Ctrl+T".into(),
-            action: CommandAction::ToggleCollapsedMessages,
-        },
-        Command {
             name: "Clear Screen".into(),
             description: "Clear the terminal output".into(),
             shortcut: "".into(),
@@ -80,6 +74,10 @@ fn get_all_commands() -> Vec<Command> {
     // Derive InsertSlashCommand entries from the single canonical registry so
     // the palette never lists phantom commands or drifts from the dispatcher.
     for spec in crate::services::helper_block::vac_commands() {
+        // Skip commands marked as Hidden — they should not appear in operator surfaces.
+        if spec.surface == crate::services::commands::CommandSurface::Hidden {
+            continue;
+        }
         let display_name = spec
             .command
             .strip_prefix('/')
@@ -183,7 +181,6 @@ pub fn get_all_shortcuts() -> Vec<Shortcut> {
         Shortcut::new("Ctrl+R", "Retry last tool call", "Tool Management"),
         // UI Controls
         Shortcut::new("Ctrl+C", "Quit (double press)", "UI Controls"),
-        Shortcut::new("Ctrl+T", "Toggle collapsed messages", "UI Controls"),
         Shortcut::new("Ctrl+L", "Toggle mouse capture", "UI Controls"),
         Shortcut::new("Ctrl+F", "Show profile switcher", "UI Controls"),
         Shortcut::new("Ctrl+P", "Show command palette", "UI Controls"),
@@ -200,6 +197,9 @@ pub fn get_all_shortcuts() -> Vec<Shortcut> {
     ];
 
     for spec in crate::services::helper_block::vac_commands() {
+        if spec.surface == crate::services::commands::CommandSurface::Hidden {
+            continue;
+        }
         shortcuts.push(Shortcut::new(&spec.command, &spec.description, "Commands"));
     }
 

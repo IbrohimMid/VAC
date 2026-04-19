@@ -7,10 +7,10 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use uuid::Uuid;
 
-use vac_shell::ShellCommand;
-use crate::services::Toast;
 use crate::services::textarea::TextArea;
+use crate::services::Toast;
 use crate::types::*;
+use vac_shell::ShellCommand;
 
 // ========== Cache Types ==========
 
@@ -41,6 +41,17 @@ pub struct RenderMetrics {
     pub cache_misses: usize,
     pub total_lines: usize,
     pub avg_render_time_us: u64,
+}
+
+// ========== Queue Metrics (Phase 4 — I/O Reliability) ==========
+
+#[derive(Debug, Clone, Default)]
+pub struct QueueMetrics {
+    pub total_queued: u64,
+    pub total_dropped: u64,
+    pub total_merged: u64,
+    pub flush_retries: u64,
+    pub last_flush_error: Option<String>,
 }
 
 // ========== Domain State Slices ==========
@@ -225,6 +236,8 @@ pub struct HelperCommand {
     /// Whether this command is actually wired to real functionality.
     /// `false` = it will be forwarded as-is and may not do anything useful.
     pub wired: bool,
+    /// Where/how this command is visible in TUI operator surfaces.
+    pub surface: crate::services::commands::CommandSurface,
 }
 
 // ========== Session Types ==========
@@ -311,6 +324,8 @@ pub struct SessionInfo {
     pub task_count: usize,
     pub last_activity: String,
     pub has_checkpoint: bool,
+    pub snapshot_present: bool,
+    pub snapshot_stale: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -705,6 +720,16 @@ pub struct StartupSnapshot {
     pub has_vil_engine: bool,
     pub active_rulebook: Option<String>,
     pub environment: String,
+    // Phase 3: Startup hydration fields
+    pub active_model: Option<String>,
+    pub default_model: Option<String>,
+    pub active_profile: Option<String>,
+    pub selected_rulebooks: Vec<String>,
+    pub mcp_server_count: usize,
+    pub session_count: usize,
+    pub pending_approvals_count: usize,
+    pub provider_status: String,
+    pub queue_depth: usize,
 }
 
 impl Default for StartupSnapshot {
@@ -715,6 +740,15 @@ impl Default for StartupSnapshot {
             has_vil_engine: false,
             active_rulebook: None,
             environment: "development".to_string(),
+            active_model: None,
+            default_model: None,
+            active_profile: None,
+            selected_rulebooks: Vec::new(),
+            mcp_server_count: 0,
+            session_count: 0,
+            pending_approvals_count: 0,
+            provider_status: "initializing".to_string(),
+            queue_depth: 0,
         }
     }
 }
@@ -957,6 +991,9 @@ pub struct AppState {
     pub pinned_plan_items: Vec<String>,
 
     pub pending_user_messages: VecDeque<PendingUserMessage>,
+
+    /// Queue metrics for I/O reliability tracking (Phase 4).
+    pub queue_metrics: QueueMetrics,
 }
 
 /// Options for creating AppState
@@ -1113,8 +1150,7 @@ impl AppState {
             ask_user_input: String::new(),
             ask_user_tool_call_id: None,
             ask_user_allow_free_text: true,
-            ask_user_question_kind:
-                crate::services::ask_user::AskUserQuestionKind::SingleSelect,
+            ask_user_question_kind: crate::services::ask_user::AskUserQuestionKind::SingleSelect,
             ask_user_multi_selected: std::collections::HashSet::new(),
             ask_user_metadata: std::collections::HashMap::new(),
             ask_user_filter: String::new(),
@@ -1146,6 +1182,7 @@ impl AppState {
             pinned_runtime_items: Vec::new(),
             pinned_plan_items: Vec::new(),
             pending_user_messages: VecDeque::new(),
+            queue_metrics: QueueMetrics::default(),
         }
     }
 
@@ -1214,18 +1251,24 @@ impl AppState {
     }
 
     pub fn filtered_commands(&self) -> Vec<HelperCommand> {
-        let mut cmds = if self.command_palette_input.is_empty() {
-            self.commands.clone()
+        let mut cmds: Vec<_> = if self.command_palette_input.is_empty() {
+            self.commands
+                .iter()
+                .filter(|c| c.surface != crate::services::commands::CommandSurface::Hidden)
+                .cloned()
+                .collect()
         } else {
             self.commands
                 .iter()
                 .filter(|c| {
-                    c.command
-                        .to_lowercase()
-                        .contains(&self.command_palette_input.to_lowercase())
-                        || c.description
+                    c.surface != crate::services::commands::CommandSurface::Hidden
+                        && (c
+                            .command
                             .to_lowercase()
                             .contains(&self.command_palette_input.to_lowercase())
+                            || c.description
+                                .to_lowercase()
+                                .contains(&self.command_palette_input.to_lowercase()))
                 })
                 .cloned()
                 .collect()
@@ -1318,8 +1361,7 @@ impl AppState {
             let path = &entry.path;
             let has_snapshot = session_id
                 .map(|sid| {
-                    crate::services::review::snapshot_path(&self.project_root, sid, path)
-                        .exists()
+                    crate::services::review::snapshot_path(&self.project_root, sid, path).exists()
                 })
                 .unwrap_or(false);
 

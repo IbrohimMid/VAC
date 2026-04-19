@@ -131,7 +131,6 @@ pub enum InputEvent {
     // Additional events from event.rs mapping
     ShowRulebookSwitcher,
     RetryLastToolCall,
-    ToggleCollapsedMessages,
     HandleCtrlS,
     ReviewOpen,
     ReviewClose,

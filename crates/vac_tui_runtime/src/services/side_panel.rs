@@ -262,7 +262,7 @@ fn render_context_section(f: &mut Frame, state: &AppState, area: Rect, collapsed
         .current_model
         .as_ref()
         .map(|m| m.name.clone())
-        .unwrap_or_else(|| "-".to_string());
+        .unwrap_or_else(|| "no active model selected".to_string());
     lines.push(Line::from(vec![
         Span::styled("    Model: ", Style::default().fg(Color::DarkGray)),
         Span::raw(model_name),
@@ -318,6 +318,13 @@ fn render_context_section(f: &mut Frame, state: &AppState, area: Rect, collapsed
             Span::styled("    Diagnostics: ", Style::default().fg(Color::DarkGray)),
             Span::raw(compact_items(&state.pinned_diagnostics, 2)),
         ]));
+    } else if state.pinned_files.is_empty() && state.pinned_diffs.is_empty() {
+        lines.push(Line::styled(
+            "    No pinned context yet. Use /context pin <file> to add one.",
+            Style::default()
+                .fg(Color::DarkGray)
+                .add_modifier(Modifier::ITALIC),
+        ));
     }
 
     f.render_widget(Paragraph::new(lines), area);
@@ -348,7 +355,7 @@ fn render_sessions_section(f: &mut Frame, state: &mut AppState, area: Rect, coll
 
     if state.sessions.is_empty() {
         lines.push(Line::styled(
-            "    No sessions",
+            "    No sessions loaded yet. Run /sessions to open saved sessions.",
             Style::default()
                 .fg(Color::DarkGray)
                 .add_modifier(Modifier::ITALIC),
@@ -413,7 +420,7 @@ fn render_mcp_section(f: &mut Frame, state: &mut AppState, area: Rect, collapsed
 
     if total == 0 {
         lines.push(Line::styled(
-            "    No MCP servers",
+            "    No MCP servers configured.",
             Style::default()
                 .fg(Color::DarkGray)
                 .add_modifier(Modifier::ITALIC),
@@ -554,7 +561,7 @@ fn render_changeset_section(f: &mut Frame, state: &AppState, area: Rect, collaps
 
     if count == 0 {
         lines.push(Line::styled(
-            "    No changes",
+            "    No tracked file changes.",
             Style::default()
                 .fg(Color::DarkGray)
                 .add_modifier(Modifier::ITALIC),

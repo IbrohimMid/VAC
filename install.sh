@@ -39,10 +39,13 @@ trap 'rm -rf "$TMP"' EXIT
 curl -fsSL "$URL" -o "$TMP/$TARBALL"
 
 # SHA256 verification (mandatory)
-if curl -fsSL "${URL}.sha256" -o "$TMP/${TARBALL}.sha256"; then
-    (cd "$TMP" && sha256sum -c "${TARBALL}.sha256") || { echo "Error: checksum verification failed"; exit 1; }
+if curl -fsSL "https://github.com/${REPO}/releases/download/v${VAC_VERSION}/SHA256SUMS.txt" -o "$TMP/SHA256SUMS.txt"; then
+    (cd "$TMP" && grep " ${TARBALL}$" SHA256SUMS.txt | sha256sum -c -) || {
+        echo "Error: checksum verification failed";
+        exit 1;
+    }
 else
-    echo "Error: SHA256 checksum not available, verification failed."
+    echo "Error: SHA256SUMS.txt not available, verification failed."
     exit 1
 fi
 
