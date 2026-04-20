@@ -66,7 +66,31 @@ fn handle_global(
             true
         }
         InputEvent::AttemptQuit => {
-            state.cancel_requested = true;
+            if state.is_streaming {
+                // First Ctrl+C while streaming: cancel the stream, not the app.
+                let _ = output_tx.try_send(OutputEvent::CancelStream);
+                state.is_streaming = false;
+                state.streaming_start = None;
+                state.streaming_tokens = 0;
+            } else {
+                // Outside streaming: require two presses within 2 s to quit.
+                let now = std::time::Instant::now();
+                let double = state
+                    .quit_first_press
+                    .map(|t| now.duration_since(t) < std::time::Duration::from_secs(2))
+                    .unwrap_or(false);
+                if double {
+                    state.cancel_requested = true;
+                    state.quit_press_count = 0;
+                    state.quit_first_press = None;
+                } else {
+                    state.quit_press_count = 1;
+                    state.quit_first_press = Some(now);
+                    state.toasts.push(crate::services::Toast::info(
+                        "Press Ctrl+C again within 2 s to quit",
+                    ));
+                }
+            }
             true
         }
         InputEvent::HandleEsc => {
@@ -272,7 +296,11 @@ fn handle_mouse_drag_start(
 
     if banner_active {
         if let Some(rect) = state.banner_dismiss_region {
-            if col >= rect.x && col < rect.x + rect.width && row >= rect.y && row < rect.y + rect.height {
+            if col >= rect.x
+                && col < rect.x + rect.width
+                && row >= rect.y
+                && row < rect.y + rect.height
+            {
                 state.banner_message = None;
                 state.banner_click_regions.clear();
                 state.banner_dismiss_region = None;
@@ -281,7 +309,11 @@ fn handle_mouse_drag_start(
         }
         let mut banner_action: Option<String> = None;
         for (action, rect) in &state.banner_click_regions {
-            if col >= rect.x && col < rect.x + rect.width && row >= rect.y && row < rect.y + rect.height {
+            if col >= rect.x
+                && col < rect.x + rect.width
+                && row >= rect.y
+                && row < rect.y + rect.height
+            {
                 banner_action = Some(action.clone());
                 break;
             }
@@ -301,7 +333,11 @@ fn handle_mouse_drag_start(
 
     if state.side_panel_visible {
         for (sec, rect) in &state.side_panel_header_areas {
-            if col >= rect.x && col < rect.x + rect.width && row >= rect.y && row < rect.y + rect.height {
+            if col >= rect.x
+                && col < rect.x + rect.width
+                && row >= rect.y
+                && row < rect.y + rect.height
+            {
                 if state.side_panel_section_collapsed.contains(sec) {
                     state.side_panel_section_collapsed.remove(sec);
                 } else {
@@ -311,13 +347,20 @@ fn handle_mouse_drag_start(
             }
         }
         for (action, rect) in &state.side_panel_row_areas {
-            if col >= rect.x && col < rect.x + rect.width && row >= rect.y && row < rect.y + rect.height {
+            if col >= rect.x
+                && col < rect.x + rect.width
+                && row >= rect.y
+                && row < rect.y + rect.height
+            {
                 match action.clone() {
                     crate::app::SidePanelRowAction::SwitchSession(id) => {
                         let _ = output_tx.try_send(OutputEvent::SwitchToSession(id));
                     }
                     crate::app::SidePanelRowAction::ShowMcpDetail(name) => {
-                        state.push_activity(crate::app::ActivityKind::Mcp, format!("MCP detail: {}", name));
+                        state.push_activity(
+                            crate::app::ActivityKind::Mcp,
+                            format!("MCP detail: {}", name),
+                        );
                         state.focus = WorkspaceFocus::Workbench;
                         state.workbench_tab = crate::app::WorkbenchTab::Runtime;
                     }

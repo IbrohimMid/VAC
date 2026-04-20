@@ -3,8 +3,8 @@
 
 use crate::app::{AppState, InputEvent, OutputEvent, WorkspaceFocus};
 use crate::handlers::input_commands::{dispatch_builtin_command, handle_paste_tray_key};
-use crate::handlers::shell as shell_handler;
 use crate::handlers::input_editor::message_at_row;
+use crate::handlers::shell as shell_handler;
 use tokio::sync::mpsc::Sender;
 
 pub fn handle(state: &mut AppState, output_tx: &Sender<OutputEvent>, event: InputEvent) {
@@ -19,7 +19,10 @@ pub fn handle(state: &mut AppState, output_tx: &Sender<OutputEvent>, event: Inpu
         InputEvent::InputDelete => {
             if state.focus == WorkspaceFocus::Input {
                 state.input.delete();
-                if state.overlay_manager.is_active(crate::overlay::OverlayId::HelperDropdown) {
+                if state
+                    .overlay_manager
+                    .is_active(crate::overlay::OverlayId::HelperDropdown)
+                {
                     crate::services::helper_dropdown::filter_helpers_sync(state);
                 }
             }
@@ -63,24 +66,20 @@ pub fn handle(state: &mut AppState, output_tx: &Sender<OutputEvent>, event: Inpu
         }
         InputEvent::Up => handle_up(state, output_tx),
         InputEvent::Down => handle_down(state, output_tx),
-        InputEvent::ScrollUp => {
-            match state.focus {
-                WorkspaceFocus::Conversation => state.scroll = state.scroll.saturating_sub(1),
-                WorkspaceFocus::Activity => {
-                    state.activity_scroll = state.activity_scroll.saturating_add(1)
-                }
-                _ => {}
+        InputEvent::ScrollUp => match state.focus {
+            WorkspaceFocus::Conversation => state.scroll = state.scroll.saturating_sub(1),
+            WorkspaceFocus::Activity => {
+                state.activity_scroll = state.activity_scroll.saturating_add(1)
             }
-        }
-        InputEvent::ScrollDown => {
-            match state.focus {
-                WorkspaceFocus::Conversation => state.scroll = state.scroll.saturating_add(1),
-                WorkspaceFocus::Activity => {
-                    state.activity_scroll = state.activity_scroll.saturating_sub(1)
-                }
-                _ => {}
+            _ => {}
+        },
+        InputEvent::ScrollDown => match state.focus {
+            WorkspaceFocus::Conversation => state.scroll = state.scroll.saturating_add(1),
+            WorkspaceFocus::Activity => {
+                state.activity_scroll = state.activity_scroll.saturating_sub(1)
             }
-        }
+            _ => {}
+        },
         InputEvent::MouseRightClick(_col, row) => {
             if let Some(msg_id) = message_at_row(state, row) {
                 state.message_action_popup_selected = 0;
@@ -111,7 +110,10 @@ fn handle_char(state: &mut AppState, output_tx: &Sender<OutputEvent>, c: char) {
         crate::services::helper_dropdown::filter_helpers_sync(state);
         state.helper_selected = 0;
         state.helper_scroll = 0;
-    } else if state.overlay_manager.is_active(crate::overlay::OverlayId::HelperDropdown) {
+    } else if state
+        .overlay_manager
+        .is_active(crate::overlay::OverlayId::HelperDropdown)
+    {
         state.input.input(c);
         crate::services::helper_dropdown::filter_helpers_sync(state);
         state.helper_selected = 0;
@@ -142,7 +144,10 @@ fn handle_backspace(state: &mut AppState) {
     if state.focus != WorkspaceFocus::Input {
         return;
     }
-    if state.overlay_manager.is_active(crate::overlay::OverlayId::HelperDropdown) {
+    if state
+        .overlay_manager
+        .is_active(crate::overlay::OverlayId::HelperDropdown)
+    {
         state.input.backspace();
         crate::services::helper_dropdown::filter_helpers_sync(state);
         state.helper_selected = 0;
@@ -185,6 +190,22 @@ fn handle_submit(state: &mut AppState, output_tx: &Sender<OutputEvent>) {
     let msg = state.input.get_content();
     state.input.clear();
 
+    // Prepend context chips to the message (PR-T7).
+    let chip_prefix: String = if !state.context_chips.is_empty() {
+        let mut prefix = String::new();
+        for chip in &state.context_chips {
+            prefix.push_str(&format!(
+                "<context label=\"{}\">\n{}\n</context>\n\n",
+                chip.label, chip.content
+            ));
+        }
+        state.context_chips.clear();
+        state.context_chip_cursor = None;
+        prefix
+    } else {
+        String::new()
+    };
+
     if msg.starts_with('/') {
         state.recent_commands.add_command(msg.clone());
         let trimmed = msg.trim();
@@ -193,7 +214,7 @@ fn handle_submit(state: &mut AppState, output_tx: &Sender<OutputEvent>) {
         let cmd_args = parts.next().map(|s| s.trim()).filter(|s| !s.is_empty());
 
         if !dispatch_builtin_command(state, output_tx, cmd_word, cmd_args) {
-            let expanded = state.expand_pending_pastes(&msg);
+            let expanded = format!("{chip_prefix}{}", state.expand_pending_pastes(&msg));
             let image_parts = std::mem::take(&mut state.pending_image_parts);
             state
                 .pending_user_messages
@@ -205,7 +226,7 @@ fn handle_submit(state: &mut AppState, output_tx: &Sender<OutputEvent>) {
                 ));
         }
     } else {
-        let expanded = state.expand_pending_pastes(&msg);
+        let expanded = format!("{chip_prefix}{}", state.expand_pending_pastes(&msg));
         let image_parts = std::mem::take(&mut state.pending_image_parts);
         state
             .pending_user_messages
@@ -228,9 +249,7 @@ fn handle_up(state: &mut AppState, output_tx: &Sender<OutputEvent>) {
             }
         }
         WorkspaceFocus::Conversation => state.scroll = state.scroll.saturating_sub(1),
-        WorkspaceFocus::Activity => {
-            state.activity_scroll = state.activity_scroll.saturating_add(1)
-        }
+        WorkspaceFocus::Activity => state.activity_scroll = state.activity_scroll.saturating_add(1),
         WorkspaceFocus::Workbench => {} // handled by workbench_input
     }
 }
@@ -245,9 +264,7 @@ fn handle_down(state: &mut AppState, output_tx: &Sender<OutputEvent>) {
             }
         }
         WorkspaceFocus::Conversation => state.scroll = state.scroll.saturating_add(1),
-        WorkspaceFocus::Activity => {
-            state.activity_scroll = state.activity_scroll.saturating_sub(1)
-        }
+        WorkspaceFocus::Activity => state.activity_scroll = state.activity_scroll.saturating_sub(1),
         WorkspaceFocus::Workbench => {} // handled by workbench_input
     }
 }
@@ -311,8 +328,7 @@ fn handle_image_paste(state: &mut AppState) {
                             PastedItem, PastedKind, image_placeholder, make_paste_id,
                         };
                         use base64::Engine as _;
-                        let b64 =
-                            base64::engine::general_purpose::STANDARD.encode(&bytes);
+                        let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
                         let media_type = match path.extension().and_then(|e| e.to_str()) {
                             Some("png") => "image/png",
                             Some("jpg") | Some("jpeg") => "image/jpeg",
@@ -330,8 +346,7 @@ fn handle_image_paste(state: &mut AppState) {
                         state.pending_image_parts.push(part);
                         state.paste_counter += 1;
                         let id = make_paste_id(state.paste_counter);
-                        let placeholder =
-                            image_placeholder(&id, info.width, info.height);
+                        let placeholder = image_placeholder(&id, info.width, info.height);
                         state.input.insert_str(&placeholder);
                         state.input.input(' ');
                         state.pending_pastes.push(PastedItem {
