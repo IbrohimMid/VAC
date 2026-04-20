@@ -36,9 +36,20 @@
 
 ### Wave 2.5 — TODO (gate before Wave 3)
 
-- [ ] Migrate raw `Color::` in `services/` + `workbench/` to `state.theme.style(StyleKey::*)`
-- [ ] PR-T8 fuzzy session search + date filter + full Ctrl+R nav
-- [ ] Bring ≥ 6 of the 14 over-600-line files under limit (at minimum: `runner.rs`, `update.rs`, `action_registry.rs`)
+> **Rencana eksekusi detail**: lihat [`VAC_TUI_PARITY_PLAN_WAVE_25_TO_4.md`](./VAC_TUI_PARITY_PLAN_WAVE_25_TO_4.md) untuk breakdown per-PR (W25-1 s/d W25-9), landing order, deps, dan acceptance.
+
+- [x] PR-T8 fuzzy session search + date filter + full Ctrl+R nav (commit `d511945`)
+- [x] Split `action_registry.rs` 793→575 + `action_ids.rs` 188 (commit `8b16374`)
+- [x] Split `update.rs` 974→500 + `update/helpers.rs` 227 + `update/events.rs` 291 (commit `302c99c`)
+- [ ] **W25-1** Theme migration sweep (21 file, 404 raw `Color::`)
+- [ ] **W25-2** PR-T5 closeout: TOML loader + `notify` hot-reload
+- [ ] **W25-3** Split `services/shortcuts_popup.rs` (996→<600)
+- [ ] **W25-4** Split `handlers/input_popup.rs` (1176→<600)
+- [ ] **W25-5** Split `services/markdown_renderer.rs` (2010→<600)
+- [ ] **W25-6** Split `view.rs` (1921→<600) — depends on W25-1+W25-5
+- [ ] **W25-7** Split `event_loop_tests.rs` (1839→<600)
+- [ ] **W25-8** Split `app/types.rs` (1570→<600) — last, after surface stable
+- [ ] **W25-9** Split `runner.rs` (1347→<600) + migrate 3 deprecated `vac_session_control` sync calls to async
 
 ### §8 Progress
 
