@@ -3,6 +3,7 @@
 use super::WorkbenchTabView;
 use crate::app::{AppState, WorkspaceFocus};
 use crate::ui::style::focus_style;
+use crate::services::theme::StyleKey;
 use ratatui::{
     Frame,
     layout::Rect,
@@ -31,7 +32,7 @@ impl WorkbenchTabView for PlanTab {
         let mut lines: Vec<Line> = Vec::new();
         if let Some(meta) = &state.plan.metadata {
             lines.push(Line::from(vec![
-                Span::styled("Title: ", Style::default().fg(Color::DarkGray)),
+                Span::styled("Title: ", state.theme.style(StyleKey::Muted)),
                 Span::styled(
                     meta.title.clone(),
                     Style::default()
@@ -45,11 +46,11 @@ impl WorkbenchTabView for PlanTab {
                 crate::services::plan::PlanStatus::Approved => ("approved", Color::Green),
             };
             lines.push(Line::from(vec![
-                Span::styled("Status: ", Style::default().fg(Color::DarkGray)),
+                Span::styled("Status: ", state.theme.style(StyleKey::Muted)),
                 Span::styled(status_label.to_string(), Style::default().fg(status_color)),
                 Span::styled(
                     format!("  v{}", meta.version),
-                    Style::default().fg(Color::DarkGray),
+                    state.theme.style(StyleKey::Muted),
                 ),
             ]));
             lines.push(Line::raw(""));
@@ -60,7 +61,7 @@ impl WorkbenchTabView for PlanTab {
         lines.push(Line::raw(""));
         lines.push(Line::from(Span::styled(
             "  e: edit in $EDITOR | a: approve | r: request changes | /plan-review: overlay",
-            Style::default().fg(Color::DarkGray),
+            state.theme.style(StyleKey::Muted),
         )));
 
         let focus_style = focus_style(state.focus == WorkspaceFocus::Workbench);

@@ -3,7 +3,8 @@
 //! Detects fenced bash/shell code blocks in text and renders them
 //! with appropriate styling for TUI display.
 
-use ratatui::style::{Color, Modifier, Style};
+use crate::services::theme::{StyleKey, Theme};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 
 /// A detected bash block extracted from text.
@@ -26,24 +27,22 @@ fn truncate_chars(s: &str, max_chars: usize) -> String {
 }
 
 /// Render a bash block as styled TUI lines.
-pub fn render_bash_block(block: &BashBlock, width: usize) -> Vec<Line<'static>> {
+pub fn render_bash_block(theme: &Theme, block: &BashBlock, width: usize) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
 
     // Header
     lines.push(Line::from(vec![
-        Span::styled("┌─ ", Style::default().fg(Color::DarkGray)),
+        Span::styled("┌─ ", theme.style(StyleKey::Muted)),
         Span::styled(
             block.language.clone(),
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
+            theme.style(StyleKey::Warning).add_modifier(Modifier::BOLD),
         ),
         Span::styled(
             format!(
                 " {}",
                 "─".repeat(width.saturating_sub(block.language.len() + 4))
             ),
-            Style::default().fg(Color::DarkGray),
+            theme.style(StyleKey::Muted),
         ),
     ]));
 
@@ -51,28 +50,28 @@ pub fn render_bash_block(block: &BashBlock, width: usize) -> Vec<Line<'static>> 
     for line in block.content.lines() {
         let truncated = truncate_chars(line, width.saturating_sub(2));
         lines.push(Line::from(vec![
-            Span::styled("│ ", Style::default().fg(Color::DarkGray)),
-            Span::styled(truncated, Style::default().fg(Color::Cyan)),
+            Span::styled("│ ", theme.style(StyleKey::Muted)),
+            Span::styled(truncated, theme.style(StyleKey::Accent)),
         ]));
     }
 
     // Footer
     lines.push(Line::from(Span::styled(
         format!("└{}", "─".repeat(width.saturating_sub(1))),
-        Style::default().fg(Color::DarkGray),
+        theme.style(StyleKey::Muted),
     )));
 
     lines
 }
 
 /// Render all bash blocks found in text.
-pub fn render_bash_blocks_in_text(text: &str, width: usize) -> Vec<Line<'static>> {
+pub fn render_bash_blocks_in_text(theme: &Theme, text: &str, width: usize) -> Vec<Line<'static>> {
     use super::message::split_content_segments;
     split_content_segments(text)
         .into_iter()
         .filter_map(|seg| match seg {
             super::message::ContentSegment::Code { language, content } => {
-                Some(render_bash_block(&BashBlock { language, content }, width))
+                Some(render_bash_block(theme, &BashBlock { language, content }, width))
             }
             _ => None,
         })

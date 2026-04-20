@@ -1,4 +1,5 @@
 use crate::app::AppState;
+use crate::services::theme::StyleKey;
 use ratatui::{
     Frame,
     layout::{Alignment, Rect},
@@ -40,12 +41,12 @@ pub fn render_statusline(f: &mut Frame, state: &AppState, area: Rect) {
         Span::raw(" | "),
         Span::styled(
             format!("Model: {}", model_str),
-            Style::default().fg(Color::Cyan),
+            state.theme.style(StyleKey::Accent),
         ),
         Span::raw(" | "),
         Span::styled(
             format!("Tokens: {}", tokens),
-            Style::default().fg(Color::Green),
+            state.theme.style(StyleKey::Success),
         ),
         Span::raw(" | "),
         Span::styled(
@@ -55,9 +56,9 @@ pub fn render_statusline(f: &mut Frame, state: &AppState, area: Rect) {
                 "MANUAL"
             },
             if state.auto_approve {
-                Style::default().fg(Color::Red)
+                state.theme.style(StyleKey::Error)
             } else {
-                Style::default().fg(Color::Green)
+                state.theme.style(StyleKey::Success)
             },
         ),
     ];
@@ -67,11 +68,11 @@ pub fn render_statusline(f: &mut Frame, state: &AppState, area: Rect) {
         text.push(Span::styled(
             format!("Valid: {:.1}%", score * 100.0),
             if score >= 0.8 {
-                Style::default().fg(Color::Green)
+                state.theme.style(StyleKey::Success)
             } else if score >= 0.5 {
-                Style::default().fg(Color::Yellow)
+                state.theme.style(StyleKey::Warning)
             } else {
-                Style::default().fg(Color::Red)
+                state.theme.style(StyleKey::Error)
             },
         ));
     }
@@ -96,13 +97,13 @@ pub fn render_statusline(f: &mut Frame, state: &AppState, area: Rect) {
         text.push(Span::raw(" | "));
         text.push(Span::styled(
             format!("MCP: {}", state.startup.mcp_server_count),
-            Style::default().fg(Color::Cyan),
+            state.theme.style(StyleKey::Accent),
         ));
     }
 
     if state.lsp_available {
         text.push(Span::raw(" | "));
-        text.push(Span::styled("LSP", Style::default().fg(Color::Blue)));
+        text.push(Span::styled("LSP", state.theme.style(StyleKey::Accent)));
         if let Some(diag) = &state.lsp_diagnostics {
             let errs = diag.total_errors;
             let warns = diag.total_warnings;

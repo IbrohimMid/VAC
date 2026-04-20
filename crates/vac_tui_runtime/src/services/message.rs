@@ -3,6 +3,7 @@
 //! Provides formatting and rendering for TUI message bubbles.
 //! Uses VAC types directly (no stakpak_shared dependency).
 
+use crate::services::theme::StyleKey;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use regex::Regex;
@@ -112,7 +113,7 @@ pub fn extract_full_command_arguments(tool_call: &ToolCall) -> String {
 pub fn render_user_message(content: &str, width: usize) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
     lines.push(Line::from(vec![
-        Span::styled("▌ ", Style::default().fg(Color::Cyan)),
+        Span::styled("▌ ", crate::services::theme::Theme::default().style(StyleKey::Accent)),
         Span::styled(
             "You",
             Style::default()
@@ -123,7 +124,7 @@ pub fn render_user_message(content: &str, width: usize) -> Vec<Line<'static>> {
     for line in content.lines() {
         let truncated = truncate_chars(line, width);
         lines.push(Line::from(vec![
-            Span::styled("▌ ", Style::default().fg(Color::Cyan)),
+            Span::styled("▌ ", crate::services::theme::Theme::default().style(StyleKey::Accent)),
             Span::raw(truncated),
         ]));
     }
@@ -197,6 +198,16 @@ pub fn render_assistant_message(content: &str) -> Vec<Line<'static>> {
 
 /// Render an assistant message with a specific width for bash block rendering.
 pub fn render_assistant_message_with_width(content: &str, width: usize) -> Vec<Line<'static>> {
+    let theme = crate::services::theme::Theme::default();
+    render_assistant_message_with_theme(content, width, &theme)
+}
+
+/// Render an assistant message using the provided theme.
+pub fn render_assistant_message_with_theme(
+    content: &str,
+    width: usize,
+    theme: &crate::services::theme::Theme,
+) -> Vec<Line<'static>> {
     use super::bash_block::render_bash_block;
 
     let mut lines = Vec::new();
@@ -224,7 +235,7 @@ pub fn render_assistant_message_with_width(content: &str, width: usize) -> Vec<L
                         language: "bash".to_string(),
                         content,
                     };
-                    lines.extend(render_bash_block(&block, width));
+                    lines.extend(render_bash_block(theme, &block, width));
                 } else {
                     let reconstructed = format!("```{}\n{}\n```", language, content);
                     match render_markdown_to_lines_safe(&reconstructed) {
@@ -244,14 +255,14 @@ pub fn render_assistant_message_with_width(content: &str, width: usize) -> Vec<L
 /// Render a pending tool call bubble.
 pub fn render_tool_call_pending(tool_call: &ToolCall) -> Vec<Line<'static>> {
     let mut lines = vec![Line::from(vec![
-        Span::styled("⏳ ", Style::default().fg(Color::Yellow)),
+        Span::styled("⏳ ", crate::services::theme::Theme::default().style(StyleKey::Warning)),
         Span::styled(
             tool_call.function.name.clone(),
             Style::default()
                 .fg(Color::Yellow)
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::styled(" [pending approval]", Style::default().fg(Color::DarkGray)),
+        Span::styled(" [pending approval]", crate::services::theme::Theme::default().style(StyleKey::Muted)),
     ])];
     let args = extract_full_command_arguments(tool_call);
     if !args.is_empty() {
@@ -259,7 +270,7 @@ pub fn render_tool_call_pending(tool_call: &ToolCall) -> Vec<Line<'static>> {
             Span::raw("  "),
             Span::styled(
                 truncate_chars(&args, 100),
-                Style::default().fg(Color::DarkGray),
+                crate::services::theme::Theme::default().style(StyleKey::Muted),
             ),
         ]));
     }
@@ -287,7 +298,7 @@ pub fn render_tool_result(result: &ToolCallResult) -> Vec<Line<'static>> {
             Span::raw("  "),
             Span::styled(
                 truncate_chars(&args, 100),
-                Style::default().fg(Color::DarkGray),
+                crate::services::theme::Theme::default().style(StyleKey::Muted),
             ),
         ]));
     }
@@ -305,7 +316,7 @@ pub fn render_tool_result(result: &ToolCallResult) -> Vec<Line<'static>> {
             Span::raw("    "),
             Span::styled(
                 truncate_chars(line, 100),
-                Style::default().fg(Color::DarkGray),
+                crate::services::theme::Theme::default().style(StyleKey::Muted),
             ),
         ]));
     }
@@ -314,9 +325,7 @@ pub fn render_tool_result(result: &ToolCallResult) -> Vec<Line<'static>> {
             Span::raw("    "),
             Span::styled(
                 "... (output truncated)",
-                Style::default()
-                    .fg(Color::DarkGray)
-                    .add_modifier(Modifier::ITALIC),
+                crate::services::theme::Theme::default().style(StyleKey::Muted).add_modifier(Modifier::ITALIC),
             ),
         ]));
     }

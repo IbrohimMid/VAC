@@ -280,7 +280,7 @@ pub fn scroll_down(ctx: &mut HandlerContext, step: usize) -> HandlerResult {
     if let Some(diff) = &mut ctx.state.review.diff {
         diff.scroll = diff.scroll.saturating_add(step);
         if let (Some(old), Some(new)) = (diff.old_content.as_deref(), diff.new_content.as_deref()) {
-            let total = crate::services::file_diff::render_diff(old, new, 120).len();
+            let total = crate::services::file_diff::render_diff(&crate::services::theme::Theme::default(), old, new, 120).len();
             if total > 0 && diff.scroll >= total {
                 diff.scroll = total - 1;
             }

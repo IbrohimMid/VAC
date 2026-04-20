@@ -170,7 +170,8 @@ pub fn render_diff_viewport(
     scroll: usize,
     height: usize,
 ) -> Vec<Line<'static>> {
-    let lines = crate::services::file_diff::render_diff(old_content, new_content, max_width);
+    let theme = crate::services::theme::Theme::default();
+    let lines = crate::services::file_diff::render_diff(&theme, old_content, new_content, max_width);
     if height == 0 {
         return vec![];
     }

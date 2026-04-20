@@ -1,3 +1,4 @@
+use crate::services::theme::StyleKey;
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
@@ -13,7 +14,7 @@ pub fn render_side_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
 
     let block = Block::default()
         .borders(Borders::LEFT)
-        .border_style(Style::default().fg(Color::DarkGray));
+        .border_style(state.theme.style(StyleKey::Muted));
     let inner_area = block.inner(area);
     f.render_widget(block, area);
 
@@ -156,7 +157,7 @@ fn render_todos_summary(f: &mut Frame, state: &AppState, area: Rect) {
             format!("  ▸ Todos ({}/{}) ", done, state.todos.len()),
             Style::default().add_modifier(Modifier::BOLD),
         ),
-        Span::styled("— Workbench", Style::default().fg(Color::DarkGray)),
+        Span::styled("— Workbench", state.theme.style(StyleKey::Muted)),
     ]);
     f.render_widget(Paragraph::new(vec![line]), area);
 }
@@ -174,29 +175,29 @@ fn render_usage_section(f: &mut Frame, state: &AppState, area: Rect, collapsed: 
     }
 
     let pct = state.context_usage_percent.clamp(0.0, 100.0);
-    let pct_color = if pct >= 80.0 {
-        Color::Red
+    let pct_style = if pct >= 80.0 {
+        state.theme.style(StyleKey::Error)
     } else if pct >= 50.0 {
-        Color::Yellow
+        state.theme.style(StyleKey::Warning)
     } else {
-        Color::Green
+        state.theme.style(StyleKey::Success)
     };
     let lines = vec![
         header,
         Line::from(vec![
-            Span::styled("    Turn: ", Style::default().fg(Color::DarkGray)),
+            Span::styled("    Turn: ", state.theme.style(StyleKey::Muted)),
             Span::raw(format!(
                 "{} in / {} out",
                 state.current_message_usage.input_tokens, state.current_message_usage.output_tokens
             )),
         ]),
         Line::from(vec![
-            Span::styled("    Session: ", Style::default().fg(Color::DarkGray)),
+            Span::styled("    Session: ", state.theme.style(StyleKey::Muted)),
             Span::raw(format!("{} tokens", state.total_session_usage.total_tokens)),
         ]),
         Line::from(vec![
-            Span::styled("    Context: ", Style::default().fg(Color::DarkGray)),
-            Span::styled(format!("{:.0}%", pct), Style::default().fg(pct_color)),
+            Span::styled("    Context: ", state.theme.style(StyleKey::Muted)),
+            Span::styled(format!("{:.0}%", pct), pct_style),
         ]),
     ];
     f.render_widget(Paragraph::new(lines), area);
@@ -222,13 +223,13 @@ fn render_context_section(f: &mut Frame, state: &AppState, area: Rect, collapsed
         .map(|m| m.name.clone())
         .unwrap_or_else(|| "no active model selected".to_string());
     lines.push(Line::from(vec![
-        Span::styled("    Model: ", Style::default().fg(Color::DarkGray)),
+        Span::styled("    Model: ", state.theme.style(StyleKey::Muted)),
         Span::raw(model_name),
     ]));
 
     let session = state.session_id.chars().take(8).collect::<String>();
     lines.push(Line::from(vec![
-        Span::styled("    Session: ", Style::default().fg(Color::DarkGray)),
+        Span::styled("    Session: ", state.theme.style(StyleKey::Muted)),
         Span::raw(session),
     ]));
 
@@ -237,14 +238,14 @@ fn render_context_section(f: &mut Frame, state: &AppState, area: Rect, collapsed
     } else {
         "Disabled"
     };
-    let auto_color = if state.auto_approve {
-        Color::Red
+    let auto_style = if state.auto_approve {
+        state.theme.style(StyleKey::Error)
     } else {
-        Color::Green
+        state.theme.style(StyleKey::Success)
     };
     lines.push(Line::from(vec![
-        Span::styled("    Auto-Approve: ", Style::default().fg(Color::DarkGray)),
-        Span::styled(auto, Style::default().fg(auto_color)),
+        Span::styled("    Auto-Approve: ", state.theme.style(StyleKey::Muted)),
+        Span::styled(auto, auto_style),
     ]));
 
     if let Some(ident) = state
@@ -254,26 +255,26 @@ fn render_context_section(f: &mut Frame, state: &AppState, area: Rect, collapsed
         .or(state.auth_display_info.1.as_ref())
     {
         lines.push(Line::from(vec![
-            Span::styled("    Auth: ", Style::default().fg(Color::DarkGray)),
+            Span::styled("    Auth: ", state.theme.style(StyleKey::Muted)),
             Span::raw(ident.clone()),
         ]));
     }
 
     if !state.pinned_files.is_empty() {
         lines.push(Line::from(vec![
-            Span::styled("    Files: ", Style::default().fg(Color::DarkGray)),
+            Span::styled("    Files: ", state.theme.style(StyleKey::Muted)),
             Span::raw(compact_items(&state.pinned_files, 2)),
         ]));
     }
     if !state.pinned_diffs.is_empty() {
         lines.push(Line::from(vec![
-            Span::styled("    Diffs: ", Style::default().fg(Color::DarkGray)),
+            Span::styled("    Diffs: ", state.theme.style(StyleKey::Muted)),
             Span::raw(compact_items(&state.pinned_diffs, 2)),
         ]));
     }
     if !state.pinned_diagnostics.is_empty() {
         lines.push(Line::from(vec![
-            Span::styled("    Diagnostics: ", Style::default().fg(Color::DarkGray)),
+            Span::styled("    Diagnostics: ", state.theme.style(StyleKey::Muted)),
             Span::raw(compact_items(&state.pinned_diagnostics, 2)),
         ]));
     } else if state.pinned_files.is_empty() && state.pinned_diffs.is_empty() {
@@ -412,7 +413,7 @@ fn render_mcp_section(f: &mut Frame, state: &mut AppState, area: Rect, collapsed
                 Span::raw("    "),
                 Span::styled(status, Style::default().fg(color)),
                 Span::raw(" "),
-                Span::styled(name.clone(), Style::default().fg(Color::Yellow)),
+                Span::styled(name.clone(), state.theme.style(StyleKey::Warning)),
             ];
 
             if let Some(trust) = &conn_state.trust_class {
@@ -445,7 +446,7 @@ fn render_mcp_section(f: &mut Frame, state: &mut AppState, area: Rect, collapsed
             if let vac_tools::mcp::McpConnectionStatus::Unreachable(reason) = &conn_state.status {
                 lines.push(Line::from(vec![
                     Span::raw("      "),
-                    Span::styled(reason.clone(), Style::default().fg(Color::DarkGray)),
+                    Span::styled(reason.clone(), state.theme.style(StyleKey::Muted)),
                 ]));
             }
         }
@@ -483,19 +484,19 @@ fn render_runtime_section(f: &mut Frame, state: &AppState, area: Rect, collapsed
     }
 
     lines.push(Line::from(vec![
-        Span::styled("    Queued: ", Style::default().fg(Color::DarkGray)),
+        Span::styled("    Queued: ", state.theme.style(StyleKey::Muted)),
         Span::raw(queued.to_string()),
     ]));
     lines.push(Line::from(vec![
-        Span::styled("    Running: ", Style::default().fg(Color::DarkGray)),
+        Span::styled("    Running: ", state.theme.style(StyleKey::Muted)),
         Span::raw(running.to_string()),
     ]));
     lines.push(Line::from(vec![
-        Span::styled("    Completed: ", Style::default().fg(Color::DarkGray)),
+        Span::styled("    Completed: ", state.theme.style(StyleKey::Muted)),
         Span::raw(completed.to_string()),
     ]));
     lines.push(Line::from(vec![
-        Span::styled("    Failed: ", Style::default().fg(Color::DarkGray)),
+        Span::styled("    Failed: ", state.theme.style(StyleKey::Muted)),
         Span::raw(failed.to_string()),
     ]));
 
@@ -509,7 +510,7 @@ fn render_changeset_summary(f: &mut Frame, state: &AppState, area: Rect) {
             format!("  ▸ Changeset ({}) ", count),
             Style::default().add_modifier(Modifier::BOLD),
         ),
-        Span::styled("— Workbench", Style::default().fg(Color::DarkGray)),
+        Span::styled("— Workbench", state.theme.style(StyleKey::Muted)),
     ]);
     f.render_widget(Paragraph::new(vec![line]), area);
 }

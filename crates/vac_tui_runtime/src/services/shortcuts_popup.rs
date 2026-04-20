@@ -469,7 +469,7 @@ fn render_commands_section(
     if has_content_above {
         visible_lines.push(Line::from(vec![Span::styled(
             " ▲",
-            Style::default().fg(Color::Reset),
+            Style::default(),
         )]));
     }
 
@@ -483,7 +483,7 @@ fn render_commands_section(
             let bg_color = if is_selected {
                 ThemeColors::highlight_bg()
             } else {
-                Color::Reset
+                ratatui::style::Color::Reset
             };
             let text_color = if is_selected {
                 ThemeColors::highlight_fg()
@@ -522,7 +522,7 @@ fn render_commands_section(
     // Render content
     let content_paragraph = Paragraph::new(visible_lines)
         .wrap(ratatui::widgets::Wrap { trim: false })
-        .style(Style::default().bg(Color::Reset).fg(ThemeColors::text()));
+        .style(Style::default());
 
     f.render_widget(content_paragraph, content_area);
 
@@ -536,7 +536,7 @@ fn render_commands_section(
         let cumulative = (scroll + height).min(total_commands);
         indicator_spans.push(Span::styled(
             format!(" ({}/{})", cumulative, total_commands),
-            Style::default().fg(Color::Reset),
+            Style::default(),
         ));
 
         if has_content_below {
@@ -716,7 +716,7 @@ fn render_shortcuts_section(
     if has_content_above {
         visible_lines.push(Line::from(vec![Span::styled(
             " ▲",
-            Style::default().fg(Color::Reset),
+            Style::default(),
         )]));
     }
 
@@ -733,7 +733,7 @@ fn render_shortcuts_section(
     // Render as paragraph with static lines
     let content_paragraph = Paragraph::new(visible_lines)
         .wrap(ratatui::widgets::Wrap { trim: false })
-        .style(Style::default().bg(Color::Reset).fg(ThemeColors::text()));
+        .style(Style::default());
 
     f.render_widget(content_paragraph, content_area);
 
@@ -766,7 +766,7 @@ fn render_shortcuts_section(
         // Show cumulative shortcuts counter and down arrow on the left
         indicator_spans.push(Span::styled(
             format!(" ({}/{})", cumulative_shortcuts_count, shortcuts_count),
-            Style::default().fg(Color::Reset),
+            Style::default(),
         ));
 
         if has_content_below {
@@ -917,7 +917,7 @@ fn render_sessions_section(
             let (fg, bg) = if is_selected {
                 (ThemeColors::highlight_fg(), ThemeColors::highlight_bg())
             } else {
-                (ThemeColors::text(), Color::Reset)
+                (ratatui::style::Color::White, ratatui::style::Color::Reset)
             };
 
             let style = if is_selected {
@@ -941,7 +941,7 @@ fn render_sessions_section(
 
             indicator_spans.push(Span::styled(
                 format!(" ({}/{})", cumulative_count, total_filtered),
-                Style::default().fg(Color::Reset),
+                Style::default(),
             ));
 
             if has_content_below {

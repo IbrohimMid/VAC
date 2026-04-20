@@ -1,8 +1,9 @@
 use crate::app::AppState;
+use crate::services::theme::StyleKey;
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, List, ListItem},
 };
@@ -17,9 +18,7 @@ pub fn render_isolation_switcher(f: &mut Frame, state: &mut AppState) {
         .enumerate()
         .map(|(i, p)| {
             let style = if i == state.isolation_switcher_selected {
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD)
+                state.theme.style(StyleKey::ListSelected)
             } else {
                 Style::default()
             };
@@ -29,7 +28,7 @@ pub fn render_isolation_switcher(f: &mut Frame, state: &mut AppState) {
                 "  "
             };
             ListItem::new(Line::from(vec![
-                Span::styled(prefix, Style::default().fg(Color::Green)),
+                Span::styled(prefix, state.theme.style(StyleKey::Success)),
                 Span::styled(p.clone(), style),
             ]))
         })
@@ -41,11 +40,7 @@ pub fn render_isolation_switcher(f: &mut Frame, state: &mut AppState) {
                 .borders(Borders::ALL)
                 .title("Isolation Environment"),
         )
-        .highlight_style(
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
-        );
+        .highlight_style(state.theme.style(StyleKey::ListSelected));
     f.render_widget(list, area);
 }
 

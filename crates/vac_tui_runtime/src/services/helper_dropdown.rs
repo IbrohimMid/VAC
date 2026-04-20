@@ -3,6 +3,7 @@ use nucleo_matcher::{
     Config, Matcher,
     pattern::{CaseMatching, Normalization, Pattern},
 };
+use ratatui::style::Color;
 use std::cmp::Reverse;
 
 pub fn filter_helpers_sync(state: &mut AppState) {
@@ -69,10 +70,11 @@ pub fn filter_helpers_sync(state: &mut AppState) {
 
     state.filtered_helpers = matches.into_iter().map(|(_, cmd)| cmd).collect();
 }
+use crate::services::theme::StyleKey;
 use ratatui::{
     Frame,
     layout::Rect,
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem, ListState},
 };

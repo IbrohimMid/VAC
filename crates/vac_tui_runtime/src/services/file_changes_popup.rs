@@ -160,7 +160,7 @@ pub fn render_file_changes_popup(f: &mut Frame, state: &AppState) {
                 let s = if is_selected {
                     Style::default().fg(ThemeColors::highlight_fg())
                 } else {
-                    Style::default().fg(Color::Reset)
+                    Style::default()
                 };
                 s.bg(bg_color)
             }

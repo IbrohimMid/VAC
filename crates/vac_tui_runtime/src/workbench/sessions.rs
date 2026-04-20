@@ -1,6 +1,7 @@
 //! Sessions tab — browse and restore saved sessions.
 
 use super::WorkbenchTabView;
+use crate::services::theme::StyleKey;
 use crate::app::AppState;
 use ratatui::{
     Frame,
@@ -63,12 +64,12 @@ impl WorkbenchTabView for SessionsTab {
                     Span::raw(" "),
                     Span::styled(snapshot_icon, Style::default().fg(snapshot_color)),
                     Span::raw(" "),
-                    Span::styled(&s.last_activity, Style::default().fg(Color::DarkGray)),
+                    Span::styled(&s.last_activity, state.theme.style(StyleKey::Muted)),
                     Span::raw(" "),
                     Span::styled(&s.title, style),
                     Span::styled(
                         format!(" ({}t)", s.task_count),
-                        Style::default().fg(Color::DarkGray),
+                        state.theme.style(StyleKey::Muted),
                     ),
                 ]))
             })
@@ -108,22 +109,22 @@ impl WorkbenchTabView for SessionsTab {
                     Style::default().add_modifier(Modifier::BOLD),
                 ),
                 if sel.has_checkpoint {
-                    Span::styled("available ●", Style::default().fg(Color::Green))
+                    Span::styled("available ●", state.theme.style(StyleKey::Success))
                 } else {
                     Span::styled(
                         "no checkpoint available ○",
-                        Style::default().fg(Color::DarkGray),
+                        state.theme.style(StyleKey::Muted),
                     )
                 },
             ]));
             lines.push(Line::from(vec![
                 Span::styled("Snapshot: ", Style::default().add_modifier(Modifier::BOLD)),
                 if sel.snapshot_stale {
-                    Span::styled("stale !", Style::default().fg(Color::Yellow))
+                    Span::styled("stale !", state.theme.style(StyleKey::Warning))
                 } else if sel.snapshot_present {
-                    Span::styled("available ◆", Style::default().fg(Color::Cyan))
+                    Span::styled("available ◆", state.theme.style(StyleKey::Accent))
                 } else {
-                    Span::styled("not saved ○", Style::default().fg(Color::DarkGray))
+                    Span::styled("not saved ○", state.theme.style(StyleKey::Muted))
                 },
             ]));
             if !sel.checkpoints.is_empty() {
@@ -142,12 +143,12 @@ impl WorkbenchTabView for SessionsTab {
             lines.push(Line::raw(""));
             lines.push(Line::styled(
                 "Enter: restore  r: resume checkpoint  d: cleanup artifacts",
-                Style::default().fg(Color::DarkGray),
+                state.theme.style(StyleKey::Muted),
             ));
         } else {
             lines.push(Line::styled(
                 "No sessions loaded yet. Run /sessions to open saved sessions.",
-                Style::default().fg(Color::DarkGray),
+                state.theme.style(StyleKey::Muted),
             ));
         }
 

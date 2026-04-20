@@ -2,6 +2,7 @@
 
 use super::WorkbenchTabView;
 use crate::app::AppState;
+use crate::services::theme::StyleKey;
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
@@ -38,7 +39,7 @@ impl WorkbenchTabView for ApprovalsTab {
                 };
                 let id_short = tc.id.chars().take(8).collect::<String>();
                 ListItem::new(Line::from(vec![
-                    Span::styled(id_short, Style::default().fg(Color::DarkGray)),
+                    Span::styled(id_short, state.theme.style(StyleKey::Muted)),
                     Span::raw(" "),
                     Span::styled(tc.function.name.clone(), style),
                 ]))
@@ -52,7 +53,7 @@ impl WorkbenchTabView for ApprovalsTab {
         if let Some(tc) = state.pending_approvals.get(state.approval_selected_idx) {
             lines.push(Line::from(vec![
                 Span::styled("Tool: ", Style::default().add_modifier(Modifier::BOLD)),
-                Span::styled(tc.function.name.clone(), Style::default().fg(Color::Yellow)),
+                Span::styled(tc.function.name.clone(), state.theme.style(StyleKey::Warning)),
             ]));
             lines.push(Line::raw(""));
 
@@ -68,7 +69,7 @@ impl WorkbenchTabView for ApprovalsTab {
                 for l in expl.lines() {
                     lines.push(Line::styled(
                         l.to_string(),
-                        Style::default().fg(Color::DarkGray),
+                        state.theme.style(StyleKey::Muted),
                     ));
                 }
                 lines.push(Line::raw(""));
@@ -81,6 +82,7 @@ impl WorkbenchTabView for ApprovalsTab {
                     let old_str = v.get("old_string").and_then(|v| v.as_str()).unwrap_or("");
                     let new_str = v.get("new_string").and_then(|v| v.as_str()).unwrap_or("");
                     lines.extend(crate::services::file_diff::preview_file_diff(
+                        &state.theme,
                         file_path,
                         old_str,
                         new_str,
@@ -92,6 +94,7 @@ impl WorkbenchTabView for ApprovalsTab {
                     let file_path = v.get("file_path").and_then(|v| v.as_str()).unwrap_or("");
                     let content = v.get("content").and_then(|v| v.as_str()).unwrap_or("");
                     lines.extend(crate::services::file_diff::preview_file_diff(
+                        &state.theme,
                         file_path,
                         "",
                         content,
@@ -120,7 +123,7 @@ impl WorkbenchTabView for ApprovalsTab {
         } else {
             lines.push(Line::styled(
                 "No pending approvals. Tool requests will appear here when confirmation is needed.",
-                Style::default().fg(Color::DarkGray),
+                state.theme.style(StyleKey::Muted),
             ));
         }
 

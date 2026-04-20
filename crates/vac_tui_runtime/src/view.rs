@@ -320,7 +320,7 @@ fn render_changeset(f: &mut Frame, state: &mut AppState) {
             ));
         } else if let (Some(old), Some(new)) = (&diff.old_content, &diff.new_content) {
             lines.extend(crate::services::preview_file_diff(
-                &diff.path, old, new, width,
+                &state.theme, &diff.path, old, new, width,
             ));
         } else {
             lines.push(Line::styled(

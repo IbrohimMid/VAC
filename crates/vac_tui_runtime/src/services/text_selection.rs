@@ -465,13 +465,13 @@ fn highlight_line_range(line: Line<'_>, start_col: u16, end_col: u16) -> Line<'_
 /// Get highlight style by using text color as background
 fn get_highlight_style(original: Style) -> Style {
     // Use the foreground color as background
-    let bg = original.fg.unwrap_or(Color::White);
+    let bg = original.fg.unwrap_or(ratatui::style::Color::White);
 
     // Calculate contrasting foreground
     let fg = if is_light_color(bg) {
-        Color::Black
+        ratatui::style::Color::Black
     } else {
-        Color::White
+        ratatui::style::Color::White
     };
 
     Style::default().fg(fg).bg(bg)
@@ -480,18 +480,18 @@ fn get_highlight_style(original: Style) -> Style {
 /// Check if a color is considered "light" for contrast calculation
 fn is_light_color(color: Color) -> bool {
     match color {
-        Color::Rgb(r, g, b) => {
+        ratatui::style::Color::Rgb(r, g, b) => {
             // Luminance formula
             (0.299 * r as f32 + 0.587 * g as f32 + 0.114 * b as f32) > 128.0
         }
-        Color::White
-        | Color::LightYellow
-        | Color::LightCyan
-        | Color::LightGreen
-        | Color::LightBlue
-        | Color::LightMagenta
-        | Color::LightRed
-        | Color::Gray => true,
+        ratatui::style::Color::White
+        | ratatui::style::Color::LightYellow
+        | ratatui::style::Color::LightCyan
+        | ratatui::style::Color::LightGreen
+        | ratatui::style::Color::LightBlue
+        | ratatui::style::Color::LightMagenta
+        | ratatui::style::Color::LightRed
+        | ratatui::style::Color::Gray => true,
         _ => false,
     }
 }

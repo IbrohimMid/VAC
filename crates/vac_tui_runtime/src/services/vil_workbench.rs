@@ -7,6 +7,7 @@
 //! Quick-actions (`R`/`A`/`D`/`O`) are dispatched via the sibling handler
 //! module [`crate::handlers::vil_workbench`].
 
+use crate::services::theme::{StyleKey, Theme};
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
@@ -168,12 +169,12 @@ fn render_status_panel(f: &mut Frame, state: &AppState, area: Rect) {
         "C"
     };
 
-    let score_color = if score >= 0.9 {
-        Color::Green
+    let score_style = if score >= 0.9 {
+        state.theme.style(StyleKey::ScoreGood)
     } else if score >= 0.7 {
-        Color::Yellow
+        state.theme.style(StyleKey::ScoreOk)
     } else {
-        Color::Red
+        state.theme.style(StyleKey::ScoreBad)
     };
 
     let active_rulebook = state
@@ -214,14 +215,14 @@ fn render_status_panel(f: &mut Frame, state: &AppState, area: Rect) {
 
     let mut header = vec![
         Span::styled("Score: ", Style::default().add_modifier(Modifier::BOLD)),
-        Span::styled(score_label, Style::default().fg(score_color)),
+        Span::styled(score_label, score_style),
         Span::styled(
             format!(" ({:.2})", score),
-            Style::default().fg(Color::DarkGray),
+            state.theme.style(StyleKey::Muted),
         ),
         Span::raw(" │ "),
         Span::styled("Trend: ", Style::default().add_modifier(Modifier::BOLD)),
-        Span::styled(trend, Style::default().fg(Color::Cyan)),
+        Span::styled(trend, state.theme.style(StyleKey::Accent)),
         Span::raw(" │ "),
         Span::styled("Issues: ", Style::default().add_modifier(Modifier::BOLD)),
         Span::raw(state.vil.status.validation_issues.len().to_string()),
@@ -233,9 +234,9 @@ fn render_status_panel(f: &mut Frame, state: &AppState, area: Rect) {
         Style::default().add_modifier(Modifier::BOLD),
     ));
     header.push(if state.vil.status.semantic_mode {
-        Span::styled("On", Style::default().fg(Color::Green))
+        Span::styled("On", state.theme.style(StyleKey::Success))
     } else {
-        Span::styled("Off", Style::default().fg(Color::DarkGray))
+        Span::styled("Off", state.theme.style(StyleKey::Muted))
     });
 
     let mut meta = vec![
@@ -246,9 +247,9 @@ fn render_status_panel(f: &mut Frame, state: &AppState, area: Rect) {
         Span::styled(
             rulebook_display,
             if has_conflict {
-                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
+                state.theme.style(StyleKey::Error).add_modifier(Modifier::BOLD)
             } else {
-                Style::default().fg(Color::Cyan)
+                state.theme.style(StyleKey::Accent)
             },
         ),
         Span::raw(" │ "),
@@ -258,12 +259,12 @@ fn render_status_panel(f: &mut Frame, state: &AppState, area: Rect) {
     if state.vil.status.ir_generation_active {
         meta.push(Span::styled(
             format!("Active ({})", state.vil.status.ir_metadata_files.len()),
-            Style::default().fg(Color::Green),
+            state.theme.style(StyleKey::Success),
         ));
     } else {
         meta.push(Span::styled(
             "Inactive",
-            Style::default().fg(Color::DarkGray),
+            state.theme.style(StyleKey::Muted),
         ));
     }
 
@@ -275,7 +276,7 @@ fn render_status_panel(f: &mut Frame, state: &AppState, area: Rect) {
         ));
         meta.push(Span::styled(
             format!("{}", profile.archetype),
-            Style::default().fg(Color::Cyan),
+            state.theme.style(StyleKey::Accent),
         ));
     }
 
@@ -286,7 +287,7 @@ fn render_status_panel(f: &mut Frame, state: &AppState, area: Rect) {
             Span::styled("Deps: ", Style::default().add_modifier(Modifier::BOLD)),
             Span::styled(
                 format!("{} ({})", deps, profile.vil_deps.len()),
-                Style::default().fg(Color::White),
+                state.theme.style(StyleKey::Normal),
             ),
             Span::raw(" │ "),
             Span::styled(
@@ -295,7 +296,7 @@ fn render_status_panel(f: &mut Frame, state: &AppState, area: Rect) {
             ),
             Span::styled(
                 format!("{} ({})", constructs, profile.detected_constructs.len()),
-                Style::default().fg(Color::White),
+                state.theme.style(StyleKey::Normal),
             ),
         ])
     } else {
@@ -347,7 +348,7 @@ fn render_vil_log_panel(f: &mut Frame, state: &AppState, area: Rect) {
     for entry in entries.into_iter().rev() {
         let ts = entry.at.format("%H:%M:%S").to_string();
         lines.push(Line::from(vec![
-            Span::styled(ts, Style::default().fg(Color::DarkGray)),
+            Span::styled(ts, state.theme.style(StyleKey::Muted)),
             Span::raw(" "),
             Span::raw(entry.message.clone()),
         ]));
@@ -355,7 +356,7 @@ fn render_vil_log_panel(f: &mut Frame, state: &AppState, area: Rect) {
     if lines.is_empty() {
         lines.push(Line::styled(
             "no VIL events yet",
-            Style::default().fg(Color::DarkGray),
+            state.theme.style(StyleKey::Muted),
         ));
     }
     let widget = Paragraph::new(lines)
@@ -412,7 +413,7 @@ fn render_issue_list(f: &mut Frame, state: &AppState, area: Rect, view: &[&VilIs
     if view.is_empty() {
         let widget = Paragraph::new(Line::styled(
             empty_msg,
-            Style::default().fg(Color::DarkGray),
+            state.theme.style(StyleKey::Muted),
         ))
         .block(Block::default().borders(Borders::ALL).title("Issues"))
         .wrap(Wrap { trim: true });
@@ -436,7 +437,7 @@ fn render_issue_list(f: &mut Frame, state: &AppState, area: Rect, view: &[&VilIs
             } else {
                 Style::default()
             };
-            let kind_color = kind_color(issue.kind);
+            let kind_style = kind_style(&state.theme, issue.kind);
             let kind_tag = format!("[{}]", issue.kind.label());
             let locator = match (&issue.file, issue.line) {
                 (Some(f), Some(l)) => format!(" {f}:{l}"),
@@ -444,8 +445,8 @@ fn render_issue_list(f: &mut Frame, state: &AppState, area: Rect, view: &[&VilIs
                 _ => String::new(),
             };
             ListItem::new(Line::from(vec![
-                Span::styled(kind_tag, Style::default().fg(kind_color)),
-                Span::styled(locator, Style::default().fg(Color::Cyan)),
+                Span::styled(kind_tag, kind_style),
+                Span::styled(locator, state.theme.style(StyleKey::Accent)),
                 Span::raw(" "),
                 Span::styled(issue.message.clone(), style),
             ]))
@@ -471,21 +472,21 @@ fn render_lineage_panel(f: &mut Frame, state: &AppState, area: Rect, view: &[&Vi
             Span::styled("Kind: ", Style::default().add_modifier(Modifier::BOLD)),
             Span::styled(
                 issue.kind.label().to_string(),
-                Style::default().fg(kind_color(issue.kind)),
+                kind_style(&state.theme, issue.kind),
             ),
         ]));
         if let Some(file) = &issue.file {
             lines.push(Line::from(vec![
                 Span::styled("Target: ", Style::default().add_modifier(Modifier::BOLD)),
-                Span::styled(file.clone(), Style::default().fg(Color::Cyan)),
+                Span::styled(file.clone(), state.theme.style(StyleKey::Accent)),
             ]));
         }
         lines.push(Line::from(vec![
             Span::styled("Source: ", Style::default().add_modifier(Modifier::BOLD)),
-            Span::styled(issue.source.clone(), Style::default().fg(Color::Gray)),
+            Span::styled(issue.source.clone(), state.theme.style(StyleKey::Muted)),
             Span::styled(
                 format!(" (ID: {})", issue.id),
-                Style::default().fg(Color::DarkGray),
+                state.theme.style(StyleKey::Muted),
             ),
         ]));
         lines.push(Line::raw(""));
@@ -510,7 +511,7 @@ fn render_lineage_panel(f: &mut Frame, state: &AppState, area: Rect, view: &[&Vi
             ));
             lines.push(Line::styled(
                 format!("  {}", proposal),
-                Style::default().fg(Color::White),
+                state.theme.style(StyleKey::Normal),
             ));
             lines.push(Line::raw(""));
         }
@@ -538,33 +539,33 @@ fn render_lineage_panel(f: &mut Frame, state: &AppState, area: Rect, view: &[&Vi
         if related.is_empty() {
             lines.push(Line::styled(
                 "  (no matching IR metadata files)",
-                Style::default().fg(Color::DarkGray),
+                state.theme.style(StyleKey::Muted),
             ));
         } else {
             for f in related.iter().take(8) {
                 lines.push(Line::from(vec![
-                    Span::styled("  • ", Style::default().fg(Color::DarkGray)),
-                    Span::styled((*f).clone(), Style::default().fg(Color::Cyan)),
+                    Span::styled("  • ", state.theme.style(StyleKey::Muted)),
+                    Span::styled((*f).clone(), state.theme.style(StyleKey::Accent)),
                 ]));
             }
             if related.len() > 8 {
                 lines.push(Line::styled(
                     format!("  … and {} more", related.len() - 8),
-                    Style::default().fg(Color::DarkGray),
+                    state.theme.style(StyleKey::Muted),
                 ));
             }
         }
     } else {
         lines.push(Line::styled(
             "No issue selected.",
-            Style::default().fg(Color::DarkGray),
+            state.theme.style(StyleKey::Muted),
         ));
     }
 
     lines.push(Line::raw(""));
     lines.push(Line::styled(
         "R: repair  A: audit  D: ir-diff  O: open in $EDITOR  ←/→: filter  B: batch campaign",
-        Style::default().fg(Color::DarkGray),
+        state.theme.style(StyleKey::Muted),
     ));
 
     let widget = Paragraph::new(lines)
@@ -573,14 +574,14 @@ fn render_lineage_panel(f: &mut Frame, state: &AppState, area: Rect, view: &[&Vi
     f.render_widget(widget, area);
 }
 
-fn kind_color(kind: VilIssueKind) -> Color {
+fn kind_style(theme: &Theme, kind: VilIssueKind) -> ratatui::style::Style {
     match kind {
-        VilIssueKind::Semantic => Color::Magenta,
-        VilIssueKind::ZeroCopy => Color::Yellow,
-        VilIssueKind::Plumbing => Color::Cyan,
-        VilIssueKind::IrDrift => Color::LightRed,
-        VilIssueKind::CanonicalTerm => Color::Green,
-        VilIssueKind::Other => Color::DarkGray,
+        VilIssueKind::Semantic => theme.style(StyleKey::VilKindSemantic),
+        VilIssueKind::ZeroCopy => theme.style(StyleKey::VilKindZeroCopy),
+        VilIssueKind::Plumbing => theme.style(StyleKey::VilKindPlumbing),
+        VilIssueKind::IrDrift => theme.style(StyleKey::VilKindIrDrift),
+        VilIssueKind::CanonicalTerm => theme.style(StyleKey::VilKindCanonical),
+        VilIssueKind::Other => theme.style(StyleKey::VilKindOther),
     }
 }
 

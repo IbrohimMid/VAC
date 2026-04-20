@@ -1,8 +1,9 @@
 use crate::app::AppState;
+use crate::services::theme::StyleKey;
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, List, ListItem, Paragraph},
 };
@@ -17,7 +18,7 @@ pub fn render_profile_switcher(f: &mut Frame, state: &mut AppState) {
         .split(area);
 
     let input = Paragraph::new(Line::from(vec![
-        Span::styled("Filter ", Style::default().fg(Color::DarkGray)),
+        Span::styled("Filter ", state.theme.style(StyleKey::Muted)),
         Span::raw(&state.profile_search_input),
     ]))
     .block(
@@ -33,9 +34,7 @@ pub fn render_profile_switcher(f: &mut Frame, state: &mut AppState) {
         .enumerate()
         .map(|(i, p)| {
             let style = if i == state.profile_switcher_selected {
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD)
+                state.theme.style(StyleKey::ListSelected)
             } else {
                 Style::default()
             };
@@ -45,7 +44,7 @@ pub fn render_profile_switcher(f: &mut Frame, state: &mut AppState) {
                 "  "
             };
             ListItem::new(Line::from(vec![
-                Span::styled(prefix, Style::default().fg(Color::Green)),
+                Span::styled(prefix, state.theme.style(StyleKey::Success)),
                 Span::styled(p.clone(), style),
             ]))
         })
@@ -53,11 +52,7 @@ pub fn render_profile_switcher(f: &mut Frame, state: &mut AppState) {
 
     let list = List::new(items)
         .block(Block::default().borders(Borders::ALL).title("Profiles"))
-        .highlight_style(
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
-        );
+        .highlight_style(state.theme.style(StyleKey::ListSelected));
     f.render_widget(list, chunks[1]);
 }
 

@@ -1,6 +1,7 @@
 //! Review tab — inspect and revert file changes.
 
 use super::WorkbenchTabView;
+use crate::services::theme::StyleKey;
 use crate::app::AppState;
 use ratatui::{
     Frame,
@@ -26,12 +27,12 @@ impl WorkbenchTabView for ReviewTab {
         let title = format!("Review ({})", state.review_filtered_paths().len());
         let filter_line = if state.review.filter.is_empty() {
             Line::from(vec![
-                Span::styled("Filter: ", Style::default().fg(Color::Cyan)),
-                Span::styled("type to filter…", Style::default().fg(Color::DarkGray)),
+                Span::styled("Filter: ", state.theme.style(StyleKey::Accent)),
+                Span::styled("type to filter…", state.theme.style(StyleKey::Muted)),
             ])
         } else {
             Line::from(vec![
-                Span::styled("Filter: ", Style::default().fg(Color::Cyan)),
+                Span::styled("Filter: ", state.theme.style(StyleKey::Accent)),
                 Span::styled(
                     &state.review.filter,
                     Style::default().add_modifier(Modifier::BOLD),
@@ -58,32 +59,32 @@ impl WorkbenchTabView for ReviewTab {
                         .fg(Color::Yellow)
                         .add_modifier(Modifier::BOLD)
                 } else {
-                    Style::default().fg(Color::White)
+                    state.theme.style(StyleKey::Normal)
                 };
 
                 let (status_span, snap_span) = match state.review.items.get(path) {
                     Some(it) => {
                         let status = match it.status {
                             crate::app::ReviewItemStatus::Pending => {
-                                Span::styled("• ", Style::default().fg(Color::DarkGray))
+                                Span::styled("• ", state.theme.style(StyleKey::Muted))
                             }
                             crate::app::ReviewItemStatus::Restored => {
-                                Span::styled("✓ ", Style::default().fg(Color::Green))
+                                Span::styled("✓ ", state.theme.style(StyleKey::Success))
                             }
                             crate::app::ReviewItemStatus::Failed => {
-                                Span::styled("! ", Style::default().fg(Color::Red))
+                                Span::styled("! ", state.theme.style(StyleKey::Error))
                             }
                         };
                         let snap = if it.has_snapshot {
-                            Span::styled("S ", Style::default().fg(Color::Cyan))
+                            Span::styled("S ", state.theme.style(StyleKey::Accent))
                         } else {
-                            Span::styled("- ", Style::default().fg(Color::DarkGray))
+                            Span::styled("- ", state.theme.style(StyleKey::Muted))
                         };
                         (status, snap)
                     }
                     None => (
-                        Span::styled("• ", Style::default().fg(Color::DarkGray)),
-                        Span::styled("? ", Style::default().fg(Color::DarkGray)),
+                        Span::styled("• ", state.theme.style(StyleKey::Muted)),
+                        Span::styled("? ", state.theme.style(StyleKey::Muted)),
                     ),
                 };
 
@@ -119,7 +120,7 @@ impl WorkbenchTabView for ReviewTab {
             } else if let Some(err) = &diff.last_error {
                 vec![Line::from(Span::styled(
                     err.clone(),
-                    Style::default().fg(Color::Red),
+                    state.theme.style(StyleKey::Error),
                 ))]
             } else {
                 vec![Line::raw("No diff loaded.")]
@@ -130,7 +131,7 @@ impl WorkbenchTabView for ReviewTab {
         {
             vec![Line::from(Span::styled(
                 err.clone(),
-                Style::default().fg(Color::Red),
+                state.theme.style(StyleKey::Error),
             ))]
         } else {
             vec![Line::raw("Enter: toggle diff • PgUp/PgDn: scroll")]

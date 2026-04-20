@@ -1,3 +1,5 @@
+use crate::app::AppState;
+use crate::services::theme::StyleKey;
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
@@ -5,8 +7,6 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph},
 };
-
-use crate::app::AppState;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MessageAction {
@@ -56,7 +56,7 @@ pub fn render_message_action_popup(f: &mut Frame, state: &AppState) {
 
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Cyan));
+        .border_style(state.theme.style(StyleKey::BorderFocused));
 
     f.render_widget(block, area);
 
@@ -113,7 +113,7 @@ pub fn render_message_action_popup(f: &mut Frame, state: &AppState) {
 
         let line = if is_selected {
             Line::from(vec![
-                Span::styled("  ", Style::default().bg(Color::Blue).fg(Color::White)),
+                Span::styled("  ", state.theme.style(StyleKey::ToastInfo)),
                 Span::styled(
                     highlight_word,
                     Style::default()
@@ -121,17 +121,17 @@ pub fn render_message_action_popup(f: &mut Frame, state: &AppState) {
                         .fg(Color::White)
                         .add_modifier(Modifier::BOLD),
                 ),
-                Span::styled(rest_text, Style::default().bg(Color::Blue).fg(Color::White)),
+                Span::styled(rest_text, state.theme.style(StyleKey::ToastInfo)),
                 Span::styled(
                     " ".repeat(padding),
-                    Style::default().bg(Color::Blue).fg(Color::White),
+                    state.theme.style(StyleKey::ToastInfo),
                 ),
             ])
         } else {
             Line::from(vec![
                 Span::raw("  "),
-                Span::styled(highlight_word, Style::default().fg(Color::Reset)),
-                Span::styled(rest_text, Style::default().fg(Color::DarkGray)),
+                Span::styled(highlight_word, Style::default()),
+                Span::styled(rest_text, state.theme.style(StyleKey::Muted)),
             ])
         };
 

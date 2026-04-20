@@ -55,6 +55,24 @@ pub enum StyleKey {
     ListSelected,
     // App title brand colour (Magenta in dark)
     AppTitle,
+    // Diff
+    DiffAdded,
+    DiffRemoved,
+    // VIL issue kinds
+    VilKindSemantic,
+    VilKindZeroCopy,
+    VilKindPlumbing,
+    VilKindIrDrift,
+    VilKindCanonical,
+    VilKindOther,
+    // MCP trust classes
+    McpTrusted,
+    McpVerified,
+    McpUntrusted,
+    // Score/badge
+    ScoreGood,
+    ScoreOk,
+    ScoreBad,
 }
 
 // ── ThemePreset ───────────────────────────────────────────────────────────────
@@ -166,6 +184,20 @@ fn dark(key: StyleKey) -> Style {
             .fg(Color::Yellow)
             .add_modifier(Modifier::BOLD),
         StyleKey::AppTitle => Style::default().fg(Color::Magenta),
+        StyleKey::DiffAdded => Style::default().fg(Color::Green),
+        StyleKey::DiffRemoved => Style::default().fg(Color::Red),
+        StyleKey::VilKindSemantic => Style::default().fg(Color::Magenta),
+        StyleKey::VilKindZeroCopy => Style::default().fg(Color::Yellow),
+        StyleKey::VilKindPlumbing => Style::default().fg(Color::Cyan),
+        StyleKey::VilKindIrDrift => Style::default().fg(Color::LightRed),
+        StyleKey::VilKindCanonical => Style::default().fg(Color::Green),
+        StyleKey::VilKindOther => Style::default().fg(Color::DarkGray),
+        StyleKey::McpTrusted => Style::default().fg(Color::Green),
+        StyleKey::McpVerified => Style::default().fg(Color::Yellow),
+        StyleKey::McpUntrusted => Style::default().fg(Color::LightRed),
+        StyleKey::ScoreGood => Style::default().fg(Color::Green),
+        StyleKey::ScoreOk => Style::default().fg(Color::Yellow),
+        StyleKey::ScoreBad => Style::default().fg(Color::Red),
     }
 }
 
@@ -225,6 +257,20 @@ fn light(key: StyleKey) -> Style {
         StyleKey::AppTitle => Style::default()
             .fg(Color::Blue)
             .add_modifier(Modifier::BOLD),
+        StyleKey::DiffAdded => Style::default().fg(Color::Green),
+        StyleKey::DiffRemoved => Style::default().fg(Color::Red),
+        StyleKey::VilKindSemantic => Style::default().fg(Color::Magenta),
+        StyleKey::VilKindZeroCopy => Style::default().fg(Color::Yellow),
+        StyleKey::VilKindPlumbing => Style::default().fg(Color::Cyan),
+        StyleKey::VilKindIrDrift => Style::default().fg(Color::Red),
+        StyleKey::VilKindCanonical => Style::default().fg(Color::Green),
+        StyleKey::VilKindOther => Style::default().fg(Color::Gray),
+        StyleKey::McpTrusted => Style::default().fg(Color::Green),
+        StyleKey::McpVerified => Style::default().fg(Color::Yellow),
+        StyleKey::McpUntrusted => Style::default().fg(Color::Red),
+        StyleKey::ScoreGood => Style::default().fg(Color::Green),
+        StyleKey::ScoreOk => Style::default().fg(Color::Yellow),
+        StyleKey::ScoreBad => Style::default().fg(Color::Red),
     }
 }
 
@@ -294,6 +340,20 @@ fn high_contrast(key: StyleKey) -> Style {
         StyleKey::AppTitle => Style::default()
             .fg(Color::Yellow)
             .add_modifier(Modifier::BOLD),
+        StyleKey::DiffAdded => Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
+        StyleKey::DiffRemoved => Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+        StyleKey::VilKindSemantic => Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD),
+        StyleKey::VilKindZeroCopy => Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+        StyleKey::VilKindPlumbing => Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+        StyleKey::VilKindIrDrift => Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+        StyleKey::VilKindCanonical => Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
+        StyleKey::VilKindOther => Style::default().fg(Color::Gray),
+        StyleKey::McpTrusted => Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
+        StyleKey::McpVerified => Style::default().fg(Color::Yellow),
+        StyleKey::McpUntrusted => Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+        StyleKey::ScoreGood => Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
+        StyleKey::ScoreOk => Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+        StyleKey::ScoreBad => Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
     }
 }
 
@@ -338,6 +398,20 @@ mod tests {
             StyleKey::ToastInfo,
             StyleKey::ListSelected,
             StyleKey::AppTitle,
+            StyleKey::DiffAdded,
+            StyleKey::DiffRemoved,
+            StyleKey::VilKindSemantic,
+            StyleKey::VilKindZeroCopy,
+            StyleKey::VilKindPlumbing,
+            StyleKey::VilKindIrDrift,
+            StyleKey::VilKindCanonical,
+            StyleKey::VilKindOther,
+            StyleKey::McpTrusted,
+            StyleKey::McpVerified,
+            StyleKey::McpUntrusted,
+            StyleKey::ScoreGood,
+            StyleKey::ScoreOk,
+            StyleKey::ScoreBad,
         ];
         for preset in ThemePreset::ALL {
             let theme = Theme::new(*preset);

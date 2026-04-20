@@ -2,23 +2,22 @@
 //!
 //! Minimal implementation for showing file diffs in TUI
 
-use ratatui::style::{Color, Modifier, Style};
+use crate::services::theme::{StyleKey, Theme};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 
 /// Render a simple diff between old and new content
-pub fn render_diff(old_content: &str, new_content: &str, max_width: usize) -> Vec<Line<'static>> {
+pub fn render_diff(theme: &Theme, old_content: &str, new_content: &str, max_width: usize) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
 
     // Header
     lines.push(Line::from(vec![Span::styled(
         "--- Old",
-        Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+        theme.style(StyleKey::DiffRemoved).add_modifier(Modifier::BOLD),
     )]));
     lines.push(Line::from(vec![Span::styled(
         "+++ New",
-        Style::default()
-            .fg(Color::Green)
-            .add_modifier(Modifier::BOLD),
+        theme.style(StyleKey::DiffAdded).add_modifier(Modifier::BOLD),
     )]));
     lines.push(Line::from(""));
 
@@ -32,23 +31,21 @@ pub fn render_diff(old_content: &str, new_content: &str, max_width: usize) -> Ve
         match change.tag() {
             similar::ChangeTag::Delete => {
                 lines.push(Line::from(vec![
-                    Span::styled("- ", Style::default().fg(Color::Red)),
-                    Span::styled(truncated, Style::default().fg(Color::Red)),
+                    Span::styled("- ", theme.style(StyleKey::DiffRemoved)),
+                    Span::styled(truncated, theme.style(StyleKey::DiffRemoved)),
                 ]));
             }
             similar::ChangeTag::Insert => {
-                let mut span = Span::styled(truncated.clone(), Style::default().fg(Color::Green));
+                let mut span = Span::styled(truncated.clone(), theme.style(StyleKey::DiffAdded));
                 // Highlight VIL macros (generated code hint)
                 if truncated.trim().starts_with("#[vil_") {
                     span = Span::styled(
                         format!("{} (VIL-generated plumbing)", truncated),
-                        Style::default()
-                            .fg(Color::Green)
-                            .add_modifier(Modifier::BOLD),
+                        theme.style(StyleKey::DiffAdded).add_modifier(Modifier::BOLD),
                     );
                 }
                 lines.push(Line::from(vec![
-                    Span::styled("+ ", Style::default().fg(Color::Green)),
+                    Span::styled("+ ", theme.style(StyleKey::DiffAdded)),
                     span,
                 ]));
             }
@@ -71,6 +68,7 @@ fn truncate_line(line: &str, max_width: usize) -> String {
 
 /// Preview diff for a file operation
 pub fn preview_file_diff(
+    theme: &Theme,
     file_path: &str,
     old_content: &str,
     new_content: &str,
@@ -81,12 +79,12 @@ pub fn preview_file_diff(
     // File header - clone to make 'static
     lines.push(Line::from(vec![
         Span::styled("File: ", Style::default().add_modifier(Modifier::BOLD)),
-        Span::styled(file_path.to_string(), Style::default().fg(Color::Cyan)),
+        Span::styled(file_path.to_string(), theme.style(StyleKey::Accent)),
     ]));
     lines.push(Line::from(""));
 
     // Diff content
-    lines.extend(render_diff(old_content, new_content, max_width));
+    lines.extend(render_diff(theme, old_content, new_content, max_width));
 
     lines
 }

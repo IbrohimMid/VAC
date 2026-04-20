@@ -1,6 +1,7 @@
 //! Runtime tab — job queue, autopilot state, MCP servers, task graph.
 
 use super::WorkbenchTabView;
+use crate::services::theme::StyleKey;
 use crate::app::AppState;
 use ratatui::{
     Frame,
@@ -54,19 +55,19 @@ impl WorkbenchTabView for RuntimeTab {
                 };
                 let status = match &job.status {
                     vac_runtime::JobStatus::Queued => {
-                        Span::styled("Q", Style::default().fg(Color::DarkGray))
+                        Span::styled("Q", state.theme.style(StyleKey::Muted))
                     }
                     vac_runtime::JobStatus::Running => {
-                        Span::styled("R", Style::default().fg(Color::Cyan))
+                        Span::styled("R", state.theme.style(StyleKey::Accent))
                     }
                     vac_runtime::JobStatus::Completed => {
-                        Span::styled("C", Style::default().fg(Color::Green))
+                        Span::styled("C", state.theme.style(StyleKey::Success))
                     }
                     vac_runtime::JobStatus::Failed(_) => {
-                        Span::styled("F", Style::default().fg(Color::Red))
+                        Span::styled("F", state.theme.style(StyleKey::Error))
                     }
                     vac_runtime::JobStatus::Cancelled => {
-                        Span::styled("X", Style::default().fg(Color::Yellow))
+                        Span::styled("X", state.theme.style(StyleKey::Warning))
                     }
                 };
                 ListItem::new(Line::from(vec![
@@ -74,7 +75,7 @@ impl WorkbenchTabView for RuntimeTab {
                     Span::raw(" "),
                     Span::styled(
                         job.id.to_string().chars().take(8).collect::<String>(),
-                        Style::default().fg(Color::DarkGray),
+                        state.theme.style(StyleKey::Muted),
                     ),
                     Span::raw(" "),
                     Span::styled(job.kind_name(), style),
@@ -88,15 +89,15 @@ impl WorkbenchTabView for RuntimeTab {
         let mut lines: Vec<Line> = Vec::new();
         lines.push(Line::from(vec![
             Span::styled("Jobs: ", Style::default().add_modifier(Modifier::BOLD)),
-            Span::styled(format!("Q {queued}"), Style::default().fg(Color::DarkGray)),
+            Span::styled(format!("Q {queued}"), state.theme.style(StyleKey::Muted)),
             Span::raw("  "),
-            Span::styled(format!("R {running}"), Style::default().fg(Color::Cyan)),
+            Span::styled(format!("R {running}"), state.theme.style(StyleKey::Accent)),
             Span::raw("  "),
-            Span::styled(format!("C {completed}"), Style::default().fg(Color::Green)),
+            Span::styled(format!("C {completed}"), state.theme.style(StyleKey::Success)),
             Span::raw("  "),
-            Span::styled(format!("F {failed}"), Style::default().fg(Color::Red)),
+            Span::styled(format!("F {failed}"), state.theme.style(StyleKey::Error)),
             Span::raw("  "),
-            Span::styled(format!("X {cancelled}"), Style::default().fg(Color::Yellow)),
+            Span::styled(format!("X {cancelled}"), state.theme.style(StyleKey::Warning)),
         ]));
         lines.push(Line::raw(""));
 
@@ -134,7 +135,7 @@ impl WorkbenchTabView for RuntimeTab {
                         "Last error: ",
                         Style::default().add_modifier(Modifier::BOLD),
                     ),
-                    Span::styled(err.clone(), Style::default().fg(Color::Red)),
+                    Span::styled(err.clone(), state.theme.style(StyleKey::Error)),
                 ]));
             }
             if let Some(job_id) = snapshot.current_job {
@@ -159,7 +160,7 @@ impl WorkbenchTabView for RuntimeTab {
                 vac_runtime::AutopilotState::WaitingApproval { tool_call_id } => {
                     lines.push(Line::from(vec![
                         Span::styled("Approval: ", Style::default().add_modifier(Modifier::BOLD)),
-                        Span::styled(tool_call_id.clone(), Style::default().fg(Color::Yellow)),
+                        Span::styled(tool_call_id.clone(), state.theme.style(StyleKey::Warning)),
                     ]));
                 }
                 vac_runtime::AutopilotState::Backoff { until } => {
@@ -170,7 +171,7 @@ impl WorkbenchTabView for RuntimeTab {
                         ),
                         Span::styled(
                             until.format("%Y-%m-%d %H:%M:%S UTC").to_string(),
-                            Style::default().fg(Color::Yellow),
+                            state.theme.style(StyleKey::Warning),
                         ),
                     ]));
                 }
@@ -192,7 +193,7 @@ impl WorkbenchTabView for RuntimeTab {
                 };
                 lines.push(Line::from(vec![
                     Span::raw("  "),
-                    Span::styled(name.clone(), Style::default().fg(Color::Yellow)),
+                    Span::styled(name.clone(), state.theme.style(StyleKey::Warning)),
                     Span::raw(" "),
                     Span::styled(status, Style::default().fg(color)),
                 ]));
@@ -200,7 +201,7 @@ impl WorkbenchTabView for RuntimeTab {
                 {
                     lines.push(Line::from(vec![
                         Span::raw("    "),
-                        Span::styled(reason.clone(), Style::default().fg(Color::DarkGray)),
+                        Span::styled(reason.clone(), state.theme.style(StyleKey::Muted)),
                     ]));
                 }
             }
@@ -213,18 +214,18 @@ impl WorkbenchTabView for RuntimeTab {
                 Style::default().add_modifier(Modifier::BOLD),
             )]));
             lines.push(Line::from(vec![
-                Span::styled("  Nodes: ", Style::default().fg(Color::DarkGray)),
+                Span::styled("  Nodes: ", state.theme.style(StyleKey::Muted)),
                 Span::raw(projection.nodes.len().to_string()),
-                Span::styled("  Roots: ", Style::default().fg(Color::DarkGray)),
+                Span::styled("  Roots: ", state.theme.style(StyleKey::Muted)),
                 Span::raw(projection.root_ids.len().to_string()),
             ]));
             for node in projection.nodes.iter().take(5) {
                 let status_color = match &node.status {
-                    vac_core::engine::TaskNodeStatus::Pending => Color::DarkGray,
-                    vac_core::engine::TaskNodeStatus::Running => Color::Cyan,
-                    vac_core::engine::TaskNodeStatus::Completed => Color::Green,
-                    vac_core::engine::TaskNodeStatus::Failed(_) => Color::Red,
-                    vac_core::engine::TaskNodeStatus::Blocked => Color::Yellow,
+                    vac_core::engine::TaskNodeStatus::Pending => state.theme.style(StyleKey::Muted).fg.unwrap_or(Color::DarkGray),
+                    vac_core::engine::TaskNodeStatus::Running => state.theme.style(StyleKey::TaskRunning).fg.unwrap_or(Color::Cyan),
+                    vac_core::engine::TaskNodeStatus::Completed => state.theme.style(StyleKey::TaskCompleted).fg.unwrap_or(Color::Green),
+                    vac_core::engine::TaskNodeStatus::Failed(_) => state.theme.style(StyleKey::TaskFailed).fg.unwrap_or(Color::Red),
+                    vac_core::engine::TaskNodeStatus::Blocked => state.theme.style(StyleKey::Warning).fg.unwrap_or(Color::Yellow),
                 };
                 let status_label = match &node.status {
                     vac_core::engine::TaskNodeStatus::Pending => "P",
@@ -240,13 +241,13 @@ impl WorkbenchTabView for RuntimeTab {
                         Style::default().fg(status_color),
                     ),
                     Span::raw(node.label.chars().take(24).collect::<String>()),
-                    Span::styled(approval.to_string(), Style::default().fg(Color::Yellow)),
+                    Span::styled(approval.to_string(), state.theme.style(StyleKey::Warning)),
                 ]));
             }
             if projection.nodes.len() > 5 {
                 lines.push(Line::styled(
                     format!("    … and {} more", projection.nodes.len() - 5),
-                    Style::default().fg(Color::DarkGray),
+                    state.theme.style(StyleKey::Muted),
                 ));
             }
             lines.push(Line::raw(""));
@@ -288,7 +289,7 @@ impl WorkbenchTabView for RuntimeTab {
         } else {
             lines.push(Line::styled(
                 "No runtime jobs loaded yet. Press r to refresh the queue.",
-                Style::default().fg(Color::DarkGray),
+                state.theme.style(StyleKey::Muted),
             ));
         }
 

@@ -6,6 +6,7 @@
 use crate::app::AppState;
 use crate::services::detect_term::ThemeColors;
 use crate::services::plan::PlanStatus;
+use crate::services::theme::StyleKey;
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
