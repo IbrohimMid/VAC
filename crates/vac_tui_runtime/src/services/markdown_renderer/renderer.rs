@@ -1,306 +1,11 @@
-use crate::services::detect_term::{AdaptiveColors, ThemeColors};
-use ratatui::{
-    style::{Color, Modifier, Style},
-    text::{Line, Span},
-};
-use regex::Regex;
-use std::time::Instant;
-
 use crate::services::syntax_highlighter;
 use crossterm;
+use ratatui::text::{Line, Span};
+use std::time::Instant;
+use unicode_width::UnicodeWidthChar;
 
-// Simplified component enum with all the variants you mentioned
-#[derive(Debug, Clone)]
-#[allow(dead_code)]
-pub enum MarkdownComponent {
-    H1(String),
-    H2(String),
-    H3(String),
-    H4(String),
-    H5(String),
-    H6(String),
-    Bold(String),
-    Italic(String),
-    BoldItalic(String),
-    Strikethrough(String),
-    Code(String),
-    Link {
-        text: String,
-        url: String,
-    },
-    Image {
-        alt: String,
-        url: String,
-    },
-    UnorderedList(Vec<MarkdownComponent>),
-    OrderedList(Vec<MarkdownComponent>),
-    ListItem(String),
-    Paragraph(String),
-    CodeBlock {
-        language: Option<String>,
-        content: String,
-    },
-    Quote(String),
-    Table {
-        headers: Vec<String>,
-        rows: Vec<Vec<String>>,
-    },
-    Important(String),
-    Note(String),
-    Tip(String),
-    Warning(String),
-    Caution(String),
-    TaskOpen(String),
-    TaskComplete(String),
-    HorizontalSeparator,
-    PlainText(String),
-    Word(String),
-    EmptyLine,
-    MixedContent(Vec<Span<'static>>),
-}
-
-#[derive(Clone)]
-pub struct MarkdownStyle {
-    pub h1_style: Style,
-    pub h2_style: Style,
-    pub h3_style: Style,
-    pub h4_style: Style,
-    pub h5_style: Style,
-    pub h6_style: Style,
-    pub bold_style: Style,
-    pub italic_style: Style,
-    pub bold_italic_style: Style,
-    pub strikethrough_style: Style,
-    pub code_style: Style,
-    pub code_block_style: Style,
-    pub link_style: Style,
-    pub quote_style: Style,
-    pub list_bullet_style: Style,
-    pub task_open_style: Style,
-    pub task_complete_style: Style,
-    pub important_style: Style,
-    pub note_style: Style,
-    pub tip_style: Style,
-    pub warning_style: Style,
-    pub caution_style: Style,
-    pub text_style: Style,
-    pub separator_style: Style,
-    pub table_header_style: Style,
-    pub table_cell_style: Style,
-}
-
-impl Default for MarkdownStyle {
-    fn default() -> Self {
-        Self::adaptive()
-    }
-}
-
-impl MarkdownStyle {
-    /// Create an adaptive style that works well on both dark and light backgrounds
-    pub fn adaptive() -> Self {
-        let is_light = crate::services::detect_term::is_light_mode();
-        let is_rgb_supported = crate::services::detect_term::should_use_rgb_colors();
-
-        if is_light {
-            // Light theme with dark colors for good contrast
-            Self::light_theme()
-        } else if is_rgb_supported {
-            // Use RGB colors for supported terminals (dark theme optimized)
-            Self::dark_theme()
-        } else {
-            // Use high-contrast colors for unsupported terminals (works on both light and dark)
-            Self::high_contrast_theme()
-        }
-    }
-
-    /// Light theme optimized for light terminal backgrounds
-    fn light_theme() -> Self {
-        Self {
-            h1_style: Style::default()
-                .fg(Color::Indexed(25)) // Dark blue
-                .add_modifier(Modifier::BOLD),
-            h2_style: Style::default()
-                .fg(Color::Indexed(30)) // Dark cyan/teal
-                .add_modifier(Modifier::BOLD),
-            h3_style: Style::default()
-                .fg(Color::Indexed(28)) // Dark green
-                .add_modifier(Modifier::BOLD),
-            h4_style: Style::default()
-                .fg(Color::Indexed(127)) // Dark magenta
-                .add_modifier(Modifier::BOLD),
-            h5_style: Style::default()
-                .fg(Color::Indexed(130)) // Dark orange/brown
-                .add_modifier(Modifier::BOLD),
-            h6_style: Style::default()
-                .fg(Color::Indexed(124)) // Dark red
-                .add_modifier(Modifier::BOLD),
-            bold_style: Style::default()
-                .fg(Color::Indexed(232)) // Near-black for bold on light backgrounds
-                .add_modifier(Modifier::BOLD),
-            italic_style: Style::default()
-                .fg(ThemeColors::text())
-                .add_modifier(Modifier::ITALIC),
-            bold_italic_style: Style::default()
-                .fg(Color::Indexed(232)) // Near-black
-                .add_modifier(Modifier::BOLD | Modifier::ITALIC),
-            strikethrough_style: Style::default()
-                .fg(ThemeColors::muted())
-                .add_modifier(Modifier::CROSSED_OUT),
-            code_style: Style::default()
-                .fg(Color::Indexed(124)) // Dark red
-                .bg(Color::Indexed(254)), // Very light gray background
-            code_block_style: Style::default()
-                .fg(Color::Indexed(235)) // Very dark gray
-                .bg(Color::Indexed(254)), // Very light gray background
-            link_style: Style::default()
-                .fg(Color::Indexed(25)) // Dark blue
-                .add_modifier(Modifier::UNDERLINED),
-            quote_style: Style::default().fg(Color::Indexed(241)), // Medium gray
-            list_bullet_style: Style::default().fg(Color::Indexed(240)), // Medium gray
-            task_open_style: Style::default().fg(Color::Indexed(130)), // Dark orange
-            task_complete_style: Style::default().fg(Color::Indexed(28)), // Dark green
-            important_style: Style::default()
-                .fg(Color::Indexed(160)) // Dark red
-                .add_modifier(Modifier::BOLD),
-            note_style: Style::default()
-                .fg(Color::Indexed(25)) // Dark blue
-                .add_modifier(Modifier::BOLD),
-            tip_style: Style::default()
-                .fg(Color::Indexed(28)) // Dark green
-                .add_modifier(Modifier::BOLD),
-            warning_style: Style::default()
-                .fg(Color::Indexed(130)) // Dark orange
-                .add_modifier(Modifier::BOLD),
-            caution_style: Style::default()
-                .fg(Color::Indexed(160)) // Dark red
-                .add_modifier(Modifier::BOLD),
-            text_style: Style::default().fg(ThemeColors::text()),
-            separator_style: Style::default().fg(ThemeColors::muted()),
-            table_header_style: Style::default()
-                .fg(ThemeColors::text())
-                .add_modifier(Modifier::BOLD),
-            table_cell_style: Style::default().fg(ThemeColors::text()),
-        }
-    }
-
-    /// Dark theme optimized for RGB-capable terminals
-    fn dark_theme() -> Self {
-        Self {
-            h1_style: Style::default()
-                .fg(Color::Rgb(100, 150, 255)) // Bright blue
-                .add_modifier(Modifier::BOLD),
-            h2_style: Style::default()
-                .fg(Color::Rgb(100, 255, 255)) // Bright cyan
-                .add_modifier(Modifier::BOLD),
-            h3_style: Style::default()
-                .fg(Color::Rgb(100, 255, 100)) // Bright green
-                .add_modifier(Modifier::BOLD),
-            h4_style: Style::default()
-                .fg(Color::Rgb(255, 100, 255)) // Bright magenta
-                .add_modifier(Modifier::BOLD),
-            h5_style: Style::default()
-                .fg(Color::Indexed(136)) // Dark yellow/gold - visible on both
-                .add_modifier(Modifier::BOLD),
-            h6_style: Style::default()
-                .fg(Color::Rgb(255, 100, 100)) // Bright red
-                .add_modifier(Modifier::BOLD),
-            bold_style: Style::default().add_modifier(Modifier::BOLD),
-            italic_style: Style::default().add_modifier(Modifier::ITALIC),
-            bold_italic_style: Style::default().add_modifier(Modifier::BOLD | Modifier::ITALIC),
-            strikethrough_style: Style::default().add_modifier(Modifier::CROSSED_OUT),
-            code_style: Style::default()
-                .fg(Color::Rgb(255, 150, 100)) // Orange-red for inline code
-                .bg(AdaptiveColors::code_bg()),
-            code_block_style: Style::default()
-                .fg(Color::Rgb(150, 220, 150)) // Soft green for code blocks
-                .bg(AdaptiveColors::code_block_bg()),
-            link_style: Style::default()
-                .fg(Color::Rgb(100, 150, 255)) // Bright blue for links
-                .add_modifier(Modifier::UNDERLINED),
-            quote_style: Style::default().fg(ThemeColors::muted()),
-            list_bullet_style: Style::default().fg(ThemeColors::muted()),
-            task_open_style: Style::default().fg(Color::Rgb(255, 200, 50)), // Bright yellow/gold
-            task_complete_style: Style::default().fg(Color::Rgb(100, 255, 100)), // Bright green
-            important_style: Style::default()
-                .fg(Color::Rgb(255, 100, 100)) // Bright red
-                .add_modifier(Modifier::BOLD),
-            note_style: Style::default()
-                .fg(Color::Rgb(100, 150, 255)) // Bright blue
-                .add_modifier(Modifier::BOLD),
-            tip_style: Style::default()
-                .fg(Color::Rgb(100, 255, 100)) // Bright green
-                .add_modifier(Modifier::BOLD),
-            warning_style: Style::default()
-                .fg(Color::Rgb(255, 200, 50)) // Bright yellow/gold
-                .add_modifier(Modifier::BOLD),
-            caution_style: Style::default()
-                .fg(Color::Rgb(255, 100, 100)) // Bright red
-                .add_modifier(Modifier::BOLD),
-            text_style: Style::default().fg(ThemeColors::text()),
-            separator_style: Style::default().fg(ThemeColors::muted()),
-            table_header_style: Style::default()
-                .fg(ThemeColors::text())
-                .add_modifier(Modifier::BOLD),
-            table_cell_style: Style::default().fg(ThemeColors::text()),
-        }
-    }
-
-    /// High contrast theme for dark terminals without RGB support
-    fn high_contrast_theme() -> Self {
-        Self {
-            h1_style: Style::default()
-                .fg(Color::Blue)
-                .add_modifier(Modifier::BOLD),
-            h2_style: Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-            h3_style: Style::default()
-                .fg(Color::Green)
-                .add_modifier(Modifier::BOLD),
-            h4_style: Style::default()
-                .fg(Color::Magenta)
-                .add_modifier(Modifier::BOLD),
-            h5_style: Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
-            h6_style: Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
-            bold_style: Style::default()
-                .fg(Color::White)
-                .add_modifier(Modifier::BOLD),
-            italic_style: Style::default().add_modifier(Modifier::ITALIC),
-            bold_italic_style: Style::default()
-                .fg(Color::White)
-                .add_modifier(Modifier::BOLD | Modifier::ITALIC),
-            strikethrough_style: Style::default().add_modifier(Modifier::CROSSED_OUT),
-            code_style: Style::default().fg(Color::Red), // Red text only - no background for better compatibility
-            code_block_style: Style::default().fg(Color::Cyan), // Cyan text only - no background for better compatibility
-            link_style: Style::default()
-                .fg(Color::Blue)
-                .add_modifier(Modifier::UNDERLINED),
-            quote_style: Style::default().fg(Color::DarkGray), // Dark gray for better contrast
-            list_bullet_style: Style::default().fg(Color::Reset), // Reset to terminal default for better compatibility
-            task_open_style: Style::default().fg(Color::Yellow),
-            task_complete_style: Style::default().fg(Color::Green),
-            important_style: Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
-            note_style: Style::default()
-                .fg(Color::Blue)
-                .add_modifier(Modifier::BOLD),
-            tip_style: Style::default()
-                .fg(Color::Green)
-                .add_modifier(Modifier::BOLD),
-            warning_style: Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
-            caution_style: Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
-            text_style: Style::default().fg(Color::Reset), // Reset to terminal default for better compatibility
-            separator_style: Style::default().fg(Color::DarkGray), // Dark gray separators
-            table_header_style: Style::default()
-                .fg(Color::Reset) // Reset to terminal default
-                .add_modifier(Modifier::BOLD),
-            table_cell_style: Style::default().fg(Color::Reset), // Reset to terminal default
-        }
-    }
-}
+use super::super::MarkdownComponent;
+use super::MarkdownStyle;
 
 pub struct MarkdownRenderer {
     pub style: MarkdownStyle,
@@ -616,29 +321,18 @@ impl MarkdownRenderer {
         Some(MarkdownComponent::CodeBlock { language, content })
     }
 
-    fn parse_list_item_safe(&self, content: &str) -> Option<MarkdownComponent> {
-        // Simplified list item parsing to avoid infinite loops
-        if content.len() > 1000 {
-            return Some(MarkdownComponent::ListItem(
-                "(List item too long)".to_string(),
-            ));
+    fn parse_list_item_safe(&self, text: &str) -> Option<MarkdownComponent> {
+        if text.is_empty() {
+            return Some(MarkdownComponent::ListItem("".to_string()));
         }
 
-        if self.has_simple_formatting(content) {
-            let inline_component = self.parse_inline_formatting_safe(content);
-            match inline_component {
-                MarkdownComponent::MixedContent(spans) => {
-                    let mut list_spans = vec![Span::styled("• ", self.style.list_bullet_style)];
-                    list_spans.extend(spans);
-                    return Some(MarkdownComponent::MixedContent(list_spans));
-                }
-                _ => {
-                    return Some(MarkdownComponent::ListItem(content.to_string()));
-                }
-            }
+        // Check for nested formatting
+        if text.contains("**") || text.contains('`') || text.contains('[') {
+            // Parse as inline formatted content
+            Some(self.parse_inline_formatting_safe(text))
+        } else {
+            Some(MarkdownComponent::ListItem(text.to_string()))
         }
-
-        Some(MarkdownComponent::ListItem(content.to_string()))
     }
 
     fn parse_quote_safe(
@@ -647,28 +341,37 @@ impl MarkdownRenderer {
         all_lines: &[&str],
         index: &mut usize,
     ) -> Option<MarkdownComponent> {
-        let mut quote_lines = vec![line[2..].trim().to_string()];
+        let mut quote_lines = vec![line.strip_prefix("> ")?.to_string()];
+
         let mut j = *index + 1;
-        let max_quote_lines = 50; // Limit quote block size
+        let max_quote_lines = 50; // Limit for safety
 
         // Collect consecutive quote lines
         while j < all_lines.len() && quote_lines.len() < max_quote_lines {
-            let stripped_quote_line = self.strip_line_number(all_lines[j]);
-            let quote_line = stripped_quote_line.trim();
-            if let Some(stripped) = quote_line.strip_prefix("> ") {
-                quote_lines.push(stripped.trim().to_string());
+            let stripped = self.strip_line_number(all_lines[j]);
+            let next_line = stripped.trim();
+
+            if let Some(quote_content) = next_line.strip_prefix("> ") {
+                quote_lines.push(quote_content.to_string());
+                j += 1;
+            } else if next_line.is_empty() {
+                // Empty lines can continue quotes
+                quote_lines.push(String::new());
                 j += 1;
             } else {
+                // Non-quote line, stop collecting
                 break;
             }
         }
 
-        *index = j - 1; // Adjust index to skip processed lines
-        Some(MarkdownComponent::Quote(quote_lines.join(" ")))
+        *index = j - 1; // Adjust index to skip collected lines
+
+        Some(MarkdownComponent::Quote(quote_lines.join("\n")))
     }
 
     fn parse_callout(&self, line: &str) -> Option<MarkdownComponent> {
         let lower_line = line.to_lowercase();
+
         if lower_line.contains("[!important]") {
             return Some(MarkdownComponent::Important(
                 line.replace("[!important]", "")
@@ -1015,7 +718,7 @@ impl MarkdownRenderer {
     }
 
     // Calculate display width for Unicode text with accurate emoji detection
-    fn display_width(&self, text: &str) -> usize {
+    pub fn display_width(&self, text: &str) -> usize {
         text.chars().map(|c| self.char_display_width(c)).sum()
     }
 
@@ -1743,268 +1446,5 @@ impl MarkdownRenderer {
         Ok(syntax_highlighter::apply_syntax_highlighting(
             content, extension,
         ))
-    }
-}
-
-// Simple public function for easy use with performance monitoring
-pub fn render_markdown_to_lines(
-    markdown_content: &str,
-) -> Result<Vec<Line<'static>>, Box<dyn std::error::Error>> {
-    let parsed_content = xml_tags_to_markdown_headers(markdown_content);
-
-    let style = MarkdownStyle::adaptive(); // Use adaptive styling
-    let renderer = MarkdownRenderer::new(style);
-    let components = renderer.parse_markdown(parsed_content.as_str())?;
-    let lines = renderer.render_to_lines(components);
-    Ok(lines)
-}
-
-/// Render markdown with an explicit content width for proper table sizing.
-/// Use this when the display area width is known (e.g., when side panel is open).
-pub fn render_markdown_to_lines_with_width(
-    markdown_content: &str,
-    width: usize,
-) -> Result<Vec<Line<'static>>, Box<dyn std::error::Error>> {
-    let parsed_content = xml_tags_to_markdown_headers(markdown_content);
-
-    let style = MarkdownStyle::adaptive();
-    let renderer = MarkdownRenderer::with_width(style, width);
-    let components = renderer.parse_markdown(parsed_content.as_str())?;
-    let lines = renderer.render_to_lines(components);
-    Ok(lines)
-}
-
-fn xml_tags_to_markdown_headers(input: &str) -> String {
-    // Use match to handle regex compilation errors gracefully
-    let tag_regex = match Regex::new(r"<([a-zA-Z_][a-zA-Z0-9_-]*)[^>]*>") {
-        Ok(regex) => regex,
-        Err(_) => return input.to_string(), // Return original input if regex fails
-    };
-
-    let closing_tag_regex = match Regex::new(r"</([a-zA-Z_][a-zA-Z0-9_-]*)>") {
-        Ok(regex) => regex,
-        Err(_) => return input.to_string(), // Return original input if regex fails
-    };
-
-    let mut result = input.to_string();
-
-    // Replace opening tags with markdown headers (skip checkpoint tags)
-    result = tag_regex
-        .replace_all(&result, |caps: &regex::Captures| {
-            let tag_name = &caps[1];
-
-            // Skip checkpoint tags - leave them untouched
-            if tag_name == "checkpoint_id" || tag_name == "img" {
-                caps[0].to_string() // Return the original tag unchanged
-            } else {
-                let formatted_name = format_header_name(tag_name);
-                if formatted_name == "Scratchpad" {
-                    format!("## {}\n", formatted_name) // Makes it a level 3 markdown header
-                } else {
-                    format!("#### {}\n", formatted_name) // Makes it a level 3 markdown header
-                }
-            }
-        })
-        .to_string();
-
-    // Remove closing tags (except checkpoint)
-    result = closing_tag_regex
-        .replace_all(&result, |caps: &regex::Captures| {
-            let tag_name = &caps[1];
-            // Skip checkpoint closing tags - leave them untouched
-            if tag_name == "checkpoint_id" {
-                caps[0].to_string() // Return the original closing tag unchanged
-            } else {
-                String::new() // Just remove other closing tags
-            }
-        })
-        .to_string();
-
-    result
-}
-
-fn format_header_name(name: &str) -> String {
-    name.split('_') // Split on underscores
-        .filter(|s| !s.is_empty()) // Remove empty strings
-        .map(|word| {
-            let mut chars = word.chars();
-            match chars.next() {
-                None => String::new(),
-                Some(first) => first
-                    .to_uppercase()
-                    .chain(chars.as_str().to_lowercase().chars())
-                    .collect(),
-            }
-        })
-        .collect::<Vec<_>>()
-        .join(" ") // Join with spaces instead of underscores
-}
-
-// Enhanced function with timeout protection
-#[allow(dead_code)]
-pub fn render_markdown_to_lines_safe(
-    markdown_content: &str,
-) -> Result<Vec<Line<'static>>, Box<dyn std::error::Error>> {
-    // Quick validation
-    if markdown_content.is_empty() {
-        return Ok(vec![]);
-    }
-
-    if markdown_content.len() > 2_000_000 {
-        return Err("Markdown content too large (max 2MB)".into());
-    }
-
-    // Use a thread with timeout for very large content
-    if markdown_content.len() > 100_000 {
-        return render_with_timeout(markdown_content);
-    }
-
-    render_markdown_to_lines(markdown_content)
-}
-
-fn render_with_timeout(
-    markdown_content: &str,
-) -> Result<Vec<Line<'static>>, Box<dyn std::error::Error>> {
-    use std::sync::mpsc;
-    use std::thread;
-    use std::time::Duration;
-
-    let (tx, rx) = mpsc::channel();
-    let content = markdown_content.to_string();
-
-    thread::spawn(move || {
-        let result = render_markdown_to_lines(&content);
-        let _ = tx.send(result.map_err(|e| e.to_string()));
-    });
-
-    match rx.recv_timeout(Duration::from_secs(10)) {
-        Ok(result) => match result {
-            Ok(lines) => Ok(lines),
-            Err(e) => Err(e.into()),
-        },
-        Err(_) => {
-            // Timeout - return a simple error message
-            Ok(vec![
-                Line::from(vec![Span::styled(
-                    "⚠️ Markdown rendering timed out",
-                    Style::default().fg(Color::Yellow),
-                )]),
-                Line::from(vec![Span::styled(
-                    "Content too complex to render safely",
-                    Style::default().fg(Color::Gray),
-                )]),
-            ])
-        }
-    }
-}
-
-#[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_adaptive_style_creation() {
-        // Test that adaptive style can be created without panicking
-        let style = MarkdownStyle::adaptive();
-
-        // Verify that the style has proper colors set
-        assert!(style.text_style.fg.is_some());
-        assert!(style.h1_style.fg.is_some());
-        assert!(style.code_style.fg.is_some());
-    }
-
-    #[test]
-    fn test_dark_theme_creation() {
-        // Test that dark theme can be created
-        let style = MarkdownStyle::dark_theme();
-
-        // Verify RGB colors are used
-        match style.h1_style.fg {
-            Some(Color::Rgb(_, _, _)) => {
-                // Expected for RGB theme
-            }
-            _ => panic!("Dark theme should use RGB colors"),
-        }
-    }
-
-    #[test]
-    fn test_high_contrast_theme_creation() {
-        // Test that high contrast theme can be created
-        let style = MarkdownStyle::high_contrast_theme();
-
-        // Verify reset colors are used for better compatibility
-        match style.text_style.fg {
-            Some(Color::Reset) => {
-                // Expected for high contrast theme
-            }
-            _ => panic!("High contrast theme should use reset colors"),
-        }
-
-        // Verify no backgrounds are used for code blocks
-        assert!(
-            style.code_style.bg.is_none(),
-            "Code style should not have background"
-        );
-        assert!(
-            style.code_block_style.bg.is_none(),
-            "Code block style should not have background"
-        );
-
-        // Verify cyan color is used for code blocks
-        match style.code_block_style.fg {
-            Some(Color::Cyan) => {
-                // Expected for high contrast theme
-            }
-            _ => panic!("Code block style should use cyan color"),
-        }
-    }
-
-    #[test]
-    fn test_markdown_rendering_with_adaptive_style() {
-        // Test that markdown rendering works with adaptive styling
-        let markdown = "# Test Header\n\nThis is **bold** text with `code`.";
-
-        let result = render_markdown_to_lines(markdown);
-        assert!(result.is_ok());
-
-        let lines = result.unwrap();
-        assert!(!lines.is_empty());
-    }
-
-    #[test]
-    fn test_display_width_with_emojis() {
-        // Test that emoji width calculation works correctly using Unicode width properties
-        let style = MarkdownStyle::adaptive();
-        let renderer = MarkdownRenderer::new(style);
-
-        // Test emoji width calculation - these should be determined by Unicode width properties
-        assert_eq!(renderer.display_width("🔴"), 2); // Wide emoji
-        assert_eq!(renderer.display_width("🟡"), 2); // Wide emoji
-        assert_eq!(renderer.display_width("✓"), 1); // Narrow symbol
-        assert_eq!(renderer.display_width("▲"), 1); // Narrow symbol
-        assert_eq!(renderer.display_width("🔴 Critical"), 11); // 2 + 1 space + 8 chars
-        assert_eq!(renderer.display_width("🟡 Medium"), 9); // 2 + 1 space + 6 chars
-        assert_eq!(renderer.display_width("✓ Keep as-is"), 12); // 1 + 1 space + 10 chars
-        assert_eq!(renderer.display_width("Hello"), 5);
-        assert_eq!(renderer.display_width("Hello 🔴"), 8); // 5 + 1 space + 2
-    }
-
-    #[test]
-    fn test_table_with_emojis() {
-        // Test that tables with emojis render correctly
-        let markdown = r#"| Category | Severity | Issue Count |
-|----------|----------|-------------|
-| Security | 🔴 Critical | 8 |
-| Reliability | 🟡 Medium | 3 |"#;
-
-        let result = render_markdown_to_lines(markdown);
-        assert!(result.is_ok());
-
-        let lines = result.unwrap();
-        assert!(!lines.is_empty());
-
-        // Should not panic and should produce some output
-        assert!(!lines.is_empty());
     }
 }
