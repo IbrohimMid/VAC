@@ -1,6 +1,7 @@
 //! VAC CLI — Vastar Agentic CLI entry point.
 
 mod commands;
+mod io;
 mod output;
 mod telemetry;
 

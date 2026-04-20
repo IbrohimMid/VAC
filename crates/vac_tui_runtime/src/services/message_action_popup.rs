@@ -36,7 +36,7 @@ impl MessageAction {
 }
 
 pub fn render_message_action_popup(f: &mut Frame, state: &AppState) {
-    if !state.show_message_action_popup {
+    if !state.overlay_manager.is_active(crate::overlay::OverlayId::MessageAction) {
         return;
     }
 

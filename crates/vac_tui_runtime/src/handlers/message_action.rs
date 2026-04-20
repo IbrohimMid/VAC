@@ -8,7 +8,7 @@ use crate::services::message_action_popup::MessageAction;
 pub fn handle_event(ctx: &mut HandlerContext, event: InputEvent) -> HandlerResult {
     match event {
         InputEvent::HandleEsc => {
-            ctx.state.show_message_action_popup = false;
+            crate::overlay::close_overlay(ctx.state, crate::overlay::OverlayId::MessageAction);
         }
         InputEvent::Up => {
             if ctx.state.message_action_popup_selected > 0 {
@@ -30,7 +30,7 @@ pub fn handle_event(ctx: &mut HandlerContext, event: InputEvent) -> HandlerResul
             if let Some(action) = actions.get(ctx.state.message_action_popup_selected) {
                 dispatch_action(ctx, *action);
             }
-            ctx.state.show_message_action_popup = false;
+            crate::overlay::close_overlay(ctx.state, crate::overlay::OverlayId::MessageAction);
         }
         _ => {}
     }

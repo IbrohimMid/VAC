@@ -71,19 +71,19 @@ pub fn execute_shortcuts_command(
             true
         }
         CommandAction::OpenSessions => {
-            state.show_shortcuts = true;
             state.shortcuts_mode = crate::app::ShortcutsPopupMode::Sessions;
             state.shortcuts_scroll = 0;
             state.command_palette_input.clear();
             state.command_palette_selected = 0;
+            crate::overlay::open_overlay(state, crate::overlay::OverlayId::Shortcuts);
             true
         }
         CommandAction::OpenShortcuts => {
-            state.show_shortcuts = true;
             state.shortcuts_mode = crate::app::ShortcutsPopupMode::Shortcuts;
             state.shortcuts_scroll = 0;
             state.command_palette_input.clear();
             state.command_palette_selected = 0;
+            crate::overlay::open_overlay(state, crate::overlay::OverlayId::Shortcuts);
             true
         }
         CommandAction::ClearScreen => {
@@ -250,7 +250,7 @@ pub fn dispatch_builtin_command(
                     let mut ctx = HandlerContext::new(state, output_tx);
                     let _ = changeset_handler::open(&mut ctx);
                 } else if cmd.command == "/file-changes" {
-                    state.show_file_changes_popup = true;
+                    crate::overlay::open_overlay(state, crate::overlay::OverlayId::FileChanges);
                     state.file_changes_selected = 0;
                     state.file_changes_scroll = 0;
                     state.file_changes_search.clear();

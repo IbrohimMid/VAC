@@ -634,8 +634,7 @@ mod tests {
         use ratatui::Terminal;
         use ratatui::backend::TestBackend;
 
-        let state = AppState {
-            show_ask_user_popup: true,
+        let mut state = AppState {
             ask_user_question: Some("Pick one".into()),
             ask_user_options: vec![
                 AskUserOption {
@@ -657,6 +656,8 @@ mod tests {
             ask_user_scroll: 0,
             ..Default::default()
         };
+        crate::overlay::open_overlay(&mut state, crate::overlay::OverlayId::AskUser);
+        let state = state;
 
         let backend = TestBackend::new(80, 24);
         let mut terminal = Terminal::new(backend).unwrap();

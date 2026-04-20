@@ -40,7 +40,9 @@ pub struct RenderMetrics {
     pub cache_hits: usize,
     pub cache_misses: usize,
     pub total_lines: usize,
-    pub avg_render_time_us: u64,
+    /// Exponential moving average of render time (α=0.1, τ≈10 frames).
+    /// Formula: ema = (ema * 9 + sample) / 10
+    pub ema_render_time_us: u64,
 }
 
 // ========== Queue Metrics (Phase 4 — I/O Reliability) ==========
@@ -808,37 +810,31 @@ pub struct AppState {
     pub streaming_message_id: Option<Uuid>,
 
     // Command palette
-    pub show_command_palette: bool,
     pub command_palette_input: String,
     pub command_palette_selected: usize,
     pub command_palette_scroll: usize,
     pub commands: Vec<HelperCommand>,
 
     // Helper Dropdown
-    pub show_helper_dropdown: bool,
     pub helper_scroll: usize,
     pub helper_selected: usize,
     pub filtered_helpers: Vec<HelperCommand>,
     pub recent_commands: crate::services::recent_commands::RecentCommands,
 
     // Shortcuts popup
-    pub show_shortcuts: bool,
     pub shortcuts_mode: ShortcutsPopupMode,
     pub shortcuts_scroll: usize,
 
     // Isolation Switcher
-    pub show_isolation_switcher: bool,
     pub isolation_switcher_selected: usize,
     pub isolation_modes: Vec<String>,
     pub active_isolation_mode: String,
-    pub show_profile_switcher: bool,
     pub profile_switcher_selected: usize,
     pub profile_search_input: String,
     pub available_profiles: Vec<String>,
     pub filtered_profiles: Vec<String>,
     pub active_profile: String,
 
-    pub show_rulebook_switcher: bool,
     pub rulebook_switcher_selected: usize,
     pub rulebook_search_input: String,
     pub available_rulebooks: Vec<crate::types::ListRuleBook>,
@@ -846,7 +842,6 @@ pub struct AppState {
     pub selected_rulebooks: std::collections::HashSet<String>,
 
     // Message Action Popup
-    pub show_message_action_popup: bool,
     pub message_action_popup_selected: usize,
     pub message_action_target_id: Option<Uuid>,
 
@@ -867,12 +862,10 @@ pub struct AppState {
     pub toasts: Vec<Toast>,
 
     pub available_models: Vec<Model>,
-    pub show_model_switcher: bool,
     pub model_switcher_filter: String,
     pub model_switcher_selected_idx: usize,
 
     pub all_files: Vec<String>,
-    pub show_file_search: bool,
     pub file_search_query: String,
     pub file_search_selected_idx: usize,
     pub file_search_results: Vec<String>,
@@ -883,7 +876,6 @@ pub struct AppState {
     pub at_results: Vec<String>,
     pub at_selected_idx: usize,
 
-    pub show_changeset: bool,
     pub changeset_selected_idx: usize,
     pub changeset_diff_scroll: usize,
     pub changeset_selected_path: Option<String>,
@@ -915,7 +907,6 @@ pub struct AppState {
     pub paste_counter: usize,
 
     // File changes popup (compact, searchable)
-    pub show_file_changes_popup: bool,
     pub file_changes_selected: usize,
     pub file_changes_search: String,
     pub file_changes_scroll: usize,
@@ -940,7 +931,6 @@ pub struct AppState {
     pub plan: PlanState,
 
     // Ask-User popup (triggered by `ask_user` tool call)
-    pub show_ask_user_popup: bool,
     pub ask_user_question: Option<String>,
     pub ask_user_options: Vec<crate::services::ask_user::AskUserOption>,
     pub ask_user_selected: usize,
@@ -1052,21 +1042,17 @@ impl AppState {
             is_streaming: false,
             cancel_requested: false,
             streaming_message_id: None,
-            show_command_palette: false,
             command_palette_input: String::new(),
             command_palette_selected: 0,
             command_palette_scroll: 0,
             commands: Self::default_commands(),
-            show_helper_dropdown: false,
             helper_scroll: 0,
             helper_selected: 0,
             filtered_helpers: Vec::new(),
             recent_commands: crate::services::recent_commands::RecentCommands::load(),
 
-            show_shortcuts: false,
             shortcuts_mode: ShortcutsPopupMode::default(),
             shortcuts_scroll: 0,
-            show_isolation_switcher: false,
             isolation_switcher_selected: 0,
             isolation_modes: vec![
                 "host".to_string(),
@@ -1076,19 +1062,16 @@ impl AppState {
                 "isolated (Python)".to_string(),
             ],
             active_isolation_mode: "host".to_string(),
-            show_profile_switcher: false,
             profile_switcher_selected: 0,
             profile_search_input: String::new(),
             available_profiles: Vec::new(),
             filtered_profiles: Vec::new(),
             active_profile: "default".to_string(),
-            show_rulebook_switcher: false,
             rulebook_switcher_selected: 0,
             rulebook_search_input: String::new(),
             available_rulebooks: Vec::new(),
             filtered_rulebooks: Vec::new(),
             selected_rulebooks: std::collections::HashSet::new(),
-            show_message_action_popup: false,
             message_action_popup_selected: 0,
             message_action_target_id: None,
             changeset_store: vac_changeset::ChangesetStore::new(),
@@ -1101,11 +1084,9 @@ impl AppState {
             activity_scroll: 0,
             toasts: Vec::new(),
             available_models: Vec::new(),
-            show_model_switcher: false,
             model_switcher_filter: String::new(),
             model_switcher_selected_idx: 0,
             all_files: Vec::new(),
-            show_file_search: false,
             file_search_query: String::new(),
             file_search_selected_idx: 0,
             file_search_results: Vec::new(),
@@ -1113,7 +1094,6 @@ impl AppState {
             at_query: String::new(),
             at_results: Vec::new(),
             at_selected_idx: 0,
-            show_changeset: false,
             changeset_selected_idx: 0,
             changeset_diff_scroll: 0,
             changeset_selected_path: None,
@@ -1130,7 +1110,6 @@ impl AppState {
             pending_pastes: Vec::new(),
             is_pasting: false,
             paste_counter: 0,
-            show_file_changes_popup: false,
             file_changes_selected: 0,
             file_changes_search: String::new(),
             file_changes_scroll: 0,
@@ -1143,7 +1122,6 @@ impl AppState {
             line_to_message_map: Vec::new(),
             pending_revert_index: None,
             plan: PlanState::default(),
-            show_ask_user_popup: false,
             ask_user_question: None,
             ask_user_options: Vec::new(),
             ask_user_selected: 0,

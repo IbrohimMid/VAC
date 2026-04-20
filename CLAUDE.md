@@ -45,6 +45,12 @@ Rebuild cost is 10–40 min. If you think caches are corrupt, first try
 `cargo clean -p <crate>` (single-crate clean) or delete only
 `target/*/incremental`.
 
+## Async I/O Guardrails
+
+- **sync I/O dilarang di hot async path**: Do not use `std::fs::write`, `std::fs::read_to_string`, `blocking_read`, etc., directly in `tokio::spawn` loops or TUI event handlers. Always offload to `tokio::task::spawn_blocking` or use dedicated async worker channels.
+- **interactive stdin harus lewat helper async-safe**: Use `crate::io::read_line_async` and `crate::io::read_secret_async` instead of raw `std::io::stdin().read_line` to avoid blocking the runtime.
+- **terminal mode restore wajib RAII**: Use Drop guards (e.g., `TermiosGuard`) to restore terminal state upon exit/panic, rather than manually restoring it at the end of the function.
+
 ## Workspace layout
 
 Source lives in `crates/`. Key crates:

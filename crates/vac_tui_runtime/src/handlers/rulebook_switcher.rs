@@ -22,7 +22,7 @@ pub fn open(ctx: &mut HandlerContext) -> HandlerResult {
         })
         .collect();
 
-    ctx.state.show_rulebook_switcher = true;
+    crate::overlay::open_overlay(ctx.state, crate::overlay::OverlayId::RulebookSwitcher);
     ctx.state.rulebook_search_input.clear();
     let filtered = ctx.state.rulebook_switcher_filtered();
     ctx.state.rulebook_switcher_selected =
@@ -36,7 +36,7 @@ pub fn open(ctx: &mut HandlerContext) -> HandlerResult {
 
 /// Close rulebook switcher popup.
 pub fn close(ctx: &mut HandlerContext) -> HandlerResult {
-    ctx.state.show_rulebook_switcher = false;
+    crate::overlay::close_overlay(ctx.state, crate::overlay::OverlayId::RulebookSwitcher);
     ctx.state.rulebook_search_input.clear();
     ctx.state.rulebook_switcher_selected = 0;
     Ok(())

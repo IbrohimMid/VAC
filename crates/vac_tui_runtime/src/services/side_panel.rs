@@ -30,18 +30,12 @@ pub fn render_side_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
     let runtime_collapsed = state
         .side_panel_section_collapsed
         .contains(&SidePanelSection::Runtime);
-    let changeset_collapsed = state
-        .side_panel_section_collapsed
-        .contains(&SidePanelSection::Changeset);
     let mcp_collapsed = state
         .side_panel_section_collapsed
         .contains(&SidePanelSection::Mcp);
     let sessions_collapsed = state
         .side_panel_section_collapsed
         .contains(&SidePanelSection::Sessions);
-    let todos_collapsed = state
-        .side_panel_section_collapsed
-        .contains(&SidePanelSection::Todos);
     let usage_collapsed = state
         .side_panel_section_collapsed
         .contains(&SidePanelSection::Usage);
@@ -59,11 +53,6 @@ pub fn render_side_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
         collapsed_height
     } else {
         6
-    };
-    let changeset_height = if changeset_collapsed {
-        collapsed_height
-    } else {
-        10
     };
     let mcp_lines = state
         .mcp_server_states
@@ -89,15 +78,6 @@ pub fn render_side_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
     } else {
         8
     };
-    // Todos: hide section entirely when empty; otherwise scale to 1 header + item lines (cap 8).
-    let todos_visible = !state.todos.is_empty();
-    let todos_height = if !todos_visible {
-        0
-    } else if todos_collapsed {
-        collapsed_height
-    } else {
-        (state.todos.len().min(8) as u16) + 1
-    };
     let usage_visible = state.current_message_usage.total_tokens > 0
         || state.total_session_usage.total_tokens > 0
         || state.context_usage_percent > 0.0;
@@ -108,6 +88,11 @@ pub fn render_side_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
     } else {
         4
     };
+    // Changeset and Todos are summary-only (1 line each); full detail is in workbench tabs.
+    let changeset_count = state.changeset_store.active_entries().len();
+    let changeset_height: u16 = if changeset_count > 0 { 1 } else { 0 };
+    let todos_visible = !state.todos.is_empty();
+    let todos_height: u16 = if todos_visible { 1 } else { 0 };
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -116,9 +101,9 @@ pub fn render_side_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
             Constraint::Length(usage_height),
             Constraint::Length(sessions_height),
             Constraint::Length(runtime_height),
-            Constraint::Length(todos_height),
-            Constraint::Length(changeset_height),
             Constraint::Length(mcp_height),
+            Constraint::Length(changeset_height),
+            Constraint::Length(todos_height),
             Constraint::Min(0),
         ])
         .split(padded_area);
@@ -131,11 +116,13 @@ pub fn render_side_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
     }
     sections.push((SidePanelSection::Sessions, chunks[2]));
     sections.push((SidePanelSection::Runtime, chunks[3]));
-    if todos_visible {
-        sections.push((SidePanelSection::Todos, chunks[4]));
+    sections.push((SidePanelSection::Mcp, chunks[4]));
+    if changeset_count > 0 {
+        sections.push((SidePanelSection::Changeset, chunks[5]));
     }
-    sections.push((SidePanelSection::Changeset, chunks[5]));
-    sections.push((SidePanelSection::Mcp, chunks[6]));
+    if todos_visible {
+        sections.push((SidePanelSection::Todos, chunks[6]));
+    }
     for (sec, mut rect) in sections {
         rect.height = 1;
         state.side_panel_header_areas.insert(sec, rect);
@@ -147,60 +134,31 @@ pub fn render_side_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
     }
     render_sessions_section(f, state, chunks[2], sessions_collapsed);
     render_runtime_section(f, state, chunks[3], runtime_collapsed);
-    if todos_visible {
-        render_todos_section(f, state, chunks[4], todos_collapsed);
+    render_mcp_section(f, state, chunks[4], mcp_collapsed);
+    if changeset_count > 0 {
+        render_changeset_summary(f, state, chunks[5]);
     }
-    render_changeset_section(f, state, chunks[5], changeset_collapsed);
-    render_mcp_section(f, state, chunks[6], mcp_collapsed);
+    if todos_visible {
+        render_todos_summary(f, state, chunks[6]);
+    }
 }
 
-fn render_todos_section(f: &mut Frame, state: &AppState, area: Rect, collapsed: bool) {
+fn render_todos_summary(f: &mut Frame, state: &AppState, area: Rect) {
     use vac_changeset::TodoStatus;
-    let collapse_indicator = if collapsed { "▸" } else { "▾" };
     let pending = state
         .todos
         .iter()
         .filter(|t| t.status != TodoStatus::Done)
         .count();
     let done = state.todos.len().saturating_sub(pending);
-    let header = Line::from(vec![
+    let line = Line::from(vec![
         Span::styled(
-            format!("  {} Todos ", collapse_indicator),
+            format!("  ▸ Todos ({}/{}) ", done, state.todos.len()),
             Style::default().add_modifier(Modifier::BOLD),
         ),
-        Span::styled(
-            format!("({}/{})", done, state.todos.len()),
-            Style::default().fg(Color::DarkGray),
-        ),
+        Span::styled("— Workbench", Style::default().fg(Color::DarkGray)),
     ]);
-
-    if collapsed {
-        f.render_widget(Paragraph::new(vec![header]), area);
-        return;
-    }
-
-    let mut lines = vec![header];
-    for t in state.todos.iter().take(8) {
-        let (marker, color) = match t.status {
-            TodoStatus::Done => ("[✓]", Color::Green),
-            TodoStatus::InProgress => ("[/]", Color::Yellow),
-            TodoStatus::Pending => ("[ ]", Color::DarkGray),
-        };
-        let style = if t.status == TodoStatus::Done {
-            Style::default()
-                .fg(Color::DarkGray)
-                .add_modifier(Modifier::CROSSED_OUT)
-        } else {
-            Style::default()
-        };
-        lines.push(Line::from(vec![
-            Span::raw("    "),
-            Span::styled(marker, Style::default().fg(color)),
-            Span::raw(" "),
-            Span::styled(t.text.clone(), style),
-        ]));
-    }
-    f.render_widget(Paragraph::new(lines), area);
+    f.render_widget(Paragraph::new(vec![line]), area);
 }
 
 fn render_usage_section(f: &mut Frame, state: &AppState, area: Rect, collapsed: bool) {
@@ -544,52 +502,14 @@ fn render_runtime_section(f: &mut Frame, state: &AppState, area: Rect, collapsed
     f.render_widget(Paragraph::new(lines), area);
 }
 
-fn render_changeset_section(f: &mut Frame, state: &AppState, area: Rect, collapsed: bool) {
-    let collapse_indicator = if collapsed { "▸" } else { "▾" };
+fn render_changeset_summary(f: &mut Frame, state: &AppState, area: Rect) {
     let count = state.changeset_store.active_entries().len();
-    let header = Line::from(Span::styled(
-        format!("  {} Changeset ({})", collapse_indicator, count),
-        Style::default().add_modifier(Modifier::BOLD),
-    ));
-
-    if collapsed {
-        f.render_widget(Paragraph::new(vec![header]), area);
-        return;
-    }
-
-    let mut lines = vec![header];
-
-    if count == 0 {
-        lines.push(Line::styled(
-            "    No tracked file changes.",
-            Style::default()
-                .fg(Color::DarkGray)
-                .add_modifier(Modifier::ITALIC),
-        ));
-    } else {
-        for entry in state.changeset_store.active_entries().iter().take(8) {
-            let indicator = match entry.state {
-                vac_changeset::FileState::Created => "[+]",
-                vac_changeset::FileState::Modified => "[~]",
-                vac_changeset::FileState::Removed => "[-]",
-                vac_changeset::FileState::Reverted => "[✓]",
-                vac_changeset::FileState::FailedRestore => "[✗]",
-            };
-            let color = match entry.state {
-                vac_changeset::FileState::Created => Color::Green,
-                vac_changeset::FileState::Modified => Color::Yellow,
-                vac_changeset::FileState::Removed => Color::Red,
-                vac_changeset::FileState::Reverted => Color::Cyan,
-                vac_changeset::FileState::FailedRestore => Color::Red,
-            };
-            lines.push(Line::from(vec![
-                Span::raw("    "),
-                Span::styled(indicator, Style::default().fg(color)),
-                Span::raw(" "),
-                Span::raw(entry.path.clone()),
-            ]));
-        }
-    }
-
-    f.render_widget(Paragraph::new(lines), area);
+    let line = Line::from(vec![
+        Span::styled(
+            format!("  ▸ Changeset ({}) ", count),
+            Style::default().add_modifier(Modifier::BOLD),
+        ),
+        Span::styled("— Workbench", Style::default().fg(Color::DarkGray)),
+    ]);
+    f.render_widget(Paragraph::new(vec![line]), area);
 }

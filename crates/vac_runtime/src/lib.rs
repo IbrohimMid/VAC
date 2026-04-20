@@ -7,6 +7,7 @@ pub mod jobs;
 pub mod queue;
 pub mod runtime_queue;
 pub mod scheduler;
+pub mod state_writer;
 pub mod task_graph;
 pub mod watcher;
 

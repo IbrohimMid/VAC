@@ -2,8 +2,7 @@
 
 use crate::Model;
 use crate::app::{
-    AppState, AppStateOptions, InputEvent, OutputEvent, SidePanelSection, WorkbenchTab,
-    WorkspaceFocus,
+    AppState, AppStateOptions, InputEvent, OutputEvent, SidePanelSection, WorkspaceFocus,
 };
 use crate::event::map_crossterm_event_to_input_event;
 use crate::services::helper_block::welcome_messages;
@@ -29,29 +28,6 @@ pub struct RulebookConfig {
     pub exclude: Option<Vec<String>>,
 }
 
-fn workbench_tab_to_index(tab: WorkbenchTab) -> usize {
-    match tab {
-        WorkbenchTab::Approvals => 0,
-        WorkbenchTab::Review => 1,
-        WorkbenchTab::Sessions => 2,
-        WorkbenchTab::Agents => 3,
-        WorkbenchTab::Runtime => 4,
-        WorkbenchTab::Plan => 5,
-        WorkbenchTab::Vil => 6,
-    }
-}
-
-fn workbench_tab_from_index(index: usize) -> WorkbenchTab {
-    match index {
-        1 => WorkbenchTab::Review,
-        2 => WorkbenchTab::Sessions,
-        3 => WorkbenchTab::Agents,
-        4 => WorkbenchTab::Runtime,
-        5 => WorkbenchTab::Plan,
-        6 => WorkbenchTab::Vil,
-        _ => WorkbenchTab::Approvals,
-    }
-}
 
 fn focus_to_label(focus: WorkspaceFocus) -> &'static str {
     match focus {
@@ -130,7 +106,7 @@ fn build_session_snapshot(state: &AppState) -> Option<vac_session_control::Sessi
     snapshot.failed_tasks = 0;
     snapshot.total_tokens = state.total_session_usage.total_tokens;
     snapshot.modified_files = state.modified_files.len();
-    snapshot.tui_state.active_tab_idx = Some(workbench_tab_to_index(state.workbench_tab));
+    snapshot.tui_state.active_tab_idx = Some(crate::workbench::active_tab_index(&state.workbench_tab));
     snapshot.tui_state.history_selection = Some(state.sessions_selected_idx);
     snapshot.tui_state.last_focus = Some(focus_to_label(state.focus).to_string());
     snapshot.tui_state.collapsed_sections = state
@@ -183,7 +159,7 @@ fn apply_session_snapshot(state: &mut AppState, snapshot: &vac_session_control::
         Some(snapshot.active_rulebooks.join(", "))
     };
     if let Some(idx) = snapshot.tui_state.active_tab_idx {
-        state.workbench_tab = workbench_tab_from_index(idx);
+        state.workbench_tab = crate::workbench::tab_from_index(idx);
     }
     if let Some(selection) = snapshot.tui_state.history_selection {
         state.sessions_selected_idx = selection;
@@ -210,25 +186,26 @@ async fn persist_session_snapshot(state: &AppState) {
     let Some(snapshot) = build_session_snapshot(state) else {
         return;
     };
-    let result =
-        tokio::task::spawn_blocking(move || vac_session_control::save_snapshot(&snapshot)).await;
-    if let Ok(Err(err)) = result {
+    let result = vac_session_control::save_snapshot_async(snapshot).await;
+    if let Err(err) = result {
         tracing::warn!("failed to persist session snapshot: {err}");
     }
 }
 
-fn load_session_snapshot(
+async fn load_session_snapshot(
     project_root: &std::path::Path,
     session_id: &str,
 ) -> Option<vac_session_control::SessionSnapshot> {
     let session_uuid = uuid::Uuid::parse_str(session_id).ok()?;
-    match vac_session_control::load_snapshot(project_root, session_uuid) {
+    match vac_session_control::load_snapshot_async(project_root.to_path_buf(), session_uuid).await {
         Ok(snapshot) => Some(snapshot),
         Err(vac_session_control::SessionControlError::UnsupportedSchema { .. }) => {
-            let raw = std::fs::read_to_string(vac_session_control::snapshot_path(
-                project_root,
-                session_uuid,
-            ))
+            let root_buf = project_root.to_path_buf();
+            let raw = tokio::task::spawn_blocking(move || {
+                std::fs::read_to_string(vac_session_control::snapshot_path(&root_buf, session_uuid))
+            })
+            .await
+            .ok()?
             .ok()?;
             let snapshot: vac_session_control::SessionSnapshot = serde_json::from_str(&raw).ok()?;
             vac_session_control::migrate_snapshot(snapshot).ok()
@@ -319,7 +296,7 @@ pub async fn run_tui(
         None => "loading...".to_string(),
     };
 
-    if let Some(snapshot) = load_session_snapshot(&project_root, &state.session_id) {
+    if let Some(snapshot) = load_session_snapshot(&project_root, &state.session_id).await {
         apply_session_snapshot(&mut state, &snapshot);
     }
 
@@ -475,8 +452,20 @@ pub async fn run_tui(
             state.toasts.drain(0..state.toasts.len().saturating_sub(3));
         }
 
-        // Render
+        // Render — measure wall time and update RenderMetrics
+        let render_start = std::time::Instant::now();
         terminal.draw(|f| view(f, &mut state))?;
+        let render_us = render_start.elapsed().as_micros() as u64;
+        state.render_metrics.last_render_time_us = render_us;
+        // Exponential moving average (α ≈ 0.1)
+        state.render_metrics.ema_render_time_us = if state.render_metrics.ema_render_time_us == 0 {
+            render_us
+        } else {
+            (state.render_metrics.ema_render_time_us * 9 + render_us) / 10
+        };
+        if render_us > 16_000 {
+            log::debug!("render over budget: {}µs (avg {}µs)", render_us, state.render_metrics.ema_render_time_us);
+        }
 
         if last_session_snapshot_save.elapsed() >= Duration::from_secs(30) {
             persist_session_snapshot(&state).await;
@@ -524,8 +513,8 @@ mod tests {
         })
     }
 
-    #[test]
-    fn session_snapshot_bridge_restores_tui_state() {
+    #[tokio::test]
+    async fn session_snapshot_bridge_restores_tui_state() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path().to_path_buf();
         let session_id = uuid::Uuid::new_v4();
@@ -553,8 +542,12 @@ mod tests {
         state.modified_files = vec!["src/main.rs".to_string()];
 
         let snapshot = build_session_snapshot(&state).unwrap();
-        vac_session_control::save_snapshot(&snapshot).unwrap();
-        let loaded = load_session_snapshot(&root, &state.session_id).unwrap();
+        vac_session_control::save_snapshot_async(snapshot)
+            .await
+            .unwrap();
+        let loaded = load_session_snapshot(&root, &state.session_id)
+            .await
+            .unwrap();
 
         let mut restored = make_state(root.clone(), session_id);
         apply_session_snapshot(&mut restored, &loaded);
@@ -613,6 +606,7 @@ mod tests {
             .file_modified("b.txt".to_string(), "agent".to_string(), false);
         state.modified_files = state.changeset_store.modified_files();
         state.review.open = true;
+        crate::overlay::open_overlay(&mut state, crate::overlay::OverlayId::ReviewPane);
         state.review.selected_path = Some("b.txt".to_string());
         state.review.filter = "a".to_string();
         state.review_sync_items();
@@ -675,6 +669,7 @@ mod tests {
         let (tx, _rx) = tokio::sync::mpsc::channel(4);
         let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
         state.review.open = true;
+        crate::overlay::open_overlay(&mut state, crate::overlay::OverlayId::ReviewPane);
         state.focus = crate::app::WorkspaceFocus::Workbench;
         state.workbench_tab = crate::app::WorkbenchTab::Review;
         state.review.diff = Some(crate::app::ReviewDiffState {
@@ -695,6 +690,7 @@ mod tests {
         let (tx, _rx) = tokio::sync::mpsc::channel(4);
         let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
         state.review.open = true;
+        crate::overlay::open_overlay(&mut state, crate::overlay::OverlayId::ReviewPane);
         state.focus = crate::app::WorkspaceFocus::Workbench;
         state.workbench_tab = crate::app::WorkbenchTab::Review;
         state.review.diff = Some(crate::app::ReviewDiffState {
@@ -735,7 +731,7 @@ mod tests {
             metadata: None,
         };
         open_ask_user_popup(&mut state, &tc);
-        assert!(state.show_ask_user_popup);
+        assert!(state.overlay_manager.is_active(crate::overlay::OverlayId::AskUser));
         assert_eq!(
             state.ask_user_question_kind,
             crate::services::ask_user::AskUserQuestionKind::MultiSelect
@@ -936,6 +932,7 @@ mod tests {
             .file_modified(file_rel.to_string(), "agent".to_string(), true);
         state.modified_files = state.changeset_store.modified_files();
         state.review.open = true;
+        crate::overlay::open_overlay(&mut state, crate::overlay::OverlayId::ReviewPane);
         state.focus = crate::app::WorkspaceFocus::Workbench;
         state.workbench_tab = crate::app::WorkbenchTab::Review;
         state.review_sync_items();
@@ -976,6 +973,7 @@ mod tests {
             .file_modified("b.txt".to_string(), "agent".to_string(), true);
         state.modified_files = state.changeset_store.modified_files();
         state.review.open = true;
+        crate::overlay::open_overlay(&mut state, crate::overlay::OverlayId::ReviewPane);
         state.focus = crate::app::WorkspaceFocus::Workbench;
         state.workbench_tab = crate::app::WorkbenchTab::Review;
         state.review.filter = "a".to_string();
@@ -1178,9 +1176,9 @@ mod tests {
         let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
 
         // Set popup states
-        state.show_model_switcher = true;
-        state.show_file_search = true;
-        state.show_changeset = true;
+        crate::overlay::open_overlay(&mut state, crate::overlay::OverlayId::ModelSwitcher);
+        crate::overlay::open_overlay(&mut state, crate::overlay::OverlayId::FileSearch);
+        crate::overlay::open_overlay(&mut state, crate::overlay::OverlayId::Changeset);
         state.model_switcher_filter = "test".to_string();
         state.file_search_query = "query".to_string();
 
@@ -1196,9 +1194,9 @@ mod tests {
         );
 
         // Verify all popup states cleared
-        assert!(!state.show_model_switcher);
-        assert!(!state.show_file_search);
-        assert!(!state.show_changeset);
+        assert!(!state.overlay_manager.is_active(crate::overlay::OverlayId::ModelSwitcher));
+        assert!(!state.overlay_manager.is_active(crate::overlay::OverlayId::FileSearch));
+        assert!(!state.overlay_manager.is_active(crate::overlay::OverlayId::Changeset));
         assert!(state.model_switcher_filter.is_empty());
         assert!(state.file_search_query.is_empty());
     }
@@ -1322,18 +1320,19 @@ mod tests {
         let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
 
         // Execute /review command
-        state.show_command_palette = true;
+        crate::overlay::open_overlay(&mut state, crate::overlay::OverlayId::CommandPalette);
         let filtered = state.filtered_commands();
         if let Some(cmd) = filtered.iter().find(|c| c.command == "/review") {
             // Simulate command execution
             state.add_user_message(cmd.command.clone());
             state.review.open = true;
-            state.show_command_palette = false;
+        crate::overlay::open_overlay(&mut state, crate::overlay::OverlayId::ReviewPane);
+            crate::overlay::close_overlay(&mut state, crate::overlay::OverlayId::CommandPalette);
         }
 
         // Verify review opened, not sent as literal message
         assert!(state.review.open);
-        assert!(!state.show_command_palette);
+        assert!(!state.overlay_manager.is_active(crate::overlay::OverlayId::CommandPalette));
 
         // No output event should be sent for /review
         assert!(rx.try_recv().is_err());
@@ -1364,6 +1363,7 @@ mod tests {
             .file_modified("b.txt".to_string(), "agent".to_string(), true);
         state.modified_files = state.changeset_store.modified_files();
         state.review.open = true;
+        crate::overlay::open_overlay(&mut state, crate::overlay::OverlayId::ReviewPane);
         state.focus = crate::app::WorkspaceFocus::Workbench;
         state.workbench_tab = crate::app::WorkbenchTab::Review;
         state.review_sync_items();
@@ -1494,7 +1494,7 @@ mod tests {
         let (tx, _rx) = tokio::sync::mpsc::channel(4);
         let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
         crate::controller::handle_input_event(&mut state, &tx, InputEvent::ShowModelSwitcher);
-        assert!(state.show_model_switcher);
+        assert!(state.overlay_manager.is_active(crate::overlay::OverlayId::ModelSwitcher));
         assert!(state.model_switcher_filter.is_empty());
     }
 
@@ -1504,7 +1504,7 @@ mod tests {
         let (tx, _rx) = tokio::sync::mpsc::channel(4);
         let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
         crate::controller::handle_input_event(&mut state, &tx, InputEvent::ShowFileSearch);
-        assert!(state.show_file_search);
+        assert!(state.overlay_manager.is_active(crate::overlay::OverlayId::FileSearch));
         assert!(state.file_search_query.is_empty());
     }
 
@@ -1514,7 +1514,7 @@ mod tests {
         let (tx, _rx) = tokio::sync::mpsc::channel(4);
         let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
         crate::controller::handle_input_event(&mut state, &tx, InputEvent::ShowChangeset);
-        assert!(state.show_changeset);
+        assert!(state.overlay_manager.is_active(crate::overlay::OverlayId::Changeset));
     }
 
     #[tokio::test]
@@ -1524,8 +1524,8 @@ mod tests {
         let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
         state.input.set_content("/model");
         crate::controller::handle_input_event(&mut state, &tx, InputEvent::InputSubmitted);
-        assert!(state.show_model_switcher);
-        assert!(!state.show_file_search);
+        assert!(state.overlay_manager.is_active(crate::overlay::OverlayId::ModelSwitcher));
+        assert!(!state.overlay_manager.is_active(crate::overlay::OverlayId::FileSearch));
     }
 
     #[tokio::test]
@@ -1535,8 +1535,8 @@ mod tests {
         let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
         state.input.set_content("/files");
         crate::controller::handle_input_event(&mut state, &tx, InputEvent::InputSubmitted);
-        assert!(state.show_file_search);
-        assert!(!state.show_model_switcher);
+        assert!(state.overlay_manager.is_active(crate::overlay::OverlayId::FileSearch));
+        assert!(!state.overlay_manager.is_active(crate::overlay::OverlayId::ModelSwitcher));
     }
 
     #[tokio::test]
@@ -1546,7 +1546,7 @@ mod tests {
         let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
         state.input.set_content("/changes");
         crate::controller::handle_input_event(&mut state, &tx, InputEvent::InputSubmitted);
-        assert!(state.show_changeset);
+        assert!(state.overlay_manager.is_active(crate::overlay::OverlayId::Changeset));
     }
 
     #[tokio::test]
@@ -1759,6 +1759,7 @@ mod tests {
         let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
         state.focus = crate::app::WorkspaceFocus::Input;
         state.at_trigger_active = true;
+        crate::overlay::open_overlay(&mut state, crate::overlay::OverlayId::AtDropdown);
         state.at_query = "src".to_string();
 
         crate::controller::handle_input_event(&mut state, &tx, InputEvent::HandleEsc);
@@ -1774,6 +1775,7 @@ mod tests {
         let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
         state.focus = crate::app::WorkspaceFocus::Input;
         state.at_trigger_active = true;
+        crate::overlay::open_overlay(&mut state, crate::overlay::OverlayId::AtDropdown);
         state.at_query = "src".to_string();
 
         crate::controller::handle_input_event(&mut state, &tx, InputEvent::InputChanged(' '));
@@ -1788,6 +1790,7 @@ mod tests {
         let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
         state.focus = crate::app::WorkspaceFocus::Input;
         state.at_trigger_active = true;
+        crate::overlay::open_overlay(&mut state, crate::overlay::OverlayId::AtDropdown);
         state.at_query = "sr".to_string();
 
         crate::controller::handle_input_event(&mut state, &tx, InputEvent::InputBackspace);
@@ -1807,6 +1810,7 @@ mod tests {
         let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
         state.focus = crate::app::WorkspaceFocus::Input;
         state.at_trigger_active = true;
+        crate::overlay::open_overlay(&mut state, crate::overlay::OverlayId::AtDropdown);
         state.at_query = "src".to_string();
         state.at_results = vec!["src/main.rs".to_string(), "src/lib.rs".to_string()];
         state.at_selected_idx = 0;
@@ -1967,6 +1971,7 @@ mod tests {
         let (tx, _rx) = tokio::sync::mpsc::channel(4);
         let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
         state.review.open = true;
+        crate::overlay::open_overlay(&mut state, crate::overlay::OverlayId::ReviewPane);
         state.focus = crate::app::WorkspaceFocus::Workbench;
         state.workbench_tab = crate::app::WorkbenchTab::Review;
 
@@ -1982,6 +1987,7 @@ mod tests {
         let (tx, _rx) = tokio::sync::mpsc::channel(4);
         let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
         state.review.open = true;
+        crate::overlay::open_overlay(&mut state, crate::overlay::OverlayId::ReviewPane);
         state.focus = crate::app::WorkspaceFocus::Workbench;
         state.workbench_tab = crate::app::WorkbenchTab::Review;
 
@@ -1999,6 +2005,7 @@ mod tests {
         let (tx, _rx) = tokio::sync::mpsc::channel(4);
         let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
         state.review.open = true;
+        crate::overlay::open_overlay(&mut state, crate::overlay::OverlayId::ReviewPane);
         state.focus = crate::app::WorkspaceFocus::Workbench;
         state.workbench_tab = crate::app::WorkbenchTab::Review;
         state.review.selected_path = Some("a.rs".to_string());
@@ -2021,6 +2028,7 @@ mod tests {
         let (tx, _rx) = tokio::sync::mpsc::channel(4);
         let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
         state.review.open = true;
+        crate::overlay::open_overlay(&mut state, crate::overlay::OverlayId::ReviewPane);
         state.focus = crate::app::WorkspaceFocus::Workbench;
         state.workbench_tab = crate::app::WorkbenchTab::Review;
         state.review.diff = Some(crate::app::ReviewDiffState {

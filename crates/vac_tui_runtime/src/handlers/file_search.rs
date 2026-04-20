@@ -21,7 +21,7 @@ pub fn open(ctx: &mut HandlerContext) -> HandlerResult {
             ctx.state.all_files = build_file_index(&ctx.state.project_root);
         }
     }
-    ctx.state.show_file_search = true;
+    crate::overlay::open_overlay(ctx.state, crate::overlay::OverlayId::FileSearch);
     ctx.state.file_search_query.clear();
     ctx.state.file_search_results.clear();
     ctx.state.file_search_selected_idx = 0;
@@ -30,7 +30,7 @@ pub fn open(ctx: &mut HandlerContext) -> HandlerResult {
 
 /// Close file search popup.
 pub fn close(ctx: &mut HandlerContext) -> HandlerResult {
-    ctx.state.show_file_search = false;
+    crate::overlay::close_overlay(ctx.state, crate::overlay::OverlayId::FileSearch);
     ctx.state.file_search_query.clear();
     ctx.state.file_search_results.clear();
     ctx.state.file_search_selected_idx = 0;
@@ -110,7 +110,7 @@ mod tests {
         let mut ctx = HandlerContext::new(&mut state, &tx);
 
         assert!(open(&mut ctx).is_ok());
-        assert!(ctx.state.show_file_search);
+        assert!(ctx.state.overlay_manager.is_active(crate::overlay::OverlayId::FileSearch));
         assert_eq!(ctx.state.file_search_selected_idx, 0);
     }
 
@@ -119,11 +119,11 @@ mod tests {
         let (mut state, tx, _rx) = create_test_context();
         let mut ctx = HandlerContext::new(&mut state, &tx);
 
-        ctx.state.show_file_search = true;
+        crate::overlay::open_overlay(ctx.state, crate::overlay::OverlayId::FileSearch);
         ctx.state.file_search_query = "test".to_string();
 
         assert!(close(&mut ctx).is_ok());
-        assert!(!ctx.state.show_file_search);
+        assert!(!ctx.state.overlay_manager.is_active(crate::overlay::OverlayId::FileSearch));
         assert!(ctx.state.file_search_query.is_empty());
     }
 

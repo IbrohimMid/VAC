@@ -5,7 +5,7 @@ use crate::services::review;
 
 /// Open changeset popup.
 pub fn open(ctx: &mut HandlerContext) -> HandlerResult {
-    ctx.state.show_changeset = true;
+    crate::overlay::open_overlay(ctx.state, crate::overlay::OverlayId::Changeset);
     ctx.state.changeset_selected_idx = 0;
     ctx.state.changeset_diff_scroll = 0;
 
@@ -42,7 +42,7 @@ pub fn open(ctx: &mut HandlerContext) -> HandlerResult {
 
 /// Close changeset popup.
 pub fn close(ctx: &mut HandlerContext) -> HandlerResult {
-    ctx.state.show_changeset = false;
+    crate::overlay::close_overlay(ctx.state, crate::overlay::OverlayId::Changeset);
     ctx.state.changeset_selected_idx = 0;
     ctx.state.changeset_diff_scroll = 0;
     ctx.state.changeset_selected_path = None;

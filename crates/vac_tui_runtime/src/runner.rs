@@ -61,9 +61,16 @@ async fn load_runtime_jobs(project_root: &std::path::Path) -> Vec<vac_runtime::J
     load_runtime_queue_items(&queue).await
 }
 
-fn load_runtime_state(project_root: &std::path::Path) -> Option<vac_runtime::AutopilotStateFile> {
-    let content = std::fs::read_to_string(project_root.join(".vac/autopilot.state")).ok()?;
-    serde_json::from_str(&content).ok()
+async fn load_runtime_state(
+    project_root: &std::path::Path,
+) -> Option<vac_runtime::AutopilotStateFile> {
+    let path = project_root.join(".vac/autopilot.state");
+    tokio::task::spawn_blocking(move || {
+        let content = std::fs::read_to_string(path).ok()?;
+        serde_json::from_str(&content).ok()
+    })
+    .await
+    .unwrap_or(None)
 }
 
 async fn load_agent_tasks(project_root: &std::path::Path) -> Vec<vac_runtime::AgentTask> {
@@ -72,11 +79,16 @@ async fn load_agent_tasks(project_root: &std::path::Path) -> Vec<vac_runtime::Ag
     load_runtime_queue_items(&queue).await
 }
 
-fn load_agent_state(
+async fn load_agent_state(
     project_root: &std::path::Path,
 ) -> Option<vac_runtime::AgentSchedulerStateFile> {
-    let content = std::fs::read_to_string(project_root.join(".vac/agent_scheduler.state")).ok()?;
-    serde_json::from_str(&content).ok()
+    let path = project_root.join(".vac/agent_scheduler.state");
+    tokio::task::spawn_blocking(move || {
+        let content = std::fs::read_to_string(path).ok()?;
+        serde_json::from_str(&content).ok()
+    })
+    .await
+    .unwrap_or(None)
 }
 
 async fn resume_session_into_tui(
@@ -501,23 +513,27 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                             }
                         }
 
-                        // Persist to .vac/config.toml
-                        let vac_dir = project_root.join(".vac");
-                        let _ = std::fs::create_dir_all(&vac_dir);
-                        let config_path = vac_dir.join("config.toml");
-                        let content = std::fs::read_to_string(&config_path).unwrap_or_default();
-                        let mut table: toml::Table = content.parse().unwrap_or_default();
-                        table
-                            .entry("profile")
-                            .or_insert_with(|| toml::Value::Table(toml::Table::new()))
-                            .as_table_mut()
-                            .map(|t| {
-                                t.insert(
-                                    "active".to_string(),
-                                    toml::Value::String(profile_name.clone()),
-                                )
-                            });
-                        let _ = std::fs::write(&config_path, table.to_string());
+                        let profile_name_clone = profile_name.clone();
+                        let _ = tokio::task::spawn_blocking(move || {
+                            // Persist to .vac/config.toml
+                            let vac_dir = project_root.join(".vac");
+                            let _ = std::fs::create_dir_all(&vac_dir);
+                            let config_path = vac_dir.join("config.toml");
+                            let content = std::fs::read_to_string(&config_path).unwrap_or_default();
+                            let mut table: toml::Table = content.parse().unwrap_or_default();
+                            table
+                                .entry("profile".to_string())
+                                .or_insert_with(|| toml::Value::Table(toml::Table::new()))
+                                .as_table_mut()
+                                .map(|t| {
+                                    t.insert(
+                                        "active".to_string(),
+                                        toml::Value::String(profile_name_clone),
+                                    )
+                                });
+                            let _ = std::fs::write(&config_path, table.to_string());
+                        })
+                        .await;
 
                         let _ = input_tx
                             .send(InputEvent::ShowToast(crate::services::Toast::success(
@@ -531,21 +547,28 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                     let project_root = runtime_project_root.clone();
                     let input_tx = input_tx_clone.clone();
                     tokio::spawn(async move {
+                        let project_root_clone = project_root.clone();
+                        let selected_ids_clone = selected_ids.clone();
                         // Load rulebooks and filter by selection
-                        let config = vac_core::VacConfig::load_with_fallback(&project_root)
-                            .unwrap_or_default();
-                        let all_books = vac_core::rulebook::RulebookLoader::load_all(
-                            &project_root,
-                            &config.rulebook.paths,
-                        );
-                        let filtered: Vec<_> = if selected_ids.is_empty() {
-                            all_books
-                        } else {
-                            all_books
-                                .into_iter()
-                                .filter(|b| selected_ids.contains(&b.id))
-                                .collect()
-                        };
+                        let filtered: Vec<_> = tokio::task::spawn_blocking(move || {
+                            let config =
+                                vac_core::VacConfig::load_with_fallback(&project_root_clone)
+                                    .unwrap_or_default();
+                            let all_books = vac_core::rulebook::RulebookLoader::load_all(
+                                &project_root_clone,
+                                &config.rulebook.paths,
+                            );
+                            if selected_ids_clone.is_empty() {
+                                all_books
+                            } else {
+                                all_books
+                                    .into_iter()
+                                    .filter(|b| selected_ids_clone.contains(&b.id))
+                                    .collect()
+                            }
+                        })
+                        .await
+                        .unwrap_or_default();
 
                         // Build resolved context with archetype from VIL project profile
                         let archetype_str = {
@@ -608,123 +631,129 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                     let (cols, rows) = crossterm::terminal::size().unwrap_or((120, 32));
                     let rows = rows.saturating_sub(8).max(8);
                     let cols = cols.saturating_sub(4).max(40);
-                    let shell_spec =
-                        match vac_core::VacConfig::load_with_fallback(&runtime_project_root) {
-                            Ok(mut config) => {
-                                // Auto-detect interactive vs batch
-                                let is_interactive = cmd.is_empty();
+                    let runtime_project_root_for_shell = runtime_project_root.clone();
+                    let shell_spec = match tokio::task::spawn_blocking(move || {
+                        vac_core::VacConfig::load_with_fallback(&runtime_project_root_for_shell)
+                    })
+                    .await
+                    .unwrap_or_else(|_| {
+                        Err(vac_core::error::VacError::Io(std::io::Error::new(
+                            std::io::ErrorKind::Other,
+                            "spawn_blocking failed",
+                        )))
+                    }) {
+                        Ok(mut config) => {
+                            // Auto-detect interactive vs batch
+                            let is_interactive = cmd.is_empty();
 
-                                let mut env_mode_str = active_isolation_mode.as_str();
-                                if active_isolation_mode.starts_with("isolated") {
-                                    if is_interactive {
-                                        env_mode_str = "isolated_interactive";
-                                    } else {
-                                        env_mode_str = "isolated_batch";
-                                    }
+                            let mut env_mode_str = active_isolation_mode.as_str();
+                            if active_isolation_mode.starts_with("isolated") {
+                                if is_interactive {
+                                    env_mode_str = "isolated_interactive";
+                                } else {
+                                    env_mode_str = "isolated_batch";
                                 }
+                            }
 
-                                if let Ok(env_mode) =
-                                    serde_json::from_str::<vac_core::ExecutionEnvironment>(
-                                        &format!("\"{}\"", env_mode_str),
-                                    )
-                                {
-                                    config.runtime.execution_environment = env_mode;
-                                }
+                            if let Ok(env_mode) =
+                                serde_json::from_str::<vac_core::ExecutionEnvironment>(&format!(
+                                    "\"{}\"",
+                                    env_mode_str
+                                ))
+                            {
+                                config.runtime.execution_environment = env_mode;
+                            }
 
-                                // Handle default mount presets
-                                if active_isolation_mode.contains("(Rust)") {
-                                    config
-                                        .runtime
-                                        .mount_presets
-                                        .push(vac_core::config::MountPreset::Rust);
-                                } else if active_isolation_mode.contains("(Node)") {
-                                    config
-                                        .runtime
-                                        .mount_presets
-                                        .push(vac_core::config::MountPreset::Node);
-                                } else if active_isolation_mode.contains("(Python)") {
-                                    config
-                                        .runtime
-                                        .mount_presets
-                                        .push(vac_core::config::MountPreset::Python);
-                                }
+                            // Handle default mount presets
+                            if active_isolation_mode.contains("(Rust)") {
+                                config
+                                    .runtime
+                                    .mount_presets
+                                    .push(vac_core::config::MountPreset::Rust);
+                            } else if active_isolation_mode.contains("(Node)") {
+                                config
+                                    .runtime
+                                    .mount_presets
+                                    .push(vac_core::config::MountPreset::Node);
+                            } else if active_isolation_mode.contains("(Python)") {
+                                config
+                                    .runtime
+                                    .mount_presets
+                                    .push(vac_core::config::MountPreset::Python);
+                            }
 
-                                if config.runtime.execution_environment
-                                    == vac_core::ExecutionEnvironment::IsolatedInteractive
-                                    || config.runtime.execution_environment
-                                        == vac_core::ExecutionEnvironment::IsolatedBatch
-                                {
-                                    let isolation = vac_runtime::IsolationManager::new(
-                                        runtime_project_root.clone(),
-                                        config.runtime.clone(),
-                                    );
+                            if config.runtime.execution_environment
+                                == vac_core::ExecutionEnvironment::IsolatedInteractive
+                                || config.runtime.execution_environment
+                                    == vac_core::ExecutionEnvironment::IsolatedBatch
+                            {
+                                let isolation = vac_runtime::IsolationManager::new(
+                                    runtime_project_root.clone(),
+                                    config.runtime.clone(),
+                                );
 
-                                    if is_interactive {
-                                        match isolation.build_interactive_shell_spec() {
-                                            Ok(spec) => Some(spec),
-                                            Err(err) => {
-                                                let _ = input_tx
-                                                    .send(InputEvent::ShellError(
-                                                        "system".to_string(),
-                                                        format!(
+                                if is_interactive {
+                                    match isolation.build_interactive_shell_spec() {
+                                        Ok(spec) => Some(spec),
+                                        Err(err) => {
+                                            let _ = input_tx
+                                                .send(InputEvent::ShellError(
+                                                    "system".to_string(),
+                                                    format!(
                                                         "Failed to prepare isolated shell: {err}"
                                                     ),
-                                                    ))
-                                                    .await;
-                                                continue;
-                                            }
-                                        }
-                                    } else {
-                                        let env = std::collections::HashMap::new();
-                                        match isolation.build_container_command(
-                                            std::path::Path::new("sh"),
-                                            &["-c".to_string(), cmd.clone()],
-                                            true,
-                                            &env,
-                                        ) {
-                                            Ok(command) => {
-                                                let program = command
-                                                    .get_program()
-                                                    .to_string_lossy()
-                                                    .to_string();
-                                                let args = command
-                                                    .get_args()
-                                                    .map(|a| a.to_string_lossy().to_string())
-                                                    .collect();
-                                                Some(vac_runtime::IsolationLaunchSpec {
-                                                    program,
-                                                    args,
-                                                    cwd: runtime_project_root.clone(),
-                                                    env,
-                                                })
-                                            }
-                                            Err(err) => {
-                                                let _ = input_tx
-                                                    .send(InputEvent::ShellError(
-                                                        "system".to_string(),
-                                                        format!(
-                                                            "Failed to build batch command: {err}"
-                                                        ),
-                                                    ))
-                                                    .await;
-                                                continue;
-                                            }
+                                                ))
+                                                .await;
+                                            continue;
                                         }
                                     }
                                 } else {
-                                    None
+                                    let env = std::collections::HashMap::new();
+                                    match isolation.build_container_command(
+                                        std::path::Path::new("sh"),
+                                        &["-c".to_string(), cmd.clone()],
+                                        true,
+                                        &env,
+                                    ) {
+                                        Ok(command) => {
+                                            let program =
+                                                command.get_program().to_string_lossy().to_string();
+                                            let args = command
+                                                .get_args()
+                                                .map(|a| a.to_string_lossy().to_string())
+                                                .collect();
+                                            Some(vac_runtime::IsolationLaunchSpec {
+                                                program,
+                                                args,
+                                                cwd: runtime_project_root.clone(),
+                                                env,
+                                            })
+                                        }
+                                        Err(err) => {
+                                            let _ = input_tx
+                                                .send(InputEvent::ShellError(
+                                                    "system".to_string(),
+                                                    format!("Failed to build batch command: {err}"),
+                                                ))
+                                                .await;
+                                            continue;
+                                        }
+                                    }
                                 }
+                            } else {
+                                None
                             }
-                            Err(err) => {
-                                let _ = input_tx
-                                    .send(InputEvent::ShellError(
-                                        "system".to_string(),
-                                        format!("Failed to load runtime config for shell: {err}"),
-                                    ))
-                                    .await;
-                                continue;
-                            }
-                        };
+                        }
+                        Err(err) => {
+                            let _ = input_tx
+                                .send(InputEvent::ShellError(
+                                    "system".to_string(),
+                                    format!("Failed to load runtime config for shell: {err}"),
+                                ))
+                                .await;
+                            continue;
+                        }
+                    };
 
                     let shell_result = vac_shell::run_pty_command(
                         cmd.clone(),
@@ -858,67 +887,85 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                 OutputEvent::ListSessions => {
                     let eng = engine_clone.lock().await;
                     if let Ok(sessions) = eng.list_sessions().await {
-                        let snapshots = vac_session_control::list_snapshots(&runtime_project_root)
-                            .unwrap_or_default();
-                        let snapshot_by_id: std::collections::HashMap<_, _> = snapshots
-                            .into_iter()
-                            .map(|snapshot| (snapshot.session_id, snapshot))
-                            .collect();
-                        let session_infos = sessions
-                            .into_iter()
-                            .map(|s| {
-                                let id_str = s.id.to_string();
-                                let checkpoint_dir = std::path::Path::new(".vac/checkpoints");
-                                let has_checkpoint = vac_session_control::has_checkpoint(
-                                    &runtime_project_root,
-                                    s.id,
-                                );
-                                // Collect checkpoint files for this session (sorted newest first)
-                                let checkpoints: Vec<String> = if checkpoint_dir.exists() {
-                                    let mut files: Vec<_> = std::fs::read_dir(checkpoint_dir)
-                                        .into_iter()
-                                        .flatten()
-                                        .flatten()
-                                        .filter(|e| {
-                                            e.file_name().to_string_lossy().starts_with(&id_str)
-                                        })
-                                        .filter_map(|e| {
-                                            let name = e.file_name().to_string_lossy().to_string();
-                                            let modified = e.metadata().ok()?.modified().ok()?;
-                                            Some((modified, name))
-                                        })
-                                        .collect();
-                                    files.sort_by(|a, b| b.0.cmp(&a.0));
-                                    files.into_iter().map(|(_, name)| name).take(5).collect()
-                                } else {
-                                    vec![]
-                                };
-                                let last_activity =
-                                    s.updated_at.format("%Y-%m-%d %H:%M").to_string();
-                                let snapshot_present = snapshot_by_id.contains_key(&s.id);
-                                let snapshot_stale =
-                                    snapshot_by_id.get(&s.id).is_some_and(|snapshot| {
-                                        vac_session_control::is_stale(
-                                            snapshot,
-                                            chrono::Duration::days(30),
-                                        )
-                                    });
-                                crate::app::SessionInfo {
-                                    id: id_str.clone(),
-                                    title: format!("Session {}", &id_str[..8]),
-                                    updated_at: s.updated_at.to_rfc3339(),
-                                    checkpoints,
-                                    task_count: s.tasks.len(),
-                                    last_activity,
-                                    has_checkpoint,
-                                    snapshot_present,
-                                    snapshot_stale,
-                                }
+                        let project_root = runtime_project_root.clone();
+                        let input_tx = input_tx_clone.clone();
+                        tokio::spawn(async move {
+                            let session_infos = tokio::task::spawn_blocking(move || {
+                                let snapshots = vac_session_control::list_snapshots(&project_root)
+                                    .unwrap_or_default();
+                                let snapshot_by_id: std::collections::HashMap<_, _> = snapshots
+                                    .into_iter()
+                                    .map(|snapshot| (snapshot.session_id, snapshot))
+                                    .collect();
+                                sessions
+                                    .into_iter()
+                                    .map(|s| {
+                                        let id_str = s.id.to_string();
+                                        let checkpoint_dir = project_root.join(".vac/checkpoints");
+                                        let has_checkpoint = vac_session_control::has_checkpoint(
+                                            &project_root,
+                                            s.id,
+                                        );
+                                        // Collect checkpoint files for this session (sorted newest first)
+                                        let checkpoints: Vec<String> = if checkpoint_dir.exists() {
+                                            let mut files: Vec<_> =
+                                                std::fs::read_dir(checkpoint_dir)
+                                                    .into_iter()
+                                                    .flatten()
+                                                    .flatten()
+                                                    .filter(|e| {
+                                                        e.file_name()
+                                                            .to_string_lossy()
+                                                            .starts_with(&id_str)
+                                                    })
+                                                    .filter_map(|e| {
+                                                        let name = e
+                                                            .file_name()
+                                                            .to_string_lossy()
+                                                            .to_string();
+                                                        let modified =
+                                                            e.metadata().ok()?.modified().ok()?;
+                                                        Some((modified, name))
+                                                    })
+                                                    .collect();
+                                            files.sort_by(|a, b| b.0.cmp(&a.0));
+                                            files
+                                                .into_iter()
+                                                .map(|(_, name)| name)
+                                                .take(5)
+                                                .collect()
+                                        } else {
+                                            vec![]
+                                        };
+                                        let last_activity =
+                                            s.updated_at.format("%Y-%m-%d %H:%M").to_string();
+                                        let snapshot_present = snapshot_by_id.contains_key(&s.id);
+                                        let snapshot_stale =
+                                            snapshot_by_id.get(&s.id).is_some_and(|snapshot| {
+                                                vac_session_control::is_stale(
+                                                    snapshot,
+                                                    chrono::Duration::days(30),
+                                                )
+                                            });
+                                        crate::app::SessionInfo {
+                                            id: id_str.clone(),
+                                            title: format!("Session {}", &id_str[..8]),
+                                            updated_at: s.updated_at.to_rfc3339(),
+                                            checkpoints,
+                                            task_count: s.tasks.len(),
+                                            last_activity,
+                                            has_checkpoint,
+                                            snapshot_present,
+                                            snapshot_stale,
+                                        }
+                                    })
+                                    .collect::<Vec<_>>()
                             })
-                            .collect();
-                        let _ = input_tx_clone
-                            .send(InputEvent::SetSessions(session_infos))
-                            .await;
+                            .await
+                            .unwrap_or_default();
+
+                            let _ = input_tx.send(InputEvent::SetSessions(session_infos)).await;
+                        });
                     } else {
                         let _ = input_tx_clone.send(InputEvent::SetSessions(vec![])).await;
                     }
@@ -932,13 +979,13 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                     let _ = input_tx_clone.send(InputEvent::SetAgentTasks(tasks)).await;
                 }
                 OutputEvent::LoadRuntimeState => {
-                    let snapshot = load_runtime_state(&runtime_project_root);
+                    let snapshot = load_runtime_state(&runtime_project_root).await;
                     let _ = input_tx_clone
                         .send(InputEvent::SetRuntimeState(snapshot))
                         .await;
                 }
                 OutputEvent::LoadAgentState => {
-                    let snapshot = load_agent_state(&runtime_project_root);
+                    let snapshot = load_agent_state(&runtime_project_root).await;
                     let _ = input_tx_clone
                         .send(InputEvent::SetAgentState(snapshot))
                         .await;
@@ -954,7 +1001,7 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                         crate::services::Toast::error(format!("Failed to cancel job {}", id))
                     };
                     let jobs = load_runtime_jobs(&runtime_project_root).await;
-                    let snapshot = load_runtime_state(&runtime_project_root);
+                    let snapshot = load_runtime_state(&runtime_project_root).await;
                     let _ = input_tx_clone.send(InputEvent::SetRuntimeJobs(jobs)).await;
                     let _ = input_tx_clone
                         .send(InputEvent::SetRuntimeState(snapshot))
@@ -972,7 +1019,7 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                         crate::services::Toast::error(format!("Failed to retry job {}", id))
                     };
                     let jobs = load_runtime_jobs(&runtime_project_root).await;
-                    let snapshot = load_runtime_state(&runtime_project_root);
+                    let snapshot = load_runtime_state(&runtime_project_root).await;
                     let _ = input_tx_clone.send(InputEvent::SetRuntimeJobs(jobs)).await;
                     let _ = input_tx_clone
                         .send(InputEvent::SetRuntimeState(snapshot))
@@ -1097,13 +1144,20 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
             "loading...".to_string()
         };
 
-        let config = vac_core::VacConfig::load_with_fallback(&project_root).unwrap_or_default();
+        let project_root_clone = project_root.clone();
+        let (config, selected_rulebooks) = tokio::task::spawn_blocking(move || {
+            let config =
+                vac_core::VacConfig::load_with_fallback(&project_root_clone).unwrap_or_default();
+            let books = vac_core::rulebook::RulebookLoader::load_all(
+                &project_root_clone,
+                &config.rulebook.paths,
+            );
+            let selected_rulebooks: Vec<String> = books.iter().map(|b| b.id.clone()).collect();
+            (config, selected_rulebooks)
+        })
+        .await
+        .unwrap_or_default();
         let mcp_server_count = config.mcp_servers.as_ref().map_or(0, |s| s.len());
-        let selected_rulebooks: Vec<String> = {
-            let books =
-                vac_core::rulebook::RulebookLoader::load_all(&project_root, &config.rulebook.paths);
-            books.iter().map(|b| b.id.clone()).collect()
-        };
         let active_rulebook = if selected_rulebooks.is_empty() {
             None
         } else {
@@ -1165,7 +1219,12 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
             .await;
     }
 
-    let config = vac_core::VacConfig::load_with_fallback(&project_root).unwrap_or_default();
+    let project_root_clone = project_root.clone();
+    let config = tokio::task::spawn_blocking(move || {
+        vac_core::VacConfig::load_with_fallback(&project_root_clone).unwrap_or_default()
+    })
+    .await
+    .unwrap_or_default();
     if config.mcp_servers.as_ref().is_none_or(|s| s.is_empty()) {
         let _ = input_tx
             .send(InputEvent::ShowToast(crate::services::Toast::info(

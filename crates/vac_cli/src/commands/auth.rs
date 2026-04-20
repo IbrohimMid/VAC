@@ -16,13 +16,13 @@ async fn login(token: Option<String>) -> anyhow::Result<()> {
     println!("==============");
 
     // Provider selection
-    let provider = select_provider()?;
+    let provider = select_provider().await?;
     println!();
 
     // Token input
     let token = match token {
         Some(t) => t,
-        None => prompt_token(&provider)?,
+        None => prompt_token(&provider).await?,
     };
 
     let path = vac_core::auth::save_kilo_api_key(&token)?;
@@ -108,7 +108,7 @@ impl Provider {
     }
 }
 
-fn select_provider() -> anyhow::Result<Provider> {
+async fn select_provider() -> anyhow::Result<Provider> {
     let providers = [
         (1, Provider::KiloGateway),
         (2, Provider::Anthropic),
@@ -122,8 +122,7 @@ fn select_provider() -> anyhow::Result<Provider> {
     print!("Choice [1]: ");
     io::stdout().flush()?;
 
-    let mut input = String::new();
-    io::stdin().read_line(&mut input)?;
+    let input = crate::io::read_line_async().await?;
     let choice = input.trim();
 
     Ok(match choice {
@@ -133,114 +132,15 @@ fn select_provider() -> anyhow::Result<Provider> {
     })
 }
 
-fn prompt_token(provider: &Provider) -> anyhow::Result<String> {
+async fn prompt_token(provider: &Provider) -> anyhow::Result<String> {
     print!("Paste {} → ", provider.key_hint());
     io::stdout().flush()?;
 
     // Try rpassword for hidden input, fall back to plain readline
-    let token = read_secret()?;
+    let token = crate::io::read_secret_async().await?;
 
     if token.is_empty() {
         anyhow::bail!("No API key provided");
     }
     Ok(token)
-}
-
-/// Read a line from stdin. On terminals, hide input if possible.
-fn read_secret() -> anyhow::Result<String> {
-    // Try to read without echo (best-effort, falls back to visible)
-    #[cfg(unix)]
-    {
-        use std::os::unix::io::AsRawFd;
-        if unsafe { libc_isatty(io::stdin().as_raw_fd()) } {
-            return read_hidden();
-        }
-    }
-    // Non-tty (pipe/redirect) or non-unix: plain readline
-    let mut s = String::new();
-    io::stdin().read_line(&mut s)?;
-    Ok(s.trim().to_string())
-}
-
-#[cfg(unix)]
-fn read_hidden() -> anyhow::Result<String> {
-    // Disable echo via termios, read, re-enable
-
-    let stdin_fd = {
-        use std::os::unix::io::AsRawFd;
-        io::stdin().as_raw_fd()
-    };
-
-    // Save terminal state
-    let mut termios = unsafe {
-        let mut t = std::mem::zeroed::<libc_termios>();
-        if libc_tcgetattr(stdin_fd, &mut t) != 0 {
-            // Can't get termios — fall back to plain
-            let mut s = String::new();
-            io::stdin().read_line(&mut s)?;
-            return Ok(s.trim().to_string());
-        }
-        t
-    };
-    let saved = termios;
-
-    // Disable echo
-    let c_lflag_orig = termios.c_lflag;
-    termios.c_lflag = c_lflag_orig & !ECHO_FLAG;
-    unsafe {
-        libc_tcsetattr(stdin_fd, TCSANOW, &termios);
-    }
-
-    let mut s = String::new();
-    let result = io::stdin().read_line(&mut s);
-
-    // Restore terminal state + print newline
-    unsafe {
-        libc_tcsetattr(stdin_fd, TCSANOW, &saved);
-    }
-    println!();
-
-    result?;
-    Ok(s.trim().to_string())
-}
-
-// ── Minimal libc bindings (no external crate needed) ─────────────────────────
-
-#[cfg(unix)]
-#[repr(C)]
-#[derive(Clone, Copy)]
-struct libc_termios {
-    c_iflag: u32,
-    c_oflag: u32,
-    c_cflag: u32,
-    c_lflag: u32,
-    c_line: u8,
-    c_cc: [u8; 32],
-    c_ispeed: u32,
-    c_ospeed: u32,
-}
-
-#[cfg(unix)]
-const ECHO_FLAG: u32 = 0x00000008; // ECHO
-#[cfg(unix)]
-const TCSANOW: i32 = 0;
-
-#[cfg(unix)]
-unsafe extern "C" {
-    fn tcgetattr(fd: i32, termios: *mut libc_termios) -> i32;
-    fn tcsetattr(fd: i32, optional_actions: i32, termios: *const libc_termios) -> i32;
-    fn isatty(fd: i32) -> i32;
-}
-
-#[cfg(unix)]
-unsafe fn libc_tcgetattr(fd: i32, t: *mut libc_termios) -> i32 {
-    unsafe { tcgetattr(fd, t) }
-}
-#[cfg(unix)]
-unsafe fn libc_tcsetattr(fd: i32, a: i32, t: *const libc_termios) -> i32 {
-    unsafe { tcsetattr(fd, a, t) }
-}
-#[cfg(unix)]
-unsafe fn libc_isatty(fd: i32) -> bool {
-    unsafe { isatty(fd) != 0 }
 }

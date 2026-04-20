@@ -12,7 +12,7 @@ pub fn open(ctx: &mut HandlerContext) -> HandlerResult {
         "exploration".to_string(),
         "spec-hardening".to_string(),
     ];
-    ctx.state.show_profile_switcher = true;
+    crate::overlay::open_overlay(ctx.state, crate::overlay::OverlayId::ProfileSwitcher);
     ctx.state.profile_search_input.clear();
     let filtered = ctx.state.profile_switcher_filtered();
     ctx.state.profile_switcher_selected = filtered
@@ -24,7 +24,7 @@ pub fn open(ctx: &mut HandlerContext) -> HandlerResult {
 
 /// Close profile switcher popup.
 pub fn close(ctx: &mut HandlerContext) -> HandlerResult {
-    ctx.state.show_profile_switcher = false;
+    crate::overlay::close_overlay(ctx.state, crate::overlay::OverlayId::ProfileSwitcher);
     ctx.state.profile_search_input.clear();
     ctx.state.profile_switcher_selected = 0;
     Ok(())

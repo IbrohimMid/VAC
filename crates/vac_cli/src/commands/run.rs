@@ -95,8 +95,8 @@ pub async fn execute(
                     use std::io::Write;
                     print!("Approve? [Y/n]: ");
                     let _ = std::io::stdout().flush();
-                    let mut input = String::new();
-                    if std::io::stdin().read_line(&mut input).is_ok() {
+
+                    if let Ok(input) = crate::io::read_line_async().await {
                         let input = input.trim().to_lowercase();
                         let approved = input.is_empty() || input == "y" || input == "yes";
                         if approved {

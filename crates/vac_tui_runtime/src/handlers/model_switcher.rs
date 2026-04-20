@@ -5,7 +5,7 @@ use crate::app::OutputEvent;
 
 /// Open model switcher popup.
 pub fn open(ctx: &mut HandlerContext) -> HandlerResult {
-    ctx.state.show_model_switcher = true;
+    crate::overlay::open_overlay(ctx.state, crate::overlay::OverlayId::ModelSwitcher);
     ctx.state.model_switcher_filter.clear();
     let filtered = ctx.state.model_switcher_filtered();
     ctx.state.model_switcher_selected_idx = if let Some(current) = &ctx.state.current_model {
@@ -21,7 +21,7 @@ pub fn open(ctx: &mut HandlerContext) -> HandlerResult {
 
 /// Close model switcher popup.
 pub fn close(ctx: &mut HandlerContext) -> HandlerResult {
-    ctx.state.show_model_switcher = false;
+    crate::overlay::close_overlay(ctx.state, crate::overlay::OverlayId::ModelSwitcher);
     ctx.state.model_switcher_filter.clear();
     ctx.state.model_switcher_selected_idx = 0;
     Ok(())
@@ -96,7 +96,7 @@ mod tests {
         let mut ctx = HandlerContext::new(&mut state, &tx);
 
         assert!(open(&mut ctx).is_ok());
-        assert!(ctx.state.show_model_switcher);
+        assert!(ctx.state.overlay_manager.is_active(crate::overlay::OverlayId::ModelSwitcher));
         assert_eq!(ctx.state.model_switcher_selected_idx, 0);
     }
 
@@ -105,11 +105,11 @@ mod tests {
         let (mut state, tx, _rx) = create_test_context();
         let mut ctx = HandlerContext::new(&mut state, &tx);
 
-        ctx.state.show_model_switcher = true;
+        crate::overlay::open_overlay(ctx.state, crate::overlay::OverlayId::ModelSwitcher);
         ctx.state.model_switcher_filter = "test".to_string();
 
         assert!(close(&mut ctx).is_ok());
-        assert!(!ctx.state.show_model_switcher);
+        assert!(!ctx.state.overlay_manager.is_active(crate::overlay::OverlayId::ModelSwitcher));
         assert!(ctx.state.model_switcher_filter.is_empty());
     }
 

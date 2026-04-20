@@ -6,7 +6,7 @@ use crate::app::InputEvent;
 pub fn handle_event(ctx: &mut HandlerContext, event: InputEvent) -> HandlerResult {
     match event {
         InputEvent::HandleEsc => {
-            ctx.state.show_isolation_switcher = false;
+            crate::overlay::close_overlay(ctx.state, crate::overlay::OverlayId::IsolationSwitcher);
         }
         InputEvent::Up => {
             if ctx.state.isolation_switcher_selected > 0 {
@@ -27,7 +27,7 @@ pub fn handle_event(ctx: &mut HandlerContext, event: InputEvent) -> HandlerResul
             {
                 ctx.state.active_isolation_mode = p.clone();
             }
-            ctx.state.show_isolation_switcher = false;
+            crate::overlay::close_overlay(ctx.state, crate::overlay::OverlayId::IsolationSwitcher);
         }
         _ => {}
     }

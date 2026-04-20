@@ -5,6 +5,7 @@ use crate::error::{RagError, RagResult};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio::sync::RwLock;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -26,6 +27,7 @@ pub struct SearchResult {
 pub struct RagIndex {
     documents: Arc<RwLock<HashMap<String, IndexedDocument>>>,
     model: Arc<RwLock<Option<EmbeddingModel>>>,
+    doc_count: Arc<AtomicUsize>,
 }
 
 impl Default for RagIndex {
@@ -39,6 +41,7 @@ impl RagIndex {
         Self {
             documents: Arc::new(RwLock::new(HashMap::new())),
             model: Arc::new(RwLock::new(None)),
+            doc_count: Arc::new(AtomicUsize::new(0)),
         }
     }
 
@@ -65,7 +68,10 @@ impl RagIndex {
         };
 
         let mut docs = self.documents.write().await;
-        docs.insert(id.to_string(), doc);
+        let is_new = docs.insert(id.to_string(), doc).is_none();
+        if is_new {
+            self.doc_count.fetch_add(1, Ordering::Relaxed);
+        }
 
         Ok(())
     }
@@ -104,7 +110,7 @@ impl RagIndex {
     }
 
     pub fn document_count(&self) -> usize {
-        self.documents.blocking_read().len()
+        self.doc_count.load(Ordering::Relaxed)
     }
 }
 

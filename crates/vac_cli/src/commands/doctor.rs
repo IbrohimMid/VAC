@@ -17,8 +17,7 @@ pub async fn execute(
         println!(
             "What is your primary LLM provider? [anthropic/openai/local] (default: anthropic): "
         );
-        let mut provider = String::new();
-        std::io::stdin().read_line(&mut provider)?;
+        let mut provider = crate::io::read_line_async().await?;
         let provider = provider.trim();
         let provider = if provider.is_empty() {
             "anthropic"

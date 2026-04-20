@@ -488,12 +488,7 @@ impl AutopilotController {
     }
 
     fn write_state(&self, state: AutopilotStateFile) {
-        if let Some(parent) = self.state_path.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-        if let Ok(json) = serde_json::to_string_pretty(&state) {
-            let _ = std::fs::write(&self.state_path, json);
-        }
+        crate::state_writer::write_state_atomic(self.state_path.clone(), state);
     }
 
     async fn execute_tool_call_job(
@@ -595,12 +590,7 @@ impl AutopilotController {
 }
 
 fn write_state_at(path: &PathBuf, state: AutopilotStateFile) {
-    if let Some(parent) = path.parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
-    if let Ok(json) = serde_json::to_string_pretty(&state) {
-        let _ = std::fs::write(path, json);
-    }
+    crate::state_writer::write_state_atomic(path.clone(), state);
 }
 
 async fn queued_len(queue: &TaskQueue) -> usize {

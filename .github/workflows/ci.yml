@@ -20,6 +20,8 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       - name: Check vil_* -> vac_* layering
         run: bash scripts/check_layering.sh
+      - name: Check sync I/O usage
+        run: bash scripts/check_sync_io.sh
 
   build:
     name: Build & Check
@@ -149,7 +151,6 @@ jobs:
 
       - name: cargo clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
-
 
   llm-smoke:
     name: LLM Smoke (${{ matrix.provider }})

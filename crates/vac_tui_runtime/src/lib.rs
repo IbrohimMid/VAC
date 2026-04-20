@@ -44,6 +44,11 @@ pub mod app;
 pub mod controller;
 mod event;
 pub mod overlay;
+pub mod ui;
+pub mod workbench;
+
+#[cfg(test)]
+mod contracts_test;
 
 pub use app::{InputEvent, LoadingOperation, OutputEvent};
 pub use event::map_crossterm_event_to_input_event;

@@ -102,7 +102,7 @@ pub fn approve_all(ctx: &mut HandlerContext) -> HandlerResult {
 /// Activate reject reason prompt for current tool.
 pub fn begin_reject_current(ctx: &mut HandlerContext) -> HandlerResult {
     if !ctx.state.pending_approvals.is_empty() {
-        ctx.state.reject_reason_input = Some(String::new());
+        crate::overlay::open_overlay(ctx.state, crate::overlay::OverlayId::RejectReason);
     }
     Ok(())
 }
@@ -126,6 +126,9 @@ pub fn reason_input_pop(ctx: &mut HandlerContext) -> HandlerResult {
 /// Confirm reason and reject current tool.
 pub fn confirm_reject_current(ctx: &mut HandlerContext) -> HandlerResult {
     let reason = ctx.state.reject_reason_input.take();
+    ctx.state
+        .overlay_manager
+        .pop(crate::overlay::OverlayId::RejectReason);
     if let Some(tc) = ctx
         .state
         .pending_approvals
@@ -152,6 +155,9 @@ pub fn confirm_reject_current(ctx: &mut HandlerContext) -> HandlerResult {
 /// Confirm reason and reject all pending tools.
 pub fn confirm_reject_all(ctx: &mut HandlerContext) -> HandlerResult {
     let reason = ctx.state.reject_reason_input.take();
+    ctx.state
+        .overlay_manager
+        .pop(crate::overlay::OverlayId::RejectReason);
     let tools: Vec<_> = ctx.state.pending_approvals.drain(..).collect();
     if tools.is_empty() {
         return Ok(());

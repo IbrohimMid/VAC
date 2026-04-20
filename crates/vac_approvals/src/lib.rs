@@ -352,18 +352,12 @@ impl ApprovalStore {
         let notified = notify.notified();
 
         if let Some(record) = self.load_from_fs(tool_call_id)? {
-            self.record_notifiers
-                .lock()
-                .expect("approval notifier cache poisoned")
-                .remove(tool_call_id);
+            lock_recover(&self.record_notifiers, "record_notifiers").remove(tool_call_id);
             return Ok(Some(record));
         }
 
         let _ = tokio::time::timeout(timeout, notified).await;
-        self.record_notifiers
-            .lock()
-            .expect("approval notifier cache poisoned")
-            .remove(tool_call_id);
+        lock_recover(&self.record_notifiers, "record_notifiers").remove(tool_call_id);
         self.load_from_fs(tool_call_id)
     }
 
@@ -480,10 +474,7 @@ impl ApprovalStore {
                 std::fs::remove_file(&path)?;
                 removed += 1;
             }
-            self.record_notifiers
-                .lock()
-                .expect("approval notifier cache poisoned")
-                .remove(&record.tool_call_id);
+            lock_recover(&self.record_notifiers, "record_notifiers").remove(&record.tool_call_id);
         }
 
         Ok(removed)
@@ -529,32 +520,22 @@ impl ApprovalStore {
     }
 
     fn cache_record(&self, record: ApprovalRecord) {
-        self.pending_records
-            .lock()
-            .expect("approval cache poisoned")
+        lock_recover(&self.pending_records, "pending_records")
             .insert(record.tool_call_id.clone(), record);
     }
 
     fn cached_record(&self, tool_call_id: &str) -> Option<ApprovalRecord> {
-        self.pending_records
-            .lock()
-            .expect("approval cache poisoned")
+        lock_recover(&self.pending_records, "pending_records")
             .get(tool_call_id)
             .cloned()
     }
 
     fn remove_cached_record(&self, tool_call_id: &str) {
-        self.pending_records
-            .lock()
-            .expect("approval cache poisoned")
-            .remove(tool_call_id);
+        lock_recover(&self.pending_records, "pending_records").remove(tool_call_id);
     }
 
     fn record_notifier(&self, tool_call_id: &str) -> Arc<Notify> {
-        let mut notifiers = self
-            .record_notifiers
-            .lock()
-            .expect("approval notifier cache poisoned");
+        let mut notifiers = lock_recover(&self.record_notifiers, "record_notifiers");
         notifiers
             .entry(tool_call_id.to_string())
             .or_insert_with(|| Arc::new(Notify::new()))
@@ -562,11 +543,7 @@ impl ApprovalStore {
     }
 
     fn notify_record_ready(&self, tool_call_id: &str) {
-        let notify = self
-            .record_notifiers
-            .lock()
-            .expect("approval notifier cache poisoned")
-            .remove(tool_call_id);
+        let notify = lock_recover(&self.record_notifiers, "record_notifiers").remove(tool_call_id);
         if let Some(notify) = notify {
             notify.notify_waiters();
         }
@@ -762,6 +739,16 @@ impl ActiveApprovalRegistry {
     }
 }
 
+fn lock_recover<'a, T>(m: &'a Mutex<T>, name: &'static str) -> std::sync::MutexGuard<'a, T> {
+    match m.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            tracing::warn!(mutex = name, "Mutex poisoned, recovering");
+            poisoned.into_inner()
+        }
+    }
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
@@ -772,6 +759,18 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let store = ApprovalStore::new(tmp.path().to_path_buf());
         (tmp, store)
+    }
+
+    #[test]
+    fn test_lock_recover_poisoning() {
+        let m = Mutex::new(HashMap::<String, String>::new());
+        let _ = std::panic::catch_unwind(|| {
+            let mut guard = m.lock().unwrap();
+            guard.insert("a".to_string(), "b".to_string());
+            panic!("test panic");
+        });
+        let guard = lock_recover(&m, "test_mutex");
+        assert_eq!(guard.get("a").map(|s| s.as_str()), Some("b"));
     }
 
     #[test]

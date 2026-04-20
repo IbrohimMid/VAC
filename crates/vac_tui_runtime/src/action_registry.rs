@@ -1,9 +1,434 @@
 //! Action Registry
 //!
-//! Provides a single source of truth for all TUI actions, their keybindings,
-//! descriptions, and contexts.
+//! Single source of truth for all TUI actions: keybindings, palette entries,
+//! footer hints, slash aliases, and availability guards.
 
 use crate::app::{WorkbenchTab, WorkspaceFocus};
+
+// ── ActionId ────────────────────────────────────────────────────────────────
+
+/// Closed enum of every user-invocable intent. No string IDs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ActionId {
+    // Global
+    Quit,
+    OpenCommandPalette,
+    OpenShortcuts,
+    OpenFileSearch,
+    SwitchModel,
+    SwitchProfile,
+    SwitchIsolation,
+    SwitchRulebook,
+    CyclePane,
+    CycleWorkbenchTab,
+    ToggleSidePanel,
+    ToggleAutoApprove,
+    // Input focus
+    Submit,
+    CancelStream,
+    // Workbench — Approvals
+    ApproveCurrent,
+    ApproveAll,
+    RejectCurrent,
+    RejectAll,
+    // Workbench — Review
+    ToggleDiff,
+    RevertSelected,
+    RevertFiltered,
+    RevertAll,
+    OpenEditor,
+    // Workbench — Sessions
+    ResumeCheckpoint,
+    CleanSession,
+    SwitchToSession,
+    // Workbench — Runtime
+    RefreshRuntime,
+    CancelRuntimeJob,
+    RetryRuntimeJob,
+    // Workbench — Agents
+    RefreshAgents,
+    // Workbench — Plan
+    ApprovePlan,
+    RequestPlanChanges,
+    EditPlan,
+    OpenPlanReview,
+    // Workbench — VIL
+    RunRepair,
+    RunAudit,
+    RunIrDiff,
+    OpenVilEditor,
+    RunBatchCampaign,
+    // Overlay — generic
+    CloseOverlay,
+    // New session / review
+    NewSession,
+    ReviewOpen,
+}
+
+// ── KeyChord ────────────────────────────────────────────────────────────────
+
+/// A human-readable key description for display in footer / shortcuts popup.
+pub type KeyChord = &'static str;
+
+// ── ActionSpec ──────────────────────────────────────────────────────────────
+
+/// Full specification of a user-invocable action.
+pub struct ActionSpec {
+    pub id: ActionId,
+    pub title: &'static str,
+    pub description: &'static str,
+    pub scope: ActionContext,
+    pub keybindings: &'static [KeyChord],
+    pub slash_aliases: &'static [&'static str],
+    pub palette_visible: bool,
+    pub footer_visible: bool,
+    pub availability: fn(&crate::app::AppState) -> bool,
+    pub activity_message: Option<fn(&crate::app::AppState) -> String>,
+}
+
+fn always_available(_: &crate::app::AppState) -> bool { true }
+
+/// Static registry of all action specs. This is the single source of truth.
+pub static ACTION_SPECS: &[ActionSpec] = &[
+    ActionSpec {
+        id: ActionId::Quit,
+        title: "Quit",
+        description: "Quit the application",
+        scope: ActionContext::Global,
+        keybindings: &["Ctrl+C×2"],
+        slash_aliases: &["/quit"],
+        palette_visible: true,
+        footer_visible: false,
+        availability: always_available,
+        activity_message: None,
+    },
+    ActionSpec {
+        id: ActionId::OpenCommandPalette,
+        title: "Command Palette",
+        description: "Open the command palette",
+        scope: ActionContext::Global,
+        keybindings: &["Ctrl+P"],
+        slash_aliases: &[],
+        palette_visible: false,
+        footer_visible: true,
+        availability: always_available,
+        activity_message: None,
+    },
+    ActionSpec {
+        id: ActionId::OpenShortcuts,
+        title: "Shortcuts",
+        description: "Show keyboard shortcuts",
+        scope: ActionContext::Global,
+        keybindings: &["?"],
+        slash_aliases: &["/help"],
+        palette_visible: true,
+        footer_visible: true,
+        availability: always_available,
+        activity_message: None,
+    },
+    ActionSpec {
+        id: ActionId::OpenFileSearch,
+        title: "File Search",
+        description: "Search and insert a file path",
+        scope: ActionContext::Global,
+        keybindings: &["Ctrl+F"],
+        slash_aliases: &["/files"],
+        palette_visible: true,
+        footer_visible: false,
+        availability: always_available,
+        activity_message: None,
+    },
+    ActionSpec {
+        id: ActionId::CancelStream,
+        title: "Cancel",
+        description: "Cancel the current streaming response",
+        scope: ActionContext::Global,
+        keybindings: &["Ctrl+C"],
+        slash_aliases: &[],
+        palette_visible: false,
+        footer_visible: true,
+        availability: |s| s.is_streaming,
+        activity_message: None,
+    },
+    ActionSpec {
+        id: ActionId::SwitchModel,
+        title: "Switch Model",
+        description: "Switch the active language model",
+        scope: ActionContext::Global,
+        keybindings: &[],
+        slash_aliases: &["/model"],
+        palette_visible: true,
+        footer_visible: false,
+        availability: always_available,
+        activity_message: None,
+    },
+    ActionSpec {
+        id: ActionId::SwitchProfile,
+        title: "Switch Profile",
+        description: "Switch configuration profile",
+        scope: ActionContext::Global,
+        keybindings: &[],
+        slash_aliases: &["/profile"],
+        palette_visible: true,
+        footer_visible: false,
+        availability: always_available,
+        activity_message: None,
+    },
+    ActionSpec {
+        id: ActionId::SwitchIsolation,
+        title: "Switch Isolation",
+        description: "Change execution isolation mode",
+        scope: ActionContext::Global,
+        keybindings: &[],
+        slash_aliases: &["/isolation"],
+        palette_visible: true,
+        footer_visible: false,
+        availability: always_available,
+        activity_message: None,
+    },
+    ActionSpec {
+        id: ActionId::SwitchRulebook,
+        title: "Switch Rulebook",
+        description: "Change active rulebooks",
+        scope: ActionContext::Global,
+        keybindings: &[],
+        slash_aliases: &["/rulebook"],
+        palette_visible: true,
+        footer_visible: false,
+        availability: always_available,
+        activity_message: None,
+    },
+    // Workbench — Approvals
+    ActionSpec {
+        id: ActionId::ApproveCurrent,
+        title: "Approve",
+        description: "Approve the selected tool call",
+        scope: ActionContext::WorkbenchApprovals,
+        keybindings: &["a", "Enter"],
+        slash_aliases: &[],
+        palette_visible: false,
+        footer_visible: true,
+        availability: |s| !s.pending_approvals.is_empty(),
+        activity_message: None,
+    },
+    ActionSpec {
+        id: ActionId::ApproveAll,
+        title: "Approve All",
+        description: "Approve all pending tool calls",
+        scope: ActionContext::WorkbenchApprovals,
+        keybindings: &["A"],
+        slash_aliases: &[],
+        palette_visible: false,
+        footer_visible: true,
+        availability: |s| !s.pending_approvals.is_empty(),
+        activity_message: None,
+    },
+    ActionSpec {
+        id: ActionId::RejectCurrent,
+        title: "Reject",
+        description: "Reject the selected tool call",
+        scope: ActionContext::WorkbenchApprovals,
+        keybindings: &["x"],
+        slash_aliases: &[],
+        palette_visible: false,
+        footer_visible: true,
+        availability: |s| !s.pending_approvals.is_empty(),
+        activity_message: None,
+    },
+    // Workbench — Review
+    ActionSpec {
+        id: ActionId::ToggleDiff,
+        title: "Diff",
+        description: "Toggle diff view for selected file",
+        scope: ActionContext::WorkbenchReview,
+        keybindings: &["Enter"],
+        slash_aliases: &[],
+        palette_visible: false,
+        footer_visible: true,
+        availability: always_available,
+        activity_message: None,
+    },
+    ActionSpec {
+        id: ActionId::RevertSelected,
+        title: "Revert",
+        description: "Revert selected file to snapshot",
+        scope: ActionContext::WorkbenchReview,
+        keybindings: &["Ctrl+X"],
+        slash_aliases: &[],
+        palette_visible: false,
+        footer_visible: true,
+        availability: always_available,
+        activity_message: None,
+    },
+    ActionSpec {
+        id: ActionId::RevertAll,
+        title: "Revert All",
+        description: "Revert all modified files",
+        scope: ActionContext::WorkbenchReview,
+        keybindings: &["Ctrl+Z"],
+        slash_aliases: &[],
+        palette_visible: false,
+        footer_visible: false,
+        availability: always_available,
+        activity_message: None,
+    },
+    // Workbench — Sessions
+    ActionSpec {
+        id: ActionId::ResumeCheckpoint,
+        title: "Resume",
+        description: "Resume session from checkpoint",
+        scope: ActionContext::WorkbenchSessions,
+        keybindings: &["Ctrl+R"],
+        slash_aliases: &["/resume"],
+        palette_visible: true,
+        footer_visible: true,
+        availability: always_available,
+        activity_message: None,
+    },
+    ActionSpec {
+        id: ActionId::SwitchToSession,
+        title: "Switch",
+        description: "Switch to selected session",
+        scope: ActionContext::WorkbenchSessions,
+        keybindings: &["Enter"],
+        slash_aliases: &[],
+        palette_visible: false,
+        footer_visible: true,
+        availability: always_available,
+        activity_message: None,
+    },
+    // Workbench — Runtime
+    ActionSpec {
+        id: ActionId::RefreshRuntime,
+        title: "Refresh",
+        description: "Refresh runtime job list",
+        scope: ActionContext::WorkbenchRuntime,
+        keybindings: &["r"],
+        slash_aliases: &[],
+        palette_visible: false,
+        footer_visible: true,
+        availability: always_available,
+        activity_message: None,
+    },
+    ActionSpec {
+        id: ActionId::CancelRuntimeJob,
+        title: "Cancel Job",
+        description: "Cancel selected runtime job",
+        scope: ActionContext::WorkbenchRuntime,
+        keybindings: &["c"],
+        slash_aliases: &[],
+        palette_visible: false,
+        footer_visible: true,
+        availability: always_available,
+        activity_message: None,
+    },
+    // Workbench — Plan
+    ActionSpec {
+        id: ActionId::ApprovePlan,
+        title: "Approve Plan",
+        description: "Approve the current plan",
+        scope: ActionContext::WorkbenchPlan,
+        keybindings: &["a"],
+        slash_aliases: &["/plan"],
+        palette_visible: true,
+        footer_visible: true,
+        availability: always_available,
+        activity_message: None,
+    },
+    ActionSpec {
+        id: ActionId::EditPlan,
+        title: "Edit Plan",
+        description: "Open plan in external editor",
+        scope: ActionContext::WorkbenchPlan,
+        keybindings: &["e"],
+        slash_aliases: &[],
+        palette_visible: false,
+        footer_visible: true,
+        availability: always_available,
+        activity_message: None,
+    },
+    // Workbench — VIL
+    ActionSpec {
+        id: ActionId::RunRepair,
+        title: "Repair",
+        description: "Run VIL repair on codebase",
+        scope: ActionContext::WorkbenchVil,
+        keybindings: &["R"],
+        slash_aliases: &["/repair"],
+        palette_visible: true,
+        footer_visible: true,
+        availability: always_available,
+        activity_message: None,
+    },
+    ActionSpec {
+        id: ActionId::RunAudit,
+        title: "Audit",
+        description: "Run VIL audit",
+        scope: ActionContext::WorkbenchVil,
+        keybindings: &["A"],
+        slash_aliases: &[],
+        palette_visible: false,
+        footer_visible: true,
+        availability: always_available,
+        activity_message: None,
+    },
+    // Workbench — tab navigation (WorkbenchAny: shown for all WB tabs)
+    ActionSpec {
+        id: ActionId::CycleWorkbenchTab,
+        title: "Next Tab",
+        description: "Cycle to the next workbench tab",
+        scope: ActionContext::WorkbenchAny,
+        keybindings: &["Tab"],
+        slash_aliases: &[],
+        palette_visible: false,
+        footer_visible: true,
+        availability: |s| s.focus == crate::app::WorkspaceFocus::Workbench,
+        activity_message: None,
+    },
+    // Overlay — generic close
+    ActionSpec {
+        id: ActionId::CloseOverlay,
+        title: "Close",
+        description: "Close the active overlay",
+        scope: ActionContext::OverlayActive,
+        keybindings: &["Esc"],
+        slash_aliases: &[],
+        palette_visible: false,
+        footer_visible: true,
+        availability: |s| s.overlay_manager.any_active(),
+        activity_message: None,
+    },
+];
+
+/// Look up specs for a given scope (includes Global specs for non-overlay contexts).
+/// Specs scoped to `WorkbenchAny` appear for all workbench contexts.
+pub fn specs_for_context(ctx: ActionContext) -> impl Iterator<Item = &'static ActionSpec> {
+    let is_workbench = matches!(
+        ctx,
+        ActionContext::WorkbenchApprovals
+        | ActionContext::WorkbenchReview
+        | ActionContext::WorkbenchSessions
+        | ActionContext::WorkbenchAgents
+        | ActionContext::WorkbenchRuntime
+        | ActionContext::WorkbenchPlan
+        | ActionContext::WorkbenchVil
+    );
+    ACTION_SPECS.iter().filter(move |s| {
+        s.scope == ctx
+            || (ctx != ActionContext::OverlayActive && s.scope == ActionContext::Global)
+            || (is_workbench && s.scope == ActionContext::WorkbenchAny)
+    })
+}
+
+/// Look up a spec by slash alias.
+pub fn spec_by_slash_alias(alias: &str) -> Option<&'static ActionSpec> {
+    ACTION_SPECS.iter().find(|s| s.slash_aliases.contains(&alias))
+}
+
+/// All specs visible in the footer for a given context.
+pub fn footer_specs(ctx: ActionContext) -> impl Iterator<Item = &'static ActionSpec> {
+    specs_for_context(ctx).filter(|s| s.footer_visible)
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ActionContext {
@@ -18,29 +443,14 @@ pub enum ActionContext {
     WorkbenchRuntime,
     WorkbenchPlan,
     WorkbenchVil,
+    /// Matches any active workbench tab — use for shared tab-level hints.
+    WorkbenchAny,
     OverlayActive,
 }
 
 impl ActionContext {
     pub fn from_app_state(state: &crate::app::AppState) -> Self {
-        // Basic resolution of context
-        if state.show_command_palette
-            || state.show_shortcuts
-            || state.show_isolation_switcher
-            || state.show_profile_switcher
-            || state.show_rulebook_switcher
-            || state.show_message_action_popup
-            || state.show_model_switcher
-            || state.show_file_search
-            || state.show_changeset
-            || state.shell.session_store.popup_visible
-            || state.show_ask_user_popup
-            || state.reject_reason_input.is_some()
-            || state.plan.review_open
-            || state.show_file_changes_popup
-            || state.show_helper_dropdown
-            || state.at_trigger_active
-        {
+        if state.overlay_manager.any_active() {
             return ActionContext::OverlayActive;
         }
 
@@ -61,273 +471,3 @@ impl ActionContext {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct UiAction {
-    pub id: &'static str,
-    pub description: &'static str,
-    pub keys: &'static [&'static str],
-    pub context: ActionContext,
-}
-
-pub struct ActionRegistry {
-    actions: Vec<UiAction>,
-}
-
-impl Default for ActionRegistry {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl ActionRegistry {
-    pub fn new() -> Self {
-        let mut registry = Self {
-            actions: Vec::new(),
-        };
-        registry.register_defaults();
-        registry
-    }
-
-    fn register_defaults(&mut self) {
-        // Global Actions
-        self.actions.push(UiAction {
-            id: "quit",
-            description: "Quit",
-            keys: &["Ctrl+C"],
-            context: ActionContext::Global,
-        });
-        self.actions.push(UiAction {
-            id: "command_palette",
-            description: "Command Palette",
-            keys: &["Ctrl+P"],
-            context: ActionContext::Global,
-        });
-        self.actions.push(UiAction {
-            id: "next_pane",
-            description: "Next Pane",
-            keys: &["Tab"],
-            context: ActionContext::Global,
-        });
-        self.actions.push(UiAction {
-            id: "next_tab",
-            description: "Next Tab",
-            keys: &["Ctrl+Tab"],
-            context: ActionContext::Global,
-        });
-
-        // Input Focus
-        self.actions.push(UiAction {
-            id: "submit",
-            description: "Submit",
-            keys: &["Enter"],
-            context: ActionContext::InputFocus,
-        });
-        self.actions.push(UiAction {
-            id: "history_up",
-            description: "History Up",
-            keys: &["Up"],
-            context: ActionContext::InputFocus,
-        });
-        self.actions.push(UiAction {
-            id: "history_down",
-            description: "History Down",
-            keys: &["Down"],
-            context: ActionContext::InputFocus,
-        });
-
-        // Workbench Approvals
-        self.actions.push(UiAction {
-            id: "approve",
-            description: "Approve",
-            keys: &["a"],
-            context: ActionContext::WorkbenchApprovals,
-        });
-        self.actions.push(UiAction {
-            id: "reject",
-            description: "Reject",
-            keys: &["r"],
-            context: ActionContext::WorkbenchApprovals,
-        });
-
-        // Workbench Review
-        self.actions.push(UiAction {
-            id: "diff",
-            description: "Diff",
-            keys: &["Enter"],
-            context: ActionContext::WorkbenchReview,
-        });
-        self.actions.push(UiAction {
-            id: "revert_selected",
-            description: "Revert Selected",
-            keys: &["Ctrl+X"],
-            context: ActionContext::WorkbenchReview,
-        });
-        self.actions.push(UiAction {
-            id: "revert_filtered",
-            description: "Revert Filtered",
-            keys: &["Ctrl+Y"],
-            context: ActionContext::WorkbenchReview,
-        });
-        self.actions.push(UiAction {
-            id: "revert_all",
-            description: "Revert All",
-            keys: &["Ctrl+Z"],
-            context: ActionContext::WorkbenchReview,
-        });
-        self.actions.push(UiAction {
-            id: "edit",
-            description: "Edit",
-            keys: &["Ctrl+N"],
-            context: ActionContext::WorkbenchReview,
-        });
-
-        // Workbench Sessions
-        self.actions.push(UiAction {
-            id: "restore",
-            description: "Restore",
-            keys: &["Enter"],
-            context: ActionContext::WorkbenchSessions,
-        });
-        self.actions.push(UiAction {
-            id: "resume_checkpoint",
-            description: "Resume Checkpoint",
-            keys: &["r"],
-            context: ActionContext::WorkbenchSessions,
-        });
-
-        // Workbench Runtime & Agents
-        self.actions.push(UiAction {
-            id: "refresh",
-            description: "Refresh",
-            keys: &["r"],
-            context: ActionContext::WorkbenchRuntime,
-        });
-        self.actions.push(UiAction {
-            id: "cancel",
-            description: "Cancel",
-            keys: &["c"],
-            context: ActionContext::WorkbenchRuntime,
-        });
-        self.actions.push(UiAction {
-            id: "retry",
-            description: "Retry",
-            keys: &["t"],
-            context: ActionContext::WorkbenchRuntime,
-        });
-        self.actions.push(UiAction {
-            id: "refresh_agents",
-            description: "Refresh",
-            keys: &["r"],
-            context: ActionContext::WorkbenchAgents,
-        });
-
-        // Workbench Plan
-        self.actions.push(UiAction {
-            id: "edit_plan",
-            description: "Edit",
-            keys: &["e"],
-            context: ActionContext::WorkbenchPlan,
-        });
-        self.actions.push(UiAction {
-            id: "approve_plan",
-            description: "Approve",
-            keys: &["a"],
-            context: ActionContext::WorkbenchPlan,
-        });
-        self.actions.push(UiAction {
-            id: "request_changes",
-            description: "Request Changes",
-            keys: &["r"],
-            context: ActionContext::WorkbenchPlan,
-        });
-
-        // Workbench Vil
-        self.actions.push(UiAction {
-            id: "repair",
-            description: "Repair",
-            keys: &["R"],
-            context: ActionContext::WorkbenchVil,
-        });
-        self.actions.push(UiAction {
-            id: "audit",
-            description: "Audit",
-            keys: &["A"],
-            context: ActionContext::WorkbenchVil,
-        });
-        self.actions.push(UiAction {
-            id: "ir_diff",
-            description: "IR Diff",
-            keys: &["D"],
-            context: ActionContext::WorkbenchVil,
-        });
-        self.actions.push(UiAction {
-            id: "open",
-            description: "Open",
-            keys: &["O"],
-            context: ActionContext::WorkbenchVil,
-        });
-
-        // Navigation (Global, but contextual hints)
-        self.actions.push(UiAction {
-            id: "select",
-            description: "Select",
-            keys: &["↑/↓"],
-            context: ActionContext::WorkbenchApprovals,
-        });
-        self.actions.push(UiAction {
-            id: "select",
-            description: "Select",
-            keys: &["↑/↓"],
-            context: ActionContext::WorkbenchReview,
-        });
-        self.actions.push(UiAction {
-            id: "select",
-            description: "Select",
-            keys: &["↑/↓"],
-            context: ActionContext::WorkbenchSessions,
-        });
-        self.actions.push(UiAction {
-            id: "select",
-            description: "Select",
-            keys: &["↑/↓"],
-            context: ActionContext::WorkbenchAgents,
-        });
-        self.actions.push(UiAction {
-            id: "select",
-            description: "Select",
-            keys: &["↑/↓"],
-            context: ActionContext::WorkbenchRuntime,
-        });
-        self.actions.push(UiAction {
-            id: "select",
-            description: "Select",
-            keys: &["↑/↓"],
-            context: ActionContext::WorkbenchVil,
-        });
-        self.actions.push(UiAction {
-            id: "filter",
-            description: "Filter",
-            keys: &["←/→"],
-            context: ActionContext::WorkbenchVil,
-        });
-    }
-
-    pub fn get_actions_for_context(&self, context: ActionContext) -> Vec<UiAction> {
-        let mut results = Vec::new();
-        // Add global actions first
-        for action in &self.actions {
-            if action.context == ActionContext::Global {
-                results.push(action.clone());
-            }
-        }
-        // Then add context-specific actions
-        if context != ActionContext::Global {
-            for action in &self.actions {
-                if action.context == context {
-                    results.push(action.clone());
-                }
-            }
-        }
-        results
-    }
-}

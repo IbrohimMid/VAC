@@ -148,7 +148,7 @@ pub fn open_ask_user_popup(state: &mut AppState, tc: &crate::types::ToolCall) {
     state.ask_user_search_active = false;
     state.ask_user_scroll = 0;
     state.ask_user_tool_call_id = Some(tc.id.clone());
-    state.show_ask_user_popup = true;
+    crate::overlay::open_overlay(state, crate::overlay::OverlayId::AskUser);
     state.push_activity(
         crate::app::ActivityKind::Approval,
         "Assistant requested input",
@@ -795,14 +795,14 @@ pub fn handle_backend_event(
             state.activity.clear();
             state.activity_scroll = 0;
             state.toasts.clear();
-            state.show_model_switcher = false;
+            crate::overlay::close_overlay(state, crate::overlay::OverlayId::ModelSwitcher);
             state.model_switcher_filter.clear();
             state.model_switcher_selected_idx = 0;
-            state.show_file_search = false;
+            crate::overlay::close_overlay(state, crate::overlay::OverlayId::FileSearch);
             state.file_search_query.clear();
             state.file_search_selected_idx = 0;
             state.file_search_results.clear();
-            state.show_changeset = false;
+            crate::overlay::close_overlay(state, crate::overlay::OverlayId::Changeset);
             state.changeset_selected_idx = 0;
             state.changeset_diff_scroll = 0;
             state.changeset_selected_path = None;

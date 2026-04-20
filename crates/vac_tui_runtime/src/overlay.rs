@@ -4,9 +4,7 @@
 //! priority (topmost overlay wins), render order, and focus restore when an
 //! overlay is dismissed.
 
-use crate::app::{AppState, InputEvent, OutputEvent, WorkspaceFocus};
-use ratatui::Frame;
-use tokio::sync::mpsc::Sender;
+use crate::app::{AppState, WorkspaceFocus};
 
 /// Identifies a specific overlay/popup in the TUI.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -26,10 +24,15 @@ pub enum OverlayId {
     MessageAction,
     HelperDropdown,
     AtDropdown,
+    /// Approval rejection reason prompt (modal input under an approval).
+    RejectReason,
+    /// Review workbench detail pane (modal when an item is open).
+    ReviewPane,
 }
 
 /// Render order (lower index = rendered first = underneath).
 const RENDER_ORDER: &[OverlayId] = &[
+    OverlayId::ReviewPane,
     OverlayId::Changeset,
     OverlayId::FileSearch,
     OverlayId::FileChanges,
@@ -45,6 +48,7 @@ const RENDER_ORDER: &[OverlayId] = &[
     OverlayId::CommandPalette,
     OverlayId::HelperDropdown,
     OverlayId::AtDropdown,
+    OverlayId::RejectReason,
 ];
 
 /// Manages the active overlay stack.
@@ -118,27 +122,19 @@ impl OverlayManager {
     }
 }
 
-// ── Sync helpers ────────────────────────────────────────────────────────────
-//
-// These helpers keep `OverlayManager` in sync with the existing `show_X` bool
-// flags on AppState.  They are the *only* place that should mutate both the
-// manager stack and the legacy flags.  Once all callers migrate to going
-// through the manager, the flags can be removed.
-
-/// Open an overlay: updates both the manager stack and the legacy show_ flag.
+/// Open an overlay and update any associated non-bool domain state.
 pub fn open_overlay(state: &mut AppState, id: OverlayId) {
     let focus = state.focus;
     state.overlay_manager.push(id, focus);
-    set_show_flag(state, id, true);
+    sync_domain_state(state, id, true);
 }
 
-/// Close an overlay: removes it from the stack and clears the legacy flag.
-/// Restores focus if the stack drains to empty.
+/// Close an overlay. Restores focus if the stack drains to empty.
 pub fn close_overlay(state: &mut AppState, id: OverlayId) {
     if let Some(restored) = state.overlay_manager.pop(id) {
         state.focus = restored;
     }
-    set_show_flag(state, id, false);
+    sync_domain_state(state, id, false);
 }
 
 /// Close all overlays.
@@ -147,27 +143,46 @@ pub fn close_all_overlays(state: &mut AppState) {
         state.focus = restored;
     }
     for id in RENDER_ORDER {
-        set_show_flag(state, *id, false);
+        sync_domain_state(state, *id, false);
     }
 }
 
-fn set_show_flag(state: &mut AppState, id: OverlayId, value: bool) {
+/// Sync non-OverlayManager domain state that some overlays back with a bool or struct field.
+fn sync_domain_state(state: &mut AppState, id: OverlayId, value: bool) {
     match id {
-        OverlayId::CommandPalette => state.show_command_palette = value,
-        OverlayId::Shortcuts => state.show_shortcuts = value,
-        OverlayId::IsolationSwitcher => state.show_isolation_switcher = value,
-        OverlayId::ProfileSwitcher => state.show_profile_switcher = value,
-        OverlayId::RulebookSwitcher => state.show_rulebook_switcher = value,
-        OverlayId::ModelSwitcher => state.show_model_switcher = value,
-        OverlayId::FileSearch => state.show_file_search = value,
-        OverlayId::Changeset => state.show_changeset = value,
-        OverlayId::FileChanges => state.show_file_changes_popup = value,
         OverlayId::PlanReview => state.plan.review_open = value,
-        OverlayId::AskUser => state.show_ask_user_popup = value,
         OverlayId::ShellPopup => state.shell.session_store.popup_visible = value,
-        OverlayId::MessageAction => state.show_message_action_popup = value,
-        OverlayId::HelperDropdown => state.show_helper_dropdown = value,
-        OverlayId::AtDropdown => { /* at_trigger_active is not a plain bool toggle */ }
+        OverlayId::AtDropdown => {
+            state.at_trigger_active = value;
+            if !value {
+                state.at_query.clear();
+                state.at_results.clear();
+                state.at_selected_idx = 0;
+            }
+        }
+        OverlayId::RejectReason => {
+            if value {
+                if state.reject_reason_input.is_none() {
+                    state.reject_reason_input = Some(String::new());
+                }
+            } else {
+                state.reject_reason_input = None;
+            }
+        }
+        OverlayId::ReviewPane => state.review.open = value,
+        // These overlays carry no additional domain state beyond the stack itself.
+        OverlayId::CommandPalette
+        | OverlayId::Shortcuts
+        | OverlayId::IsolationSwitcher
+        | OverlayId::ProfileSwitcher
+        | OverlayId::RulebookSwitcher
+        | OverlayId::ModelSwitcher
+        | OverlayId::FileSearch
+        | OverlayId::Changeset
+        | OverlayId::FileChanges
+        | OverlayId::AskUser
+        | OverlayId::MessageAction
+        | OverlayId::HelperDropdown => {}
     }
 }
 
@@ -176,17 +191,79 @@ pub fn active_render_ids(state: &AppState) -> impl Iterator<Item = OverlayId> + 
     state.overlay_manager.render_order()
 }
 
-/// Trait for rendering and handling input for UI overlays (kept for
-/// compatibility; concrete impls can migrate to this gradually).
-pub trait Overlay {
-    fn render(&self, f: &mut Frame, state: &AppState);
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::*;
+    use crate::app::{AppState, AppStateOptions};
 
-    fn handle_event(
-        &mut self,
-        state: &mut AppState,
-        output_tx: &Sender<OutputEvent>,
-        event: InputEvent,
-    ) -> Result<bool, String>;
+    fn make_state() -> AppState {
+        AppState::new(AppStateOptions {
+            model: None,
+            session_id: Some(uuid::Uuid::new_v4().to_string()),
+            checkpoint_path: None,
+            project_root: std::env::current_dir().unwrap(),
+        })
+    }
 
-    fn is_active(&self, state: &AppState) -> bool;
+    #[test]
+    fn sync_plan_review_open_on_open_overlay() {
+        let mut state = make_state();
+        assert!(!state.plan.review_open);
+        open_overlay(&mut state, OverlayId::PlanReview);
+        assert!(state.overlay_manager.is_active(OverlayId::PlanReview));
+        assert!(state.plan.review_open);
+        close_overlay(&mut state, OverlayId::PlanReview);
+        assert!(!state.overlay_manager.is_active(OverlayId::PlanReview));
+        assert!(!state.plan.review_open);
+    }
+
+    #[test]
+    fn sync_shell_popup_visible_on_open_overlay() {
+        let mut state = make_state();
+        assert!(!state.shell.session_store.popup_visible);
+        open_overlay(&mut state, OverlayId::ShellPopup);
+        assert!(state.overlay_manager.is_active(OverlayId::ShellPopup));
+        assert!(state.shell.session_store.popup_visible);
+        close_overlay(&mut state, OverlayId::ShellPopup);
+        assert!(!state.overlay_manager.is_active(OverlayId::ShellPopup));
+        assert!(!state.shell.session_store.popup_visible);
+    }
+
+    #[test]
+    fn sync_at_trigger_active_on_open_overlay() {
+        let mut state = make_state();
+        assert!(!state.at_trigger_active);
+        open_overlay(&mut state, OverlayId::AtDropdown);
+        assert!(state.overlay_manager.is_active(OverlayId::AtDropdown));
+        assert!(state.at_trigger_active);
+        close_overlay(&mut state, OverlayId::AtDropdown);
+        assert!(!state.overlay_manager.is_active(OverlayId::AtDropdown));
+        assert!(!state.at_trigger_active);
+    }
+
+    #[test]
+    fn sync_reject_reason_input_on_open_overlay() {
+        let mut state = make_state();
+        assert!(state.reject_reason_input.is_none());
+        open_overlay(&mut state, OverlayId::RejectReason);
+        assert!(state.overlay_manager.is_active(OverlayId::RejectReason));
+        assert!(state.reject_reason_input.is_some());
+        close_overlay(&mut state, OverlayId::RejectReason);
+        assert!(!state.overlay_manager.is_active(OverlayId::RejectReason));
+        assert!(state.reject_reason_input.is_none());
+    }
+
+    #[test]
+    fn sync_review_open_on_open_overlay() {
+        let mut state = make_state();
+        assert!(!state.review.open);
+        open_overlay(&mut state, OverlayId::ReviewPane);
+        assert!(state.overlay_manager.is_active(OverlayId::ReviewPane));
+        assert!(state.review.open);
+        close_overlay(&mut state, OverlayId::ReviewPane);
+        assert!(!state.overlay_manager.is_active(OverlayId::ReviewPane));
+        assert!(!state.review.open);
+    }
 }
+

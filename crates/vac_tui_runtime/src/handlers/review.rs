@@ -6,9 +6,9 @@ use crate::services::review;
 
 /// Open review workstation.
 pub fn open(ctx: &mut HandlerContext) -> HandlerResult {
-    ctx.state.review.open = true;
     ctx.state.workbench_tab = crate::app::WorkbenchTab::Review;
     ctx.state.focus = crate::app::WorkspaceFocus::Workbench;
+    crate::overlay::open_overlay(ctx.state, crate::overlay::OverlayId::ReviewPane);
     ctx.state.review.generation = ctx.state.review.generation.saturating_add(1);
     ctx.state.review_sync_items();
     ctx.state.review_normalize_selection();
@@ -17,7 +17,7 @@ pub fn open(ctx: &mut HandlerContext) -> HandlerResult {
 
 /// Close review workstation.
 pub fn close(ctx: &mut HandlerContext) -> HandlerResult {
-    ctx.state.review.open = false;
+    crate::overlay::close_overlay(ctx.state, crate::overlay::OverlayId::ReviewPane);
     ctx.state.review.diff = None;
     Ok(())
 }

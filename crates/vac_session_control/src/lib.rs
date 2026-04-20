@@ -92,6 +92,7 @@ pub fn checkpoint_dir(project_root: &Path) -> PathBuf {
 }
 
 /// Save a session snapshot to disk.
+#[deprecated(note = "Use save_snapshot_async instead")]
 pub fn save_snapshot(snapshot: &SessionSnapshot) -> Result<PathBuf> {
     let dir = sessions_dir(&snapshot.project_root);
     std::fs::create_dir_all(&dir)?;
@@ -103,6 +104,7 @@ pub fn save_snapshot(snapshot: &SessionSnapshot) -> Result<PathBuf> {
 }
 
 /// Load a session snapshot from disk.
+#[deprecated(note = "Use load_snapshot_async instead")]
 pub fn load_snapshot(project_root: &Path, session_id: Uuid) -> Result<SessionSnapshot> {
     let path = snapshot_path(project_root, session_id);
     if !path.exists() {
@@ -115,6 +117,7 @@ pub fn load_snapshot(project_root: &Path, session_id: Uuid) -> Result<SessionSna
 }
 
 /// List all session snapshots, sorted by updated_at descending.
+#[deprecated(note = "Use list_snapshots_async instead")]
 pub fn list_snapshots(project_root: &Path) -> Result<Vec<SessionSnapshot>> {
     let dir = sessions_dir(project_root);
     if !dir.exists() {
@@ -139,6 +142,7 @@ pub fn list_snapshots(project_root: &Path) -> Result<Vec<SessionSnapshot>> {
 }
 
 /// Check if a session has a checkpoint available.
+#[deprecated(note = "Use has_checkpoint_async instead")]
 pub fn has_checkpoint(project_root: &Path, session_id: Uuid) -> bool {
     let cp_dir = checkpoint_dir(project_root);
     cp_dir.join(format!("{session_id}_state.json")).exists()
@@ -185,6 +189,7 @@ pub struct CleanupReport {
 }
 
 /// Clean up all artifacts associated with a session.
+#[deprecated(note = "Use cleanup_session_async instead")]
 pub fn cleanup_session(project_root: &Path, session_id: Uuid) -> CleanupReport {
     let mut report = CleanupReport {
         snapshot_removed: false,
@@ -244,6 +249,42 @@ pub fn cleanup_session(project_root: &Path, session_id: Uuid) -> CleanupReport {
 pub fn is_stale(snapshot: &SessionSnapshot, max_age: chrono::Duration) -> bool {
     let cutoff = Utc::now() - max_age;
     snapshot.updated_at < cutoff
+}
+
+pub async fn save_snapshot_async(snapshot: SessionSnapshot) -> Result<PathBuf> {
+    tokio::task::spawn_blocking(move || save_snapshot(&snapshot))
+        .await
+        .map_err(|e| SessionControlError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?
+}
+
+pub async fn load_snapshot_async(
+    project_root: PathBuf,
+    session_id: Uuid,
+) -> Result<SessionSnapshot> {
+    tokio::task::spawn_blocking(move || load_snapshot(&project_root, session_id))
+        .await
+        .map_err(|e| SessionControlError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?
+}
+
+pub async fn list_snapshots_async(project_root: PathBuf) -> Result<Vec<SessionSnapshot>> {
+    tokio::task::spawn_blocking(move || list_snapshots(&project_root))
+        .await
+        .map_err(|e| SessionControlError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?
+}
+
+pub async fn cleanup_session_async(
+    project_root: PathBuf,
+    session_id: Uuid,
+) -> Result<CleanupReport> {
+    tokio::task::spawn_blocking(move || Ok(cleanup_session(&project_root, session_id)))
+        .await
+        .map_err(|e| SessionControlError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?
+}
+
+pub async fn has_checkpoint_async(project_root: PathBuf, session_id: Uuid) -> bool {
+    tokio::task::spawn_blocking(move || has_checkpoint(&project_root, session_id))
+        .await
+        .unwrap_or(false)
 }
 
 #[cfg(test)]

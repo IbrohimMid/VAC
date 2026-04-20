@@ -1,0 +1,357 @@
+//! Workspace (non-workbench) input handlers — dispatched from the main router
+//! for Input, Conversation, and Activity focus.
+
+use crate::app::{AppState, InputEvent, OutputEvent, WorkspaceFocus};
+use crate::handlers::input_commands::{dispatch_builtin_command, handle_paste_tray_key};
+use crate::handlers::shell as shell_handler;
+use crate::handlers::input_editor::message_at_row;
+use tokio::sync::mpsc::Sender;
+
+pub fn handle(state: &mut AppState, output_tx: &Sender<OutputEvent>, event: InputEvent) {
+    match event {
+        InputEvent::InputChanged(c) => handle_char(state, output_tx, c),
+        InputEvent::InputChangedNewline => {
+            if state.focus == WorkspaceFocus::Input {
+                state.input.newline();
+            }
+        }
+        InputEvent::InputBackspace => handle_backspace(state),
+        InputEvent::InputDelete => {
+            if state.focus == WorkspaceFocus::Input {
+                state.input.delete();
+                if state.overlay_manager.is_active(crate::overlay::OverlayId::HelperDropdown) {
+                    crate::services::helper_dropdown::filter_helpers_sync(state);
+                }
+            }
+        }
+        InputEvent::InputClear => {
+            if state.focus == WorkspaceFocus::Input {
+                let had_pastes = !state.pending_pastes.is_empty();
+                let had_images = !state.pending_image_parts.is_empty();
+                state.input.clear();
+                state.pending_pastes.clear();
+                state.pending_image_parts.clear();
+                if had_pastes || had_images {
+                    state.toasts.push(crate::services::Toast::info(
+                        "Input and pending attachments cleared.".to_string(),
+                    ));
+                }
+            }
+        }
+        InputEvent::InputSubmitted => handle_submit(state, output_tx),
+        InputEvent::HandlePaste(text) => handle_paste(state, text),
+        InputEvent::HandleClipboardImagePaste => handle_image_paste(state),
+        InputEvent::CursorLeft => {
+            if state.focus == WorkspaceFocus::Input {
+                state.input.move_cursor_left();
+            }
+        }
+        InputEvent::CursorRight => {
+            if state.focus == WorkspaceFocus::Input {
+                state.input.move_cursor_right();
+            }
+        }
+        InputEvent::InputCursorStart => {
+            if state.focus == WorkspaceFocus::Input {
+                state.input.move_cursor_start();
+            }
+        }
+        InputEvent::InputCursorEnd => {
+            if state.focus == WorkspaceFocus::Input {
+                state.input.move_cursor_end();
+            }
+        }
+        InputEvent::Up => handle_up(state, output_tx),
+        InputEvent::Down => handle_down(state, output_tx),
+        InputEvent::ScrollUp => {
+            match state.focus {
+                WorkspaceFocus::Conversation => state.scroll = state.scroll.saturating_sub(1),
+                WorkspaceFocus::Activity => {
+                    state.activity_scroll = state.activity_scroll.saturating_add(1)
+                }
+                _ => {}
+            }
+        }
+        InputEvent::ScrollDown => {
+            match state.focus {
+                WorkspaceFocus::Conversation => state.scroll = state.scroll.saturating_add(1),
+                WorkspaceFocus::Activity => {
+                    state.activity_scroll = state.activity_scroll.saturating_sub(1)
+                }
+                _ => {}
+            }
+        }
+        InputEvent::MouseRightClick(_col, row) => {
+            if let Some(msg_id) = message_at_row(state, row) {
+                state.message_action_popup_selected = 0;
+                state.message_action_target_id = Some(msg_id);
+                crate::overlay::open_overlay(state, crate::overlay::OverlayId::MessageAction);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn handle_char(state: &mut AppState, output_tx: &Sender<OutputEvent>, c: char) {
+    if state.focus == WorkspaceFocus::Input
+        && state.input.is_empty()
+        && !state.pending_pastes.is_empty()
+        && handle_paste_tray_key(state, c)
+    {
+        return;
+    }
+
+    if state.focus != WorkspaceFocus::Input {
+        return;
+    }
+
+    if c == '/' && state.input.lines.join("").trim().is_empty() {
+        crate::overlay::open_overlay(state, crate::overlay::OverlayId::HelperDropdown);
+        state.input.input(c);
+        crate::services::helper_dropdown::filter_helpers_sync(state);
+        state.helper_selected = 0;
+        state.helper_scroll = 0;
+    } else if state.overlay_manager.is_active(crate::overlay::OverlayId::HelperDropdown) {
+        state.input.input(c);
+        crate::services::helper_dropdown::filter_helpers_sync(state);
+        state.helper_selected = 0;
+        state.helper_scroll = 0;
+    } else if c == '@' && !state.at_trigger_active {
+        crate::overlay::open_overlay(state, crate::overlay::OverlayId::AtDropdown);
+        state.at_query = String::new();
+        state.at_selected_idx = 0;
+        if state.all_files.is_empty() {
+            state.all_files = crate::services::build_file_index(&state.project_root);
+        }
+        state.at_results = crate::services::fuzzy_search_files("", &state.all_files, 8);
+        state.input.input(c);
+    } else if state.at_trigger_active {
+        state.at_query.push(c);
+        state.at_selected_idx = 0;
+        state.at_results =
+            crate::services::fuzzy_search_files(&state.at_query, &state.all_files, 8);
+        state.input.input(c);
+    } else {
+        state.input.input(c);
+    }
+
+    let _ = output_tx; // suppress unused warning when no send is needed here
+}
+
+fn handle_backspace(state: &mut AppState) {
+    if state.focus != WorkspaceFocus::Input {
+        return;
+    }
+    if state.overlay_manager.is_active(crate::overlay::OverlayId::HelperDropdown) {
+        state.input.backspace();
+        crate::services::helper_dropdown::filter_helpers_sync(state);
+        state.helper_selected = 0;
+        state.helper_scroll = 0;
+    } else if state.at_trigger_active {
+        if state.at_query.is_empty() {
+            state.at_trigger_active = false;
+            state.at_results.clear();
+            state.at_selected_idx = 0;
+        } else {
+            state.at_query.pop();
+            state.at_selected_idx = 0;
+            state.at_results =
+                crate::services::fuzzy_search_files(&state.at_query, &state.all_files, 8);
+        }
+        state.input.backspace();
+    } else {
+        state.input.backspace();
+    }
+}
+
+fn handle_submit(state: &mut AppState, output_tx: &Sender<OutputEvent>) {
+    if state.focus == WorkspaceFocus::Input
+        && state.shell.session_store.popup_visible
+        && state
+            .shell
+            .session_store
+            .active()
+            .and_then(|s| s.command.as_ref())
+            .is_some()
+    {
+        let _ = shell_handler::handle_shell_key(state, output_tx, &InputEvent::InputSubmitted);
+        return;
+    }
+
+    if state.focus != WorkspaceFocus::Input || state.input.is_empty() {
+        return;
+    }
+
+    let msg = state.input.get_content();
+    state.input.clear();
+
+    if msg.starts_with('/') {
+        state.recent_commands.add_command(msg.clone());
+        let trimmed = msg.trim();
+        let mut parts = trimmed.splitn(2, char::is_whitespace);
+        let cmd_word = parts.next().unwrap_or(trimmed);
+        let cmd_args = parts.next().map(|s| s.trim()).filter(|s| !s.is_empty());
+
+        if !dispatch_builtin_command(state, output_tx, cmd_word, cmd_args) {
+            let expanded = state.expand_pending_pastes(&msg);
+            let image_parts = std::mem::take(&mut state.pending_image_parts);
+            state
+                .pending_user_messages
+                .push_back(crate::app::PendingUserMessage::new(
+                    expanded.clone(),
+                    None,
+                    image_parts,
+                    expanded,
+                ));
+        }
+    } else {
+        let expanded = state.expand_pending_pastes(&msg);
+        let image_parts = std::mem::take(&mut state.pending_image_parts);
+        state
+            .pending_user_messages
+            .push_back(crate::app::PendingUserMessage::new(
+                expanded.clone(),
+                None,
+                image_parts,
+                expanded,
+            ));
+    }
+}
+
+fn handle_up(state: &mut AppState, output_tx: &Sender<OutputEvent>) {
+    match state.focus {
+        WorkspaceFocus::Input => {
+            if shell_handler::handle_shell_key(state, output_tx, &InputEvent::Up) {
+                state.input.move_cursor_end();
+            } else {
+                state.input.move_cursor_up();
+            }
+        }
+        WorkspaceFocus::Conversation => state.scroll = state.scroll.saturating_sub(1),
+        WorkspaceFocus::Activity => {
+            state.activity_scroll = state.activity_scroll.saturating_add(1)
+        }
+        WorkspaceFocus::Workbench => {} // handled by workbench_input
+    }
+}
+
+fn handle_down(state: &mut AppState, output_tx: &Sender<OutputEvent>) {
+    match state.focus {
+        WorkspaceFocus::Input => {
+            if shell_handler::handle_shell_key(state, output_tx, &InputEvent::Down) {
+                state.input.move_cursor_end();
+            } else {
+                state.input.move_cursor_down();
+            }
+        }
+        WorkspaceFocus::Conversation => state.scroll = state.scroll.saturating_add(1),
+        WorkspaceFocus::Activity => {
+            state.activity_scroll = state.activity_scroll.saturating_sub(1)
+        }
+        WorkspaceFocus::Workbench => {} // handled by workbench_input
+    }
+}
+
+fn handle_paste(state: &mut AppState, text: String) {
+    use crate::services::clipboard_paste::{
+        PastedItem, PastedKind, extract_file_paths_from_text, is_long_paste, make_paste_id,
+        text_placeholder,
+    };
+    let paths = extract_file_paths_from_text(&text);
+    if !paths.is_empty() {
+        for path in paths {
+            state.input.insert_str(&path.to_string_lossy());
+            state.input.input(' ');
+        }
+    } else if is_long_paste(&text) {
+        state.paste_counter += 1;
+        let id = make_paste_id(state.paste_counter);
+        let char_count = text.chars().count();
+        let line_count = text.chars().filter(|c| *c == '\n').count() + 1;
+        let placeholder = text_placeholder(&id, char_count, line_count);
+        state.input.insert_str(&placeholder);
+        state.input.input(' ');
+        state.pending_pastes.push(PastedItem {
+            id,
+            placeholder,
+            kind: PastedKind::Text {
+                content: text,
+                line_count,
+                char_count,
+            },
+        });
+    } else {
+        for c in text.chars() {
+            if c == '\n' {
+                state.input.newline();
+            } else if c != '\r' {
+                state.input.input(c);
+            }
+        }
+    }
+}
+
+fn handle_image_paste(state: &mut AppState) {
+    #[cfg(not(target_os = "android"))]
+    {
+        const MAX_IMAGE_BYTES: usize = 10 * 1024 * 1024;
+
+        match crate::services::clipboard_paste::paste_image_to_temp_png() {
+            Ok((path, info)) => {
+                if let Ok(bytes) = std::fs::read(&path) {
+                    if bytes.len() > MAX_IMAGE_BYTES {
+                        log::warn!(
+                            "Image too large ({} bytes), max {} bytes",
+                            bytes.len(),
+                            MAX_IMAGE_BYTES
+                        );
+                        state.input.insert_str("[image too large, max 10MB] ");
+                    } else {
+                        use crate::services::clipboard_paste::{
+                            PastedItem, PastedKind, image_placeholder, make_paste_id,
+                        };
+                        use base64::Engine as _;
+                        let b64 =
+                            base64::engine::general_purpose::STANDARD.encode(&bytes);
+                        let media_type = match path.extension().and_then(|e| e.to_str()) {
+                            Some("png") => "image/png",
+                            Some("jpg") | Some("jpeg") => "image/jpeg",
+                            Some("gif") => "image/gif",
+                            Some("webp") => "image/webp",
+                            _ => "image/png",
+                        };
+                        let part = crate::types::ContentPart {
+                            r#type: "image".to_string(),
+                            text: None,
+                            image_url: Some(crate::types::ImageUrl {
+                                url: format!("data:{};base64,{}", media_type, b64),
+                            }),
+                        };
+                        state.pending_image_parts.push(part);
+                        state.paste_counter += 1;
+                        let id = make_paste_id(state.paste_counter);
+                        let placeholder =
+                            image_placeholder(&id, info.width, info.height);
+                        state.input.insert_str(&placeholder);
+                        state.input.input(' ');
+                        state.pending_pastes.push(PastedItem {
+                            id,
+                            placeholder,
+                            kind: PastedKind::Image {
+                                width: info.width,
+                                height: info.height,
+                                byte_count: bytes.len(),
+                            },
+                        });
+                    }
+                } else {
+                    state.input.insert_str(&path.to_string_lossy());
+                    state.input.input(' ');
+                }
+            }
+            Err(e) => {
+                log::warn!("Failed to paste image from clipboard: {}", e);
+            }
+        }
+    }
+}
