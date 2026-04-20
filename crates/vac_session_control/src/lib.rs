@@ -252,7 +252,10 @@ pub fn is_stale(snapshot: &SessionSnapshot, max_age: chrono::Duration) -> bool {
 }
 
 pub async fn save_snapshot_async(snapshot: SessionSnapshot) -> Result<PathBuf> {
-    tokio::task::spawn_blocking(move || save_snapshot(&snapshot))
+    tokio::task::spawn_blocking(move || {
+        #[allow(deprecated)]
+        save_snapshot(&snapshot)
+    })
         .await
         .map_err(|e| SessionControlError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?
 }
@@ -261,13 +264,19 @@ pub async fn load_snapshot_async(
     project_root: PathBuf,
     session_id: Uuid,
 ) -> Result<SessionSnapshot> {
-    tokio::task::spawn_blocking(move || load_snapshot(&project_root, session_id))
+    tokio::task::spawn_blocking(move || {
+        #[allow(deprecated)]
+        load_snapshot(&project_root, session_id)
+    })
         .await
         .map_err(|e| SessionControlError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?
 }
 
 pub async fn list_snapshots_async(project_root: PathBuf) -> Result<Vec<SessionSnapshot>> {
-    tokio::task::spawn_blocking(move || list_snapshots(&project_root))
+    tokio::task::spawn_blocking(move || {
+        #[allow(deprecated)]
+        list_snapshots(&project_root)
+    })
         .await
         .map_err(|e| SessionControlError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?
 }
@@ -276,13 +285,19 @@ pub async fn cleanup_session_async(
     project_root: PathBuf,
     session_id: Uuid,
 ) -> Result<CleanupReport> {
-    tokio::task::spawn_blocking(move || Ok(cleanup_session(&project_root, session_id)))
+    tokio::task::spawn_blocking(move || {
+        #[allow(deprecated)]
+        Ok(cleanup_session(&project_root, session_id))
+    })
         .await
         .map_err(|e| SessionControlError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?
 }
 
 pub async fn has_checkpoint_async(project_root: PathBuf, session_id: Uuid) -> bool {
-    tokio::task::spawn_blocking(move || has_checkpoint(&project_root, session_id))
+    tokio::task::spawn_blocking(move || {
+        #[allow(deprecated)]
+        has_checkpoint(&project_root, session_id)
+    })
         .await
         .unwrap_or(false)
 }

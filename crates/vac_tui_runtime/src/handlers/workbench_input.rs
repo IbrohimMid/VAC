@@ -191,6 +191,7 @@ fn handle_submit(state: &mut AppState, output_tx: &Sender<OutputEvent>) {
     }
 }
 
+#[allow(deprecated)]
 fn cleanup_session(state: &mut AppState, output_tx: &Sender<OutputEvent>) {
     if let Some(sel) = state.sessions.get(state.sessions_selected_idx).cloned() {
         match uuid::Uuid::parse_str(&sel.id) {
