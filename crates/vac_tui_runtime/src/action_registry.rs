@@ -48,6 +48,7 @@ pub enum ActionId {
     // Workbench — Agents
     RefreshAgents,
     // Workbench — Plan
+    OpenPlan,
     ApprovePlan,
     RequestPlanChanges,
     EditPlan,
@@ -63,6 +64,27 @@ pub enum ActionId {
     // New session / review
     NewSession,
     ReviewOpen,
+    // Slash-command actions (BuiltIn handlers)
+    Clear,
+    Sessions,
+    Runtime,
+    Agents,
+    Shell,
+    ShellFocus,
+    ShellBackground,
+    ShellKill,
+    Context,
+    Export,
+    Import,
+    Changes,
+    FileChanges,
+    PlanReview,
+    PlanEdit,
+    // Wave 2 overlays
+    OpenTaskTray,
+    OpenThemePicker,
+    OpenSessionResume,
+    OpenFilePicker,
 }
 
 // ── KeyChord ────────────────────────────────────────────────────────────────
@@ -86,7 +108,9 @@ pub struct ActionSpec {
     pub activity_message: Option<fn(&crate::app::AppState) -> String>,
 }
 
-fn always_available(_: &crate::app::AppState) -> bool { true }
+fn always_available(_: &crate::app::AppState) -> bool {
+    true
+}
 
 /// Static registry of all action specs. This is the single source of truth.
 pub static ACTION_SPECS: &[ActionSpec] = &[
@@ -324,15 +348,27 @@ pub static ACTION_SPECS: &[ActionSpec] = &[
     },
     // Workbench — Plan
     ActionSpec {
-        id: ActionId::ApprovePlan,
-        title: "Approve Plan",
-        description: "Approve the current plan",
-        scope: ActionContext::WorkbenchPlan,
-        keybindings: &["a"],
+        id: ActionId::OpenPlan,
+        title: "Plan",
+        description: "Open or create plan.md in the Plan workbench",
+        scope: ActionContext::Global,
+        keybindings: &[],
         slash_aliases: &["/plan"],
         palette_visible: true,
-        footer_visible: true,
+        footer_visible: false,
         availability: always_available,
+        activity_message: None,
+    },
+    ActionSpec {
+        id: ActionId::ApprovePlan,
+        title: "Approve Plan",
+        description: "Approve the current plan and send to agent",
+        scope: ActionContext::WorkbenchPlan,
+        keybindings: &["a"],
+        slash_aliases: &[],
+        palette_visible: false,
+        footer_visible: true,
+        availability: |s| s.plan.mode_active,
         activity_message: None,
     },
     ActionSpec {
@@ -341,9 +377,21 @@ pub static ACTION_SPECS: &[ActionSpec] = &[
         description: "Open plan in external editor",
         scope: ActionContext::WorkbenchPlan,
         keybindings: &["e"],
-        slash_aliases: &[],
-        palette_visible: false,
+        slash_aliases: &["/plan-edit"],
+        palette_visible: true,
         footer_visible: true,
+        availability: always_available,
+        activity_message: None,
+    },
+    ActionSpec {
+        id: ActionId::OpenPlanReview,
+        title: "Plan Review",
+        description: "Review the current plan",
+        scope: ActionContext::Global,
+        keybindings: &[],
+        slash_aliases: &["/plan-review"],
+        palette_visible: true,
+        footer_visible: false,
         availability: always_available,
         activity_message: None,
     },
@@ -385,6 +433,187 @@ pub static ACTION_SPECS: &[ActionSpec] = &[
         availability: |s| s.focus == crate::app::WorkspaceFocus::Workbench,
         activity_message: None,
     },
+    // Slash-command actions
+    ActionSpec {
+        id: ActionId::Clear,
+        title: "Clear",
+        description: "Clear the conversation",
+        scope: ActionContext::Global,
+        keybindings: &[],
+        slash_aliases: &["/clear"],
+        palette_visible: true,
+        footer_visible: false,
+        availability: always_available,
+        activity_message: None,
+    },
+    ActionSpec {
+        id: ActionId::Sessions,
+        title: "Sessions",
+        description: "Open the sessions workbench tab",
+        scope: ActionContext::Global,
+        keybindings: &[],
+        slash_aliases: &["/sessions"],
+        palette_visible: true,
+        footer_visible: false,
+        availability: always_available,
+        activity_message: None,
+    },
+    ActionSpec {
+        id: ActionId::Runtime,
+        title: "Runtime",
+        description: "Open the runtime jobs tab",
+        scope: ActionContext::Global,
+        keybindings: &[],
+        slash_aliases: &["/runtime"],
+        palette_visible: true,
+        footer_visible: false,
+        availability: always_available,
+        activity_message: None,
+    },
+    ActionSpec {
+        id: ActionId::Agents,
+        title: "Agents",
+        description: "Open the agents scheduler tab",
+        scope: ActionContext::Global,
+        keybindings: &[],
+        slash_aliases: &["/agents"],
+        palette_visible: true,
+        footer_visible: false,
+        availability: always_available,
+        activity_message: None,
+    },
+    ActionSpec {
+        id: ActionId::Shell,
+        title: "Shell",
+        description: "Execute a shell command",
+        scope: ActionContext::Global,
+        keybindings: &[],
+        slash_aliases: &["/shell"],
+        palette_visible: true,
+        footer_visible: false,
+        availability: always_available,
+        activity_message: None,
+    },
+    ActionSpec {
+        id: ActionId::ShellFocus,
+        title: "Shell Focus",
+        description: "Bring backgrounded shell to foreground",
+        scope: ActionContext::Global,
+        keybindings: &[],
+        slash_aliases: &["/shell-focus"],
+        palette_visible: false,
+        footer_visible: false,
+        availability: always_available,
+        activity_message: None,
+    },
+    ActionSpec {
+        id: ActionId::ShellBackground,
+        title: "Shell Background",
+        description: "Background the active shell session",
+        scope: ActionContext::Global,
+        keybindings: &[],
+        slash_aliases: &["/shell-bg"],
+        palette_visible: false,
+        footer_visible: false,
+        availability: always_available,
+        activity_message: None,
+    },
+    ActionSpec {
+        id: ActionId::ShellKill,
+        title: "Shell Kill",
+        description: "Kill the active shell session",
+        scope: ActionContext::Global,
+        keybindings: &[],
+        slash_aliases: &["/shell-kill"],
+        palette_visible: false,
+        footer_visible: false,
+        availability: always_available,
+        activity_message: None,
+    },
+    ActionSpec {
+        id: ActionId::Context,
+        title: "Context",
+        description: "Pin a file into context",
+        scope: ActionContext::Global,
+        keybindings: &[],
+        slash_aliases: &["/context"],
+        palette_visible: true,
+        footer_visible: false,
+        availability: always_available,
+        activity_message: None,
+    },
+    ActionSpec {
+        id: ActionId::NewSession,
+        title: "New Session",
+        description: "Start a new session",
+        scope: ActionContext::Global,
+        keybindings: &[],
+        slash_aliases: &["/new"],
+        palette_visible: true,
+        footer_visible: false,
+        availability: always_available,
+        activity_message: None,
+    },
+    ActionSpec {
+        id: ActionId::Export,
+        title: "Export",
+        description: "Export session bundle",
+        scope: ActionContext::Global,
+        keybindings: &[],
+        slash_aliases: &["/export"],
+        palette_visible: true,
+        footer_visible: false,
+        availability: always_available,
+        activity_message: None,
+    },
+    ActionSpec {
+        id: ActionId::Import,
+        title: "Import",
+        description: "Import session bundle",
+        scope: ActionContext::Global,
+        keybindings: &[],
+        slash_aliases: &["/import"],
+        palette_visible: true,
+        footer_visible: false,
+        availability: always_available,
+        activity_message: None,
+    },
+    ActionSpec {
+        id: ActionId::ReviewOpen,
+        title: "Review",
+        description: "Open the git review overlay",
+        scope: ActionContext::Global,
+        keybindings: &[],
+        slash_aliases: &["/review"],
+        palette_visible: true,
+        footer_visible: false,
+        availability: always_available,
+        activity_message: None,
+    },
+    ActionSpec {
+        id: ActionId::Changes,
+        title: "Changes",
+        description: "Open the changeset overlay",
+        scope: ActionContext::Global,
+        keybindings: &[],
+        slash_aliases: &["/changes"],
+        palette_visible: true,
+        footer_visible: false,
+        availability: always_available,
+        activity_message: None,
+    },
+    ActionSpec {
+        id: ActionId::FileChanges,
+        title: "File Changes",
+        description: "Open the file changes overlay",
+        scope: ActionContext::Global,
+        keybindings: &[],
+        slash_aliases: &["/file-changes"],
+        palette_visible: true,
+        footer_visible: false,
+        availability: always_available,
+        activity_message: None,
+    },
     // Overlay — generic close
     ActionSpec {
         id: ActionId::CloseOverlay,
@@ -398,6 +627,55 @@ pub static ACTION_SPECS: &[ActionSpec] = &[
         availability: |s| s.overlay_manager.any_active(),
         activity_message: None,
     },
+    // ── Wave 2: new overlays ──────────────────────────────────────────────────
+    ActionSpec {
+        id: ActionId::OpenTaskTray,
+        title: "Task Tray",
+        description: "Open background task tray",
+        scope: ActionContext::Global,
+        keybindings: &["Ctrl+T"],
+        slash_aliases: &["/tasks"],
+        palette_visible: true,
+        footer_visible: false,
+        availability: |_| true,
+        activity_message: None,
+    },
+    ActionSpec {
+        id: ActionId::OpenThemePicker,
+        title: "Theme Picker",
+        description: "Switch color theme",
+        scope: ActionContext::Global,
+        keybindings: &["Ctrl+Shift+T"],
+        slash_aliases: &["/theme"],
+        palette_visible: true,
+        footer_visible: false,
+        availability: |_| true,
+        activity_message: None,
+    },
+    ActionSpec {
+        id: ActionId::OpenFilePicker,
+        title: "File Picker",
+        description: "Open file picker (multi-select, preview)",
+        scope: ActionContext::Global,
+        keybindings: &["Ctrl+P"],
+        slash_aliases: &["/pick"],
+        palette_visible: true,
+        footer_visible: false,
+        availability: |_| true,
+        activity_message: None,
+    },
+    ActionSpec {
+        id: ActionId::OpenSessionResume,
+        title: "Resume Session",
+        description: "Fuzzy-search and resume a previous session",
+        scope: ActionContext::Global,
+        keybindings: &["Ctrl+R"],
+        slash_aliases: &["/sessions-resume"],
+        palette_visible: true,
+        footer_visible: false,
+        availability: |_| true,
+        activity_message: None,
+    },
 ];
 
 /// Look up specs for a given scope (includes Global specs for non-overlay contexts).
@@ -406,12 +684,12 @@ pub fn specs_for_context(ctx: ActionContext) -> impl Iterator<Item = &'static Ac
     let is_workbench = matches!(
         ctx,
         ActionContext::WorkbenchApprovals
-        | ActionContext::WorkbenchReview
-        | ActionContext::WorkbenchSessions
-        | ActionContext::WorkbenchAgents
-        | ActionContext::WorkbenchRuntime
-        | ActionContext::WorkbenchPlan
-        | ActionContext::WorkbenchVil
+            | ActionContext::WorkbenchReview
+            | ActionContext::WorkbenchSessions
+            | ActionContext::WorkbenchAgents
+            | ActionContext::WorkbenchRuntime
+            | ActionContext::WorkbenchPlan
+            | ActionContext::WorkbenchVil
     );
     ACTION_SPECS.iter().filter(move |s| {
         s.scope == ctx
@@ -422,7 +700,9 @@ pub fn specs_for_context(ctx: ActionContext) -> impl Iterator<Item = &'static Ac
 
 /// Look up a spec by slash alias.
 pub fn spec_by_slash_alias(alias: &str) -> Option<&'static ActionSpec> {
-    ACTION_SPECS.iter().find(|s| s.slash_aliases.contains(&alias))
+    ACTION_SPECS
+        .iter()
+        .find(|s| s.slash_aliases.contains(&alias))
 }
 
 /// All specs visible in the footer for a given context.
@@ -470,4 +750,3 @@ impl ActionContext {
         }
     }
 }
-
