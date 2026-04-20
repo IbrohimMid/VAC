@@ -1,6 +1,7 @@
 //! Terminal Detection Service
 //!
-//! Detects terminal capabilities and provides theme colors.
+//! Thin compatibility shim delegating to `crate::capabilities`.
+//! New code should use `crate::capabilities::TerminalCapabilities::detect()` directly.
 
 use ratatui::style::Color;
 
@@ -101,12 +102,13 @@ impl ThemeColors {
     }
 }
 
-/// Detect terminal capabilities
+/// Detect terminal capabilities — delegates to the capabilities registry.
 pub fn detect_terminal() -> TerminalInfo {
+    let caps = crate::capabilities::TerminalCapabilities::detect();
     TerminalInfo {
-        supports_true_color: true,
-        supports_256_colors: true,
-        is_dark_theme: true,
+        supports_true_color: caps.truecolor,
+        supports_256_colors: caps.color_256,
+        is_dark_theme: caps.is_dark_theme,
     }
 }
 
@@ -118,12 +120,12 @@ pub struct TerminalInfo {
 
 /// Check if terminal is in light mode
 pub fn is_light_mode() -> bool {
-    !detect_terminal().is_dark_theme
+    crate::capabilities::is_light_mode()
 }
 
 /// Check if terminal should use RGB colors
 pub fn should_use_rgb_colors() -> bool {
-    detect_terminal().supports_true_color
+    crate::capabilities::should_use_rgb_colors()
 }
 
 /// Adaptive colors that work on both light and dark backgrounds
