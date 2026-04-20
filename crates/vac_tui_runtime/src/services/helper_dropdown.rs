@@ -81,7 +81,11 @@ pub fn render_helper_dropdown(f: &mut Frame, state: &AppState, dropdown_area: Re
     let input = state.input.lines.join("\n");
     let input = input.trim();
     let show = input.starts_with('/') && !state.filtered_helpers.is_empty();
-    if state.overlay_manager.is_active(crate::overlay::OverlayId::HelperDropdown) && show {
+    if state
+        .overlay_manager
+        .is_active(crate::overlay::OverlayId::HelperDropdown)
+        && show
+    {
         // filtered_helpers is maintained synchronously by filter_helpers_sync():
         // - When input is just "/", it contains all commands
         // - When input is "/foo", it contains only matching commands
@@ -232,12 +236,26 @@ pub fn render_helper_dropdown(f: &mut Frame, state: &AppState, dropdown_area: Re
 }
 
 pub fn render_file_search_dropdown(f: &mut Frame, state: &AppState, area: Rect) {
-    if !state.overlay_manager.is_active(crate::overlay::OverlayId::HelperDropdown) && !state.overlay_manager.is_active(crate::overlay::OverlayId::FileSearch) {
+    if !state
+        .overlay_manager
+        .is_active(crate::overlay::OverlayId::HelperDropdown)
+        && !state
+            .overlay_manager
+            .is_active(crate::overlay::OverlayId::FileSearch)
+    {
         return;
     }
-    if state.overlay_manager.is_active(crate::overlay::OverlayId::FileSearch) && !state.file_search_results.is_empty() {
+    if state
+        .overlay_manager
+        .is_active(crate::overlay::OverlayId::FileSearch)
+        && !state.file_search_results.is_empty()
+    {
         render_file_dropdown(f, state, area);
-    } else if state.overlay_manager.is_active(crate::overlay::OverlayId::HelperDropdown) && !state.filtered_helpers.is_empty() {
+    } else if state
+        .overlay_manager
+        .is_active(crate::overlay::OverlayId::HelperDropdown)
+        && !state.filtered_helpers.is_empty()
+    {
         render_helper_dropdown(f, state, area);
     }
 }
