@@ -12,6 +12,7 @@ pub struct Toast {
 pub enum ToastStyle {
     Success,
     Error,
+    Warning,
     Info,
 }
 
@@ -31,6 +32,15 @@ impl Toast {
             created_at: Instant::now(),
             duration: Duration::from_secs(3),
             style: ToastStyle::Error,
+        }
+    }
+
+    pub fn warning(message: impl Into<String>, duration: Duration) -> Self {
+        Self {
+            message: message.into(),
+            created_at: Instant::now(),
+            duration,
+            style: ToastStyle::Warning,
         }
     }
 

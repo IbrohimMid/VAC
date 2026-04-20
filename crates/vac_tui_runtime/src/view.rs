@@ -2,17 +2,22 @@
 
 use crate::app::{ActivityKind, AppState, WorkspaceFocus};
 use crate::services::ToastStyle;
+use crate::services::theme::StyleKey;
 use crate::ui::style::focus_style;
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Tabs, Wrap},
 };
 
 /// Main view function
 pub fn view(f: &mut Frame, state: &mut AppState) {
+    if !state.hydrated {
+        render_boot_skeleton(f, state);
+        return;
+    }
     let banner_h = crate::services::banner::banner_height(state);
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -36,43 +41,73 @@ pub fn view(f: &mut Frame, state: &mut AppState) {
     crate::services::statusline::render_statusline(f, state, chunks[3]);
     render_footer(f, state, chunks[4]);
 
-    if state.overlay_manager.is_active(crate::overlay::OverlayId::CommandPalette) {
+    if state
+        .overlay_manager
+        .is_active(crate::overlay::OverlayId::CommandPalette)
+    {
         render_command_palette(f, state);
     }
 
-    if state.overlay_manager.is_active(crate::overlay::OverlayId::Shortcuts) {
+    if state
+        .overlay_manager
+        .is_active(crate::overlay::OverlayId::Shortcuts)
+    {
         render_shortcuts(f, state);
     }
 
-    if state.overlay_manager.is_active(crate::overlay::OverlayId::IsolationSwitcher) {
+    if state
+        .overlay_manager
+        .is_active(crate::overlay::OverlayId::IsolationSwitcher)
+    {
         crate::services::isolation_switcher::render_isolation_switcher(f, state);
     }
 
-    if state.overlay_manager.is_active(crate::overlay::OverlayId::ProfileSwitcher) {
+    if state
+        .overlay_manager
+        .is_active(crate::overlay::OverlayId::ProfileSwitcher)
+    {
         crate::services::profile_switcher::render_profile_switcher(f, state);
     }
 
-    if state.overlay_manager.is_active(crate::overlay::OverlayId::RulebookSwitcher) {
+    if state
+        .overlay_manager
+        .is_active(crate::overlay::OverlayId::RulebookSwitcher)
+    {
         crate::services::rulebook_switcher::render_rulebook_switcher(f, state);
     }
 
-    if state.overlay_manager.is_active(crate::overlay::OverlayId::MessageAction) {
+    if state
+        .overlay_manager
+        .is_active(crate::overlay::OverlayId::MessageAction)
+    {
         crate::services::message_action_popup::render_message_action_popup(f, state);
     }
 
-    if state.overlay_manager.is_active(crate::overlay::OverlayId::ModelSwitcher) {
+    if state
+        .overlay_manager
+        .is_active(crate::overlay::OverlayId::ModelSwitcher)
+    {
         render_model_switcher(f, state);
     }
 
-    if state.overlay_manager.is_active(crate::overlay::OverlayId::FileSearch) {
+    if state
+        .overlay_manager
+        .is_active(crate::overlay::OverlayId::FileSearch)
+    {
         render_file_search(f, state);
     }
 
-    if state.overlay_manager.is_active(crate::overlay::OverlayId::Changeset) {
+    if state
+        .overlay_manager
+        .is_active(crate::overlay::OverlayId::Changeset)
+    {
         render_changeset(f, state);
     }
 
-    if state.overlay_manager.is_active(crate::overlay::OverlayId::FileChanges) {
+    if state
+        .overlay_manager
+        .is_active(crate::overlay::OverlayId::FileChanges)
+    {
         crate::services::file_changes_popup::render_file_changes_popup(f, state);
     }
 
@@ -80,7 +115,10 @@ pub fn view(f: &mut Frame, state: &mut AppState) {
         crate::services::plan_review::render_plan_review(f, state);
     }
 
-    if state.overlay_manager.is_active(crate::overlay::OverlayId::AskUser) {
+    if state
+        .overlay_manager
+        .is_active(crate::overlay::OverlayId::AskUser)
+    {
         crate::services::ask_user::render_ask_user_popup(f, state);
     }
 
@@ -92,7 +130,10 @@ pub fn view(f: &mut Frame, state: &mut AppState) {
         render_toast(f, state);
     }
 
-    if state.overlay_manager.is_active(crate::overlay::OverlayId::HelperDropdown) {
+    if state
+        .overlay_manager
+        .is_active(crate::overlay::OverlayId::HelperDropdown)
+    {
         let area = f.area();
         let width = (area.width / 2).max(40).min(area.width.saturating_sub(2));
         let count = state.filtered_helpers.len().min(5) as u16;
@@ -111,6 +152,31 @@ pub fn view(f: &mut Frame, state: &mut AppState) {
     } else if state.at_trigger_active && !state.at_results.is_empty() {
         render_at_dropdown(f, state);
     }
+
+    if state
+        .overlay_manager
+        .is_active(crate::overlay::OverlayId::FilePicker)
+    {
+        render_file_picker(f, state);
+    }
+    if state
+        .overlay_manager
+        .is_active(crate::overlay::OverlayId::TaskTray)
+    {
+        render_task_tray(f, state);
+    }
+    if state
+        .overlay_manager
+        .is_active(crate::overlay::OverlayId::ThemePicker)
+    {
+        render_theme_picker(f, state);
+    }
+    if state
+        .overlay_manager
+        .is_active(crate::overlay::OverlayId::SessionResume)
+    {
+        render_session_resume(f, state);
+    }
 }
 
 fn render_model_switcher(f: &mut Frame, state: &mut AppState) {
@@ -123,7 +189,7 @@ fn render_model_switcher(f: &mut Frame, state: &mut AppState) {
         .split(area);
 
     let input = Paragraph::new(Line::from(vec![
-        Span::styled("Filter ", Style::default().fg(Color::DarkGray)),
+        Span::styled("Filter ", state.theme.style(StyleKey::Muted)),
         Span::raw(&state.model_switcher_filter),
     ]))
     .block(
@@ -139,16 +205,14 @@ fn render_model_switcher(f: &mut Frame, state: &mut AppState) {
         .enumerate()
         .map(|(i, m)| {
             let style = if i == state.model_switcher_selected_idx {
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD)
+                state.theme.style(StyleKey::ListSelected)
             } else {
                 Style::default()
             };
             ListItem::new(Line::from(vec![
                 Span::styled(
                     format!("{}  ", m.provider),
-                    Style::default().fg(Color::DarkGray),
+                    state.theme.style(StyleKey::Muted),
                 ),
                 Span::styled(m.name.clone(), style),
             ]))
@@ -157,11 +221,7 @@ fn render_model_switcher(f: &mut Frame, state: &mut AppState) {
 
     let list = List::new(items)
         .block(Block::default().borders(Borders::ALL).title("Models"))
-        .highlight_style(
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
-        );
+        .highlight_style(state.theme.style(StyleKey::ListSelected));
     f.render_widget(list, chunks[1]);
 }
 
@@ -175,7 +235,7 @@ fn render_file_search(f: &mut Frame, state: &mut AppState) {
         .split(area);
 
     let input = Paragraph::new(Line::from(vec![
-        Span::styled("Query ", Style::default().fg(Color::DarkGray)),
+        Span::styled("Query ", state.theme.style(StyleKey::Muted)),
         Span::raw(&state.file_search_query),
     ]))
     .block(Block::default().borders(Borders::ALL).title("File Search"));
@@ -187,9 +247,7 @@ fn render_file_search(f: &mut Frame, state: &mut AppState) {
         .enumerate()
         .map(|(i, path)| {
             let style = if i == state.file_search_selected_idx {
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD)
+                state.theme.style(StyleKey::ListSelected)
             } else {
                 Style::default()
             };
@@ -199,11 +257,7 @@ fn render_file_search(f: &mut Frame, state: &mut AppState) {
 
     let list = List::new(items)
         .block(Block::default().borders(Borders::ALL).title("Files"))
-        .highlight_style(
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
-        );
+        .highlight_style(state.theme.style(StyleKey::ListSelected));
     f.render_widget(list, chunks[1]);
 }
 
@@ -222,9 +276,7 @@ fn render_changeset(f: &mut Frame, state: &mut AppState) {
         .enumerate()
         .map(|(i, entry)| {
             let style = if i == state.changeset_selected_idx {
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD)
+                state.theme.style(StyleKey::ListSelected)
             } else {
                 Style::default()
             };
@@ -235,15 +287,15 @@ fn render_changeset(f: &mut Frame, state: &mut AppState) {
                 vac_changeset::FileState::Reverted => "[✓]",
                 vac_changeset::FileState::FailedRestore => "[✗]",
             };
-            let indicator_color = match entry.state {
-                vac_changeset::FileState::Created => Color::Green,
-                vac_changeset::FileState::Modified => Color::Yellow,
-                vac_changeset::FileState::Removed => Color::Red,
-                vac_changeset::FileState::Reverted => Color::Cyan,
-                vac_changeset::FileState::FailedRestore => Color::Red,
+            let indicator_style = match entry.state {
+                vac_changeset::FileState::Created => state.theme.style(StyleKey::Success),
+                vac_changeset::FileState::Modified => state.theme.style(StyleKey::Warning),
+                vac_changeset::FileState::Removed => state.theme.style(StyleKey::Error),
+                vac_changeset::FileState::Reverted => state.theme.style(StyleKey::Accent),
+                vac_changeset::FileState::FailedRestore => state.theme.style(StyleKey::Error),
             };
             ListItem::new(Line::from(vec![
-                Span::styled(indicator, Style::default().fg(indicator_color)),
+                Span::styled(indicator, indicator_style),
                 Span::raw(" "),
                 Span::styled(entry.path.clone(), style),
             ]))
@@ -252,11 +304,7 @@ fn render_changeset(f: &mut Frame, state: &mut AppState) {
 
     let list = List::new(items)
         .block(Block::default().borders(Borders::ALL).title("Changeset"))
-        .highlight_style(
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
-        );
+        .highlight_style(state.theme.style(StyleKey::ListSelected));
     f.render_widget(list, body[0]);
 
     let width = body[1].width.saturating_sub(2) as usize;
@@ -265,7 +313,10 @@ fn render_changeset(f: &mut Frame, state: &mut AppState) {
         if let Some(err) = &diff.last_error {
             lines.push(Line::styled(
                 err.clone(),
-                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+                state
+                    .theme
+                    .style(StyleKey::Error)
+                    .add_modifier(Modifier::BOLD),
             ));
         } else if let (Some(old), Some(new)) = (&diff.old_content, &diff.new_content) {
             lines.extend(crate::services::preview_file_diff(
@@ -274,13 +325,13 @@ fn render_changeset(f: &mut Frame, state: &mut AppState) {
         } else {
             lines.push(Line::styled(
                 "No diff available",
-                Style::default().fg(Color::DarkGray),
+                state.theme.style(StyleKey::Muted),
             ));
         }
     } else {
         lines.push(Line::styled(
             "Select a file to preview diff",
-            Style::default().fg(Color::DarkGray),
+            state.theme.style(StyleKey::Muted),
         ));
     }
 
@@ -304,12 +355,12 @@ fn render_toast(f: &mut Frame, state: &mut AppState) {
     let x = area.x + area.width.saturating_sub(width + 1);
     let y = area.y + 1;
 
-    let bg = match toast.style {
-        ToastStyle::Success => Color::Green,
-        ToastStyle::Error => Color::Red,
-        ToastStyle::Info => Color::Blue,
+    let toast_style = match toast.style {
+        ToastStyle::Success => state.theme.style(StyleKey::ToastSuccess),
+        ToastStyle::Error => state.theme.style(StyleKey::ToastError),
+        ToastStyle::Warning => state.theme.style(StyleKey::ToastWarning),
+        ToastStyle::Info => state.theme.style(StyleKey::ToastInfo),
     };
-    let fg = Color::Black;
 
     let rect = Rect {
         x,
@@ -319,12 +370,8 @@ fn render_toast(f: &mut Frame, state: &mut AppState) {
     };
     f.render_widget(Clear, rect);
     let widget = Paragraph::new(Line::from(Span::raw(toast.message.clone())))
-        .style(Style::default().bg(bg).fg(fg).add_modifier(Modifier::BOLD))
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .style(Style::default().bg(bg).fg(fg)),
-        )
+        .style(toast_style)
+        .block(Block::default().borders(Borders::ALL).style(toast_style))
         .wrap(Wrap { trim: true });
     f.render_widget(widget, rect);
 }
@@ -335,37 +382,39 @@ fn render_header(f: &mut Frame, state: &mut AppState, area: Rect) {
     if std::env::var("VAC_INSIDE_ISOLATION").is_ok() {
         spans.push(Span::styled(
             "[ISOLATED] ",
-            Style::default()
-                .fg(Color::Yellow)
+            state
+                .theme
+                .style(StyleKey::Warning)
                 .add_modifier(Modifier::BOLD),
         ));
     }
 
-    spans.push(Span::styled("VAC", Style::default().fg(Color::Magenta)));
+    spans.push(Span::styled("VAC", state.theme.style(StyleKey::AppTitle)));
     spans.push(Span::raw("  "));
     spans.push(Span::styled(
         format!("session {}", &state.session_id[..8]),
-        Style::default().fg(Color::DarkGray),
+        state.theme.style(StyleKey::Muted),
     ));
     if let Some(title) = &state.session_title {
         spans.push(Span::raw("  "));
         spans.push(Span::styled(
             title.clone(),
-            Style::default().fg(Color::Cyan),
+            state.theme.style(StyleKey::Accent),
         ));
     }
 
     spans.push(Span::raw(" | "));
     spans.push(Span::styled(
         format!("env:{}", state.active_isolation_mode),
-        Style::default().fg(Color::Cyan),
+        state.theme.style(StyleKey::Accent),
     ));
 
     spans.push(Span::raw(" | "));
     spans.push(Span::styled(
         format!("prof:{}", state.active_profile),
-        Style::default()
-            .fg(Color::Yellow)
+        state
+            .theme
+            .style(StyleKey::Warning)
             .add_modifier(Modifier::BOLD),
     ));
 
@@ -379,7 +428,7 @@ fn render_header(f: &mut Frame, state: &mut AppState, area: Rect) {
                 .map(|m| m.name.as_str())
                 .unwrap_or("-")
         ),
-        Style::default().fg(Color::DarkGray),
+        state.theme.style(StyleKey::Muted),
     ));
     spans.push(Span::raw("  "));
     spans.push(Span::styled(
@@ -389,10 +438,14 @@ fn render_header(f: &mut Frame, state: &mut AppState, area: Rect) {
             "perm MANUAL"
         },
         if state.auto_approve {
-            Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
+            state
+                .theme
+                .style(StyleKey::Error)
+                .add_modifier(Modifier::BOLD)
         } else {
-            Style::default()
-                .fg(Color::Green)
+            state
+                .theme
+                .style(StyleKey::Success)
                 .add_modifier(Modifier::BOLD)
         },
     ));
@@ -406,31 +459,29 @@ fn render_header(f: &mut Frame, state: &mut AppState, area: Rect) {
     } else {
         "C"
     };
-    let badge_color = if score >= 0.9 {
-        Color::Green
+    let badge_style = if score >= 0.9 {
+        state.theme.style(StyleKey::Success)
     } else if score >= 0.7 {
-        Color::Yellow
+        state.theme.style(StyleKey::Warning)
     } else {
-        Color::Red
+        state.theme.style(StyleKey::Error)
     };
 
     spans.push(Span::raw("  "));
     spans.push(Span::styled(
         format!("VIL:{}", score_label),
-        Style::default()
-            .fg(badge_color)
-            .add_modifier(Modifier::BOLD),
+        badge_style.add_modifier(Modifier::BOLD),
     ));
 
     spans.push(Span::raw("  "));
     spans.push(Span::styled(
         format!("approvals {}", state.pending_approvals.len()),
-        Style::default().fg(Color::Yellow),
+        state.theme.style(StyleKey::Warning),
     ));
     spans.push(Span::raw("  "));
     spans.push(Span::styled(
         format!("review {}", state.changeset_store.active_entries().len()),
-        Style::default().fg(Color::Cyan),
+        state.theme.style(StyleKey::Accent),
     ));
 
     let widget = Paragraph::new(Line::from(spans));
@@ -480,7 +531,6 @@ fn render_workspace(f: &mut Frame, state: &mut AppState, area: Rect) {
     render_activity_panel(f, state, right[1]);
     render_workbench_panel(f, state, right[2]);
 }
-
 
 fn render_messages(f: &mut Frame, state: &mut AppState, area: Rect) {
     state.message_area_y = area.y;
@@ -614,7 +664,7 @@ fn render_input(f: &mut Frame, state: &mut AppState, area: Rect) {
     if state.input.is_empty() {
         lines.push(Line::from(Span::styled(
             "Type your message... (Ctrl+P for commands)",
-            Style::default().fg(Color::DarkGray),
+            state.theme.style(StyleKey::Muted),
         )));
     } else {
         for line in &state.input.lines {
@@ -630,7 +680,13 @@ fn render_input(f: &mut Frame, state: &mut AppState, area: Rect) {
         .wrap(Wrap { trim: false });
     f.render_widget(widget, input_area);
 
-    if state.focus == WorkspaceFocus::Input && !state.overlay_manager.is_active(crate::overlay::OverlayId::CommandPalette) && !state.overlay_manager.is_active(crate::overlay::OverlayId::Shortcuts)
+    if state.focus == WorkspaceFocus::Input
+        && !state
+            .overlay_manager
+            .is_active(crate::overlay::OverlayId::CommandPalette)
+        && !state
+            .overlay_manager
+            .is_active(crate::overlay::OverlayId::Shortcuts)
     {
         let (row, col) = state.input.cursor;
         let cy = input_area.y + 1 + (row as u16).min(input_area.height.saturating_sub(3));
@@ -656,29 +712,32 @@ fn render_paste_tray(f: &mut Frame, state: &AppState, area: Rect) {
     let mode_hint = if state.pending_paste_reorder_mode {
         Span::styled(
             " [REORDER — J/K swap, r exit]",
-            Style::default()
-                .fg(Color::Yellow)
+            state
+                .theme
+                .style(StyleKey::Warning)
                 .add_modifier(Modifier::BOLD),
         )
     } else {
         Span::styled(
             " j/k select, d remove, r reorder, Enter preview",
-            Style::default()
-                .fg(Color::DarkGray)
+            state
+                .theme
+                .style(StyleKey::Muted)
                 .add_modifier(Modifier::DIM),
         )
     };
     let header = Line::from(vec![
-        Span::styled("📎 ", Style::default().fg(Color::DarkGray)),
+        Span::styled("📎 ", state.theme.style(StyleKey::Muted)),
         Span::styled(
             format!("{} attachment(s)", state.pending_pastes.len()),
-            Style::default().fg(Color::DarkGray),
+            state.theme.style(StyleKey::Muted),
         ),
         mode_hint,
         Span::styled(
             "  (Ctrl+U clear)",
-            Style::default()
-                .fg(Color::DarkGray)
+            state
+                .theme
+                .style(StyleKey::Muted)
                 .add_modifier(Modifier::DIM),
         ),
     ]);
@@ -711,38 +770,38 @@ fn render_paste_tray(f: &mut Frame, state: &AppState, area: Rect) {
         } else {
             " "
         };
-        let badge_color = match &item.kind {
-            PastedKind::Text { .. } => Color::Cyan,
-            PastedKind::Image { .. } => Color::Magenta,
+        let badge_style = match &item.kind {
+            PastedKind::Text { .. } => state.theme.style(StyleKey::Accent),
+            PastedKind::Image { .. } => state.theme.style(StyleKey::Streaming),
         };
         let row_style = if is_selected {
-            Style::default()
-                .fg(Color::White)
+            state
+                .theme
+                .style(StyleKey::Normal)
                 .add_modifier(Modifier::BOLD)
         } else {
-            Style::default().fg(Color::Gray)
+            state.theme.style(StyleKey::Muted)
         };
         let spans = vec![
             Span::styled(
                 format!("{} ", cursor),
-                Style::default()
-                    .fg(Color::Yellow)
+                state
+                    .theme
+                    .style(StyleKey::Warning)
                     .add_modifier(Modifier::BOLD),
             ),
             Span::styled(
                 kind_badge(&item.kind).to_string(),
-                Style::default()
-                    .fg(badge_color)
-                    .add_modifier(Modifier::BOLD),
+                badge_style.add_modifier(Modifier::BOLD),
             ),
             Span::raw(" "),
             Span::styled(format!("#{}", item.id), row_style),
             Span::raw(" "),
-            Span::styled(size_label(&item.kind), Style::default().fg(Color::DarkGray)),
+            Span::styled(size_label(&item.kind), state.theme.style(StyleKey::Muted)),
             Span::raw(" "),
             Span::styled(
                 format!("~{}tok", token_estimate(&item.kind)),
-                Style::default().fg(Color::Green),
+                state.theme.style(StyleKey::Success),
             ),
             Span::raw("  "),
             Span::styled(preview_text(&item.kind), row_style),
@@ -764,53 +823,80 @@ fn render_operator_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
             _ => "⠸",
         };
         lines.push(Line::from(vec![
-            Span::styled(spinner, Style::default().fg(Color::Magenta)),
+            Span::styled(spinner, state.theme.style(StyleKey::Spinner)),
             Span::raw(" "),
-            Span::styled("thinking", Style::default().fg(Color::Magenta)),
+            Span::styled("thinking", state.theme.style(StyleKey::Spinner)),
         ]));
     } else if state.is_streaming {
+        let tok_rate = state
+            .streaming_start
+            .map(|start| {
+                let elapsed = start.elapsed().as_secs_f32();
+                if elapsed > 0.1 {
+                    state.streaming_tokens as f32 / elapsed
+                } else {
+                    0.0
+                }
+            })
+            .unwrap_or(0.0);
+        let rate_str = if tok_rate > 0.0 {
+            format!("streaming  {tok_rate:.0} tok/s  (Ctrl+C to cancel)")
+        } else {
+            "streaming…  (Ctrl+C to cancel)".to_string()
+        };
         lines.push(Line::styled(
-            "streaming (Esc to cancel)",
-            Style::default().fg(Color::Magenta),
+            rate_str,
+            state.theme.style(StyleKey::Streaming),
         ));
     } else {
-        lines.push(Line::styled("idle", Style::default().fg(Color::DarkGray)));
+        lines.push(Line::styled("idle", state.theme.style(StyleKey::Muted)));
     }
 
     if let Some(snapshot) = &state.runtime.snapshot {
-        let (exec_label, exec_color) = match snapshot.execution_environment {
-            vac_core::ExecutionEnvironment::Host => ("host", Color::Yellow),
-            vac_core::ExecutionEnvironment::IsolatedBatch => ("isolated-batch", Color::Green),
-            vac_core::ExecutionEnvironment::IsolatedInteractive => ("isolated-interactive", Color::Cyan),
+        let (exec_label, exec_style) = match snapshot.execution_environment {
+            vac_core::ExecutionEnvironment::Host => ("host", state.theme.style(StyleKey::Warning)),
+            vac_core::ExecutionEnvironment::IsolatedBatch => {
+                ("isolated-batch", state.theme.style(StyleKey::Success))
+            }
+            vac_core::ExecutionEnvironment::IsolatedInteractive => {
+                ("isolated-interactive", state.theme.style(StyleKey::Accent))
+            }
         };
-        let env_color = if snapshot.environment_mode.contains("trusted-networked") { Color::Red } else { Color::Green };
+        let env_style = if snapshot.environment_mode.contains("trusted-networked") {
+            state.theme.style(StyleKey::Error)
+        } else {
+            state.theme.style(StyleKey::Success)
+        };
         lines.push(Line::from(vec![
-            Span::styled("exec ", Style::default().fg(Color::DarkGray)),
-            Span::styled(exec_label, Style::default().fg(exec_color)),
+            Span::styled("exec ", state.theme.style(StyleKey::Muted)),
+            Span::styled(exec_label, exec_style),
             Span::raw("  "),
-            Span::styled("intent ", Style::default().fg(Color::DarkGray)),
-            Span::styled(snapshot.task_intent_mode.to_string(), Style::default().fg(Color::Cyan)),
+            Span::styled("intent ", state.theme.style(StyleKey::Muted)),
+            Span::styled(
+                snapshot.task_intent_mode.to_string(),
+                state.theme.style(StyleKey::Accent),
+            ),
             Span::raw("  "),
-            Span::styled("env ", Style::default().fg(Color::DarkGray)),
-            Span::styled(snapshot.environment_mode.clone(), Style::default().fg(env_color)),
+            Span::styled("env ", state.theme.style(StyleKey::Muted)),
+            Span::styled(snapshot.environment_mode.clone(), env_style),
         ]));
     }
 
     lines.push(Line::from(vec![
-        Span::styled("tools ", Style::default().fg(Color::DarkGray)),
+        Span::styled("tools ", state.theme.style(StyleKey::Muted)),
         Span::styled(
             format!("{}", state.pending_tool_calls.len()),
-            Style::default().fg(Color::Yellow),
+            state.theme.style(StyleKey::Warning),
         ),
-        Span::styled("  approvals ", Style::default().fg(Color::DarkGray)),
+        Span::styled("  approvals ", state.theme.style(StyleKey::Muted)),
         Span::styled(
             format!("{}", state.pending_approvals.len()),
-            Style::default().fg(Color::Yellow),
+            state.theme.style(StyleKey::Warning),
         ),
-        Span::styled("  modified ", Style::default().fg(Color::DarkGray)),
+        Span::styled("  modified ", state.theme.style(StyleKey::Muted)),
         Span::styled(
             format!("{}", state.changeset_store.active_entries().len()),
-            Style::default().fg(Color::Cyan),
+            state.theme.style(StyleKey::Accent),
         ),
     ]));
 
@@ -828,10 +914,10 @@ fn render_operator_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
                 "idle"
             };
             lines.push(Line::from(vec![
-                Span::styled("shell ", Style::default().fg(Color::DarkGray)),
-                Span::styled(shell_state, Style::default().fg(Color::Cyan)),
+                Span::styled("shell ", state.theme.style(StyleKey::Muted)),
+                Span::styled(shell_state, state.theme.style(StyleKey::Accent)),
                 Span::raw("  "),
-                Span::styled(session.label.clone(), Style::default().fg(Color::DarkGray)),
+                Span::styled(session.label.clone(), state.theme.style(StyleKey::Muted)),
             ]));
         }
 
@@ -849,7 +935,7 @@ fn render_operator_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
             lines.push(Line::raw(""));
             for l in last.lines() {
                 lines.push(Line::from(vec![
-                    Span::styled("shell ", Style::default().fg(Color::DarkGray)),
+                    Span::styled("shell ", state.theme.style(StyleKey::Muted)),
                     Span::raw(l.to_string()),
                 ]));
             }
@@ -863,30 +949,33 @@ fn render_operator_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
             .filter(|s| s.is_connected())
             .count();
         let total = state.mcp_server_states.len();
-        let color = if connected == total { Color::Green } else { Color::Yellow };
+        let mcp_style = if connected == total {
+            state.theme.style(StyleKey::Success)
+        } else {
+            state.theme.style(StyleKey::Warning)
+        };
         lines.push(Line::from(vec![
-            Span::styled("mcp ", Style::default().fg(Color::DarkGray)),
-            Span::styled(format!("{}/{} connected", connected, total), Style::default().fg(color)),
+            Span::styled("mcp ", state.theme.style(StyleKey::Muted)),
+            Span::styled(format!("{}/{} connected", connected, total), mcp_style),
         ]));
     }
 
     // Render budget indicator — only shown when over 16ms
     if state.render_metrics.ema_render_time_us > 16_000 {
         lines.push(Line::from(vec![
-            Span::styled("render ", Style::default().fg(Color::DarkGray)),
+            Span::styled("render ", state.theme.style(StyleKey::Muted)),
             Span::styled(
                 format!("{}ms avg ⚠", state.render_metrics.ema_render_time_us / 1000),
-                Style::default().fg(Color::Red),
+                state.theme.style(StyleKey::Error),
             ),
         ]));
     }
 
     let widget = Paragraph::new(lines)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(Span::styled("Operator", Style::default().fg(Color::Cyan))),
-        )
+        .block(Block::default().borders(Borders::ALL).title(Span::styled(
+            "Operator",
+            state.theme.style(StyleKey::Accent),
+        )))
         .wrap(Wrap { trim: true });
     f.render_widget(widget, area);
 }
@@ -916,9 +1005,12 @@ fn render_activity_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
     for item in &state.activity[start..end] {
         let ts = item.at.format("%H:%M:%S").to_string();
         lines.push(Line::from(vec![
-            Span::styled(ts, Style::default().fg(Color::DarkGray)),
+            Span::styled(ts, state.theme.style(StyleKey::Muted)),
             Span::raw(" "),
-            Span::styled(activity_icon(item.kind), Style::default().fg(Color::Yellow)),
+            Span::styled(
+                activity_icon(item.kind),
+                state.theme.style(StyleKey::Warning),
+            ),
             Span::raw(" "),
             Span::raw(item.message.clone()),
         ]));
@@ -926,7 +1018,7 @@ fn render_activity_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
     if lines.is_empty() {
         lines.push(Line::styled(
             "No activity yet. Events, approvals, and runtime updates will appear here.",
-            Style::default().fg(Color::DarkGray),
+            state.theme.style(StyleKey::Muted),
         ));
     }
 
@@ -952,7 +1044,7 @@ fn render_workbench_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
             "Workbench",
             focus_style(state.focus == WorkspaceFocus::Workbench),
         )))
-        .highlight_style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD));
+        .highlight_style(state.theme.style(StyleKey::ListSelected));
     f.render_widget(tabs, chunks[0]);
 
     crate::workbench::render_active_tab(f, state, chunks[1]);
@@ -991,7 +1083,7 @@ fn render_shell_popup(f: &mut Frame, state: &mut AppState) {
     if lines.is_empty() {
         lines.push(Line::styled(
             "Shell session active. Type a command and press Enter to send input.",
-            Style::default().fg(Color::DarkGray),
+            state.theme.style(StyleKey::Muted),
         ));
     }
 
@@ -999,14 +1091,14 @@ fn render_shell_popup(f: &mut Frame, state: &mut AppState) {
         lines.push(Line::raw(""));
         lines.push(Line::styled(
             format!("Last error: {err}"),
-            Style::default().fg(Color::Red),
+            state.theme.style(StyleKey::Error),
         ));
     }
 
     lines.push(Line::raw(""));
     lines.push(Line::styled(
         "Ctrl+Z backgrounds | /shell-focus restores | /shell-kill terminates",
-        Style::default().fg(Color::DarkGray),
+        state.theme.style(StyleKey::Muted),
     ));
 
     let widget = Paragraph::new(lines)
@@ -1044,9 +1136,7 @@ fn render_at_dropdown(f: &mut Frame, state: &mut AppState) {
                     .at_selected_idx
                     .min(state.at_results.len().saturating_sub(1));
             let style = if selected {
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD)
+                state.theme.style(StyleKey::ListSelected)
             } else {
                 Style::default()
             };
@@ -1060,11 +1150,10 @@ fn render_at_dropdown(f: &mut Frame, state: &mut AppState) {
         format!("@{}", state.at_query)
     };
 
-    let list = List::new(items).block(
-        Block::default()
-            .borders(Borders::ALL)
-            .title(Span::styled(query_hint, Style::default().fg(Color::Cyan))),
-    );
+    let list = List::new(items).block(Block::default().borders(Borders::ALL).title(Span::styled(
+        query_hint,
+        state.theme.style(StyleKey::Accent),
+    )));
     f.render_widget(list, rect);
 }
 
@@ -1074,13 +1163,16 @@ fn render_footer(f: &mut Frame, state: &mut AppState, area: Rect) {
         let hints = vec![
             Span::styled(
                 "REJECT REASON ",
-                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+                state
+                    .theme
+                    .style(StyleKey::Error)
+                    .add_modifier(Modifier::BOLD),
             ),
             Span::raw(reason.as_str()),
-            Span::styled("█", Style::default().fg(Color::Yellow)),
+            Span::styled("█", state.theme.style(StyleKey::Warning)),
             Span::styled(
                 "  Enter: confirm  Esc: skip",
-                Style::default().fg(Color::DarkGray),
+                state.theme.style(StyleKey::Muted),
             ),
         ];
         let widget = Paragraph::new(Line::from(hints)).wrap(Wrap { trim: true });
@@ -1092,14 +1184,15 @@ fn render_footer(f: &mut Frame, state: &mut AppState, area: Rect) {
         let hints = vec![
             Span::styled(
                 "@ FILE ",
-                Style::default()
-                    .fg(Color::Cyan)
+                state
+                    .theme
+                    .style(StyleKey::Accent)
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::styled(&state.at_query, Style::default().fg(Color::White)),
+            Span::styled(&state.at_query, state.theme.style(StyleKey::Normal)),
             Span::styled(
                 "  ↑↓: select  Enter: insert  Esc: cancel",
-                Style::default().fg(Color::DarkGray),
+                state.theme.style(StyleKey::Muted),
             ),
         ];
         let widget = Paragraph::new(Line::from(hints)).wrap(Wrap { trim: true });
@@ -1118,13 +1211,14 @@ fn render_footer(f: &mut Frame, state: &mut AppState, area: Rect) {
         let hints = vec![
             Span::styled(
                 "SHELL ",
-                Style::default()
-                    .fg(Color::Blue)
+                state
+                    .theme
+                    .style(StyleKey::Accent)
                     .add_modifier(Modifier::BOLD),
             ),
             Span::styled(
                 "  Ctrl+Z: background  Esc: close  Ctrl+C: kill",
-                Style::default().fg(Color::DarkGray),
+                state.theme.style(StyleKey::Muted),
             ),
         ];
         let widget = Paragraph::new(Line::from(hints)).wrap(Wrap { trim: true });
@@ -1142,10 +1236,10 @@ fn render_footer(f: &mut Frame, state: &mut AppState, area: Rect) {
             hints.push(Span::raw("  "));
         }
         let key_str = spec.keybindings.join("/");
-        hints.push(Span::styled(key_str, Style::default().fg(Color::Cyan)));
+        hints.push(Span::styled(key_str, state.theme.style(StyleKey::Accent)));
         hints.push(Span::styled(
             format!(": {}  ", spec.title.to_lowercase()),
-            Style::default().fg(Color::DarkGray),
+            state.theme.style(StyleKey::Muted),
         ));
     }
 
@@ -1164,7 +1258,7 @@ fn render_command_palette(f: &mut Frame, state: &mut AppState) {
 
     // Input
     let input = Paragraph::new(Line::from(vec![
-        Span::styled("/", Style::default().fg(Color::Yellow)),
+        Span::styled("/", state.theme.style(StyleKey::Warning)),
         Span::raw(&state.command_palette_input),
     ]))
     .block(Block::default().borders(Borders::ALL).title("Command"));
@@ -1177,16 +1271,14 @@ fn render_command_palette(f: &mut Frame, state: &mut AppState) {
         .enumerate()
         .map(|(i, cmd)| {
             let style = if i == state.command_palette_selected {
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD)
+                state.theme.style(StyleKey::ListSelected)
             } else {
                 Style::default()
             };
             ListItem::new(Line::from(vec![
                 Span::styled(&cmd.command, style),
                 Span::raw(" - "),
-                Span::styled(&cmd.description, Style::default().fg(Color::DarkGray)),
+                Span::styled(&cmd.description, state.theme.style(StyleKey::Muted)),
             ]))
         })
         .collect();
@@ -1332,6 +1424,7 @@ mod tests {
             checkpoint_path: None,
             project_root: std::env::current_dir().unwrap(),
         });
+        state.hydrated = true;
         state.side_panel_visible = true;
         state.pinned_files.push("src/lib.rs".to_string());
         state.pinned_diagnostics.push("src/main.rs".to_string());
@@ -1350,6 +1443,7 @@ mod tests {
             checkpoint_path: None,
             project_root: std::env::current_dir().unwrap(),
         });
+        state.hydrated = true;
         state.workbench_tab = WorkbenchTab::Approvals;
 
         let rendered = render_state_to_string(&mut state);
@@ -1379,4 +1473,441 @@ mod tests {
         let rendered = normalized_rendered(&rendered);
         assert!(rendered.contains("No plan loaded yet"));
     }
+
+    #[test]
+    fn boot_shows_skeleton_before_hydration() {
+        let backend = TestBackend::new(120, 40);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut state = AppState::new(AppStateOptions {
+            model: None,
+            session_id: None,
+            checkpoint_path: None,
+            project_root: std::env::current_dir().unwrap(),
+        });
+        // hydrated starts as false
+        assert!(!state.hydrated);
+        terminal.draw(|f| view(f, &mut state)).unwrap();
+        let rendered = render_to_string(&terminal);
+        assert!(rendered.contains("Starting"), "boot skeleton must render");
+        assert!(
+            !rendered.contains("INPUT"),
+            "main UI must not render before hydration"
+        );
+    }
+
+    #[test]
+    fn status_never_renders_unknown_placeholder() {
+        let mut state = AppState::new(AppStateOptions {
+            model: None,
+            session_id: None,
+            checkpoint_path: None,
+            project_root: std::env::current_dir().unwrap(),
+        });
+        state.hydrated = true;
+        let rendered = render_state_to_string(&mut state);
+        assert!(!rendered.contains("vunknown"), "vunknown must not appear");
+        assert!(
+            !rendered.contains("Model: none"),
+            "Model: none must not appear"
+        );
+    }
+}
+
+/// Renders a loading skeleton before AppState is hydrated.
+/// Shows per-subsystem progress derived from StartupSnapshot fields.
+fn render_boot_skeleton(f: &mut Frame, state: &AppState) {
+    use ratatui::layout::{Constraint, Direction, Layout};
+    use ratatui::widgets::{Block, Borders, Paragraph};
+
+    let area = f.area();
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(3),
+            Constraint::Min(1),
+            Constraint::Length(1),
+        ])
+        .split(area);
+
+    // Header
+    let version = &state.startup.version;
+    let header = Paragraph::new(format!(" VAC v{version} — Starting…")).style(
+        state
+            .theme
+            .style(StyleKey::Accent)
+            .add_modifier(Modifier::BOLD),
+    );
+    f.render_widget(header, chunks[0]);
+
+    // Subsystem progress lines
+    let provider_line = format!(
+        "  Provider    {}",
+        if state.startup.provider_status == "initializing" {
+            "[ loading… ]"
+        } else {
+            "[ ready    ]"
+        }
+    );
+    let model_line = format!(
+        "  Model       {}",
+        match state.startup.active_model.as_deref() {
+            Some(m) => format!("[ {m} ]"),
+            None => "[ loading… ]".to_string(),
+        }
+    );
+    let session_line = format!("  Sessions    [ {} loaded ]", state.startup.session_count);
+    let vil_line = format!(
+        "  VIL engine  {}",
+        if state.startup.has_vil_engine {
+            "[ present  ]"
+        } else {
+            "[ absent   ]"
+        }
+    );
+
+    let body = Paragraph::new(vec![provider_line, model_line, session_line, vil_line].join("\n"))
+        .block(Block::default().borders(Borders::NONE))
+        .style(state.theme.style(StyleKey::Muted));
+    f.render_widget(body, chunks[1]);
+
+    // Footer hint
+    let footer =
+        Paragraph::new(" Initializing subsystems…").style(state.theme.style(StyleKey::Muted));
+    f.render_widget(footer, chunks[2]);
+}
+
+// ── File Picker v2 overlay (PR-T6) ───────────────────────────────────────────
+
+fn render_file_picker(f: &mut Frame, state: &mut AppState) {
+    let area = centered_rect(80, 80, f.area());
+    f.render_widget(Clear, area);
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(3), Constraint::Min(1)])
+        .split(area);
+
+    let cwd_label = state.file_picker_cwd.to_string_lossy().to_string();
+    let title = format!(
+        " Files  {}  (Space=select  Tab=enter  Bsp=up  Enter=confirm  Esc) ",
+        cwd_label
+    );
+    let search_block = Block::default()
+        .title(title.as_str())
+        .borders(Borders::ALL)
+        .border_style(
+            state
+                .theme
+                .style(crate::services::theme::StyleKey::OverlayBorder),
+        );
+    let search_para = Paragraph::new(state.file_picker_query.as_str())
+        .block(search_block)
+        .style(state.theme.style(crate::services::theme::StyleKey::InputFg));
+    f.render_widget(search_para, chunks[0]);
+
+    let split = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+        .split(chunks[1]);
+
+    let list_block = Block::default().borders(Borders::ALL).border_style(
+        state
+            .theme
+            .style(crate::services::theme::StyleKey::BorderNormal),
+    );
+    let list_inner = list_block.inner(split[0]);
+    f.render_widget(list_block, split[0]);
+
+    let items: Vec<ListItem> = state
+        .file_picker_results
+        .iter()
+        .enumerate()
+        .map(|(i, path)| {
+            let name = path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("?")
+                .to_string();
+            let is_dir = path.is_dir();
+            let selected = state.file_picker_multi_selected.contains(&i);
+            let prefix = if selected {
+                "[✓] "
+            } else if is_dir {
+                " ▶  "
+            } else {
+                "    "
+            };
+            let label = format!("{prefix}{name}");
+            let style = if i == state.file_picker_selected {
+                state
+                    .theme
+                    .style(crate::services::theme::StyleKey::OverlaySelected)
+            } else if is_dir {
+                state.theme.style(crate::services::theme::StyleKey::Accent)
+            } else {
+                state.theme.style(crate::services::theme::StyleKey::Normal)
+            };
+            ListItem::new(Line::styled(label, style))
+        })
+        .collect();
+    f.render_widget(List::new(items), list_inner);
+
+    // Preview pane
+    let preview_block = Block::default()
+        .title(" Preview ")
+        .borders(Borders::ALL)
+        .border_style(
+            state
+                .theme
+                .style(crate::services::theme::StyleKey::BorderNormal),
+        );
+    let preview_inner = preview_block.inner(split[1]);
+    f.render_widget(preview_block, split[1]);
+    let preview_text = state
+        .file_picker_preview
+        .as_deref()
+        .unwrap_or("(select a file to preview)");
+    let preview_para = Paragraph::new(preview_text)
+        .wrap(Wrap { trim: false })
+        .style(state.theme.style(crate::services::theme::StyleKey::CodeFg));
+    f.render_widget(preview_para, preview_inner);
+}
+
+// ── Context chips (PR-T7) — rendered above input bar ─────────────────────────
+
+pub fn render_context_chips(f: &mut Frame, state: &AppState, area: Rect) {
+    if state.context_chips.is_empty() {
+        return;
+    }
+    let mut spans: Vec<Span> = Vec::new();
+    for (i, chip) in state.context_chips.iter().enumerate() {
+        let is_focused = state.context_chip_cursor == Some(i);
+        let style = if is_focused {
+            state
+                .theme
+                .style(crate::services::theme::StyleKey::OverlaySelected)
+        } else {
+            state.theme.style(crate::services::theme::StyleKey::Accent)
+        };
+        spans.push(Span::styled(format!(" @{} ", chip.label), style));
+        spans.push(Span::raw(" "));
+    }
+    let para = Paragraph::new(Line::from(spans));
+    f.render_widget(para, area);
+}
+
+// ── Task Tray overlay (PR-T9) ────────────────────────────────────────────────
+
+fn render_task_tray(f: &mut Frame, state: &mut AppState) {
+    use vac_runtime::jobs::JobStatus;
+    let area = f.area();
+    let width = 52u16.min(area.width.saturating_sub(2));
+    let jobs: Vec<_> = if state.task_tray_filter_active_only {
+        state
+            .runtime
+            .jobs
+            .iter()
+            .filter(|j| matches!(j.status, JobStatus::Running | JobStatus::Queued))
+            .collect()
+    } else {
+        state.runtime.jobs.iter().collect()
+    };
+    let height = (jobs.len() as u16 + 4)
+        .min(area.height.saturating_sub(2))
+        .max(5);
+    let x = area.x + area.width.saturating_sub(width + 1);
+    let y = area.y + area.height.saturating_sub(height + 1);
+    let rect = Rect {
+        x,
+        y,
+        width,
+        height,
+    };
+    f.render_widget(Clear, rect);
+
+    let filter_label = if state.task_tray_filter_active_only {
+        " [active] "
+    } else {
+        " [all] "
+    };
+    let title = format!(" Tasks{filter_label}(f=filter  x=cancel  Esc) ");
+    let block = Block::default()
+        .title(title.as_str())
+        .borders(Borders::ALL)
+        .border_style(
+            state
+                .theme
+                .style(crate::services::theme::StyleKey::OverlayBorder),
+        );
+    let inner = block.inner(rect);
+    f.render_widget(block, rect);
+
+    let items: Vec<ListItem> = jobs
+        .iter()
+        .enumerate()
+        .map(|(i, job)| {
+            let (status_sym, status_style) = match &job.status {
+                JobStatus::Running => (
+                    "▶ ",
+                    state
+                        .theme
+                        .style(crate::services::theme::StyleKey::TaskRunning),
+                ),
+                JobStatus::Queued => (
+                    "⏳",
+                    state
+                        .theme
+                        .style(crate::services::theme::StyleKey::TaskQueued),
+                ),
+                JobStatus::Completed => (
+                    "✓ ",
+                    state
+                        .theme
+                        .style(crate::services::theme::StyleKey::TaskCompleted),
+                ),
+                JobStatus::Failed(_) => (
+                    "✗ ",
+                    state
+                        .theme
+                        .style(crate::services::theme::StyleKey::TaskFailed),
+                ),
+                JobStatus::Cancelled => (
+                    "— ",
+                    state.theme.style(crate::services::theme::StyleKey::Muted),
+                ),
+            };
+            let label = format!("{status_sym}{:?}", job.kind);
+            let line = if i == state.task_tray_selected {
+                Line::styled(
+                    label,
+                    state
+                        .theme
+                        .style(crate::services::theme::StyleKey::OverlaySelected),
+                )
+            } else {
+                Line::from(vec![Span::styled(label, status_style)])
+            };
+            ListItem::new(line)
+        })
+        .collect();
+
+    let list = List::new(items);
+    f.render_widget(list, inner);
+}
+
+// ── Theme Picker overlay (PR-T5) ─────────────────────────────────────────────
+
+fn render_theme_picker(f: &mut Frame, state: &mut AppState) {
+    use crate::services::theme::ThemePreset;
+    let area = centered_rect(40, 30, f.area());
+    f.render_widget(Clear, area);
+
+    let block = Block::default()
+        .title(" Theme Picker  (↑↓ select  Enter apply  Esc cancel) ")
+        .borders(Borders::ALL)
+        .border_style(
+            state
+                .theme
+                .style(crate::services::theme::StyleKey::OverlayBorder),
+        );
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+
+    let items: Vec<ListItem> = ThemePreset::ALL
+        .iter()
+        .enumerate()
+        .map(|(i, preset)| {
+            let label = format!(
+                " {}{}",
+                if state.theme.preset == *preset {
+                    "● "
+                } else {
+                    "  "
+                },
+                preset.label()
+            );
+            let style = if i == state.theme_picker_selected {
+                state
+                    .theme
+                    .style(crate::services::theme::StyleKey::OverlaySelected)
+            } else {
+                state.theme.style(crate::services::theme::StyleKey::Normal)
+            };
+            ListItem::new(Line::styled(label, style))
+        })
+        .collect();
+
+    f.render_widget(List::new(items), inner);
+}
+
+// ── Session Resume overlay (PR-T8) ───────────────────────────────────────────
+
+fn render_session_resume(f: &mut Frame, state: &mut AppState) {
+    let area = centered_rect(70, 70, f.area());
+    f.render_widget(Clear, area);
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(3), Constraint::Min(1)])
+        .split(area);
+
+    let search_block = Block::default()
+        .title(" Resume Session ")
+        .borders(Borders::ALL)
+        .border_style(
+            state
+                .theme
+                .style(crate::services::theme::StyleKey::OverlayBorder),
+        );
+    let search_input = Paragraph::new(state.session_resume_query.as_str())
+        .block(search_block)
+        .style(state.theme.style(crate::services::theme::StyleKey::InputFg));
+    f.render_widget(search_input, chunks[0]);
+
+    let query = state.session_resume_query.to_lowercase();
+    let entries: Vec<_> = state
+        .session_resume_list
+        .iter()
+        .filter(|e| {
+            query.is_empty()
+                || e.title.to_lowercase().contains(&query)
+                || e.project.to_lowercase().contains(&query)
+                || e.last_message_preview.to_lowercase().contains(&query)
+        })
+        .collect();
+
+    let list_block = Block::default().borders(Borders::ALL).border_style(
+        state
+            .theme
+            .style(crate::services::theme::StyleKey::BorderNormal),
+    );
+    let inner = list_block.inner(chunks[1]);
+    f.render_widget(list_block, chunks[1]);
+
+    let items: Vec<ListItem> = entries
+        .iter()
+        .enumerate()
+        .map(|(i, entry)| {
+            let label = format!(
+                " {:16}  {}  {}",
+                entry.project.chars().take(16).collect::<String>(),
+                entry.last_active.format("%Y-%m-%d"),
+                entry
+                    .last_message_preview
+                    .chars()
+                    .take(40)
+                    .collect::<String>(),
+            );
+            let style = if i == state.session_resume_selected {
+                state
+                    .theme
+                    .style(crate::services::theme::StyleKey::OverlaySelected)
+            } else {
+                state.theme.style(crate::services::theme::StyleKey::Normal)
+            };
+            ListItem::new(Line::styled(label, style))
+        })
+        .collect();
+
+    f.render_widget(List::new(items), inner);
 }
