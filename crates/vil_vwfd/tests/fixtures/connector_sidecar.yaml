@@ -1,0 +1,25 @@
+apiVersion: vil.vastar.io/v1
+kind: Connector
+metadata:
+  name: postgres-connector
+  annotations:
+    vil.vastar.io/sidecar-socket: /run/vil/postgres.sock
+spec:
+  handlers:
+    - name: query
+      execution: sidecar
+      config:
+        socket: /run/vil/postgres.sock
+        protocol: uds-json
+        shm_key: pg_connector_shm
+  triggers:
+    - name: manual-trigger
+      kind: manual
+      workflow: query-flow
+  workflows:
+    - name: query-flow
+      steps:
+        - id: run-query
+          handler: query
+          inputs:
+            sql: "{{ inputs.sql }}"

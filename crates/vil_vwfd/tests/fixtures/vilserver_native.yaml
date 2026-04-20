@@ -1,0 +1,32 @@
+apiVersion: vil.vastar.io/v1
+kind: VilServer
+metadata:
+  name: user-service
+  namespace: default
+  labels:
+    team: platform
+spec:
+  handlers:
+    - name: create-user
+      execution: native
+      entrypoint: handlers::create_user
+  triggers:
+    - name: http-create
+      kind: http
+      workflow: create-user-flow
+      config:
+        path: /users
+        method: POST
+  workflows:
+    - name: create-user-flow
+      description: "Create a new user account"
+      steps:
+        - id: validate
+          handler: create-user
+          inputs:
+            payload: "{{ trigger.body }}"
+          condition: "{{ payload.email != nil }}"
+        - id: persist
+          handler: create-user
+          inputs:
+            validated: "{{ steps.validate.output }}"

@@ -1,0 +1,30 @@
+apiVersion: vil.vastar.io/v1
+kind: Pipeline
+metadata:
+  name: data-transform-pipeline
+  labels:
+    domain: analytics
+spec:
+  handlers:
+    - name: transform
+      execution: wasm
+      image: ghcr.io/vastar/transform-handler:latest
+      entrypoint: transform_records
+  triggers:
+    - name: cron-nightly
+      kind: cron
+      workflow: nightly-transform
+      config:
+        schedule: "0 2 * * *"
+  workflows:
+    - name: nightly-transform
+      steps:
+        - id: fetch
+          handler: transform
+          inputs:
+            source: "{{ env.DATA_SOURCE }}"
+        - id: process
+          handler: transform
+          inputs:
+            records: "{{ steps.fetch.output }}"
+          onError: skip
