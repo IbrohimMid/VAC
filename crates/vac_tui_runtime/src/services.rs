@@ -30,6 +30,7 @@ pub mod syntax_highlighter;
 pub mod text_selection;
 pub mod textarea;
 pub mod theme;
+pub mod theme_loader;
 pub mod toast;
 pub mod todo_extractor;
 pub mod vil_workbench;

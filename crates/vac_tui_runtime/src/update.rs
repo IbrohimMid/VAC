@@ -424,6 +424,9 @@ pub fn handle_backend_event(
             );
         }
         InputEvent::ChangesetUpdated => events::on_changeset_updated(state),
+        InputEvent::ThemeReloaded(theme) => {
+            state.theme = theme;
+        }
         InputEvent::StartupHydrated(snapshot) => {
             state.startup = snapshot;
             state.hydrated = true;

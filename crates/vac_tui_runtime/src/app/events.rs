@@ -66,6 +66,9 @@ pub enum InputEvent {
         messages: Vec<crate::app::Message>,
     },
 
+    /// Hot-reload dari theme_loader watcher — ganti theme aktif.
+    ThemeReloaded(crate::services::theme::Theme),
+
     // Input events
     InputChanged(char),
     InputBackspace,
