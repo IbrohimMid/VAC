@@ -2,10 +2,11 @@ use crate::services::syntax_highlighter;
 use crossterm;
 use ratatui::text::{Line, Span};
 use std::time::Instant;
-use unicode_width::UnicodeWidthChar;
 
 use super::super::MarkdownComponent;
 use super::MarkdownStyle;
+use super::layout;
+use super::inline;
 
 pub struct MarkdownRenderer {
     pub style: MarkdownStyle,
@@ -454,70 +455,8 @@ impl MarkdownRenderer {
     }
 
     fn parse_inline_formatting_safe(&self, line: &str) -> MarkdownComponent {
-        if line.len() > 2000 {
-            return MarkdownComponent::Paragraph(line.to_string());
-        }
-
-        // Simple pattern replacement for performance
-        let mut spans = Vec::new();
-        let mut remaining = line.to_string();
-
-        // Handle bold first (greedy matching)
-        while let Some(start) = remaining.find("**") {
-            // Add text before bold
-            if start > 0 {
-                spans.push(Span::styled(
-                    remaining[..start].to_string(),
-                    self.style.text_style,
-                ));
-            }
-
-            // Find closing **
-            if let Some(end) = remaining[start + 2..].find("**") {
-                let bold_text = &remaining[start + 2..start + 2 + end];
-                spans.push(Span::styled(bold_text.to_string(), self.style.bold_style));
-                remaining = remaining[start + 2 + end + 2..].to_string();
-            } else {
-                // No closing **, treat as regular text
-                spans.push(Span::styled(remaining.clone(), self.style.text_style));
-                break;
-            }
-        }
-
-        // Handle inline code (backticks)
-        let mut remaining_for_code = remaining.clone();
-        while let Some(start) = remaining_for_code.find('`') {
-            // Add text before code
-            if start > 0 {
-                spans.push(Span::styled(
-                    remaining_for_code[..start].to_string(),
-                    self.style.text_style,
-                ));
-            }
-
-            // Find closing backtick
-            if let Some(end) = remaining_for_code[start + 1..].find('`') {
-                let code_text = &remaining_for_code[start + 1..start + 1 + end];
-                spans.push(Span::styled(code_text.to_string(), self.style.code_style));
-                remaining_for_code = remaining_for_code[start + 1 + end + 1..].to_string();
-            } else {
-                // No closing backtick, treat as regular text
-                spans.push(Span::styled(
-                    remaining_for_code.clone(),
-                    self.style.text_style,
-                ));
-                break;
-            }
-        }
-
-        // Add any remaining text
-        if !remaining_for_code.is_empty() {
-            spans.push(Span::styled(
-                remaining_for_code.clone(),
-                self.style.text_style,
-            ));
-        }
-
+        let spans = inline::parse_inline_formatting(line, &self.style);
+        
         match spans.len().cmp(&1) {
             std::cmp::Ordering::Greater => MarkdownComponent::MixedContent(spans),
             std::cmp::Ordering::Equal => MarkdownComponent::Paragraph(spans[0].content.to_string()),
@@ -526,47 +465,11 @@ impl MarkdownRenderer {
     }
 
     fn parse_image_safe(&self, text: &str) -> Option<(String, String)> {
-        if text.len() > 500 {
-            // Limit to prevent DoS
-            return None;
-        }
-
-        if let Some(start) = text.find("![")
-            && let Some(middle) = text[start..].find("](")
-            && start + middle < text.len()
-        {
-            let alt_part = &text[start + 2..start + middle];
-            let url_start = start + middle + 2;
-            if let Some(end) = text[url_start..].find(')')
-                && url_start + end <= text.len()
-            {
-                let url_part = &text[url_start..url_start + end];
-                return Some((alt_part.to_string(), url_part.to_string()));
-            }
-        }
-        None
+        inline::parse_image(text)
     }
 
     fn parse_link_safe(&self, text: &str) -> Option<(String, String)> {
-        if text.len() > 500 {
-            // Limit to prevent DoS
-            return None;
-        }
-
-        if let Some(start) = text.find('[')
-            && let Some(middle) = text[start..].find("](")
-            && start + middle < text.len()
-        {
-            let text_part = &text[start + 1..start + middle];
-            let url_start = start + middle + 2;
-            if let Some(end) = text[url_start..].find(')')
-                && url_start + end <= text.len()
-            {
-                let url_part = &text[url_start..url_start + end];
-                return Some((text_part.to_string(), url_part.to_string()));
-            }
-        }
-        None
+        inline::parse_link(text)
     }
 
     fn get_terminal_width(&self) -> Option<usize> {
@@ -583,158 +486,20 @@ impl MarkdownRenderer {
     }
 
     fn wrap_text(&self, text: &str, width: usize) -> Vec<String> {
-        if self.display_width(text) <= width {
-            return vec![text.to_string()];
-        }
-
-        let words: Vec<&str> = text.split_whitespace().collect();
-        let mut lines = Vec::new();
-        let mut current_line = String::new();
-
-        for word in words {
-            let word_width = self.display_width(word);
-
-            // If the word itself is longer than the available width, break it
-            if word_width > width {
-                // First, add any current line content
-                if !current_line.is_empty() {
-                    lines.push(current_line);
-                    current_line = String::new();
-                }
-
-                // Break the long word into chunks
-                let word_chunks = self.break_long_word(word, width);
-                for chunk in word_chunks {
-                    if current_line.is_empty() {
-                        current_line = chunk;
-                    } else {
-                        lines.push(current_line);
-                        current_line = chunk;
-                    }
-                }
-            } else if current_line.is_empty() {
-                current_line = word.to_string();
-            } else if self.display_width(&current_line) + 1 + word_width <= width {
-                current_line.push(' ');
-                current_line.push_str(word);
-            } else {
-                lines.push(current_line);
-                current_line = word.to_string();
-            }
-        }
-
-        if !current_line.is_empty() {
-            lines.push(current_line);
-        }
-
-        lines
-    }
-
-    fn break_long_word(&self, word: &str, max_width: usize) -> Vec<String> {
-        let mut chunks = Vec::new();
-        let mut current_chunk = String::new();
-        let mut current_width = 0;
-
-        for ch in word.chars() {
-            let char_width = self.char_display_width(ch);
-
-            if current_width + char_width > max_width && !current_chunk.is_empty() {
-                chunks.push(current_chunk);
-                current_chunk = String::new();
-                current_width = 0;
-            }
-
-            current_chunk.push(ch);
-            current_width += char_width;
-        }
-
-        if !current_chunk.is_empty() {
-            chunks.push(current_chunk);
-        }
-
-        chunks
+        layout::wrap_text(text, width)
     }
 
     fn truncate_text(&self, text: &str, max_width: usize) -> String {
-        if self.display_width(text) <= max_width {
-            return text.to_string();
-        }
-
-        let mut result = String::new();
-        let mut current_width = 0;
-
-        for ch in text.chars() {
-            let char_width = self.char_display_width(ch);
-            if current_width + char_width > max_width {
-                break;
-            }
-            result.push(ch);
-            current_width += char_width;
-        }
-
-        // Add ellipsis if we truncated
-        if result.len() < text.len() && current_width < max_width {
-            result.push('…');
-        }
-
-        result
+        layout::truncate_text(text, max_width)
     }
 
-    /// Strip markdown syntax (backticks, bold markers) from text for table cells
     fn strip_markdown_for_table(&self, text: &str) -> String {
-        let mut result = String::new();
-        let mut chars = text.chars().peekable();
-
-        while let Some(c) = chars.next() {
-            if c == '`' {
-                // Skip backtick, include content until next backtick
-                while let Some(&next) = chars.peek() {
-                    if next == '`' {
-                        chars.next(); // consume closing backtick
-                        break;
-                    }
-                    result.push(chars.next().unwrap_or(' '));
-                }
-            } else if c == '*' && chars.peek() == Some(&'*') {
-                chars.next(); // consume second *
-                // Include content until next **
-                while let Some(&next) = chars.peek() {
-                    if next == '*' {
-                        chars.next();
-                        if chars.peek() == Some(&'*') {
-                            chars.next(); // consume closing **
-                            break;
-                        }
-                        result.push('*');
-                    } else {
-                        result.push(chars.next().unwrap_or(' '));
-                    }
-                }
-            } else {
-                result.push(c);
-            }
-        }
-        result
+        layout::strip_markdown_for_table(text)
     }
 
     // Calculate display width for Unicode text with accurate emoji detection
     pub fn display_width(&self, text: &str) -> usize {
-        text.chars().map(|c| self.char_display_width(c)).sum()
-    }
-
-    // Get the actual display width of a single character using Unicode width properties
-    fn char_display_width(&self, c: char) -> usize {
-        if c.is_ascii() {
-            return 1;
-        }
-
-        // Use Unicode East Asian Width property to determine width
-        // This automatically handles most emojis and symbols correctly
-        match unicode_width::UnicodeWidthChar::width(c) {
-            Some(1) => 1, // Narrow characters (like ✓, ▲, etc.)
-            Some(2) => 2, // Wide characters (like 🔴, 🟡, etc.)
-            _ => 2,       // Default to wide for unknown characters
-        }
+        layout::display_width(text)
     }
 
     fn parse_table_safe(&self, all_lines: &[&str], index: &mut usize) -> Option<MarkdownComponent> {
@@ -1380,7 +1145,7 @@ impl MarkdownRenderer {
 
                 // Handle words longer than width by breaking them
                 if word_width > width {
-                    let broken = self.break_long_word(word, width);
+                    let broken = layout::break_long_word(word, width);
                     for (i, chunk) in broken.into_iter().enumerate() {
                         if i > 0 && !current_line_spans.is_empty() {
                             result_lines.push(Line::from(current_line_spans));

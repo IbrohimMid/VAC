@@ -1,9 +1,13 @@
 // Module organization:
 // - style.rs: MarkdownStyle struct + theme implementations
 // - renderer.rs: MarkdownRenderer struct + rendering logic
+// - layout.rs: Text layout, wrapping, and display width calculations
+// - inline.rs: Inline formatting parsing (bold, code, links, images)
 
 pub mod style;
 pub mod renderer;
+pub mod layout;
+pub mod inline;
 
 // Re-export public API
 pub use style::MarkdownStyle;
