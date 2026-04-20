@@ -39,6 +39,7 @@ pub use adapter::VacEngineAdapter;
 pub use terminal::TerminalGuard;
 
 // App module
+pub mod action_ids;
 pub mod action_registry;
 pub mod app;
 pub mod background;

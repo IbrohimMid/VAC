@@ -1,118 +1,14 @@
-//! Action Registry
+//! Action Registry — static data only.
 //!
-//! Single source of truth for all TUI actions: keybindings, palette entries,
-//! footer hints, slash aliases, and availability guards.
+//! Types, context logic, and query helpers live in `action_ids.rs`.
 
-use crate::app::{WorkbenchTab, WorkspaceFocus};
+pub use crate::action_ids::{
+    ActionContext, ActionId, ActionSpec, KeyChord,
+    footer_specs, spec_by_slash_alias, specs_for_context,
+};
+use crate::action_ids::always_available;
 
-// ── ActionId ────────────────────────────────────────────────────────────────
-
-/// Closed enum of every user-invocable intent. No string IDs.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum ActionId {
-    // Global
-    Quit,
-    OpenCommandPalette,
-    OpenShortcuts,
-    OpenFileSearch,
-    SwitchModel,
-    SwitchProfile,
-    SwitchIsolation,
-    SwitchRulebook,
-    CyclePane,
-    CycleWorkbenchTab,
-    ToggleSidePanel,
-    ToggleAutoApprove,
-    // Input focus
-    Submit,
-    CancelStream,
-    // Workbench — Approvals
-    ApproveCurrent,
-    ApproveAll,
-    RejectCurrent,
-    RejectAll,
-    // Workbench — Review
-    ToggleDiff,
-    RevertSelected,
-    RevertFiltered,
-    RevertAll,
-    OpenEditor,
-    // Workbench — Sessions
-    ResumeCheckpoint,
-    CleanSession,
-    SwitchToSession,
-    // Workbench — Runtime
-    RefreshRuntime,
-    CancelRuntimeJob,
-    RetryRuntimeJob,
-    // Workbench — Agents
-    RefreshAgents,
-    // Workbench — Plan
-    OpenPlan,
-    ApprovePlan,
-    RequestPlanChanges,
-    EditPlan,
-    OpenPlanReview,
-    // Workbench — VIL
-    RunRepair,
-    RunAudit,
-    RunIrDiff,
-    OpenVilEditor,
-    RunBatchCampaign,
-    // Overlay — generic
-    CloseOverlay,
-    // New session / review
-    NewSession,
-    ReviewOpen,
-    // Slash-command actions (BuiltIn handlers)
-    Clear,
-    Sessions,
-    Runtime,
-    Agents,
-    Shell,
-    ShellFocus,
-    ShellBackground,
-    ShellKill,
-    Context,
-    Export,
-    Import,
-    Changes,
-    FileChanges,
-    PlanReview,
-    PlanEdit,
-    // Wave 2 overlays
-    OpenTaskTray,
-    OpenThemePicker,
-    OpenSessionResume,
-    OpenFilePicker,
-}
-
-// ── KeyChord ────────────────────────────────────────────────────────────────
-
-/// A human-readable key description for display in footer / shortcuts popup.
-pub type KeyChord = &'static str;
-
-// ── ActionSpec ──────────────────────────────────────────────────────────────
-
-/// Full specification of a user-invocable action.
-pub struct ActionSpec {
-    pub id: ActionId,
-    pub title: &'static str,
-    pub description: &'static str,
-    pub scope: ActionContext,
-    pub keybindings: &'static [KeyChord],
-    pub slash_aliases: &'static [&'static str],
-    pub palette_visible: bool,
-    pub footer_visible: bool,
-    pub availability: fn(&crate::app::AppState) -> bool,
-    pub activity_message: Option<fn(&crate::app::AppState) -> String>,
-}
-
-fn always_available(_: &crate::app::AppState) -> bool {
-    true
-}
-
-/// Static registry of all action specs. This is the single source of truth.
+/// Static registry of all action specs. Single source of truth.
 pub static ACTION_SPECS: &[ActionSpec] = &[
     ActionSpec {
         id: ActionId::Quit,
@@ -420,7 +316,7 @@ pub static ACTION_SPECS: &[ActionSpec] = &[
         availability: always_available,
         activity_message: None,
     },
-    // Workbench — tab navigation (WorkbenchAny: shown for all WB tabs)
+    // Workbench — tab navigation
     ActionSpec {
         id: ActionId::CycleWorkbenchTab,
         title: "Next Tab",
@@ -627,7 +523,7 @@ pub static ACTION_SPECS: &[ActionSpec] = &[
         availability: |s| s.overlay_manager.any_active(),
         activity_message: None,
     },
-    // ── Wave 2: new overlays ──────────────────────────────────────────────────
+    // Wave 2 overlays
     ActionSpec {
         id: ActionId::OpenTaskTray,
         title: "Task Tray",
@@ -677,76 +573,3 @@ pub static ACTION_SPECS: &[ActionSpec] = &[
         activity_message: None,
     },
 ];
-
-/// Look up specs for a given scope (includes Global specs for non-overlay contexts).
-/// Specs scoped to `WorkbenchAny` appear for all workbench contexts.
-pub fn specs_for_context(ctx: ActionContext) -> impl Iterator<Item = &'static ActionSpec> {
-    let is_workbench = matches!(
-        ctx,
-        ActionContext::WorkbenchApprovals
-            | ActionContext::WorkbenchReview
-            | ActionContext::WorkbenchSessions
-            | ActionContext::WorkbenchAgents
-            | ActionContext::WorkbenchRuntime
-            | ActionContext::WorkbenchPlan
-            | ActionContext::WorkbenchVil
-    );
-    ACTION_SPECS.iter().filter(move |s| {
-        s.scope == ctx
-            || (ctx != ActionContext::OverlayActive && s.scope == ActionContext::Global)
-            || (is_workbench && s.scope == ActionContext::WorkbenchAny)
-    })
-}
-
-/// Look up a spec by slash alias.
-pub fn spec_by_slash_alias(alias: &str) -> Option<&'static ActionSpec> {
-    ACTION_SPECS
-        .iter()
-        .find(|s| s.slash_aliases.contains(&alias))
-}
-
-/// All specs visible in the footer for a given context.
-pub fn footer_specs(ctx: ActionContext) -> impl Iterator<Item = &'static ActionSpec> {
-    specs_for_context(ctx).filter(|s| s.footer_visible)
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ActionContext {
-    Global,
-    InputFocus,
-    ConversationFocus,
-    ActivityFocus,
-    WorkbenchApprovals,
-    WorkbenchReview,
-    WorkbenchSessions,
-    WorkbenchAgents,
-    WorkbenchRuntime,
-    WorkbenchPlan,
-    WorkbenchVil,
-    /// Matches any active workbench tab — use for shared tab-level hints.
-    WorkbenchAny,
-    OverlayActive,
-}
-
-impl ActionContext {
-    pub fn from_app_state(state: &crate::app::AppState) -> Self {
-        if state.overlay_manager.any_active() {
-            return ActionContext::OverlayActive;
-        }
-
-        match state.focus {
-            WorkspaceFocus::Input => ActionContext::InputFocus,
-            WorkspaceFocus::Conversation => ActionContext::ConversationFocus,
-            WorkspaceFocus::Activity => ActionContext::ActivityFocus,
-            WorkspaceFocus::Workbench => match state.workbench_tab {
-                WorkbenchTab::Approvals => ActionContext::WorkbenchApprovals,
-                WorkbenchTab::Review => ActionContext::WorkbenchReview,
-                WorkbenchTab::Sessions => ActionContext::WorkbenchSessions,
-                WorkbenchTab::Agents => ActionContext::WorkbenchAgents,
-                WorkbenchTab::Runtime => ActionContext::WorkbenchRuntime,
-                WorkbenchTab::Plan => ActionContext::WorkbenchPlan,
-                WorkbenchTab::Vil => ActionContext::WorkbenchVil,
-            },
-        }
-    }
-}
