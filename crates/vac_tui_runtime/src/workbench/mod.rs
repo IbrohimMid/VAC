@@ -4,16 +4,16 @@
 //!   - `tab_label(state)` → display string for the tab bar
 //!   - `render(f, state, area)` → content rendering (list on left, detail on right)
 
-pub mod approvals;
 pub mod agents;
+pub mod approvals;
 pub mod plan;
 pub mod review;
 pub mod runtime;
 pub mod sessions;
 pub mod vil;
 
-pub use approvals::ApprovalsTab;
 pub use agents::AgentsTab;
+pub use approvals::ApprovalsTab;
 pub use plan::PlanTab;
 pub use review::ReviewTab;
 pub use runtime::RuntimeTab;

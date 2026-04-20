@@ -1,5 +1,6 @@
 //! Runtime tab — job queue, autopilot state, MCP servers, task graph.
 
+use super::WorkbenchTabView;
 use crate::app::AppState;
 use ratatui::{
     Frame,
@@ -8,7 +9,6 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem, Paragraph, Wrap},
 };
-use super::WorkbenchTabView;
 
 pub struct RuntimeTab;
 
@@ -46,21 +46,36 @@ impl WorkbenchTabView for RuntimeTab {
             .map(|(idx, job)| {
                 let selected = idx == state.runtime.selected_idx;
                 let style = if selected {
-                    Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD)
                 } else {
                     Style::default()
                 };
                 let status = match &job.status {
-                    vac_runtime::JobStatus::Queued => Span::styled("Q", Style::default().fg(Color::DarkGray)),
-                    vac_runtime::JobStatus::Running => Span::styled("R", Style::default().fg(Color::Cyan)),
-                    vac_runtime::JobStatus::Completed => Span::styled("C", Style::default().fg(Color::Green)),
-                    vac_runtime::JobStatus::Failed(_) => Span::styled("F", Style::default().fg(Color::Red)),
-                    vac_runtime::JobStatus::Cancelled => Span::styled("X", Style::default().fg(Color::Yellow)),
+                    vac_runtime::JobStatus::Queued => {
+                        Span::styled("Q", Style::default().fg(Color::DarkGray))
+                    }
+                    vac_runtime::JobStatus::Running => {
+                        Span::styled("R", Style::default().fg(Color::Cyan))
+                    }
+                    vac_runtime::JobStatus::Completed => {
+                        Span::styled("C", Style::default().fg(Color::Green))
+                    }
+                    vac_runtime::JobStatus::Failed(_) => {
+                        Span::styled("F", Style::default().fg(Color::Red))
+                    }
+                    vac_runtime::JobStatus::Cancelled => {
+                        Span::styled("X", Style::default().fg(Color::Yellow))
+                    }
                 };
                 ListItem::new(Line::from(vec![
                     status,
                     Span::raw(" "),
-                    Span::styled(job.id.to_string().chars().take(8).collect::<String>(), Style::default().fg(Color::DarkGray)),
+                    Span::styled(
+                        job.id.to_string().chars().take(8).collect::<String>(),
+                        Style::default().fg(Color::DarkGray),
+                    ),
                     Span::raw(" "),
                     Span::styled(job.kind_name(), style),
                 ]))
@@ -95,7 +110,10 @@ impl WorkbenchTabView for RuntimeTab {
                 Span::raw(snapshot.task_intent_mode.clone()),
             ]));
             lines.push(Line::from(vec![
-                Span::styled("Environment: ", Style::default().add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    "Environment: ",
+                    Style::default().add_modifier(Modifier::BOLD),
+                ),
                 Span::raw(snapshot.environment_mode.clone()),
             ]));
             lines.push(Line::from(vec![
@@ -112,19 +130,30 @@ impl WorkbenchTabView for RuntimeTab {
             ]));
             if let Some(err) = &snapshot.last_error {
                 lines.push(Line::from(vec![
-                    Span::styled("Last error: ", Style::default().add_modifier(Modifier::BOLD)),
+                    Span::styled(
+                        "Last error: ",
+                        Style::default().add_modifier(Modifier::BOLD),
+                    ),
                     Span::styled(err.clone(), Style::default().fg(Color::Red)),
                 ]));
             }
             if let Some(job_id) = snapshot.current_job {
                 lines.push(Line::from(vec![
-                    Span::styled("Current job: ", Style::default().add_modifier(Modifier::BOLD)),
+                    Span::styled(
+                        "Current job: ",
+                        Style::default().add_modifier(Modifier::BOLD),
+                    ),
                     Span::raw(job_id.to_string()),
                 ]));
             }
             lines.push(Line::from(vec![
                 Span::styled("Updated: ", Style::default().add_modifier(Modifier::BOLD)),
-                Span::raw(snapshot.updated_at.format("%Y-%m-%d %H:%M:%S UTC").to_string()),
+                Span::raw(
+                    snapshot
+                        .updated_at
+                        .format("%Y-%m-%d %H:%M:%S UTC")
+                        .to_string(),
+                ),
             ]));
             match &snapshot.state {
                 vac_runtime::AutopilotState::WaitingApproval { tool_call_id } => {
@@ -135,8 +164,14 @@ impl WorkbenchTabView for RuntimeTab {
                 }
                 vac_runtime::AutopilotState::Backoff { until } => {
                     lines.push(Line::from(vec![
-                        Span::styled("Backoff until: ", Style::default().add_modifier(Modifier::BOLD)),
-                        Span::styled(until.format("%Y-%m-%d %H:%M:%S UTC").to_string(), Style::default().fg(Color::Yellow)),
+                        Span::styled(
+                            "Backoff until: ",
+                            Style::default().add_modifier(Modifier::BOLD),
+                        ),
+                        Span::styled(
+                            until.format("%Y-%m-%d %H:%M:%S UTC").to_string(),
+                            Style::default().fg(Color::Yellow),
+                        ),
                     ]));
                 }
                 _ => {}
@@ -145,24 +180,38 @@ impl WorkbenchTabView for RuntimeTab {
         }
 
         if !state.mcp_server_states.is_empty() {
-            lines.push(Line::from(vec![Span::styled("MCP Servers:", Style::default().add_modifier(Modifier::BOLD))]));
+            lines.push(Line::from(vec![Span::styled(
+                "MCP Servers:",
+                Style::default().add_modifier(Modifier::BOLD),
+            )]));
             for (name, conn_state) in &state.mcp_server_states {
-                let (status, color) = if conn_state.is_connected() { ("✅ connected", Color::Green) } else { ("❌ unreachable", Color::Red) };
+                let (status, color) = if conn_state.is_connected() {
+                    ("✅ connected", Color::Green)
+                } else {
+                    ("❌ unreachable", Color::Red)
+                };
                 lines.push(Line::from(vec![
                     Span::raw("  "),
                     Span::styled(name.clone(), Style::default().fg(Color::Yellow)),
                     Span::raw(" "),
                     Span::styled(status, Style::default().fg(color)),
                 ]));
-                if let vac_tools::mcp::McpConnectionStatus::Unreachable(reason) = &conn_state.status {
-                    lines.push(Line::from(vec![Span::raw("    "), Span::styled(reason.clone(), Style::default().fg(Color::DarkGray))]));
+                if let vac_tools::mcp::McpConnectionStatus::Unreachable(reason) = &conn_state.status
+                {
+                    lines.push(Line::from(vec![
+                        Span::raw("    "),
+                        Span::styled(reason.clone(), Style::default().fg(Color::DarkGray)),
+                    ]));
                 }
             }
             lines.push(Line::raw(""));
         }
 
         if let Some(projection) = &state.runtime.task_projection {
-            lines.push(Line::from(vec![Span::styled("Task Graph:", Style::default().add_modifier(Modifier::BOLD))]));
+            lines.push(Line::from(vec![Span::styled(
+                "Task Graph:",
+                Style::default().add_modifier(Modifier::BOLD),
+            )]));
             lines.push(Line::from(vec![
                 Span::styled("  Nodes: ", Style::default().fg(Color::DarkGray)),
                 Span::raw(projection.nodes.len().to_string()),
@@ -186,13 +235,19 @@ impl WorkbenchTabView for RuntimeTab {
                 };
                 let approval = if node.approval_required { "⚠" } else { "" };
                 lines.push(Line::from(vec![
-                    Span::styled(format!("    [{}] ", status_label), Style::default().fg(status_color)),
+                    Span::styled(
+                        format!("    [{}] ", status_label),
+                        Style::default().fg(status_color),
+                    ),
                     Span::raw(node.label.chars().take(24).collect::<String>()),
                     Span::styled(approval.to_string(), Style::default().fg(Color::Yellow)),
                 ]));
             }
             if projection.nodes.len() > 5 {
-                lines.push(Line::styled(format!("    … and {} more", projection.nodes.len() - 5), Style::default().fg(Color::DarkGray)));
+                lines.push(Line::styled(
+                    format!("    … and {} more", projection.nodes.len() - 5),
+                    Style::default().fg(Color::DarkGray),
+                ));
             }
             lines.push(Line::raw(""));
         }
@@ -222,7 +277,10 @@ impl WorkbenchTabView for RuntimeTab {
             ]));
             if let Some(summary) = &job.result_summary {
                 lines.push(Line::raw(""));
-                lines.push(Line::styled("Summary", Style::default().add_modifier(Modifier::BOLD)));
+                lines.push(Line::styled(
+                    "Summary",
+                    Style::default().add_modifier(Modifier::BOLD),
+                ));
                 for line in summary.lines() {
                     lines.push(Line::raw(line.to_string()));
                 }
@@ -235,7 +293,11 @@ impl WorkbenchTabView for RuntimeTab {
         }
 
         let detail = Paragraph::new(lines)
-            .block(Block::default().borders(Borders::ALL).title("Runtime Detail"))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Runtime Detail"),
+            )
             .wrap(Wrap { trim: false })
             .scroll((state.runtime.detail_scroll as u16, 0));
         f.render_widget(detail, body[1]);

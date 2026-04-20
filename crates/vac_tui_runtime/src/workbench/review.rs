@@ -1,5 +1,6 @@
 //! Review tab — inspect and revert file changes.
 
+use super::WorkbenchTabView;
 use crate::app::AppState;
 use ratatui::{
     Frame,
@@ -8,7 +9,6 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem, Paragraph, Wrap},
 };
-use super::WorkbenchTabView;
 
 pub struct ReviewTab;
 
@@ -32,11 +32,14 @@ impl WorkbenchTabView for ReviewTab {
         } else {
             Line::from(vec![
                 Span::styled("Filter: ", Style::default().fg(Color::Cyan)),
-                Span::styled(&state.review.filter, Style::default().add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    &state.review.filter,
+                    Style::default().add_modifier(Modifier::BOLD),
+                ),
             ])
         };
-        let header = Paragraph::new(filter_line)
-            .block(Block::default().borders(Borders::ALL).title(title));
+        let header =
+            Paragraph::new(filter_line).block(Block::default().borders(Borders::ALL).title(title));
         f.render_widget(header, chunks[0]);
 
         let body = Layout::default()
@@ -51,7 +54,9 @@ impl WorkbenchTabView for ReviewTab {
             .map(|(idx, path)| {
                 let is_selected = idx == state.review.selected_idx;
                 let style = if is_selected {
-                    Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD)
                 } else {
                     Style::default().fg(Color::White)
                 };
@@ -59,9 +64,15 @@ impl WorkbenchTabView for ReviewTab {
                 let (status_span, snap_span) = match state.review.items.get(path) {
                     Some(it) => {
                         let status = match it.status {
-                            crate::app::ReviewItemStatus::Pending => Span::styled("• ", Style::default().fg(Color::DarkGray)),
-                            crate::app::ReviewItemStatus::Restored => Span::styled("✓ ", Style::default().fg(Color::Green)),
-                            crate::app::ReviewItemStatus::Failed => Span::styled("! ", Style::default().fg(Color::Red)),
+                            crate::app::ReviewItemStatus::Pending => {
+                                Span::styled("• ", Style::default().fg(Color::DarkGray))
+                            }
+                            crate::app::ReviewItemStatus::Restored => {
+                                Span::styled("✓ ", Style::default().fg(Color::Green))
+                            }
+                            crate::app::ReviewItemStatus::Failed => {
+                                Span::styled("! ", Style::default().fg(Color::Red))
+                            }
                         };
                         let snap = if it.has_snapshot {
                             Span::styled("S ", Style::default().fg(Color::Cyan))
@@ -76,7 +87,11 @@ impl WorkbenchTabView for ReviewTab {
                     ),
                 };
 
-                ListItem::new(Line::from(vec![status_span, snap_span, Span::styled(path.clone(), style)]))
+                ListItem::new(Line::from(vec![
+                    status_span,
+                    snap_span,
+                    Span::styled(path.clone(), style),
+                ]))
             })
             .collect();
 
@@ -91,10 +106,21 @@ impl WorkbenchTabView for ReviewTab {
         };
 
         let diff_lines: Vec<Line> = if let Some(diff) = &state.review.diff {
-            if let (Some(old), Some(new)) = (diff.old_content.as_deref(), diff.new_content.as_deref()) {
-                crate::services::review::render_diff_viewport(old, new, body[1].width as usize, diff.scroll, diff_height)
+            if let (Some(old), Some(new)) =
+                (diff.old_content.as_deref(), diff.new_content.as_deref())
+            {
+                crate::services::review::render_diff_viewport(
+                    old,
+                    new,
+                    body[1].width as usize,
+                    diff.scroll,
+                    diff_height,
+                )
             } else if let Some(err) = &diff.last_error {
-                vec![Line::from(Span::styled(err.clone(), Style::default().fg(Color::Red)))]
+                vec![Line::from(Span::styled(
+                    err.clone(),
+                    Style::default().fg(Color::Red),
+                ))]
             } else {
                 vec![Line::raw("No diff loaded.")]
             }
@@ -102,7 +128,10 @@ impl WorkbenchTabView for ReviewTab {
             && let Some(it) = state.review.items.get(&path)
             && let Some(err) = &it.last_error
         {
-            vec![Line::from(Span::styled(err.clone(), Style::default().fg(Color::Red)))]
+            vec![Line::from(Span::styled(
+                err.clone(),
+                Style::default().fg(Color::Red),
+            ))]
         } else {
             vec![Line::raw("Enter: toggle diff • PgUp/PgDn: scroll")]
         };

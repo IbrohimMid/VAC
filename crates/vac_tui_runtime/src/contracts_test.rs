@@ -49,9 +49,17 @@ mod tests {
     #[test]
     fn overlay_open_makes_is_active_true() {
         let mut state = crate::app::AppState::default();
-        assert!(!state.overlay_manager.is_active(crate::overlay::OverlayId::CommandPalette));
+        assert!(
+            !state
+                .overlay_manager
+                .is_active(crate::overlay::OverlayId::CommandPalette)
+        );
         crate::overlay::open_overlay(&mut state, crate::overlay::OverlayId::CommandPalette);
-        assert!(state.overlay_manager.is_active(crate::overlay::OverlayId::CommandPalette));
+        assert!(
+            state
+                .overlay_manager
+                .is_active(crate::overlay::OverlayId::CommandPalette)
+        );
     }
 
     #[test]
@@ -59,7 +67,11 @@ mod tests {
         let mut state = crate::app::AppState::default();
         crate::overlay::open_overlay(&mut state, crate::overlay::OverlayId::ModelSwitcher);
         crate::overlay::close_overlay(&mut state, crate::overlay::OverlayId::ModelSwitcher);
-        assert!(!state.overlay_manager.is_active(crate::overlay::OverlayId::ModelSwitcher));
+        assert!(
+            !state
+                .overlay_manager
+                .is_active(crate::overlay::OverlayId::ModelSwitcher)
+        );
     }
 
     #[test]
@@ -98,7 +110,10 @@ mod tests {
             .iter()
             .filter(|&&id| id == crate::overlay::OverlayId::FileSearch)
             .count();
-        assert_eq!(count, 1, "FileSearch should appear exactly once in the stack");
+        assert_eq!(
+            count, 1,
+            "FileSearch should appear exactly once in the stack"
+        );
     }
 
     #[test]
@@ -108,7 +123,10 @@ mod tests {
         crate::overlay::open_overlay(&mut state, crate::overlay::OverlayId::ModelSwitcher);
         crate::overlay::open_overlay(&mut state, crate::overlay::OverlayId::Shortcuts);
         crate::overlay::close_all_overlays(&mut state);
-        assert!(!state.overlay_manager.any_active(), "all overlays should be closed");
+        assert!(
+            !state.overlay_manager.any_active(),
+            "all overlays should be closed"
+        );
     }
 
     #[test]
@@ -165,7 +183,11 @@ mod tests {
         for spec in ACTION_SPECS.iter() {
             for alias in spec.slash_aliases {
                 let found = spec_by_slash_alias(alias);
-                assert!(found.is_some(), "spec_by_slash_alias('{}') returned None", alias);
+                assert!(
+                    found.is_some(),
+                    "spec_by_slash_alias('{}') returned None",
+                    alias
+                );
                 assert_eq!(
                     found.unwrap().id as u32,
                     spec.id as u32,
@@ -202,7 +224,11 @@ mod tests {
             .map(crate::workbench::active_tab_index)
             .collect();
         let unique: HashSet<usize> = indices.iter().copied().collect();
-        assert_eq!(unique.len(), 7, "each WorkbenchTab variant should map to a unique index");
+        assert_eq!(
+            unique.len(),
+            7,
+            "each WorkbenchTab variant should map to a unique index"
+        );
         assert_eq!(*indices.iter().max().unwrap(), 6, "max index should be 6");
     }
 

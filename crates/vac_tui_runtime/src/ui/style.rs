@@ -8,7 +8,9 @@ use ratatui::style::{Color, Modifier, Style};
 /// - Unfocused: DarkGray (visually receded, not invisible)
 pub fn focus_style(focused: bool) -> Style {
     if focused {
-        Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+        Style::default()
+            .fg(Color::Yellow)
+            .add_modifier(Modifier::BOLD)
     } else {
         Style::default().fg(Color::DarkGray)
     }

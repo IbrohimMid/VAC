@@ -1,5 +1,6 @@
 //! Plan tab — view and manage the active plan.
 
+use super::WorkbenchTabView;
 use crate::app::{AppState, WorkspaceFocus};
 use crate::ui::style::focus_style;
 use ratatui::{
@@ -9,7 +10,6 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph, Wrap},
 };
-use super::WorkbenchTabView;
 
 pub struct PlanTab;
 
@@ -32,7 +32,12 @@ impl WorkbenchTabView for PlanTab {
         if let Some(meta) = &state.plan.metadata {
             lines.push(Line::from(vec![
                 Span::styled("Title: ", Style::default().fg(Color::DarkGray)),
-                Span::styled(meta.title.clone(), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    meta.title.clone(),
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                ),
             ]));
             let (status_label, status_color) = match meta.status {
                 crate::services::plan::PlanStatus::Drafting => ("drafting", Color::Yellow),
@@ -42,7 +47,10 @@ impl WorkbenchTabView for PlanTab {
             lines.push(Line::from(vec![
                 Span::styled("Status: ", Style::default().fg(Color::DarkGray)),
                 Span::styled(status_label.to_string(), Style::default().fg(status_color)),
-                Span::styled(format!("  v{}", meta.version), Style::default().fg(Color::DarkGray)),
+                Span::styled(
+                    format!("  v{}", meta.version),
+                    Style::default().fg(Color::DarkGray),
+                ),
             ]));
             lines.push(Line::raw(""));
         }
@@ -58,7 +66,11 @@ impl WorkbenchTabView for PlanTab {
         let focus_style = focus_style(state.focus == WorkspaceFocus::Workbench);
 
         let para = Paragraph::new(lines)
-            .block(Block::default().borders(Borders::ALL).title(Span::styled("Plan", focus_style)))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(Span::styled("Plan", focus_style)),
+            )
             .wrap(Wrap { trim: false });
         f.render_widget(para, area);
     }

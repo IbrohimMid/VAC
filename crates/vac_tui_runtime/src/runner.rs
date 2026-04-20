@@ -974,6 +974,38 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                     let jobs = load_runtime_jobs(&runtime_project_root).await;
                     let _ = input_tx_clone.send(InputEvent::SetRuntimeJobs(jobs)).await;
                 }
+                OutputEvent::LoadSessionResumeList => {
+                    let root = runtime_project_root.clone();
+                    let tx = input_tx_clone.clone();
+                    tokio::task::spawn_blocking(move || {
+                        let snapshots =
+                            vac_session_control::list_snapshots(&root).unwrap_or_default();
+                        let project_name = root
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or("project")
+                            .to_string();
+                        let entries: Vec<crate::app::types::SessionResumeEntry> = snapshots
+                            .into_iter()
+                            .map(|snap| {
+                                let id_str = snap.session_id.to_string();
+                                crate::app::types::SessionResumeEntry {
+                                    session_id: snap.session_id,
+                                    title: format!("Session {}", &id_str[..8]),
+                                    project: project_name.clone(),
+                                    last_message_preview: format!(
+                                        "{} tasks, {} tokens",
+                                        snap.task_count, snap.total_tokens
+                                    ),
+                                    last_active: snap.updated_at,
+                                    model: snap.active_model.clone(),
+                                    token_count: Some(snap.total_tokens as u32),
+                                }
+                            })
+                            .collect();
+                        let _ = tx.blocking_send(InputEvent::SetSessionResumeList(entries));
+                    });
+                }
                 OutputEvent::ListAgentTasks => {
                     let tasks = load_agent_tasks(&runtime_project_root).await;
                     let _ = input_tx_clone.send(InputEvent::SetAgentTasks(tasks)).await;

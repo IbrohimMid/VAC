@@ -1,11 +1,11 @@
 //! Workbench tab input handlers — dispatched from the main router when
 //! `state.focus == WorkspaceFocus::Workbench`.
 
-use crate::app::{InputEvent, OutputEvent, WorkbenchTab};
-use crate::handlers::{HandlerContext, approval, review as review_handler, vil_workbench};
-use crate::handlers::input_editor::{plan_open_editor, plan_write_status};
-use tokio::sync::mpsc::Sender;
 use crate::app::AppState;
+use crate::app::{InputEvent, OutputEvent, WorkbenchTab};
+use crate::handlers::input_editor::{plan_open_editor, plan_write_status};
+use crate::handlers::{HandlerContext, approval, review as review_handler, vil_workbench};
+use tokio::sync::mpsc::Sender;
 
 pub fn handle(state: &mut AppState, output_tx: &Sender<OutputEvent>, event: InputEvent) {
     match event {
@@ -34,11 +34,21 @@ fn handle_char(state: &mut AppState, output_tx: &Sender<OutputEvent>, c: char) {
         WorkbenchTab::Vil => {
             let mut ctx = HandlerContext::new(state, output_tx);
             match c {
-                'r' | 'R' => { let _ = vil_workbench::run_repair(&mut ctx); }
-                'a' | 'A' => { let _ = vil_workbench::run_audit(&mut ctx); }
-                'd' | 'D' => { let _ = vil_workbench::run_ir_diff(&mut ctx); }
-                'o' | 'O' => { let _ = vil_workbench::open_in_editor(&mut ctx); }
-                'b' | 'B' => { let _ = vil_workbench::run_batch_campaign(&mut ctx); }
+                'r' | 'R' => {
+                    let _ = vil_workbench::run_repair(&mut ctx);
+                }
+                'a' | 'A' => {
+                    let _ = vil_workbench::run_audit(&mut ctx);
+                }
+                'd' | 'D' => {
+                    let _ = vil_workbench::run_ir_diff(&mut ctx);
+                }
+                'o' | 'O' => {
+                    let _ = vil_workbench::open_in_editor(&mut ctx);
+                }
+                'b' | 'B' => {
+                    let _ = vil_workbench::run_batch_campaign(&mut ctx);
+                }
                 _ => {}
             }
         }
@@ -185,12 +195,16 @@ fn cleanup_session(state: &mut AppState, output_tx: &Sender<OutputEvent>) {
     if let Some(sel) = state.sessions.get(state.sessions_selected_idx).cloned() {
         match uuid::Uuid::parse_str(&sel.id) {
             Ok(session_id) => {
-                let report =
-                    vac_session_control::cleanup_session(&state.project_root, session_id);
-                if report.snapshot_removed || report.checkpoint_removed || report.approvals_removed > 0 {
+                let report = vac_session_control::cleanup_session(&state.project_root, session_id);
+                if report.snapshot_removed
+                    || report.checkpoint_removed
+                    || report.approvals_removed > 0
+                {
                     state.toasts.push(crate::services::Toast::success(format!(
                         "Cleaned session artifacts: snapshot {}, checkpoint {}, approvals {}",
-                        report.snapshot_removed, report.checkpoint_removed, report.approvals_removed
+                        report.snapshot_removed,
+                        report.checkpoint_removed,
+                        report.approvals_removed
                     )));
                 } else {
                     state.toasts.push(crate::services::Toast::info(

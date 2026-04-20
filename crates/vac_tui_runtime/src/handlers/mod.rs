@@ -45,8 +45,8 @@ pub mod review;
 pub mod rulebook_switcher;
 pub mod shell;
 pub mod vil_workbench;
-pub mod workspace_input;
 pub mod workbench_input;
+pub mod workspace_input;
 
 use crate::app::{AppState, OutputEvent};
 use tokio::sync::mpsc::Sender;

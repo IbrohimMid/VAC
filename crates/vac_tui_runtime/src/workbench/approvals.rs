@@ -1,5 +1,6 @@
 //! Approvals tab — review and approve/reject pending tool calls.
 
+use super::WorkbenchTabView;
 use crate::app::AppState;
 use ratatui::{
     Frame,
@@ -8,7 +9,6 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem, Paragraph, Wrap},
 };
-use super::WorkbenchTabView;
 
 pub struct ApprovalsTab;
 
@@ -30,7 +30,9 @@ impl WorkbenchTabView for ApprovalsTab {
             .map(|(idx, tc)| {
                 let selected = idx == state.approval_selected_idx;
                 let style = if selected {
-                    Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD)
                 } else {
                     Style::default()
                 };
@@ -43,8 +45,7 @@ impl WorkbenchTabView for ApprovalsTab {
             })
             .collect();
 
-        let list = List::new(items)
-            .block(Block::default().borders(Borders::ALL).title("Pending"));
+        let list = List::new(items).block(Block::default().borders(Borders::ALL).title("Pending"));
         f.render_widget(list, body[0]);
 
         let mut lines: Vec<Line> = Vec::new();
@@ -60,9 +61,15 @@ impl WorkbenchTabView for ApprovalsTab {
                 .get(&tc.id)
                 .and_then(|v| v.clone())
             {
-                lines.push(Line::styled("Explanation", Style::default().add_modifier(Modifier::BOLD)));
+                lines.push(Line::styled(
+                    "Explanation",
+                    Style::default().add_modifier(Modifier::BOLD),
+                ));
                 for l in expl.lines() {
-                    lines.push(Line::styled(l.to_string(), Style::default().fg(Color::DarkGray)));
+                    lines.push(Line::styled(
+                        l.to_string(),
+                        Style::default().fg(Color::DarkGray),
+                    ));
                 }
                 lines.push(Line::raw(""));
             }
@@ -74,7 +81,10 @@ impl WorkbenchTabView for ApprovalsTab {
                     let old_str = v.get("old_string").and_then(|v| v.as_str()).unwrap_or("");
                     let new_str = v.get("new_string").and_then(|v| v.as_str()).unwrap_or("");
                     lines.extend(crate::services::file_diff::preview_file_diff(
-                        file_path, old_str, new_str, body[1].width as usize,
+                        file_path,
+                        old_str,
+                        new_str,
+                        body[1].width as usize,
                     ));
                 }
             } else if tc.function.name == "file_write" {
@@ -82,17 +92,27 @@ impl WorkbenchTabView for ApprovalsTab {
                     let file_path = v.get("file_path").and_then(|v| v.as_str()).unwrap_or("");
                     let content = v.get("content").and_then(|v| v.as_str()).unwrap_or("");
                     lines.extend(crate::services::file_diff::preview_file_diff(
-                        file_path, "", content, body[1].width as usize,
+                        file_path,
+                        "",
+                        content,
+                        body[1].width as usize,
                     ));
                 }
             } else if let Ok(v) = serde_json::from_str::<serde_json::Value>(args) {
-                let formatted = serde_json::to_string_pretty(&v).unwrap_or_else(|_| args.to_string());
-                lines.push(Line::styled("Arguments", Style::default().add_modifier(Modifier::BOLD)));
+                let formatted =
+                    serde_json::to_string_pretty(&v).unwrap_or_else(|_| args.to_string());
+                lines.push(Line::styled(
+                    "Arguments",
+                    Style::default().add_modifier(Modifier::BOLD),
+                ));
                 for line in formatted.lines() {
                     lines.push(Line::raw(line.to_string()));
                 }
             } else {
-                lines.push(Line::styled("Arguments", Style::default().add_modifier(Modifier::BOLD)));
+                lines.push(Line::styled(
+                    "Arguments",
+                    Style::default().add_modifier(Modifier::BOLD),
+                ));
                 for line in args.lines() {
                     lines.push(Line::raw(line.to_string()));
                 }

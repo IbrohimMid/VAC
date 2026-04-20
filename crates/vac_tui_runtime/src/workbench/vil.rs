@@ -1,8 +1,8 @@
 //! VIL tab — validation issues, audit results, and repair proposals.
 
+use super::WorkbenchTabView;
 use crate::app::AppState;
 use ratatui::{Frame, layout::Rect};
-use super::WorkbenchTabView;
 
 pub struct VilTab;
 

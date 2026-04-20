@@ -110,7 +110,11 @@ mod tests {
         let mut ctx = HandlerContext::new(&mut state, &tx);
 
         assert!(open(&mut ctx).is_ok());
-        assert!(ctx.state.overlay_manager.is_active(crate::overlay::OverlayId::FileSearch));
+        assert!(
+            ctx.state
+                .overlay_manager
+                .is_active(crate::overlay::OverlayId::FileSearch)
+        );
         assert_eq!(ctx.state.file_search_selected_idx, 0);
     }
 
@@ -123,7 +127,11 @@ mod tests {
         ctx.state.file_search_query = "test".to_string();
 
         assert!(close(&mut ctx).is_ok());
-        assert!(!ctx.state.overlay_manager.is_active(crate::overlay::OverlayId::FileSearch));
+        assert!(
+            !ctx.state
+                .overlay_manager
+                .is_active(crate::overlay::OverlayId::FileSearch)
+        );
         assert!(ctx.state.file_search_query.is_empty());
     }
 

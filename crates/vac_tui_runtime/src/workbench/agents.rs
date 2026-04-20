@@ -1,5 +1,6 @@
 //! Agents tab — monitor swarm agent tasks and worker pool.
 
+use super::WorkbenchTabView;
 use crate::app::AppState;
 use ratatui::{
     Frame,
@@ -8,7 +9,6 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem, Paragraph, Wrap},
 };
-use super::WorkbenchTabView;
 
 pub struct AgentsTab;
 
@@ -46,18 +46,35 @@ impl WorkbenchTabView for AgentsTab {
             .map(|(idx, task)| {
                 let selected = idx == state.runtime.agent_selected;
                 let style = if selected {
-                    Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD)
                 } else {
                     Style::default()
                 };
                 let status = match &task.status {
-                    vac_runtime::AgentTaskStatus::Queued => Span::styled("Q", Style::default().fg(Color::DarkGray)),
-                    vac_runtime::AgentTaskStatus::Running => Span::styled("R", Style::default().fg(Color::Cyan)),
-                    vac_runtime::AgentTaskStatus::Completed => Span::styled("C", Style::default().fg(Color::Green)),
-                    vac_runtime::AgentTaskStatus::Failed(_) => Span::styled("F", Style::default().fg(Color::Red)),
-                    vac_runtime::AgentTaskStatus::Cancelled => Span::styled("X", Style::default().fg(Color::Yellow)),
+                    vac_runtime::AgentTaskStatus::Queued => {
+                        Span::styled("Q", Style::default().fg(Color::DarkGray))
+                    }
+                    vac_runtime::AgentTaskStatus::Running => {
+                        Span::styled("R", Style::default().fg(Color::Cyan))
+                    }
+                    vac_runtime::AgentTaskStatus::Completed => {
+                        Span::styled("C", Style::default().fg(Color::Green))
+                    }
+                    vac_runtime::AgentTaskStatus::Failed(_) => {
+                        Span::styled("F", Style::default().fg(Color::Red))
+                    }
+                    vac_runtime::AgentTaskStatus::Cancelled => {
+                        Span::styled("X", Style::default().fg(Color::Yellow))
+                    }
                 };
-                let role = Span::styled(task.role.label(), Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD));
+                let role = Span::styled(
+                    task.role.label(),
+                    Style::default()
+                        .fg(Color::Magenta)
+                        .add_modifier(Modifier::BOLD),
+                );
                 let short_id = task.id.to_string().chars().take(8).collect::<String>();
                 let mut desc = task.description.clone();
                 if desc.chars().count() > 48 {
@@ -94,13 +111,26 @@ impl WorkbenchTabView for AgentsTab {
         lines.push(Line::raw(""));
 
         if let Some(snapshot) = &state.runtime.agent_snapshot {
-            lines.push(Line::styled("Workers:", Style::default().add_modifier(Modifier::BOLD)));
+            lines.push(Line::styled(
+                "Workers:",
+                Style::default().add_modifier(Modifier::BOLD),
+            ));
             for w in &snapshot.workers {
-                let role = Span::styled(w.role.label(), Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD));
+                let role = Span::styled(
+                    w.role.label(),
+                    Style::default()
+                        .fg(Color::Magenta)
+                        .add_modifier(Modifier::BOLD),
+                );
                 let status = match &w.status {
-                    vac_runtime::AgentWorkerStatus::Idle => Span::styled("idle", Style::default().fg(Color::DarkGray)),
+                    vac_runtime::AgentWorkerStatus::Idle => {
+                        Span::styled("idle", Style::default().fg(Color::DarkGray))
+                    }
                     vac_runtime::AgentWorkerStatus::Running { task_id, .. } => Span::styled(
-                        format!("running {}", task_id.to_string().chars().take(8).collect::<String>()),
+                        format!(
+                            "running {}",
+                            task_id.to_string().chars().take(8).collect::<String>()
+                        ),
                         Style::default().fg(Color::Cyan),
                     ),
                 };
@@ -117,22 +147,36 @@ impl WorkbenchTabView for AgentsTab {
                     if o.chars().count() > 72 {
                         o = o.chars().take(69).collect::<String>() + "...";
                     }
-                    lines.push(Line::from(vec![Span::raw("    "), Span::styled(o, Style::default().fg(Color::DarkGray))]));
+                    lines.push(Line::from(vec![
+                        Span::raw("    "),
+                        Span::styled(o, Style::default().fg(Color::DarkGray)),
+                    ]));
                 }
             }
             lines.push(Line::raw(""));
             lines.push(Line::from(vec![
                 Span::styled("Updated: ", Style::default().add_modifier(Modifier::BOLD)),
-                Span::raw(snapshot.updated_at.format("%Y-%m-%d %H:%M:%S UTC").to_string()),
+                Span::raw(
+                    snapshot
+                        .updated_at
+                        .format("%Y-%m-%d %H:%M:%S UTC")
+                        .to_string(),
+                ),
             ]));
             lines.push(Line::raw(""));
         } else {
-            lines.push(Line::styled("No agent scheduler state found.", Style::default().fg(Color::DarkGray)));
+            lines.push(Line::styled(
+                "No agent scheduler state found.",
+                Style::default().fg(Color::DarkGray),
+            ));
             lines.push(Line::raw(""));
         }
 
         if let Some(task) = state.runtime.agent_tasks.get(state.runtime.agent_selected) {
-            lines.push(Line::styled("Selected:", Style::default().add_modifier(Modifier::BOLD)));
+            lines.push(Line::styled(
+                "Selected:",
+                Style::default().add_modifier(Modifier::BOLD),
+            ));
             lines.push(Line::from(vec![
                 Span::styled("ID: ", Style::default().fg(Color::DarkGray)),
                 Span::raw(task.id.to_string()),
@@ -159,9 +203,15 @@ impl WorkbenchTabView for AgentsTab {
                 ]));
             }
             lines.push(Line::raw(""));
-            lines.push(Line::styled("j/k: navigate  r: refresh", Style::default().fg(Color::DarkGray)));
+            lines.push(Line::styled(
+                "j/k: navigate  r: refresh",
+                Style::default().fg(Color::DarkGray),
+            ));
         } else {
-            lines.push(Line::styled("No tasks enqueued.", Style::default().fg(Color::DarkGray)));
+            lines.push(Line::styled(
+                "No tasks enqueued.",
+                Style::default().fg(Color::DarkGray),
+            ));
         }
 
         let detail = Paragraph::new(lines)

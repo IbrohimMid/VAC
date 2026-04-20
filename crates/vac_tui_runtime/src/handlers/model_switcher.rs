@@ -96,7 +96,11 @@ mod tests {
         let mut ctx = HandlerContext::new(&mut state, &tx);
 
         assert!(open(&mut ctx).is_ok());
-        assert!(ctx.state.overlay_manager.is_active(crate::overlay::OverlayId::ModelSwitcher));
+        assert!(
+            ctx.state
+                .overlay_manager
+                .is_active(crate::overlay::OverlayId::ModelSwitcher)
+        );
         assert_eq!(ctx.state.model_switcher_selected_idx, 0);
     }
 
@@ -109,7 +113,11 @@ mod tests {
         ctx.state.model_switcher_filter = "test".to_string();
 
         assert!(close(&mut ctx).is_ok());
-        assert!(!ctx.state.overlay_manager.is_active(crate::overlay::OverlayId::ModelSwitcher));
+        assert!(
+            !ctx.state
+                .overlay_manager
+                .is_active(crate::overlay::OverlayId::ModelSwitcher)
+        );
         assert!(ctx.state.model_switcher_filter.is_empty());
     }
 

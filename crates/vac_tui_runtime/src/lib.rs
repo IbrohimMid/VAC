@@ -41,9 +41,12 @@ pub use terminal::TerminalGuard;
 // App module
 pub mod action_registry;
 pub mod app;
+pub mod background;
+pub mod capabilities;
 pub mod controller;
 mod event;
 pub mod overlay;
+pub mod session_snapshot;
 pub mod ui;
 pub mod workbench;
 
