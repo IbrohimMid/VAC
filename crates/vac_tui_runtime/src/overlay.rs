@@ -28,6 +28,14 @@ pub enum OverlayId {
     RejectReason,
     /// Review workbench detail pane (modal when an item is open).
     ReviewPane,
+    /// Background task tray (bottom-right, shows running/queued/completed jobs).
+    TaskTray,
+    /// Theme preset picker overlay (Ctrl+Shift+T).
+    ThemePicker,
+    /// Session resume overlay (Ctrl+R).
+    SessionResume,
+    /// File picker v2 (multi-select, dir nav, preview).
+    FilePicker,
 }
 
 /// Render order (lower index = rendered first = underneath).
@@ -49,6 +57,10 @@ const RENDER_ORDER: &[OverlayId] = &[
     OverlayId::HelperDropdown,
     OverlayId::AtDropdown,
     OverlayId::RejectReason,
+    OverlayId::TaskTray,
+    OverlayId::ThemePicker,
+    OverlayId::SessionResume,
+    OverlayId::FilePicker,
 ];
 
 /// Manages the active overlay stack.
@@ -182,7 +194,11 @@ fn sync_domain_state(state: &mut AppState, id: OverlayId, value: bool) {
         | OverlayId::FileChanges
         | OverlayId::AskUser
         | OverlayId::MessageAction
-        | OverlayId::HelperDropdown => {}
+        | OverlayId::HelperDropdown
+        | OverlayId::TaskTray
+        | OverlayId::ThemePicker
+        | OverlayId::SessionResume
+        | OverlayId::FilePicker => {}
     }
 }
 
@@ -266,4 +282,3 @@ mod tests {
         assert!(!state.review.open);
     }
 }
-

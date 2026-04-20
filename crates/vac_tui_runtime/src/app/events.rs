@@ -22,6 +22,7 @@ pub enum InputEvent {
     AvailableModelsLoaded(Vec<Model>),
     ShowToast(Toast),
     SetSessions(Vec<SessionInfo>),
+    SetSessionResumeList(Vec<crate::app::types::SessionResumeEntry>),
     SetAgentTasks(Vec<vac_runtime::AgentTask>),
     SetAgentState(Option<vac_runtime::AgentSchedulerStateFile>),
     SetRuntimeJobs(Vec<vac_runtime::Job>),
@@ -236,4 +237,8 @@ pub enum OutputEvent {
     RevertToMessage(uuid::Uuid),
     ExportBundle(PathBuf),
     ImportBundle(PathBuf),
+    /// Files selected via file picker v2 and confirmed (PR-T6).
+    FilesAttached(Vec<PathBuf>),
+    /// Load session list for the resume overlay (PR-T8).
+    LoadSessionResumeList,
 }

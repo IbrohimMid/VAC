@@ -715,6 +715,36 @@ pub struct VilStatusSnapshot {
     pub ir_metadata_files: Vec<String>,
 }
 
+/// A context chip attached above the input bar via @-mention (PR-T7).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ContextChip {
+    /// Display label shown in the chip.
+    pub label: String,
+    /// The resolved content to attach on submit (file contents, skill description, etc.)
+    pub content: String,
+    pub namespace: ChipNamespace,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChipNamespace {
+    File,
+    Skill,
+    Todo,
+    Session,
+}
+
+/// An entry in the session-resume overlay list (PR-T8).
+#[derive(Debug, Clone)]
+pub struct SessionResumeEntry {
+    pub session_id: uuid::Uuid,
+    pub title: String,
+    pub project: String,
+    pub last_message_preview: String,
+    pub last_active: DateTime<Utc>,
+    pub model: Option<String>,
+    pub token_count: Option<u32>,
+}
+
 #[derive(Debug, Clone)]
 pub struct StartupSnapshot {
     pub boot_time: DateTime<Utc>,
@@ -758,6 +788,10 @@ impl Default for StartupSnapshot {
 /// Main application state for TUI
 pub struct AppState {
     pub startup: StartupSnapshot,
+    /// True once StartupHydrated has been received — gates first real render.
+    pub hydrated: bool,
+    /// Deadline after which a missing StartupHydrated forces hydration with fallback data.
+    pub hydration_deadline: std::time::Instant,
     // Layout state
     pub side_panel_visible: bool,
     pub side_panel_width: u16,
@@ -807,7 +841,15 @@ pub struct AppState {
     // Streaming state
     pub is_streaming: bool,
     pub cancel_requested: bool,
+    /// Number of Ctrl+C presses during a non-streaming idle — two consecutive quits.
+    pub quit_press_count: u8,
+    /// Timestamp of the first Ctrl+C press for quit disambiguation timeout.
+    pub quit_first_press: Option<std::time::Instant>,
     pub streaming_message_id: Option<Uuid>,
+    /// Wall-clock time streaming started, for tok/s computation.
+    pub streaming_start: Option<std::time::Instant>,
+    /// Total tokens received in the current stream.
+    pub streaming_tokens: u64,
 
     // Command palette
     pub command_palette_input: String,
@@ -869,6 +911,20 @@ pub struct AppState {
     pub file_search_query: String,
     pub file_search_selected_idx: usize,
     pub file_search_results: Vec<String>,
+
+    // ── File Picker v2 (PR-T6) ────────────────────────────────────────────────
+    pub file_picker_query: String,
+    pub file_picker_selected: usize,
+    pub file_picker_results: Vec<std::path::PathBuf>,
+    pub file_picker_multi_selected: std::collections::HashSet<usize>,
+    pub file_picker_cwd: std::path::PathBuf,
+    pub file_picker_type_filter: Option<String>,
+    pub file_picker_preview: Option<String>,
+
+    // ── @-mention context chips (PR-T7) ────────────────────────────────────────
+    /// Resolved context chips above the input bar.
+    pub context_chips: Vec<crate::app::types::ContextChip>,
+    pub context_chip_cursor: Option<usize>,
 
     // Inline @ file picker
     pub at_trigger_active: bool,
@@ -959,6 +1015,21 @@ pub struct AppState {
     /// Overlay stack: tracks open modal overlays and their event-capture order.
     pub overlay_manager: crate::overlay::OverlayManager,
 
+    // ── Task Tray (PR-T9) ────────────────────────────────────────────────────
+    pub task_tray_selected: usize,
+    pub task_tray_scroll: usize,
+    /// Whether the task tray shows only active (running/queued) or all jobs.
+    pub task_tray_filter_active_only: bool,
+
+    // ── Theme (PR-T5) ────────────────────────────────────────────────────────
+    pub theme: crate::services::theme::Theme,
+    pub theme_picker_selected: usize,
+
+    // ── Session Resume Overlay (PR-T8) ───────────────────────────────────────
+    pub session_resume_query: String,
+    pub session_resume_selected: usize,
+    pub session_resume_list: Vec<crate::app::types::SessionResumeEntry>,
+
     // vil_workbench fields moved to VilState.workbench_selected / .workbench_group_filter
 
     // ===== Unit 5 (Wave 3.1) — Attachment tray preview & reorder =====
@@ -1009,6 +1080,8 @@ impl AppState {
     pub fn new(options: AppStateOptions) -> Self {
         Self {
             startup: StartupSnapshot::default(),
+            hydrated: false,
+            hydration_deadline: std::time::Instant::now() + std::time::Duration::from_secs(10),
             side_panel_visible: false,
             side_panel_width: 30,
             side_panel_section_collapsed: std::collections::HashSet::new(),
@@ -1041,7 +1114,11 @@ impl AppState {
             shell: ShellState::default(),
             is_streaming: false,
             cancel_requested: false,
+            quit_press_count: 0,
+            quit_first_press: None,
             streaming_message_id: None,
+            streaming_start: None,
+            streaming_tokens: 0,
             command_palette_input: String::new(),
             command_palette_selected: 0,
             command_palette_scroll: 0,
@@ -1090,6 +1167,15 @@ impl AppState {
             file_search_query: String::new(),
             file_search_selected_idx: 0,
             file_search_results: Vec::new(),
+            file_picker_query: String::new(),
+            file_picker_selected: 0,
+            file_picker_results: Vec::new(),
+            file_picker_multi_selected: std::collections::HashSet::new(),
+            file_picker_cwd: options.project_root.clone(),
+            file_picker_type_filter: None,
+            file_picker_preview: None,
+            context_chips: Vec::new(),
+            context_chip_cursor: None,
             at_trigger_active: false,
             at_query: String::new(),
             at_results: Vec::new(),
@@ -1143,6 +1229,14 @@ impl AppState {
             message_area_height: 0,
             input_tx: None,
             overlay_manager: crate::overlay::OverlayManager::new(),
+            task_tray_selected: 0,
+            task_tray_scroll: 0,
+            task_tray_filter_active_only: false,
+            theme: crate::services::theme::Theme::default(),
+            theme_picker_selected: 0,
+            session_resume_query: String::new(),
+            session_resume_selected: 0,
+            session_resume_list: Vec::new(),
             // Unit 9 (Wave 4.1) — VIL Issue Workstation
             // vil workbench fields are in vil: VilState::default()
             // Unit 5 (Wave 3.1) — Attachment tray preview & reorder
