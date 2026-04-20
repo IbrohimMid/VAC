@@ -7,7 +7,7 @@ use crate::services::clipboard_paste::{PastedKind, kind_badge, preview_text, siz
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Modifier, Style},
+    style::Modifier,
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph, Wrap},
 };
