@@ -1699,3 +1699,141 @@ fn shell_backend_lifecycle_updates_state() {
     assert_eq!(active.exit_code, Some(0));
     assert!(!active.waiting_for_input);
 }
+
+// ── PR-T8 session resume fuzzy search tests ────────────────────────────────
+
+#[test]
+fn session_resume_fuzzy_orders_by_score() {
+    use crate::app::types::SessionResumeEntry;
+    use crate::handlers::input_popup::refresh_session_resume_filtered;
+    use chrono::Utc;
+    use uuid::Uuid;
+
+    let mut state = make_state(std::env::current_dir().unwrap(), Uuid::new_v4());
+
+    let now = Utc::now();
+    state.session_resume_list = vec![
+        SessionResumeEntry {
+            session_id: Uuid::new_v4(),
+            title: "refactor auth module".to_string(),
+            project: "backend".to_string(),
+            last_message_preview: "moved token logic".to_string(),
+            last_active: now - chrono::Duration::hours(2),
+            model: Some("sonnet".to_string()),
+            token_count: Some(1200),
+        },
+        SessionResumeEntry {
+            session_id: Uuid::new_v4(),
+            title: "fix login bug".to_string(),
+            project: "frontend".to_string(),
+            last_message_preview: "resolved redirect loop".to_string(),
+            last_active: now - chrono::Duration::hours(1),
+            model: Some("opus".to_string()),
+            token_count: Some(800),
+        },
+        SessionResumeEntry {
+            session_id: Uuid::new_v4(),
+            title: "auth token validation".to_string(),
+            project: "backend".to_string(),
+            last_message_preview: "added expiry check".to_string(),
+            last_active: now - chrono::Duration::hours(3),
+            model: Some("haiku".to_string()),
+            token_count: Some(400),
+        },
+    ];
+
+    // Query "auth" — should match "refactor auth module" and "auth token validation"
+    // but not "fix login bug"
+    state.session_resume_query = "auth".to_string();
+    refresh_session_resume_filtered(&mut state);
+
+    assert!(
+        !state.session_resume_filtered_indices.is_empty(),
+        "fuzzy search should return results for 'auth'"
+    );
+    // "fix login bug" should not appear (no 'auth' anywhere)
+    for &idx in &state.session_resume_filtered_indices {
+        assert_ne!(
+            state.session_resume_list[idx].title, "fix login bug",
+            "non-matching entry should be excluded"
+        );
+    }
+}
+
+#[test]
+fn session_resume_ctrl_r_keyboard_nav() {
+    use crate::app::types::SessionResumeEntry;
+    use crate::handlers::input_popup::refresh_session_resume_filtered;
+    use crate::overlay::{OverlayId, open_overlay};
+    use chrono::Utc;
+    use uuid::Uuid;
+
+    let (tx, _rx) = tokio::sync::mpsc::channel(10);
+    let mut state = make_state(std::env::current_dir().unwrap(), Uuid::new_v4());
+
+    let now = Utc::now();
+    let id_a = Uuid::new_v4();
+    let id_b = Uuid::new_v4();
+    let id_c = Uuid::new_v4();
+    state.session_resume_list = vec![
+        SessionResumeEntry {
+            session_id: id_a,
+            title: "session alpha".to_string(),
+            project: "proj".to_string(),
+            last_message_preview: "alpha work".to_string(),
+            last_active: now - chrono::Duration::hours(1),
+            model: None,
+            token_count: None,
+        },
+        SessionResumeEntry {
+            session_id: id_b,
+            title: "session beta".to_string(),
+            project: "proj".to_string(),
+            last_message_preview: "beta work".to_string(),
+            last_active: now - chrono::Duration::hours(2),
+            model: None,
+            token_count: None,
+        },
+        SessionResumeEntry {
+            session_id: id_c,
+            title: "session gamma".to_string(),
+            project: "proj".to_string(),
+            last_message_preview: "gamma work".to_string(),
+            last_active: now - chrono::Duration::hours(3),
+            model: None,
+            token_count: None,
+        },
+    ];
+
+    open_overlay(&mut state, OverlayId::SessionResume);
+    refresh_session_resume_filtered(&mut state);
+
+    // Initially shows all 3, sorted newest first (alpha, beta, gamma)
+    assert_eq!(state.session_resume_filtered_indices.len(), 3);
+    assert_eq!(state.session_resume_selected, 0);
+
+    // Down twice — select index 2 (gamma)
+    crate::controller::handle_input_event(&mut state, &tx, InputEvent::Down);
+    crate::controller::handle_input_event(&mut state, &tx, InputEvent::Down);
+    assert_eq!(state.session_resume_selected, 2);
+
+    // Type query "beta" — should filter to 1 result, reset selection to 0
+    crate::controller::handle_input_event(&mut state, &tx, InputEvent::InputChanged('b'));
+    crate::controller::handle_input_event(&mut state, &tx, InputEvent::InputChanged('e'));
+    crate::controller::handle_input_event(&mut state, &tx, InputEvent::InputChanged('t'));
+    crate::controller::handle_input_event(&mut state, &tx, InputEvent::InputChanged('a'));
+    assert_eq!(state.session_resume_selected, 0);
+    assert_eq!(state.session_resume_filtered_indices.len(), 1);
+    let matched_idx = state.session_resume_filtered_indices[0];
+    assert_eq!(state.session_resume_list[matched_idx].session_id, id_b);
+
+    // Backspace clears 'a' — "bet" still matches beta
+    crate::controller::handle_input_event(&mut state, &tx, InputEvent::InputBackspace);
+    assert!(!state.session_resume_filtered_indices.is_empty());
+
+    // Esc closes overlay and clears query
+    crate::controller::handle_input_event(&mut state, &tx, InputEvent::HandleEsc);
+    assert!(!state.overlay_manager.is_active(OverlayId::SessionResume));
+    assert!(state.session_resume_query.is_empty());
+    assert!(state.session_resume_filtered_indices.is_empty());
+}

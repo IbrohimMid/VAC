@@ -1851,59 +1851,67 @@ fn render_session_resume(f: &mut Frame, state: &mut AppState) {
         .constraints([Constraint::Length(3), Constraint::Min(1)])
         .split(area);
 
+    let date_hint = match state.session_resume_date_filter_days {
+        None => "all time",
+        Some(7) => "last 7d",
+        Some(30) => "last 30d",
+        Some(90) => "last 90d",
+        Some(_) => "custom",
+    };
+    let filtered_count = state.session_resume_filtered_indices.len();
+    let total_count = state.session_resume_list.len();
+    let title = format!(
+        " Resume Session  [{date_hint}]  {filtered_count}/{total_count}  (Tab=date  ↑↓=nav  Enter=open  Esc) "
+    );
+
     let search_block = Block::default()
-        .title(" Resume Session ")
+        .title(title.as_str())
         .borders(Borders::ALL)
-        .border_style(
-            state
-                .theme
-                .style(crate::services::theme::StyleKey::OverlayBorder),
-        );
+        .border_style(state.theme.style(StyleKey::OverlayBorder));
     let search_input = Paragraph::new(state.session_resume_query.as_str())
         .block(search_block)
-        .style(state.theme.style(crate::services::theme::StyleKey::InputFg));
+        .style(state.theme.style(StyleKey::InputFg));
     f.render_widget(search_input, chunks[0]);
 
-    let query = state.session_resume_query.to_lowercase();
-    let entries: Vec<_> = state
-        .session_resume_list
-        .iter()
-        .filter(|e| {
-            query.is_empty()
-                || e.title.to_lowercase().contains(&query)
-                || e.project.to_lowercase().contains(&query)
-                || e.last_message_preview.to_lowercase().contains(&query)
-        })
-        .collect();
-
-    let list_block = Block::default().borders(Borders::ALL).border_style(
-        state
-            .theme
-            .style(crate::services::theme::StyleKey::BorderNormal),
-    );
+    let list_block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(state.theme.style(StyleKey::BorderNormal));
     let inner = list_block.inner(chunks[1]);
     f.render_widget(list_block, chunks[1]);
 
-    let items: Vec<ListItem> = entries
+    let selected = state.session_resume_selected;
+    let indices = state.session_resume_filtered_indices.clone();
+    let items: Vec<ListItem> = indices
         .iter()
         .enumerate()
+        .filter_map(|(display_i, &list_i)| {
+            state
+                .session_resume_list
+                .get(list_i)
+                .map(|e| (display_i, e))
+        })
         .map(|(i, entry)| {
+            let model_tag = entry.model.as_deref().unwrap_or("-");
+            let tok_tag = entry
+                .token_count
+                .map(|t| format!(" {t}tok"))
+                .unwrap_or_default();
             let label = format!(
-                " {:16}  {}  {}",
+                " {:16}  {}  {:8}{}  {}",
                 entry.project.chars().take(16).collect::<String>(),
                 entry.last_active.format("%Y-%m-%d"),
+                model_tag.chars().take(8).collect::<String>(),
+                tok_tag,
                 entry
                     .last_message_preview
                     .chars()
                     .take(40)
                     .collect::<String>(),
             );
-            let style = if i == state.session_resume_selected {
-                state
-                    .theme
-                    .style(crate::services::theme::StyleKey::OverlaySelected)
+            let style = if i == selected {
+                state.theme.style(StyleKey::OverlaySelected)
             } else {
-                state.theme.style(crate::services::theme::StyleKey::Normal)
+                state.theme.style(StyleKey::Normal)
             };
             ListItem::new(Line::styled(label, style))
         })

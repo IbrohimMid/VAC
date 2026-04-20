@@ -1029,6 +1029,10 @@ pub struct AppState {
     pub session_resume_query: String,
     pub session_resume_selected: usize,
     pub session_resume_list: Vec<crate::app::types::SessionResumeEntry>,
+    /// Sorted indices into `session_resume_list` after fuzzy + date filter.
+    pub session_resume_filtered_indices: Vec<usize>,
+    /// Date filter: `None` = all time, `Some(n)` = last n days.
+    pub session_resume_date_filter_days: Option<u32>,
 
     // vil_workbench fields moved to VilState.workbench_selected / .workbench_group_filter
 
@@ -1237,6 +1241,8 @@ impl AppState {
             session_resume_query: String::new(),
             session_resume_selected: 0,
             session_resume_list: Vec::new(),
+            session_resume_filtered_indices: Vec::new(),
+            session_resume_date_filter_days: None,
             // Unit 9 (Wave 4.1) — VIL Issue Workstation
             // vil workbench fields are in vil: VilState::default()
             // Unit 5 (Wave 3.1) — Attachment tray preview & reorder

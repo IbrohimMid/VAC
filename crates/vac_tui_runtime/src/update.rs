@@ -432,6 +432,7 @@ pub fn handle_backend_event(
         InputEvent::SetSessionResumeList(entries) => {
             state.session_resume_list = entries;
             state.session_resume_selected = 0;
+            crate::handlers::input_popup::refresh_session_resume_filtered(state);
         }
         InputEvent::SetAgentTasks(tasks) => {
             state.runtime.agent_tasks = tasks;
