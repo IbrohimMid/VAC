@@ -321,8 +321,14 @@ pub fn handle_backend_event(
             state.push_activity(crate::app::ActivityKind::Status, "Assistant message");
         }
         InputEvent::StreamAssistantMessage(id, chunk) => {
+            if !state.is_streaming {
+                state.streaming_start = Some(std::time::Instant::now());
+                state.streaming_tokens = 0;
+            }
             state.is_streaming = true;
             state.streaming_message_id = Some(id);
+            // Approximate token count: one token ≈ one space-delimited word.
+            state.streaming_tokens += chunk.split_whitespace().count() as u64;
             if let Some(last) = state.messages.last_mut() {
                 if last.role == "assistant" {
                     last.content.push_str(&chunk);
@@ -345,6 +351,8 @@ pub fn handle_backend_event(
             state.loading_manager.end_operation(op);
             state.loading = state.loading_manager.is_loading();
             state.is_streaming = false;
+            state.streaming_start = None;
+            state.streaming_tokens = 0;
             // Stream/LLM turns end here; scan the most recent assistant message
             // for a `<todo>` block and refresh the side-panel surface.
             if let Some(last) = state.messages.iter().rev().find(|m| m.role == "assistant") {
@@ -420,6 +428,10 @@ pub fn handle_backend_event(
             state.sessions = sessions;
             state.sessions_selected_idx = 0;
             state.push_activity(crate::app::ActivityKind::Session, "Sessions updated");
+        }
+        InputEvent::SetSessionResumeList(entries) => {
+            state.session_resume_list = entries;
+            state.session_resume_selected = 0;
         }
         InputEvent::SetAgentTasks(tasks) => {
             state.runtime.agent_tasks = tasks;
@@ -745,6 +757,7 @@ pub fn handle_backend_event(
         }
         InputEvent::StartupHydrated(snapshot) => {
             state.startup = snapshot;
+            state.hydrated = true;
         }
         InputEvent::IsolationBoundary {
             action,
