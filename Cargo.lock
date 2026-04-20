@@ -5527,6 +5527,7 @@ dependencies = [
  "ignore",
  "image",
  "log",
+ "notify",
  "nucleo-matcher",
  "ratatui",
  "regex",

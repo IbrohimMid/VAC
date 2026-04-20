@@ -71,7 +71,7 @@ redb = "2.4"
 
 # Scheduling
 cron = "0.12"
-notify = "6"
+notify = { version = "6" }
 
 # Tokenization
 tiktoken-rs = "0.6"
