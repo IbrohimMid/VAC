@@ -143,16 +143,19 @@ pub fn spawn_keybindings_watcher(path: PathBuf, tx: Sender<InputEvent>) {
 mod tests {
     use super::*;
     use crate::services::keybindings_runtime::current_global_keymap;
-    use std::fs;
     use tempfile::tempdir;
 
-    #[test]
-    fn build_and_reload_swaps_the_global_keymap() {
+    // Uses `tokio::fs::write` (async) instead of `std::fs::write` so the
+    // sync_io guardrail stays green — see scripts/check_sync_io.sh.
+    #[tokio::test]
+    async fn build_and_reload_swaps_the_global_keymap() {
         let dir = tempdir().expect("tempdir");
         let path = dir.path().join("keybindings.toml");
 
         // First config: bind Quit to Ctrl+Q
-        fs::write(&path, "Quit = \"Ctrl+Q\"\n").expect("write v1");
+        tokio::fs::write(&path, "Quit = \"Ctrl+Q\"\n")
+            .await
+            .expect("write v1");
         let _ = build_and_install_keymap(&path);
         let snap_v1 = current_global_keymap().expect("keymap installed");
         assert!(
@@ -161,7 +164,9 @@ mod tests {
         );
 
         // Second config: different binding (Quit to Ctrl+Shift+Q)
-        fs::write(&path, "Quit = \"Ctrl+Shift+Q\"\n").expect("write v2");
+        tokio::fs::write(&path, "Quit = \"Ctrl+Shift+Q\"\n")
+            .await
+            .expect("write v2");
         let _ = build_and_reload_keymap(&path);
         let snap_v2 = current_global_keymap().expect("keymap still installed");
 
@@ -174,18 +179,19 @@ mod tests {
         );
     }
 
-    #[test]
-    fn build_keymap_with_diagnostics_surfaces_conflicts() {
+    #[tokio::test]
+    async fn build_keymap_with_diagnostics_surfaces_conflicts() {
         let dir = tempdir().expect("tempdir");
         let path = dir.path().join("keybindings.toml");
         // Bind Ctrl+P to two globally-reachable actions so conflicts() fires.
         // OpenShortcuts and OpenFileSearch both resolve to chord-dispatchable
         // InputEvents, matching the R1 regression fixture in
         // crates/vac_cli/tests/integration_events.rs.
-        fs::write(
+        tokio::fs::write(
             &path,
             "OpenShortcuts = \"Ctrl+P\"\nOpenFileSearch = \"Ctrl+P\"\n",
         )
+        .await
         .expect("write");
         let (_keymap, diag) = build_keymap_with_diagnostics(&path);
         assert!(
