@@ -177,6 +177,21 @@ pub fn render_image_or_fallback(
     (caps.kitty_graphics, lines)
 }
 
+/// PR-T17 M3/L5 — compute a stable 64-bit content hash for a PNG byte
+/// slice. Used by the event-loop Kitty flush to dedup identical emissions
+/// across consecutive frames (see `AppState::last_kitty_emission`). We use
+/// `DefaultHasher` because (a) it's already in std, (b) PNG bytes are not
+/// security-sensitive here (we only care about collision probability on
+/// *accidental* different payloads), and (c) hashing a few MB once per
+/// frame is still cheaper by orders of magnitude than re-encoding base64
+/// and writing ~4/3× the bytes back to stdout.
+pub fn hash_png_payload(png_bytes: &[u8]) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    png_bytes.hash(&mut hasher);
+    hasher.finish()
+}
+
 /// Max base64 payload length per Kitty graphics chunk, per
 /// <https://sw.kovidgoyal.net/kitty/graphics-protocol/#a-minimal-example>.
 /// Chunks larger than this may be silently dropped by some terminals.
@@ -601,6 +616,23 @@ mod tests {
             "top-left origin must emit ESC[1;1H: got {:?}",
             &out[..6.min(out.len())]
         );
+    }
+
+    #[test]
+    fn hash_png_payload_is_stable_and_collision_resistant() {
+        // Stable: same bytes → same hash across calls.
+        let a = [0x89u8, b'P', b'N', b'G', 0, 1, 2, 3];
+        assert_eq!(hash_png_payload(&a), hash_png_payload(&a));
+        // Different bytes → different hash (sanity, not guaranteed by
+        // contract but overwhelmingly likely for DefaultHasher).
+        let b = [0x89u8, b'P', b'N', b'G', 0, 1, 2, 4];
+        assert_ne!(
+            hash_png_payload(&a),
+            hash_png_payload(&b),
+            "adjacent-byte payloads collided; dedup guard would misfire"
+        );
+        // Empty is well-defined and distinct from a one-byte payload.
+        assert_ne!(hash_png_payload(&[]), hash_png_payload(&[0]));
     }
 
     #[test]

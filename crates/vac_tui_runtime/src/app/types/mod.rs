@@ -351,6 +351,16 @@ pub struct AppState {
     /// frame by the flush step so stale sequences cannot survive a tab
     /// switch.
     pub pending_kitty_emission: Option<(ratatui::layout::Rect, Vec<u8>)>,
+    /// PR-T17 M3/L5 — dedup cache for the post-frame Kitty flush. Stores
+    /// the `(rect, content_hash)` of the most recently emitted image. When
+    /// the next frame queues an identical `(rect, hash)` the flush step
+    /// skips the DCS write entirely, because Kitty graphics persist on the
+    /// terminal's graphics plane until the cells are reused. This avoids
+    /// re-transmitting megabytes of base64 per frame during an idle
+    /// preview. Reset to `None` whenever a frame has no pending emission
+    /// (e.g. tab switched away, preview dismissed) so that re-entering the
+    /// preview always forces a fresh emission.
+    pub last_kitty_emission: Option<(ratatui::layout::Rect, u64)>,
     pub approvals_row_regions: Vec<(usize, ratatui::layout::Rect)>,
     pub vil_issue_row_regions: Vec<(usize, ratatui::layout::Rect)>,
     /// Per-row click regions for the Sessions workbench tab list
@@ -629,6 +639,7 @@ impl AppState {
             task_tray_row_regions: Vec::new(),
             review_file_row_regions: Vec::new(),
             pending_kitty_emission: None,
+            last_kitty_emission: None,
             approvals_row_regions: Vec::new(),
             vil_issue_row_regions: Vec::new(),
             sessions_row_regions: Vec::new(),

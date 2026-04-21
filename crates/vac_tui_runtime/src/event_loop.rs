@@ -368,25 +368,47 @@ pub async fn run_tui(
         // drained instead of lingering across frames.
         if let Some((rect, png_bytes)) = state.pending_kitty_emission.take() {
             if state.startup.kitty_graphics {
-                // `inner_col`/`inner_row` push one cell past the diff-pane
-                // border so the image overlays ASCII content, not the
-                // border glyphs. `emit_positioned_kitty_image` then adds
-                // its own +1 to convert from zero-based ratatui coords
-                // to 1-based CSI CUP — the two `+1`s have distinct
-                // semantics and are both intentional.
-                let inner_col = rect.x.saturating_add(1);
-                let inner_row = rect.y.saturating_add(1);
-                let payload = crate::services::kitty_image::emit_positioned_kitty_image(
-                    inner_col,
-                    inner_row,
-                    &png_bytes,
-                );
-                if !payload.is_empty() {
-                    let mut stdout = std::io::stdout();
-                    let _ = stdout.write_all(&payload);
-                    let _ = stdout.flush();
+                // PR-T17 M3/L5 — dedup identical consecutive emissions.
+                // The review-tab populator re-queues the same (rect,
+                // bytes) every frame the preview is visible; without
+                // this guard we'd re-transmit a full base64 DCS payload
+                // ~60 times per second for an idle image. Kitty keeps
+                // graphics on a separate plane that survives ratatui
+                // cell repaints, so skipping is safe as long as rect
+                // and content are unchanged. The cache is cleared in
+                // the `None` branch below so re-entering the preview
+                // always re-emits on the first frame.
+                let next_hash = crate::services::kitty_image::hash_png_payload(&png_bytes);
+                let is_duplicate = state.last_kitty_emission == Some((rect, next_hash));
+                if !is_duplicate {
+                    // `inner_col`/`inner_row` push one cell past the diff-pane
+                    // border so the image overlays ASCII content, not the
+                    // border glyphs. `emit_positioned_kitty_image` then adds
+                    // its own +1 to convert from zero-based ratatui coords
+                    // to 1-based CSI CUP — the two `+1`s have distinct
+                    // semantics and are both intentional.
+                    let inner_col = rect.x.saturating_add(1);
+                    let inner_row = rect.y.saturating_add(1);
+                    let payload = crate::services::kitty_image::emit_positioned_kitty_image(
+                        inner_col,
+                        inner_row,
+                        &png_bytes,
+                    );
+                    if !payload.is_empty() {
+                        let mut stdout = std::io::stdout();
+                        let _ = stdout.write_all(&payload);
+                        let _ = stdout.flush();
+                        state.last_kitty_emission = Some((rect, next_hash));
+                    }
                 }
             }
+        } else {
+            // No pending emission this frame (tab away, preview dismissed,
+            // non-Kitty terminal). Reset the dedup cache so the next time
+            // a preview becomes visible the first frame re-transmits the
+            // full DCS payload — Kitty graphics may have been cleared by
+            // an intervening screen redraw on some terminals/muxes.
+            state.last_kitty_emission = None;
         }
 
         let render_us = render_start.elapsed().as_micros() as u64;
