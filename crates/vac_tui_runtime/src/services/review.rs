@@ -178,6 +178,33 @@ pub fn render_diff_viewport(
     lines.into_iter().skip(scroll).take(height).collect()
 }
 
+/// PR-T15 P1 — viewport wrapper that overlays inline LSP diagnostics on the
+/// new-side rows. Falls back to plain diff rendering when either the snapshot
+/// or file path is `None`, preserving behavior for call sites without LSP.
+pub fn render_diff_viewport_with_diagnostics(
+    old_content: &str,
+    new_content: &str,
+    max_width: usize,
+    scroll: usize,
+    height: usize,
+    snapshot: Option<&vac_core::lsp::types::LspWorkspaceSnapshot>,
+    file_path: Option<&std::path::Path>,
+) -> Vec<Line<'static>> {
+    let theme = crate::services::theme::Theme::default();
+    let lines = crate::services::file_diff::render_diff_with_diagnostics(
+        &theme,
+        old_content,
+        new_content,
+        max_width,
+        snapshot,
+        file_path,
+    );
+    if height == 0 {
+        return vec![];
+    }
+    lines.into_iter().skip(scroll).take(height).collect()
+}
+
 pub fn parse_unified_diff(diff_text: &str) -> Vec<DiffHunk> {
     let mut hunks = Vec::new();
     let mut current: Option<DiffHunk> = None;

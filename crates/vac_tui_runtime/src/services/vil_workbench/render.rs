@@ -1,5 +1,10 @@
 //! Render functions and helpers for VIL Issue Workstation.
 
+use std::path::Path;
+
+use crate::services::diagnostics_overlay::{
+    render_line_with_diagnostics, squiggly_spans_for_line,
+};
 use crate::services::theme::{StyleKey, Theme};
 use ratatui::{
     Frame,
@@ -352,12 +357,38 @@ fn render_issue_list(f: &mut Frame, state: &AppState, area: Rect, view: &[&VilIs
                 (Some(f), None) => format!(" {f}"),
                 _ => String::new(),
             };
-            ListItem::new(Line::from(vec![
+
+            // PR-T15 P1 — inline diagnostics overlay: if the LSP snapshot has
+            // a diagnostic at (issue.file, issue.line), render the message
+            // text via `render_line_with_diagnostics` so the severity color
+            // + underline flow through the same code path as Review rows.
+            let message = issue.message.clone();
+            let overlay_spans: Vec<crate::services::diagnostics_overlay::DiagnosticSpan> =
+                match (&issue.file, issue.line, state.lsp_diagnostics.as_ref()) {
+                    (Some(file), Some(line_1based), Some(snap)) => {
+                        let line0 = (line_1based.saturating_sub(1)) as u32;
+                        let width = message.chars().count() as u32;
+                        squiggly_spans_for_line(snap, Path::new(file), line0, width)
+                    }
+                    _ => Vec::new(),
+                };
+
+            let mut spans: Vec<Span> = vec![
                 Span::styled(kind_tag, kind_style),
                 Span::styled(locator, state.theme.style(StyleKey::Accent)),
                 Span::raw(" "),
-                Span::styled(issue.message.clone(), style),
-            ]))
+            ];
+            if overlay_spans.is_empty() {
+                spans.push(Span::styled(message, style));
+            } else {
+                // Promote the whole message to an overlayed Line, then flatten
+                // its spans into this row so the ListItem remains a single Line.
+                let overlayed = render_line_with_diagnostics(&message, &overlay_spans, style);
+                for s in overlayed.spans.into_iter() {
+                    spans.push(Span::styled(s.content.into_owned(), s.style));
+                }
+            }
+            ListItem::new(Line::from(spans))
         })
         .collect();
 

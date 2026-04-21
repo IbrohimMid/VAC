@@ -108,12 +108,18 @@ impl WorkbenchTabView for ReviewTab {
             if let (Some(old), Some(new)) =
                 (diff.old_content.as_deref(), diff.new_content.as_deref())
             {
-                crate::services::review::render_diff_viewport(
+                // PR-T15 P1 — overlay inline LSP diagnostics on new-side rows
+                // when a snapshot + selected path are available.
+                let selected_path = state.review.selected_path.clone();
+                let path_buf = selected_path.as_deref().map(std::path::Path::new);
+                crate::services::review::render_diff_viewport_with_diagnostics(
                     old,
                     new,
                     body[1].width as usize,
                     diff.scroll,
                     diff_height,
+                    state.lsp_diagnostics.as_ref(),
+                    path_buf,
                 )
             } else if let Some(err) = &diff.last_error {
                 vec![Line::from(Span::styled(

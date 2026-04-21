@@ -432,6 +432,10 @@ pub struct AppState {
     pub validation_issues: Vec<String>,
     pub lsp_available: bool,
     pub lsp_diagnostics: Option<vac_core::lsp::types::LspWorkspaceSnapshot>,
+    /// PR-T15 P1 — per-file overlay cache for inline diagnostics squiggles.
+    /// Renderers clear it when the focused file changes to avoid stale spans
+    /// leaking between files (see `services::diagnostics_overlay`).
+    pub diagnostics_overlay_cache: crate::services::diagnostics_overlay::DiagnosticsOverlayCache,
     pub pinned_files: Vec<String>,
     pub pinned_diffs: Vec<String>,
     pub pinned_diagnostics: Vec<String>,
@@ -641,6 +645,7 @@ impl AppState {
             validation_issues: Vec::new(),
             lsp_available: false,
             lsp_diagnostics: None,
+            diagnostics_overlay_cache: crate::services::diagnostics_overlay::DiagnosticsOverlayCache::default(),
             pinned_files: Vec::new(),
             pinned_diffs: Vec::new(),
             pinned_diagnostics: Vec::new(),
