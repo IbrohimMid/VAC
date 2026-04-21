@@ -133,3 +133,29 @@ Resolution order for any `KeyEvent`:
 Loader errors (missing action id, unknown chord, per-scope collision) are
 surfaced as warning banners at startup — the user keeps a working default
 keymap rather than a silent half-override.
+
+As of PR-T19 R1, two additional diagnostic classes are surfaced the same
+way:
+
+- **Non-reachable override** — user bound a slash-only / workbench-only
+  action that can never be reached via a single global chord. The
+  binding is ignored and the user is told which action / chord pair was
+  dropped.
+- **Duplicate chord** — user bound the same chord to multiple actions.
+  Last-writer wins in `chord_to_action`, but all competing bindings are
+  surfaced so the user can edit the TOML.
+
+See `ChordKeymap::skipped_bindings()` and `ChordKeymap::conflicts()` for
+the runtime API; the bootstrap in `event_loop.rs` wires both into
+`BannerStyle::Warning / BannerSeverity::Suggested`.
+
+## Command recorder / replay (PR-T18)
+
+The TUI ships a JSON-lines input recorder and a replay driver that reads
+the same format. Exposed via `vac interactive --record <dir>` and
+`vac interactive --replay <file>` (mutually exclusive).
+
+Full user-facing recipes — capturing a session, shipping demos with the
+repo, attaching a minimal repro to a bug report, and the list of
+`RecordedInput` variants that are / are not serialized — live in
+[`docs/tui/recorder_replay.md`](./recorder_replay.md).
