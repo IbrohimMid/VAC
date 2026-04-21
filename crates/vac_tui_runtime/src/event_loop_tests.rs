@@ -20,5 +20,3 @@ mod runtime;
 mod session;
 #[path = "event_loop_tests/shell.rs"]
 mod shell;
-#[path = "event_loop_tests/streaming.rs"]
-mod streaming;
