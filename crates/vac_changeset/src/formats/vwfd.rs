@@ -196,8 +196,8 @@ mod tests {
     fn doc(steps_yaml: &str) -> VwfdDocument {
         let yaml = format!(
             r#"
-apiVersion: vil.dev/v1
-kind: Workflow
+apiVersion: vil.vastar.io/v1
+kind: VilServer
 metadata:
   name: sample
 spec:

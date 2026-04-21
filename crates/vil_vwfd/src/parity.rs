@@ -185,8 +185,8 @@ mod tests {
     use tempfile::tempdir;
 
     const VWFD_FIXTURE: &str = r#"
-apiVersion: vil.dev/v1
-kind: Workflow
+apiVersion: vil.vastar.io/v1
+kind: VilServer
 metadata:
   name: sample
 spec:
