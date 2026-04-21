@@ -29,6 +29,7 @@ pub mod recent_commands;
 pub mod recorder;
 pub mod replay_bridge;
 pub mod review;
+pub mod review_preview;
 pub mod rulebook_switcher;
 pub mod shortcuts_popup;
 pub mod side_panel;

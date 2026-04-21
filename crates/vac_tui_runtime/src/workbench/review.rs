@@ -127,7 +127,54 @@ impl WorkbenchTabView for ReviewTab {
             "Diff".to_string()
         };
 
-        let diff_lines: Vec<Line> = if let Some(diff) = &state.review.diff {
+        // PR-T17 / R8b — image-preview pane. When the selected path ends in a
+        // known image extension we replace the text-diff body with an ASCII
+        // placeholder frame that reports the filename and intrinsic pixel
+        // dimensions. The frame is sized to the diff pane so it remains
+        // readable at any terminal size. Native Kitty DCS emission over the
+        // same bytes is wired separately in R8c once the post-frame stdout
+        // hook lands; today we intentionally draw the fallback on *both*
+        // kitty-supported and unsupported terminals so the UI stays
+        // consistent across the feature gate.
+        let image_preview_lines: Option<Vec<Line>> = state
+            .review
+            .selected_path
+            .as_ref()
+            .filter(|p| crate::services::review_preview::is_image_path(p))
+            .map(|path| {
+                let abs_path = if std::path::Path::new(path).is_absolute() {
+                    std::path::PathBuf::from(path)
+                } else {
+                    state.project_root.join(path)
+                };
+                let inner_w = body[1].width.saturating_sub(2).max(4);
+                let inner_h = body[1].height.saturating_sub(2).max(3);
+                match crate::services::review_preview::prepare_image_preview(
+                    &abs_path,
+                    crate::services::review_preview::IMAGE_PREVIEW_MAX_BYTES,
+                ) {
+                    Ok(preview) => {
+                        let label = format!(
+                            "{} ({}x{})",
+                            path, preview.width, preview.height
+                        );
+                        crate::services::kitty_image::render_ascii_fallback(
+                            inner_w, inner_h, &label,
+                        )
+                        .into_iter()
+                        .map(|s| Line::raw(s))
+                        .collect::<Vec<Line>>()
+                    }
+                    Err(e) => vec![Line::from(Span::styled(
+                        format!("Cannot preview image: {e}"),
+                        state.theme.style(StyleKey::Error),
+                    ))],
+                }
+            });
+
+        let diff_lines: Vec<Line> = if let Some(lines) = image_preview_lines {
+            lines
+        } else if let Some(diff) = &state.review.diff {
             if let (Some(old), Some(new)) =
                 (diff.old_content.as_deref(), diff.new_content.as_deref())
             {
