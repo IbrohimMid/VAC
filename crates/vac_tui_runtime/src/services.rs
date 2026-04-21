@@ -35,6 +35,7 @@ pub mod toast;
 pub mod todo_extractor;
 pub mod vil_expr_lint;
 pub mod vil_workbench;
+pub mod vwfd_diff_render;
 pub mod vwfd_inspector;
 
 // Re-export commonly used types
