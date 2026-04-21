@@ -136,3 +136,26 @@ fn conflicting_network_policy_is_rejected() {
     config.runtime.network_policy = vac_core::NetworkPolicy::RestrictedOffline;
     assert!(config.validate().is_err());
 }
+
+#[test]
+fn vil_section_defaults() {
+    let config = VacConfig::default();
+    assert_eq!(config.vil.vwfd_paths, vec![std::path::PathBuf::from("./workflows/**/*.vwfd.yaml")]);
+    assert_eq!(config.vil.dev_command.unwrap(), "vac vil dev");
+    assert_eq!(config.vil.checkpoint_interval_secs, 300);
+}
+
+#[test]
+fn vac_config_parses_vil_section() {
+    let mut toml = INIT_CONFIG_TEMPLATE.to_string();
+    toml.push_str(r#"
+[vil]
+vwfd_paths = ["custom/**/*.yaml"]
+dev_command = "vil dev"
+checkpoint_interval_secs = 60
+"#);
+    let config: VacConfig = toml::from_str(&toml).unwrap();
+    assert_eq!(config.vil.vwfd_paths, vec![std::path::PathBuf::from("custom/**/*.yaml")]);
+    assert_eq!(config.vil.dev_command.unwrap(), "vil dev");
+    assert_eq!(config.vil.checkpoint_interval_secs, 60);
+}

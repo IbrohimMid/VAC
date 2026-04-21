@@ -45,6 +45,41 @@ pub struct VacConfig {
     /// Maximum disk usage (bytes) for the .vac/ directory.
     #[serde(default)]
     pub disk_quota_bytes: Option<u64>,
+    /// VIL configuration
+    #[serde(default)]
+    pub vil: VilConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VilConfig {
+    #[serde(default = "default_vwfd_paths")]
+    pub vwfd_paths: Vec<PathBuf>,
+    #[serde(default = "default_dev_command")]
+    pub dev_command: Option<String>,
+    #[serde(default = "default_vil_checkpoint_interval")]
+    pub checkpoint_interval_secs: u64,
+}
+
+fn default_vwfd_paths() -> Vec<PathBuf> {
+    vec![PathBuf::from("./workflows/**/*.vwfd.yaml")]
+}
+
+fn default_dev_command() -> Option<String> {
+    Some("vac vil dev".to_string())
+}
+
+fn default_vil_checkpoint_interval() -> u64 {
+    300
+}
+
+impl Default for VilConfig {
+    fn default() -> Self {
+        Self {
+            vwfd_paths: default_vwfd_paths(),
+            dev_command: default_dev_command(),
+            checkpoint_interval_secs: default_vil_checkpoint_interval(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -310,6 +345,7 @@ impl Default for VacConfig {
             mcp_presets: vec![],
             memory_cap_bytes: None,
             disk_quota_bytes: None,
+            vil: VilConfig::default(),
         }
     }
 }
