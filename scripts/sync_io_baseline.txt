@@ -102,15 +102,15 @@ crates/vac_runtime/src/queue.rs:                if let Err(e) = std::fs::write(&
 crates/vac_runtime/src/queue.rs:            match std::fs::read_to_string(&path) {
 crates/vac_runtime/src/scheduler.rs:        let content = std::fs::read_to_string(root.join(".vac/autopilot.state")).unwrap();
 crates/vac_runtime/src/watcher.rs:        std::fs::write(dir.path().join("test.txt"), "hello").unwrap();
-crates/vac_session_control/src/lib.rs:    for entry in std::fs::read_dir(&dir)? {
-crates/vac_session_control/src/lib.rs:                if let Ok(content) = std::fs::read_to_string(&path) {
-crates/vac_session_control/src/lib.rs:            if let Ok(content) = std::fs::read_to_string(&path) {
-crates/vac_session_control/src/lib.rs:        if let Ok(entries) = std::fs::read_dir(&approvals_dir) {
-crates/vac_session_control/src/lib.rs:    let content = std::fs::read_to_string(&path)?;
-crates/vac_session_control/src/lib.rs:        std::fs::create_dir_all(&cp_dir).unwrap();
-crates/vac_session_control/src/lib.rs:    std::fs::create_dir_all(&dir)?;
-crates/vac_session_control/src/lib.rs:        std::fs::write(cp_dir.join(format!("{sid}_state.json")), "{}").unwrap();
-crates/vac_session_control/src/lib.rs:    std::fs::write(&path, json)?;
+crates/vac_session_control/src/lib.rs:        fs::create_dir_all(&cp_dir).await.unwrap();
+crates/vac_session_control/src/lib.rs:    fs::create_dir_all(&dir).await?;
+crates/vac_session_control/src/lib.rs:        fs::write(cp_dir.join(format!("{sid}_state.json")), "{}").await.unwrap();
+crates/vac_session_control/src/lib.rs:    fs::write(&path, json).await?;
+crates/vac_session_control/src/lib.rs:                if let Ok(content) = fs::read_to_string(&path).await {
+crates/vac_session_control/src/lib.rs:            if let Ok(content) = fs::read_to_string(&path).await {
+crates/vac_session_control/src/lib.rs:        if let Ok(mut entries) = fs::read_dir(&approvals_dir).await {
+crates/vac_session_control/src/lib.rs:    let content = fs::read_to_string(&path).await?;
+crates/vac_session_control/src/lib.rs:    let mut entries = fs::read_dir(&dir).await?;
 crates/vac_trace/src/exporter.rs:        let content = std::fs::read_to_string(&out).unwrap();
 crates/vac_trace/src/exporter.rs:    std::fs::write(output_path, &bytes)?;
 crates/vac_trace/src/exporter.rs:    std::fs::write(output_path, json)?;
@@ -119,33 +119,38 @@ crates/vac_trace/src/exporter.rs:    std::fs::write(output_path, &summary)?;
 crates/vac_trace/src/recorder.rs:        std::fs::create_dir_all(&output_path)?;
 crates/vac_trace/src/vac_format.rs:            fs::create_dir_all(parent)?;
 crates/vac_trace/src/vac_format.rs:        use std::fs;
-crates/vac_tui_runtime/src/event_loop.rs:        let content = std::fs::read_to_string(root.join(file_rel)).unwrap();
-crates/vac_tui_runtime/src/event_loop.rs:        std::fs::create_dir_all(root.join(".vac/backups").join(session_id.to_string())).unwrap();
-crates/vac_tui_runtime/src/event_loop.rs:        std::fs::create_dir_all(root.join(".vac/backups").join(session_id.to_string())).unwrap();
-crates/vac_tui_runtime/src/event_loop.rs:        std::fs::create_dir_all(root.join(".vac/backups").join(session_id.to_string())).unwrap();
-crates/vac_tui_runtime/src/event_loop.rs:            std::fs::read_to_string(root.join("a.txt")).unwrap(),
-crates/vac_tui_runtime/src/event_loop.rs:            std::fs::read_to_string(root.join("a.txt")).unwrap(),
-crates/vac_tui_runtime/src/event_loop.rs:            std::fs::read_to_string(root.join("b.txt")).unwrap(),
-crates/vac_tui_runtime/src/event_loop.rs:            std::fs::read_to_string(root.join("b.txt")).unwrap(),
-crates/vac_tui_runtime/src/event_loop.rs:                std::fs::read_to_string(vac_session_control::snapshot_path(&root_buf, session_uuid))
-crates/vac_tui_runtime/src/event_loop.rs:            std::fs::write(
-crates/vac_tui_runtime/src/event_loop.rs:            std::fs::write(
-crates/vac_tui_runtime/src/event_loop.rs:        std::fs::write(
-crates/vac_tui_runtime/src/event_loop.rs:        std::fs::write(root.join(file_rel), "new").unwrap();
-crates/vac_tui_runtime/src/event_loop.rs:            std::fs::write(root.join(p), new).unwrap();
-crates/vac_tui_runtime/src/event_loop.rs:            std::fs::write(root.join(p), new).unwrap();
-crates/vac_tui_runtime/src/event_loop.rs:                std::thread::sleep(Duration::from_millis(10));
+crates/vac_tui_runtime/src/event_loop.rs:                    std::thread::sleep(Duration::from_millis(10));
+crates/vac_tui_runtime/src/event_loop_tests/runtime/review.rs:    let content = std::fs::read_to_string(root.join(file_rel)).unwrap();
+crates/vac_tui_runtime/src/event_loop_tests/runtime/review.rs:    std::fs::create_dir_all(root.join(".vac/backups").join(session_id.to_string())).unwrap();
+crates/vac_tui_runtime/src/event_loop_tests/runtime/review.rs:    std::fs::create_dir_all(root.join(".vac/backups").join(session_id.to_string())).unwrap();
+crates/vac_tui_runtime/src/event_loop_tests/runtime/review.rs:    std::fs::create_dir_all(root.join(".vac/backups").join(session_id.to_string())).unwrap();
+crates/vac_tui_runtime/src/event_loop_tests/runtime/review.rs:        std::fs::read_to_string(root.join("a.txt")).unwrap(),
+crates/vac_tui_runtime/src/event_loop_tests/runtime/review.rs:        std::fs::read_to_string(root.join("a.txt")).unwrap(),
+crates/vac_tui_runtime/src/event_loop_tests/runtime/review.rs:        std::fs::read_to_string(root.join("b.txt")).unwrap(),
+crates/vac_tui_runtime/src/event_loop_tests/runtime/review.rs:        std::fs::read_to_string(root.join("b.txt")).unwrap(),
+crates/vac_tui_runtime/src/event_loop_tests/runtime/review.rs:        std::fs::write(
+crates/vac_tui_runtime/src/event_loop_tests/runtime/review.rs:        std::fs::write(
+crates/vac_tui_runtime/src/event_loop_tests/runtime/review.rs:    std::fs::write(
+crates/vac_tui_runtime/src/event_loop_tests/runtime/review.rs:    std::fs::write(root.join(file_rel), "new").unwrap();
+crates/vac_tui_runtime/src/event_loop_tests/runtime/review.rs:        std::fs::write(root.join(p), new).unwrap();
+crates/vac_tui_runtime/src/event_loop_tests/runtime/review.rs:        std::fs::write(root.join(p), new).unwrap();
+crates/vac_tui_runtime/src/handlers/input_commands.rs:                    match std::fs::read_to_string(&resolved) {
+crates/vac_tui_runtime/src/handlers/input_popup/at_mention.rs:                    crate::app::types::ChipNamespace::File => std::fs::read_to_string(&path)
+crates/vac_tui_runtime/src/handlers/input_popup/file_search.rs:        .and_then(|p| std::fs::read_to_string(p).ok())
+crates/vac_tui_runtime/src/handlers/input_popup/file_search.rs:    let mut results: Vec<std::path::PathBuf> = std::fs::read_dir(&cwd)
 crates/vac_tui_runtime/src/handlers/plan.rs:    let on_disk = std::fs::read_to_string(plan::plan_file_path(&state.project_root)).ok();
-crates/vac_tui_runtime/src/runner.rs:                            let content = std::fs::read_to_string(&config_path).unwrap_or_default();
-crates/vac_tui_runtime/src/runner.rs:        let content = std::fs::read_to_string(path).ok()?;
-crates/vac_tui_runtime/src/runner.rs:        let content = std::fs::read_to_string(path).ok()?;
-crates/vac_tui_runtime/src/runner.rs:        let content = std::fs::read_to_string(path).ok()?;
-crates/vac_tui_runtime/src/runner.rs:                            let _ = std::fs::create_dir_all(&vac_dir);
-crates/vac_tui_runtime/src/runner.rs:                            let _ = std::fs::write(&config_path, table.to_string());
-crates/vac_tui_runtime/src/runner.rs:                                                std::fs::read_dir(checkpoint_dir)
-crates/vac_tui_runtime/src/services/clipboard_paste.rs:    std::fs::write(tmp.path(), &jpeg).map_err(|e| PasteImageError::IoError(e.to_string()))?;
+crates/vac_tui_runtime/src/runner/profile_tasks.rs:            let content = std::fs::read_to_string(&config_path).unwrap_or_default();
+crates/vac_tui_runtime/src/runner/profile_tasks.rs:            let _ = std::fs::create_dir_all(&vac_dir);
+crates/vac_tui_runtime/src/runner/profile_tasks.rs:            let _ = std::fs::write(&config_path, table.to_string());
+crates/vac_tui_runtime/src/runner/runtime_tasks.rs:        let content = std::fs::read_to_string(path).ok()?;
+crates/vac_tui_runtime/src/runner/runtime_tasks.rs:        let content = std::fs::read_to_string(path).ok()?;
+crates/vac_tui_runtime/src/runner/session_tasks.rs:                    let mut files: Vec<_> = std::fs::read_dir(checkpoint_dir)
+crates/vac_tui_runtime/src/runner/startup.rs:    let content = std::fs::read_to_string(path).ok()?;
+crates/vac_tui_runtime/src/services/clipboard_paste/image_handling.rs:    std::fs::write(tmp.path(), &jpeg).map_err(|e| PasteImageError::IoError(e.to_string()))?;
 crates/vac_tui_runtime/src/services/helper_block.rs:    let content = std::fs::read_to_string(path).ok()?;
 crates/vac_tui_runtime/src/services/helper_block.rs:    let entries = match std::fs::read_dir(dir) {
+crates/vac_tui_runtime/src/services/keybindings_loader.rs:    match std::fs::read_to_string(path) {
+crates/vac_tui_runtime/src/services/kitty_image.rs:                std::thread::sleep(Duration::from_millis(5));
 crates/vac_tui_runtime/src/services/plan.rs:    let content = std::fs::read_to_string(path).ok()?;
 crates/vac_tui_runtime/src/services/plan.rs:    let ts = std::fs::read_to_string(&plan_path)
 crates/vac_tui_runtime/src/services/plan.rs:    std::fs::create_dir_all(&dir)?;
@@ -154,6 +159,14 @@ crates/vac_tui_runtime/src/services/recent_commands.rs:            if let Ok(con
 crates/vac_tui_runtime/src/services/recent_commands.rs:                let _ = fs::create_dir_all(dir);
 crates/vac_tui_runtime/src/services/recent_commands.rs:                let _ = fs::write(path, content);
 crates/vac_tui_runtime/src/services/recent_commands.rs:use std::fs;
+crates/vac_tui_runtime/src/services/recorder.rs:    if let Ok(entries) = std::fs::read_dir(dir) {
+crates/vac_tui_runtime/src/services/recorder.rs:        let files: Vec<_> = std::fs::read_dir(&dir)
+crates/vac_tui_runtime/src/services/recorder.rs:    let mut files: Vec<PathBuf> = match std::fs::read_dir(dir) {
+crates/vac_tui_runtime/src/services/recorder.rs:        let mut files: Vec<String> = std::fs::read_dir(&dir)
+crates/vac_tui_runtime/src/services/recorder.rs:        std::fs::create_dir_all(&cfg.dir)?;
+crates/vac_tui_runtime/src/services/recorder.rs:        std::fs::write(&path, format!("{good}\n{torn}\n{good}\n")).unwrap();
+crates/vac_tui_runtime/src/services/recorder.rs:        std::fs::write(&path, "").unwrap();
+crates/vac_tui_runtime/src/services/recorder.rs:use std::fs::{File, OpenOptions};
 crates/vac_tui_runtime/src/services/review.rs:        let current_content = std::fs::read_to_string(file_path)
 crates/vac_tui_runtime/src/services/review.rs:        std::fs::create_dir_all(dir.path().join(".vac/backups").join(session_id.to_string()))
 crates/vac_tui_runtime/src/services/review.rs:        std::fs::read_to_string(&abs_path)
@@ -164,6 +177,11 @@ crates/vac_tui_runtime/src/services/review.rs:        std::fs::write(&file_path,
 crates/vac_tui_runtime/src/services/review.rs:        std::fs::write(&file_path, old).unwrap();
 crates/vac_tui_runtime/src/services/review.rs:        std::fs::write(file_path, reverted)
 crates/vac_tui_runtime/src/services/review.rs:        std::fs::write(snapshot_path(dir.path(), session_id, "a.txt"), "old").unwrap();
+crates/vac_tui_runtime/src/services/theme_loader.rs:    match std::fs::read_to_string(path) {
+crates/vac_tui_runtime/src/services/theme_loader.rs:        std::fs::write(&path, "preset = \"Dark\"\n").unwrap();
+crates/vac_tui_runtime/src/services/theme_loader.rs:        std::fs::write(&path, "preset = \"Light\"\n").unwrap();
+crates/vac_tui_runtime/src/services/theme_loader.rs:        std::fs::write(&path, "preset = \"Light\"\n").unwrap();
+crates/vac_tui_runtime/src/session_snapshot.rs:                std::fs::read_to_string(vac_session_control::snapshot_path(&root_buf, session_uuid))
 crates/vil_knowledge/src/lib.rs:            if let Ok(content) = std::fs::read_to_string(&config_path) {
 crates/vil_knowledge/src/lib.rs:            if let Ok(content) = std::fs::read_to_string(&path) {
 crates/vil_knowledge/src/lib.rs:        let cache_content = std::fs::read_to_string(cache_path).ok()?;
