@@ -47,9 +47,7 @@ impl WorkbenchTabView for AgentsTab {
             .map(|(idx, task)| {
                 let selected = idx == state.runtime.agent_selected;
                 let style = if selected {
-                    Style::default()
-                        .fg(ratatui::style::Color::Yellow)
-                        .add_modifier(Modifier::BOLD)
+                    state.theme.style(StyleKey::Warning).add_modifier(Modifier::BOLD)
                 } else {
                     Style::default()
                 };
@@ -72,9 +70,7 @@ impl WorkbenchTabView for AgentsTab {
                 };
                 let role = Span::styled(
                     task.role.label(),
-                    Style::default()
-                        .fg(ratatui::style::Color::Magenta)
-                        .add_modifier(Modifier::BOLD),
+                    state.theme.style(StyleKey::AppTitle).add_modifier(Modifier::BOLD),
                 );
                 let short_id = task.id.to_string().chars().take(8).collect::<String>();
                 let mut desc = task.description.clone();
@@ -119,9 +115,7 @@ impl WorkbenchTabView for AgentsTab {
             for w in &snapshot.workers {
                 let role = Span::styled(
                     w.role.label(),
-                    Style::default()
-                        .fg(ratatui::style::Color::Magenta)
-                        .add_modifier(Modifier::BOLD),
+                    state.theme.style(StyleKey::AppTitle).add_modifier(Modifier::BOLD),
                 );
                 let status = match &w.status {
                     vac_runtime::AgentWorkerStatus::Idle => {

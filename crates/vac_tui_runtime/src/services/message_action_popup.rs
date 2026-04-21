@@ -3,7 +3,7 @@ use crate::services::theme::StyleKey;
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph},
 };
@@ -78,9 +78,7 @@ pub fn render_message_action_popup(f: &mut Frame, state: &AppState) {
 
     let title = Paragraph::new(Line::from(vec![Span::styled(
         " Message Action",
-        Style::default()
-            .fg(Color::Yellow)
-            .add_modifier(Modifier::BOLD),
+        state.theme.style(StyleKey::Warning).add_modifier(Modifier::BOLD),
     )]));
     f.render_widget(title, chunks[0]);
 
@@ -116,9 +114,9 @@ pub fn render_message_action_popup(f: &mut Frame, state: &AppState) {
                 Span::styled("  ", state.theme.style(StyleKey::ToastInfo)),
                 Span::styled(
                     highlight_word,
-                    Style::default()
-                        .bg(Color::Blue)
-                        .fg(Color::White)
+                    state
+                        .theme
+                        .style(StyleKey::OverlaySelected)
                         .add_modifier(Modifier::BOLD),
                 ),
                 Span::styled(rest_text, state.theme.style(StyleKey::ToastInfo)),

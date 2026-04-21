@@ -5304,6 +5304,8 @@ name = "vac_changeset"
 version = "0.1.0"
 dependencies = [
  "indexmap 2.14.0",
+ "serde_json",
+ "vil_vwfd",
 ]
 
 [[package]]
@@ -5778,6 +5780,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yaml",
+ "tempfile",
  "thiserror 2.0.18",
 ]
 

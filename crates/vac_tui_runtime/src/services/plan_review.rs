@@ -10,7 +10,7 @@ use crate::services::theme::StyleKey;
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph, Wrap},
 };
@@ -58,10 +58,10 @@ fn render_title(f: &mut Frame, state: &AppState, area: Rect) {
         None => ("Untitled Plan".to_string(), PlanStatus::Drafting, 1),
     };
 
-    let (status_label, status_color) = match status {
-        PlanStatus::Drafting => ("DRAFTING", Color::Yellow),
-        PlanStatus::PendingReview => ("PENDING REVIEW", Color::Cyan),
-        PlanStatus::Approved => ("APPROVED", Color::Green),
+    let (status_label, status_key) = match status {
+        PlanStatus::Drafting => ("DRAFTING", StyleKey::Warning),
+        PlanStatus::PendingReview => ("PENDING REVIEW", StyleKey::Accent),
+        PlanStatus::Approved => ("APPROVED", StyleKey::Success),
     };
 
     let comment_count = state.plan.comments.len();
@@ -81,9 +81,7 @@ fn render_title(f: &mut Frame, state: &AppState, area: Rect) {
         Span::raw("  "),
         Span::styled(
             status_label,
-            Style::default()
-                .fg(status_color)
-                .add_modifier(Modifier::BOLD),
+            state.theme.style(status_key).add_modifier(Modifier::BOLD),
         ),
     ]);
 

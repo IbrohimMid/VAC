@@ -7,7 +7,7 @@ use crate::services::theme::StyleKey;
 use ratatui::{
     Frame,
     layout::Rect,
-    style::{Color, Modifier, Style},
+    style::Modifier,
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph, Wrap},
 };
@@ -35,19 +35,17 @@ impl WorkbenchTabView for PlanTab {
                 Span::styled("Title: ", state.theme.style(StyleKey::Muted)),
                 Span::styled(
                     meta.title.clone(),
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::BOLD),
+                    state.theme.style(StyleKey::Warning).add_modifier(Modifier::BOLD),
                 ),
             ]));
-            let (status_label, status_color) = match meta.status {
-                crate::services::plan::PlanStatus::Drafting => ("drafting", Color::Yellow),
-                crate::services::plan::PlanStatus::PendingReview => ("pending_review", Color::Cyan),
-                crate::services::plan::PlanStatus::Approved => ("approved", Color::Green),
+            let (status_label, status_key) = match meta.status {
+                crate::services::plan::PlanStatus::Drafting => ("drafting", StyleKey::Warning),
+                crate::services::plan::PlanStatus::PendingReview => ("pending_review", StyleKey::Accent),
+                crate::services::plan::PlanStatus::Approved => ("approved", StyleKey::Success),
             };
             lines.push(Line::from(vec![
                 Span::styled("Status: ", state.theme.style(StyleKey::Muted)),
-                Span::styled(status_label.to_string(), Style::default().fg(status_color)),
+                Span::styled(status_label.to_string(), state.theme.style(status_key)),
                 Span::styled(
                     format!("  v{}", meta.version),
                     state.theme.style(StyleKey::Muted),
