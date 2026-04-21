@@ -191,12 +191,20 @@ fn handle_submit(state: &mut AppState, output_tx: &Sender<OutputEvent>) {
     }
 }
 
-#[allow(deprecated)]
 fn cleanup_session(state: &mut AppState, output_tx: &Sender<OutputEvent>) {
     if let Some(sel) = state.sessions.get(state.sessions_selected_idx).cloned() {
         match uuid::Uuid::parse_str(&sel.id) {
             Ok(session_id) => {
-                let report = vac_session_control::cleanup_session(&state.project_root, session_id);
+                let report = tokio::task::block_in_place(|| {
+                    tokio::runtime::Handle::current().block_on(
+                        vac_session_control::cleanup_session_async(state.project_root.clone(), session_id)
+                    )
+                }).unwrap_or(vac_session_control::CleanupReport {
+                    snapshot_removed: false,
+                    checkpoint_removed: false,
+                    approvals_removed: 0,
+                    errors: vec![],
+                });
                 if report.snapshot_removed
                     || report.checkpoint_removed
                     || report.approvals_removed > 0

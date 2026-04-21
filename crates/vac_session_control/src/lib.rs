@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
+use tokio::fs;
 
 /// Current schema version for session snapshots.
 pub const CURRENT_SCHEMA_VERSION: u32 = 1;
@@ -92,45 +93,42 @@ pub fn checkpoint_dir(project_root: &Path) -> PathBuf {
 }
 
 /// Save a session snapshot to disk.
-#[deprecated(note = "Use save_snapshot_async instead")]
-pub fn save_snapshot(snapshot: &SessionSnapshot) -> Result<PathBuf> {
+pub async fn save_snapshot_async(snapshot: SessionSnapshot) -> Result<PathBuf> {
     let dir = sessions_dir(&snapshot.project_root);
-    std::fs::create_dir_all(&dir)?;
+    fs::create_dir_all(&dir).await?;
     let path = snapshot_path(&snapshot.project_root, snapshot.session_id);
-    let json = serde_json::to_string_pretty(snapshot)?;
-    std::fs::write(&path, json)?;
+    let json = serde_json::to_string_pretty(&snapshot)?;
+    fs::write(&path, json).await?;
     tracing::debug!(session_id = %snapshot.session_id, "session snapshot saved");
     Ok(path)
 }
 
 /// Load a session snapshot from disk.
-#[deprecated(note = "Use load_snapshot_async instead")]
-pub fn load_snapshot(project_root: &Path, session_id: Uuid) -> Result<SessionSnapshot> {
-    let path = snapshot_path(project_root, session_id);
-    if !path.exists() {
+pub async fn load_snapshot_async(project_root: PathBuf, session_id: Uuid) -> Result<SessionSnapshot> {
+    let path = snapshot_path(&project_root, session_id);
+    if !fs::try_exists(&path).await? {
         return Err(SessionControlError::NotFound(session_id));
     }
-    let content = std::fs::read_to_string(&path)?;
+    let content = fs::read_to_string(&path).await?;
     let snapshot: SessionSnapshot = serde_json::from_str(&content)?;
     validate_schema_version(snapshot.schema_version)?;
     Ok(snapshot)
 }
 
 /// List all session snapshots, sorted by updated_at descending.
-#[deprecated(note = "Use list_snapshots_async instead")]
-pub fn list_snapshots(project_root: &Path) -> Result<Vec<SessionSnapshot>> {
-    let dir = sessions_dir(project_root);
-    if !dir.exists() {
+pub async fn list_snapshots_async(project_root: PathBuf) -> Result<Vec<SessionSnapshot>> {
+    let dir = sessions_dir(&project_root);
+    if !fs::try_exists(&dir).await.unwrap_or(false) {
         return Ok(Vec::new());
     }
     let mut snapshots = Vec::new();
-    for entry in std::fs::read_dir(&dir)? {
-        let entry = entry?;
+    let mut entries = fs::read_dir(&dir).await?;
+    while let Some(entry) = entries.next_entry().await? {
         let path = entry.path();
         if path.extension().and_then(|s| s.to_str()) == Some("json")
             && path.to_string_lossy().contains(".snapshot.")
         {
-            if let Ok(content) = std::fs::read_to_string(&path) {
+            if let Ok(content) = fs::read_to_string(&path).await {
                 if let Ok(snapshot) = serde_json::from_str::<SessionSnapshot>(&content) {
                     snapshots.push(snapshot);
                 }
@@ -142,10 +140,10 @@ pub fn list_snapshots(project_root: &Path) -> Result<Vec<SessionSnapshot>> {
 }
 
 /// Check if a session has a checkpoint available.
-#[deprecated(note = "Use has_checkpoint_async instead")]
-pub fn has_checkpoint(project_root: &Path, session_id: Uuid) -> bool {
-    let cp_dir = checkpoint_dir(project_root);
-    cp_dir.join(format!("{session_id}_state.json")).exists()
+pub async fn has_checkpoint_async(project_root: PathBuf, session_id: Uuid) -> bool {
+    let cp_dir = checkpoint_dir(&project_root);
+    let cp_path = cp_dir.join(format!("{session_id}_state.json"));
+    fs::try_exists(&cp_path).await.unwrap_or(false)
 }
 
 /// Validate schema version compatibility.
@@ -189,8 +187,7 @@ pub struct CleanupReport {
 }
 
 /// Clean up all artifacts associated with a session.
-#[deprecated(note = "Use cleanup_session_async instead")]
-pub fn cleanup_session(project_root: &Path, session_id: Uuid) -> CleanupReport {
+pub async fn cleanup_session_async(project_root: PathBuf, session_id: Uuid) -> Result<CleanupReport> {
     let mut report = CleanupReport {
         snapshot_removed: false,
         checkpoint_removed: false,
@@ -199,18 +196,18 @@ pub fn cleanup_session(project_root: &Path, session_id: Uuid) -> CleanupReport {
     };
 
     // Remove snapshot
-    let snap = snapshot_path(project_root, session_id);
-    if snap.exists() {
-        match std::fs::remove_file(&snap) {
+    let snap = snapshot_path(&project_root, session_id);
+    if fs::try_exists(&snap).await.unwrap_or(false) {
+        match fs::remove_file(&snap).await {
             Ok(()) => report.snapshot_removed = true,
             Err(e) => report.errors.push(format!("snapshot: {e}")),
         }
     }
 
     // Remove checkpoint state
-    let cp = checkpoint_dir(project_root).join(format!("{session_id}_state.json"));
-    if cp.exists() {
-        match std::fs::remove_file(&cp) {
+    let cp = checkpoint_dir(&project_root).join(format!("{session_id}_state.json"));
+    if fs::try_exists(&cp).await.unwrap_or(false) {
+        match fs::remove_file(&cp).await {
             Ok(()) => report.checkpoint_removed = true,
             Err(e) => report.errors.push(format!("checkpoint: {e}")),
         }
@@ -218,13 +215,13 @@ pub fn cleanup_session(project_root: &Path, session_id: Uuid) -> CleanupReport {
 
     // Remove approval records for this session
     let approvals_dir = project_root.join(".vac/approvals");
-    if approvals_dir.exists() {
-        if let Ok(entries) = std::fs::read_dir(&approvals_dir) {
-            for entry in entries.flatten() {
+    if fs::try_exists(&approvals_dir).await.unwrap_or(false) {
+        if let Ok(mut entries) = fs::read_dir(&approvals_dir).await {
+            while let Ok(Some(entry)) = entries.next_entry().await {
                 let path = entry.path();
-                if let Ok(content) = std::fs::read_to_string(&path) {
+                if let Ok(content) = fs::read_to_string(&path).await {
                     if content.contains(&session_id.to_string())
-                        && std::fs::remove_file(&path).is_ok()
+                        && fs::remove_file(&path).await.is_ok()
                     {
                         report.approvals_removed += 1;
                     }
@@ -242,7 +239,7 @@ pub fn cleanup_session(project_root: &Path, session_id: Uuid) -> CleanupReport {
         "session cleanup complete"
     );
 
-    report
+    Ok(report)
 }
 
 /// Check if a session is stale (not updated within the given duration).
@@ -251,64 +248,12 @@ pub fn is_stale(snapshot: &SessionSnapshot, max_age: chrono::Duration) -> bool {
     snapshot.updated_at < cutoff
 }
 
-pub async fn save_snapshot_async(snapshot: SessionSnapshot) -> Result<PathBuf> {
-    tokio::task::spawn_blocking(move || {
-        #[allow(deprecated)]
-        save_snapshot(&snapshot)
-    })
-        .await
-        .map_err(|e| SessionControlError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?
-}
-
-pub async fn load_snapshot_async(
-    project_root: PathBuf,
-    session_id: Uuid,
-) -> Result<SessionSnapshot> {
-    tokio::task::spawn_blocking(move || {
-        #[allow(deprecated)]
-        load_snapshot(&project_root, session_id)
-    })
-        .await
-        .map_err(|e| SessionControlError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?
-}
-
-pub async fn list_snapshots_async(project_root: PathBuf) -> Result<Vec<SessionSnapshot>> {
-    tokio::task::spawn_blocking(move || {
-        #[allow(deprecated)]
-        list_snapshots(&project_root)
-    })
-        .await
-        .map_err(|e| SessionControlError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?
-}
-
-pub async fn cleanup_session_async(
-    project_root: PathBuf,
-    session_id: Uuid,
-) -> Result<CleanupReport> {
-    tokio::task::spawn_blocking(move || {
-        #[allow(deprecated)]
-        Ok(cleanup_session(&project_root, session_id))
-    })
-        .await
-        .map_err(|e| SessionControlError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?
-}
-
-pub async fn has_checkpoint_async(project_root: PathBuf, session_id: Uuid) -> bool {
-    tokio::task::spawn_blocking(move || {
-        #[allow(deprecated)]
-        has_checkpoint(&project_root, session_id)
-    })
-        .await
-        .unwrap_or(false)
-}
-
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn snapshot_roundtrip() {
+    #[tokio::test]
+    async fn snapshot_roundtrip() {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path().to_path_buf();
         let sid = Uuid::new_v4();
@@ -319,37 +264,37 @@ mod tests {
         snap.completed_tasks = 3;
         snap.failed_tasks = 1;
 
-        let path = save_snapshot(&snap).unwrap();
+        let path = save_snapshot_async(snap).await.unwrap();
         assert!(path.exists());
 
-        let loaded = load_snapshot(&root, sid).unwrap();
+        let loaded = load_snapshot_async(root, sid).await.unwrap();
         assert_eq!(loaded.session_id, sid);
         assert_eq!(loaded.active_model.as_deref(), Some("claude-opus-4"));
         assert_eq!(loaded.task_count, 5);
         assert_eq!(loaded.completed_tasks, 3);
     }
 
-    #[test]
-    fn list_snapshots_sorted() {
+    #[tokio::test]
+    async fn list_snapshots_sorted() {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path().to_path_buf();
 
         let mut s1 = SessionSnapshot::new(Uuid::new_v4(), root.clone());
         s1.updated_at = Utc::now() - chrono::Duration::hours(2);
-        save_snapshot(&s1).unwrap();
+        save_snapshot_async(s1).await.unwrap();
 
         let s2 = SessionSnapshot::new(Uuid::new_v4(), root.clone());
-        save_snapshot(&s2).unwrap();
+        save_snapshot_async(s2).await.unwrap();
 
-        let list = list_snapshots(&root).unwrap();
+        let list = list_snapshots_async(root).await.unwrap();
         assert_eq!(list.len(), 2);
         assert!(list[0].updated_at >= list[1].updated_at);
     }
 
-    #[test]
-    fn load_nonexistent_session_returns_not_found() {
+    #[tokio::test]
+    async fn load_nonexistent_session_returns_not_found() {
         let tmp = tempfile::tempdir().unwrap();
-        let err = load_snapshot(tmp.path(), Uuid::new_v4()).unwrap_err();
+        let err = load_snapshot_async(tmp.path().to_path_buf(), Uuid::new_v4()).await.unwrap_err();
         assert!(matches!(err, SessionControlError::NotFound(_)));
     }
 
@@ -368,20 +313,20 @@ mod tests {
         assert_eq!(migrated.metadata.get("migrated_from").unwrap(), "v0");
     }
 
-    #[test]
-    fn cleanup_removes_artifacts() {
+    #[tokio::test]
+    async fn cleanup_removes_artifacts() {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path().to_path_buf();
         let sid = Uuid::new_v4();
 
         let snap = SessionSnapshot::new(sid, root.clone());
-        save_snapshot(&snap).unwrap();
+        save_snapshot_async(snap).await.unwrap();
 
         let cp_dir = checkpoint_dir(&root);
-        std::fs::create_dir_all(&cp_dir).unwrap();
-        std::fs::write(cp_dir.join(format!("{sid}_state.json")), "{}").unwrap();
+        fs::create_dir_all(&cp_dir).await.unwrap();
+        fs::write(cp_dir.join(format!("{sid}_state.json")), "{}").await.unwrap();
 
-        let report = cleanup_session(&root, sid);
+        let report = cleanup_session_async(root, sid).await.unwrap();
         assert!(report.snapshot_removed);
         assert!(report.checkpoint_removed);
         assert!(report.errors.is_empty());
@@ -395,9 +340,9 @@ mod tests {
         assert!(!is_stale(&snap, chrono::Duration::days(60)));
     }
 
-    #[test]
-    fn has_checkpoint_returns_false_for_missing() {
+    #[tokio::test]
+    async fn has_checkpoint_returns_false_for_missing() {
         let tmp = tempfile::tempdir().unwrap();
-        assert!(!has_checkpoint(tmp.path(), Uuid::new_v4()));
+        assert!(!has_checkpoint_async(tmp.path().to_path_buf(), Uuid::new_v4()).await);
     }
 }
