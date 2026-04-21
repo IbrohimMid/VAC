@@ -3,7 +3,6 @@ use nucleo_matcher::{
     Config, Matcher,
     pattern::{CaseMatching, Normalization, Pattern},
 };
-use ratatui::style::Color;
 use std::cmp::Reverse;
 
 pub fn filter_helpers_sync(state: &mut AppState) {
@@ -135,12 +134,11 @@ pub fn render_helper_dropdown(f: &mut Frame, state: &AppState, dropdown_area: Re
             .max()
             .unwrap_or(0);
 
-        // Dropdown colors - use explicit background for visibility
-        let dropdown_bg = Color::Rgb(40, 40, 40);
-        let dropdown_text = Color::White;
-        let dropdown_muted = Color::Gray;
-        let highlight_bg = Color::Cyan;
-        let highlight_fg = Color::Black;
+        // Dropdown styles sourced from the active theme.
+        let dropdown_bg_style = state.theme.style(StyleKey::OverlayBg);
+        let dropdown_text_style = state.theme.style(StyleKey::Normal).patch(dropdown_bg_style);
+        let dropdown_muted_style = state.theme.style(StyleKey::Muted).patch(dropdown_bg_style);
+        let highlight_style = state.theme.style(StyleKey::OverlaySelected);
 
         // Create visible lines with scroll indicators
         let mut visible_lines = Vec::new();
@@ -150,7 +148,7 @@ pub fn render_helper_dropdown(f: &mut Frame, state: &AppState, dropdown_area: Re
         if has_content_above {
             visible_lines.push(Line::from(vec![Span::styled(
                 " ▲",
-                Style::default().fg(dropdown_muted).bg(dropdown_bg),
+                dropdown_muted_style,
             )]));
         }
 
@@ -164,21 +162,21 @@ pub fn render_helper_dropdown(f: &mut Frame, state: &AppState, dropdown_area: Re
                 let is_selected = line_index == state.helper_selected;
 
                 let command_style = if is_selected {
-                    Style::default().fg(highlight_fg).bg(highlight_bg)
+                    highlight_style
                 } else {
-                    Style::default().fg(ThemeColors::cyan()).bg(dropdown_bg)
+                    state.theme.style(StyleKey::Accent).patch(dropdown_bg_style)
                 };
 
                 let description_style = if is_selected {
-                    Style::default().fg(highlight_fg).bg(highlight_bg)
+                    highlight_style
                 } else {
-                    Style::default().fg(dropdown_text).bg(dropdown_bg)
+                    dropdown_text_style
                 };
 
                 let padding_style = if is_selected {
-                    Style::default().fg(highlight_fg).bg(highlight_bg)
+                    highlight_style
                 } else {
-                    Style::default().fg(dropdown_muted).bg(dropdown_bg)
+                    dropdown_muted_style
                 };
 
                 let description_text = if matches!(command.source, CommandSource::Custom { .. }) {
@@ -203,7 +201,7 @@ pub fn render_helper_dropdown(f: &mut Frame, state: &AppState, dropdown_area: Re
         if has_content_below {
             visible_lines.push(Line::from(vec![Span::styled(
                 " ▼",
-                Style::default().fg(dropdown_muted).bg(dropdown_bg),
+                dropdown_muted_style,
             )]));
         }
 
@@ -217,7 +215,7 @@ pub fn render_helper_dropdown(f: &mut Frame, state: &AppState, dropdown_area: Re
             // Show current position counter
             indicator_spans.push(Span::styled(
                 format!(" ({}/{})", current_position, total_commands),
-                Style::default().fg(dropdown_muted).bg(dropdown_bg),
+                dropdown_muted_style,
             ));
         }
 
@@ -231,7 +229,7 @@ pub fn render_helper_dropdown(f: &mut Frame, state: &AppState, dropdown_area: Re
 
         let list = List::new(items)
             .block(Block::default())
-            .style(Style::default().bg(dropdown_bg).fg(dropdown_text));
+            .style(dropdown_text_style);
 
         f.render_widget(list, compact_area);
     }
@@ -275,9 +273,9 @@ fn render_file_dropdown(f: &mut Frame, state: &AppState, area: Rect) {
         .enumerate()
         .map(|(i, item)| {
             let style = if i == state.file_search_selected_idx {
-                Style::default()
-                    .bg(Color::Cyan)
-                    .fg(Color::Black)
+                state
+                    .theme
+                    .style(StyleKey::OverlaySelected)
                     .add_modifier(Modifier::BOLD)
             } else {
                 Style::default().fg(ThemeColors::text())
