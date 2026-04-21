@@ -22,6 +22,22 @@ pub fn dispatch_click(
     col: u16,
     row: u16,
 ) -> bool {
+    // R7 / PR-T15 — if a hover popup is on screen, a click outside its
+    // rect dismisses the popup and is considered handled (so the click is
+    // not also routed to row / tab / body targets underneath). A click
+    // inside the popup falls through, so users can still interact with the
+    // underlying surface on the next click after reading the detail.
+    if state.active_hover.is_some() {
+        let outside = state
+            .hover_popup_region
+            .map_or(true, |r| !hit(&r, col, row));
+        if outside {
+            state.active_hover = None;
+            state.hover_popup_region = None;
+            return true;
+        }
+    }
+
     // Workbench tab strip.
     let tab_hit = state
         .workbench_tab_regions
@@ -92,6 +108,25 @@ pub fn dispatch_click(
         state.vil.workbench_selected = idx;
         state.focus = WorkspaceFocus::Workbench;
         state.workbench_tab = crate::app::WorkbenchTab::Vil;
+        // R7 / PR-T15 — try to anchor a hover popup at the clicked issue's
+        // (file, line) position against the LSP snapshot. When any piece is
+        // missing (no snapshot, issue has no file/line, no intersecting
+        // diag), we clear any stale popup instead of surfacing a blank one.
+        state.active_hover = (|| {
+            let issue = crate::services::vil_workbench::selected_issue(state)?;
+            let file = issue.file.as_ref()?;
+            let line_1based = issue.line?;
+            let snap = state.lsp_diagnostics.as_ref()?;
+            let line0 = line_1based.saturating_sub(1);
+            let line0_u32 = u32::try_from(line0).ok()?;
+            crate::services::diagnostics_overlay::hover_detail_at(
+                snap,
+                std::path::Path::new(file),
+                line0_u32,
+            )
+        })();
+        // Renderer will refresh hover_popup_region on the next frame.
+        state.hover_popup_region = None;
         return true;
     }
 

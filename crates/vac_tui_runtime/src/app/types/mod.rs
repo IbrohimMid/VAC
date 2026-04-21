@@ -448,6 +448,16 @@ pub struct AppState {
     /// Renderers clear it when the focused file changes to avoid stale spans
     /// leaking between files (see `services::diagnostics_overlay`).
     pub diagnostics_overlay_cache: crate::services::diagnostics_overlay::DiagnosticsOverlayCache,
+    /// R7 / PR-T15 — currently-displayed hover popup detail. Populated by
+    /// `handlers::mouse::dispatch_click` when a VIL issue row (or other
+    /// diagnostic-bearing row) is clicked; cleared on outside-click dismiss.
+    /// `None` means no popup is on screen.
+    pub active_hover: Option<crate::services::diagnostics_overlay::HoverDetail>,
+    /// R7 / PR-T15 — screen rect of the hover popup, recorded during the
+    /// render pass. Used by `dispatch_click` to detect outside-popup clicks
+    /// so a subsequent click can dismiss the popup before falling through
+    /// to row/body hit-testing.
+    pub hover_popup_region: Option<ratatui::layout::Rect>,
     pub pinned_files: Vec<String>,
     pub pinned_diffs: Vec<String>,
     pub pinned_diagnostics: Vec<String>,
@@ -663,6 +673,8 @@ impl AppState {
             lsp_available: false,
             lsp_diagnostics: None,
             diagnostics_overlay_cache: crate::services::diagnostics_overlay::DiagnosticsOverlayCache::default(),
+            active_hover: None,
+            hover_popup_region: None,
             pinned_files: Vec::new(),
             pinned_diffs: Vec::new(),
             pinned_diagnostics: Vec::new(),

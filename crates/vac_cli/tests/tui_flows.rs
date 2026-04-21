@@ -555,3 +555,142 @@ mod pr_t16_mouse_dispatch_e2e {
         assert_eq!(state.focus, WorkspaceFocus::Input);
     }
 }
+
+// =======================================================================
+// PR-T15 / R7 — hover popup dismissal behaviour.
+//
+// The hover popup is opened by clicking a VIL issue row (covered by
+// `pr_t16_mouse_dispatch_e2e::vil_issue_row_click_selects_and_switches_tab`).
+// These tests lock in the *dismiss* half of the contract documented in
+// docs/tui/action_matrix.md: a click outside the popup rect clears it and
+// is considered handled (no fall-through to underlying regions), while a
+// click inside the popup leaves it in place.
+// =======================================================================
+
+mod pr_t15_hover_popup_e2e {
+    use ratatui::layout::Rect;
+    use tokio::sync::mpsc;
+    use vac_tui_runtime::app::{AppState, OutputEvent, WorkbenchTab, WorkspaceFocus};
+    use vac_tui_runtime::handlers::mouse::dispatch_click;
+    use vac_tui_runtime::services::diagnostics_overlay::HoverDetail;
+    use vac_core::lsp::types::LspSeverity;
+
+    fn make_state() -> (
+        AppState,
+        mpsc::Sender<OutputEvent>,
+        mpsc::Receiver<OutputEvent>,
+    ) {
+        let state = AppState::default();
+        let (tx, rx) = mpsc::channel::<OutputEvent>(64);
+        (state, tx, rx)
+    }
+
+    fn seeded_hover() -> HoverDetail {
+        HoverDetail {
+            severity: LspSeverity::Error,
+            message: "unresolved import `foo`".to_string(),
+            code: Some("E0432".to_string()),
+            source: Some("rustc".to_string()),
+            line_index: 41,
+        }
+    }
+
+    #[test]
+    fn click_outside_popup_dismisses_hover() {
+        // Seed a visible hover popup anchored somewhere mid-screen, then
+        // click well outside its rect. The dispatcher must:
+        //   * clear active_hover + hover_popup_region,
+        //   * return true (handled — swallowed, not fall-through),
+        //   * NOT mutate focus / workbench_tab just because of the dismiss.
+        let (mut state, tx, _rx) = make_state();
+        state.focus = WorkspaceFocus::Workbench;
+        state.workbench_tab = WorkbenchTab::Vil;
+        state.active_hover = Some(seeded_hover());
+        state.hover_popup_region = Some(Rect::new(20, 10, 40, 7));
+
+        // Click is well to the upper-left of the popup rect.
+        let handled = dispatch_click(&mut state, &tx, 2, 2);
+        assert!(
+            handled,
+            "click outside the popup must be consumed by the dismiss path"
+        );
+        assert!(
+            state.active_hover.is_none(),
+            "active_hover must be cleared on outside click"
+        );
+        assert!(
+            state.hover_popup_region.is_none(),
+            "hover_popup_region must be cleared alongside active_hover"
+        );
+        // Dismiss itself must not change the active tab. (Whether focus
+        // stays put is incidental — we only lock in tab + popup state.)
+        assert_eq!(state.workbench_tab, WorkbenchTab::Vil);
+    }
+
+    #[test]
+    fn click_outside_popup_with_no_region_dismisses_hover() {
+        // Defence-in-depth: if render did not refresh hover_popup_region
+        // this frame (None), any click while a hover is active still counts
+        // as "outside" and must dismiss the popup.
+        let (mut state, tx, _rx) = make_state();
+        state.focus = WorkspaceFocus::Workbench;
+        state.workbench_tab = WorkbenchTab::Vil;
+        state.active_hover = Some(seeded_hover());
+        state.hover_popup_region = None;
+
+        let handled = dispatch_click(&mut state, &tx, 30, 15);
+        assert!(handled);
+        assert!(state.active_hover.is_none());
+        assert!(state.hover_popup_region.is_none());
+    }
+
+    #[test]
+    fn click_inside_popup_keeps_hover_and_falls_through() {
+        // Clicks inside the popup rect are intentionally NOT swallowed by
+        // the dismiss path; they should fall through and land on whatever
+        // region sits underneath (here: nothing, so handled == false).
+        // Crucially, active_hover must remain Some — the popup stays up.
+        let (mut state, tx, _rx) = make_state();
+        state.focus = WorkspaceFocus::Workbench;
+        state.workbench_tab = WorkbenchTab::Vil;
+        state.active_hover = Some(seeded_hover());
+        state.hover_popup_region = Some(Rect::new(20, 10, 40, 7));
+
+        // Click squarely inside the popup rect.
+        let handled = dispatch_click(&mut state, &tx, 30, 13);
+        assert!(
+            !handled,
+            "inside-popup click falls through and, with no underlying region, is a no-op"
+        );
+        assert!(
+            state.active_hover.is_some(),
+            "inside-popup click must NOT dismiss the hover"
+        );
+        assert_eq!(
+            state.hover_popup_region,
+            Some(Rect::new(20, 10, 40, 7)),
+            "hover_popup_region must be preserved across an inside click"
+        );
+    }
+
+    #[test]
+    fn click_without_active_hover_skips_dismiss_path() {
+        // When no popup is up, the dismiss block is a pure no-op — clicks
+        // must be routed normally to downstream regions (here: a VIL issue
+        // row), exactly as in pr_t16_mouse_dispatch_e2e.
+        let (mut state, tx, _rx) = make_state();
+        state.focus = WorkspaceFocus::Input;
+        state.workbench_tab = WorkbenchTab::Review;
+        state.active_hover = None;
+        state.hover_popup_region = None;
+        state
+            .vil_issue_row_regions
+            .push((2, Rect::new(2, 12, 60, 1)));
+
+        let handled = dispatch_click(&mut state, &tx, 5, 12);
+        assert!(handled);
+        assert_eq!(state.vil.workbench_selected, 2);
+        assert_eq!(state.workbench_tab, WorkbenchTab::Vil);
+        assert_eq!(state.focus, WorkspaceFocus::Workbench);
+    }
+}

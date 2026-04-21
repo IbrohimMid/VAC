@@ -269,6 +269,62 @@ fn severity_rank(sev: &LspSeverity) -> u8 {
     }
 }
 
+// --- R7 / PR-T15 --- hover detail popup --------------------------------------
+
+/// Rich diagnostic detail surfaced by the hover popup (R7 / T15). Picks the
+/// highest-severity diagnostic intersecting a given 0-based `line_index` in
+/// `file_path` and snapshots the user-visible fields needed to render a
+/// popup: severity, message, optional `code`, optional `source`.
+///
+/// Decoupled from [`GutterMark`] so the gutter remains cheap to compute
+/// per-line while the popup only pays the string-clone cost on click.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HoverDetail {
+    pub severity: LspSeverity,
+    pub message: String,
+    pub code: Option<String>,
+    pub source: Option<String>,
+    /// The 0-based line index the hover was anchored to. Used by the
+    /// renderer to reposition the popup when the underlying row scrolls.
+    pub line_index: u32,
+}
+
+/// Pick the highest-severity diagnostic that covers `line_index` (0-based)
+/// in `file_path` and project it into a [`HoverDetail`]. Returns `None` when
+/// no diagnostic intersects the line. Severity ordering matches
+/// [`gutter_mark_for_line`] (`Error > Warning > Information > Hint`).
+///
+/// When multiple diagnostics share the top severity, the first one wins
+/// (matches LSP client convention of preserving server order).
+pub fn hover_detail_at(
+    snapshot: &LspWorkspaceSnapshot,
+    file_path: &Path,
+    line_index: u32,
+) -> Option<HoverDetail> {
+    let mut best: Option<&vac_core::lsp::types::LspDiagnostic> = None;
+    for diag in &snapshot.diagnostics {
+        if diag.file_path != file_path {
+            continue;
+        }
+        let r = &diag.range;
+        if line_index < r.start_line || line_index > r.end_line {
+            continue;
+        }
+        best = Some(match best {
+            None => diag,
+            Some(cur) if severity_rank(&diag.severity) > severity_rank(&cur.severity) => diag,
+            Some(cur) => cur,
+        });
+    }
+    best.map(|d| HoverDetail {
+        severity: d.severity.clone(),
+        message: d.message.clone(),
+        code: d.code.clone(),
+        source: d.source.clone(),
+        line_index,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -501,5 +557,146 @@ mod tests {
         let empty_span = render_gutter_cell(None, Style::default());
         assert_eq!(empty_span.content, "  ");
         assert_eq!(empty_span.style.fg, None);
+    }
+
+    // --- R7 / PR-T15 hover detail popup ------------------------------------
+
+    fn diag_full(
+        path: &str,
+        sev: LspSeverity,
+        code: Option<&str>,
+        source: Option<&str>,
+        msg: &str,
+        sl: u32,
+        sc: u32,
+        el: u32,
+        ec: u32,
+    ) -> LspDiagnostic {
+        LspDiagnostic {
+            file_path: PathBuf::from(path),
+            severity: sev,
+            code: code.map(str::to_string),
+            source: source.map(str::to_string),
+            message: msg.to_string(),
+            range: LspRange {
+                start_line: sl,
+                start_character: sc,
+                end_line: el,
+                end_character: ec,
+            },
+        }
+    }
+
+    #[test]
+    fn hover_detail_inside_span_returns_diag() {
+        let snap = snapshot_with(vec![diag_full(
+            "foo.rs",
+            LspSeverity::Warning,
+            Some("W0042"),
+            Some("vil_validate"),
+            "unused variable `x`",
+            3,
+            2,
+            3,
+            7,
+        )]);
+        let detail = hover_detail_at(&snap, Path::new("foo.rs"), 3).expect("hover");
+        assert_eq!(detail.severity, LspSeverity::Warning);
+        assert_eq!(detail.message, "unused variable `x`");
+        assert_eq!(detail.code.as_deref(), Some("W0042"));
+        assert_eq!(detail.source.as_deref(), Some("vil_validate"));
+        assert_eq!(detail.line_index, 3);
+    }
+
+    #[test]
+    fn hover_detail_outside_span_returns_none() {
+        let snap = snapshot_with(vec![diag_full(
+            "foo.rs",
+            LspSeverity::Error,
+            None,
+            None,
+            "boom",
+            5,
+            0,
+            5,
+            3,
+        )]);
+        // Different line in same file.
+        assert!(hover_detail_at(&snap, Path::new("foo.rs"), 6).is_none());
+        // Right line, different file.
+        assert!(hover_detail_at(&snap, Path::new("bar.rs"), 5).is_none());
+        // Empty snapshot.
+        let empty = snapshot_with(vec![]);
+        assert!(hover_detail_at(&empty, Path::new("foo.rs"), 5).is_none());
+    }
+
+    #[test]
+    fn hover_detail_picks_highest_severity_when_overlapping() {
+        // Three diagnostics on the same line. The Error must win regardless
+        // of insertion order; the returned detail must be the Error-level
+        // payload, not the Warning/Hint ones.
+        let snap = snapshot_with(vec![
+            diag_full(
+                "foo.rs",
+                LspSeverity::Warning,
+                Some("W001"),
+                None,
+                "warn msg",
+                1,
+                0,
+                1,
+                10,
+            ),
+            diag_full(
+                "foo.rs",
+                LspSeverity::Error,
+                Some("E500"),
+                Some("vil_validate"),
+                "err msg",
+                1,
+                3,
+                1,
+                8,
+            ),
+            diag_full(
+                "foo.rs",
+                LspSeverity::Hint,
+                None,
+                None,
+                "hint msg",
+                1,
+                0,
+                1,
+                2,
+            ),
+        ]);
+        let detail = hover_detail_at(&snap, Path::new("foo.rs"), 1).expect("hover");
+        assert_eq!(detail.severity, LspSeverity::Error);
+        assert_eq!(detail.code.as_deref(), Some("E500"));
+        assert_eq!(detail.message, "err msg");
+        assert_eq!(detail.source.as_deref(), Some("vil_validate"));
+    }
+
+    #[test]
+    fn hover_detail_covers_multiline_range() {
+        // Warning spans lines 2..=4 with message "multi". Hover on the
+        // middle line must still return the detail, not None.
+        let snap = snapshot_with(vec![diag_full(
+            "foo.rs",
+            LspSeverity::Warning,
+            None,
+            None,
+            "multi",
+            2,
+            3,
+            4,
+            1,
+        )]);
+        let mid = hover_detail_at(&snap, Path::new("foo.rs"), 3).expect("mid line");
+        assert_eq!(mid.severity, LspSeverity::Warning);
+        assert_eq!(mid.message, "multi");
+        // Outside the multi-line range: no detail.
+        assert!(hover_detail_at(&snap, Path::new("foo.rs"), 1).is_none());
+        assert!(hover_detail_at(&snap, Path::new("foo.rs"), 5).is_none());
     }
 }

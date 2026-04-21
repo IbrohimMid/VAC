@@ -3,9 +3,10 @@
 use std::path::Path;
 
 use crate::services::diagnostics_overlay::{
-    gutter_mark_for_line, render_gutter_cell, render_line_with_diagnostics,
+    HoverDetail, gutter_mark_for_line, render_gutter_cell, render_line_with_diagnostics,
     squiggly_spans_for_line,
 };
+use vac_core::lsp::types::LspSeverity;
 use crate::services::theme::{StyleKey, Theme};
 use ratatui::{
     Frame,
@@ -79,6 +80,16 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
     // so a click anywhere inside the tab brings the workbench into focus even
     // when it misses a specific row.
     state.workbench_body_region = Some(area);
+    // R7 / PR-T15 — if a hover popup is active, anchor it against the issue
+    // list rect so dismissal hit-testing matches what the user sees. The
+    // popup must render AFTER the list so it paints on top, and it must be
+    // clamped to the overall VIL tab area so it never overflows the tab.
+    let hover_to_draw = state.active_hover.clone();
+    if let Some(detail) = hover_to_draw {
+        render_hover_popup(f, state, body[0], area, &detail);
+    } else {
+        state.hover_popup_region = None;
+    }
     let log_height = body[1].height.saturating_div(3).clamp(6, 12);
     let right = Layout::default()
         .direction(Direction::Vertical)
@@ -548,6 +559,118 @@ fn render_lineage_panel(f: &mut Frame, state: &AppState, area: Rect, view: &[&Vi
         .block(Block::default().borders(Borders::ALL).title("Lineage"))
         .wrap(Wrap { trim: false });
     f.render_widget(widget, area);
+}
+
+/// R7 / PR-T15 — render the hover detail popup anchored near the clicked
+/// issue row. The popup auto-flips horizontally when it would overflow the
+/// tab area's right edge, and is clamped vertically so it never escapes the
+/// tab area. The computed screen rect is recorded in
+/// `state.hover_popup_region` for the next click dismissal test.
+///
+/// * `list_rect` — the issue list inner area; used as the horizontal anchor.
+/// * `area` — the overall VIL tab area; used as the clamping box.
+fn render_hover_popup(
+    f: &mut Frame,
+    state: &mut AppState,
+    list_rect: Rect,
+    area: Rect,
+    detail: &HoverDetail,
+) {
+    if area.width < 10 || area.height < 6 {
+        state.hover_popup_region = None;
+        return;
+    }
+
+    // Popup size: 64 cols max, shrinks for narrow tabs. Height covers a
+    // wrapped 3-line message plus header/footer and borders.
+    let max_w: u16 = 64;
+    let desired_w = max_w.min(area.width.saturating_sub(2));
+    let width = desired_w.max(20);
+    let height: u16 = 7;
+
+    // Horizontal anchor: start 2 cols inside the list rect; auto-flip when
+    // we'd overflow the tab area's right edge.
+    let tab_right = area.x.saturating_add(area.width);
+    let mut x = list_rect.x.saturating_add(2);
+    if x.saturating_add(width) > tab_right {
+        x = tab_right.saturating_sub(width).saturating_sub(1).max(area.x);
+    }
+
+    // Vertical anchor: below the list header (first row of list), clamped
+    // into the tab area. We prefer mid-list so the popup doesn't cover the
+    // clicked row *or* the list title.
+    let tab_bottom = area.y.saturating_add(area.height);
+    let mut y = list_rect.y.saturating_add(list_rect.height / 3);
+    if y.saturating_add(height) > tab_bottom {
+        y = tab_bottom.saturating_sub(height).max(area.y);
+    }
+
+    let popup = Rect::new(x, y, width, height);
+    state.hover_popup_region = Some(popup);
+
+    let (sev_label, sev_style) = match detail.severity {
+        LspSeverity::Error => (
+            "Error",
+            state.theme.style(StyleKey::Error).add_modifier(Modifier::BOLD),
+        ),
+        LspSeverity::Warning => (
+            "Warning",
+            state.theme.style(StyleKey::Warning).add_modifier(Modifier::BOLD),
+        ),
+        LspSeverity::Information => (
+            "Info",
+            state.theme.style(StyleKey::Accent).add_modifier(Modifier::BOLD),
+        ),
+        LspSeverity::Hint => (
+            "Hint",
+            state.theme.style(StyleKey::Muted).add_modifier(Modifier::BOLD),
+        ),
+    };
+
+    // Title line: "[Severity] code? source?" with the bits we have.
+    let mut title_parts: Vec<Span> = vec![
+        Span::styled(format!("[{}]", sev_label), sev_style),
+    ];
+    if let Some(code) = &detail.code {
+        title_parts.push(Span::raw(" "));
+        title_parts.push(Span::styled(
+            code.clone(),
+            state.theme.style(StyleKey::Accent),
+        ));
+    }
+    if let Some(source) = &detail.source {
+        title_parts.push(Span::raw(" · "));
+        title_parts.push(Span::styled(
+            source.clone(),
+            state.theme.style(StyleKey::Muted),
+        ));
+    }
+
+    let inner_w = width.saturating_sub(2) as usize;
+    let mut body_lines: Vec<Line> = Vec::new();
+    body_lines.push(Line::from(title_parts));
+    body_lines.push(Line::raw(""));
+    for wrapped in textwrap_lines(&detail.message, inner_w) {
+        body_lines.push(Line::raw(wrapped));
+    }
+    body_lines.push(Line::raw(""));
+    body_lines.push(Line::styled(
+        "click outside to dismiss",
+        state.theme.style(StyleKey::Muted).add_modifier(Modifier::ITALIC),
+    ));
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(Span::styled("Diagnostic", sev_style))
+        .border_style(sev_style);
+    let widget = Paragraph::new(body_lines)
+        .block(block)
+        .wrap(Wrap { trim: true });
+
+    // Clear the cells under the popup so underlying list rows don't bleed
+    // through the borders (ratatui's default compositor overlays).
+    f.render_widget(ratatui::widgets::Clear, popup);
+    f.render_widget(widget, popup);
 }
 
 fn kind_style(theme: &Theme, kind: VilIssueKind) -> ratatui::style::Style {
