@@ -694,3 +694,125 @@ mod pr_t15_hover_popup_e2e {
         assert_eq!(state.focus, WorkspaceFocus::Workbench);
     }
 }
+
+// =======================================================================
+// PR-T15 / R7 extension — real-hover dispatch behaviour.
+//
+// These tests lock in the move-based popup semantics documented in
+// `handlers::mouse::dispatch_hover`:
+//   * Moving over a VIL row populates / swaps active_hover and resets
+//     hover_popup_region so the renderer re-anchors next frame.
+//   * Moving over the current popup rect keeps the hover alive.
+//   * Moving outside every tracked region clears active_hover +
+//     hover_popup_region.
+//   * Spurious moves (no change in target) return false so the runtime
+//     does not paint needlessly.
+//
+// hover_detail_at itself is unit-tested in diagnostics_overlay; these E2E
+// tests focus on the *dispatch* state machine, not the diag lookup.
+// =======================================================================
+
+mod pr_t15_hover_move_e2e {
+    use ratatui::layout::Rect;
+    use vac_tui_runtime::app::{AppState, WorkbenchTab};
+    use vac_tui_runtime::handlers::mouse::dispatch_hover;
+    use vac_tui_runtime::services::diagnostics_overlay::HoverDetail;
+    use vac_core::lsp::types::LspSeverity;
+
+    fn seeded_hover() -> HoverDetail {
+        HoverDetail {
+            severity: LspSeverity::Warning,
+            message: "field is never read".to_string(),
+            code: Some("dead_code".to_string()),
+            source: Some("rustc".to_string()),
+            line_index: 7,
+        }
+    }
+
+    #[test]
+    fn move_off_all_regions_dismisses_active_hover() {
+        // A prior click or hover left active_hover + popup_region set.
+        // Moving far away from every region must clear them and signal
+        // "handled" so the runtime repaints the dismiss.
+        let mut state = AppState::default();
+        state.workbench_tab = WorkbenchTab::Vil;
+        state.active_hover = Some(seeded_hover());
+        state.hover_popup_region = Some(Rect::new(20, 10, 40, 7));
+
+        let changed = dispatch_hover(&mut state, 2, 2);
+        assert!(changed, "off-region move must be reported as a state change");
+        assert!(state.active_hover.is_none());
+        assert!(state.hover_popup_region.is_none());
+    }
+
+    #[test]
+    fn move_over_popup_keeps_hover_alive() {
+        // Mousing into the popup body (to read it) must not dismiss it.
+        // Since nothing changed, dispatch_hover must return false — no
+        // repaint is needed.
+        let mut state = AppState::default();
+        state.workbench_tab = WorkbenchTab::Vil;
+        state.active_hover = Some(seeded_hover());
+        state.hover_popup_region = Some(Rect::new(20, 10, 40, 7));
+
+        let changed = dispatch_hover(&mut state, 30, 13);
+        assert!(!changed, "hover over popup must be a no-op repaint-wise");
+        assert!(state.active_hover.is_some(), "hover must stay alive");
+        assert_eq!(state.hover_popup_region, Some(Rect::new(20, 10, 40, 7)));
+    }
+
+    #[test]
+    fn move_over_vil_row_with_no_lsp_snapshot_clears_stale_hover() {
+        // Hovering a row but with no lsp_diagnostics snapshot produces
+        // new_hover = None. If we previously had a hover, it must flip
+        // to None (reported as a change); popup_region resets too.
+        let mut state = AppState::default();
+        state.workbench_tab = WorkbenchTab::Vil;
+        state.active_hover = Some(seeded_hover());
+        state.hover_popup_region = Some(Rect::new(20, 10, 40, 7));
+        state
+            .vil_issue_row_regions
+            .push((0, Rect::new(2, 20, 60, 1)));
+        assert!(
+            state.lsp_diagnostics.is_none(),
+            "precondition: no LSP snapshot seeded"
+        );
+
+        let changed = dispatch_hover(&mut state, 5, 20);
+        assert!(changed, "stale hover must be cleared on empty-row hover");
+        assert!(state.active_hover.is_none());
+        assert!(state.hover_popup_region.is_none());
+    }
+
+    #[test]
+    fn move_outside_with_no_prior_hover_is_noop() {
+        // No hover to dismiss, nothing to populate — dispatch_hover must
+        // report false so the runtime elides the repaint entirely.
+        let mut state = AppState::default();
+        state.workbench_tab = WorkbenchTab::Review;
+        // No regions, no hover, no popup.
+
+        let changed = dispatch_hover(&mut state, 50, 50);
+        assert!(!changed);
+        assert!(state.active_hover.is_none());
+        assert!(state.hover_popup_region.is_none());
+    }
+
+    #[test]
+    fn hover_dispatch_does_not_mutate_workbench_selected() {
+        // Defence: hovering a different row (say idx 3) must NOT bump the
+        // keyboard selection cursor (vil.workbench_selected). Hover is
+        // read-only w.r.t. selection; only click / j-k should move it.
+        let mut state = AppState::default();
+        state.vil.workbench_selected = 1;
+        state
+            .vil_issue_row_regions
+            .push((3, Rect::new(2, 30, 60, 1)));
+
+        let _ = dispatch_hover(&mut state, 5, 30);
+        assert_eq!(
+            state.vil.workbench_selected, 1,
+            "hover must not shift keyboard selection"
+        );
+    }
+}

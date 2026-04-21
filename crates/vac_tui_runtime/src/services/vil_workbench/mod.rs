@@ -87,6 +87,15 @@ pub fn selected_issue(state: &AppState) -> Option<VilIssue> {
     view.get(state.vil.workbench_selected).map(|i| (*i).clone())
 }
 
+/// Return the issue at the given filtered index, if any. Used by hover
+/// dispatch to look up issues by row index without disturbing the
+/// `workbench_selected` cursor.
+pub fn issue_at_filtered_index(state: &AppState, idx: usize) -> Option<VilIssue> {
+    let issues = classify_issues(state);
+    let view = filtered(state, &issues);
+    view.get(idx).map(|i| (*i).clone())
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {

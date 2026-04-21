@@ -161,6 +161,69 @@ pub fn dispatch_click(
     false
 }
 
+/// Dispatch a mouse-move (hover) event. Returns `true` when state changed
+/// (popup shown / hidden / retargeted) and the frame should repaint.
+///
+/// R7 / PR-T15 real-hover extension. Semantics:
+///   * Over a VIL issue row → populate `active_hover` for that row and
+///     reset `hover_popup_region` so the renderer re-anchors next frame.
+///     Moving between rows swaps the hover without flicker (a pending-None
+///     gap would cause the popup to tear down + rebuild every cell).
+///   * Over the current popup rect → keep the hover alive (user is reading).
+///   * Anywhere else → clear `active_hover` + `hover_popup_region`.
+///
+/// Click-based populate in [`dispatch_click`] is intentionally kept as a
+/// fallback for terminals that do not emit `MouseEventKind::Moved`.
+pub fn dispatch_hover(state: &mut AppState, col: u16, row: u16) -> bool {
+    // 1. Over a VIL row?
+    let row_idx = state
+        .vil_issue_row_regions
+        .iter()
+        .find(|(_, rect)| hit(rect, col, row))
+        .map(|(idx, _)| *idx);
+
+    if let Some(idx) = row_idx {
+        let new_hover = (|| {
+            let issue = crate::services::vil_workbench::issue_at_filtered_index(state, idx)?;
+            let file = issue.file.as_ref()?;
+            let line_1based = issue.line?;
+            let snap = state.lsp_diagnostics.as_ref()?;
+            let line0 = line_1based.saturating_sub(1);
+            let line0_u32 = u32::try_from(line0).ok()?;
+            crate::services::diagnostics_overlay::hover_detail_at(
+                snap,
+                std::path::Path::new(file),
+                line0_u32,
+            )
+        })();
+
+        if new_hover != state.active_hover {
+            state.active_hover = new_hover;
+            // Renderer will refresh hover_popup_region on the next frame.
+            state.hover_popup_region = None;
+            return true;
+        }
+        // Same row / same detail — no state churn, no repaint.
+        return false;
+    }
+
+    // 2. Over the current popup? Keep it alive.
+    if let Some(rect) = state.hover_popup_region
+        && hit(&rect, col, row)
+    {
+        return false;
+    }
+
+    // 3. Outside every tracked region — dismiss if a hover was up.
+    if state.active_hover.is_some() || state.hover_popup_region.is_some() {
+        state.active_hover = None;
+        state.hover_popup_region = None;
+        return true;
+    }
+
+    false
+}
+
 #[inline]
 fn hit(rect: &Rect, col: u16, row: u16) -> bool {
     col >= rect.x

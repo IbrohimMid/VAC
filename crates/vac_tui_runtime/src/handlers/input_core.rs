@@ -240,6 +240,12 @@ fn handle_global(
             crate::services::text_selection::handle_drag_end(state, *col, *row);
             true
         }
+        InputEvent::MouseMove(col, row) => {
+            // R7 / PR-T15 real-hover extension — route cursor moves to the
+            // hover dispatcher. Handled=true only when popup state actually
+            // changed so we avoid spurious repaints on every cell.
+            crate::handlers::mouse::dispatch_hover(state, *col, *row)
+        }
         _ => false,
     }
 }
