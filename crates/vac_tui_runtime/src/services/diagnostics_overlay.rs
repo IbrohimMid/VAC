@@ -23,6 +23,14 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use vac_core::lsp::types::{LspSeverity, LspWorkspaceSnapshot};
 
+// Note on hover precision: `hover_detail_at` is *line-level* only — it takes
+// `(snapshot, file_path, line_index)` and selects the highest-severity
+// diagnostic whose range covers that line. Column position is not
+// considered, so hovering any column on a flagged line surfaces the same
+// detail. A future enhancement to support LSP-style span-precise hover
+// would extend the signature with a column argument and clip diagnostics
+// to `[start_character, end_character)` on the matching line.
+
 /// A styled run of characters within a single rendered line.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DiagnosticSpan {

@@ -468,6 +468,14 @@ pub struct AppState {
     /// so a subsequent click can dismiss the popup before falling through
     /// to row/body hit-testing.
     pub hover_popup_region: Option<ratatui::layout::Rect>,
+    /// R7b / PR-T15 MouseMove hot-path cache. When `dispatch_hover`
+    /// sees the same VIL filtered row index with `active_hover` already
+    /// populated it can skip the `issue_at_filtered_index` +
+    /// `hover_detail_at` work entirely (both allocate / clone strings).
+    /// Cleared whenever the popup is dismissed or the hover target
+    /// changes so a subsequent filter / issue-set change cannot serve
+    /// stale hover detail.
+    pub active_hover_row_idx: Option<usize>,
     pub pinned_files: Vec<String>,
     pub pinned_diffs: Vec<String>,
     pub pinned_diagnostics: Vec<String>,
@@ -686,6 +694,7 @@ impl AppState {
             diagnostics_overlay_cache: crate::services::diagnostics_overlay::DiagnosticsOverlayCache::default(),
             active_hover: None,
             hover_popup_region: None,
+            active_hover_row_idx: None,
             pinned_files: Vec::new(),
             pinned_diffs: Vec::new(),
             pinned_diagnostics: Vec::new(),

@@ -21,6 +21,7 @@ use crossterm::{
 };
 use ratatui::{Terminal, backend::CrosstermBackend};
 use std::io;
+use std::io::Write as _;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
@@ -357,22 +358,34 @@ pub async fn run_tui(
         // (1-based) followed by the full base64-chunked DCS sequence,
         // positioned one cell inside the diff-pane border so the image
         // overlays the ASCII fallback instead of stomping on the
-        // border glyphs. The whole block is a silent no-op on
-        // non-Kitty terminals because the workbench only populates
-        // the field when `startup.kitty_graphics == true`.
+        // border glyphs.
+        //
+        // Defense-in-depth: the workbench populator only writes this
+        // field when `state.startup.kitty_graphics == true`, but we
+        // re-check the flag here so any future call site that populates
+        // it without the guard cannot leak DCS bytes to a non-Kitty
+        // terminal. The `.take()` still runs so a stale payload gets
+        // drained instead of lingering across frames.
         if let Some((rect, png_bytes)) = state.pending_kitty_emission.take() {
-            use std::io::Write;
-            let col = rect.x.saturating_add(1);
-            let row = rect.y.saturating_add(1);
-            let payload = crate::services::kitty_image::emit_positioned_kitty_image(
-                col,
-                row,
-                &png_bytes,
-            );
-            if !payload.is_empty() {
-                let mut stdout = std::io::stdout();
-                let _ = stdout.write_all(&payload);
-                let _ = stdout.flush();
+            if state.startup.kitty_graphics {
+                // `inner_col`/`inner_row` push one cell past the diff-pane
+                // border so the image overlays ASCII content, not the
+                // border glyphs. `emit_positioned_kitty_image` then adds
+                // its own +1 to convert from zero-based ratatui coords
+                // to 1-based CSI CUP — the two `+1`s have distinct
+                // semantics and are both intentional.
+                let inner_col = rect.x.saturating_add(1);
+                let inner_row = rect.y.saturating_add(1);
+                let payload = crate::services::kitty_image::emit_positioned_kitty_image(
+                    inner_col,
+                    inner_row,
+                    &png_bytes,
+                );
+                if !payload.is_empty() {
+                    let mut stdout = std::io::stdout();
+                    let _ = stdout.write_all(&payload);
+                    let _ = stdout.flush();
+                }
             }
         }
 

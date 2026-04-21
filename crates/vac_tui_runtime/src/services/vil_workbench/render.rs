@@ -562,9 +562,9 @@ fn render_lineage_panel(f: &mut Frame, state: &AppState, area: Rect, view: &[&Vi
 }
 
 /// R7 / PR-T15 — render the hover detail popup anchored near the clicked
-/// issue row. The popup auto-flips horizontally when it would overflow the
-/// tab area's right edge, and is clamped vertically so it never escapes the
-/// tab area. The computed screen rect is recorded in
+/// issue row. The popup is clamped to the tab area on both axes so it never
+/// overflows the right or bottom edge (this is a clamp, not a true
+/// flip-to-opposite-side layout). The computed screen rect is recorded in
 /// `state.hover_popup_region` for the next click dismissal test.
 ///
 /// * `list_rect` — the issue list inner area; used as the horizontal anchor.
@@ -576,7 +576,9 @@ fn render_hover_popup(
     area: Rect,
     detail: &HoverDetail,
 ) {
-    if area.width < 10 || area.height < 6 {
+    // Popup body is 7 rows tall; the guard must allow at least that much
+    // vertical space so we never saturate-clamp a row outside the tab area.
+    if area.width < 10 || area.height < 8 {
         state.hover_popup_region = None;
         return;
     }
@@ -588,8 +590,9 @@ fn render_hover_popup(
     let width = desired_w.max(20);
     let height: u16 = 7;
 
-    // Horizontal anchor: start 2 cols inside the list rect; auto-flip when
-    // we'd overflow the tab area's right edge.
+    // Horizontal anchor: start 2 cols inside the list rect. When the popup
+    // would overflow the tab's right edge we clamp it to the right edge
+    // (this covers a larger fraction of the row but keeps the popup visible).
     let tab_right = area.x.saturating_add(area.width);
     let mut x = list_rect.x.saturating_add(2);
     if x.saturating_add(width) > tab_right {

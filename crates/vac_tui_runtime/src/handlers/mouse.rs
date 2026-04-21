@@ -34,6 +34,7 @@ pub fn dispatch_click(
         if outside {
             state.active_hover = None;
             state.hover_popup_region = None;
+            state.active_hover_row_idx = None;
             return true;
         }
     }
@@ -127,6 +128,13 @@ pub fn dispatch_click(
         })();
         // Renderer will refresh hover_popup_region on the next frame.
         state.hover_popup_region = None;
+        // R7b hot-path cache: click seeds the cache with the selected row
+        // so a subsequent MouseMove on the same row short-circuits.
+        state.active_hover_row_idx = if state.active_hover.is_some() {
+            Some(idx)
+        } else {
+            None
+        };
         return true;
     }
 
@@ -183,6 +191,15 @@ pub fn dispatch_hover(state: &mut AppState, col: u16, row: u16) -> bool {
         .map(|(idx, _)| *idx);
 
     if let Some(idx) = row_idx {
+        // R7b hot-path cache: when the pointer is still over the same
+        // filtered row as the current popup, skip `issue_at_filtered_index`
+        // and `hover_detail_at` entirely. Both allocate owned `VilIssue` /
+        // cloned `String` fields on every call; terminals can emit dozens
+        // of MouseMove events per second during a drag so this matters.
+        if state.active_hover.is_some() && state.active_hover_row_idx == Some(idx) {
+            return false;
+        }
+
         let new_hover = (|| {
             let issue = crate::services::vil_workbench::issue_at_filtered_index(state, idx)?;
             let file = issue.file.as_ref()?;
@@ -201,9 +218,16 @@ pub fn dispatch_hover(state: &mut AppState, col: u16, row: u16) -> bool {
             state.active_hover = new_hover;
             // Renderer will refresh hover_popup_region on the next frame.
             state.hover_popup_region = None;
+            state.active_hover_row_idx = if state.active_hover.is_some() {
+                Some(idx)
+            } else {
+                None
+            };
             return true;
         }
-        // Same row / same detail — no state churn, no repaint.
+        // Same row / same detail — refresh the cache anyway (protects
+        // against stale keys after click seeding) and skip repaint.
+        state.active_hover_row_idx = Some(idx);
         return false;
     }
 
@@ -218,6 +242,7 @@ pub fn dispatch_hover(state: &mut AppState, col: u16, row: u16) -> bool {
     if state.active_hover.is_some() || state.hover_popup_region.is_some() {
         state.active_hover = None;
         state.hover_popup_region = None;
+        state.active_hover_row_idx = None;
         return true;
     }
 
