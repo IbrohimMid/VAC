@@ -7,7 +7,7 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 
 /// Render a simple diff between old and new content
-pub fn render_diff(theme: &Theme, old_content: &str, new_content: &str, max_width: usize) -> Vec<Line<'static>> {
+pub fn render_diff(theme: &Theme, old_content: &str, new_content: &str, _max_width: usize) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
 
     // Header
@@ -19,72 +19,24 @@ pub fn render_diff(theme: &Theme, old_content: &str, new_content: &str, max_widt
         "+++ New",
         theme.style(StyleKey::DiffAdded).add_modifier(Modifier::BOLD),
     )]));
-    lines.push(Line::from(""));
 
-    // Simple line-by-line comparison using `similar`
-    let diff = similar::TextDiff::from_lines(old_content, new_content);
-
-    for change in diff.iter_all_changes() {
-        let line = change.value();
-        let truncated = truncate_line(line.trim_end_matches('\n'), max_width.saturating_sub(2));
-
-        match change.tag() {
-            similar::ChangeTag::Delete => {
-                lines.push(Line::from(vec![
-                    Span::styled("- ", theme.style(StyleKey::DiffRemoved)),
-                    Span::styled(truncated, theme.style(StyleKey::DiffRemoved)),
-                ]));
-            }
-            similar::ChangeTag::Insert => {
-                let mut span = Span::styled(truncated.clone(), theme.style(StyleKey::DiffAdded));
-                // Highlight VIL macros (generated code hint)
-                if truncated.trim().starts_with("#[vil_") {
-                    span = Span::styled(
-                        format!("{} (VIL-generated plumbing)", truncated),
-                        theme.style(StyleKey::DiffAdded).add_modifier(Modifier::BOLD),
-                    );
-                }
-                lines.push(Line::from(vec![
-                    Span::styled("+ ", theme.style(StyleKey::DiffAdded)),
-                    span,
-                ]));
-            }
-            similar::ChangeTag::Equal => {
-                lines.push(Line::from(vec![Span::raw("  "), Span::raw(truncated)]));
-            }
-        }
+    // Simple line-by-line comparison (naive)
+    let old_lines: Vec<&str> = old_content.lines().collect();
+    let new_lines: Vec<&str> = new_content.lines().collect();
+    
+    // Very basic diff for now
+    for line in old_lines {
+        lines.push(Line::from(vec![Span::styled(
+            format!("- {}", line),
+            theme.style(StyleKey::DiffRemoved),
+        )]));
     }
-
-    lines
-}
-
-fn truncate_line(line: &str, max_width: usize) -> String {
-    if line.len() <= max_width {
-        line.to_string()
-    } else {
-        format!("{}...", &line[..max_width.saturating_sub(3)])
+    for line in new_lines {
+        lines.push(Line::from(vec![Span::styled(
+            format!("+ {}", line),
+            theme.style(StyleKey::DiffAdded),
+        )]));
     }
-}
-
-/// Preview diff for a file operation
-pub fn preview_file_diff(
-    theme: &Theme,
-    file_path: &str,
-    old_content: &str,
-    new_content: &str,
-    max_width: usize,
-) -> Vec<Line<'static>> {
-    let mut lines = Vec::new();
-
-    // File header - clone to make 'static
-    lines.push(Line::from(vec![
-        Span::styled("File: ", Style::default().add_modifier(Modifier::BOLD)),
-        Span::styled(file_path.to_string(), theme.style(StyleKey::Accent)),
-    ]));
-    lines.push(Line::from(""));
-
-    // Diff content
-    lines.extend(render_diff(theme, old_content, new_content, max_width));
 
     lines
 }
