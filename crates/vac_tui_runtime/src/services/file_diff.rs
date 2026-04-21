@@ -269,6 +269,79 @@ mod tests {
     }
 
     #[test]
+    fn render_diff_with_diagnostics_renders_squiggles_to_backend() {
+        // PR-T15 P2 — end-to-end render snapshot. Draws the diff into a
+        // TestBackend and asserts that the squiggly overlay reaches the
+        // terminal buffer on the new-side insert row. This is the
+        // "insta-style" pinned assertion the Per-PR Bar asks for without
+        // adding a snapshot-file dep.
+        use ratatui::{
+            Terminal,
+            backend::TestBackend,
+            layout::Rect,
+            text::Text,
+            widgets::Paragraph,
+        };
+
+        let theme = Theme::default();
+        let old = "";
+        let new = "let x = broken_call;\n";
+        let snap = snapshot_with(vec![err_at("foo.rs", 0, 4, 0, 8)]);
+        let lines = render_diff_with_diagnostics(
+            &theme,
+            old,
+            new,
+            80,
+            Some(&snap),
+            Some(Path::new("foo.rs")),
+        );
+
+        let backend = TestBackend::new(80, 8);
+        let mut terminal = Terminal::new(backend).expect("terminal");
+        terminal
+            .draw(|f| {
+                let para = Paragraph::new(Text::from(lines.clone()));
+                f.render_widget(para, Rect::new(0, 0, 80, 8));
+            })
+            .expect("draw");
+
+        let buf = terminal.backend().buffer();
+        // Flatten the buffer into rows of (symbol, underlined) for scan.
+        let mut underlined_rows_with_content: Vec<String> = Vec::new();
+        for y in 0..buf.area.height {
+            let mut row = String::new();
+            let mut row_has_underline = false;
+            for x in 0..buf.area.width {
+                let cell = &buf[(x, y)];
+                row.push_str(cell.symbol());
+                if cell
+                    .style()
+                    .add_modifier
+                    .contains(ratatui::style::Modifier::UNDERLINED)
+                {
+                    row_has_underline = true;
+                }
+            }
+            if row_has_underline {
+                underlined_rows_with_content.push(row.trim_end().to_string());
+            }
+        }
+        assert!(
+            !underlined_rows_with_content.is_empty(),
+            "expected at least one rendered row to carry an underlined diagnostic span; buffer had none"
+        );
+        // The row that carried the diagnostic should be the inserted line,
+        // which contains the literal source text we fed in.
+        assert!(
+            underlined_rows_with_content
+                .iter()
+                .any(|r| r.contains("broken_call")),
+            "underlined row must correspond to the +inserted source line, got rows: {:?}",
+            underlined_rows_with_content
+        );
+    }
+
+    #[test]
     fn render_diff_with_diagnostics_ignores_other_files() {
         let theme = Theme::default();
         let old = "";
