@@ -3,7 +3,7 @@ use crate::services::theme::StyleKey;
 use ratatui::{
     Frame,
     layout::{Alignment, Rect},
-    style::{Color, Modifier, Style},
+    style::Modifier,
     text::{Line, Span},
     widgets::Paragraph,
 };
@@ -33,9 +33,9 @@ pub fn render_statusline(f: &mut Frame, state: &AppState, area: Rect) {
     let mut text = vec![
         Span::styled(
             format!(" {} ", mode_str),
-            Style::default()
-                .bg(Color::Blue)
-                .fg(Color::Black)
+            state
+                .theme
+                .style(StyleKey::OverlaySelected)
                 .add_modifier(Modifier::BOLD),
         ),
         Span::raw(" | "),
@@ -80,17 +80,17 @@ pub fn render_statusline(f: &mut Frame, state: &AppState, area: Rect) {
     // Phase 3: Show provider/auth status from startup snapshot
     {
         let provider_status = &state.startup.provider_status;
-        let (provider_label, provider_color) = if provider_status.starts_with("ready") {
-            (provider_status.as_str(), Color::Green)
+        let (provider_label, provider_key) = if provider_status.starts_with("ready") {
+            (provider_status.as_str(), StyleKey::Success)
         } else if provider_status == "initializing" || provider_status == "loading..." {
-            (provider_status.as_str(), Color::Yellow)
+            (provider_status.as_str(), StyleKey::Warning)
         } else {
-            (provider_status.as_str(), Color::Red)
+            (provider_status.as_str(), StyleKey::Error)
         };
         text.push(Span::raw(" | "));
         text.push(Span::styled(
             format!("Provider: {}", provider_label),
-            Style::default().fg(provider_color),
+            state.theme.style(provider_key),
         ));
     }
     if state.startup.mcp_server_count > 0 {
