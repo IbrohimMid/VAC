@@ -216,11 +216,19 @@ Goal: surfaces Claude Code *cannot* match because they are VIL-native.
 
 ### Wave 4 — Polish (Week 6, stretch)
 
-- Inline diagnostics (LSP-style, reusing `vil_validate` reports).
-- Mouse click → action dispatch complete (Phase 6.5 closure).
-- Kitty image protocol support (preview images inline, not just paste).
-- Command recorder / replay for demos.
-- Custom keybinding user config at `.vac/keybindings.toml`.
+> **Status (2026-04-21 audit):** Foundation landed for T15–T19 on `origin/main` (`636e892`), but **Wave 4 is NOT feature-complete**. 4/5 items are integration-incomplete.
+>
+> Short form: *Wave 4 helper layer complete; product-surface completion still pending.*
+>
+> See `docs/VAC_TUI_PARITY_DASHBOARD.md` for the full audit matrix and P0/P1/P2 integration backlog.
+
+- **T15** — Inline diagnostics (LSP-style, reusing `vil_validate` reports). &nbsp;&nbsp;*[PARTIAL — helper + cache landed; renderer integration in Review/vil_workbench pending]*
+- **T16** — Mouse click → action dispatch complete (Phase 6.5 closure). &nbsp;&nbsp;*[PARTIAL — `dispatch_click` wired for tab/tray/banner only; review rows, side-panel rows, workbench body, overlay lists, vil_workbench editor, approvals pane still unwired]*
+- **T17** — Kitty image protocol support (preview images inline, not just paste). &nbsp;&nbsp;*[PARTIAL — DCS probe + ASCII fallback landed; startup call, `TerminalCapabilities` field, and render-path consumption pending]*
+- **T18** — Command recorder / replay for demos. &nbsp;&nbsp;*[PARTIAL (near-blocker) — JSONL substrate landed; event-loop tap and `vac tui --replay <file>` CLI flag pending]*
+- **T19** — Custom keybinding user config at `.vac/keybindings.toml`. &nbsp;&nbsp;*[PARTIAL — loader + `resolve_effective` landed; wiring into `handle_input_event` matcher / `ActionSpec` override and startup load pending]*
+
+**Wave 4 acceptance gate (updated):** An item counts as DONE only when (a) its product surface is wired and user-visible, and (b) its Per-PR Bar is proven (see §5), including `vac_cli --test integration_events`, `insta` snapshots for new overlays/panels, `docs/tui/action_matrix.md` updates for ActionSpec touches, `scripts/check_sync_io.sh` clean, and ≥1 E2E via TUI harness.
 
 ---
 
