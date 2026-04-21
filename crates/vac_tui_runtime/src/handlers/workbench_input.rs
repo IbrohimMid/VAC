@@ -136,7 +136,9 @@ fn handle_up(state: &mut AppState, output_tx: &Sender<OutputEvent>) {
             let mut ctx = HandlerContext::new(state, output_tx);
             let _ = vil_workbench::select_prev(&mut ctx);
         }
-        WorkbenchTab::Vwfd => {}
+        WorkbenchTab::Vwfd => {
+            state.vwfd_inspector.select_prev();
+        }
     }
 }
 
@@ -174,7 +176,9 @@ fn handle_down(state: &mut AppState, output_tx: &Sender<OutputEvent>) {
             let mut ctx = HandlerContext::new(state, output_tx);
             let _ = vil_workbench::select_next(&mut ctx);
         }
-        WorkbenchTab::Vwfd => {}
+        WorkbenchTab::Vwfd => {
+            state.vwfd_inspector.select_next();
+        }
     }
 }
 

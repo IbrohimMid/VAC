@@ -309,6 +309,10 @@ pub struct AppState {
     // VIL domain state
     pub vil: VilState,
 
+    // VWFD inspector state (PR-T11). Default is an empty inspector; loaded
+    // lazily when the user opens a .vwfd.yaml via the changeset or commands.
+    pub vwfd_inspector: crate::services::vwfd_inspector::VwfdInspectorState,
+
     // ── vil-expr live linter (PR-T12) ─────────────────────────────────────────
     /// Debounced parser + validator for `vil-expr:` payloads typed into the
     /// input bar. Updated by the input handler on every keystroke and ticked
@@ -561,6 +565,7 @@ impl AppState {
             project_root: options.project_root,
             mcp_server_states: HashMap::new(),
             vil: VilState::default(),
+            vwfd_inspector: crate::services::vwfd_inspector::VwfdInspectorState::default(),
             vil_expr_lint: crate::services::vil_expr_lint::LintState::new(),
             pending_image_parts: vec![],
             banner_message: None,

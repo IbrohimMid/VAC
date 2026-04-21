@@ -505,10 +505,10 @@ spec:
         let tree = state.flat_tree();
         assert!(!tree.is_empty(), "tree should be non-empty after load");
 
-        // Expect: Root + SectionWorkflows + 2 workflow rows + 2 step rows
+        // Expect: Root + SectionWorkflows + 1 workflow row + 2 step rows
         //         + SectionTriggers + 1 trigger
-        //         + SectionHandlers + 2 handlers = 11 nodes
-        assert_eq!(tree.len(), 11, "unexpected flat-tree size: {}", tree.len());
+        //         + SectionHandlers + 2 handlers = 10 nodes
+        assert_eq!(tree.len(), 10, "unexpected flat-tree size: {}", tree.len());
 
         // Root is first, then the workflows section header
         assert!(matches!(tree[0].kind, VwfdNodeKind::SectionRoot));
