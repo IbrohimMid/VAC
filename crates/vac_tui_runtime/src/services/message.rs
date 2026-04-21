@@ -4,7 +4,7 @@
 //! Uses VAC types directly (no stakpak_shared dependency).
 
 use crate::services::theme::StyleKey;
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::Modifier;
 use ratatui::text::{Line, Span};
 use regex::Regex;
 use serde_json::Value;
@@ -116,8 +116,8 @@ pub fn render_user_message(content: &str, width: usize) -> Vec<Line<'static>> {
         Span::styled("▌ ", crate::services::theme::Theme::default().style(StyleKey::Accent)),
         Span::styled(
             "You",
-            Style::default()
-                .fg(Color::Cyan)
+            crate::services::theme::Theme::default()
+                .style(StyleKey::UserMessage)
                 .add_modifier(Modifier::BOLD),
         ),
     ]));
@@ -213,8 +213,8 @@ pub fn render_assistant_message_with_theme(
     let mut lines = Vec::new();
     lines.push(Line::from(Span::styled(
         "VAC",
-        Style::default()
-            .fg(Color::Green)
+        crate::services::theme::Theme::default()
+            .style(StyleKey::Success)
             .add_modifier(Modifier::BOLD),
     )));
 
@@ -258,8 +258,8 @@ pub fn render_tool_call_pending(tool_call: &ToolCall) -> Vec<Line<'static>> {
         Span::styled("⏳ ", crate::services::theme::Theme::default().style(StyleKey::Warning)),
         Span::styled(
             tool_call.function.name.clone(),
-            Style::default()
-                .fg(Color::Yellow)
+            crate::services::theme::Theme::default()
+                .style(StyleKey::Warning)
                 .add_modifier(Modifier::BOLD),
         ),
         Span::styled(" [pending approval]", crate::services::theme::Theme::default().style(StyleKey::Muted)),
@@ -279,16 +279,17 @@ pub fn render_tool_call_pending(tool_call: &ToolCall) -> Vec<Line<'static>> {
 
 /// Render a tool call result bubble.
 pub fn render_tool_result(result: &ToolCallResult) -> Vec<Line<'static>> {
-    let (icon, color) = match result.status {
-        ToolCallResultStatus::Success => ("✓", Color::Green),
-        ToolCallResultStatus::Error => ("✗", Color::Red),
-        _ => ("·", Color::Gray),
+    let (icon, status_key) = match result.status {
+        ToolCallResultStatus::Success => ("✓", StyleKey::Success),
+        ToolCallResultStatus::Error => ("✗", StyleKey::Error),
+        _ => ("·", StyleKey::Muted),
     };
+    let base_style = crate::services::theme::Theme::default().style(status_key);
     let mut lines = vec![Line::from(vec![
-        Span::styled(format!("{icon} "), Style::default().fg(color)),
+        Span::styled(format!("{icon} "), base_style),
         Span::styled(
             result.call.function.name.clone(),
-            Style::default().fg(color).add_modifier(Modifier::BOLD),
+            base_style.add_modifier(Modifier::BOLD),
         ),
     ])];
 
