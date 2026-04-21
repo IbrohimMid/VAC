@@ -2,8 +2,11 @@
 
 pub mod error;
 pub mod migrate;
+pub mod parity;
 pub mod schema;
 pub mod version;
+
+pub use parity::{parity_pass, ParityIssue};
 
 pub use error::VwfdError;
 pub use schema::{
