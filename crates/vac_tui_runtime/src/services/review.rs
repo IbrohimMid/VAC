@@ -109,6 +109,20 @@ pub fn load_diff(
     session_id: Uuid,
     file_path: &str,
 ) -> Result<DiffData, String> {
+    // R8d: image files have a dedicated preview pane in the review tab
+    // (see workbench/review.rs + services/review_preview.rs). Attempting to
+    // `read_to_string` a binary image would always fail with an "invalid
+    // UTF-8" error that the UI would surface as a spurious diff failure.
+    // Return an empty DiffData so the image-preview branch can take over
+    // without any stale last_error leaking into ReviewDiffState.
+    if crate::services::review_preview::is_image_path(file_path) {
+        return Ok(DiffData {
+            path: file_path.to_string(),
+            old_content: String::new(),
+            new_content: String::new(),
+        });
+    }
+
     let abs_path = if Path::new(file_path).is_absolute() {
         PathBuf::from(file_path)
     } else {
@@ -605,6 +619,24 @@ mod tests {
         let diff = load_diff(dir.path(), session_id, "a.txt").unwrap();
         assert_eq!(diff.old_content, "");
         assert_eq!(diff.new_content, "new");
+    }
+
+    #[test]
+    fn load_diff_short_circuits_for_image_paths_without_reading_disk() {
+        // R8d: is_image_path short-circuits before any read_to_string.
+        // Point the path at a file that does NOT exist on disk — if the
+        // short-circuit regresses, read_to_string would return Err and
+        // this test would fail with a different panic.
+        let dir = tempfile::tempdir().unwrap();
+        let session_id = uuid::Uuid::new_v4();
+        let diff = load_diff(dir.path(), session_id, "assets/logo.png")
+            .expect("image path must short-circuit to empty DiffData");
+        assert_eq!(diff.path, "assets/logo.png");
+        assert_eq!(diff.old_content, "");
+        assert_eq!(diff.new_content, "");
+        // Also covers uppercase + URL-style suffix variants because
+        // is_image_path already has its own exhaustive unit tests; this
+        // test only pins the integration point in load_diff.
     }
 
     #[test]
