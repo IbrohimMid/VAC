@@ -5560,6 +5560,7 @@ dependencies = [
  "vil_llm",
  "vil_metrics",
  "vil_validate",
+ "vil_vwfd",
 ]
 
 [[package]]
