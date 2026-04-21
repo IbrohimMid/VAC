@@ -7,6 +7,11 @@ pub fn map_crossterm_event_to_input_event(event: Event) -> Option<InputEvent> {
             if key.kind != KeyEventKind::Press {
                 return None;
             }
+            // PR-T19 wiring: honour user overrides from `.vac/keybindings.toml`
+            // before falling back to the hard-coded mapping below.
+            if let Some(ev) = crate::services::keybindings_runtime::lookup_override_global(&key) {
+                return Some(ev);
+            }
             match key.code {
                 KeyCode::Char('v') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                     Some(InputEvent::HandleClipboardImagePaste)

@@ -148,6 +148,37 @@ pub async fn run_tui(
     let (input_tx, mut internal_rx) = tokio::sync::mpsc::channel::<InputEvent>(100);
     state.input_tx = Some(input_tx.clone());
 
+    // PR-T19 wiring: load `.vac/keybindings.toml` (if present), merge over
+    // compiled-in defaults, install the process-wide override keymap, and
+    // surface any parse/validation warnings as banner messages. A missing
+    // file is treated as "no overrides" and produces no warning.
+    {
+        let kb_path = project_root.join(".vac").join("keybindings.toml");
+        let outcome = crate::services::keybindings_loader::load_keybindings(&kb_path);
+        let effective =
+            crate::services::keybindings_loader::resolve_effective(&outcome.overrides);
+        let keymap =
+            crate::services::keybindings_runtime::ChordKeymap::from_effective(&effective);
+        // `install_global_keymap` only succeeds on the first call; that's
+        // fine for the real TUI and harmless when tests run us repeatedly.
+        let _ = crate::services::keybindings_runtime::install_global_keymap(keymap);
+        if !outcome.warnings.is_empty() {
+            let banner_tx = input_tx.clone();
+            let warnings = outcome.warnings.clone();
+            tokio::spawn(async move {
+                for w in warnings {
+                    let _ = banner_tx
+                        .send(InputEvent::ShowBanner(
+                            w,
+                            crate::services::banner::BannerStyle::Warning,
+                            crate::services::banner::BannerSeverity::Suggested,
+                        ))
+                        .await;
+                }
+            });
+        }
+    }
+
     // Probe MCP servers in background
     let config = vac_core::VacConfig::load_with_fallback(&project_root).unwrap_or_default();
     if let Some(servers) = config.mcp_servers {
