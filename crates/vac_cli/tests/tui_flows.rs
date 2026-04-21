@@ -374,3 +374,118 @@ async fn sessions_tab_cleans_selected_session_artifacts_and_refreshes() {
     );
     assert!(!root.join(".vac/approvals").join("approval.json").exists());
 }
+
+// =======================================================================
+// PR-T16 P2 — E2E mouse-dispatch coverage per surface
+//
+// Each test drives `handlers::mouse::dispatch_click` from the vac_cli
+// integration-test boundary (= public crate surface), seeding the region
+// fields exactly as a view render pass would, and asserting that the
+// observable AppState mutation matches the documented behaviour in
+// docs/tui/action_matrix.md.
+// =======================================================================
+
+mod pr_t16_mouse_dispatch_e2e {
+    use ratatui::layout::Rect;
+    use tokio::sync::mpsc;
+    use vac_tui_runtime::app::{
+        AppState, OutputEvent, WorkbenchTab, WorkspaceFocus,
+    };
+    use vac_tui_runtime::handlers::mouse::dispatch_click;
+
+    fn make_state() -> (
+        AppState,
+        mpsc::Sender<OutputEvent>,
+        mpsc::Receiver<OutputEvent>,
+    ) {
+        let state = AppState::default();
+        let (tx, rx) = mpsc::channel::<OutputEvent>(64);
+        (state, tx, rx)
+    }
+
+    #[test]
+    fn review_row_click_selects_path_and_switches_tab() {
+        let (mut state, tx, _rx) = make_state();
+        state.focus = WorkspaceFocus::Input;
+        state.workbench_tab = WorkbenchTab::Sessions;
+        state
+            .review_file_row_regions
+            .push(("src/lib.rs".to_string(), Rect::new(2, 5, 40, 1)));
+        state
+            .review_file_row_regions
+            .push(("src/main.rs".to_string(), Rect::new(2, 6, 40, 1)));
+
+        let handled = dispatch_click(&mut state, &tx, 10, 6);
+        assert!(handled, "click inside review row region must be consumed");
+        assert_eq!(
+            state.review.selected_path.as_deref(),
+            Some("src/main.rs"),
+            "clicked file should become the selected path"
+        );
+        assert_eq!(state.workbench_tab, WorkbenchTab::Review);
+        assert_eq!(state.focus, WorkspaceFocus::Workbench);
+    }
+
+    #[test]
+    fn approvals_row_click_selects_idx_and_switches_tab() {
+        let (mut state, tx, _rx) = make_state();
+        state.focus = WorkspaceFocus::Input;
+        state.workbench_tab = WorkbenchTab::Review;
+        state
+            .approvals_row_regions
+            .push((0, Rect::new(4, 8, 30, 1)));
+        state
+            .approvals_row_regions
+            .push((2, Rect::new(4, 10, 30, 1)));
+
+        let handled = dispatch_click(&mut state, &tx, 5, 10);
+        assert!(handled);
+        assert_eq!(state.approval_selected_idx, 2);
+        assert_eq!(state.workbench_tab, WorkbenchTab::Approvals);
+        assert_eq!(state.focus, WorkspaceFocus::Workbench);
+    }
+
+    #[test]
+    fn vil_issue_row_click_selects_and_switches_tab() {
+        let (mut state, tx, _rx) = make_state();
+        state.focus = WorkspaceFocus::Input;
+        state.workbench_tab = WorkbenchTab::Review;
+        state
+            .vil_issue_row_regions
+            .push((3, Rect::new(2, 12, 60, 1)));
+
+        let handled = dispatch_click(&mut state, &tx, 5, 12);
+        assert!(handled);
+        assert_eq!(state.vil.workbench_selected, 3);
+        assert_eq!(state.workbench_tab, WorkbenchTab::Vil);
+        assert_eq!(state.focus, WorkspaceFocus::Workbench);
+    }
+
+    #[test]
+    fn workbench_body_click_grabs_focus_without_tab_switch() {
+        let (mut state, tx, _rx) = make_state();
+        state.focus = WorkspaceFocus::Input;
+        state.workbench_tab = WorkbenchTab::Plan;
+        state.workbench_body_region = Some(Rect::new(0, 5, 80, 20));
+
+        let handled = dispatch_click(&mut state, &tx, 40, 15);
+        assert!(handled);
+        assert_eq!(state.focus, WorkspaceFocus::Workbench);
+        // Body fallback must NOT silently change the active tab.
+        assert_eq!(state.workbench_tab, WorkbenchTab::Plan);
+    }
+
+    #[test]
+    fn click_outside_all_regions_is_ignored() {
+        let (mut state, tx, _rx) = make_state();
+        state.focus = WorkspaceFocus::Input;
+        state
+            .review_file_row_regions
+            .push(("a.rs".to_string(), Rect::new(0, 0, 10, 1)));
+        state.workbench_body_region = Some(Rect::new(0, 5, 20, 5));
+
+        let handled = dispatch_click(&mut state, &tx, 80, 40);
+        assert!(!handled, "click outside every region must be a no-op");
+        assert_eq!(state.focus, WorkspaceFocus::Input);
+    }
+}
