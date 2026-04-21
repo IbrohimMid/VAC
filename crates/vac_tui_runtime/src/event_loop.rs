@@ -175,14 +175,32 @@ pub async fn run_tui(
             crate::services::keybindings_loader::resolve_effective(&outcome.overrides);
         let keymap =
             crate::services::keybindings_runtime::ChordKeymap::from_effective(&effective);
+        // PR-T19 R1: collect diagnostic strings BEFORE the keymap is moved
+        // into the global OnceLock so we can also surface non-fatal issues
+        // (skipped non-reachable overrides + duplicate chord conflicts).
+        let mut diag_warnings: Vec<String> = outcome.warnings.clone();
+        for (chord, id) in keymap.skipped_bindings() {
+            diag_warnings.push(format!(
+                "keybindings.toml: `{chord}` for `{id:?}` is not reachable via a global chord and was ignored"
+            ));
+        }
+        for (chord, ids) in keymap.conflicts() {
+            let names = ids
+                .iter()
+                .map(|i| format!("{i:?}"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            diag_warnings.push(format!(
+                "keybindings.toml: `{chord}` is bound to multiple actions ({names}); last wins"
+            ));
+        }
         // `install_global_keymap` only succeeds on the first call; that's
         // fine for the real TUI and harmless when tests run us repeatedly.
         let _ = crate::services::keybindings_runtime::install_global_keymap(keymap);
-        if !outcome.warnings.is_empty() {
+        if !diag_warnings.is_empty() {
             let banner_tx = input_tx.clone();
-            let warnings = outcome.warnings.clone();
             tokio::spawn(async move {
-                for w in warnings {
+                for w in diag_warnings {
                     let _ = banner_tx
                         .send(InputEvent::ShowBanner(
                             w,

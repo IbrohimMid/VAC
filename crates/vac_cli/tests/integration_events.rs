@@ -210,6 +210,30 @@ fn chord_keymap_records_skipped_non_reachable_actions() {
     assert_eq!(keymap.accepted_bindings().len(), 0);
 }
 
+#[test]
+fn chord_keymap_detects_chord_bound_to_multiple_actions() {
+    // User bound `Ctrl+p` to both OpenShortcuts and OpenFileSearch — only
+    // one can win at dispatch time, but the UI must be able to warn the
+    // user that the other is being shadowed (PR-T19 R1).
+    let keymap = ChordKeymap::from_effective(&effective([
+        (ActionId::OpenShortcuts, vec!["Ctrl+p"]),
+        (ActionId::OpenFileSearch, vec!["Ctrl+p"]),
+    ]));
+    let conflicts = keymap.conflicts();
+    assert_eq!(conflicts.len(), 1, "exactly one chord should be in conflict");
+    let (chord, ids) = &conflicts[0];
+    assert_eq!(chord, "Ctrl+p");
+    assert_eq!(ids.len(), 2);
+    assert!(ids.contains(&ActionId::OpenShortcuts));
+    assert!(ids.contains(&ActionId::OpenFileSearch));
+    // Non-conflicting unique chord must not show up in `conflicts()`.
+    let single = ChordKeymap::from_effective(&effective([(
+        ActionId::OpenShortcuts,
+        vec!["Ctrl+p"],
+    )]));
+    assert!(single.conflicts().is_empty());
+}
+
 // =============================================================================
 // 4. Diagnostics-overlay cache invariants (T15 contract)
 //

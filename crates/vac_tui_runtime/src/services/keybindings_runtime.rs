@@ -135,6 +135,11 @@ pub struct ChordKeymap {
     /// Bindings we silently dropped because the ActionId is not
     /// keyboard-reachable. Surfaced for diagnostics, not errors.
     skipped_non_reachable: Vec<(String, ActionId)>,
+    /// Chord strings bound to more than one ActionId in the user's
+    /// effective map. Last-writer wins for dispatch, but we keep the full
+    /// list so the UI can warn the user that one of their bindings is
+    /// shadowing another (PR-T19 R1).
+    conflicts: Vec<(String, Vec<ActionId>)>,
 }
 
 impl ChordKeymap {
@@ -143,6 +148,11 @@ impl ChordKeymap {
     /// lookup table.
     pub fn from_effective(effective: &HashMap<ActionId, Vec<String>>) -> Self {
         let mut map = ChordKeymap::default();
+        // Collect all (chord, id) pairs first so we can detect duplicate
+        // chord bindings before the last-writer-wins `HashMap::insert`
+        // hides them. We sort by ActionId enum order for deterministic
+        // conflict-reporting output (important for test snapshots).
+        let mut staged: Vec<(String, ActionId)> = Vec::new();
         for (&id, chords) in effective {
             if action_id_to_input_event(id).is_none() {
                 for c in chords {
@@ -155,9 +165,23 @@ impl ChordKeymap {
                 if chord.contains('\u{00d7}') {
                     continue;
                 }
-                map.chord_to_action.insert(chord.clone(), id);
-                map.accepted.push((chord.clone(), id));
+                staged.push((chord.clone(), id));
             }
+        }
+        staged.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| (a.1 as u32).cmp(&(b.1 as u32))));
+        let mut by_chord: HashMap<String, Vec<ActionId>> = HashMap::new();
+        for (chord, id) in &staged {
+            by_chord.entry(chord.clone()).or_default().push(*id);
+        }
+        for (chord, ids) in &by_chord {
+            if ids.len() > 1 {
+                map.conflicts.push((chord.clone(), ids.clone()));
+            }
+        }
+        map.conflicts.sort_by(|a, b| a.0.cmp(&b.0));
+        for (chord, id) in staged {
+            map.chord_to_action.insert(chord.clone(), id);
+            map.accepted.push((chord, id));
         }
         map
     }
@@ -177,6 +201,15 @@ impl ChordKeymap {
 
     pub fn skipped_bindings(&self) -> &[(String, ActionId)] {
         &self.skipped_non_reachable
+    }
+
+    /// Chord strings that the user bound to more than one ActionId. The UI
+    /// surfaces these so the user knows exactly which other action is
+    /// shadowing theirs (PR-T19 R1). Each entry lists every ActionId that
+    /// claimed the chord; `chord_to_action` retains whichever arrived last
+    /// after the stable sort in `from_effective`.
+    pub fn conflicts(&self) -> &[(String, Vec<ActionId>)] {
+        &self.conflicts
     }
 
     pub fn is_empty(&self) -> bool {
