@@ -106,6 +106,7 @@ fn handle_char(state: &mut AppState, output_tx: &Sender<OutputEvent>, c: char) {
             }
             _ => {}
         },
+        WorkbenchTab::Vwfd => {}
     }
 }
 
@@ -135,6 +136,7 @@ fn handle_up(state: &mut AppState, output_tx: &Sender<OutputEvent>) {
             let mut ctx = HandlerContext::new(state, output_tx);
             let _ = vil_workbench::select_prev(&mut ctx);
         }
+        WorkbenchTab::Vwfd => {}
     }
 }
 
@@ -172,6 +174,7 @@ fn handle_down(state: &mut AppState, output_tx: &Sender<OutputEvent>) {
             let mut ctx = HandlerContext::new(state, output_tx);
             let _ = vil_workbench::select_next(&mut ctx);
         }
+        WorkbenchTab::Vwfd => {}
     }
 }
 

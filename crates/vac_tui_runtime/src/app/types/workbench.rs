@@ -32,6 +32,7 @@ pub enum WorkbenchTab {
     Runtime,
     Plan,
     Vil,
+    Vwfd,
 }
 
 impl WorkbenchTab {
@@ -43,7 +44,8 @@ impl WorkbenchTab {
             Self::Agents => Self::Runtime,
             Self::Runtime => Self::Plan,
             Self::Plan => Self::Vil,
-            Self::Vil => Self::Approvals,
+            Self::Vil => Self::Vwfd,
+            Self::Vwfd => Self::Approvals,
         }
     }
 }

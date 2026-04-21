@@ -123,6 +123,7 @@ pub enum ActionContext {
     WorkbenchRuntime,
     WorkbenchPlan,
     WorkbenchVil,
+    WorkbenchVwfd,
     /// Matches any active workbench tab — use for shared tab-level hints.
     WorkbenchAny,
     OverlayActive,
@@ -146,6 +147,7 @@ impl ActionContext {
                 WorkbenchTab::Runtime => ActionContext::WorkbenchRuntime,
                 WorkbenchTab::Plan => ActionContext::WorkbenchPlan,
                 WorkbenchTab::Vil => ActionContext::WorkbenchVil,
+                WorkbenchTab::Vwfd => ActionContext::WorkbenchVwfd,
             },
         }
     }
@@ -167,6 +169,7 @@ pub fn specs_for_context(ctx: ActionContext) -> impl Iterator<Item = &'static Ac
             | ActionContext::WorkbenchRuntime
             | ActionContext::WorkbenchPlan
             | ActionContext::WorkbenchVil
+            | ActionContext::WorkbenchVwfd
     );
     ACTION_SPECS.iter().filter(move |s| {
         s.scope == ctx

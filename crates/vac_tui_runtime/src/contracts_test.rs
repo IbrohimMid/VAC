@@ -218,6 +218,7 @@ mod tests {
             WorkbenchTab::Runtime,
             WorkbenchTab::Plan,
             WorkbenchTab::Vil,
+            WorkbenchTab::Vwfd,
         ];
         let indices: Vec<usize> = variants
             .iter()
@@ -226,10 +227,10 @@ mod tests {
         let unique: HashSet<usize> = indices.iter().copied().collect();
         assert_eq!(
             unique.len(),
-            7,
+            8,
             "each WorkbenchTab variant should map to a unique index"
         );
-        assert_eq!(*indices.iter().max().unwrap(), 6, "max index should be 6");
+        assert_eq!(*indices.iter().max().unwrap(), 7, "max index should be 7");
     }
 
     // ── ACTION_SPECS keybinding consistency ──────────────────────────────────
@@ -262,6 +263,7 @@ mod tests {
             ActionContext::WorkbenchRuntime,
             ActionContext::WorkbenchPlan,
             ActionContext::WorkbenchVil,
+            ActionContext::WorkbenchVwfd,
         ];
         for ctx in workbench_ctxs {
             let count = crate::action_registry::footer_specs(ctx).count();
@@ -284,6 +286,7 @@ mod tests {
             WorkbenchTab::Runtime,
             WorkbenchTab::Plan,
             WorkbenchTab::Vil,
+            WorkbenchTab::Vwfd,
         ];
         for tab in &variants {
             let idx = crate::workbench::active_tab_index(tab);

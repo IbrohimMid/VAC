@@ -11,6 +11,7 @@ pub mod review;
 pub mod runtime;
 pub mod sessions;
 pub mod vil;
+pub mod vwfd;
 
 pub use agents::AgentsTab;
 pub use approvals::ApprovalsTab;
@@ -19,6 +20,7 @@ pub use review::ReviewTab;
 pub use runtime::RuntimeTab;
 pub use sessions::SessionsTab;
 pub use vil::VilTab;
+pub use vwfd::VwfdTab;
 
 use crate::app::{AppState, WorkbenchTab};
 use ratatui::{Frame, layout::Rect};
@@ -42,6 +44,7 @@ pub fn tab_labels(state: &AppState) -> Vec<String> {
         RuntimeTab::tab_label(state),
         PlanTab::tab_label(state),
         VilTab::tab_label(state),
+        VwfdTab::tab_label(state),
     ]
 }
 
@@ -55,6 +58,7 @@ pub fn active_tab_index(tab: &WorkbenchTab) -> usize {
         WorkbenchTab::Runtime => 4,
         WorkbenchTab::Plan => 5,
         WorkbenchTab::Vil => 6,
+        WorkbenchTab::Vwfd => 7,
     }
 }
 
@@ -67,6 +71,7 @@ pub fn tab_from_index(index: usize) -> WorkbenchTab {
         4 => WorkbenchTab::Runtime,
         5 => WorkbenchTab::Plan,
         6 => WorkbenchTab::Vil,
+        7 => WorkbenchTab::Vwfd,
         _ => WorkbenchTab::Approvals,
     }
 }
@@ -81,5 +86,6 @@ pub fn render_active_tab(f: &mut Frame, state: &mut AppState, area: Rect) {
         WorkbenchTab::Runtime => RuntimeTab::render(f, state, area),
         WorkbenchTab::Plan => PlanTab::render(f, state, area),
         WorkbenchTab::Vil => VilTab::render(f, state, area),
+        WorkbenchTab::Vwfd => VwfdTab::render(f, state, area),
     }
 }
