@@ -177,6 +177,62 @@ pub fn render_image_or_fallback(
     (caps.kitty_graphics, lines)
 }
 
+/// Max base64 payload length per Kitty graphics chunk, per
+/// <https://sw.kovidgoyal.net/kitty/graphics-protocol/#a-minimal-example>.
+/// Chunks larger than this may be silently dropped by some terminals.
+pub const KITTY_CHUNK_BASE64_MAX: usize = 4096;
+
+/// Emit an inline Kitty graphics sequence for a PNG payload using the
+/// "direct transmission" protocol (`f=100,t=d,a=T,q=2`):
+///   - `f=100`: PNG data
+///   - `t=d`: direct transmission (payload is the image itself, base64-encoded)
+///   - `a=T`: immediate display at the cursor
+///   - `q=2`: suppress terminal responses (we don't poll for acks)
+///
+/// The base64-encoded payload is chunked into runs of at most
+/// [`KITTY_CHUNK_BASE64_MAX`] bytes. A single-chunk image omits the `m`
+/// key; a multi-chunk image uses `m=1` for every non-final chunk and
+/// `m=0` on the terminator. Every chunk is wrapped in the Kitty DCS
+/// bracket `\x1b_G<keys>;<payload>\x1b\\`.
+///
+/// Returns an empty vector when the input is empty so callers can
+/// shortcut without emitting a stray escape sequence.
+pub fn emit_kitty_inline_image(png_bytes: &[u8]) -> Vec<u8> {
+    use base64::{Engine, engine::general_purpose::STANDARD};
+    let mut out = Vec::new();
+    if png_bytes.is_empty() {
+        return out;
+    }
+    let encoded = STANDARD.encode(png_bytes);
+    let bytes = encoded.as_bytes();
+    let total = bytes.len();
+    let single_chunk = total <= KITTY_CHUNK_BASE64_MAX;
+    let mut offset: usize = 0;
+    let mut first = true;
+    while offset < total {
+        let end = (offset + KITTY_CHUNK_BASE64_MAX).min(total);
+        let chunk = &bytes[offset..end];
+        let is_last = end == total;
+        let header = if single_chunk {
+            "f=100,t=d,a=T,q=2".to_string()
+        } else if first {
+            "f=100,t=d,a=T,q=2,m=1".to_string()
+        } else if is_last {
+            "m=0".to_string()
+        } else {
+            "m=1".to_string()
+        };
+        out.extend_from_slice(b"\x1b_G");
+        out.extend_from_slice(header.as_bytes());
+        out.push(b';');
+        out.extend_from_slice(chunk);
+        out.extend_from_slice(b"\x1b\\");
+        offset = end;
+        first = false;
+    }
+    out
+}
+
 fn centered_label(label: &str, width: usize) -> String {
     // Truncate with an ellipsis if the label is too long for the frame.
     let (text, actual) = if label.chars().count() > width {
@@ -380,6 +436,99 @@ mod tests {
             "non-TTY probe must short-circuit before hitting the deadline: took {:?}",
             start.elapsed()
         );
+    }
+
+    #[test]
+    fn kitty_emitter_empty_input_emits_nothing() {
+        // No PNG bytes → no DCS bracket at all. Prevents stray escapes from
+        // bleeding into the terminal when a caller has nothing to draw.
+        let out = emit_kitty_inline_image(&[]);
+        assert!(out.is_empty(), "empty input must produce no output: {out:?}");
+    }
+
+    #[test]
+    fn kitty_emitter_single_chunk_has_direct_header_without_m_key() {
+        // Payload small enough to fit in one chunk (base64 of 4 bytes = 8 chars).
+        let png = [0xDEu8, 0xAD, 0xBE, 0xEF];
+        let out = emit_kitty_inline_image(&png);
+        assert!(out.starts_with(b"\x1b_G"), "missing DCS open: {:?}", &out[..4.min(out.len())]);
+        assert!(out.ends_with(b"\x1b\\"), "missing DCS close");
+        let text = std::str::from_utf8(&out).expect("emitter output is ASCII");
+        // Direct transmission header must include f=100, t=d, a=T, q=2.
+        assert!(text.contains("f=100"), "missing f=100: {text:?}");
+        assert!(text.contains("t=d"), "missing t=d: {text:?}");
+        assert!(text.contains("a=T"), "missing a=T: {text:?}");
+        assert!(text.contains("q=2"), "missing q=2: {text:?}");
+        // Single-chunk frames must not carry the m= continuation flag.
+        assert!(!text.contains("m="), "single-chunk must omit m= key: {text:?}");
+        // Exactly one DCS bracket pair.
+        let opens = text.matches("\x1b_G").count();
+        let closes = text.matches("\x1b\\").count();
+        assert_eq!(opens, 1, "expected exactly one DCS open: {opens}");
+        assert_eq!(closes, 1, "expected exactly one DCS close: {closes}");
+    }
+
+    #[test]
+    fn kitty_emitter_multi_chunk_uses_m1_then_m0_and_respects_chunk_size() {
+        // Raw input large enough that base64 encoding exceeds the chunk
+        // ceiling (4096 base64 chars ≈ 3072 raw bytes). 4000 bytes of raw
+        // data encode to ~5332 base64 chars → exactly 2 chunks.
+        let png: Vec<u8> = (0u16..4000u16).map(|i| (i & 0xFF) as u8).collect();
+        let out = emit_kitty_inline_image(&png);
+        let text = std::str::from_utf8(&out).expect("emitter output is ASCII");
+        // Exactly 2 DCS brackets.
+        let opens = text.matches("\x1b_G").count();
+        assert_eq!(opens, 2, "expected 2 chunks for this payload: got {opens}");
+        // First chunk must carry the full header *and* m=1.
+        let first_open = text.find("\x1b_G").unwrap();
+        let first_semi = first_open + text[first_open..].find(';').unwrap();
+        let first_header = &text[first_open + 3..first_semi];
+        assert!(first_header.contains("f=100"), "first header must carry f=100: {first_header:?}");
+        assert!(first_header.contains("m=1"), "first header must carry m=1: {first_header:?}");
+        // Last chunk must carry m=0 and no f=/t=/a=/q= (continuation only).
+        let last_open = text.rfind("\x1b_G").unwrap();
+        let last_semi = last_open + text[last_open..].find(';').unwrap();
+        let last_header = &text[last_open + 3..last_semi];
+        assert_eq!(last_header, "m=0", "terminator header must be exactly m=0: {last_header:?}");
+        // Every chunk's base64 payload must respect the 4096-byte ceiling.
+        let mut cursor = 0usize;
+        while let Some(rel_open) = text[cursor..].find("\x1b_G") {
+            let open = cursor + rel_open;
+            let semi = open + text[open..].find(';').unwrap();
+            let close = open + text[open..].find("\x1b\\").unwrap();
+            let payload = &text[semi + 1..close];
+            assert!(
+                payload.len() <= KITTY_CHUNK_BASE64_MAX,
+                "chunk base64 payload {} exceeds cap {}",
+                payload.len(),
+                KITTY_CHUNK_BASE64_MAX
+            );
+            cursor = close + 2;
+        }
+    }
+
+    #[test]
+    fn kitty_emitter_every_chunk_wraps_in_dcs_bracket() {
+        // Force a payload that spans 3 chunks (~9k raw bytes → ~12k base64).
+        let png: Vec<u8> = (0..9000u32).map(|i| (i & 0xFF) as u8).collect();
+        let out = emit_kitty_inline_image(&png);
+        let text = std::str::from_utf8(&out).expect("emitter output is ASCII");
+        let opens = text.matches("\x1b_G").count();
+        let closes = text.matches("\x1b\\").count();
+        assert_eq!(opens, closes, "every DCS open must have a matching close");
+        assert_eq!(opens, 3, "expected 3 chunks for ~9k byte input: got {opens}");
+        // Chunks 2..N-1 must be pure m=1 continuations; chunk N must be m=0.
+        let mut headers = Vec::new();
+        let mut cursor = 0usize;
+        while let Some(rel_open) = text[cursor..].find("\x1b_G") {
+            let open = cursor + rel_open;
+            let semi = open + text[open..].find(';').unwrap();
+            headers.push(text[open + 3..semi].to_string());
+            cursor = semi + 1;
+        }
+        assert!(headers[0].contains("m=1") && headers[0].contains("f=100"));
+        assert_eq!(headers[1], "m=1");
+        assert_eq!(headers[2], "m=0");
     }
 
     #[test]
