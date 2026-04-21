@@ -52,5 +52,8 @@ vil_llm.workspace = true
 vil_metrics.workspace = true
 vil_validate = { version = "0.1.0", path = "../vil_validate" }
 
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 [lints]
 workspace = true

@@ -5528,6 +5528,7 @@ dependencies = [
  "dirs 6.0.0",
  "ignore",
  "image",
+ "libc",
  "log",
  "notify",
  "nucleo-matcher",
