@@ -35,8 +35,30 @@ use self::session_tasks::{
     handle_new_session, resume_session_into_tui,
 };
 
+/// Input/output recording mode for a TUI session (PR-T18 wiring).
+///
+/// Set at most one of `record_dir` / `replay_file`:
+/// - `record_dir`: append a JSONL recording of user inputs to this directory
+///   so the session can be replayed later.
+/// - `replay_file`: ignore the real terminal and drive the event loop from
+///   this file, synthesising crossterm events through the live mapper.
+#[derive(Debug, Clone, Default)]
+pub struct TuiIoMode {
+    pub record_dir: Option<PathBuf>,
+    pub replay_file: Option<PathBuf>,
+}
+
 /// Run the VAC TUI with VacEngine integration
 pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
+    run_vac_tui_with_io(project_root, resume, TuiIoMode::default()).await
+}
+
+/// Run the VAC TUI with explicit input recording/replay configuration.
+pub async fn run_vac_tui_with_io(
+    project_root: PathBuf,
+    resume: bool,
+    io_mode: TuiIoMode,
+) -> Result<()> {
     // Initialize VacEngine
     let mut engine = VacEngine::new(project_root.clone()).await?;
 
@@ -374,6 +396,7 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
         vec![],
         None,
         project_root,
+        io_mode,
     )
     .await?;
 

@@ -64,6 +64,12 @@ enum Commands {
     Interactive {
         #[arg(long)]
         resume: bool,
+        /// Record all user input to a JSONL file under <dir> for later replay (PR-T18).
+        #[arg(long, value_name = "DIR")]
+        record: Option<PathBuf>,
+        /// Replay a previously recorded JSONL input file instead of reading the terminal (PR-T18).
+        #[arg(long, value_name = "FILE", conflicts_with = "record")]
+        replay: Option<PathBuf>,
     },
     /// Resume from checkpoint
     Resume { checkpoint: PathBuf },
@@ -287,8 +293,8 @@ async fn main() -> anyhow::Result<()> {
         } => {
             commands::run::execute(project_root, task, priority, profile, approve, target).await?;
         }
-        Commands::Interactive { resume } => {
-            commands::interactive::execute(project_root, resume).await?
+        Commands::Interactive { resume, record, replay } => {
+            commands::interactive::execute(project_root, resume, record, replay).await?
         }
         Commands::Resume { checkpoint } => {
             commands::resume::execute(project_root, checkpoint).await?

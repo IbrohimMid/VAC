@@ -26,6 +26,7 @@ pub mod plan_review;
 pub mod profile_switcher;
 pub mod recent_commands;
 pub mod recorder;
+pub mod replay_bridge;
 pub mod review;
 pub mod rulebook_switcher;
 pub mod shortcuts_popup;

@@ -57,4 +57,4 @@ mod contracts_test;
 pub use app::{InputEvent, LoadingOperation, OutputEvent};
 pub use event::map_crossterm_event_to_input_event;
 pub use event_loop::{RulebookConfig, run_tui};
-pub use runner::run_vac_tui;
+pub use runner::{TuiIoMode, run_vac_tui, run_vac_tui_with_io};

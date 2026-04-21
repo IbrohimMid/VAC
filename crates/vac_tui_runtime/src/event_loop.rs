@@ -58,6 +58,7 @@ pub async fn run_tui(
     _recent_models: Vec<String>,
     _banner_message: Option<()>,
     project_root: std::path::PathBuf,
+    io_mode: crate::runner::TuiIoMode,
 ) -> io::Result<()> {
     let _guard = TerminalGuard;
     enable_raw_mode()?;
@@ -191,25 +192,73 @@ pub async fn run_tui(
     let input_paused = Arc::new(AtomicBool::new(false));
     let input_paused_clone = input_paused.clone();
 
-    std::thread::spawn(move || {
-        loop {
-            if input_paused_clone.load(Ordering::Relaxed) {
-                std::thread::sleep(Duration::from_millis(10));
-                continue;
+    // PR-T18 wiring: route terminal input through either
+    //   (a) live crossterm poll thread (optionally tapped by a Recorder), or
+    //   (b) a replay driver that feeds a recorded JSONL file through the
+    //       same mapper path the live thread uses.
+    //
+    // Record+replay at the same time is not supported; replay wins.
+    if let Some(replay_file) = io_mode.replay_file.clone() {
+        let input_tx_replay = input_tx.clone();
+        std::thread::spawn(move || {
+            let replay = match crate::services::recorder::Replay::open(&replay_file) {
+                Ok(r) => r,
+                Err(_) => return,
+            };
+            for line in replay {
+                let Some(cte) = crate::services::replay_bridge::recorded_input_to_crossterm_event(
+                    &line.event,
+                ) else {
+                    continue;
+                };
+                let Some(ev) = map_crossterm_event_to_input_event(cte) else {
+                    continue;
+                };
+                if input_tx_replay.blocking_send(ev).is_err() {
+                    break;
+                }
             }
-            if crossterm::event::poll(Duration::from_millis(100)).ok()? {
-                if let Some(event) = crossterm::event::read()
-                    .ok()
-                    .and_then(map_crossterm_event_to_input_event)
-                {
-                    if input_tx.blocking_send(event).is_err() {
-                        break;
+        });
+    } else {
+        // Live terminal input. Optionally tap into a Recorder.
+        let recorder: Option<Arc<std::sync::Mutex<crate::services::recorder::Recorder>>> = io_mode
+            .record_dir
+            .as_ref()
+            .and_then(|dir| {
+                let cfg = crate::services::recorder::RecorderConfig::new(dir.clone());
+                match crate::services::recorder::Recorder::open(cfg) {
+                    Ok(r) => Some(Arc::new(std::sync::Mutex::new(r))),
+                    Err(_) => None,
+                }
+            });
+
+        std::thread::spawn(move || {
+            loop {
+                if input_paused_clone.load(Ordering::Relaxed) {
+                    std::thread::sleep(Duration::from_millis(10));
+                    continue;
+                }
+                if crossterm::event::poll(Duration::from_millis(100)).ok()? {
+                    let raw = crossterm::event::read().ok()?;
+                    if let Some(rec) = &recorder {
+                        if let Some(item) =
+                            crate::services::replay_bridge::crossterm_event_to_recorded_input(&raw)
+                        {
+                            if let Ok(mut r) = rec.lock() {
+                                let _ = r.record(item);
+                            }
+                        }
+                    }
+                    if let Some(event) = map_crossterm_event_to_input_event(raw) {
+                        if input_tx.blocking_send(event).is_err() {
+                            break;
+                        }
                     }
                 }
             }
-        }
-        Some(())
-    });
+            Some(())
+        });
+    }
 
     let mut spinner_interval = interval(Duration::from_millis(150));
     let mut last_session_snapshot_save = Instant::now();
