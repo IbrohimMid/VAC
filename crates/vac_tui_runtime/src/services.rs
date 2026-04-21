@@ -16,6 +16,7 @@ pub mod helper_block;
 pub mod helper_dropdown;
 pub mod isolation_switcher;
 pub mod keybindings_loader;
+pub mod kitty_image;
 pub mod markdown_renderer;
 pub mod message;
 pub mod message_action_popup;
