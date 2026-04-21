@@ -3,7 +3,8 @@
 use std::path::Path;
 
 use crate::services::diagnostics_overlay::{
-    render_line_with_diagnostics, squiggly_spans_for_line,
+    gutter_mark_for_line, render_gutter_cell, render_line_with_diagnostics,
+    squiggly_spans_for_line,
 };
 use crate::services::theme::{StyleKey, Theme};
 use ratatui::{
@@ -394,17 +395,24 @@ fn render_issue_list(f: &mut Frame, state: &mut AppState, area: Rect, view: &[&V
             // text via `render_line_with_diagnostics` so the severity color
             // + underline flow through the same code path as Review rows.
             let message = issue.message.clone();
-            let overlay_spans: Vec<crate::services::diagnostics_overlay::DiagnosticSpan> =
-                match (&issue.file, issue.line, state.lsp_diagnostics.as_ref()) {
-                    (Some(file), Some(line_1based), Some(snap)) => {
-                        let line0 = (line_1based.saturating_sub(1)) as u32;
-                        let width = message.chars().count() as u32;
-                        squiggly_spans_for_line(snap, Path::new(file), line0, width)
-                    }
-                    _ => Vec::new(),
-                };
+            let (overlay_spans, gutter_mark): (
+                Vec<crate::services::diagnostics_overlay::DiagnosticSpan>,
+                Option<crate::services::diagnostics_overlay::GutterMark>,
+            ) = match (&issue.file, issue.line, state.lsp_diagnostics.as_ref()) {
+                (Some(file), Some(line_1based), Some(snap)) => {
+                    let line0 = (line_1based.saturating_sub(1)) as u32;
+                    let width = message.chars().count() as u32;
+                    let spans = squiggly_spans_for_line(snap, Path::new(file), line0, width);
+                    let mark = gutter_mark_for_line(snap, Path::new(file), line0);
+                    (spans, mark)
+                }
+                _ => (Vec::new(), None),
+            };
 
+            // R6 / PR-T15 — prepend a 2-col severity gutter cell so each row
+            // surfaces its highest-severity diagnostic at a glance.
             let mut spans: Vec<Span> = vec![
+                render_gutter_cell(gutter_mark.as_ref(), Style::default()),
                 Span::styled(kind_tag, kind_style),
                 Span::styled(locator, state.theme.style(StyleKey::Accent)),
                 Span::raw(" "),

@@ -193,6 +193,82 @@ impl DiagnosticsOverlayCache {
     }
 }
 
+// --- R6 / PR-T15 --- gutter severity marks -----------------------------------
+
+/// A single-glyph gutter mark produced from the highest-severity diagnostic
+/// intersecting a given line. Consumed by Review diff + VIL issue list
+/// renderers to surface severity before the diagnostic text (R6 / T15).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GutterMark {
+    pub severity: LspSeverity,
+    pub glyph: char,
+}
+
+impl GutterMark {
+    pub fn new(severity: LspSeverity) -> Self {
+        let glyph = glyph_for_severity(&severity);
+        Self { severity, glyph }
+    }
+}
+
+/// Pick the highest-severity diagnostic that covers `line_index` (0-based) in
+/// `file_path` and project it into a [`GutterMark`]. Returns `None` when no
+/// diagnostic intersects the line. Severity ordering is
+/// `Error > Warning > Information > Hint`.
+pub fn gutter_mark_for_line(
+    snapshot: &LspWorkspaceSnapshot,
+    file_path: &Path,
+    line_index: u32,
+) -> Option<GutterMark> {
+    let mut best: Option<LspSeverity> = None;
+    for diag in &snapshot.diagnostics {
+        if diag.file_path != file_path {
+            continue;
+        }
+        let r = &diag.range;
+        if line_index < r.start_line || line_index > r.end_line {
+            continue;
+        }
+        let sev = diag.severity.clone();
+        best = Some(match best {
+            None => sev,
+            Some(cur) if severity_rank(&sev) > severity_rank(&cur) => sev,
+            Some(cur) => cur,
+        });
+    }
+    best.map(GutterMark::new)
+}
+
+/// Render the 2-column gutter cell for a line: `"<glyph> "` styled by severity
+/// when a mark is present, or `"  "` styled with `base` otherwise. Callers
+/// prepend this unconditionally so row prefix width stays constant (2 cols).
+pub fn render_gutter_cell(mark: Option<&GutterMark>, base: Style) -> Span<'static> {
+    match mark {
+        Some(m) => Span::styled(
+            format!("{} ", m.glyph),
+            style_for_severity(&m.severity).add_modifier(Modifier::BOLD),
+        ),
+        None => Span::styled("  ".to_string(), base),
+    }
+}
+
+fn glyph_for_severity(sev: &LspSeverity) -> char {
+    match sev {
+        LspSeverity::Error => '●',
+        LspSeverity::Warning => '▲',
+        LspSeverity::Information | LspSeverity::Hint => 'ℹ',
+    }
+}
+
+fn severity_rank(sev: &LspSeverity) -> u8 {
+    match sev {
+        LspSeverity::Error => 4,
+        LspSeverity::Warning => 3,
+        LspSeverity::Information => 2,
+        LspSeverity::Hint => 1,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -316,5 +392,114 @@ mod tests {
         let rendered = render_line_with_diagnostics("plain", &[], Style::default());
         assert_eq!(rendered.spans.len(), 1);
         assert_eq!(rendered.spans[0].content, "plain");
+    }
+
+    // --- R6 / PR-T15 gutter marks ------------------------------------------
+
+    fn diag_with(path: &str, sev: LspSeverity, sl: u32, sc: u32, el: u32, ec: u32) -> LspDiagnostic {
+        LspDiagnostic {
+            file_path: PathBuf::from(path),
+            severity: sev,
+            code: None,
+            source: Some("vil_validate".to_string()),
+            message: "boom".to_string(),
+            range: LspRange {
+                start_line: sl,
+                start_character: sc,
+                end_line: el,
+                end_character: ec,
+            },
+        }
+    }
+
+    #[test]
+    fn gutter_mark_prefers_highest_severity() {
+        // Two diagnostics on the same line: a Warning and an Error. The
+        // Error must win because it has higher severity rank.
+        let snap = snapshot_with(vec![
+            diag_with("foo.rs", LspSeverity::Warning, 1, 0, 1, 5),
+            diag_with("foo.rs", LspSeverity::Error, 1, 3, 1, 8),
+            diag_with("foo.rs", LspSeverity::Hint, 1, 0, 1, 2),
+        ]);
+        let mark = gutter_mark_for_line(&snap, Path::new("foo.rs"), 1).expect("mark");
+        assert_eq!(mark.severity, LspSeverity::Error);
+        assert_eq!(mark.glyph, '●');
+    }
+
+    #[test]
+    fn gutter_mark_none_when_no_diagnostics() {
+        let snap = snapshot_with(vec![diag_with("foo.rs", LspSeverity::Error, 0, 0, 0, 5)]);
+        // Different line in same file.
+        assert!(gutter_mark_for_line(&snap, Path::new("foo.rs"), 4).is_none());
+        // Empty snapshot.
+        let empty = snapshot_with(vec![]);
+        assert!(gutter_mark_for_line(&empty, Path::new("foo.rs"), 0).is_none());
+    }
+
+    #[test]
+    fn gutter_mark_covers_multiline_range() {
+        // Warning spans lines 2..=4. Every line in the range should yield a
+        // gutter mark, including the middle line 3.
+        let snap = snapshot_with(vec![diag_with(
+            "foo.rs",
+            LspSeverity::Warning,
+            2,
+            3,
+            4,
+            1,
+        )]);
+        for line in 2..=4 {
+            let mark = gutter_mark_for_line(&snap, Path::new("foo.rs"), line)
+                .unwrap_or_else(|| panic!("expected mark on line {line}"));
+            assert_eq!(mark.severity, LspSeverity::Warning);
+            assert_eq!(mark.glyph, '▲');
+        }
+        // Outside the range: no mark.
+        assert!(gutter_mark_for_line(&snap, Path::new("foo.rs"), 1).is_none());
+        assert!(gutter_mark_for_line(&snap, Path::new("foo.rs"), 5).is_none());
+    }
+
+    #[test]
+    fn gutter_mark_ignores_other_files() {
+        let snap = snapshot_with(vec![
+            diag_with("foo.rs", LspSeverity::Error, 0, 0, 0, 5),
+            diag_with("bar.rs", LspSeverity::Error, 0, 0, 0, 5),
+        ]);
+        // Only foo.rs matches, but we are asking about bar.rs line 0 — that
+        // should still produce a mark from the bar.rs diag only. The check
+        // we care about is that querying `baz.rs` returns None.
+        assert!(gutter_mark_for_line(&snap, Path::new("foo.rs"), 0).is_some());
+        assert!(gutter_mark_for_line(&snap, Path::new("bar.rs"), 0).is_some());
+        assert!(gutter_mark_for_line(&snap, Path::new("baz.rs"), 0).is_none());
+    }
+
+    #[test]
+    fn render_gutter_cell_styled_by_severity() {
+        let err_mark = GutterMark::new(LspSeverity::Error);
+        let err_span = render_gutter_cell(Some(&err_mark), Style::default());
+        assert_eq!(err_span.content, "● ");
+        assert_eq!(err_span.style.fg, Some(ratatui::style::Color::Red));
+        assert!(err_span.style.add_modifier.contains(Modifier::BOLD));
+
+        let warn_mark = GutterMark::new(LspSeverity::Warning);
+        let warn_span = render_gutter_cell(Some(&warn_mark), Style::default());
+        assert_eq!(warn_span.content, "▲ ");
+        assert_eq!(warn_span.style.fg, Some(ratatui::style::Color::Yellow));
+
+        let info_mark = GutterMark::new(LspSeverity::Information);
+        let info_span = render_gutter_cell(Some(&info_mark), Style::default());
+        assert_eq!(info_span.content, "ℹ ");
+        assert_eq!(info_span.style.fg, Some(ratatui::style::Color::Blue));
+
+        let hint_mark = GutterMark::new(LspSeverity::Hint);
+        let hint_span = render_gutter_cell(Some(&hint_mark), Style::default());
+        // Hint shares the info glyph by design (single-char gutter budget).
+        assert_eq!(hint_span.content, "ℹ ");
+        assert_eq!(hint_span.style.fg, Some(ratatui::style::Color::Blue));
+
+        // None — returns a 2-space placeholder so row width stays constant.
+        let empty_span = render_gutter_cell(None, Style::default());
+        assert_eq!(empty_span.content, "  ");
+        assert_eq!(empty_span.style.fg, None);
     }
 }

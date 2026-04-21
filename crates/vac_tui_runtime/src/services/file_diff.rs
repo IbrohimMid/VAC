@@ -5,7 +5,8 @@
 use std::path::Path;
 
 use crate::services::diagnostics_overlay::{
-    render_line_with_diagnostics, squiggly_spans_for_line,
+    GutterMark, gutter_mark_for_line, render_gutter_cell, render_line_with_diagnostics,
+    squiggly_spans_for_line,
 };
 use crate::services::theme::{StyleKey, Theme};
 use ratatui::style::{Modifier, Style};
@@ -94,11 +95,16 @@ pub fn render_diff_with_diagnostics(
 
     for change in diff.iter_all_changes() {
         let raw = change.value();
-        let truncated = truncate_line(raw.trim_end_matches('\n'), max_width.saturating_sub(2));
+        // Reserve 4 cols of row prefix: 2 for the R6 gutter cell +
+        // 2 for the `+ ` / `- ` / `  ` diff marker.
+        let truncated = truncate_line(raw.trim_end_matches('\n'), max_width.saturating_sub(4));
 
         match change.tag() {
             similar::ChangeTag::Delete => {
+                // Delete rows have no new-side line number, so the gutter is
+                // always an empty placeholder for consistent alignment.
                 lines.push(Line::from(vec![
+                    render_gutter_cell(None, Style::default()),
                     Span::styled("- ", theme.style(StyleKey::DiffRemoved)),
                     Span::styled(truncated, theme.style(StyleKey::DiffRemoved)),
                 ]));
@@ -106,8 +112,11 @@ pub fn render_diff_with_diagnostics(
             similar::ChangeTag::Insert => {
                 let base = theme.style(StyleKey::DiffAdded);
                 let overlay = diagnostics_overlay_for(snapshot, file_path, new_line_no, &truncated);
-                let mut row: Vec<Span<'static>> =
-                    vec![Span::styled("+ ", theme.style(StyleKey::DiffAdded))];
+                let gutter = diagnostics_gutter_for(snapshot, file_path, new_line_no);
+                let mut row: Vec<Span<'static>> = vec![
+                    render_gutter_cell(gutter.as_ref(), Style::default()),
+                    Span::styled("+ ", theme.style(StyleKey::DiffAdded)),
+                ];
                 if overlay.is_empty() && !truncated.trim().starts_with("#[vil_") {
                     row.push(Span::styled(truncated.clone(), base));
                 } else if truncated.trim().starts_with("#[vil_") {
@@ -127,12 +136,18 @@ pub fn render_diff_with_diagnostics(
             }
             similar::ChangeTag::Equal => {
                 let overlay = diagnostics_overlay_for(snapshot, file_path, new_line_no, &truncated);
+                let gutter = diagnostics_gutter_for(snapshot, file_path, new_line_no);
+                let gutter_span = render_gutter_cell(gutter.as_ref(), Style::default());
                 if overlay.is_empty() {
-                    lines.push(Line::from(vec![Span::raw("  "), Span::raw(truncated)]));
+                    lines.push(Line::from(vec![
+                        gutter_span,
+                        Span::raw("  "),
+                        Span::raw(truncated),
+                    ]));
                 } else {
                     let overlayed =
                         render_line_with_diagnostics(&truncated, &overlay, Style::default());
-                    let mut row: Vec<Span<'static>> = vec![Span::raw("  ")];
+                    let mut row: Vec<Span<'static>> = vec![gutter_span, Span::raw("  ")];
                     for s in overlayed.spans.into_iter() {
                         row.push(Span::styled(s.content.into_owned(), s.style));
                     }
@@ -144,6 +159,19 @@ pub fn render_diff_with_diagnostics(
     }
 
     lines
+}
+
+/// R6 / PR-T15 helper — resolve the gutter mark (if any) for a given new-side
+/// line number, mirroring the `diagnostics_overlay_for` lookup semantics.
+fn diagnostics_gutter_for(
+    snapshot: Option<&LspWorkspaceSnapshot>,
+    file_path: Option<&Path>,
+    line_index: u32,
+) -> Option<GutterMark> {
+    match (snapshot, file_path) {
+        (Some(snap), Some(path)) => gutter_mark_for_line(snap, path, line_index),
+        _ => None,
+    }
 }
 
 fn diagnostics_overlay_for(
@@ -308,6 +336,7 @@ mod tests {
         let buf = terminal.backend().buffer();
         // Flatten the buffer into rows of (symbol, underlined) for scan.
         let mut underlined_rows_with_content: Vec<String> = Vec::new();
+        let mut underlined_row_gutter_cols: Vec<String> = Vec::new();
         for y in 0..buf.area.height {
             let mut row = String::new();
             let mut row_has_underline = false;
@@ -323,6 +352,11 @@ mod tests {
                 }
             }
             if row_has_underline {
+                // PR-T15 R6: the first 2 cells are the gutter cell (glyph + pad).
+                // Capture both columns so we can pin the severity glyph.
+                let col0 = buf[(0u16, y)].symbol().to_string();
+                let col1 = buf[(1u16, y)].symbol().to_string();
+                underlined_row_gutter_cols.push(format!("{col0}{col1}"));
                 underlined_rows_with_content.push(row.trim_end().to_string());
             }
         }
@@ -338,6 +372,13 @@ mod tests {
                 .any(|r| r.contains("broken_call")),
             "underlined row must correspond to the +inserted source line, got rows: {:?}",
             underlined_rows_with_content
+        );
+        // PR-T15 R6 pin: the Error severity must render the filled-circle
+        // glyph in the left-most gutter column of the underlined row.
+        assert!(
+            underlined_row_gutter_cols.iter().any(|g| g.starts_with('●')),
+            "expected Error gutter glyph '●' at col 0 of an underlined row, got gutter cells: {:?}",
+            underlined_row_gutter_cols
         );
     }
 
