@@ -5596,6 +5596,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "vil_expr"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "vil_inference"
 version = "0.1.0"
 dependencies = [

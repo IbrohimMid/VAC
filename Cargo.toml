@@ -16,7 +16,7 @@ members = [
     "crates/vac_trace",
     "crates/vac_cli",
     "crates/vac_runtime", "crates/vac_approvals", "crates/vac_changeset", "crates/vac_shell", "crates/vac_session_control", "crates/vac_tui_runtime",
-    "crates/vil_vwfd",
+    "crates/vil_vwfd", "crates/vil_expr",
 ]
 resolver = "2"
 

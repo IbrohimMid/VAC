@@ -1,0 +1,13 @@
+[package]
+name = "vil_expr"
+version = "0.1.0"
+edition = "2021"
+authors = ["Vastar Team <team@vastar.id>"]
+license = "MIT"
+
+[dependencies]
+thiserror = { workspace = true }
+serde = { workspace = true }
+
+[dev-dependencies]
+anyhow = { workspace = true }
