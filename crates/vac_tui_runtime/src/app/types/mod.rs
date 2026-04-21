@@ -361,6 +361,15 @@ pub struct AppState {
     /// (e.g. tab switched away, preview dismissed) so that re-entering the
     /// preview always forces a fresh emission.
     pub last_kitty_emission: Option<(ratatui::layout::Rect, u64)>,
+    /// PR-T17 / M1 — off-render-path cache for image previews. The render
+    /// loop used to call `review_preview::prepare_image_preview` directly
+    /// inside `terminal.draw`, which meant a blocking disk read + PNG
+    /// header decode stalled the tokio runtime for the full duration of
+    /// the preview load. The cache now owns the blocking work: the render
+    /// path only reads cache state (Loading / Ready), and a short-lived OS
+    /// thread delivers the result through an internal channel that the
+    /// event loop drains once per iteration before the next draw.
+    pub image_preview_cache: crate::services::image_preview_cache::ImagePreviewCache,
     pub approvals_row_regions: Vec<(usize, ratatui::layout::Rect)>,
     pub vil_issue_row_regions: Vec<(usize, ratatui::layout::Rect)>,
     /// Per-row click regions for the Sessions workbench tab list
@@ -478,13 +487,22 @@ pub struct AppState {
     /// so a subsequent click can dismiss the popup before falling through
     /// to row/body hit-testing.
     pub hover_popup_region: Option<ratatui::layout::Rect>,
-    /// R7b / PR-T15 MouseMove hot-path cache. When `dispatch_hover`
-    /// sees the same VIL filtered row index with `active_hover` already
-    /// populated it can skip the `issue_at_filtered_index` +
-    /// `hover_detail_at` work entirely (both allocate / clone strings).
-    /// Cleared whenever the popup is dismissed or the hover target
-    /// changes so a subsequent filter / issue-set change cannot serve
-    /// stale hover detail.
+    /// R7b / PR-T15 MouseMove hot-path cache, tightened by the PR-T17
+    /// reviewer audit. Tracks the *last probed* filtered VIL row index,
+    /// not just the row that produced a `Some` hover. Terminals typically
+    /// emit dozens of `MouseEventKind::Moved` events per second while a
+    /// pointer sits over a single row; without this cache every one of
+    /// those events would call `issue_at_filtered_index` and
+    /// `hover_detail_at`, both of which clone issue fields + diagnostic
+    /// strings even when the ultimate answer is "no hover detail for this
+    /// row". The earlier (R7b) incarnation only short-circuited when the
+    /// prior probe had yielded `Some`, so rows with no diagnostic still
+    /// re-ran the clone-heavy lookup on every mouse move.
+    ///
+    /// Now we record the row index on every probe, Some or None, and
+    /// `dispatch_hover` can short-circuit whenever the pointer is still
+    /// over that same row. Cleared on dismiss / off-row move so a later
+    /// filter or diagnostic-snapshot change cannot serve stale state.
     pub active_hover_row_idx: Option<usize>,
     pub pinned_files: Vec<String>,
     pub pinned_diffs: Vec<String>,
@@ -640,6 +658,8 @@ impl AppState {
             review_file_row_regions: Vec::new(),
             pending_kitty_emission: None,
             last_kitty_emission: None,
+            image_preview_cache:
+                crate::services::image_preview_cache::ImagePreviewCache::new(),
             approvals_row_regions: Vec::new(),
             vil_issue_row_regions: Vec::new(),
             sessions_row_regions: Vec::new(),

@@ -13,6 +13,7 @@ pub mod file_changes_popup;
 pub mod file_diff;
 pub mod file_search;
 pub mod helper_block;
+pub mod image_preview_cache;
 pub mod helper_dropdown;
 pub mod isolation_switcher;
 pub mod keybindings_loader;

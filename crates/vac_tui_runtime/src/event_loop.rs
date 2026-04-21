@@ -346,6 +346,16 @@ pub async fn run_tui(
             state.toasts.drain(0..state.toasts.len().saturating_sub(3));
         }
 
+        // PR-T17 / M1 — drain completed image-preview loads before the next
+        // draw. Workers running on plain OS threads deliver their results
+        // through an internal mpsc channel; we drain opportunistically here
+        // so any result that landed between the previous draw and now is
+        // visible on this frame. The drain is cheap when the channel is
+        // empty (a single `try_recv` returning `Empty`), so it is safe to
+        // run every iteration regardless of whether the review tab is
+        // active.
+        state.image_preview_cache.drain_pending();
+
         // Render — measure wall time and update RenderMetrics
         let render_start = std::time::Instant::now();
         terminal.draw(|f| view(f, &mut state))?;

@@ -127,20 +127,28 @@ impl WorkbenchTabView for ReviewTab {
             "Diff".to_string()
         };
 
-        // PR-T17 / R8b — image-preview pane. When the selected path ends in a
-        // known image extension we replace the text-diff body with an ASCII
-        // placeholder frame that reports the filename and intrinsic pixel
-        // dimensions. The frame is sized to the diff pane so it remains
-        // readable at any terminal size. Native Kitty DCS emission over the
-        // same bytes is wired separately in R8c once the post-frame stdout
-        // hook lands; today we intentionally draw the fallback on *both*
-        // kitty-supported and unsupported terminals so the UI stays
-        // consistent across the feature gate.
-        // R8b emits an ASCII frame for every kitty-capable or non-capable
-        // terminal. R8c additionally captures the raw PNG bytes so the event
-        // loop can flush a native Kitty DCS sequence on top of the frame
-        // *after* ratatui finishes drawing. We therefore return both the
-        // fallback Lines and (optionally) the PNG bytes from a single read.
+        // PR-T17 / R8b + M1 — image-preview pane. When the selected path
+        // ends in a known image extension we replace the text-diff body
+        // with an ASCII placeholder frame that reports the filename and
+        // intrinsic pixel dimensions. The frame is sized to the diff pane
+        // so it remains readable at any terminal size.
+        //
+        // M1: we no longer call `prepare_image_preview` directly here.
+        // That function does synchronous disk I/O + PNG header decode, so
+        // invoking it from inside `terminal.draw` stalled the tokio
+        // runtime until the read completed. The render path is now pure:
+        // it looks the absolute path up in `state.image_preview_cache`
+        // and either renders the cached result, renders a deterministic
+        // error line, or renders a "Loading…" placeholder while asking
+        // the cache to schedule a background load. The load itself runs
+        // on a short-lived OS thread owned by the cache; its result is
+        // delivered through an mpsc channel that the event loop drains
+        // via `drain_pending` before the next frame.
+        //
+        // R8c continues to work as before: once the cache has a
+        // successful preview we hand the raw PNG bytes to
+        // `pending_kitty_emission` so the post-draw flush can emit a
+        // native Kitty DCS sequence on top of the ASCII fallback.
         let image_branch: Option<(Vec<Line>, Option<Vec<u8>>)> = state
             .review
             .selected_path
@@ -154,11 +162,9 @@ impl WorkbenchTabView for ReviewTab {
                 };
                 let inner_w = body[1].width.saturating_sub(2).max(4);
                 let inner_h = body[1].height.saturating_sub(2).max(3);
-                match crate::services::review_preview::prepare_image_preview(
-                    &abs_path,
-                    crate::services::review_preview::IMAGE_PREVIEW_MAX_BYTES,
-                ) {
-                    Ok(preview) => {
+                use crate::services::image_preview_cache::ImagePreviewCacheEntry;
+                match state.image_preview_cache.get(&abs_path).cloned() {
+                    Some(ImagePreviewCacheEntry::Ready(Ok(preview))) => {
                         let label = format!(
                             "{} ({}x{})",
                             path, preview.width, preview.height
@@ -172,13 +178,30 @@ impl WorkbenchTabView for ReviewTab {
                             .collect();
                         (lines, Some(preview.bytes))
                     }
-                    Err(e) => (
+                    Some(ImagePreviewCacheEntry::Ready(Err(e))) => (
                         vec![Line::from(Span::styled(
                             format!("Cannot preview image: {e}"),
                             state.theme.style(StyleKey::Error),
                         ))],
                         None,
                     ),
+                    Some(ImagePreviewCacheEntry::Loading) | None => {
+                        // Schedule the load on first sight; subsequent
+                        // frames observe `Loading` and short-circuit the
+                        // spawn inside `request_load`.
+                        state
+                            .image_preview_cache
+                            .request_load(abs_path.clone());
+                        let label = format!("{} (loading…)", path);
+                        let lines: Vec<Line> =
+                            crate::services::kitty_image::render_ascii_fallback(
+                                inner_w, inner_h, &label,
+                            )
+                            .into_iter()
+                            .map(|s| Line::raw(s))
+                            .collect();
+                        (lines, None)
+                    }
                 }
             });
         let (image_preview_lines, image_preview_bytes): (

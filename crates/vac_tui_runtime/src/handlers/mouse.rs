@@ -191,12 +191,17 @@ pub fn dispatch_hover(state: &mut AppState, col: u16, row: u16) -> bool {
         .map(|(idx, _)| *idx);
 
     if let Some(idx) = row_idx {
-        // R7b hot-path cache: when the pointer is still over the same
-        // filtered row as the current popup, skip `issue_at_filtered_index`
-        // and `hover_detail_at` entirely. Both allocate owned `VilIssue` /
-        // cloned `String` fields on every call; terminals can emit dozens
-        // of MouseMove events per second during a drag so this matters.
-        if state.active_hover.is_some() && state.active_hover_row_idx == Some(idx) {
+        // R7b hot-path cache, tightened by the PR-T17 reviewer audit.
+        // Short-circuit on *row* identity alone, not on
+        // `(row, active_hover.is_some())`. Terminals emit many MouseMove
+        // events per second while the pointer sits over one row, and the
+        // earlier form only skipped the clone-heavy lookup when the row
+        // already had a Some hover — rows with no diagnostic therefore
+        // re-ran `issue_at_filtered_index` + `hover_detail_at` (both of
+        // which clone strings) on every event. Now we record the last
+        // probed row index on every probe, Some or None, so a sticky
+        // pointer stays cheap regardless of diagnostic presence.
+        if state.active_hover_row_idx == Some(idx) {
             return false;
         }
 
@@ -214,21 +219,16 @@ pub fn dispatch_hover(state: &mut AppState, col: u16, row: u16) -> bool {
             )
         })();
 
-        if new_hover != state.active_hover {
-            state.active_hover = new_hover;
+        let changed = new_hover != state.active_hover;
+        state.active_hover = new_hover;
+        // Always record the probed row, even when the probe yielded None.
+        // The short-circuit above depends on this invariant.
+        state.active_hover_row_idx = Some(idx);
+        if changed {
             // Renderer will refresh hover_popup_region on the next frame.
             state.hover_popup_region = None;
-            state.active_hover_row_idx = if state.active_hover.is_some() {
-                Some(idx)
-            } else {
-                None
-            };
-            return true;
         }
-        // Same row / same detail — refresh the cache anyway (protects
-        // against stale keys after click seeding) and skip repaint.
-        state.active_hover_row_idx = Some(idx);
-        return false;
+        return changed;
     }
 
     // 2. Over the current popup? Keep it alive.
@@ -238,12 +238,23 @@ pub fn dispatch_hover(state: &mut AppState, col: u16, row: u16) -> bool {
         return false;
     }
 
-    // 3. Outside every tracked region — dismiss if a hover was up.
-    if state.active_hover.is_some() || state.hover_popup_region.is_some() {
+    // 3. Outside every tracked region. Dismiss any live popup *and*
+    // clear the sticky-row cache so re-entering any row re-runs the
+    // lookup exactly once. The cache must be cleared even when no
+    // popup was visible (the PR-T17 reviewer audit tightening records
+    // `active_hover_row_idx` on every probe, Some or None); otherwise
+    // a stale row index could make the short-circuit fire on a
+    // genuinely different region's first probe.
+    let had_popup = state.active_hover.is_some() || state.hover_popup_region.is_some();
+    let had_sticky_row = state.active_hover_row_idx.is_some();
+    if had_popup || had_sticky_row {
         state.active_hover = None;
         state.hover_popup_region = None;
         state.active_hover_row_idx = None;
-        return true;
+        // Only request a repaint when something *visible* changed.
+        // Clearing a sticky-row cache that wasn't driving any popup is
+        // purely internal bookkeeping and should not churn the frame.
+        return had_popup;
     }
 
     false
@@ -387,6 +398,61 @@ mod tests {
         let handled = dispatch_click(&mut state, &tx, 40, 15);
         assert!(handled, "workbench body click must grab focus");
         assert_eq!(state.focus, WorkspaceFocus::Workbench);
+    }
+
+    #[test]
+    fn dispatch_hover_short_circuits_on_sticky_row_regardless_of_hover_presence() {
+        // PR-T17 reviewer audit correction #2: a pointer sitting over the
+        // same row should not re-run `issue_at_filtered_index` +
+        // `hover_detail_at` every MouseMove — both allocate cloned strings.
+        // The earlier R7b short-circuit only fired when the prior probe
+        // yielded Some(hover); rows with no diagnostic still re-allocated
+        // on every event. After the fix, any repeat probe for the same
+        // row short-circuits, returns `false` (no repaint), and leaves
+        // `active_hover_row_idx` recording the sticky row.
+        let (mut state, _tx, _rx) = make_state_with_channel();
+        state
+            .vil_issue_row_regions
+            .push((7, Rect::new(2, 20, 50, 1)));
+
+        // First probe over row idx=7: no VIL issues configured so the
+        // closure inside dispatch_hover yields None. The probe still
+        // records `active_hover_row_idx = Some(7)` so subsequent MouseMoves
+        // over the same row can short-circuit.
+        let first = dispatch_hover(&mut state, 5, 20);
+        assert!(
+            !first,
+            "first probe over an empty row must not request a repaint"
+        );
+        assert_eq!(state.active_hover_row_idx, Some(7));
+        assert!(state.active_hover.is_none());
+
+        // Second probe at a different column but still on the same row.
+        // This is the hot path: if the short-circuit were still gated on
+        // `active_hover.is_some()` it would run the lookup again.
+        // After the fix it must bail out on row identity alone.
+        let second = dispatch_hover(&mut state, 40, 20);
+        assert!(
+            !second,
+            "sticky-row probe must short-circuit and skip repaint"
+        );
+        assert_eq!(
+            state.active_hover_row_idx,
+            Some(7),
+            "sticky row must remain recorded"
+        );
+
+        // Moving off every tracked region clears the cache so a future
+        // re-entry over the same row runs the lookup once.
+        let off = dispatch_hover(&mut state, 200, 200);
+        assert!(
+            !off,
+            "off-region move with no prior popup must not request repaint"
+        );
+        assert_eq!(
+            state.active_hover_row_idx, None,
+            "leaving all tracked regions must clear the sticky-row cache"
+        );
     }
 
     #[test]
