@@ -8,6 +8,7 @@ pub mod banner;
 pub mod bash_block;
 pub mod clipboard_paste;
 pub mod detect_term;
+pub mod diagnostics_overlay;
 pub mod file_changes_popup;
 pub mod file_diff;
 pub mod file_search;
