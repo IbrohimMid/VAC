@@ -19,9 +19,16 @@ type ActiveUpdateTx = Arc<Mutex<Option<mpsc::UnboundedSender<RuntimeUpdate>>>>;
 mod runtime_tasks;
 mod backend;
 mod session_tasks;
-use self::session_tasks::resume_session_into_tui;
+mod shell_dispatch;
+use self::session_tasks::{
+    resume_session_into_tui, handle_list_sessions, handle_load_session_resume_list,
+    handle_new_session, handle_cleanup_session,
+};
 use self::backend::{resolve_tool_approval, handle_runtime_update};
-use self::runtime_tasks::{load_runtime_jobs, load_runtime_state, load_agent_tasks, load_agent_state};
+use self::runtime_tasks::{
+    load_runtime_jobs, load_runtime_state, load_agent_tasks, load_agent_state,
+    handle_cancel_runtime_job, handle_retry_runtime_job,
+};
 
 fn classify_init_warning(
     warning: &str,
@@ -329,179 +336,17 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                     let (cols, rows) = crossterm::terminal::size().unwrap_or((120, 32));
                     let rows = rows.saturating_sub(8).max(8);
                     let cols = cols.saturating_sub(4).max(40);
-                    let runtime_project_root_for_shell = runtime_project_root.clone();
-                    let shell_spec = match tokio::task::spawn_blocking(move || {
-                        vac_core::VacConfig::load_with_fallback(&runtime_project_root_for_shell)
-                    })
-                    .await
-                    .unwrap_or_else(|_| {
-                        Err(vac_core::error::VacError::Io(std::io::Error::new(
-                            std::io::ErrorKind::Other,
-                            "spawn_blocking failed",
-                        )))
-                    }) {
-                        Ok(mut config) => {
-                            // Auto-detect interactive vs batch
-                            let is_interactive = cmd.is_empty();
-
-                            let mut env_mode_str = active_isolation_mode.as_str();
-                            if active_isolation_mode.starts_with("isolated") {
-                                if is_interactive {
-                                    env_mode_str = "isolated_interactive";
-                                } else {
-                                    env_mode_str = "isolated_batch";
-                                }
-                            }
-
-                            if let Ok(env_mode) =
-                                serde_json::from_str::<vac_core::ExecutionEnvironment>(&format!(
-                                    "\"{}\"",
-                                    env_mode_str
-                                ))
-                            {
-                                config.runtime.execution_environment = env_mode;
-                            }
-
-                            // Handle default mount presets
-                            if active_isolation_mode.contains("(Rust)") {
-                                config
-                                    .runtime
-                                    .mount_presets
-                                    .push(vac_core::config::MountPreset::Rust);
-                            } else if active_isolation_mode.contains("(Node)") {
-                                config
-                                    .runtime
-                                    .mount_presets
-                                    .push(vac_core::config::MountPreset::Node);
-                            } else if active_isolation_mode.contains("(Python)") {
-                                config
-                                    .runtime
-                                    .mount_presets
-                                    .push(vac_core::config::MountPreset::Python);
-                            }
-
-                            if config.runtime.execution_environment
-                                == vac_core::ExecutionEnvironment::IsolatedInteractive
-                                || config.runtime.execution_environment
-                                    == vac_core::ExecutionEnvironment::IsolatedBatch
-                            {
-                                let isolation = vac_runtime::IsolationManager::new(
-                                    runtime_project_root.clone(),
-                                    config.runtime.clone(),
-                                );
-
-                                if is_interactive {
-                                    match isolation.build_interactive_shell_spec() {
-                                        Ok(spec) => Some(spec),
-                                        Err(err) => {
-                                            let _ = input_tx
-                                                .send(InputEvent::ShellError(
-                                                    "system".to_string(),
-                                                    format!(
-                                                        "Failed to prepare isolated shell: {err}"
-                                                    ),
-                                                ))
-                                                .await;
-                                            continue;
-                                        }
-                                    }
-                                } else {
-                                    let env = std::collections::HashMap::new();
-                                    match isolation.build_container_command(
-                                        std::path::Path::new("sh"),
-                                        &["-c".to_string(), cmd.clone()],
-                                        true,
-                                        &env,
-                                    ) {
-                                        Ok(command) => {
-                                            let program =
-                                                command.get_program().to_string_lossy().to_string();
-                                            let args = command
-                                                .get_args()
-                                                .map(|a| a.to_string_lossy().to_string())
-                                                .collect();
-                                            Some(vac_runtime::IsolationLaunchSpec {
-                                                program,
-                                                args,
-                                                cwd: runtime_project_root.clone(),
-                                                env,
-                                            })
-                                        }
-                                        Err(err) => {
-                                            let _ = input_tx
-                                                .send(InputEvent::ShellError(
-                                                    "system".to_string(),
-                                                    format!("Failed to build batch command: {err}"),
-                                                ))
-                                                .await;
-                                            continue;
-                                        }
-                                    }
-                                }
-                            } else {
-                                None
-                            }
-                        }
-                        Err(err) => {
-                            let _ = input_tx
-                                .send(InputEvent::ShellError(
-                                    "system".to_string(),
-                                    format!("Failed to load runtime config for shell: {err}"),
-                                ))
-                                .await;
-                            continue;
-                        }
-                    };
-
-                    let shell_result = vac_shell::run_pty_command(
-                        cmd.clone(),
-                        shell_spec,
-                        {
-                            let (shell_tx, mut shell_rx) = tokio::sync::mpsc::channel(100);
-                            let input_tx_inner = input_tx.clone();
-                            tokio::spawn(async move {
-                                while let Some(event) = shell_rx.recv().await {
-                                    match event {
-                                        vac_shell::ShellEvent::Output(id, text) => {
-                                            let _ = input_tx_inner
-                                                .send(InputEvent::ShellOutput(id, text))
-                                                .await;
-                                        }
-                                        vac_shell::ShellEvent::Error(id, text) => {
-                                            let _ = input_tx_inner
-                                                .send(InputEvent::ShellError(id, text))
-                                                .await;
-                                        }
-                                        vac_shell::ShellEvent::Completed(id, code) => {
-                                            let _ = input_tx_inner
-                                                .send(InputEvent::ShellCompleted(id, code))
-                                                .await;
-                                        }
-                                        vac_shell::ShellEvent::WaitingForInput(id) => {
-                                            let _ = input_tx_inner
-                                                .send(InputEvent::ShellWaitingForInput(id))
-                                                .await;
-                                        }
-                                    }
-                                }
-                            });
-                            shell_tx
-                        },
-                        rows,
-                        cols,
+                    let spec = shell_dispatch::resolve_shell_spec(
+                        &cmd,
+                        &active_isolation_mode,
+                        &runtime_project_root,
+                        &input_tx,
                     )
-                    .map_err(|err: Box<dyn std::error::Error>| err.to_string());
-
-                    match shell_result {
-                        Ok(shell) => {
-                            let _ = input_tx.send(InputEvent::ShellStarted(shell)).await;
-                        }
-                        Err(err_msg) => {
-                            let _ = input_tx
-                                .send(InputEvent::ShellError(
-                                    "system".to_string(),
-                                    format!("Failed to start shell: {err_msg}"),
-                                ))
+                    .await;
+                    match spec {
+                        shell_dispatch::ShellSpecOutcome::Skip => continue,
+                        shell_dispatch::ShellSpecOutcome::Spec(shell_spec) => {
+                            shell_dispatch::launch_pty(cmd, shell_spec, &input_tx, rows, cols)
                                 .await;
                         }
                     }
@@ -583,125 +428,14 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                     });
                 }
                 OutputEvent::ListSessions => {
-                    let eng = engine_clone.lock().await;
-                    if let Ok(sessions) = eng.list_sessions().await {
-                        let project_root = runtime_project_root.clone();
-                        let input_tx = input_tx_clone.clone();
-                        tokio::spawn(async move {
-                            let snapshots =
-                                vac_session_control::list_snapshots_async(project_root.clone())
-                                    .await
-                                    .unwrap_or_default();
-                            let snapshot_by_id: std::collections::HashMap<_, _> = snapshots
-                                .into_iter()
-                                .map(|snapshot| (snapshot.session_id, snapshot))
-                                .collect();
-                            let mut session_infos = Vec::with_capacity(sessions.len());
-                            for s in sessions {
-                                let id_str = s.id.to_string();
-                                let checkpoint_dir = project_root.join(".vac/checkpoints");
-                                let has_checkpoint =
-                                    vac_session_control::has_checkpoint_async(
-                                        project_root.clone(),
-                                        s.id,
-                                    )
-                                    .await;
-                                // Collect checkpoint files for this session (sorted newest first)
-                                let checkpoints: Vec<String> = if checkpoint_dir.exists() {
-                                    let mut files: Vec<_> =
-                                        std::fs::read_dir(checkpoint_dir)
-                                            .into_iter()
-                                            .flatten()
-                                            .flatten()
-                                            .filter(|e| {
-                                                e.file_name()
-                                                    .to_string_lossy()
-                                                    .starts_with(&id_str)
-                                            })
-                                            .filter_map(|e| {
-                                                let name = e
-                                                    .file_name()
-                                                    .to_string_lossy()
-                                                    .to_string();
-                                                let modified =
-                                                    e.metadata().ok()?.modified().ok()?;
-                                                Some((modified, name))
-                                            })
-                                            .collect();
-                                    files.sort_by(|a, b| b.0.cmp(&a.0));
-                                    files
-                                        .into_iter()
-                                        .map(|(_, name)| name)
-                                        .take(5)
-                                        .collect()
-                                } else {
-                                    vec![]
-                                };
-                                let last_activity =
-                                    s.updated_at.format("%Y-%m-%d %H:%M").to_string();
-                                let snapshot_present = snapshot_by_id.contains_key(&s.id);
-                                let snapshot_stale =
-                                    snapshot_by_id.get(&s.id).is_some_and(|snapshot| {
-                                        vac_session_control::is_stale(
-                                            snapshot,
-                                            chrono::Duration::days(30),
-                                        )
-                                    });
-                                session_infos.push(crate::app::SessionInfo {
-                                    id: id_str.clone(),
-                                    title: format!("Session {}", &id_str[..8]),
-                                    updated_at: s.updated_at.to_rfc3339(),
-                                    checkpoints,
-                                    task_count: s.tasks.len(),
-                                    last_activity,
-                                    has_checkpoint,
-                                    snapshot_present,
-                                    snapshot_stale,
-                                });
-                            }
-                            let _ = input_tx.send(InputEvent::SetSessions(session_infos)).await;
-                        });
-                    } else {
-                        let _ = input_tx_clone.send(InputEvent::SetSessions(vec![])).await;
-                    }
+                    handle_list_sessions(&engine_clone, &runtime_project_root, &input_tx_clone).await;
                 }
                 OutputEvent::ListRuntimeJobs => {
                     let jobs = load_runtime_jobs(&runtime_project_root).await;
                     let _ = input_tx_clone.send(InputEvent::SetRuntimeJobs(jobs)).await;
                 }
                 OutputEvent::LoadSessionResumeList => {
-                    let root = runtime_project_root.clone();
-                    let tx = input_tx_clone.clone();
-                    tokio::spawn(async move {
-                        let snapshots =
-                            vac_session_control::list_snapshots_async(root.clone())
-                                .await
-                                .unwrap_or_default();
-                        let project_name = root
-                            .file_name()
-                            .and_then(|n| n.to_str())
-                            .unwrap_or("project")
-                            .to_string();
-                        let entries: Vec<crate::app::types::SessionResumeEntry> = snapshots
-                            .into_iter()
-                            .map(|snap| {
-                                let id_str = snap.session_id.to_string();
-                                crate::app::types::SessionResumeEntry {
-                                    session_id: snap.session_id,
-                                    title: format!("Session {}", &id_str[..8]),
-                                    project: project_name.clone(),
-                                    last_message_preview: format!(
-                                        "{} tasks, {} tokens",
-                                        snap.task_count, snap.total_tokens
-                                    ),
-                                    last_active: snap.updated_at,
-                                    model: snap.active_model.clone(),
-                                    token_count: Some(snap.total_tokens as u32),
-                                }
-                            })
-                            .collect();
-                        let _ = tx.send(InputEvent::SetSessionResumeList(entries)).await;
-                    });
+                    handle_load_session_resume_list(&runtime_project_root, &input_tx_clone).await;
                 }
                 OutputEvent::ListAgentTasks => {
                     let tasks = load_agent_tasks(&runtime_project_root).await;
@@ -720,54 +454,13 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                         .await;
                 }
                 OutputEvent::CancelRuntimeJob(id) => {
-                    let queue = vac_runtime::TaskQueue::with_storage(
-                        runtime_project_root.join(".vac/queue.json"),
-                    );
-                    let cancelled = queue.cancel(id).await;
-                    let toast = if cancelled {
-                        crate::services::Toast::success(format!("Cancelled job {}", id))
-                    } else {
-                        crate::services::Toast::error(format!("Failed to cancel job {}", id))
-                    };
-                    let jobs = load_runtime_jobs(&runtime_project_root).await;
-                    let snapshot = load_runtime_state(&runtime_project_root).await;
-                    let _ = input_tx_clone.send(InputEvent::SetRuntimeJobs(jobs)).await;
-                    let _ = input_tx_clone
-                        .send(InputEvent::SetRuntimeState(snapshot))
-                        .await;
-                    let _ = input_tx_clone.send(InputEvent::ShowToast(toast)).await;
+                    handle_cancel_runtime_job(&runtime_project_root, &input_tx_clone, id).await;
                 }
                 OutputEvent::RetryRuntimeJob(id) => {
-                    let queue = vac_runtime::TaskQueue::with_storage(
-                        runtime_project_root.join(".vac/queue.json"),
-                    );
-                    let retried = queue.retry(id).await;
-                    let toast = if retried {
-                        crate::services::Toast::success(format!("Retried job {}", id))
-                    } else {
-                        crate::services::Toast::error(format!("Failed to retry job {}", id))
-                    };
-                    let jobs = load_runtime_jobs(&runtime_project_root).await;
-                    let snapshot = load_runtime_state(&runtime_project_root).await;
-                    let _ = input_tx_clone.send(InputEvent::SetRuntimeJobs(jobs)).await;
-                    let _ = input_tx_clone
-                        .send(InputEvent::SetRuntimeState(snapshot))
-                        .await;
-                    let _ = input_tx_clone.send(InputEvent::ShowToast(toast)).await;
+                    handle_retry_runtime_job(&runtime_project_root, &input_tx_clone, id).await;
                 }
                 OutputEvent::NewSession => {
-                    let eng = engine_clone.lock().await;
-                    if let Ok(status) = eng.status().await {
-                        let mut current_session = eng.session().write().await;
-                        *current_session = vac_core::session::Session::new(status.project_root);
-                        let _ = input_tx_clone
-                            .send(InputEvent::SessionRestored {
-                                id: current_session.id.to_string(),
-                                title: "New Session".to_string(),
-                                messages: vec![],
-                            })
-                            .await;
-                    }
+                    handle_new_session(&engine_clone, &input_tx_clone).await;
                 }
                 OutputEvent::ResumeSession(id) => {
                     resume_session_into_tui(
@@ -786,6 +479,11 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
                         id,
                     )
                     .await;
+                }
+                OutputEvent::CleanupSession(id) => {
+                    handle_cleanup_session(&runtime_project_root, &input_tx_clone, id).await;
+                    // Refresh session list after cleanup
+                    handle_list_sessions(&engine_clone, &runtime_project_root, &input_tx_clone).await;
                 }
                 _ => {}
             }

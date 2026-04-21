@@ -247,4 +247,6 @@ pub enum OutputEvent {
     FilesAttached(Vec<PathBuf>),
     /// Load session list for the resume overlay (PR-T8).
     LoadSessionResumeList,
+    /// Async session cleanup — replaces block_in_place (PR-W25-9).
+    CleanupSession(String),
 }

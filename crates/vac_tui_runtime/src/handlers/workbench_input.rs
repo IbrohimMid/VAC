@@ -191,49 +191,10 @@ fn handle_submit(state: &mut AppState, output_tx: &Sender<OutputEvent>) {
     }
 }
 
-// TODO(PR-W25-X): make cleanup_session async, drop block_in_place
+/// Dispatch async session cleanup via OutputEvent (PR-W25-9 — no more block_in_place).
 fn cleanup_session(state: &mut AppState, output_tx: &Sender<OutputEvent>) {
     if let Some(sel) = state.sessions.get(state.sessions_selected_idx).cloned() {
-        match uuid::Uuid::parse_str(&sel.id) {
-            Ok(session_id) => {
-                let report = tokio::task::block_in_place(|| {
-                    tokio::runtime::Handle::current().block_on(
-                        vac_session_control::cleanup_session_async(state.project_root.clone(), session_id)
-                    )
-                }).unwrap_or(vac_session_control::CleanupReport {
-                    snapshot_removed: false,
-                    checkpoint_removed: false,
-                    approvals_removed: 0,
-                    errors: vec![],
-                });
-                if report.snapshot_removed
-                    || report.checkpoint_removed
-                    || report.approvals_removed > 0
-                {
-                    state.toasts.push(crate::services::Toast::success(format!(
-                        "Cleaned session artifacts: snapshot {}, checkpoint {}, approvals {}",
-                        report.snapshot_removed,
-                        report.checkpoint_removed,
-                        report.approvals_removed
-                    )));
-                } else {
-                    state.toasts.push(crate::services::Toast::info(
-                        "No session artifacts found to clean".to_string(),
-                    ));
-                }
-                if !report.errors.is_empty() {
-                    state.toasts.push(crate::services::Toast::error(format!(
-                        "Session cleanup completed with {} error(s)",
-                        report.errors.len()
-                    )));
-                }
-                let _ = output_tx.try_send(OutputEvent::ListSessions);
-            }
-            Err(e) => {
-                state.toasts.push(crate::services::Toast::error(format!(
-                    "Invalid session id: {e}"
-                )));
-            }
-        }
+        let _ = output_tx.try_send(OutputEvent::CleanupSession(sel.id));
+        state.push_activity(crate::app::ActivityKind::Session, "Cleanup session");
     }
 }
