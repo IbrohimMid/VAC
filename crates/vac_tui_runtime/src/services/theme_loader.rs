@@ -105,7 +105,12 @@ pub fn watch_theme(path: PathBuf, tx: Sender<InputEvent>) -> JoinHandle<()> {
             return;
         }
 
-        let mut last_reload = std::time::Instant::now();
+        // Track the timestamp of the last emitted reload.  Seeded to `None` so
+        // the first event after startup is *never* debounced — previously this
+        // was `Instant::now()`, which swallowed any file change arriving within
+        // 250 ms of task spawn (happens reliably in tests and during real
+        // app-startup hot-edits).
+        let mut last_reload: Option<std::time::Instant> = None;
         loop {
             // Exit as soon as the InputEvent receiver is dropped (app shutdown
             // or test teardown). Without this the blocking task lives forever
@@ -116,10 +121,14 @@ pub fn watch_theme(path: PathBuf, tx: Sender<InputEvent>) -> JoinHandle<()> {
             match std_rx.recv_timeout(std::time::Duration::from_millis(300)) {
                 Ok(_event) => {
                     let now = std::time::Instant::now();
-                    if now.duration_since(last_reload) < std::time::Duration::from_millis(250) {
-                        continue; // debounce
+                    if let Some(prev) = last_reload {
+                        if now.duration_since(prev)
+                            < std::time::Duration::from_millis(250)
+                        {
+                            continue; // debounce rapid bursts
+                        }
                     }
-                    last_reload = now;
+                    last_reload = Some(now);
                     if let Ok(cfg) = load_theme_toml(&path) {
                         let theme = cfg.to_theme();
                         if tx

@@ -184,25 +184,20 @@ mod tests {
     use crate::from_yaml;
     use tempfile::tempdir;
 
+    // Minimal fixture: parity_pass only inspects spec.handlers, so we omit
+    // workflows/triggers entirely. Adding triggers would force a `workflow:`
+    // field per the schema, which is irrelevant to parity.
     const VWFD_FIXTURE: &str = r#"
 apiVersion: vil.vastar.io/v1
 kind: VilServer
 metadata:
   name: sample
 spec:
-  triggers:
-    - name: onStart
-      kind: manual
   handlers:
     - name: hello
       execution: native
     - name: goodbye
       execution: native
-  steps:
-    - id: s1
-      handler: hello
-    - id: s2
-      handler: goodbye
 "#;
 
     fn write_rs(root: &Path, rel: &str, body: &str) {
