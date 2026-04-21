@@ -6,7 +6,7 @@ use crate::services::theme::StyleKey;
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem, Paragraph, Wrap},
 };
@@ -31,9 +31,7 @@ impl WorkbenchTabView for ApprovalsTab {
             .map(|(idx, tc)| {
                 let selected = idx == state.approval_selected_idx;
                 let style = if selected {
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::BOLD)
+                    state.theme.style(StyleKey::Warning).add_modifier(Modifier::BOLD)
                 } else {
                     Style::default()
                 };

@@ -6,7 +6,7 @@ use crate::app::AppState;
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem, Paragraph, Wrap},
 };
@@ -55,9 +55,7 @@ impl WorkbenchTabView for ReviewTab {
             .map(|(idx, path)| {
                 let is_selected = idx == state.review.selected_idx;
                 let style = if is_selected {
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::BOLD)
+                    state.theme.style(StyleKey::Warning).add_modifier(Modifier::BOLD)
                 } else {
                     state.theme.style(StyleKey::Normal)
                 };
