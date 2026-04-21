@@ -10,6 +10,7 @@
 | Wave 2.5 PR Landed | 9/9 | 4/9 | ❌ |
 | Wave 3 Landed | 7/7 | 0/7 | ❌ |
 | Wave 4 Landed | 5/5 | 0/5 | ❌ |
+| Runtime: `block_in_place` in TUI handlers | 0 | 1 | ⚠️ |
 
 ## Progress
 - Async migration in `vac_session_control` has been completed.
