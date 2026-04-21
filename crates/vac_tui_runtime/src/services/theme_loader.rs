@@ -107,6 +107,12 @@ pub fn watch_theme(path: PathBuf, tx: Sender<InputEvent>) -> JoinHandle<()> {
 
         let mut last_reload = std::time::Instant::now();
         loop {
+            // Exit as soon as the InputEvent receiver is dropped (app shutdown
+            // or test teardown). Without this the blocking task lives forever
+            // and stalls tokio runtime drop — see theme_loader tests.
+            if tx.is_closed() {
+                break;
+            }
             match std_rx.recv_timeout(std::time::Duration::from_millis(300)) {
                 Ok(_event) => {
                     let now = std::time::Instant::now();
@@ -116,7 +122,12 @@ pub fn watch_theme(path: PathBuf, tx: Sender<InputEvent>) -> JoinHandle<()> {
                     last_reload = now;
                     if let Ok(cfg) = load_theme_toml(&path) {
                         let theme = cfg.to_theme();
-                        let _ = tx.blocking_send(InputEvent::ThemeReloaded(theme));
+                        if tx
+                            .blocking_send(InputEvent::ThemeReloaded(theme))
+                            .is_err()
+                        {
+                            break; // receiver dropped mid-send
+                        }
                     }
                 }
                 Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
@@ -150,24 +161,36 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn watch_theme_emits_within_500ms() {
+    async fn watch_theme_emits_within_2s() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("theme.toml");
         std::fs::write(&path, "preset = \"Dark\"\n").unwrap();
 
         let (tx, mut rx) = tokio::sync::mpsc::channel(4);
-        let _handle = watch_theme(path.clone(), tx);
+        let handle = watch_theme(path.clone(), tx);
 
         // Give watcher time to initialize
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
         // Modify the file
         std::fs::write(&path, "preset = \"Light\"\n").unwrap();
 
-        // Wait up to 500ms for the event
+        // Wait up to 2s for the event. Notify recommended-watcher on some
+        // platforms (macOS FSEvents, Linux inotify) can debounce bursts up
+        // to ~1s, so 500 ms was too tight and made this test flaky.
         let result =
-            tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv()).await;
-        // Note: may not always fire in CI; just ensure no panic/hang
-        let _ = result;
+            tokio::time::timeout(std::time::Duration::from_secs(2), rx.recv()).await;
+        assert!(
+            matches!(result, Ok(Some(InputEvent::ThemeReloaded(_)))),
+            "expected ThemeReloaded event within 2s, got {result:?}"
+        );
+
+        // Drop rx so watch_theme's `tx.is_closed()` check fires and the
+        // blocking task exits; otherwise tokio runtime drop would block.
+        drop(rx);
+        // Give the blocking task up to 500 ms to observe the closed channel
+        // and return. If it doesn't, the runtime-drop-on-test-end will hang
+        // and nextest will flag this as SLOW again.
+        let _ = tokio::time::timeout(std::time::Duration::from_millis(500), handle).await;
     }
 }
