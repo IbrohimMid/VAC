@@ -29,7 +29,13 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
 
     render_status_panel(f, state, chunks[0]);
 
-    let issues = super::classify_issues(state);
+    // PR-T16 P1 — snapshot issues into an owned Vec so subsequent refs do
+    // not borrow from `state`; this frees us to mutate region fields below.
+    let issues_owned: Vec<VilIssue> = super::classify_issues(state)
+        .into_iter()
+        .cloned()
+        .collect();
+    let issues: Vec<&VilIssue> = issues_owned.iter().collect();
     let counts = super::group_counts(&issues);
 
     // --- top strip: Semantic (N) │ ZeroCopy (N) │ ... │ All (N) ---
@@ -68,6 +74,10 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
 
     let view = super::filtered(state, &issues);
     render_issue_list(f, state, body[0], &view);
+    // PR-T16 P1 — expose the full VIL tab body as a focus-grab click region,
+    // so a click anywhere inside the tab brings the workbench into focus even
+    // when it misses a specific row.
+    state.workbench_body_region = Some(area);
     let log_height = body[1].height.saturating_div(3).clamp(6, 12);
     let right = Layout::default()
         .direction(Direction::Vertical)
@@ -318,7 +328,10 @@ fn compact_list(items: &[String], max: usize) -> String {
     }
 }
 
-fn render_issue_list(f: &mut Frame, state: &AppState, area: Rect, view: &[&VilIssue]) {
+fn render_issue_list(f: &mut Frame, state: &mut AppState, area: Rect, view: &[&VilIssue]) {
+    // PR-T16 P1 — reset issue-row regions at the start of each render.
+    state.vil_issue_row_regions.clear();
+
     let empty_msg = if state.vil.status.validation_issues.is_empty() {
         "No validation issues. Run /vil-status or edit a watched file."
     } else {
@@ -334,6 +347,24 @@ fn render_issue_list(f: &mut Frame, state: &AppState, area: Rect, view: &[&VilIs
         .wrap(Wrap { trim: true });
         f.render_widget(widget, area);
         return;
+    }
+
+    // PR-T16 P1 — populate click regions for each visible issue row. Inner
+    // area is `area` minus its 1-char border. Each row is one line tall.
+    if area.width > 2 && area.height > 2 {
+        let inner_x = area.x + 1;
+        let inner_y = area.y + 1;
+        let inner_w = area.width - 2;
+        let inner_h = area.height - 2;
+        for idx in 0..view.len() {
+            if idx as u16 >= inner_h {
+                break;
+            }
+            state.vil_issue_row_regions.push((
+                idx,
+                Rect::new(inner_x, inner_y + idx as u16, inner_w, 1),
+            ));
+        }
     }
 
     let sel = state

@@ -337,6 +337,13 @@ pub struct AppState {
     // Populated during view render, consumed by `handlers::mouse::dispatch_click`.
     pub workbench_tab_regions: Vec<(WorkbenchTab, ratatui::layout::Rect)>,
     pub task_tray_row_regions: Vec<ratatui::layout::Rect>,
+    // PR-T16 P1 — per-surface click regions (review file list, approvals rows,
+    // VIL issue rows, generic workbench body focus grab). Populated each render;
+    // consumed by `handlers::mouse::dispatch_click`.
+    pub review_file_row_regions: Vec<(String, ratatui::layout::Rect)>,
+    pub approvals_row_regions: Vec<(usize, ratatui::layout::Rect)>,
+    pub vil_issue_row_regions: Vec<(usize, ratatui::layout::Rect)>,
+    pub workbench_body_region: Option<ratatui::layout::Rect>,
     // Unit 8 (Wave 3.6) — Banner queue + severity
     pub banner_queue: crate::services::banner::BannerQueue,
 
@@ -587,6 +594,10 @@ impl AppState {
             banner_dismiss_region: None,
             workbench_tab_regions: Vec::new(),
             task_tray_row_regions: Vec::new(),
+            review_file_row_regions: Vec::new(),
+            approvals_row_regions: Vec::new(),
+            vil_issue_row_regions: Vec::new(),
+            workbench_body_region: None,
             banner_queue: crate::services::banner::BannerQueue::new(),
             pending_pastes: Vec::new(),
             is_pasting: false,

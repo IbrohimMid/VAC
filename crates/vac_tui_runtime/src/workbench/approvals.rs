@@ -24,6 +24,25 @@ impl WorkbenchTabView for ApprovalsTab {
             .constraints([Constraint::Percentage(35), Constraint::Percentage(65)])
             .split(area);
 
+        // PR-T16 P1 — record per-row click regions for the pending-approvals
+        // list. Inner area is `body[0]` minus its 1-char border.
+        state.approvals_row_regions.clear();
+        if body[0].width > 2 && body[0].height > 2 {
+            let inner_x = body[0].x + 1;
+            let inner_y = body[0].y + 1;
+            let inner_w = body[0].width - 2;
+            let inner_h = body[0].height - 2;
+            for idx in 0..state.pending_approvals.len() {
+                if idx as u16 >= inner_h {
+                    break;
+                }
+                state.approvals_row_regions.push((
+                    idx,
+                    ratatui::layout::Rect::new(inner_x, inner_y + idx as u16, inner_w, 1),
+                ));
+            }
+        }
+
         let items: Vec<ListItem> = state
             .pending_approvals
             .iter()

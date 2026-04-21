@@ -49,6 +49,29 @@ impl WorkbenchTabView for ReviewTab {
             .split(chunks[1]);
 
         let files = state.review_filtered_paths();
+        // PR-T16 P1 — record per-row click regions. List inner area begins
+        // at (body[0].x + 1, body[0].y + 1) and each row occupies 1 line.
+        state.review_file_row_regions.clear();
+        if body[0].width > 2 && body[0].height > 2 {
+            let inner_x = body[0].x + 1;
+            let inner_y = body[0].y + 1;
+            let inner_w = body[0].width - 2;
+            let inner_h = body[0].height - 2;
+            for (idx, path) in files.iter().enumerate() {
+                if idx as u16 >= inner_h {
+                    break;
+                }
+                let rect = ratatui::layout::Rect::new(
+                    inner_x,
+                    inner_y + idx as u16,
+                    inner_w,
+                    1,
+                );
+                state
+                    .review_file_row_regions
+                    .push((path.clone(), rect));
+            }
+        }
         let items: Vec<ListItem> = files
             .iter()
             .enumerate()

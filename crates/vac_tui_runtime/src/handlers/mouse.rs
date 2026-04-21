@@ -49,6 +49,61 @@ pub fn dispatch_click(
         }
     }
 
+    // PR-T16 P1 — Review pane file rows. Clicking a row selects that path
+    // and focuses the workbench so the diff body becomes visible.
+    let review_hit = state
+        .review_file_row_regions
+        .iter()
+        .find(|(_, rect)| hit(rect, col, row))
+        .map(|(path, _)| path.clone());
+    if let Some(path) = review_hit {
+        let idx = state
+            .review_filtered_paths()
+            .iter()
+            .position(|p| *p == path)
+            .unwrap_or(0);
+        state.review.selected_idx = idx;
+        state.review.selected_path = Some(path);
+        state.focus = WorkspaceFocus::Workbench;
+        state.workbench_tab = crate::app::WorkbenchTab::Review;
+        return true;
+    }
+
+    // PR-T16 P1 — Approvals pane rows.
+    let approval_hit = state
+        .approvals_row_regions
+        .iter()
+        .find(|(_, rect)| hit(rect, col, row))
+        .map(|(idx, _)| *idx);
+    if let Some(idx) = approval_hit {
+        state.approval_selected_idx = idx;
+        state.focus = WorkspaceFocus::Workbench;
+        state.workbench_tab = crate::app::WorkbenchTab::Approvals;
+        return true;
+    }
+
+    // PR-T16 P1 — vil_workbench issue rows.
+    let vil_hit = state
+        .vil_issue_row_regions
+        .iter()
+        .find(|(_, rect)| hit(rect, col, row))
+        .map(|(idx, _)| *idx);
+    if let Some(idx) = vil_hit {
+        state.vil.workbench_selected = idx;
+        state.focus = WorkspaceFocus::Workbench;
+        state.workbench_tab = crate::app::WorkbenchTab::Vil;
+        return true;
+    }
+
+    // PR-T16 P1 — Workbench panel body (focus-grab fallback). Only fires if
+    // no more-specific region matched above, so row clicks still win.
+    if let Some(rect) = state.workbench_body_region
+        && hit(&rect, col, row)
+    {
+        state.focus = WorkspaceFocus::Workbench;
+        return true;
+    }
+
     false
 }
 
@@ -144,5 +199,68 @@ mod tests {
         let handled = dispatch_click(&mut state, &tx, 100, 100);
         assert!(!handled);
         assert_eq!(state.workbench_tab, before_tab);
+    }
+
+    #[test]
+    fn mouse_click_on_approvals_row_selects_and_focuses() {
+        let (mut state, tx, _rx) = make_state_with_channel();
+        state.focus = WorkspaceFocus::Input;
+        state.workbench_tab = WorkbenchTab::Review;
+        state
+            .approvals_row_regions
+            .push((0, Rect::new(4, 10, 30, 1)));
+        state
+            .approvals_row_regions
+            .push((1, Rect::new(4, 11, 30, 1)));
+
+        let handled = dispatch_click(&mut state, &tx, 10, 11);
+        assert!(handled, "approvals row 1 click must dispatch");
+        assert_eq!(state.approval_selected_idx, 1);
+        assert_eq!(state.workbench_tab, WorkbenchTab::Approvals);
+        assert_eq!(state.focus, WorkspaceFocus::Workbench);
+    }
+
+    #[test]
+    fn mouse_click_on_vil_issue_row_selects_and_focuses() {
+        let (mut state, tx, _rx) = make_state_with_channel();
+        state.focus = WorkspaceFocus::Input;
+        state.workbench_tab = WorkbenchTab::Review;
+        state
+            .vil_issue_row_regions
+            .push((2, Rect::new(2, 20, 50, 1)));
+
+        let handled = dispatch_click(&mut state, &tx, 5, 20);
+        assert!(handled, "vil issue row click must dispatch");
+        assert_eq!(state.vil.workbench_selected, 2);
+        assert_eq!(state.workbench_tab, WorkbenchTab::Vil);
+        assert_eq!(state.focus, WorkspaceFocus::Workbench);
+    }
+
+    #[test]
+    fn mouse_click_on_workbench_body_grabs_focus() {
+        let (mut state, tx, _rx) = make_state_with_channel();
+        state.focus = WorkspaceFocus::Input;
+        state.workbench_body_region = Some(Rect::new(0, 5, 80, 20));
+
+        let handled = dispatch_click(&mut state, &tx, 40, 15);
+        assert!(handled, "workbench body click must grab focus");
+        assert_eq!(state.focus, WorkspaceFocus::Workbench);
+    }
+
+    #[test]
+    fn mouse_click_row_region_wins_over_body_fallback() {
+        let (mut state, tx, _rx) = make_state_with_channel();
+        state.focus = WorkspaceFocus::Input;
+        state.workbench_tab = WorkbenchTab::Review;
+        state.workbench_body_region = Some(Rect::new(0, 5, 80, 20));
+        state
+            .vil_issue_row_regions
+            .push((0, Rect::new(2, 10, 20, 1)));
+
+        let handled = dispatch_click(&mut state, &tx, 5, 10);
+        assert!(handled);
+        // The specific VIL tab switch must fire, not the generic focus-only fallback.
+        assert_eq!(state.workbench_tab, WorkbenchTab::Vil);
+        assert_eq!(state.vil.workbench_selected, 0);
     }
 }
