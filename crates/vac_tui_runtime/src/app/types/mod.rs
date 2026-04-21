@@ -327,6 +327,10 @@ pub struct AppState {
     pub banner_message: Option<crate::services::banner::BannerMessage>,
     pub banner_click_regions: Vec<(String, ratatui::layout::Rect)>,
     pub banner_dismiss_region: Option<ratatui::layout::Rect>,
+    // PR-T16 — mouse click regions for workbench tabs and task tray rows.
+    // Populated during view render, consumed by `handlers::mouse::dispatch_click`.
+    pub workbench_tab_regions: Vec<(WorkbenchTab, ratatui::layout::Rect)>,
+    pub task_tray_row_regions: Vec<ratatui::layout::Rect>,
     // Unit 8 (Wave 3.6) — Banner queue + severity
     pub banner_queue: crate::services::banner::BannerQueue,
 
@@ -571,6 +575,8 @@ impl AppState {
             banner_message: None,
             banner_click_regions: Vec::new(),
             banner_dismiss_region: None,
+            workbench_tab_regions: Vec::new(),
+            task_tray_row_regions: Vec::new(),
             banner_queue: crate::services::banner::BannerQueue::new(),
             pending_pastes: Vec::new(),
             is_pasting: false,

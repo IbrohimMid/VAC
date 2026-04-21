@@ -387,6 +387,11 @@ fn handle_mouse_drag_start(
         }
     }
 
+    // PR-T16 — workbench tab + task tray click dispatch.
+    if crate::handlers::mouse::dispatch_click(state, output_tx, col, row) {
+        return;
+    }
+
     if row == 0 {
         let term_width = crossterm::terminal::size().map(|s| s.0).unwrap_or(80);
         if col > term_width.saturating_sub(40) {

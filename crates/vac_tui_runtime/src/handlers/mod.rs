@@ -39,6 +39,7 @@ pub mod input_popup;
 pub mod isolation_switcher;
 pub mod message_action;
 pub mod model_switcher;
+pub mod mouse;
 pub mod plan;
 pub mod profile_switcher;
 pub mod review;

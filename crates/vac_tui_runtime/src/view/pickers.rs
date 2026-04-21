@@ -222,6 +222,21 @@ pub(super) fn render_task_tray(f: &mut Frame, state: &mut AppState) {
 
     let list = List::new(items);
     f.render_widget(list, inner);
+
+    // PR-T16 — track per-row click regions for the mouse dispatcher.
+    state.task_tray_row_regions.clear();
+    for i in 0..jobs.len() {
+        let row_y = inner.y.saturating_add(i as u16);
+        if row_y >= inner.y.saturating_add(inner.height) {
+            break;
+        }
+        state.task_tray_row_regions.push(Rect {
+            x: inner.x,
+            y: row_y,
+            width: inner.width,
+            height: 1,
+        });
+    }
 }
 
 pub(super) fn render_theme_picker(f: &mut Frame, state: &mut AppState) {

@@ -66,7 +66,8 @@ pub(super) fn render_workbench_panel(f: &mut Frame, state: &mut AppState, area: 
         .split(area);
 
     let idx = crate::workbench::active_tab_index(&state.workbench_tab);
-    let tabs = Tabs::new(crate::workbench::tab_labels(state))
+    let labels = crate::workbench::tab_labels(state);
+    let tabs = Tabs::new(labels.clone())
         .select(idx)
         .block(Block::default().borders(Borders::ALL).title(Span::styled(
             "Workbench",
@@ -74,6 +75,30 @@ pub(super) fn render_workbench_panel(f: &mut Frame, state: &mut AppState, area: 
         )))
         .highlight_style(state.theme.style(crate::services::theme::StyleKey::ListSelected));
     f.render_widget(tabs, chunks[0]);
+
+    // PR-T16 — record per-tab click regions for the mouse dispatcher.
+    // Layout mirrors ratatui::Tabs rendering: each label is drawn inside the
+    // bordered block on the first inner row, separated by `" │ "` (3 cols).
+    state.workbench_tab_regions.clear();
+    if chunks[0].height >= 3 && chunks[0].width >= 3 {
+        let inner_y = chunks[0].y + 1;
+        let inner_x_start = chunks[0].x + 1;
+        let inner_x_end = chunks[0].x + chunks[0].width - 1;
+        let mut x = inner_x_start;
+        for (i, label) in labels.iter().enumerate() {
+            if x >= inner_x_end {
+                break;
+            }
+            let w = label.chars().count() as u16;
+            let avail = inner_x_end - x;
+            let rect_w = w.min(avail);
+            let rect = ratatui::layout::Rect::new(x, inner_y, rect_w, 1);
+            state
+                .workbench_tab_regions
+                .push((crate::workbench::tab_from_index(i), rect));
+            x = x.saturating_add(w + 3); // " │ " separator between tabs
+        }
+    }
 
     crate::workbench::render_active_tab(f, state, chunks[1]);
 }
