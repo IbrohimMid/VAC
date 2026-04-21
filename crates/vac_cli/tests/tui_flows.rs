@@ -110,7 +110,7 @@ fn shortcuts_popup_swallows_input_without_touching_editor_state() {
     assert_eq!(state.input.get_content(), "seed");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn shortcuts_popup_executes_slash_commands_directly() {
     let mut state = AppState::default();
     state.overlay_manager.push(vac_tui_runtime::overlay::OverlayId::Shortcuts, state.focus);
@@ -137,7 +137,7 @@ async fn shortcuts_popup_executes_slash_commands_directly() {
     assert_eq!(state.input.get_content(), "seed");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn shortcuts_popup_can_switch_tabs_without_closing() {
     let mut state = AppState::default();
     state.overlay_manager.push(vac_tui_runtime::overlay::OverlayId::Shortcuts, state.focus);
@@ -160,7 +160,7 @@ async fn shortcuts_popup_can_switch_tabs_without_closing() {
     assert!(state.command_palette_input.is_empty());
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn buffered_messages_flush_as_a_single_user_message() {
     let mut state = AppState::default();
     state
@@ -213,7 +213,7 @@ async fn buffered_messages_flush_as_a_single_user_message() {
     assert!(state.pending_user_messages.is_empty());
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn profile_switcher_request_on_open_and_submit_is_deterministic() {
     let mut state = AppState::default();
     state.active_profile = "migration".to_string();
@@ -240,7 +240,7 @@ async fn profile_switcher_request_on_open_and_submit_is_deterministic() {
     assert!(!state.overlay_manager.is_active(vac_tui_runtime::overlay::OverlayId::ProfileSwitcher));
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn rulebook_switcher_loads_disk_data_and_submits_active_rulebook() {
     let dir = tempdir().unwrap();
     let root = dir.path();
@@ -289,7 +289,7 @@ severity = "warn"
     assert!(!state.overlay_manager.is_active(vac_tui_runtime::overlay::OverlayId::RulebookSwitcher));
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn sessions_tab_cleans_selected_session_artifacts_and_refreshes() {
     let dir = tempdir().unwrap();
     let root = dir.path();
