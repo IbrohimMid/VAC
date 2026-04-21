@@ -5359,6 +5359,7 @@ dependencies = [
  "vac_changeset",
  "vac_core",
  "vac_runtime",
+ "vac_session_control",
  "vac_shell",
  "vac_tools",
  "vac_trace",

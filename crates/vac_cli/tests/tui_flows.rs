@@ -342,6 +342,24 @@ async fn sessions_tab_cleans_selected_session_artifacts_and_refreshes() {
     let (tx, mut rx) = mpsc::channel(8);
     input_core::handle_input_event(&mut state, &tx, InputEvent::InputChanged('d'));
 
+    // Since PR-W25-9 the 'd' handler only dispatches `OutputEvent::CleanupSession`
+    // (the actual filesystem work runs asynchronously in the runner task). The
+    // test simulates that downstream step by invoking cleanup_session_async
+    // directly, matching what runner::spawn_session_event_loop does.
+    let cleanup_id = match rx.try_recv().unwrap() {
+        OutputEvent::CleanupSession(id) => id,
+        other => panic!("unexpected output event: {other:?}"),
+    };
+    assert_eq!(cleanup_id, session_id_str);
+
+    let report = vac_session_control::cleanup_session_async(root.to_path_buf(), session_id)
+        .await
+        .expect("cleanup_session_async should succeed");
+    assert!(report.snapshot_removed, "snapshot should be removed");
+    assert!(report.checkpoint_removed, "checkpoint should be removed");
+    assert_eq!(report.approvals_removed, 1, "one approval file should be removed");
+    assert!(report.errors.is_empty(), "cleanup should not report errors: {:?}", report.errors);
+
     assert!(
         !root
             .join(".vac/sessions")
@@ -355,15 +373,4 @@ async fn sessions_tab_cleans_selected_session_artifacts_and_refreshes() {
             .exists()
     );
     assert!(!root.join(".vac/approvals").join("approval.json").exists());
-
-    match rx.try_recv().unwrap() {
-        OutputEvent::ListSessions => {}
-        other => panic!("unexpected output event: {other:?}"),
-    }
-    assert!(
-        state
-            .toasts
-            .iter()
-            .any(|toast| toast.message.contains("Cleaned session artifacts"))
-    );
 }
