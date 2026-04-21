@@ -4,7 +4,7 @@ use crate::services::theme::{StyleKey, Theme};
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem, Paragraph, Wrap},
 };
@@ -47,15 +47,11 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
         .block(
             Block::default().borders(Borders::ALL).title(Span::styled(
                 "Issue Groups",
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD),
+                state.theme.style(StyleKey::Warning).add_modifier(Modifier::BOLD),
             )),
         )
         .highlight_style(
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
+            state.theme.style(StyleKey::Warning).add_modifier(Modifier::BOLD),
         );
     f.render_widget(tabs, chunks[1]);
 
@@ -222,9 +218,7 @@ fn render_status_panel(f: &mut Frame, state: &AppState, area: Rect) {
     } else {
         Line::styled(
             "Scanning profile...",
-            Style::default()
-                .fg(Color::DarkGray)
-                .add_modifier(Modifier::ITALIC),
+            state.theme.style(StyleKey::Muted).add_modifier(Modifier::ITALIC),
         )
     };
 
@@ -243,18 +237,14 @@ fn render_status_panel(f: &mut Frame, state: &AppState, area: Rect) {
     if !recommendations.is_empty() {
         lines_to_render.push(Line::styled(
             recommendations.join(" | "),
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::ITALIC),
+            state.theme.style(StyleKey::Warning).add_modifier(Modifier::ITALIC),
         ));
     }
 
     let p = Paragraph::new(lines_to_render).block(
         Block::default().borders(Borders::ALL).title(Span::styled(
             "VIL Workstation - Rulebook Cockpit & Validation Heatmap",
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
+            state.theme.style(StyleKey::Warning).add_modifier(Modifier::BOLD),
         )),
     );
 
@@ -351,9 +341,7 @@ fn render_issue_list(f: &mut Frame, state: &AppState, area: Rect, view: &[&VilIs
         .map(|(idx, issue)| {
             let selected = idx == sel;
             let style = if selected {
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD)
+                state.theme.style(StyleKey::Warning).add_modifier(Modifier::BOLD)
             } else {
                 Style::default()
             };
@@ -425,9 +413,7 @@ fn render_lineage_panel(f: &mut Frame, state: &AppState, area: Rect, view: &[&Vi
         if let Some(proposal) = &issue.repair_proposal {
             lines.push(Line::styled(
                 "Semantic Repair Proposal:",
-                Style::default()
-                    .add_modifier(Modifier::BOLD)
-                    .fg(Color::Yellow),
+                state.theme.style(StyleKey::Warning).add_modifier(Modifier::BOLD),
             ));
             lines.push(Line::styled(
                 format!("  {}", proposal),
