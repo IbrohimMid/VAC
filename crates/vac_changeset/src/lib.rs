@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::time::SystemTime;
 
+pub mod formats;
+
 /// Represents the lifecycle state of a file in the changeset.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FileState {
