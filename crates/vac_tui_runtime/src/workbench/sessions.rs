@@ -6,7 +6,7 @@ use crate::app::AppState;
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem, Paragraph, Wrap},
 };
@@ -31,9 +31,7 @@ impl WorkbenchTabView for SessionsTab {
             .map(|(idx, s)| {
                 let sel = idx == state.sessions_selected_idx;
                 let style = if sel {
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::BOLD)
+                    state.theme.style(StyleKey::Warning).add_modifier(Modifier::BOLD)
                 } else {
                     Style::default()
                 };
@@ -45,24 +43,22 @@ impl WorkbenchTabView for SessionsTab {
                 } else {
                     "○"
                 };
-                let snapshot_color = if s.snapshot_stale {
-                    Color::Yellow
+                let snapshot_key = if s.snapshot_stale {
+                    StyleKey::Warning
                 } else if s.snapshot_present {
-                    Color::Cyan
+                    StyleKey::Accent
                 } else {
-                    Color::DarkGray
+                    StyleKey::Muted
+                };
+                let checkpoint_key = if s.has_checkpoint {
+                    StyleKey::Success
+                } else {
+                    StyleKey::Muted
                 };
                 ListItem::new(Line::from(vec![
-                    Span::styled(
-                        checkpoint_icon,
-                        Style::default().fg(if s.has_checkpoint {
-                            Color::Green
-                        } else {
-                            Color::DarkGray
-                        }),
-                    ),
+                    Span::styled(checkpoint_icon, state.theme.style(checkpoint_key)),
                     Span::raw(" "),
-                    Span::styled(snapshot_icon, Style::default().fg(snapshot_color)),
+                    Span::styled(snapshot_icon, state.theme.style(snapshot_key)),
                     Span::raw(" "),
                     Span::styled(&s.last_activity, state.theme.style(StyleKey::Muted)),
                     Span::raw(" "),
