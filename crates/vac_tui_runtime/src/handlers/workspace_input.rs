@@ -13,6 +13,7 @@ pub fn handle(state: &mut AppState, output_tx: &Sender<OutputEvent>, event: Inpu
         InputEvent::InputChangedNewline => {
             if state.focus == WorkspaceFocus::Input {
                 state.input.newline();
+                notify_vil_expr_lint(state);
             }
         }
         InputEvent::InputBackspace => handle_backspace(state),
@@ -25,6 +26,7 @@ pub fn handle(state: &mut AppState, output_tx: &Sender<OutputEvent>, event: Inpu
                 {
                     crate::services::helper_dropdown::filter_helpers_sync(state);
                 }
+                notify_vil_expr_lint(state);
             }
         }
         InputEvent::InputClear => {
@@ -39,6 +41,7 @@ pub fn handle(state: &mut AppState, output_tx: &Sender<OutputEvent>, event: Inpu
                         "Input and pending attachments cleared.".to_string(),
                     ));
                 }
+                notify_vil_expr_lint(state);
             }
         }
         InputEvent::InputSubmitted => handle_submit(state, output_tx),
@@ -138,6 +141,7 @@ fn handle_char(state: &mut AppState, output_tx: &Sender<OutputEvent>, c: char) {
     }
 
     let _ = output_tx; // suppress unused warning when no send is needed here
+    notify_vil_expr_lint(state);
 }
 
 fn handle_backspace(state: &mut AppState) {
@@ -167,6 +171,7 @@ fn handle_backspace(state: &mut AppState) {
     } else {
         state.input.backspace();
     }
+    notify_vil_expr_lint(state);
 }
 
 fn handle_submit(state: &mut AppState, output_tx: &Sender<OutputEvent>) {
@@ -189,6 +194,7 @@ fn handle_submit(state: &mut AppState, output_tx: &Sender<OutputEvent>) {
 
     let msg = state.input.get_content();
     state.input.clear();
+    notify_vil_expr_lint(state);
 
     // Prepend context chips to the message (PR-T7).
     let chip_prefix: String = if !state.context_chips.is_empty() {
@@ -305,6 +311,128 @@ fn handle_paste(state: &mut AppState, text: String) {
                 state.input.input(c);
             }
         }
+    }
+    notify_vil_expr_lint(state);
+}
+
+/// Notify the vil-expr linter of an input buffer change (PR-T12.1).
+fn notify_vil_expr_lint(state: &mut AppState) {
+    let text = state.input.lines.join("\n");
+    state
+        .vil_expr_lint
+        .on_input_changed(&text, std::time::Instant::now());
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::AppStateOptions;
+    use std::time::{Duration, Instant};
+
+    fn make_test_state() -> AppState {
+        let dir = tempfile::tempdir().unwrap();
+        let mut state = AppState::new(AppStateOptions {
+            model: None,
+            session_id: None,
+            checkpoint_path: None,
+            project_root: dir.path().to_path_buf(),
+        });
+        state.focus = WorkspaceFocus::Input;
+        // Leak the tempdir so it outlives the state (test-only).
+        std::mem::forget(dir);
+        state
+    }
+
+    #[test]
+    fn input_changed_updates_vil_expr_lint_state() {
+        let (tx, _rx) = tokio::sync::mpsc::channel(4);
+        let mut state = make_test_state();
+
+        // Type "vil-expr: foo" character by character.
+        for c in "vil-expr: foo".chars() {
+            handle_char(&mut state, &tx, c);
+        }
+
+        // After typing, lint state should have a pending payload.
+        assert_eq!(
+            state.vil_expr_lint.pending_payload.as_deref(),
+            Some("foo"),
+            "expected pending payload 'foo' after typing 'vil-expr: foo'"
+        );
+        assert!(
+            state.vil_expr_lint.deadline.is_some(),
+            "deadline should be set after input change"
+        );
+
+        // Clear input → lint state should reset.
+        state.input.clear();
+        notify_vil_expr_lint(&mut state);
+        assert!(
+            state.vil_expr_lint.pending_payload.is_none(),
+            "payload should be cleared when input has no vil-expr: prefix"
+        );
+        assert!(state.vil_expr_lint.is_clean());
+    }
+
+    #[test]
+    fn tick_emits_redraw_request_after_debounce() {
+        let (tx, _rx) = tokio::sync::mpsc::channel(4);
+        let mut state = make_test_state();
+        let symbols = vil_expr::SymbolTable::new();
+
+        // Simulate typing "vil-expr: unknown_ident".
+        for c in "vil-expr: unknown_ident".chars() {
+            handle_char(&mut state, &tx, c);
+        }
+
+        let now = Instant::now();
+        // Override deadline to a known value for deterministic testing.
+        state.vil_expr_lint.deadline = Some(now + Duration::from_millis(200));
+
+        // Before debounce expires → tick should not fire.
+        assert!(
+            !state.vil_expr_lint.tick(&symbols, now + Duration::from_millis(100)),
+            "tick should NOT fire before debounce window"
+        );
+        assert!(
+            state.vil_expr_lint.issues().is_empty(),
+            "issues should be empty before lint runs"
+        );
+
+        // After debounce expires → tick should fire and return true (= redraw needed).
+        assert!(
+            state.vil_expr_lint.tick(&symbols, now + Duration::from_millis(300)),
+            "tick should fire after debounce window — return true signals redraw"
+        );
+        assert!(
+            !state.vil_expr_lint.issues().is_empty(),
+            "after tick, issues should contain the unknown identifier error"
+        );
+    }
+
+    #[test]
+    fn alt_t_on_identifier_opens_popup() {
+        let (tx, _rx) = tokio::sync::mpsc::channel(4);
+        let mut state = make_test_state();
+
+        // Type a vil-expr payload so there is a pending payload.
+        for c in "vil-expr: some_ident".chars() {
+            handle_char(&mut state, &tx, c);
+        }
+
+        // Dispatch VilExprTypeHelp (Alt+T).
+        crate::controller::handle_input_event(
+            &mut state,
+            &tx,
+            InputEvent::VilExprTypeHelp,
+        );
+
+        // Should have a toast with the stub message.
+        assert!(
+            state.toasts.iter().any(|t| t.message.contains("type inference coming soon")),
+            "Alt+T with active payload should show stub type-info toast, got: {:?}",
+            state.toasts.iter().map(|t| &t.message).collect::<Vec<_>>()
+        );
     }
 }
 

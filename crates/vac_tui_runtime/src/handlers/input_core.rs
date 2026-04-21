@@ -187,6 +187,17 @@ fn handle_global(
             crate::overlay::open_overlay(state, crate::overlay::OverlayId::MessageAction);
             true
         }
+        InputEvent::VilExprTypeHelp => {
+            // PR-T12.1 stub: show a toast with type-info placeholder.
+            // Full type inference deferred to Wave 4.
+            let msg = if state.vil_expr_lint.pending_payload.is_some() {
+                "vil-expr type inference coming soon (PR-T12 stub)"
+            } else {
+                "Alt+T: no vil-expr: payload detected"
+            };
+            state.toasts.push(crate::services::Toast::info(msg));
+            true
+        }
         InputEvent::ToggleSidePanel => {
             state.side_panel_visible = !state.side_panel_visible;
             if !state.side_panel_visible {

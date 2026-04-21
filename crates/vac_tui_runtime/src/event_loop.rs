@@ -204,6 +204,11 @@ pub async fn run_tui(
             state.spinner_frame = (state.spinner_frame + 1) % 10;
         }
 
+        // Tick vil-expr linter — runs the actual lint if debounce window has elapsed (PR-T12.1).
+        state
+            .vil_expr_lint
+            .tick(&vil_expr::SymbolTable::new(), std::time::Instant::now());
+
         // Hydration timeout: force hydration with fallback data if startup takes too long.
         if !state.hydrated && std::time::Instant::now() >= state.hydration_deadline {
             state.hydrated = true;

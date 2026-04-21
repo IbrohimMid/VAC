@@ -11,6 +11,7 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph, Wrap},
 };
+use crate::services::theme::StyleKey;
 
 pub(super) fn render_input(f: &mut Frame, state: &mut AppState, area: Rect) {
     // Split off a tray above the input when there are pending pastes.
@@ -47,13 +48,49 @@ pub(super) fn render_input(f: &mut Frame, state: &mut AppState, area: Rect) {
         }
     }
 
+    // Split off lint issue rows below the input when there are active issues.
+    let lint_issues = state.vil_expr_lint.issues();
+    let lint_rows = lint_issues.len().min(3) as u16; // cap at 3 visible
+    let (actual_input_area, lint_area) =
+        if lint_rows > 0 && input_area.height > lint_rows + 3 {
+            let split = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([
+                    Constraint::Min(3),
+                    Constraint::Length(lint_rows),
+                ])
+                .split(input_area);
+            (split[0], Some(split[1]))
+        } else {
+            (input_area, None)
+        };
+
     let widget = Paragraph::new(lines)
         .block(Block::default().borders(Borders::ALL).title(Span::styled(
             "Input",
             focus_style(state.focus == WorkspaceFocus::Input),
         )))
         .wrap(Wrap { trim: false });
-    f.render_widget(widget, input_area);
+    f.render_widget(widget, actual_input_area);
+
+    // Render vil-expr lint issues (PR-T12.1).
+    if let Some(area) = lint_area {
+        let issue_lines: Vec<Line<'_>> = lint_issues
+            .iter()
+            .take(3)
+            .map(|issue| {
+                let style = match &issue.severity {
+                    vil_expr::Severity::Error => state.theme.style(StyleKey::ValidationError),
+                    vil_expr::Severity::Warning => state.theme.style(StyleKey::ValidationWarning),
+                };
+                Line::from(Span::styled(
+                    format!("  {} [{}:{}] {}", severity_icon(&issue.severity), issue.line, issue.col, issue.message),
+                    style,
+                ))
+            })
+            .collect();
+        f.render_widget(Paragraph::new(issue_lines), area);
+    }
 
     if state.focus == WorkspaceFocus::Input
         && !state
@@ -64,9 +101,16 @@ pub(super) fn render_input(f: &mut Frame, state: &mut AppState, area: Rect) {
             .is_active(crate::overlay::OverlayId::Shortcuts)
     {
         let (row, col) = state.input.cursor;
-        let cy = input_area.y + 1 + (row as u16).min(input_area.height.saturating_sub(3));
-        let cx = input_area.x + 1 + (col as u16).min(input_area.width.saturating_sub(3));
+        let cy = actual_input_area.y + 1 + (row as u16).min(actual_input_area.height.saturating_sub(3));
+        let cx = actual_input_area.x + 1 + (col as u16).min(actual_input_area.width.saturating_sub(3));
         f.set_cursor_position((cx, cy));
+    }
+}
+
+fn severity_icon(severity: &vil_expr::Severity) -> &'static str {
+    match severity {
+        vil_expr::Severity::Error => "E",
+        vil_expr::Severity::Warning => "W",
     }
 }
 

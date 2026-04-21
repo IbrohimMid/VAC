@@ -165,6 +165,9 @@ pub enum InputEvent {
     MouseRightClick(u16, u16),
     TaskCompleted(vac_core::task::TaskResult),
 
+    /// Alt+T: show type-info popup for vil-expr identifier under cursor (PR-T12.1).
+    VilExprTypeHelp,
+
     // Raw Crossterm event mapped dynamically
     CrosstermEvent(crossterm::event::Event),
 }
