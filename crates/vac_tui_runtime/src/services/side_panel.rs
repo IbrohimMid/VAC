@@ -2,7 +2,7 @@ use crate::services::theme::StyleKey;
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph},
 };
@@ -280,9 +280,7 @@ fn render_context_section(f: &mut Frame, state: &AppState, area: Rect, collapsed
     } else if state.pinned_files.is_empty() && state.pinned_diffs.is_empty() {
         lines.push(Line::styled(
             "    No pinned context yet. Use /context pin <file> to add one.",
-            Style::default()
-                .fg(Color::DarkGray)
-                .add_modifier(Modifier::ITALIC),
+            state.theme.style(StyleKey::Muted).add_modifier(Modifier::ITALIC),
         ));
     }
 
@@ -315,17 +313,15 @@ fn render_sessions_section(f: &mut Frame, state: &mut AppState, area: Rect, coll
     if state.sessions.is_empty() {
         lines.push(Line::styled(
             "    No sessions loaded yet. Run /sessions to open saved sessions.",
-            Style::default()
-                .fg(Color::DarkGray)
-                .add_modifier(Modifier::ITALIC),
+            state.theme.style(StyleKey::Muted).add_modifier(Modifier::ITALIC),
         ));
     } else {
         for (i, session) in state.sessions.iter().take(5).enumerate() {
             let is_active = session.id == state.session_id;
-            let color = if is_active {
-                Color::Yellow
+            let row_style = if is_active {
+                state.theme.style(StyleKey::Warning)
             } else {
-                Color::DarkGray
+                state.theme.style(StyleKey::Muted)
             };
             let title = if session.title.is_empty() {
                 "Untitled"
@@ -334,10 +330,10 @@ fn render_sessions_section(f: &mut Frame, state: &mut AppState, area: Rect, coll
             };
             let prefix = if is_active { "    * " } else { "      " };
             lines.push(Line::from(vec![
-                Span::styled(prefix, Style::default().fg(color)),
+                Span::styled(prefix, row_style),
                 Span::styled(
                     title.chars().take(20).collect::<String>(),
-                    Style::default().fg(color),
+                    row_style,
                 ),
             ]));
             // Track row rect for click handling (header is row 0, sessions start at row 1)
@@ -380,9 +376,7 @@ fn render_mcp_section(f: &mut Frame, state: &mut AppState, area: Rect, collapsed
     if total == 0 {
         lines.push(Line::styled(
             "    No MCP servers configured.",
-            Style::default()
-                .fg(Color::DarkGray)
-                .add_modifier(Modifier::ITALIC),
+            state.theme.style(StyleKey::Muted).add_modifier(Modifier::ITALIC),
         ));
     } else {
         let mut row_offset = 1u16; // header is row 0
@@ -403,27 +397,27 @@ fn render_mcp_section(f: &mut Frame, state: &mut AppState, area: Rect, collapsed
             } else {
                 1
             };
-            let (status, color) = if conn_state.is_connected() {
-                ("✅", Color::Green)
+            let (status, status_key) = if conn_state.is_connected() {
+                ("✅", StyleKey::Success)
             } else {
-                ("❌", Color::Red)
+                ("❌", StyleKey::Error)
             };
 
             let mut line_spans = vec![
                 Span::raw("    "),
-                Span::styled(status, Style::default().fg(color)),
+                Span::styled(status, state.theme.style(status_key)),
                 Span::raw(" "),
                 Span::styled(name.clone(), state.theme.style(StyleKey::Warning)),
             ];
 
             if let Some(trust) = &conn_state.trust_class {
-                let (trust_badge, trust_color) = match trust {
-                    vac_tools::mcp::McpTrustClass::LocalTrusted => ("[Local]", Color::Green),
-                    vac_tools::mcp::McpTrustClass::RemoteVerified => ("[Verified]", Color::Yellow),
-                    vac_tools::mcp::McpTrustClass::RemoteUntrusted => ("[Untrusted]", Color::Red),
+                let (trust_badge, trust_key) = match trust {
+                    vac_tools::mcp::McpTrustClass::LocalTrusted => ("[Local]", StyleKey::Success),
+                    vac_tools::mcp::McpTrustClass::RemoteVerified => ("[Verified]", StyleKey::Warning),
+                    vac_tools::mcp::McpTrustClass::RemoteUntrusted => ("[Untrusted]", StyleKey::Error),
                 };
                 line_spans.push(Span::raw(" "));
-                line_spans.push(Span::styled(trust_badge, Style::default().fg(trust_color)));
+                line_spans.push(Span::styled(trust_badge, state.theme.style(trust_key)));
             }
 
             let mut active_mode = state.active_isolation_mode.clone();
@@ -436,9 +430,7 @@ fn render_mcp_section(f: &mut Frame, state: &mut AppState, area: Rect, collapsed
                 line_spans.push(Span::raw(" "));
                 line_spans.push(Span::styled(
                     "⚠️ Mode Mismatch",
-                    Style::default()
-                        .fg(Color::LightRed)
-                        .add_modifier(Modifier::BOLD),
+                    state.theme.style(StyleKey::Error).add_modifier(Modifier::BOLD),
                 ));
             }
 
