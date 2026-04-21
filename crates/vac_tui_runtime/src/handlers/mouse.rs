@@ -95,6 +95,25 @@ pub fn dispatch_click(
         return true;
     }
 
+    // PR-T16 R5 — Sessions workbench tab rows. Clicking a session row
+    // selects that session index and focuses the workbench, matching
+    // the review / approvals / vil ergonomics. Actual resume of the
+    // selected session still lives behind the keyboard shortcut ('r')
+    // so a stray click cannot trigger a session switch.
+    let sessions_hit = state
+        .sessions_row_regions
+        .iter()
+        .find(|(_, rect)| hit(rect, col, row))
+        .map(|(idx, _)| *idx);
+    if let Some(idx) = sessions_hit
+        && idx < state.sessions.len()
+    {
+        state.sessions_selected_idx = idx;
+        state.focus = WorkspaceFocus::Workbench;
+        state.workbench_tab = crate::app::WorkbenchTab::Sessions;
+        return true;
+    }
+
     // PR-T16 P1 — Workbench panel body (focus-grab fallback). Only fires if
     // no more-specific region matched above, so row clicks still win.
     if let Some(rect) = state.workbench_body_region

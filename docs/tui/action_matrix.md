@@ -159,3 +159,38 @@ Full user-facing recipes — capturing a session, shipping demos with the
 repo, attaching a minimal repro to a bug report, and the list of
 `RecordedInput` variants that are / are not serialized — live in
 [`docs/tui/recorder_replay.md`](./recorder_replay.md).
+
+## Mouse dispatch surface list (PR-T16)
+
+Left-click routing flows through `handlers::mouse::dispatch_click` after
+banner / side-panel handling in `input_core`. The view render pass
+populates per-surface click regions on `AppState`, and `dispatch_click`
+matches them in the order below (first hit wins):
+
+| Surface                         | Region field on `AppState`     | Behaviour                                             |
+| ------------------------------- | ------------------------------ | ----------------------------------------------------- |
+| Workbench tab strip             | `workbench_tab_regions`        | Switch tab + focus Workbench                          |
+| Task tray overlay rows          | `task_tray_row_regions`        | Select tray row (only while TaskTray overlay active)  |
+| Review file rows                | `review_file_row_regions`      | Select path + switch to Review tab                    |
+| Approvals rows                  | `approvals_row_regions`        | Select idx + switch to Approvals tab                  |
+| Vil issue rows                  | `vil_issue_row_regions`        | Select idx + switch to Vil tab                        |
+| Sessions rows (R5)              | `sessions_row_regions`         | Select idx + switch to Sessions tab                   |
+| Workbench body focus fallback   | `workbench_body_region`        | Grab focus without changing the active tab            |
+
+Banner dismissal and banner action buttons run earlier inside
+`handlers::input_core::handle_mouse_drag_start` via `banner_dismiss_region`
+/ `banner_click_regions`; those never reach `dispatch_click`.
+
+Residual surfaces that are **not yet wired** (tracked as R5 backlog):
+
+- Command / shortcuts popup rows (`shortcuts_popup`) — currently
+  scroll-only, no per-entry click regions emitted.
+- Side-panel collapse / header toggle regions — handled inline in
+  `input_core`, not surfaced via `*_regions`.
+- Scrollbar handle jump-to-offset for long panes.
+- Status line chips (model / profile / ruleset).
+
+Each of these can be closed by adding a `*_regions` field, populating it
+during the relevant render, and appending a branch to `dispatch_click`
+mirroring the pattern above. E2E coverage belongs in the
+`pr_t16_mouse_dispatch_e2e` module in `crates/vac_cli/tests/tui_flows.rs`.

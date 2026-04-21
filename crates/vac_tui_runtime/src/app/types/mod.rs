@@ -343,6 +343,11 @@ pub struct AppState {
     pub review_file_row_regions: Vec<(String, ratatui::layout::Rect)>,
     pub approvals_row_regions: Vec<(usize, ratatui::layout::Rect)>,
     pub vil_issue_row_regions: Vec<(usize, ratatui::layout::Rect)>,
+    /// Per-row click regions for the Sessions workbench tab list
+    /// (PR-T16 R5). Clicking a row selects that session index and
+    /// focuses the workbench, mirroring the review/approvals/vil-issue
+    /// ergonomics.
+    pub sessions_row_regions: Vec<(usize, ratatui::layout::Rect)>,
     pub workbench_body_region: Option<ratatui::layout::Rect>,
     // Unit 8 (Wave 3.6) — Banner queue + severity
     pub banner_queue: crate::services::banner::BannerQueue,
@@ -597,6 +602,7 @@ impl AppState {
             review_file_row_regions: Vec::new(),
             approvals_row_regions: Vec::new(),
             vil_issue_row_regions: Vec::new(),
+            sessions_row_regions: Vec::new(),
             workbench_body_region: None,
             banner_queue: crate::services::banner::BannerQueue::new(),
             pending_pastes: Vec::new(),

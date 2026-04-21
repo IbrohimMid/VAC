@@ -476,6 +476,72 @@ mod pr_t16_mouse_dispatch_e2e {
     }
 
     #[test]
+    fn sessions_row_click_selects_idx_and_switches_tab() {
+        use vac_tui_runtime::app::SessionInfo;
+
+        fn make_session(title: &str) -> SessionInfo {
+            SessionInfo {
+                title: title.to_string(),
+                id: format!("id-{title}"),
+                updated_at: String::new(),
+                checkpoints: Vec::new(),
+                task_count: 0,
+                last_activity: String::new(),
+                has_checkpoint: false,
+                snapshot_present: false,
+                snapshot_stale: false,
+            }
+        }
+
+        let (mut state, tx, _rx) = make_state();
+        state.focus = WorkspaceFocus::Input;
+        state.workbench_tab = WorkbenchTab::Review;
+        state.sessions = vec![
+            make_session("alpha"),
+            make_session("beta"),
+            make_session("gamma"),
+        ];
+        state.sessions_selected_idx = 0;
+        state
+            .sessions_row_regions
+            .push((0, Rect::new(2, 5, 30, 1)));
+        state
+            .sessions_row_regions
+            .push((1, Rect::new(2, 6, 30, 1)));
+        state
+            .sessions_row_regions
+            .push((2, Rect::new(2, 7, 30, 1)));
+
+        let handled = dispatch_click(&mut state, &tx, 10, 7);
+        assert!(handled, "click inside sessions row region must be consumed");
+        assert_eq!(state.sessions_selected_idx, 2);
+        assert_eq!(state.workbench_tab, WorkbenchTab::Sessions);
+        assert_eq!(state.focus, WorkspaceFocus::Workbench);
+    }
+
+    #[test]
+    fn sessions_row_click_out_of_bounds_is_ignored() {
+        // Defence-in-depth: if view render pushed a stale region for an
+        // index that no longer exists in state.sessions, the dispatcher
+        // must not panic or mutate state.
+        let (mut state, tx, _rx) = make_state();
+        state.focus = WorkspaceFocus::Input;
+        state.workbench_tab = WorkbenchTab::Review;
+        state.sessions.clear();
+        state
+            .sessions_row_regions
+            .push((5, Rect::new(2, 5, 30, 1)));
+
+        let handled = dispatch_click(&mut state, &tx, 10, 5);
+        assert!(
+            !handled,
+            "stale sessions row region for missing session must be a no-op"
+        );
+        assert_eq!(state.sessions_selected_idx, 0);
+        assert_eq!(state.workbench_tab, WorkbenchTab::Review);
+    }
+
+    #[test]
     fn click_outside_all_regions_is_ignored() {
         let (mut state, tx, _rx) = make_state();
         state.focus = WorkspaceFocus::Input;

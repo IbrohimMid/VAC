@@ -78,6 +78,30 @@ impl WorkbenchTabView for SessionsTab {
         );
         f.render_widget(list, body[0]);
 
+        // PR-T16 R5 — track per-row click regions so the sessions list
+        // matches the review / approvals / vil-issue mouse ergonomics.
+        // The List widget draws inside `body[0]` minus a 1-cell border on
+        // each side; clamp to at most the number of visible rows.
+        state.sessions_row_regions.clear();
+        let inner_x = body[0].x.saturating_add(1);
+        let inner_y = body[0].y.saturating_add(1);
+        let inner_w = body[0].width.saturating_sub(2);
+        let inner_h = body[0].height.saturating_sub(2);
+        if inner_w > 0 && inner_h > 0 {
+            let max_rows = (inner_h as usize).min(state.sessions.len());
+            for idx in 0..max_rows {
+                state.sessions_row_regions.push((
+                    idx,
+                    Rect::new(
+                        inner_x,
+                        inner_y.saturating_add(idx as u16),
+                        inner_w,
+                        1,
+                    ),
+                ));
+            }
+        }
+
         let mut lines: Vec<Line> = Vec::new();
         if let Some(sel) = state.sessions.get(state.sessions_selected_idx) {
             lines.push(Line::from(vec![
