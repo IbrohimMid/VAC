@@ -309,6 +309,13 @@ pub struct AppState {
     // VIL domain state
     pub vil: VilState,
 
+    // ── vil-expr live linter (PR-T12) ─────────────────────────────────────────
+    /// Debounced parser + validator for `vil-expr:` payloads typed into the
+    /// input bar. Updated by the input handler on every keystroke and ticked
+    /// by the event loop. View layer reads `lint_state.issues()` to render
+    /// diagnostics in the composer overlay.
+    pub vil_expr_lint: crate::services::vil_expr_lint::LintState,
+
     // Pending image attachments for next message submission
     pub pending_image_parts: Vec<crate::types::ContentPart>,
 
@@ -554,6 +561,7 @@ impl AppState {
             project_root: options.project_root,
             mcp_server_states: HashMap::new(),
             vil: VilState::default(),
+            vil_expr_lint: crate::services::vil_expr_lint::LintState::new(),
             pending_image_parts: vec![],
             banner_message: None,
             banner_click_regions: Vec::new(),

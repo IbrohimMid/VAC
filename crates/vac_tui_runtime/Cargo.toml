@@ -45,6 +45,7 @@ vac_session_control = { version = "0.1.0", path = "../vac_session_control" }
 vac_runtime = { version = "0.1.0", path = "../vac_runtime" }
 vac_shell = { version = "0.1.0", path = "../vac_shell" }
 vac_tools.workspace = true
+vil_expr = { version = "0.1.0", path = "../vil_expr" }
 vil_ir.workspace = true
 vil_llm.workspace = true
 vil_metrics.workspace = true

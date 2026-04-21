@@ -33,6 +33,7 @@ pub mod theme;
 pub mod theme_loader;
 pub mod toast;
 pub mod todo_extractor;
+pub mod vil_expr_lint;
 pub mod vil_workbench;
 
 // Re-export commonly used types

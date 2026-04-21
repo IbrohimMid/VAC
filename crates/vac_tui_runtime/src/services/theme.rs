@@ -73,6 +73,10 @@ pub enum StyleKey {
     ScoreGood,
     ScoreOk,
     ScoreBad,
+    // vil-expr live linter (PR-T12)
+    ValidationError,
+    ValidationWarning,
+    ValidationOk,
 }
 
 // ── ThemePreset ───────────────────────────────────────────────────────────────
@@ -198,6 +202,9 @@ fn dark(key: StyleKey) -> Style {
         StyleKey::ScoreGood => Style::default().fg(Color::Green),
         StyleKey::ScoreOk => Style::default().fg(Color::Yellow),
         StyleKey::ScoreBad => Style::default().fg(Color::Red),
+        StyleKey::ValidationError => Style::default().fg(Color::Red).add_modifier(Modifier::UNDERLINED),
+        StyleKey::ValidationWarning => Style::default().fg(Color::Yellow),
+        StyleKey::ValidationOk => Style::default().fg(Color::Green),
     }
 }
 
@@ -271,6 +278,9 @@ fn light(key: StyleKey) -> Style {
         StyleKey::ScoreGood => Style::default().fg(Color::Green),
         StyleKey::ScoreOk => Style::default().fg(Color::Yellow),
         StyleKey::ScoreBad => Style::default().fg(Color::Red),
+        StyleKey::ValidationError => Style::default().fg(Color::Red).add_modifier(Modifier::UNDERLINED),
+        StyleKey::ValidationWarning => Style::default().fg(Color::Yellow),
+        StyleKey::ValidationOk => Style::default().fg(Color::Green),
     }
 }
 
@@ -354,6 +364,15 @@ fn high_contrast(key: StyleKey) -> Style {
         StyleKey::ScoreGood => Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
         StyleKey::ScoreOk => Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
         StyleKey::ScoreBad => Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+        StyleKey::ValidationError => Style::default()
+            .fg(Color::Red)
+            .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
+        StyleKey::ValidationWarning => Style::default()
+            .fg(Color::Yellow)
+            .add_modifier(Modifier::BOLD),
+        StyleKey::ValidationOk => Style::default()
+            .fg(Color::Green)
+            .add_modifier(Modifier::BOLD),
     }
 }
 
@@ -412,6 +431,9 @@ mod tests {
             StyleKey::ScoreGood,
             StyleKey::ScoreOk,
             StyleKey::ScoreBad,
+            StyleKey::ValidationError,
+            StyleKey::ValidationWarning,
+            StyleKey::ValidationOk,
         ];
         for preset in ThemePreset::ALL {
             let theme = Theme::new(*preset);

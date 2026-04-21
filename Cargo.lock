@@ -5553,6 +5553,7 @@ dependencies = [
  "vac_session_control",
  "vac_shell",
  "vac_tools",
+ "vil_expr",
  "vil_ir",
  "vil_llm",
  "vil_metrics",
