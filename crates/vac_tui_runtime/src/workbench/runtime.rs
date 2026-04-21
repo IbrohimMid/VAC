@@ -6,7 +6,7 @@ use crate::app::AppState;
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem, Paragraph, Wrap},
 };
@@ -47,9 +47,7 @@ impl WorkbenchTabView for RuntimeTab {
             .map(|(idx, job)| {
                 let selected = idx == state.runtime.selected_idx;
                 let style = if selected {
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::BOLD)
+                    state.theme.style(StyleKey::Warning).add_modifier(Modifier::BOLD)
                 } else {
                     Style::default()
                 };
@@ -186,16 +184,16 @@ impl WorkbenchTabView for RuntimeTab {
                 Style::default().add_modifier(Modifier::BOLD),
             )]));
             for (name, conn_state) in &state.mcp_server_states {
-                let (status, color) = if conn_state.is_connected() {
-                    ("✅ connected", Color::Green)
+                let (status, status_key) = if conn_state.is_connected() {
+                    ("✅ connected", StyleKey::Success)
                 } else {
-                    ("❌ unreachable", Color::Red)
+                    ("❌ unreachable", StyleKey::Error)
                 };
                 lines.push(Line::from(vec![
                     Span::raw("  "),
                     Span::styled(name.clone(), state.theme.style(StyleKey::Warning)),
                     Span::raw(" "),
-                    Span::styled(status, Style::default().fg(color)),
+                    Span::styled(status, state.theme.style(status_key)),
                 ]));
                 if let vac_tools::mcp::McpConnectionStatus::Unreachable(reason) = &conn_state.status
                 {
@@ -220,12 +218,12 @@ impl WorkbenchTabView for RuntimeTab {
                 Span::raw(projection.root_ids.len().to_string()),
             ]));
             for node in projection.nodes.iter().take(5) {
-                let status_color = match &node.status {
-                    vac_core::engine::TaskNodeStatus::Pending => state.theme.style(StyleKey::Muted).fg.unwrap_or(Color::DarkGray),
-                    vac_core::engine::TaskNodeStatus::Running => state.theme.style(StyleKey::TaskRunning).fg.unwrap_or(Color::Cyan),
-                    vac_core::engine::TaskNodeStatus::Completed => state.theme.style(StyleKey::TaskCompleted).fg.unwrap_or(Color::Green),
-                    vac_core::engine::TaskNodeStatus::Failed(_) => state.theme.style(StyleKey::TaskFailed).fg.unwrap_or(Color::Red),
-                    vac_core::engine::TaskNodeStatus::Blocked => state.theme.style(StyleKey::Warning).fg.unwrap_or(Color::Yellow),
+                let status_style = match &node.status {
+                    vac_core::engine::TaskNodeStatus::Pending => state.theme.style(StyleKey::Muted),
+                    vac_core::engine::TaskNodeStatus::Running => state.theme.style(StyleKey::TaskRunning),
+                    vac_core::engine::TaskNodeStatus::Completed => state.theme.style(StyleKey::TaskCompleted),
+                    vac_core::engine::TaskNodeStatus::Failed(_) => state.theme.style(StyleKey::TaskFailed),
+                    vac_core::engine::TaskNodeStatus::Blocked => state.theme.style(StyleKey::Warning),
                 };
                 let status_label = match &node.status {
                     vac_core::engine::TaskNodeStatus::Pending => "P",
@@ -238,7 +236,7 @@ impl WorkbenchTabView for RuntimeTab {
                 lines.push(Line::from(vec![
                     Span::styled(
                         format!("    [{}] ", status_label),
-                        Style::default().fg(status_color),
+                        status_style,
                     ),
                     Span::raw(node.label.chars().take(24).collect::<String>()),
                     Span::styled(approval.to_string(), state.theme.style(StyleKey::Warning)),
