@@ -34,11 +34,30 @@ pub const DEFAULT_MAX_FILES: usize = 20;
 #[serde(tag = "kind")]
 pub enum RecordedInput {
     Key { code: String, modifiers: u8 },
+    /// Key-release event. Recorded only when the host terminal emits
+    /// `KeyEventKind::Release` (kitty keyboard protocol; most terminals
+    /// never emit this, so real recordings rarely contain it).
+    KeyRelease { code: String, modifiers: u8 },
     MouseDragStart { col: u16, row: u16 },
     MouseDrag { col: u16, row: u16 },
     MouseDragEnd { col: u16, row: u16 },
+    /// Mouse scroll. `delta_lines` is positive for scroll-up and negative
+    /// for scroll-down, matching the sign convention used by
+    /// `crossterm::event::MouseEventKind::ScrollUp`/`ScrollDown`. Horizontal
+    /// scroll is currently folded in as `delta_cols` for completeness.
+    MouseScroll {
+        col: u16,
+        row: u16,
+        delta_lines: i16,
+        #[serde(default)]
+        delta_cols: i16,
+    },
     Resize { cols: u16, rows: u16 },
     Paste { text: String },
+    /// Terminal focus change. `gained=true` when the terminal regains
+    /// focus; `false` when it loses it. Useful for debugging sessions
+    /// where the user clicked away mid-interaction.
+    Focus { gained: bool },
 }
 
 /// One recorded line: a wall-clock timestamp plus the event payload.
@@ -85,6 +104,13 @@ pub struct Recorder {
     current_path: PathBuf,
     file: File,
     bytes_written: u64,
+    /// Pending Resize event held back so that a burst of Resize events
+    /// (user dragging the terminal window) coalesces to the last value.
+    /// Flushed as soon as a non-Resize event arrives or on explicit
+    /// [`Recorder::flush`]. The stored timestamp is the most recent Resize
+    /// ts so the emitted line reflects when the burst settled, not when
+    /// it started.
+    pending_resize: Option<(u16, u16, u128)>,
 }
 
 impl Recorder {
@@ -100,6 +126,7 @@ impl Recorder {
             current_path: path,
             file,
             bytes_written: 0,
+            pending_resize: None,
         })
     }
 
@@ -115,9 +142,42 @@ impl Recorder {
 
     /// Test hook: record with a caller-supplied timestamp for reproducible
     /// round-trip assertions.
+    ///
+    /// Resize bursts are coalesced in-memory: a Resize event is held as
+    /// [`Self::pending_resize`] and replaced by any subsequent Resize; the
+    /// held event is emitted as soon as any non-Resize event arrives, on
+    /// explicit [`Self::flush`], or when rotation happens. This keeps
+    /// recordings readable during a window-drag (which otherwise produces
+    /// one Resize per row/column delta).
     pub fn record_at(&mut self, event: RecordedInput, ts_ms: u128) -> std::io::Result<()> {
+        if let RecordedInput::Resize { cols, rows } = event {
+            // Coalesce: keep replacing the last Resize until a non-Resize
+            // arrives. Timestamp tracks the latest sample in the burst.
+            self.pending_resize = Some((cols, rows, ts_ms));
+            return Ok(());
+        }
+        // Non-Resize arrived: flush any pending Resize first so ordering
+        // with subsequent events is preserved.
+        self.flush_pending_resize()?;
         let line = RecordedLine { ts_ms, event };
-        let json = serde_json::to_string(&line)
+        self.write_line(&line)
+    }
+
+    /// Write the last buffered Resize, if any. Safe to call when nothing
+    /// is pending.
+    fn flush_pending_resize(&mut self) -> std::io::Result<()> {
+        if let Some((cols, rows, ts)) = self.pending_resize.take() {
+            let line = RecordedLine {
+                ts_ms: ts,
+                event: RecordedInput::Resize { cols, rows },
+            };
+            self.write_line(&line)?;
+        }
+        Ok(())
+    }
+
+    fn write_line(&mut self, line: &RecordedLine) -> std::io::Result<()> {
+        let json = serde_json::to_string(line)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
         let bytes = json.len() as u64 + 1; // trailing newline
         if self.bytes_written + bytes > self.cfg.max_bytes_per_file && self.bytes_written > 0 {
@@ -130,10 +190,25 @@ impl Recorder {
     }
 
     pub fn flush(&mut self) -> std::io::Result<()> {
+        self.flush_pending_resize()?;
         self.file.flush()
     }
 
     fn rotate(&mut self) -> std::io::Result<()> {
+        // Pending Resize belongs in the current file (its ts predates any
+        // events that would land in the new file).
+        if let Some((cols, rows, ts)) = self.pending_resize.take() {
+            let line = RecordedLine {
+                ts_ms: ts,
+                event: RecordedInput::Resize { cols, rows },
+            };
+            // Inline write to avoid recursing through write_line → rotate.
+            let json = serde_json::to_string(&line)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+            self.file.write_all(json.as_bytes())?;
+            self.file.write_all(b"\n")?;
+            self.bytes_written += json.len() as u64 + 1;
+        }
         self.file.flush()?;
         // Allocate a new monotonic filename. Mint a unique suffix by
         // scanning the directory for the highest existing ordinal so
@@ -382,5 +457,74 @@ mod tests {
         std::fs::write(&path, "").unwrap();
         let replayed: Vec<_> = Replay::open(&path).unwrap().collect();
         assert!(replayed.is_empty());
+    }
+
+    #[test]
+    fn consecutive_resizes_coalesce_to_last_value() {
+        // PR-T18 R4: a window-drag emits dozens of Resize events per
+        // second. The recorder must keep only the last one in the burst
+        // so the replay file stays legible.
+        let tmp = TempDir::new().unwrap();
+        let cfg = RecorderConfig::new(tmp.path().join("recordings"));
+        let mut rec = Recorder::open(cfg).unwrap();
+        for (cols, rows, ts) in [(80, 24, 100), (90, 26, 110), (100, 28, 120), (120, 40, 130)] {
+            rec.record_at(RecordedInput::Resize { cols, rows }, ts).unwrap();
+        }
+        let path = rec.current_path().to_path_buf();
+        rec.flush().unwrap();
+        drop(rec);
+
+        let replayed: Vec<RecordedLine> = Replay::open(&path).unwrap().collect();
+        assert_eq!(replayed.len(), 1, "burst must coalesce to one line");
+        assert_eq!(replayed[0].ts_ms, 130, "ts must track the last sample");
+        assert_eq!(
+            replayed[0].event,
+            RecordedInput::Resize { cols: 120, rows: 40 },
+            "value must be the last sample"
+        );
+    }
+
+    #[test]
+    fn non_resize_after_resize_flushes_pending_in_order() {
+        // After a Resize burst, the next non-Resize event must be preceded
+        // by the pending Resize so replay sees the same ordering the user
+        // experienced live.
+        let tmp = TempDir::new().unwrap();
+        let cfg = RecorderConfig::new(tmp.path().join("recordings"));
+        let mut rec = Recorder::open(cfg).unwrap();
+        rec.record_at(RecordedInput::Resize { cols: 80, rows: 24 }, 100).unwrap();
+        rec.record_at(RecordedInput::Resize { cols: 100, rows: 30 }, 150).unwrap();
+        rec.record_at(
+            RecordedInput::Key { code: "Enter".into(), modifiers: 0 },
+            200,
+        )
+        .unwrap();
+        let path = rec.current_path().to_path_buf();
+        rec.flush().unwrap();
+        drop(rec);
+
+        let replayed: Vec<RecordedLine> = Replay::open(&path).unwrap().collect();
+        assert_eq!(replayed.len(), 2);
+        assert_eq!(replayed[0].ts_ms, 150);
+        assert!(matches!(
+            replayed[0].event,
+            RecordedInput::Resize { cols: 100, rows: 30 }
+        ));
+        assert!(matches!(replayed[1].event, RecordedInput::Key { .. }));
+    }
+
+    #[test]
+    fn new_variants_survive_json_round_trip() {
+        // Guard against accidental serde-tag drift on the variants added
+        // in PR-T18 R4.
+        for ev in [
+            RecordedInput::KeyRelease { code: "a".into(), modifiers: 0 },
+            RecordedInput::MouseScroll { col: 3, row: 4, delta_lines: -1, delta_cols: 0 },
+            RecordedInput::Focus { gained: true },
+        ] {
+            let json = serde_json::to_string(&ev).unwrap();
+            let back: RecordedInput = serde_json::from_str(&json).unwrap();
+            assert_eq!(ev, back, "lossy round-trip for {json}");
+        }
     }
 }

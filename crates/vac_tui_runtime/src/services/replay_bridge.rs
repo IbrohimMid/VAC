@@ -28,19 +28,29 @@ use crossterm::event::{
 use crate::services::recorder::RecordedInput;
 
 /// Extract the replayable subset of a crossterm [`Event`]. Returns `None`
-/// for events we intentionally don't record (focus gain/loss, key
-/// release/repeat, mouse moves without drag, etc.).
+/// only for events whose key-code cannot be encoded (for example,
+/// `KeyCode::Media(_)` which has no stable string form) or for mouse
+/// events we don't replay (plain `Moved`, non-left buttons).
+///
+/// PR-T18 R4: focus gain/loss, key release, key repeat, and mouse
+/// scroll are now recorded.
 pub fn crossterm_event_to_recorded_input(event: &Event) -> Option<RecordedInput> {
     match event {
         Event::Key(key) => {
-            if key.kind != KeyEventKind::Press {
-                return None;
-            }
             let code = key_code_to_string(&key.code)?;
-            Some(RecordedInput::Key {
-                code,
-                modifiers: key.modifiers.bits(),
-            })
+            match key.kind {
+                KeyEventKind::Press | KeyEventKind::Repeat => Some(RecordedInput::Key {
+                    code,
+                    modifiers: key.modifiers.bits(),
+                }),
+                // PR-T18 R4: record releases so kitty-keyboard-protocol sessions
+                // can round-trip. Most terminals never emit these, so replay
+                // callers must tolerate sessions that contain zero releases.
+                KeyEventKind::Release => Some(RecordedInput::KeyRelease {
+                    code,
+                    modifiers: key.modifiers.bits(),
+                }),
+            }
         }
         Event::Mouse(MouseEvent {
             kind, column, row, ..
@@ -57,6 +67,30 @@ pub fn crossterm_event_to_recorded_input(event: &Event) -> Option<RecordedInput>
                 col: *column,
                 row: *row,
             }),
+            MouseEventKind::ScrollUp => Some(RecordedInput::MouseScroll {
+                col: *column,
+                row: *row,
+                delta_lines: 1,
+                delta_cols: 0,
+            }),
+            MouseEventKind::ScrollDown => Some(RecordedInput::MouseScroll {
+                col: *column,
+                row: *row,
+                delta_lines: -1,
+                delta_cols: 0,
+            }),
+            MouseEventKind::ScrollLeft => Some(RecordedInput::MouseScroll {
+                col: *column,
+                row: *row,
+                delta_lines: 0,
+                delta_cols: -1,
+            }),
+            MouseEventKind::ScrollRight => Some(RecordedInput::MouseScroll {
+                col: *column,
+                row: *row,
+                delta_lines: 0,
+                delta_cols: 1,
+            }),
             _ => None,
         },
         Event::Resize(cols, rows) => Some(RecordedInput::Resize {
@@ -64,7 +98,8 @@ pub fn crossterm_event_to_recorded_input(event: &Event) -> Option<RecordedInput>
             rows: *rows,
         }),
         Event::Paste(text) => Some(RecordedInput::Paste { text: text.clone() }),
-        _ => None,
+        Event::FocusGained => Some(RecordedInput::Focus { gained: true }),
+        Event::FocusLost => Some(RecordedInput::Focus { gained: false }),
     }
 }
 
@@ -98,6 +133,45 @@ pub fn recorded_input_to_crossterm_event(input: &RecordedInput) -> Option<Event>
         })),
         RecordedInput::Resize { cols, rows } => Some(Event::Resize(*cols, *rows)),
         RecordedInput::Paste { text } => Some(Event::Paste(text.clone())),
+        RecordedInput::KeyRelease { code, modifiers } => {
+            let key_code = string_to_key_code(code)?;
+            let mut key =
+                KeyEvent::new(key_code, KeyModifiers::from_bits_truncate(*modifiers));
+            key.kind = KeyEventKind::Release;
+            Some(Event::Key(key))
+        }
+        RecordedInput::MouseScroll {
+            col,
+            row,
+            delta_lines,
+            delta_cols,
+        } => {
+            // Prefer the axis with the largest magnitude. Ties go to
+            // vertical because terminals emit vertical scroll far more
+            // often.
+            let kind = if delta_lines.unsigned_abs() >= delta_cols.unsigned_abs() {
+                if *delta_lines >= 0 {
+                    MouseEventKind::ScrollUp
+                } else {
+                    MouseEventKind::ScrollDown
+                }
+            } else if *delta_cols >= 0 {
+                MouseEventKind::ScrollRight
+            } else {
+                MouseEventKind::ScrollLeft
+            };
+            Some(Event::Mouse(MouseEvent {
+                kind,
+                column: *col,
+                row: *row,
+                modifiers: KeyModifiers::NONE,
+            }))
+        }
+        RecordedInput::Focus { gained } => Some(if *gained {
+            Event::FocusGained
+        } else {
+            Event::FocusLost
+        }),
     }
 }
 
@@ -200,10 +274,113 @@ mod tests {
     }
 
     #[test]
-    fn key_release_is_dropped_on_record() {
+    fn key_release_round_trips_as_distinct_variant() {
         let mut key = KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE);
         key.kind = KeyEventKind::Release;
-        assert!(crossterm_event_to_recorded_input(&Event::Key(key)).is_none());
+        let recorded = crossterm_event_to_recorded_input(&Event::Key(key)).unwrap();
+        assert_eq!(
+            recorded,
+            RecordedInput::KeyRelease {
+                code: "a".into(),
+                modifiers: 0
+            }
+        );
+        match recorded_input_to_crossterm_event(&recorded).unwrap() {
+            Event::Key(k) => {
+                assert_eq!(k.code, KeyCode::Char('a'));
+                assert_eq!(k.kind, KeyEventKind::Release);
+            }
+            _ => panic!("expected Event::Key(Release)"),
+        }
+    }
+
+    #[test]
+    fn key_repeat_is_recorded_as_press() {
+        // Key-repeat events share the Key variant; we fold them into
+        // RecordedInput::Key rather than inventing a KeyRepeat variant,
+        // because replay doesn't distinguish Press from Repeat for
+        // keymap dispatch.
+        let mut key = KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE);
+        key.kind = KeyEventKind::Repeat;
+        let recorded = crossterm_event_to_recorded_input(&Event::Key(key)).unwrap();
+        assert_eq!(
+            recorded,
+            RecordedInput::Key {
+                code: "x".into(),
+                modifiers: 0
+            }
+        );
+    }
+
+    #[test]
+    fn focus_events_round_trip() {
+        let gained = crossterm_event_to_recorded_input(&Event::FocusGained).unwrap();
+        assert_eq!(gained, RecordedInput::Focus { gained: true });
+        assert!(matches!(
+            recorded_input_to_crossterm_event(&gained),
+            Some(Event::FocusGained)
+        ));
+        let lost = crossterm_event_to_recorded_input(&Event::FocusLost).unwrap();
+        assert_eq!(lost, RecordedInput::Focus { gained: false });
+        assert!(matches!(
+            recorded_input_to_crossterm_event(&lost),
+            Some(Event::FocusLost)
+        ));
+    }
+
+    #[test]
+    fn mouse_scroll_round_trips_on_both_axes() {
+        for (kind, expected) in [
+            (
+                MouseEventKind::ScrollUp,
+                RecordedInput::MouseScroll {
+                    col: 7,
+                    row: 8,
+                    delta_lines: 1,
+                    delta_cols: 0,
+                },
+            ),
+            (
+                MouseEventKind::ScrollDown,
+                RecordedInput::MouseScroll {
+                    col: 7,
+                    row: 8,
+                    delta_lines: -1,
+                    delta_cols: 0,
+                },
+            ),
+            (
+                MouseEventKind::ScrollLeft,
+                RecordedInput::MouseScroll {
+                    col: 7,
+                    row: 8,
+                    delta_lines: 0,
+                    delta_cols: -1,
+                },
+            ),
+            (
+                MouseEventKind::ScrollRight,
+                RecordedInput::MouseScroll {
+                    col: 7,
+                    row: 8,
+                    delta_lines: 0,
+                    delta_cols: 1,
+                },
+            ),
+        ] {
+            let got = crossterm_event_to_recorded_input(&Event::Mouse(MouseEvent {
+                kind,
+                column: 7,
+                row: 8,
+                modifiers: KeyModifiers::NONE,
+            }))
+            .unwrap();
+            assert_eq!(got, expected);
+            match recorded_input_to_crossterm_event(&got).unwrap() {
+                Event::Mouse(m) => assert_eq!(m.kind, kind),
+                _ => panic!("expected Event::Mouse"),
+            }
+        }
     }
 
     #[test]

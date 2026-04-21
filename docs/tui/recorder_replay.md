@@ -101,16 +101,26 @@ echo "Attach /tmp/vac-repro/${latest}.gz to the GitHub issue."
 
 `RecordedInput` only covers events the user produced at the terminal:
 
-| Variant           | Recorded? | Notes                                    |
-|-------------------|-----------|------------------------------------------|
-| `Key`             | ✅        | `code` is the `crossterm::KeyCode` Debug |
-| `MouseDragStart`  | ✅        | column + row in terminal cells           |
-| `MouseDrag`       | ✅        | emitted while a drag is active           |
-| `MouseDragEnd`    | ✅        | one-shot at release                      |
-| `Resize`          | ✅        | terminal dimensions                      |
-| `Paste`           | ✅        | full pasted text                         |
-| Backend events    | ❌        | LLM responses, tool results, session IDs |
-| Wall-clock timers | ❌        | replay is event-driven, not time-driven  |
+| Variant           | Recorded? | Notes                                                                       |
+|-------------------|-----------|-----------------------------------------------------------------------------|
+| `Key`             | ✅        | Press + Repeat fold into this variant; `code` is the short chord-key string |
+| `KeyRelease`      | ✅        | Only emitted by terminals that support kitty keyboard protocol              |
+| `MouseDragStart`  | ✅        | column + row in terminal cells                                              |
+| `MouseDrag`       | ✅        | emitted while a drag is active                                              |
+| `MouseDragEnd`    | ✅        | one-shot at release                                                         |
+| `MouseScroll`     | ✅        | `delta_lines` ±1 per notch; `delta_cols` for horizontal wheels              |
+| `Resize`          | ✅        | terminal dimensions; **consecutive Resizes coalesce** to the last sample    |
+| `Paste`           | ✅        | full pasted text                                                            |
+| `Focus`           | ✅        | `gained=true/false` — useful for debugging “user clicked away” sessions     |
+| Backend events    | ❌        | LLM responses, tool results, session IDs                                    |
+| Wall-clock timers | ❌        | replay is event-driven, not time-driven                                     |
+
+**Resize-burst coalescing (PR-T18 R4).** Dragging the terminal window
+emits dozens of `Resize` events per second. The recorder holds the
+latest `Resize` in memory and flushes it as soon as any non-`Resize`
+event arrives (or on explicit `flush()` / rotation), so recordings stay
+readable. The timestamp reflects the last sample in the burst, not the
+first.
 
 Backend events are intentionally excluded — they are a *function* of the
 recorded inputs given the same build and profile, so including them
