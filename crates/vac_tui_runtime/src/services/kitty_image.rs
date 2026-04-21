@@ -233,6 +233,32 @@ pub fn emit_kitty_inline_image(png_bytes: &[u8]) -> Vec<u8> {
     out
 }
 
+/// R8c: build a single byte buffer that first positions the cursor at
+/// `(col, row)` using an ANSI CSI `CUP` sequence (1-based) and then
+/// appends the full Kitty DCS emission returned by
+/// [`emit_kitty_inline_image`]. Callers write the combined buffer to
+/// stdout *after* `terminal.draw()` finishes so ratatui never sees the
+/// escape bytes; the alt-screen buffer and ratatui's internal diff are
+/// unaffected.
+///
+/// Returns an empty buffer when `png_bytes` is empty (matches the
+/// behaviour of `emit_kitty_inline_image` so the caller can no-op
+/// without special casing).
+///
+/// `col` and `row` are zero-based cell coordinates inside the terminal
+/// viewport — the helper adds 1 internally to conform to CSI CUP.
+pub fn emit_positioned_kitty_image(col: u16, row: u16, png_bytes: &[u8]) -> Vec<u8> {
+    let mut out = Vec::new();
+    if png_bytes.is_empty() {
+        return out;
+    }
+    // CSI CUP: ESC [ row ; col H (1-based).
+    let cursor = format!("\x1b[{};{}H", row.saturating_add(1), col.saturating_add(1));
+    out.extend_from_slice(cursor.as_bytes());
+    out.extend_from_slice(&emit_kitty_inline_image(png_bytes));
+    out
+}
+
 fn centered_label(label: &str, width: usize) -> String {
     // Truncate with an ellipsis if the label is too long for the frame.
     let (text, actual) = if label.chars().count() > width {
@@ -529,6 +555,52 @@ mod tests {
         assert!(headers[0].contains("m=1") && headers[0].contains("f=100"));
         assert_eq!(headers[1], "m=1");
         assert_eq!(headers[2], "m=0");
+    }
+
+    #[test]
+    fn emit_positioned_kitty_image_prefixes_csi_cursor_position_and_dcs() {
+        // Non-empty PNG → output begins with CSI CUP (1-based row;col)
+        // followed by the exact bytes that emit_kitty_inline_image would
+        // produce on its own. Positioned wrapper must not mutate the DCS
+        // payload in any way.
+        let png = [0xDEu8, 0xAD, 0xBE, 0xEF];
+        let positioned = emit_positioned_kitty_image(12, 5, &png);
+        let plain = emit_kitty_inline_image(&png);
+        // CSI CUP for (col=12, row=5) → ESC [ 6 ; 13 H (1-based add).
+        let expected_prefix = b"\x1b[6;13H";
+        assert!(
+            positioned.starts_with(expected_prefix),
+            "positioned emission must start with CSI CUP: got {:?}",
+            &positioned[..expected_prefix.len().min(positioned.len())]
+        );
+        // Remainder after the CSI prefix must match the un-positioned DCS
+        // bytes byte-for-byte.
+        assert_eq!(
+            &positioned[expected_prefix.len()..],
+            plain.as_slice(),
+            "positioned tail must equal emit_kitty_inline_image output"
+        );
+    }
+
+    #[test]
+    fn emit_positioned_kitty_image_empty_input_emits_nothing() {
+        // Empty PNG → no bytes at all (not even the CSI prefix). Prevents
+        // cursor-jumps on terminals where the image failed to load.
+        let out = emit_positioned_kitty_image(0, 0, &[]);
+        assert!(out.is_empty(), "empty PNG must yield empty buffer: {out:?}");
+    }
+
+    #[test]
+    fn emit_positioned_kitty_image_zero_origin_uses_1_1_csi() {
+        // (0,0) is the zero-based cell at the top-left corner. CSI CUP is
+        // 1-based so the emitted sequence must be ESC [ 1 ; 1 H.
+        let png = [0u8, 1, 2, 3];
+        let out = emit_positioned_kitty_image(0, 0, &png);
+        assert!(
+            out.starts_with(b"\x1b[1;1H"),
+            "top-left origin must emit ESC[1;1H: got {:?}",
+            &out[..6.min(out.len())]
+        );
     }
 
     #[test]

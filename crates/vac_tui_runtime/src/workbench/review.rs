@@ -136,7 +136,12 @@ impl WorkbenchTabView for ReviewTab {
         // hook lands; today we intentionally draw the fallback on *both*
         // kitty-supported and unsupported terminals so the UI stays
         // consistent across the feature gate.
-        let image_preview_lines: Option<Vec<Line>> = state
+        // R8b emits an ASCII frame for every kitty-capable or non-capable
+        // terminal. R8c additionally captures the raw PNG bytes so the event
+        // loop can flush a native Kitty DCS sequence on top of the frame
+        // *after* ratatui finishes drawing. We therefore return both the
+        // fallback Lines and (optionally) the PNG bytes from a single read.
+        let image_branch: Option<(Vec<Line>, Option<Vec<u8>>)> = state
             .review
             .selected_path
             .as_ref()
@@ -158,19 +163,31 @@ impl WorkbenchTabView for ReviewTab {
                             "{} ({}x{})",
                             path, preview.width, preview.height
                         );
-                        crate::services::kitty_image::render_ascii_fallback(
-                            inner_w, inner_h, &label,
-                        )
-                        .into_iter()
-                        .map(|s| Line::raw(s))
-                        .collect::<Vec<Line>>()
+                        let lines: Vec<Line> =
+                            crate::services::kitty_image::render_ascii_fallback(
+                                inner_w, inner_h, &label,
+                            )
+                            .into_iter()
+                            .map(|s| Line::raw(s))
+                            .collect();
+                        (lines, Some(preview.bytes))
                     }
-                    Err(e) => vec![Line::from(Span::styled(
-                        format!("Cannot preview image: {e}"),
-                        state.theme.style(StyleKey::Error),
-                    ))],
+                    Err(e) => (
+                        vec![Line::from(Span::styled(
+                            format!("Cannot preview image: {e}"),
+                            state.theme.style(StyleKey::Error),
+                        ))],
+                        None,
+                    ),
                 }
             });
+        let (image_preview_lines, image_preview_bytes): (
+            Option<Vec<Line>>,
+            Option<Vec<u8>>,
+        ) = match image_branch {
+            Some((lines, bytes)) => (Some(lines), bytes),
+            None => (None, None),
+        };
 
         let diff_lines: Vec<Line> = if let Some(lines) = image_preview_lines {
             lines
@@ -215,5 +232,22 @@ impl WorkbenchTabView for ReviewTab {
             .block(Block::default().borders(Borders::ALL).title(diff_title))
             .wrap(Wrap { trim: false });
         f.render_widget(diff, body[1]);
+
+        // PR-T17 R8c — queue native Kitty graphics emission for this frame
+        // only when the startup probe confirmed support. The stored tuple is
+        // `(target rect, raw PNG bytes)`; the event loop flushes it after
+        // `terminal.draw()` via `emit_positioned_kitty_image`, which both
+        // positions the cursor and encodes the DCS payload. Keeping raw PNG
+        // bytes here (rather than pre-encoded DCS) means the emission path
+        // is exercised end-to-end by kitty_image tests. On non-Kitty
+        // terminals we do not populate the field so no escape bytes ever
+        // leak to stdout.
+        if state.startup.kitty_graphics {
+            if let Some(bytes) = image_preview_bytes {
+                if !bytes.is_empty() {
+                    state.pending_kitty_emission = Some((body[1], bytes));
+                }
+            }
+        }
     }
 }

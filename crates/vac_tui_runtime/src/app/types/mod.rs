@@ -341,6 +341,16 @@ pub struct AppState {
     // VIL issue rows, generic workbench body focus grab). Populated each render;
     // consumed by `handlers::mouse::dispatch_click`.
     pub review_file_row_regions: Vec<(String, ratatui::layout::Rect)>,
+    /// PR-T17 / R8c — pending native Kitty graphics emission for the current
+    /// frame. Populated by surface renderers (e.g. the review-tab image
+    /// preview) when the probed terminal supports Kitty graphics
+    /// (`startup.kitty_graphics == true`). The event loop flushes this
+    /// payload to stdout *after* `terminal.draw()` completes, positioning the
+    /// cursor at the target rect so the image overlays the ratatui
+    /// placeholder. Ratatui itself never sees these bytes. Cleared every
+    /// frame by the flush step so stale sequences cannot survive a tab
+    /// switch.
+    pub pending_kitty_emission: Option<(ratatui::layout::Rect, Vec<u8>)>,
     pub approvals_row_regions: Vec<(usize, ratatui::layout::Rect)>,
     pub vil_issue_row_regions: Vec<(usize, ratatui::layout::Rect)>,
     /// Per-row click regions for the Sessions workbench tab list
@@ -610,6 +620,7 @@ impl AppState {
             workbench_tab_regions: Vec::new(),
             task_tray_row_regions: Vec::new(),
             review_file_row_regions: Vec::new(),
+            pending_kitty_emission: None,
             approvals_row_regions: Vec::new(),
             vil_issue_row_regions: Vec::new(),
             sessions_row_regions: Vec::new(),

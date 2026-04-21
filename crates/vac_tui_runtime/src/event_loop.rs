@@ -348,6 +348,34 @@ pub async fn run_tui(
         // Render — measure wall time and update RenderMetrics
         let render_start = std::time::Instant::now();
         terminal.draw(|f| view(f, &mut state))?;
+
+        // PR-T17 R8c — flush any queued native Kitty graphics emission
+        // after ratatui finishes drawing. The workbench stores the
+        // target rect plus the raw PNG bytes; we `.take()` the field
+        // every frame so a stale payload cannot survive a tab switch
+        // or deselection. `emit_positioned_kitty_image` writes CSI CUP
+        // (1-based) followed by the full base64-chunked DCS sequence,
+        // positioned one cell inside the diff-pane border so the image
+        // overlays the ASCII fallback instead of stomping on the
+        // border glyphs. The whole block is a silent no-op on
+        // non-Kitty terminals because the workbench only populates
+        // the field when `startup.kitty_graphics == true`.
+        if let Some((rect, png_bytes)) = state.pending_kitty_emission.take() {
+            use std::io::Write;
+            let col = rect.x.saturating_add(1);
+            let row = rect.y.saturating_add(1);
+            let payload = crate::services::kitty_image::emit_positioned_kitty_image(
+                col,
+                row,
+                &png_bytes,
+            );
+            if !payload.is_empty() {
+                let mut stdout = std::io::stdout();
+                let _ = stdout.write_all(&payload);
+                let _ = stdout.flush();
+            }
+        }
+
         let render_us = render_start.elapsed().as_micros() as u64;
         state.render_metrics.last_render_time_us = render_us;
         // Exponential moving average (α ≈ 0.1)
