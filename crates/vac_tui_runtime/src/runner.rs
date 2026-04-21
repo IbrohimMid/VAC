@@ -365,6 +365,10 @@ pub async fn run_vac_tui_with_io(
             pending_approvals_count: 0,
             provider_status,
             queue_depth: 0,
+            // PR-T17: this snapshot is built before `run_tui` runs the
+            // Kitty probe, so leave the flag default; `event_loop::run_tui`
+            // overwrites it from its own probe result.
+            kitty_graphics: false,
         };
         let _ = input_tx
             .send(InputEvent::StartupHydrated(startup_snapshot))

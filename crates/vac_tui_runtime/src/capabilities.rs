@@ -64,6 +64,12 @@ pub struct TerminalCapabilities {
     pub bracketed_paste: bool,
     pub image_protocol: ImageProtocol,
     pub is_dark_theme: bool,
+    /// True when a successful runtime probe confirmed Kitty graphics
+    /// protocol support. `image_protocol` is a coarse env-heuristic
+    /// guess; `kitty_graphics` is the authoritative signal for
+    /// rendering decisions. Default false: callers must opt in by
+    /// running a probe and calling [`Self::with_kitty_graphics`].
+    pub kitty_graphics: bool,
 }
 
 /// Supported image display protocols.
@@ -141,11 +147,24 @@ impl TerminalCapabilities {
             bracketed_paste,
             image_protocol,
             is_dark_theme,
+            kitty_graphics: false,
         }
     }
 
     pub fn is_light_mode(&self) -> bool {
         !self.is_dark_theme
+    }
+
+    /// Record the result of a runtime Kitty graphics probe. Returns
+    /// `self` to allow fluent composition at startup:
+    ///
+    /// ```ignore
+    /// let caps = TerminalCapabilities::detect_uncached()
+    ///     .with_kitty_graphics(probe_terminal_for_kitty());
+    /// ```
+    pub fn with_kitty_graphics(mut self, supported: bool) -> Self {
+        self.kitty_graphics = supported;
+        self
     }
 }
 

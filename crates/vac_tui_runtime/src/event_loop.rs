@@ -62,6 +62,17 @@ pub async fn run_tui(
 ) -> io::Result<()> {
     let _guard = TerminalGuard;
     enable_raw_mode()?;
+
+    // PR-T17: probe for Kitty graphics protocol before entering the
+    // alternate screen. Running the probe here means the DCS bytes and
+    // any reply land on the real terminal, not on the alt-screen buffer,
+    // and the probe's short (200ms) deadline runs once per startup. The
+    // helper is TTY-gated internally so non-interactive runs (pipes,
+    // CI) short-circuit to `false` without emitting bytes.
+    let kitty_graphics_supported = crate::services::kitty_image::probe_terminal_kitty_support(
+        crate::services::kitty_image::DEFAULT_PROBE_TIMEOUT,
+    );
+
     execute!(
         std::io::stdout(),
         EnterAlternateScreen,
@@ -87,6 +98,10 @@ pub async fn run_tui(
     // Hydrate startup state
     state.startup.has_vil_engine =
         vac_core::detector::VilProjectProfile::detect(&project_root).is_vil_project;
+    // PR-T17: surface the Kitty probe outcome to renderers/views so image
+    // call sites can dispatch via `render_image_or_fallback` without
+    // re-probing.
+    state.startup.kitty_graphics = kitty_graphics_supported;
     if let Some(rb) = &_rulebook_config {
         if let Some(inc) = &rb.include {
             if !inc.is_empty() {

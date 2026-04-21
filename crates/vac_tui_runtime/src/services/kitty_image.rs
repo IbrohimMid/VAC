@@ -132,6 +132,51 @@ pub fn render_ascii_fallback(width: u16, height: u16, label: &str) -> Vec<String
     lines
 }
 
+/// Probe stdin/stdout for Kitty graphics support, gated on both handles
+/// being TTYs. Returns `false` when either handle is redirected (CI,
+/// piped input, captured tests) — this keeps the probe out of non-
+/// interactive runs where the DCS bytes would leak into stdout.
+///
+/// Called once at TUI startup (after `enable_raw_mode()` and before
+/// `EnterAlternateScreen`) so the raw bytes go to the real terminal,
+/// not the alternate screen buffer. The result is then stored on
+/// [`crate::capabilities::TerminalCapabilities::kitty_graphics`] and
+/// [`crate::app::types::StartupSnapshot::kitty_graphics`] for renderers
+/// to consult.
+pub fn probe_terminal_kitty_support(deadline: Duration) -> bool {
+    use std::io::IsTerminal;
+    let stdin = std::io::stdin();
+    let stdout = std::io::stdout();
+    if !stdin.is_terminal() || !stdout.is_terminal() {
+        return false;
+    }
+    matches!(
+        probe_with_io(stdin.lock(), stdout.lock(), deadline),
+        KittyProbe::Supported
+    )
+}
+
+/// Dispatcher used by every image-rendering call site. When
+/// `kitty_graphics` is true the caller is responsible for emitting the
+/// Kitty protocol sequence itself (not implemented in this module); we
+/// still return the ASCII frame so the caller has a guaranteed visual
+/// fallback to overlay on or return directly.
+///
+/// Returns `(used_kitty, lines)`:
+///   - `used_kitty=true` means the capability is present; callers should
+///     prefer their native Kitty emission and may discard `lines`.
+///   - `used_kitty=false` means the capability is absent; callers must
+///     render the returned ASCII `lines` (already framed and centered).
+pub fn render_image_or_fallback(
+    caps: &crate::capabilities::TerminalCapabilities,
+    width: u16,
+    height: u16,
+    label: &str,
+) -> (bool, Vec<String>) {
+    let lines = render_ascii_fallback(width, height, label);
+    (caps.kitty_graphics, lines)
+}
+
 fn centered_label(label: &str, width: usize) -> String {
     // Truncate with an ellipsis if the label is too long for the frame.
     let (text, actual) = if label.chars().count() > width {
@@ -280,5 +325,76 @@ mod tests {
         for row in &block {
             assert_eq!(row.chars().count(), 4);
         }
+    }
+
+    #[test]
+    fn dispatcher_reports_kitty_flag_and_returns_fallback_frame() {
+        use crate::capabilities::{ImageProtocol, TerminalCapabilities, TerminalId};
+
+        fn base_caps(kitty_graphics: bool) -> TerminalCapabilities {
+            TerminalCapabilities {
+                terminal_id: TerminalId::Unknown,
+                truecolor: false,
+                color_256: false,
+                mouse: false,
+                bracketed_paste: false,
+                image_protocol: ImageProtocol::None,
+                is_dark_theme: true,
+                kitty_graphics,
+            }
+        }
+
+        // Unsupported terminal: dispatcher must report `false` and still
+        // hand back a non-empty ASCII frame sized to the requested rect.
+        let (used_kitty, frame) =
+            render_image_or_fallback(&base_caps(false), 16, 4, "hero.png");
+        assert!(!used_kitty, "kitty_graphics=false must return false");
+        assert_eq!(frame.len(), 4, "frame height must match requested height");
+        assert!(
+            frame.iter().any(|l| l.contains("hero.png")),
+            "fallback must include label: {frame:?}"
+        );
+
+        // Supported terminal: dispatcher reports `true`. We still return a
+        // pre-rendered fallback so the caller has something to draw even
+        // if their Kitty emission path fails downstream.
+        let (used_kitty, frame) =
+            render_image_or_fallback(&base_caps(true), 16, 4, "hero.png");
+        assert!(used_kitty, "kitty_graphics=true must return true");
+        assert_eq!(frame.len(), 4);
+    }
+
+    #[test]
+    fn probe_terminal_kitty_support_is_false_when_not_tty() {
+        // The test harness captures stdout, so `IsTerminal` on stdout is
+        // false here. The probe helper must short-circuit to `false`
+        // without writing the DCS bytes or blocking on stdin.
+        let start = Instant::now();
+        let supported = probe_terminal_kitty_support(Duration::from_millis(200));
+        assert!(
+            !supported,
+            "probe must return false when stdin/stdout is not a TTY"
+        );
+        assert!(
+            start.elapsed() < Duration::from_millis(50),
+            "non-TTY probe must short-circuit before hitting the deadline: took {:?}",
+            start.elapsed()
+        );
+    }
+
+    #[test]
+    fn with_kitty_graphics_flips_field_without_touching_others() {
+        use crate::capabilities::TerminalCapabilities;
+        let detected = TerminalCapabilities::detect_uncached();
+        assert!(
+            !detected.kitty_graphics,
+            "detect_uncached must default kitty_graphics to false"
+        );
+        let flipped = detected.clone().with_kitty_graphics(true);
+        assert!(flipped.kitty_graphics);
+        // Other fields remain identical.
+        assert_eq!(flipped.terminal_id, detected.terminal_id);
+        assert_eq!(flipped.truecolor, detected.truecolor);
+        assert_eq!(flipped.image_protocol, detected.image_protocol);
     }
 }

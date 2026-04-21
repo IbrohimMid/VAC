@@ -124,6 +124,11 @@ pub struct StartupSnapshot {
     pub pending_approvals_count: usize,
     pub provider_status: String,
     pub queue_depth: usize,
+    /// Whether the terminal answered the Kitty graphics capability probe
+    /// positively. Populated at startup by `event_loop::run_tui` before
+    /// the first render. False when the terminal is not a TTY, when the
+    /// probe times out, or when the reply is missing/malformed.
+    pub kitty_graphics: bool,
 }
 
 impl Default for StartupSnapshot {
@@ -143,6 +148,7 @@ impl Default for StartupSnapshot {
             pending_approvals_count: 0,
             provider_status: "initializing".to_string(),
             queue_depth: 0,
+            kitty_graphics: false,
         }
     }
 }
