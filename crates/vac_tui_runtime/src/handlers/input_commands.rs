@@ -216,6 +216,47 @@ fn dispatch_action(
             let _ = output_tx.try_send(OutputEvent::ListAgentTasks);
             let _ = output_tx.try_send(OutputEvent::LoadAgentState);
         }
+        ActionId::Vwfd => {
+            state.workbench_tab = crate::app::WorkbenchTab::Vwfd;
+            state.focus = crate::app::WorkspaceFocus::Workbench;
+            // If the user passed a path after `/vwfd`, try to load it into the
+            // inspector. Failures surface as a toast and in the inspector's
+            // error pane, but the tab still opens.
+            if let Some(raw) = cmd_args {
+                let path_str = raw.trim();
+                if !path_str.is_empty() {
+                    let resolved = std::path::PathBuf::from(path_str);
+                    let resolved = if resolved.is_absolute() {
+                        resolved
+                    } else {
+                        state.project_root.join(&resolved)
+                    };
+                    match std::fs::read_to_string(&resolved) {
+                        Ok(yaml) => match state.vwfd_inspector.load_yaml(&yaml) {
+                            Ok(()) => {
+                                state.vwfd_inspector.source_path =
+                                    Some(resolved.display().to_string());
+                                state.toasts.push(crate::services::Toast::info(format!(
+                                    "Loaded VWFD: {}",
+                                    resolved.display()
+                                )));
+                            }
+                            Err(err) => {
+                                state.toasts.push(crate::services::Toast::error(format!(
+                                    "VWFD parse error: {err}"
+                                )));
+                            }
+                        },
+                        Err(err) => {
+                            state.toasts.push(crate::services::Toast::error(format!(
+                                "Failed to read {}: {err}",
+                                resolved.display()
+                            )));
+                        }
+                    }
+                }
+            }
+        }
         ActionId::Shell => {
             state.add_user_message(trimmed.to_string());
             let shell_cmd = cmd_args.unwrap_or_default().to_string();

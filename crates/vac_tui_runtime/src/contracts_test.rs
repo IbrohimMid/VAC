@@ -201,10 +201,10 @@ mod tests {
     // ── WorkbenchTabView tab label contract ───────────────────────────────────
 
     #[test]
-    fn workbench_tab_labels_count_is_seven() {
+    fn workbench_tab_labels_count_matches_variants() {
         let state = crate::app::AppState::default();
         let labels = crate::workbench::tab_labels(&state);
-        assert_eq!(labels.len(), 7, "expected exactly 7 workbench tab labels");
+        assert_eq!(labels.len(), 8, "expected exactly 8 workbench tab labels");
     }
 
     #[test]

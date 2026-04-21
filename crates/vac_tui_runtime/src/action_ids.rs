@@ -67,6 +67,7 @@ pub enum ActionId {
     Sessions,
     Runtime,
     Agents,
+    Vwfd,
     Shell,
     ShellFocus,
     ShellBackground,

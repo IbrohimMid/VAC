@@ -379,6 +379,18 @@ pub static ACTION_SPECS: &[ActionSpec] = &[
         activity_message: None,
     },
     ActionSpec {
+        id: ActionId::Vwfd,
+        title: "VWFD",
+        description: "Open the VWFD inspector tab (optionally load a .vwfd.yaml path)",
+        scope: ActionContext::Global,
+        keybindings: &[],
+        slash_aliases: &["/vwfd"],
+        palette_visible: true,
+        footer_visible: false,
+        availability: always_available,
+        activity_message: None,
+    },
+    ActionSpec {
         id: ActionId::Shell,
         title: "Shell",
         description: "Execute a shell command",
