@@ -14,7 +14,6 @@ pub use style::MarkdownStyle;
 pub use renderer::MarkdownRenderer;
 
 use ratatui::text::{Line, Span};
-use ratatui::style::Style;
 use regex::Regex;
 
 // Simplified component enum with all the variants you mentioned
@@ -189,7 +188,7 @@ fn render_with_timeout(
     use std::sync::mpsc;
     use std::thread;
     use std::time::Duration;
-    use ratatui::style::Color;
+    use crate::services::theme::{StyleKey, Theme};
 
     let (tx, rx) = mpsc::channel();
     let content = markdown_content.to_string();
@@ -206,14 +205,15 @@ fn render_with_timeout(
         },
         Err(_) => {
             // Timeout - return a simple error message
+            let theme = Theme::default();
             Ok(vec![
                 Line::from(vec![Span::styled(
                     "⚠️ Markdown rendering timed out",
-                    Style::default().fg(Color::Yellow),
+                    theme.style(StyleKey::Warning),
                 )]),
                 Line::from(vec![Span::styled(
                     "Content too complex to render safely",
-                    Style::default().fg(Color::Gray),
+                    theme.style(StyleKey::Muted),
                 )]),
             ])
         }
