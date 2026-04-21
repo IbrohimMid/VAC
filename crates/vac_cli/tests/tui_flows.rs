@@ -88,32 +88,32 @@ fn operator_surfaces_hide_passthrough_commands_and_match_parity() {
 #[test]
 fn popup_precedence_blocks_lower_priority_open_requests() {
     let mut state = AppState::default();
-    state.show_ask_user_popup = true;
+    state.overlay_manager.push(vac_tui_runtime::overlay::OverlayId::AskUser, state.focus);
 
     let (output_tx, _output_rx) = mpsc::channel(8);
     input_core::handle_input_event(&mut state, &output_tx, InputEvent::ShowProfileSwitcher);
 
-    assert!(state.show_ask_user_popup);
-    assert!(!state.show_profile_switcher);
+    assert!(state.overlay_manager.is_active(vac_tui_runtime::overlay::OverlayId::AskUser));
+    assert!(!state.overlay_manager.is_active(vac_tui_runtime::overlay::OverlayId::ProfileSwitcher));
 }
 
 #[test]
 fn shortcuts_popup_swallows_input_without_touching_editor_state() {
     let mut state = AppState::default();
-    state.show_shortcuts = true;
+    state.overlay_manager.push(vac_tui_runtime::overlay::OverlayId::Shortcuts, state.focus);
     state.input.set_content("seed");
 
     let (output_tx, _output_rx) = mpsc::channel(8);
     input_core::handle_input_event(&mut state, &output_tx, InputEvent::InputChanged('x'));
 
-    assert!(state.show_shortcuts);
+    assert!(state.overlay_manager.is_active(vac_tui_runtime::overlay::OverlayId::Shortcuts));
     assert_eq!(state.input.get_content(), "seed");
 }
 
 #[tokio::test]
 async fn shortcuts_popup_executes_slash_commands_directly() {
     let mut state = AppState::default();
-    state.show_shortcuts = true;
+    state.overlay_manager.push(vac_tui_runtime::overlay::OverlayId::Shortcuts, state.focus);
     state.shortcuts_mode = ShortcutsPopupMode::Commands;
     state.input.set_content("seed");
 
@@ -132,15 +132,15 @@ async fn shortcuts_popup_executes_slash_commands_directly() {
     let (output_tx, _output_rx) = mpsc::channel(8);
     input_core::handle_input_event(&mut state, &output_tx, InputEvent::InputSubmitted);
 
-    assert!(state.show_model_switcher);
-    assert!(!state.show_shortcuts);
+    assert!(state.overlay_manager.is_active(vac_tui_runtime::overlay::OverlayId::ModelSwitcher));
+    assert!(!state.overlay_manager.is_active(vac_tui_runtime::overlay::OverlayId::Shortcuts));
     assert_eq!(state.input.get_content(), "seed");
 }
 
 #[tokio::test]
 async fn shortcuts_popup_can_switch_tabs_without_closing() {
     let mut state = AppState::default();
-    state.show_shortcuts = true;
+    state.overlay_manager.push(vac_tui_runtime::overlay::OverlayId::Shortcuts, state.focus);
     state.shortcuts_mode = ShortcutsPopupMode::Commands;
     state.command_palette_input = "stale filter".to_string();
 
@@ -154,7 +154,7 @@ async fn shortcuts_popup_can_switch_tabs_without_closing() {
     let (output_tx, _output_rx) = mpsc::channel(8);
     input_core::handle_input_event(&mut state, &output_tx, InputEvent::InputSubmitted);
 
-    assert!(state.show_shortcuts);
+    assert!(state.overlay_manager.is_active(vac_tui_runtime::overlay::OverlayId::Shortcuts));
     assert_eq!(state.shortcuts_mode, ShortcutsPopupMode::Sessions);
     assert_eq!(state.shortcuts_scroll, 0);
     assert!(state.command_palette_input.is_empty());
@@ -223,7 +223,7 @@ async fn profile_switcher_request_on_open_and_submit_is_deterministic() {
     input_core::handle_input_event(&mut state, &output_tx, InputEvent::ShowProfileSwitcher);
     {
         let mut ctx = HandlerContext::new(&mut state, &output_tx);
-        assert!(ctx.state.show_profile_switcher);
+        assert!(ctx.state.overlay_manager.is_active(vac_tui_runtime::overlay::OverlayId::ProfileSwitcher));
         let filtered = ctx.state.profile_switcher_filtered();
         assert!(
             filtered.iter().any(|p| p == "migration"),
@@ -237,7 +237,7 @@ async fn profile_switcher_request_on_open_and_submit_is_deterministic() {
         OutputEvent::SwitchProfile(profile) => assert_eq!(profile, "migration"),
         other => panic!("unexpected output event: {other:?}"),
     }
-    assert!(!state.show_profile_switcher);
+    assert!(!state.overlay_manager.is_active(vac_tui_runtime::overlay::OverlayId::ProfileSwitcher));
 }
 
 #[tokio::test]
@@ -273,7 +273,7 @@ severity = "warn"
     input_core::handle_input_event(&mut state, &output_tx, InputEvent::ShowRulebookSwitcher);
     {
         let mut ctx = HandlerContext::new(&mut state, &output_tx);
-        assert!(ctx.state.show_rulebook_switcher);
+        assert!(ctx.state.overlay_manager.is_active(vac_tui_runtime::overlay::OverlayId::RulebookSwitcher));
         assert_eq!(ctx.state.available_rulebooks.len(), 1);
         assert_eq!(ctx.state.available_rulebooks[0].id, "workspace");
         assert_eq!(ctx.state.rulebook_switcher_selected, 0);
@@ -286,7 +286,7 @@ severity = "warn"
         }
         other => panic!("unexpected output event: {other:?}"),
     }
-    assert!(!state.show_rulebook_switcher);
+    assert!(!state.overlay_manager.is_active(vac_tui_runtime::overlay::OverlayId::RulebookSwitcher));
 }
 
 #[tokio::test]

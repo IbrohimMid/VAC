@@ -188,7 +188,7 @@ mod tests {
     #[test]
     fn short_collapses_whitespace_and_truncates() {
         let long = "a ".repeat(200);
-        let short = crate::app::shorten(&long);
+        let short = crate::app::runtime::shorten(&long);
         assert!(short.len() <= 160);
     }
 
