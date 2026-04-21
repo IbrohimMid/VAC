@@ -17,9 +17,22 @@ cargo check --tests           # include test targets
 cargo clippy -p <crate>       # lint; reuses check cache
 ```
 
-Only run `cargo build` when you actually need a binary to execute. Only run
-`cargo test` when you need to verify runtime behavior of specific tests —
-prefer `cargo test -p <crate> <test_name>` over running the whole suite.
+Only run `cargo build` when you actually need a binary to execute.
+
+### NEVER use `cargo test` — use `cargo nextest run`
+
+**`cargo test` is BLOCKED by a PreToolUse hook.** It will be rejected
+automatically. Always use `cargo nextest run` instead — it runs each test
+in its own process with full parallelism and is ~3x faster.
+
+```bash
+cargo nextest run -p vac_tui_runtime          # all tests in one crate
+cargo nextest run -p vac_tui_runtime -E 'test(my_test)'  # single test
+cargo nextest run -p vac_tui_runtime --lib    # lib tests only
+```
+
+The only exception is `cargo test --no-run` (compile-only, no execution),
+which is allowed but `cargo check --tests` is preferred for that purpose.
 
 ### Scope to the crate you touched
 
@@ -27,15 +40,15 @@ The workspace has 15+ crates. Never run workspace-wide builds/tests unless
 you edited something cross-cutting. Examples:
 
 ```bash
-cargo test -p vil_llm --lib
-cargo test -p vac_cli --test integration_events
+cargo nextest run -p vil_llm --lib
+cargo nextest run -p vac_cli --test integration_events
 cargo build -p vac_cli --release   # the binary user runs
 ```
 
 ### Shared build cache
 
-`.cargo/config.toml` points `target-dir` to `~/.cargo-target-shared/...`
-so every agent/worktree shares the same compiled dependency graph.
+`.cargo/config.toml` sets `target-dir` to `target` (repo-local).
+Build cache is shared across incremental rebuilds.
 Do NOT override `target-dir` or pass `--target-dir` — you will re-create
 the 50GB duplication problem.
 
