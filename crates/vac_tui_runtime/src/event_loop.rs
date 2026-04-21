@@ -211,6 +211,15 @@ pub async fn run_tui(
                 }
             });
         }
+
+        // PR-T19 R3: keep the global keymap in sync with
+        // `.vac/keybindings.toml` edits while the TUI is running. The
+        // watcher is tolerant of a missing file — it just polls mtime
+        // and reloads on change.
+        crate::services::keybindings_watcher::spawn_keybindings_watcher(
+            kb_path,
+            input_tx.clone(),
+        );
     }
 
     // Probe MCP servers in background

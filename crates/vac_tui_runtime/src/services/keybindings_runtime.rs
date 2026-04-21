@@ -23,7 +23,7 @@
 //!                        Entries containing '×' are intentionally skipped.)
 
 use std::collections::HashMap;
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock, RwLock};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 
@@ -218,21 +218,56 @@ impl ChordKeymap {
 }
 
 // ---- Global single-instance wiring -----------------------------------------
+//
+// PR-T19 R3: the global keymap is now stored behind an `RwLock<Option<Arc<..>>>`
+// so it can be swapped at runtime when `.vac/keybindings.toml` changes on disk.
+// `install_global_keymap` preserves its first-write-wins semantics for
+// backward compatibility; `reload_global_keymap` is the reload entry point
+// and always overwrites the slot.
 
-static GLOBAL_KEYMAP: OnceLock<ChordKeymap> = OnceLock::new();
+fn global_keymap_slot() -> &'static RwLock<Option<Arc<ChordKeymap>>> {
+    static SLOT: OnceLock<RwLock<Option<Arc<ChordKeymap>>>> = OnceLock::new();
+    SLOT.get_or_init(|| RwLock::new(None))
+}
 
 /// Install the process-wide keymap. Only the first call wins; subsequent
 /// calls are ignored (returns `false`). Intended to be called exactly once
-/// from TUI startup.
+/// from TUI startup. Later updates should use [`reload_global_keymap`].
 pub fn install_global_keymap(keymap: ChordKeymap) -> bool {
-    GLOBAL_KEYMAP.set(keymap).is_ok()
+    match global_keymap_slot().write() {
+        Ok(mut guard) => {
+            if guard.is_some() {
+                false
+            } else {
+                *guard = Some(Arc::new(keymap));
+                true
+            }
+        }
+        Err(_) => false,
+    }
+}
+
+/// Atomically replace the process-wide keymap. Always overwrites the slot,
+/// even if one was previously installed. Used by the `.vac/keybindings.toml`
+/// hot-reload path (PR-T19 R3).
+pub fn reload_global_keymap(keymap: ChordKeymap) {
+    if let Ok(mut guard) = global_keymap_slot().write() {
+        *guard = Some(Arc::new(keymap));
+    }
+}
+
+/// Snapshot the currently installed global keymap, if any. Returned as an
+/// `Arc` so callers can drop the read lock immediately.
+pub fn current_global_keymap() -> Option<Arc<ChordKeymap>> {
+    global_keymap_slot().read().ok()?.clone()
 }
 
 /// Look up an override for the given key event against the installed
 /// global keymap. Returns `None` if no keymap was installed or there is
 /// no override for this chord.
 pub fn lookup_override_global(key: &KeyEvent) -> Option<InputEvent> {
-    GLOBAL_KEYMAP.get()?.lookup(key)
+    let snapshot = current_global_keymap()?;
+    snapshot.lookup(key)
 }
 
 #[cfg(test)]

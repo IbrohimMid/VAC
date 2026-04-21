@@ -17,6 +17,7 @@ pub mod helper_dropdown;
 pub mod isolation_switcher;
 pub mod keybindings_loader;
 pub mod keybindings_runtime;
+pub mod keybindings_watcher;
 pub mod kitty_image;
 pub mod markdown_renderer;
 pub mod message;
