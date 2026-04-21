@@ -90,3 +90,46 @@ ActionSpec {
 - `action_spec_coverage` — every `ActionId` has a row here.
 - `no_keybinding_collisions_per_scope` — asserts rule 1.
 - `slash_aliases_unique` — asserts rule 3.
+
+## Mouse click dispatch surfaces (PR-T16)
+
+`handlers::mouse::dispatch_click` walks a fixed priority cascade and returns
+`true` on the first region it handles. Regions are populated by the view
+render pass; regions left empty are simply skipped. `mouse` tests in
+`handlers/mouse.rs` assert the cascade order and row-region precedence
+over the body fallback.
+
+| Priority | Surface | Populator (field) | On click |
+| --- | --- | --- | --- |
+| 1 | Banner dismiss button | `banner_dismiss_region` | clear active banner |
+| 2 | Banner body chip | `banner_click_regions` | open banner target |
+| 3 | Workbench tab header | `workbench_tab_regions` | switch `workbench_tab` + focus Workbench |
+| 4 | Task tray overlay row | `task_tray_row_regions` | select tray row index |
+| 5 | Side panel header | `side_panel_header_areas` (via `input_core`) | collapse/expand section |
+| 6 | Side panel row | `side_panel_row_areas` (via `input_core`) | invoke row action |
+| 7 | Review file row | `review_file_row_regions` | select path + focus Workbench + tab Review |
+| 8 | Approvals pane row | `approvals_row_regions` | select idx + focus Workbench + tab Approvals |
+| 9 | VIL issue row | `vil_issue_row_regions` | select idx + focus Workbench + tab Vil |
+| 10 | Workbench body fallback | `workbench_body_region` | focus Workbench (no tab switch) |
+
+Row-region hits (7–9) fire BEFORE the body fallback (10), so clicking on a
+row does not get re-interpreted as a generic focus grab.
+
+## Keybinding overrides (PR-T19)
+
+User keybindings live at `.vac/keybindings.toml` and are loaded at startup
+by `services::keybindings_loader`. The merged chord keymap is installed
+via `keybindings_runtime::install_global_keymap` and consulted by
+`lookup_override_global` before the built-in matcher.
+
+Resolution order for any `KeyEvent`:
+
+1. User override (`lookup_override_global`) — returns an `InputEvent` if
+   the chord is bound to an `ActionId`.
+2. Per-scope built-in binding (`ActionSpec.keybindings` within the active
+   `ActionContext`).
+3. Global built-in binding (`ActionSpec` with `scope = G`).
+
+Loader errors (missing action id, unknown chord, per-scope collision) are
+surfaced as warning banners at startup — the user keeps a working default
+keymap rather than a silent half-override.
