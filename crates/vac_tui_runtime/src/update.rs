@@ -44,7 +44,7 @@ pub fn flush_pending_user_messages_if_idle(
         state.queue_metrics.total_merged += merge_count as u64;
     }
 
-    let revert_index = state.pending_revert_index.take();
+    let revert_index = state.message_ui.pending_revert_index.take();
 
     if state.banner.message.is_some() {
         state.banner.message = None;

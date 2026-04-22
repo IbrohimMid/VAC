@@ -10,7 +10,7 @@ use crate::services::textarea::TextArea;
 use crate::types::*;
 
 use super::{
-    ActivityItem, ActivityKind, AppState, ApprovalsState, AskUserState, AtMentionState, BannerState, ChangesetUiState, CommandPaletteState, FileIndexState, FilePickerState, HelperCommand, LoadingStateManager, PinsState, SwitchersState, VilDevState, WorkbenchChromeState,
+    ActivityItem, ActivityKind, AppState, ApprovalsState, AskUserState, AtMentionState, BannerState, ChangesetUiState, CommandPaletteState, FileIndexState, FilePickerState, HelperCommand, LoadingStateManager, MessageUiState, PinsState, SwitchersState, VilDevState, WorkbenchChromeState,
     Message, QueueMetrics, RenderMetrics, ReviewItem, ReviewItemStatus, ReviewState, RuntimeState,
     ShellState, ShortcutsPopupMode, StartupSnapshot, TokenUsage, VilLogEntry, VilState,
     WorkbenchTab, WorkspaceFocus,
@@ -112,17 +112,11 @@ impl AppState {
             context_usage_percent: 0.0,
             billing_info: None,
             auth_display_info: (None, None, None),
-            line_to_message_map: Vec::new(),
-            pending_revert_index: None,
             plan: super::PlanState::default(),
             ask_user: AskUserState::default(),
             selection_state: crate::services::text_selection::SelectionState::default(),
-            per_message_cache: HashMap::new(),
+            message_ui: MessageUiState::default(),
             render_metrics: RenderMetrics::default(),
-            assembled_lines_cache: None,
-            collapsed_message_lines_cache: None,
-            message_area_y: 0,
-            message_area_height: 0,
             input_tx: None,
             overlay_manager: crate::overlay::OverlayManager::new(),
             task_tray_selected: 0,

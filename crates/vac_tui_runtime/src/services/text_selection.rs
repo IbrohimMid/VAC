@@ -12,10 +12,10 @@ use ratatui::text::{Line, Span};
 
 /// Handle mouse drag start - begins text selection in message area
 pub fn handle_drag_start(state: &mut AppState, col: u16, row: u16) {
-    let message_area_height = state.message_area_height as usize;
-    let row_in_message_area = (row as usize).saturating_sub(state.message_area_y as usize);
+    let message_area_height = state.message_ui.message_area_height as usize;
+    let row_in_message_area = (row as usize).saturating_sub(state.message_ui.message_area_y as usize);
 
-    if row < state.message_area_y || row_in_message_area >= message_area_height {
+    if row < state.message_ui.message_area_y || row_in_message_area >= message_area_height {
         state.selection_state = SelectionState::default();
         return;
     }
@@ -38,8 +38,8 @@ pub fn handle_drag(state: &mut AppState, col: u16, row: u16) {
         return;
     }
 
-    let message_area_height = state.message_area_height as usize;
-    let row_in_message_area = (row as usize).saturating_sub(state.message_area_y as usize);
+    let message_area_height = state.message_ui.message_area_height as usize;
+    let row_in_message_area = (row as usize).saturating_sub(state.message_ui.message_area_y as usize);
     let clamped_row = row_in_message_area.min(message_area_height.saturating_sub(2)); // -2 for borders
 
     let absolute_line = state.scroll + clamped_row.saturating_sub(1);
@@ -312,7 +312,7 @@ pub fn extract_selected_text(state: &AppState) -> String {
         return String::new();
     }
 
-    let Some((_, _, cached_lines)) = &state.assembled_lines_cache else {
+    let Some((_, _, cached_lines)) = &state.message_ui.assembled_lines_cache else {
         return String::new();
     };
 
@@ -325,7 +325,7 @@ pub fn extract_selected_text_from_collapsed(state: &AppState) -> String {
         return String::new();
     }
 
-    let Some((_, _, cached_lines)) = &state.collapsed_message_lines_cache else {
+    let Some((_, _, cached_lines)) = &state.message_ui.collapsed_message_lines_cache else {
         return String::new();
     };
 

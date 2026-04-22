@@ -18,6 +18,7 @@ pub mod changeset_ui;
 pub mod command_palette;
 pub mod file_index;
 pub mod file_picker;
+pub mod message_ui;
 pub mod pins;
 pub mod switchers;
 pub mod vil_dev;
@@ -39,6 +40,7 @@ pub use changeset_ui::ChangesetUiState;
 pub use command_palette::CommandPaletteState;
 pub use file_index::FileIndexState;
 pub use file_picker::FilePickerState;
+pub use message_ui::MessageUiState;
 pub use pins::PinsState;
 pub use switchers::SwitchersState;
 pub use vil_dev::VilDevState;
@@ -261,9 +263,6 @@ pub struct AppState {
     // Revert anchors: line_to_message_map is populated during render and
     // consumed by message_at_row. pending_revert_index stages a confirmation
     // step for future two-step revert UX.
-    pub line_to_message_map: Vec<Uuid>,
-    pub pending_revert_index: Option<usize>,
-
     // Plan domain state
     pub plan: PlanState,
 
@@ -272,12 +271,8 @@ pub struct AppState {
 
     // Text Selection
     pub selection_state: crate::services::text_selection::SelectionState,
-    pub per_message_cache: PerMessageCache,
+    pub message_ui: MessageUiState,
     pub render_metrics: RenderMetrics,
-    pub assembled_lines_cache: Option<MessageLinesCache>,
-    pub collapsed_message_lines_cache: Option<MessageLinesCache>,
-    pub message_area_y: u16,
-    pub message_area_height: u16,
 
     pub input_tx: Option<tokio::sync::mpsc::Sender<crate::app::events::InputEvent>>,
 

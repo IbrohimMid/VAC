@@ -11,8 +11,8 @@ use ratatui::{
 };
 
 pub(super) fn render_messages(f: &mut Frame, state: &mut AppState, area: Rect) {
-    state.message_area_y = area.y;
-    state.message_area_height = area.height;
+    state.message_ui.message_area_y = area.y;
+    state.message_ui.message_area_height = area.height;
 
     use crate::app::types::RenderedMessageCache;
     use crate::services::message::render_tool_call_pending;
@@ -26,12 +26,12 @@ pub(super) fn render_messages(f: &mut Frame, state: &mut AppState, area: Rect) {
     let mut misses = 0;
 
     // Prune cache to a max size (e.g. 100) to act as LRU-ish
-    if state.per_message_cache.len() > 200 {
+    if state.message_ui.per_message_cache.len() > 200 {
         // Just clear it if it gets too big for now
-        state.per_message_cache.clear();
+        state.message_ui.per_message_cache.clear();
     }
 
-    state.line_to_message_map.clear();
+    state.message_ui.line_to_message_map.clear();
     for msg in &state.messages {
         use std::collections::hash_map::DefaultHasher;
         use std::hash::{Hash, Hasher};
@@ -41,14 +41,14 @@ pub(super) fn render_messages(f: &mut Frame, state: &mut AppState, area: Rect) {
         msg.role.hash(&mut hasher);
         let content_hash = hasher.finish();
 
-        if let Some(cached) = state.per_message_cache.get(&msg.id) {
+        if let Some(cached) = state.message_ui.per_message_cache.get(&msg.id) {
             if cached.content_hash == content_hash && cached.width == width {
                 hits += 1;
                 let n = cached.rendered_lines.len();
                 lines.extend(cached.rendered_lines.iter().cloned());
                 lines.push(Line::raw(""));
                 for _ in 0..=n {
-                    state.line_to_message_map.push(msg.id);
+                    state.message_ui.line_to_message_map.push(msg.id);
                 }
                 continue;
             }
@@ -69,7 +69,7 @@ pub(super) fn render_messages(f: &mut Frame, state: &mut AppState, area: Rect) {
         }
 
         let n = msg_lines.len();
-        state.per_message_cache.insert(
+        state.message_ui.per_message_cache.insert(
             msg.id,
             RenderedMessageCache {
                 content_hash,
@@ -81,7 +81,7 @@ pub(super) fn render_messages(f: &mut Frame, state: &mut AppState, area: Rect) {
         lines.extend(msg_lines);
         lines.push(Line::raw("")); // spacing between messages
         for _ in 0..=n {
-            state.line_to_message_map.push(msg.id);
+            state.message_ui.line_to_message_map.push(msg.id);
         }
     }
 
@@ -94,7 +94,7 @@ pub(super) fn render_messages(f: &mut Frame, state: &mut AppState, area: Rect) {
     }
 
     // Cache the lines for text selection
-    state.assembled_lines_cache = Some((state.messages.clone(), width, lines.clone()));
+    state.message_ui.assembled_lines_cache = Some((state.messages.clone(), width, lines.clone()));
 
     // Apply text selection highlight
     let highlighted_lines = crate::services::text_selection::apply_selection_highlight(
