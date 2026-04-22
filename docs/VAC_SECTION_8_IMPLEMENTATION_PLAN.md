@@ -108,6 +108,8 @@ Without these, PR-1..PR-4 can still start using placeholder schema (fixture from
 ### PR-3 — `vil_bridge` crate (shim to `vil` binary)
 **Branch:** `feat/vil-bridge-shim` • **Effort:** M (~1 day)
 
+> **Deviasi**: functionality `vil_bridge` di-inline ke `commands/vil.rs` + `resolve_vil_binary_from_config` di `commands/doctor.rs`. Alasan: scope single-caller. Re-extract criterion: caller di luar `vac_cli`. Lihat [ADR-0001](./adr/ADR-0001-vil-bridge-subsumed.md).
+
 **Files (new crate):**
 - `crates/vil_bridge/Cargo.toml`
 - `crates/vil_bridge/src/lib.rs` — `VilBinary { path, version }`
@@ -159,6 +161,8 @@ Without these, PR-1..PR-4 can still start using placeholder schema (fixture from
 
 ### PR-5 — Handler scaffolder per execution mode
 **Branch:** `feat/vil-native-codegen` • **Effort:** L (~2 days)
+
+> **Deviasi**: `templates/` dir tidak dibuat; template strings inline di codegen modules. Alasan: scaffold minimal (< 40 LOC per template). Re-split criterion: template > 50 LOC atau parameterization runtime. Lihat [ADR-0002](./adr/ADR-0002-vwfd-codegen-inline-templates.md).
 
 **Files:**
 - `crates/vil_vwfd/src/codegen/mod.rs` — `HandlerTemplate` trait
