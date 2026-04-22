@@ -518,17 +518,11 @@ pub fn handle_backend_event(
                     state.runtime.jobs.push(job);
                 }
                 RunnerEvent::Stdout(line) => {
-                    state.vil_dev_output.push_back(line);
-                    if state.vil_dev_output.len() > 500 {
-                        state.vil_dev_output.pop_front();
-                    }
+                    state.vil_dev_output.push_line(line);
                 }
                 RunnerEvent::Stderr(line) => {
                     let first_line = line.lines().next().unwrap_or(&line).to_string();
-                    state.vil_dev_output.push_back(format!("[stderr] {line}"));
-                    if state.vil_dev_output.len() > 500 {
-                        state.vil_dev_output.pop_front();
-                    }
+                    state.vil_dev_output.push_line(format!("[stderr] {line}"));
                     state.push_activity(
                         crate::app::ActivityKind::Error,
                         format!("vil dev: {first_line}"),

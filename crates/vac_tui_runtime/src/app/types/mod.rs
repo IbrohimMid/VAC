@@ -208,8 +208,10 @@ pub struct AppState {
     // VIL domain state
     pub vil: VilState,
 
-    // T14: vil dev runner output buffer (ring-capped at 500 lines) + PID
-    pub vil_dev_output: std::collections::VecDeque<String>,
+    // T14: vil dev runner output buffer (ring-capped at 500 lines) + PID.
+    // Backed by vac_signal::SignalBuffer so the same primitive can power
+    // distillation/rewind in future milestones.
+    pub vil_dev_output: vac_signal::SignalBuffer,
     pub vil_dev_pid: Option<u32>,
     pub vil_dev_checkpoints: Vec<(String, String)>,
     /// Job ID of the vil dev task tray entry, set on Started, cleared on Exited/Error.

@@ -5812,6 +5812,7 @@ dependencies = [
  "vac_runtime",
  "vac_session_control",
  "vac_shell",
+ "vac_signal",
  "vac_tools",
  "vil_expr",
  "vil_ir",

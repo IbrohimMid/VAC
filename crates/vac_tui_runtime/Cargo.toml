@@ -41,6 +41,7 @@ uuid.workspace = true
 vac_approvals = { version = "0.1.0", path = "../vac_approvals" }
 vac_changeset = { version = "0.1.0", path = "../vac_changeset" }
 vac_core.workspace = true
+vac_signal.workspace = true
 vac_session_control = { version = "0.1.0", path = "../vac_session_control" }
 vac_runtime = { version = "0.1.0", path = "../vac_runtime" }
 vac_shell = { version = "0.1.0", path = "../vac_shell" }
