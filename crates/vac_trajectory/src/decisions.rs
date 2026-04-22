@@ -92,6 +92,94 @@ fn parse_decision(record: &TraceRecord) -> Result<DecisionRecord> {
     })
 }
 
+/// Outcome of the task a sequence of decisions led to.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct DecisionOutcome {
+    pub task_succeeded: bool,
+    pub duration_ms: u64,
+}
+
+/// Heuristic scoring of a decision sequence against an outcome.
+///
+/// The current heuristic is intentionally simple so it can be refined by
+/// domain experts later. Higher is better.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct DecisionScoreReport {
+    /// Total score, 0..=100.
+    pub score: u32,
+    /// One-line rationale summarising what moved the score.
+    pub rationale: String,
+    /// Per-decision weight, aligned by index with the input records.
+    pub per_decision_weight: Vec<u32>,
+}
+
+/// Score a decision sequence against a task outcome.
+///
+/// Heuristic: start at 50, then
+/// - +30 if task succeeded, -30 if failed
+/// - +1 per decision with rationale (capped at 10)
+/// - +1 per decision with >=1 considered alternative (capped at 10)
+/// - -1 per 10s beyond 60s of duration (capped at -20)
+pub fn score_decisions(
+    records: &[DecisionRecord],
+    outcome: DecisionOutcome,
+) -> DecisionScoreReport {
+    let mut score: i32 = 50;
+    if outcome.task_succeeded {
+        score += 30;
+    } else {
+        score -= 30;
+    }
+
+    let rationale_bonus = records
+        .iter()
+        .filter(|r| r.rationale.as_deref().is_some_and(|s| !s.is_empty()))
+        .count()
+        .min(10) as i32;
+    let alt_bonus = records
+        .iter()
+        .filter(|r| !r.rejected.is_empty())
+        .count()
+        .min(10) as i32;
+    score += rationale_bonus;
+    score += alt_bonus;
+
+    let overage_s = outcome.duration_ms.saturating_sub(60_000) / 1000;
+    let duration_penalty = ((overage_s / 10) as i32).min(20);
+    score -= duration_penalty;
+
+    let score = score.clamp(0, 100) as u32;
+
+    let per_decision_weight = records
+        .iter()
+        .map(|r| {
+            let mut w = 1u32;
+            if r.rationale.as_deref().is_some_and(|s| !s.is_empty()) {
+                w += 1;
+            }
+            if !r.rejected.is_empty() {
+                w += 1;
+            }
+            w
+        })
+        .collect();
+
+    let rationale = format!(
+        "succeeded={} count={} rationale_bonus={} alt_bonus={} duration_penalty={}",
+        outcome.task_succeeded,
+        records.len(),
+        rationale_bonus,
+        alt_bonus,
+        duration_penalty
+    );
+
+    DecisionScoreReport {
+        score,
+        rationale,
+        per_decision_weight,
+    }
+}
+
 /// Read a trace JSON file from disk and return its decision records.
 pub async fn load_decisions_from_file(path: &Path) -> Result<Vec<DecisionRecord>> {
     let content = tokio::fs::read_to_string(path).await?;
@@ -154,6 +242,28 @@ mod tests {
         assert_eq!(stats.with_alternatives, 1);
         assert_eq!(stats.with_rationale, 1);
         assert_eq!(stats.unique_chosen, vec!["a".to_string()]);
+    }
+
+    #[test]
+    fn score_ranges_0_to_100_and_favors_rationales() {
+        let records = vec![DecisionRecord {
+            timestamp: Utc::now(),
+            agent_id: None,
+            chosen: "edit".into(),
+            rejected: vec!["rewrite".into()],
+            rationale: Some("minimal change".into()),
+        }];
+        let ok = score_decisions(
+            &records,
+            DecisionOutcome { task_succeeded: true, duration_ms: 30_000 },
+        );
+        let fail = score_decisions(
+            &records,
+            DecisionOutcome { task_succeeded: false, duration_ms: 30_000 },
+        );
+        assert!(ok.score <= 100);
+        assert!(fail.score < ok.score);
+        assert_eq!(ok.per_decision_weight, vec![3]);
     }
 
     #[test]
