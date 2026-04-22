@@ -114,6 +114,75 @@ pub async fn decisions(
     Ok(())
 }
 
+pub async fn eval(
+    project_root: PathBuf,
+    format: &str,
+    path: Option<PathBuf>,
+    succeeded: bool,
+    duration_ms: u64,
+) -> anyhow::Result<()> {
+    use vac_trajectory::decisions::{
+        DecisionOutcome, DecisionStats, load_decisions_from_file, score_decisions,
+    };
+
+    let trace_path = resolve_trace_path(&project_root, path)?;
+    let records = load_decisions_from_file(&trace_path).await?;
+    let stats = DecisionStats::from_records(&records);
+    let outcome = DecisionOutcome { task_succeeded: succeeded, duration_ms };
+    let report = score_decisions(&records, outcome);
+
+    if format == "json" {
+        return crate::output::print_json(&serde_json::json!({
+            "trace": trace_path,
+            "outcome": outcome,
+            "stats": stats,
+            "score": report,
+        }));
+    }
+
+    println!("Eval: {}", trace_path.display());
+    println!(
+        "  outcome:        succeeded={}, duration_ms={}",
+        succeeded, duration_ms
+    );
+    println!("  decisions:      {} total", stats.total);
+    println!("  score:          {}/100", report.score);
+    println!("  rationale:      {}", report.rationale);
+    Ok(())
+}
+
+fn resolve_trace_path(
+    project_root: &std::path::Path,
+    path: Option<PathBuf>,
+) -> anyhow::Result<PathBuf> {
+    if let Some(p) = path {
+        return Ok(p);
+    }
+    let traces_dir = project_root.join(".vac").join("traces");
+    let mut newest: Option<(std::time::SystemTime, PathBuf)> = None;
+    if let Ok(entries) = std::fs::read_dir(&traces_dir) {
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if p.extension().and_then(|s| s.to_str()) != Some("json") {
+                continue;
+            }
+            if let Ok(meta) = entry.metadata() {
+                if let Ok(modified) = meta.modified() {
+                    if newest
+                        .as_ref()
+                        .is_none_or(|(best, _)| modified > *best)
+                    {
+                        newest = Some((modified, p));
+                    }
+                }
+            }
+        }
+    }
+    newest
+        .map(|(_, p)| p)
+        .context("no trace files found under .vac/traces/")
+}
+
 pub async fn why(
     project_root: PathBuf,
     format: &str,

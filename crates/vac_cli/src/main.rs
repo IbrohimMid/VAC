@@ -163,6 +163,20 @@ enum Commands {
         #[arg(value_name = "TRACE")]
         path: Option<std::path::PathBuf>,
     },
+    /// Score an agent-decision sequence against a task outcome.
+    /// Prints a 0..=100 decision score plus per-decision weights.
+    #[command(next_help_heading = "Trace & Export")]
+    Eval {
+        /// Trace JSON file (defaults to most recent under .vac/traces/).
+        #[arg(value_name = "TRACE")]
+        path: Option<std::path::PathBuf>,
+        /// Whether the task ultimately succeeded.
+        #[arg(long, default_value_t = true)]
+        succeeded: bool,
+        /// Task wall-clock duration in milliseconds.
+        #[arg(long, default_value_t = 0u64)]
+        duration_ms: u64,
+    },
     /// Explain a trajectory by id, label, or file path
     #[command(next_help_heading = "Trace & Export")]
     Explain {
@@ -410,6 +424,14 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Decisions { path } => {
             commands::trajectory::decisions(project_root, &cli.format, path).await?
+        }
+        Commands::Eval {
+            path,
+            succeeded,
+            duration_ms,
+        } => {
+            commands::trajectory::eval(project_root, &cli.format, path, succeeded, duration_ms)
+                .await?
         }
         Commands::Explain { target } => {
             commands::trajectory::explain(project_root, &cli.format, target).await?
