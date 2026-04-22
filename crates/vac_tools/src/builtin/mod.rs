@@ -10,6 +10,8 @@ pub mod grep;
 pub mod knowledge;
 pub mod search;
 pub mod sequential_think;
+pub mod signal_list;
+pub mod signal_tail;
 pub mod skill_runner;
 pub mod task_done;
 pub mod todo;
@@ -36,6 +38,8 @@ pub async fn register_builtin_tools(registry: &Arc<ToolRegistry>) -> Result<(), 
     registry.register(git::GitTool::new()).await?;
     registry.register(cargo::CargoTool::new()).await?;
     registry.register(search::SearchTool::new()).await?;
+    registry.register(signal_tail::SignalTailTool::new()).await?;
+    registry.register(signal_list::SignalListTool::new()).await?;
     registry.register(task_done::TaskDoneTool::new()).await?;
     registry.register(todo::TodoTool::default()).await?;
     registry

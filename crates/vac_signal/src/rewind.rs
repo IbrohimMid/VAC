@@ -62,6 +62,19 @@ impl RewindStore {
         Ok(())
     }
 
+    /// Return all distinct stream ids present in the store, sorted.
+    pub fn list_streams(&self) -> Result<Vec<String>, RewindError> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT DISTINCT stream_id FROM signal_lines ORDER BY stream_id")?;
+        let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
+        let mut out = Vec::new();
+        for r in rows {
+            out.push(r?);
+        }
+        Ok(out)
+    }
+
     pub fn recent(&self, stream_id: &str, limit: i64) -> Result<Vec<SignalLine>, RewindError> {
         let mut stmt = self.conn.prepare(
             "SELECT seq, text FROM signal_lines WHERE stream_id = ? ORDER BY seq DESC LIMIT ?",

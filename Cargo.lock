@@ -6185,6 +6185,7 @@ dependencies = [
  "toml 0.8.23",
  "tracing",
  "uuid",
+ "vac_signal",
  "vil_context",
  "vil_ir",
  "vil_knowledge",
