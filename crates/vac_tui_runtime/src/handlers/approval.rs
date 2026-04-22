@@ -246,4 +246,64 @@ mod tests {
         assert!(select_next(&mut ctx).is_ok());
         assert_eq!(ctx.state.approvals.approval_selected_idx, 0);
     }
+
+    // ── J4 — Approval 1-keypress contract ────────────────────────────
+    //
+    // Invariant (Claude-Code-friction rule): approving the first pending
+    // tool happens in a single `approve_current` call — no confirmation
+    // step, no intermediate modal. Pressing `a` once moves the tool from
+    // `pending_approvals` to `approved_tools`.
+
+    use crate::types::{FunctionCall, ToolCall};
+
+    fn push_pending(ctx: &mut HandlerContext<'_>, id: &str, name: &str) {
+        ctx.state.approvals.pending_approvals.push(ToolCall {
+            id: id.to_string(),
+            r#type: "function".to_string(),
+            function: FunctionCall {
+                name: name.to_string(),
+                arguments: "{}".to_string(),
+            },
+            metadata: None,
+        });
+    }
+
+    #[test]
+    fn contract_approve_current_is_single_step() {
+        let (mut state, tx, _rx) = create_test_context();
+        let mut ctx = HandlerContext::new(&mut state, &tx);
+        push_pending(&mut ctx, "tc-1", "file_read");
+
+        assert_eq!(ctx.state.approvals.pending_approvals.len(), 1);
+        assert_eq!(ctx.state.approvals.approved_tools.len(), 0);
+
+        // ONE call ⇒ fully approved, no intermediate state.
+        assert!(approve_current(&mut ctx).is_ok());
+
+        assert_eq!(ctx.state.approvals.pending_approvals.len(), 0);
+        assert_eq!(ctx.state.approvals.approved_tools.len(), 1);
+        assert_eq!(ctx.state.approvals.approved_tools[0].id, "tc-1");
+    }
+
+    #[test]
+    fn contract_approve_on_empty_queue_is_noop() {
+        let (mut state, tx, _rx) = create_test_context();
+        let mut ctx = HandlerContext::new(&mut state, &tx);
+
+        assert!(approve_current(&mut ctx).is_ok());
+        assert_eq!(ctx.state.approvals.approved_tools.len(), 0);
+    }
+
+    #[test]
+    fn contract_approve_all_clears_queue_in_single_call() {
+        let (mut state, tx, _rx) = create_test_context();
+        let mut ctx = HandlerContext::new(&mut state, &tx);
+        push_pending(&mut ctx, "tc-1", "file_read");
+        push_pending(&mut ctx, "tc-2", "grep");
+        push_pending(&mut ctx, "tc-3", "bash");
+
+        assert!(approve_all(&mut ctx).is_ok());
+        assert_eq!(ctx.state.approvals.pending_approvals.len(), 0);
+        assert_eq!(ctx.state.approvals.approved_tools.len(), 3);
+    }
 }
