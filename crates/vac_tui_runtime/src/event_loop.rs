@@ -360,6 +360,10 @@ pub async fn run_tui(
             crate::update::flush_pending_user_messages_if_idle(&mut state, &tx, &output_tx);
         }
 
+        // Emit distilled-view telemetry for vil_dev output. Runs each
+        // persist tick; surfaces error/warn line counts as tracing events
+        // so operators can see at a glance whether `vil dev` is producing
+        // noise vs signal.
         // Signal-layer rewind persistence (OMNI integration). Runs every
         // `signal_persist_interval`; opens a per-session SQLite DB under
         // `.vac/signal/` and dumps every registered SignalBuffer. Cheap
@@ -367,6 +371,13 @@ pub async fn run_tui(
         if let Some(ref db_path) = signal_rewind_path {
             if last_signal_persist.elapsed() >= signal_persist_interval {
                 let _s = tracing::info_span!("signal_persist").entered();
+                if let Some(view) = state.vil_dev_distilled(20) {
+                    tracing::info!(
+                        key_lines = view.key_lines.len(),
+                        dropped_noise = view.dropped_noise,
+                        "vil_dev distilled summary"
+                    );
+                }
                 match vac_signal::rewind::RewindStore::open(db_path) {
                     Ok(mut store) => {
                         let reg = state.signal_registry();

@@ -438,8 +438,21 @@ impl VacEngine {
             self.privacy_vault.clone(),
         )
         .await?;
-        // Wire agent strategy from config (SwarmConfig.strategy).
+        // Wire agent strategy from config (SwarmConfig.strategy). Emit
+        // an AgentDecision trace record so the selection appears in
+        // `vac decisions` / `vac eval` alongside runtime choices.
         swarm.set_strategy_by_name(&self.config.swarm.strategy);
+        if let Some(ref recorder) = self.trace_recorder {
+            if let Ok(mut rec) = recorder.lock() {
+                rec.record_agent_decision(
+                    None,
+                    swarm.strategy_name(),
+                    &["default", "conservative"],
+                    Some("strategy resolved from SwarmConfig.strategy"),
+                );
+                let _ = rec.flush();
+            }
+        }
 
         // Phase 5: inject VIL project profile + knowledge into swarm
         let profile = crate::detector::VilProjectProfile::detect(&self.project_root);

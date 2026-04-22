@@ -78,6 +78,13 @@ notify = { version = "6" }
 tiktoken-rs = "0.6"
 fastembed = "4.4"
 
+# Local inference (B1) — pure Rust ML framework. Opt-in per-crate via feature gate.
+# Candle is the primary backend per reviewer hard rule #2 (no FFI/C++ toolchain risk).
+candle-core = "0.10"
+candle-nn = "0.10"
+candle-transformers = "0.10"
+tokenizers = "0.20"
+
 # Benchmarking (M3). `harness = false` on individual benches lets criterion
 # supply its own main() so we get stable, statistically-meaningful timings
 # instead of libtest's noisy microbench.
