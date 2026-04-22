@@ -9,6 +9,7 @@ pub mod privacy;
 pub mod registry;
 pub mod resource_limits;
 pub mod router;
+pub mod rust_analysis;
 pub mod sandbox;
 pub mod security;
 pub mod skills;
