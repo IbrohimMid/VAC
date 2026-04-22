@@ -6,8 +6,9 @@ document is the canonical list; if you add a popup, you must add it here.
 ## Lifecycle
 
 - **Open**: call `overlay::open_overlay(state, OverlayId::X)`. This pushes
-  onto the stack and, during the transitional period, also sets the legacy
-  `show_X: bool`. Pushing a duplicate is a no-op (idempotent).
+  onto the stack and, where applicable, syncs the domain-state field the
+  overlay backs (see *Domain-state map* below). Pushing a duplicate is a
+  no-op (idempotent).
 - **Close**: `overlay::close_overlay(state, OverlayId::X)`. Removes from
   the stack (wherever it is); if the stack drains to empty, restores
   `saved_focus`.
@@ -19,8 +20,10 @@ document is the canonical list; if you add a popup, you must add it here.
 
 ## Registered OverlayIds
 
-After Patch 1.1 completes, these are the only overlays that exist. Any
-modal input state that is not in this list is a bug.
+These are the only overlays that exist. Any modal input state that is not
+in this list is a bug. The table below mirrors the `OverlayId` enum in
+`overlay.rs` one-for-one; if you add or remove a variant there, update
+this table in the same commit.
 
 | OverlayId | Trigger | Scope | Esc behaviour |
 | --- | --- | --- | --- |
@@ -39,8 +42,12 @@ modal input state that is not in this list is a bug.
 | MessageAction | message context menu | Conversation | pop |
 | HelperDropdown | `/` typed in Input | Input | pop |
 | AtDropdown | `@` typed in Input | Input | pop |
-| RejectReason *(new in 1.1)* | Reject key in Approvals | Workbench | pop (cancels reject) |
-| ReviewPane *(new in 1.1)* | review tab visible w/ open item | Workbench | pop |
+| RejectReason | Reject key in Approvals | Workbench | pop (cancels reject) |
+| ReviewPane | review tab visible w/ open item | Workbench | pop |
+| TaskTray | background job created / tray toggle | Global | pop |
+| ThemePicker | Ctrl+Shift+T | Global | pop |
+| SessionResume | Ctrl+R | Global | pop |
+| FilePicker | palette/slash / file action | Any | pop |
 
 ## Render order (bottom → top)
 
@@ -55,7 +62,26 @@ from empty → non-empty. It is restored (and cleared) when the stack
 transitions back to empty via `pop` or `pop_all`. Individual overlay
 handlers must not touch `state.focus` directly.
 
-## Migration note
+## Domain-state map
 
-During Phase 1, `set_show_flag` keeps legacy `show_*` booleans in sync.
-These booleans are removed in Phase 5.2.
+Most overlays carry no state beyond `OverlayManager.stack`. A handful
+back a domain field that other subsystems read directly; when the
+overlay opens/closes, `sync_domain_state` in `overlay.rs` keeps that
+field in agreement. If you add a new overlay whose lifecycle mirrors a
+domain bool/struct, extend that match — do **not** plumb a parallel
+`show_*` flag.
+
+| OverlayId | Backing field |
+| --- | --- |
+| PlanReview | `state.plan.review_open` |
+| ShellPopup | `state.shell.session_store.popup_visible` |
+| AtDropdown | `state.at_trigger_active` (+ clears `at_query`/`at_results`/`at_selected_idx` on close) |
+| RejectReason | `state.reject_reason_input` (set `Some(String::new())` on open, `None` on close) |
+| ReviewPane | `state.review.open` |
+
+All other `OverlayId` variants rely exclusively on the stack; their
+handlers read `overlay_manager.is_active(id)` instead of a bool field.
+The legacy `show_*: bool` pattern has been fully removed from
+`crates/vac_tui_runtime/` — a `rg 'show_[a-z]+:\s*bool'` sweep must stay
+at zero hits, which the `action_spec_coverage` test guards indirectly by
+requiring every modal input route through `OverlayManager`.
