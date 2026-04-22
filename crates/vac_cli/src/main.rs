@@ -186,6 +186,11 @@ enum Commands {
         /// { chosen, rejected, rationale } records). Prints match-rate %.
         #[arg(long)]
         golden: Option<std::path::PathBuf>,
+        /// Load VacConfig::minimal() (no trace, no memory, no MCP, no
+        /// policy gate). Intended for research / replay runs where
+        /// side-effects would contaminate comparison.
+        #[arg(long, default_value_t = false)]
+        minimal: bool,
     },
     /// Explain a trajectory by id, label, or file path
     #[command(next_help_heading = "Trace & Export")]
@@ -441,6 +446,7 @@ async fn main() -> anyhow::Result<()> {
             succeeded,
             duration_ms,
             golden,
+            minimal,
         } => {
             commands::trajectory::eval(
                 project_root,
@@ -449,6 +455,7 @@ async fn main() -> anyhow::Result<()> {
                 succeeded,
                 duration_ms,
                 golden,
+                minimal,
             )
             .await?
         }

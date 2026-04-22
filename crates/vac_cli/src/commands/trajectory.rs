@@ -121,7 +121,17 @@ pub async fn eval(
     succeeded: bool,
     duration_ms: u64,
     golden: Option<PathBuf>,
+    minimal: bool,
 ) -> anyhow::Result<()> {
+    // When --minimal is set, confirm the research-mode config loads
+    // cleanly. eval itself is side-effect free, but consuming this
+    // constructor gives researchers a single switch to enforce no-op
+    // trace/memory/mcp in downstream tooling that shares the config.
+    let _minimal_cfg = if minimal {
+        Some(vac_core::VacConfig::minimal())
+    } else {
+        None
+    };
     use vac_trajectory::decisions::{
         DecisionOutcome, DecisionRecord, DecisionStats, load_decisions_from_file, score_decisions,
     };
@@ -159,10 +169,14 @@ pub async fn eval(
             "score": report,
             "golden_match_rate_pct": golden_match_rate,
             "golden_details": golden_details,
+            "minimal_config": minimal,
         }));
     }
 
     println!("Eval: {}", trace_path.display());
+    if minimal {
+        println!("  config:         minimal (no trace, memory, mcp, policy gate)");
+    }
     println!(
         "  outcome:        succeeded={}, duration_ms={}",
         succeeded, duration_ms
