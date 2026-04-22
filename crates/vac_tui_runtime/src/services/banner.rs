@@ -450,4 +450,53 @@ mod tests {
         assert_eq!(msg.actions.len(), 1);
         assert_eq!(msg.actions[0].command, "/upgrade");
     }
+
+    // ── F2 — Single-visible-banner + queue contract ────────────────────
+    //
+    // Enforces the Claude-Code-friction rule: at most ONE banner rendered
+    // at a time. Pushing multiple banners queues them; dismiss advances.
+
+    #[test]
+    fn contract_queue_deduplicates_by_id() {
+        let mut q = BannerQueue::new();
+        let msg = BannerMessage::persistent("hello", BannerStyle::Info);
+        q.push(msg.clone());
+        q.push(msg.clone());
+        q.push(msg);
+        assert_eq!(q.len(), 1);
+    }
+
+    #[test]
+    fn contract_only_first_banner_is_current() {
+        let mut q = BannerQueue::new();
+        q.push(BannerMessage::persistent("first", BannerStyle::Info));
+        q.push(BannerMessage::persistent("second", BannerStyle::Warning));
+        q.push(BannerMessage::persistent("third", BannerStyle::Error));
+        let current = q.current().expect("at least one").text.clone();
+        assert_eq!(current, "first");
+        assert_eq!(q.len(), 3);
+    }
+
+    #[test]
+    fn contract_dismiss_advances_queue_without_losing_others() {
+        let mut q = BannerQueue::new();
+        q.push(BannerMessage::persistent("a", BannerStyle::Info));
+        q.push(BannerMessage::persistent("b", BannerStyle::Info));
+        q.push(BannerMessage::persistent("c", BannerStyle::Info));
+        q.dismiss_current();
+        let next = q.current().expect("still two").text.clone();
+        assert_eq!(next, "b");
+        q.dismiss_current();
+        assert_eq!(q.current().map(|m| m.text.clone()), Some("c".to_string()));
+    }
+
+    #[test]
+    fn contract_dismissed_banner_cannot_be_re_pushed() {
+        let mut q = BannerQueue::new();
+        let msg = BannerMessage::persistent("don't return", BannerStyle::Info);
+        q.push(msg.clone());
+        q.dismiss_current();
+        q.push(msg);
+        assert!(q.is_empty());
+    }
 }
