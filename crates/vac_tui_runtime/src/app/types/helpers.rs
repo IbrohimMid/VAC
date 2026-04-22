@@ -237,6 +237,7 @@ impl AppState {
             vil_dev_output: VecDeque::new(),
             vil_dev_pid: None,
             vil_dev_checkpoints: Vec::new(),
+            vil_dev_job_id: None,
         }
     }
 

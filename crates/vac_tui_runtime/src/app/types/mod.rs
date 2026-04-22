@@ -212,6 +212,8 @@ pub struct AppState {
     pub vil_dev_output: std::collections::VecDeque<String>,
     pub vil_dev_pid: Option<u32>,
     pub vil_dev_checkpoints: Vec<(String, String)>,
+    /// Job ID of the vil dev task tray entry, set on Started, cleared on Exited/Error.
+    pub vil_dev_job_id: Option<uuid::Uuid>,
 
     // VWFD inspector state (PR-T11). Default is an empty inspector; loaded
     // lazily when the user opens a .vwfd.yaml via the changeset or commands.

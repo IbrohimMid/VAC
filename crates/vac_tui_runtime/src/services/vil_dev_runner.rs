@@ -42,6 +42,9 @@ pub enum RunnerEvent {
         code: Option<i32>,
         signal: Option<i32>,
     },
+    /// Emitted when the runner itself encounters a fatal setup error
+    /// (e.g. spawn failed) rather than a normal process exit.
+    Error(String),
 }
 
 // ── Parser ────────────────────────────────────────────────────────────────

@@ -500,16 +500,22 @@ pub fn handle_backend_event(
         }
         InputEvent::ToolResult(result) => events::on_tool_result(state, result),
         InputEvent::TaskCompleted(result) => events::on_task_completed(state, result),
-        // T14: vil dev runner events → state + activity panel
+        // T14: vil dev runner events → state + activity panel + task tray
         InputEvent::VilDevEvent(runner_event) => {
             use crate::services::vil_dev_runner::RunnerEvent;
+            use vac_runtime::{Job, JobKind, JobStatus};
             match runner_event {
                 RunnerEvent::Started { pid } => {
                     state.vil_dev_pid = Some(pid);
                     state.push_activity(
                         crate::app::ActivityKind::Status,
-                        format!("vil dev started (PID {pid})"),
+                        format!("vil dev: started (PID {pid})"),
                     );
+                    let mut job =
+                        Job::new(JobKind::RunTask { description: "vil dev".to_string() });
+                    job.status = JobStatus::Running;
+                    state.vil_dev_job_id = Some(job.id);
+                    state.runtime.jobs.push(job);
                 }
                 RunnerEvent::Stdout(line) => {
                     state.vil_dev_output.push_back(line);
@@ -518,10 +524,15 @@ pub fn handle_backend_event(
                     }
                 }
                 RunnerEvent::Stderr(line) => {
+                    let first_line = line.lines().next().unwrap_or(&line).to_string();
                     state.vil_dev_output.push_back(format!("[stderr] {line}"));
                     if state.vil_dev_output.len() > 500 {
                         state.vil_dev_output.pop_front();
                     }
+                    state.push_activity(
+                        crate::app::ActivityKind::Error,
+                        format!("vil dev: {first_line}"),
+                    );
                 }
                 RunnerEvent::Checkpoint { session_id, ts } => {
                     state
@@ -534,15 +545,140 @@ pub fn handle_backend_event(
                 }
                 RunnerEvent::Exited { code, signal } => {
                     state.vil_dev_pid = None;
-                    let msg = match (code, signal) {
-                        (Some(c), _) => format!("vil dev exited (code {c})"),
-                        (None, Some(s)) => format!("vil dev killed (signal {s})"),
-                        _ => "vil dev exited".to_string(),
+                    let (msg, is_error) = match (code, signal) {
+                        (Some(0), _) => ("vil dev: exited (code 0)".to_string(), false),
+                        (Some(c), _) => (format!("vil dev: exited (code {c})"), true),
+                        (None, Some(s)) => (format!("vil dev: killed (signal {s})"), true),
+                        _ => ("vil dev: exited".to_string(), false),
                     };
-                    state.push_activity(crate::app::ActivityKind::Status, msg);
+                    let kind = if is_error {
+                        crate::app::ActivityKind::Error
+                    } else {
+                        crate::app::ActivityKind::Status
+                    };
+                    state.push_activity(kind, msg.clone());
+                    if let Some(job_id) = state.vil_dev_job_id.take() {
+                        if let Some(job) =
+                            state.runtime.jobs.iter_mut().find(|j| j.id == job_id)
+                        {
+                            job.status = if is_error {
+                                JobStatus::Failed(msg)
+                            } else {
+                                JobStatus::Completed
+                            };
+                        }
+                    }
+                }
+                RunnerEvent::Error(msg) => {
+                    state.push_activity(
+                        crate::app::ActivityKind::Error,
+                        format!("vil dev: error — {msg}"),
+                    );
+                    if let Some(job_id) = state.vil_dev_job_id.take() {
+                        if let Some(job) =
+                            state.runtime.jobs.iter_mut().find(|j| j.id == job_id)
+                        {
+                            job.status = JobStatus::Failed(msg.clone());
+                        }
+                    }
                 }
             }
         }
         _ => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::{ActivityKind, AppState, InputEvent};
+    use crate::services::vil_dev_runner::RunnerEvent;
+    use tokio::sync::mpsc;
+    use vac_runtime::JobStatus;
+
+    fn make_state_and_tx() -> (AppState, mpsc::Sender<crate::app::OutputEvent>) {
+        let state = AppState::default();
+        let (tx, _rx) = mpsc::channel(64);
+        (state, tx)
+    }
+
+    #[test]
+    fn vil_dev_started_emits_activity_and_task_tray_entry() {
+        let (mut state, tx) = make_state_and_tx();
+        handle_backend_event(&mut state, &tx, InputEvent::VilDevEvent(RunnerEvent::Started { pid: 42 }));
+        assert_eq!(state.vil_dev_pid, Some(42));
+        assert!(state.vil_dev_job_id.is_some(), "task tray job must be created");
+        assert!(
+            state.runtime.jobs.iter().any(|j| matches!(
+                &j.kind,
+                vac_runtime::JobKind::RunTask { description } if description == "vil dev"
+            )),
+            "a vil dev job must appear in runtime.jobs"
+        );
+        assert!(
+            state
+                .activity
+                .iter()
+                .any(|a| a.kind == ActivityKind::Status && a.message.contains("vil dev: started")),
+            "activity log must contain started entry"
+        );
+    }
+
+    #[test]
+    fn vil_dev_exited_marks_task_tray_entry_done() {
+        let (mut state, tx) = make_state_and_tx();
+        handle_backend_event(&mut state, &tx, InputEvent::VilDevEvent(RunnerEvent::Started { pid: 99 }));
+        let job_id = state.vil_dev_job_id.expect("job id must be set after Started");
+        handle_backend_event(
+            &mut state,
+            &tx,
+            InputEvent::VilDevEvent(RunnerEvent::Exited { code: Some(0), signal: None }),
+        );
+        assert!(state.vil_dev_pid.is_none(), "pid must be cleared");
+        assert!(state.vil_dev_job_id.is_none(), "job id must be cleared after exit");
+        let job = state.runtime.jobs.iter().find(|j| j.id == job_id).expect("job must exist");
+        assert_eq!(job.status, JobStatus::Completed, "job status must be Completed");
+    }
+
+    #[test]
+    fn vil_dev_stderr_first_line_pushed_to_activity() {
+        let (mut state, tx) = make_state_and_tx();
+        handle_backend_event(
+            &mut state,
+            &tx,
+            InputEvent::VilDevEvent(RunnerEvent::Stderr("some error".to_string())),
+        );
+        assert!(
+            state
+                .activity
+                .iter()
+                .any(|a| a.kind == ActivityKind::Error && a.message.contains("some error")),
+            "stderr first line must appear as Error activity"
+        );
+    }
+
+    #[test]
+    fn vil_dev_error_pushes_error_activity_and_task_tray_error() {
+        let (mut state, tx) = make_state_and_tx();
+        handle_backend_event(&mut state, &tx, InputEvent::VilDevEvent(RunnerEvent::Started { pid: 7 }));
+        let job_id = state.vil_dev_job_id.expect("job must exist");
+        handle_backend_event(
+            &mut state,
+            &tx,
+            InputEvent::VilDevEvent(RunnerEvent::Error("spawn failed".to_string())),
+        );
+        assert!(state.vil_dev_job_id.is_none(), "job id cleared after Error");
+        let job = state.runtime.jobs.iter().find(|j| j.id == job_id).expect("job must still exist");
+        assert!(
+            matches!(&job.status, JobStatus::Failed(msg) if msg.contains("spawn failed")),
+            "job must be Failed after Error event"
+        );
+        assert!(
+            state
+                .activity
+                .iter()
+                .any(|a| a.kind == ActivityKind::Error && a.message.contains("spawn failed")),
+            "Error event must produce an Error activity entry"
+        );
     }
 }
