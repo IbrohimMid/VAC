@@ -58,6 +58,7 @@ pub async fn run_tui(
     _send_init_prompt_on_start: bool,
     _recent_models: Vec<String>,
     _banner_message: Option<()>,
+    project_context: Option<crate::runner::TuiProjectContext>,
     project_root: std::path::PathBuf,
     io_mode: crate::runner::TuiIoMode,
 ) -> io::Result<()> {
@@ -95,6 +96,18 @@ pub async fn run_tui(
         project_root: project_root.clone(),
     });
     state.auth_display_info = auth_display_info;
+    if let Some(project_context) = project_context {
+        if let Some(title) = project_context.session_title {
+            state.session_title = Some(title);
+        }
+        if !project_context.file_index.is_empty() {
+            state.all_files = project_context.file_index;
+            state.file_search_results = state.all_files.iter().take(50).cloned().collect();
+        }
+        if !project_context.pending_changes.is_empty() {
+            state.modified_files = project_context.pending_changes;
+        }
+    }
 
     // Hydrate startup state
     state.startup.has_vil_engine =

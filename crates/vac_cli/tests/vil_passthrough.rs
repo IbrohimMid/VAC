@@ -526,6 +526,10 @@ fn vil_doctor_reports_vil_binary_and_vwfd_docs() {
         .iter()
         .find(|check| check.get("id") == Some(&Value::String("vil".to_string())))
         .expect("doctor output missing vil check");
+    let context_check = checks
+        .iter()
+        .find(|check| check.get("id") == Some(&Value::String("project_context".to_string())))
+        .expect("doctor output missing project_context check");
 
     assert_eq!(vil_check.get("ok").and_then(Value::as_bool), Some(true));
     assert_eq!(
@@ -542,6 +546,15 @@ fn vil_doctor_reports_vil_binary_and_vwfd_docs() {
             .and_then(Value::as_u64)
             .unwrap_or(0)
             >= 1
+    );
+    assert_eq!(context_check.get("ok").and_then(Value::as_bool), Some(true));
+    assert!(
+        context_check
+            .get("context")
+            .and_then(|ctx| ctx.get("file_index_count"))
+            .and_then(Value::as_u64)
+            .unwrap_or(0)
+            > 0
     );
 }
 

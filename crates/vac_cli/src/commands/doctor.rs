@@ -82,6 +82,10 @@ pub async fn execute(
     all_ok &= res.0;
     results.push(res.1);
 
+    let res = check_project_context(&project_root, strict, fix).await;
+    all_ok &= res.0;
+    results.push(res.1);
+
     let res = check_rulebooks(&project_root, strict, fix);
     // rulebooks check is non-blocking in original, but let's keep all_ok logic
     // actually, let's keep it non-blocking
@@ -612,6 +616,54 @@ fn check_rulebooks(root: &Path, strict: bool, _fix: bool) -> (bool, serde_json::
                 "errors": errs
             }),
         )
+    }
+}
+
+async fn check_project_context(
+    root: &Path,
+    _strict: bool,
+    _fix: bool,
+) -> (bool, serde_json::Value) {
+    match vac_ingest::bootstrap(root).await {
+        Ok(context) => {
+            let session_title = context
+                .session_title
+                .clone()
+                .unwrap_or_else(|| "workspace".to_string());
+            let message = format!(
+                "project context ready: root={}, title={}, files indexed={}, recent trajectories={}, pending changes={}",
+                context.root.display(),
+                session_title,
+                context.file_index.len(),
+                context.recent_trajectories.len(),
+                context.pending_changes.len()
+            );
+
+            (
+                true,
+                serde_json::json!({
+                    "id": "project_context",
+                    "ok": true,
+                    "message": message,
+                    "context": {
+                        "root": context.root.display().to_string(),
+                        "session_title": context.session_title,
+                        "file_index_count": context.file_index.len(),
+                        "recent_trajectories": context.recent_trajectories,
+                        "pending_changes": context.pending_changes,
+                    }
+                }),
+            )
+        }
+        Err(err) => (
+            false,
+            serde_json::json!({
+                "id": "project_context",
+                "ok": false,
+                "message": format!("project context bootstrap failed: {err}"),
+                "fix_message": "Fix: ensure the project root is readable and contains VAC markers (.vac/config.toml, vil.toml, or VWFD docs)"
+            }),
+        ),
     }
 }
 

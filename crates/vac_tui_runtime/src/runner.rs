@@ -12,6 +12,13 @@ use super::{InputEvent, OutputEvent, run_tui};
 /// Shared handle to the active task's update channel for structured approval routing.
 type ActiveUpdateTx = Arc<Mutex<Option<mpsc::UnboundedSender<RuntimeUpdate>>>>;
 
+#[derive(Debug, Clone, Default)]
+pub struct TuiProjectContext {
+    pub session_title: Option<String>,
+    pub file_index: Vec<String>,
+    pub pending_changes: Vec<String>,
+}
+
 mod backend;
 mod bundle_tasks;
 mod message_tasks;
@@ -64,6 +71,15 @@ pub async fn run_vac_tui_with_io(
 
     // Initialize engine (load tools, policies, etc.)
     let warnings = engine.init().await?;
+    let project_context = engine.project_context().map(|context| TuiProjectContext {
+        session_title: context.session_title.clone(),
+        file_index: context
+            .file_index
+            .iter()
+            .map(|path| path.to_string_lossy().to_string())
+            .collect(),
+        pending_changes: context.pending_changes.clone(),
+    });
 
     let approvals = engine.approval_handle();
     let session_id = engine.session_id().await.to_string();
@@ -401,6 +417,7 @@ pub async fn run_vac_tui_with_io(
         false,
         vec![],
         None,
+        project_context,
         project_root,
         io_mode,
     )
