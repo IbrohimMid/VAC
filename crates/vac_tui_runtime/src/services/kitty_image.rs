@@ -291,5 +291,7 @@ fn centered_label(label: &str, width: usize) -> String {
     format!("{}{}{}", " ".repeat(left), text, " ".repeat(right))
 }
 
+pub mod cache;
+
 #[cfg(test)]
 mod tests;
