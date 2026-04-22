@@ -16,7 +16,7 @@ members = [
     "crates/vac_trace",
     "crates/vac_cli",
     "crates/vac_runtime", "crates/vac_approvals", "crates/vac_changeset", "crates/vac_shell", "crates/vac_session_control", "crates/vac_tui_runtime",
-    "crates/vil_vwfd", "crates/vil_expr", "crates/vac_ingest",
+    "crates/vil_vwfd", "crates/vil_expr", "crates/vac_ingest", "crates/vac_trajectory",
 ]
 resolver = "2"
 
@@ -114,6 +114,7 @@ walkdir = "2.5"
 vac_core = { path = "crates/vac_core" }
 vac_tools = { path = "crates/vac_tools" }
 vac_trace = { path = "crates/vac_trace" }
+vac_trajectory = { path = "crates/vac_trajectory" }
 vil_ir = { path = "crates/vil_ir" }
 vil_context = { path = "crates/vil_context" }
 vil_memory = { path = "crates/vil_memory" }

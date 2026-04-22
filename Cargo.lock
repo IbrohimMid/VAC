@@ -5386,6 +5386,7 @@ dependencies = [
  "vac_shell",
  "vac_tools",
  "vac_trace",
+ "vac_trajectory",
  "vac_tui_runtime",
  "vil_ir",
  "vil_llm",
@@ -5448,6 +5449,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tracing",
+ "vac_trajectory",
 ]
 
 [[package]]
@@ -5554,6 +5556,21 @@ dependencies = [
  "tracing",
  "uuid",
  "vil_trust",
+]
+
+[[package]]
+name = "vac_trajectory"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "uuid",
+ "vac_trace",
 ]
 
 [[package]]

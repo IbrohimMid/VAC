@@ -80,6 +80,23 @@ enum Commands {
     },
     /// Show engine status
     Status,
+    /// Observe recent trajectory artifacts
+    Observe {
+        #[arg(long, default_value_t = 8)]
+        limit: usize,
+    },
+    /// Explain a trajectory by id, label, or file path
+    Explain {
+        #[arg(value_name = "TARGET")]
+        target: Option<String>,
+    },
+    /// Explain why a file changed
+    Why {
+        #[arg(value_name = "PATH")]
+        path: PathBuf,
+        #[arg(long, value_name = "TARGET")]
+        trajectory: Option<String>,
+    },
     /// Manage configuration
     Config {
         #[command(subcommand)]
@@ -335,6 +352,15 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Restore { file } => commands::restore::execute(project_root, file).await?,
         Commands::Status => commands::status::execute(project_root, &cli.format).await?,
+        Commands::Observe { limit } => {
+            commands::trajectory::observe(project_root, &cli.format, limit).await?
+        }
+        Commands::Explain { target } => {
+            commands::trajectory::explain(project_root, &cli.format, target).await?
+        }
+        Commands::Why { path, trajectory } => {
+            commands::trajectory::why(project_root, &cli.format, path, trajectory).await?
+        }
         Commands::Config { action } => commands::config::execute(project_root, action).await?,
         Commands::Auth { action } => commands::auth::execute(action).await?,
         Commands::Export {

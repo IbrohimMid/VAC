@@ -61,6 +61,20 @@ fn test_autopilot_status_json_output() {
     );
 }
 
+#[test]
+fn test_trajectory_commands_visible_in_help() {
+    let mut cmd = Command::cargo_bin("vac").unwrap();
+    cmd.arg("--help");
+
+    let assert = cmd.assert().success();
+    let output = assert.get_output();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert!(stdout.contains("observe"), "Missing observe in help output");
+    assert!(stdout.contains("explain"), "Missing explain in help output");
+    assert!(stdout.contains("why"), "Missing why in help output");
+}
+
 // Disable status test because it depends on the local config file parsing
 // which might be invalid in the workspace.
 // #[test]

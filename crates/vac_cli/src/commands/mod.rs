@@ -16,4 +16,5 @@ pub mod rulebook;
 pub mod run;
 pub mod runtime;
 pub mod status;
+pub mod trajectory;
 pub mod vil;
