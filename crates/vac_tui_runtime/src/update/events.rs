@@ -177,8 +177,8 @@ pub fn on_session_restored(
     state.activity_scroll = 0;
     state.toasts.clear();
     crate::overlay::close_overlay(state, crate::overlay::OverlayId::ModelSwitcher);
-    state.model_switcher_filter.clear();
-    state.model_switcher_selected_idx = 0;
+    state.switchers.model_filter.clear();
+    state.switchers.model_selected = 0;
     crate::overlay::close_overlay(state, crate::overlay::OverlayId::FileSearch);
     state.file_search_query.clear();
     state.file_search_selected_idx = 0;

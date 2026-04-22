@@ -15,6 +15,7 @@ pub mod at_mention;
 pub mod billing;
 pub mod changeset_ui;
 pub mod file_picker;
+pub mod switchers;
 pub mod vil_dev;
 pub mod workbench_ui;
 pub mod commands;
@@ -31,6 +32,7 @@ pub use ask_user::AskUserState;
 pub use at_mention::AtMentionState;
 pub use changeset_ui::ChangesetUiState;
 pub use file_picker::FilePickerState;
+pub use switchers::SwitchersState;
 pub use vil_dev::VilDevState;
 pub use workbench_ui::WorkbenchChromeState;
 pub use billing::{
@@ -135,21 +137,8 @@ pub struct AppState {
     pub shortcuts_mode: ShortcutsPopupMode,
     pub shortcuts_scroll: usize,
 
-    // Isolation Switcher
-    pub isolation_switcher_selected: usize,
-    pub isolation_modes: Vec<String>,
-    pub active_isolation_mode: String,
-    pub profile_switcher_selected: usize,
-    pub profile_search_input: String,
-    pub available_profiles: Vec<String>,
-    pub filtered_profiles: Vec<String>,
-    pub active_profile: String,
-
-    pub rulebook_switcher_selected: usize,
-    pub rulebook_search_input: String,
-    pub available_rulebooks: Vec<crate::types::ListRuleBook>,
-    pub filtered_rulebooks: Vec<crate::types::ListRuleBook>,
-    pub selected_rulebooks: std::collections::HashSet<String>,
+    // Switchers (isolation, profile, rulebook, model)
+    pub switchers: SwitchersState,
 
     // Message Action Popup
     pub message_action_popup_selected: usize,
@@ -171,9 +160,6 @@ pub struct AppState {
 
     pub toasts: Vec<Toast>,
 
-    pub available_models: Vec<Model>,
-    pub model_switcher_filter: String,
-    pub model_switcher_selected_idx: usize,
 
     pub all_files: Vec<String>,
     pub file_search_query: String,

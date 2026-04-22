@@ -430,7 +430,7 @@ fn render_mcp_section(f: &mut Frame, state: &mut AppState, area: Rect, collapsed
                 line_spans.push(Span::styled(trust_badge, state.theme.style(trust_key)));
             }
 
-            let mut active_mode = state.active_isolation_mode.clone();
+            let mut active_mode = state.switchers.active_isolation_mode.clone();
             if active_mode.starts_with("isolated") {
                 active_mode = "isolated".to_string(); // Map isolated variants
             }

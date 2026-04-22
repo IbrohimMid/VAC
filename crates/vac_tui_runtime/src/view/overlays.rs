@@ -22,7 +22,7 @@ pub(super) fn render_model_switcher(f: &mut Frame, state: &mut AppState) {
 
     let input = Paragraph::new(Line::from(vec![
         Span::styled("Filter ", state.theme.style(StyleKey::Muted)),
-        Span::raw(&state.model_switcher_filter),
+        Span::raw(&state.switchers.model_filter),
     ]))
     .block(
         Block::default()
@@ -36,7 +36,7 @@ pub(super) fn render_model_switcher(f: &mut Frame, state: &mut AppState) {
         .iter()
         .enumerate()
         .map(|(i, m)| {
-            let style = if i == state.model_switcher_selected_idx {
+            let style = if i == state.switchers.model_selected {
                 state.theme.style(StyleKey::ListSelected)
             } else {
                 Style::default()

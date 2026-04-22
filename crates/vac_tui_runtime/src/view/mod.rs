@@ -241,7 +241,7 @@ mod tests {
             },
             metadata: None,
         });
-        state.available_models.push(crate::Model {
+        state.switchers.available_models.push(crate::Model {
             id: "kilo-auto/free".to_string(),
             name: "kilo-auto/free".to_string(),
             provider: "anthropic".to_string(),

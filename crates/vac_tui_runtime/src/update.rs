@@ -178,7 +178,7 @@ pub fn handle_backend_event(
             state.current_model = Some(model);
         }
         InputEvent::AvailableModelsLoaded(models) => {
-            state.available_models = models;
+            state.switchers.available_models = models;
         }
         InputEvent::ValidationResult(score, issues) => {
             state.validation_score = Some(score);

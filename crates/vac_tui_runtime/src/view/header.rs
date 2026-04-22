@@ -39,13 +39,13 @@ pub(super) fn render_header(f: &mut Frame, state: &mut AppState, area: Rect) {
 
     spans.push(Span::raw(" | "));
     spans.push(Span::styled(
-        format!("env:{}", state.active_isolation_mode),
+        format!("env:{}", state.switchers.active_isolation_mode),
         state.theme.style(StyleKey::Accent),
     ));
 
     spans.push(Span::raw(" | "));
     spans.push(Span::styled(
-        format!("prof:{}", state.active_profile),
+        format!("prof:{}", state.switchers.active_profile),
         state
             .theme
             .style(StyleKey::Warning)

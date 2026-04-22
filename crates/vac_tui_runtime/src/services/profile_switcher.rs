@@ -19,7 +19,7 @@ pub fn render_profile_switcher(f: &mut Frame, state: &mut AppState) {
 
     let input = Paragraph::new(Line::from(vec![
         Span::styled("Filter ", state.theme.style(StyleKey::Muted)),
-        Span::raw(&state.profile_search_input),
+        Span::raw(&state.switchers.profile_search),
     ]))
     .block(
         Block::default()
@@ -33,12 +33,12 @@ pub fn render_profile_switcher(f: &mut Frame, state: &mut AppState) {
         .iter()
         .enumerate()
         .map(|(i, p)| {
-            let style = if i == state.profile_switcher_selected {
+            let style = if i == state.switchers.profile_selected {
                 state.theme.style(StyleKey::ListSelected)
             } else {
                 Style::default()
             };
-            let prefix = if p == &state.active_profile {
+            let prefix = if p == &state.switchers.active_profile {
                 "* "
             } else {
                 "  "

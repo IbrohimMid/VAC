@@ -13,16 +13,16 @@ pub fn render_isolation_switcher(f: &mut Frame, state: &mut AppState) {
     f.render_widget(Clear, area);
 
     let items: Vec<ListItem> = state
-        .isolation_modes
+        .switchers.isolation_modes
         .iter()
         .enumerate()
         .map(|(i, p)| {
-            let style = if i == state.isolation_switcher_selected {
+            let style = if i == state.switchers.isolation_selected {
                 state.theme.style(StyleKey::ListSelected)
             } else {
                 Style::default()
             };
-            let prefix = if p == &state.active_isolation_mode {
+            let prefix = if p == &state.switchers.active_isolation_mode {
                 "* "
             } else {
                 "  "

@@ -129,10 +129,10 @@ fn render_status_panel(f: &mut Frame, state: &AppState, area: Rect) {
         .active_rulebook
         .clone()
         .or_else(|| {
-            if state.selected_rulebooks.is_empty() {
+            if state.switchers.selected_rulebooks.is_empty() {
                 None
             } else {
-                let mut v = state.selected_rulebooks.iter().cloned().collect::<Vec<_>>();
+                let mut v = state.switchers.selected_rulebooks.iter().cloned().collect::<Vec<_>>();
                 v.sort();
                 Some(v.join(", "))
             }
@@ -140,9 +140,9 @@ fn render_status_panel(f: &mut Frame, state: &AppState, area: Rect) {
         .unwrap_or_else(|| "default".to_string());
 
     // Rulebook Matrix Conflict Detector
-    let has_conflict = state.selected_rulebooks.len() > 1
-        && (state.selected_rulebooks.contains("strict")
-            && state.selected_rulebooks.contains("legacy"));
+    let has_conflict = state.switchers.selected_rulebooks.len() > 1
+        && (state.switchers.selected_rulebooks.contains("strict")
+            && state.switchers.selected_rulebooks.contains("legacy"));
 
     let rulebook_display = if has_conflict {
         format!("{} [! CONFLICT DETECTED]", active_rulebook)

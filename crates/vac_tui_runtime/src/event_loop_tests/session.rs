@@ -24,8 +24,8 @@ async fn session_snapshot_bridge_restores_tui_state() {
         context_window: 200000,
         cost_class: "premium".to_string(),
     });
-    state.active_profile = "strict-vil".to_string();
-    state.selected_rulebooks.insert("security".to_string());
+    state.switchers.active_profile = "strict-vil".to_string();
+    state.switchers.selected_rulebooks.insert("security".to_string());
     state.focus = crate::app::WorkspaceFocus::Workbench;
     state.workbench_tab = crate::app::WorkbenchTab::Runtime;
     state.sessions_selected_idx = 3;
@@ -54,8 +54,8 @@ async fn session_snapshot_bridge_restores_tui_state() {
         restored.startup.active_model.as_deref(),
         Some("claude-sonnet-4")
     );
-    assert_eq!(restored.active_profile, "strict-vil");
-    assert!(restored.selected_rulebooks.contains("security"));
+    assert_eq!(restored.switchers.active_profile, "strict-vil");
+    assert!(restored.switchers.selected_rulebooks.contains("security"));
     assert_eq!(restored.focus, crate::app::WorkspaceFocus::Workbench);
     assert_eq!(restored.workbench_tab, crate::app::WorkbenchTab::Runtime);
     assert_eq!(restored.sessions_selected_idx, 3);
@@ -98,7 +98,7 @@ async fn session_restore_clears_popup_state() {
     crate::overlay::open_overlay(&mut state, crate::overlay::OverlayId::ModelSwitcher);
     crate::overlay::open_overlay(&mut state, crate::overlay::OverlayId::FileSearch);
     crate::overlay::open_overlay(&mut state, crate::overlay::OverlayId::Changeset);
-    state.model_switcher_filter = "test".to_string();
+    state.switchers.model_filter = "test".to_string();
     state.file_search_query = "query".to_string();
 
     // Trigger session restore
@@ -128,7 +128,7 @@ async fn session_restore_clears_popup_state() {
             .overlay_manager
             .is_active(crate::overlay::OverlayId::Changeset)
     );
-    assert!(state.model_switcher_filter.is_empty());
+    assert!(state.switchers.model_filter.is_empty());
     assert!(state.file_search_query.is_empty());
 }
 

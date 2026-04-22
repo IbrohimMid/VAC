@@ -263,7 +263,7 @@ fn dispatch_action(
             if policy_gate_allows_shell_command(state, &shell_cmd) {
                 let _ = output_tx.try_send(OutputEvent::ExecuteCommand(
                     shell_cmd,
-                    state.active_isolation_mode.clone(),
+                    state.switchers.active_isolation_mode.clone(),
                 ));
             }
         }

@@ -89,7 +89,7 @@ fn show_model_switcher_event_routes_via_handler() {
             .overlay_manager
             .is_active(crate::overlay::OverlayId::ModelSwitcher)
     );
-    assert!(state.model_switcher_filter.is_empty());
+    assert!(state.switchers.model_filter.is_empty());
 }
 
 #[test]

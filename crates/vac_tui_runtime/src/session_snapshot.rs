@@ -74,8 +74,8 @@ pub(crate) fn build_session_snapshot(
         .as_ref()
         .map(|model| model.name.clone())
         .or_else(|| state.startup.active_model.clone());
-    snapshot.active_profile = Some(state.active_profile.clone());
-    let mut selected_rulebooks: Vec<String> = state.selected_rulebooks.iter().cloned().collect();
+    snapshot.active_profile = Some(state.switchers.active_profile.clone());
+    let mut selected_rulebooks: Vec<String> = state.switchers.selected_rulebooks.iter().cloned().collect();
     selected_rulebooks.sort();
     snapshot.active_rulebooks = selected_rulebooks;
     snapshot.task_count = state.todos.len();
@@ -97,10 +97,10 @@ pub(crate) fn build_session_snapshot(
         .insert("focus".into(), focus_to_label(state.focus).into());
     snapshot
         .metadata
-        .insert("active_profile".into(), state.active_profile.clone());
+        .insert("active_profile".into(), state.switchers.active_profile.clone());
     snapshot.metadata.insert(
         "active_isolation_mode".into(),
-        state.active_isolation_mode.clone(),
+        state.switchers.active_isolation_mode.clone(),
     );
     snapshot.metadata.insert(
         "provider_status".into(),
@@ -133,7 +133,7 @@ pub(crate) fn apply_session_snapshot(
     state.startup.active_model = snapshot.active_model.clone();
     state.startup.active_profile = snapshot.active_profile.clone();
     state.startup.selected_rulebooks = snapshot.active_rulebooks.clone();
-    state.selected_rulebooks = snapshot.active_rulebooks.iter().cloned().collect();
+    state.switchers.selected_rulebooks = snapshot.active_rulebooks.iter().cloned().collect();
     state.startup.active_rulebook = if snapshot.active_rulebooks.is_empty() {
         None
     } else {
@@ -154,7 +154,7 @@ pub(crate) fn apply_session_snapshot(
         .iter()
         .filter_map(|section| side_panel_section_from_label(section))
         .collect();
-    state.active_profile = snapshot
+    state.switchers.active_profile = snapshot
         .active_profile
         .clone()
         .unwrap_or_else(|| "default".to_string());

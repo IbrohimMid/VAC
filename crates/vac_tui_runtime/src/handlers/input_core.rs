@@ -167,7 +167,7 @@ fn handle_global(
             true
         }
         InputEvent::ShowIsolationSwitcher => {
-            state.isolation_switcher_selected = 0;
+            state.switchers.isolation_selected = 0;
             crate::overlay::open_overlay(state, crate::overlay::OverlayId::IsolationSwitcher);
             true
         }

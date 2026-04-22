@@ -154,12 +154,12 @@ fn handle_profile_switcher(
             let _ = profile_switcher::close(&mut ctx);
         }
         InputEvent::InputChanged(c) => {
-            let mut f = ctx.state.profile_search_input.clone();
+            let mut f = ctx.state.switchers.profile_search.clone();
             f.push(c);
             let _ = profile_switcher::update_filter(&mut ctx, f);
         }
         InputEvent::InputBackspace => {
-            let mut f = ctx.state.profile_search_input.clone();
+            let mut f = ctx.state.switchers.profile_search.clone();
             f.pop();
             let _ = profile_switcher::update_filter(&mut ctx, f);
         }
@@ -190,13 +190,13 @@ fn handle_rulebook_switcher(
             if c == ' ' {
                 let _ = rulebook_switcher::toggle_selected(&mut ctx);
             } else {
-                let mut f = ctx.state.rulebook_search_input.clone();
+                let mut f = ctx.state.switchers.rulebook_search.clone();
                 f.push(c);
                 let _ = rulebook_switcher::update_filter(&mut ctx, f);
             }
         }
         InputEvent::InputBackspace => {
-            let mut f = ctx.state.rulebook_search_input.clone();
+            let mut f = ctx.state.switchers.rulebook_search.clone();
             f.pop();
             let _ = rulebook_switcher::update_filter(&mut ctx, f);
         }

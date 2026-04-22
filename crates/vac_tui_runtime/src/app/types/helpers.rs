@@ -10,7 +10,7 @@ use crate::services::textarea::TextArea;
 use crate::types::*;
 
 use super::{
-    ActivityItem, ActivityKind, AppState, ApprovalsState, AskUserState, AtMentionState, ChangesetUiState, FilePickerState, HelperCommand, LoadingStateManager, VilDevState, WorkbenchChromeState,
+    ActivityItem, ActivityKind, AppState, ApprovalsState, AskUserState, AtMentionState, ChangesetUiState, FilePickerState, HelperCommand, LoadingStateManager, SwitchersState, VilDevState, WorkbenchChromeState,
     Message, QueueMetrics, RenderMetrics, ReviewItem, ReviewItemStatus, ReviewState, RuntimeState,
     ShellState, ShortcutsPopupMode, StartupSnapshot, TokenUsage, VilLogEntry, VilState,
     WorkbenchTab, WorkspaceFocus,
@@ -82,25 +82,7 @@ impl AppState {
 
             shortcuts_mode: ShortcutsPopupMode::default(),
             shortcuts_scroll: 0,
-            isolation_switcher_selected: 0,
-            isolation_modes: vec![
-                "host".to_string(),
-                "isolated".to_string(),
-                "isolated (Rust)".to_string(),
-                "isolated (Node)".to_string(),
-                "isolated (Python)".to_string(),
-            ],
-            active_isolation_mode: "host".to_string(),
-            profile_switcher_selected: 0,
-            profile_search_input: String::new(),
-            available_profiles: Vec::new(),
-            filtered_profiles: Vec::new(),
-            active_profile: "default".to_string(),
-            rulebook_switcher_selected: 0,
-            rulebook_search_input: String::new(),
-            available_rulebooks: Vec::new(),
-            filtered_rulebooks: Vec::new(),
-            selected_rulebooks: std::collections::HashSet::new(),
+            switchers: SwitchersState::default(),
             message_action_popup_selected: 0,
             message_action_target_id: None,
             changeset_store: vac_changeset::ChangesetStore::new(),
@@ -112,9 +94,6 @@ impl AppState {
             activity: Vec::new(),
             activity_scroll: 0,
             toasts: Vec::new(),
-            available_models: Vec::new(),
-            model_switcher_filter: String::new(),
-            model_switcher_selected_idx: 0,
             all_files: Vec::new(),
             file_search_query: String::new(),
             file_search_selected_idx: 0,
@@ -310,9 +289,9 @@ impl AppState {
     }
 
     pub fn model_switcher_filtered(&self) -> Vec<Model> {
-        let q = self.model_switcher_filter.trim().to_lowercase();
+        let q = self.switchers.model_filter.trim().to_lowercase();
         let mut out = self
-            .available_models
+            .switchers.available_models
             .iter()
             .filter(|m| {
                 q.is_empty()
@@ -335,8 +314,8 @@ impl AppState {
     }
 
     pub fn profile_switcher_filtered(&self) -> Vec<String> {
-        let q = self.profile_search_input.trim().to_lowercase();
-        self.available_profiles
+        let q = self.switchers.profile_search.trim().to_lowercase();
+        self.switchers.available_profiles
             .iter()
             .filter(|p| q.is_empty() || p.to_lowercase().contains(&q))
             .cloned()
@@ -344,8 +323,8 @@ impl AppState {
     }
 
     pub fn rulebook_switcher_filtered(&self) -> Vec<crate::types::ListRuleBook> {
-        let q = self.rulebook_search_input.trim().to_lowercase();
-        self.available_rulebooks
+        let q = self.switchers.rulebook_search.trim().to_lowercase();
+        self.switchers.available_rulebooks
             .iter()
             .filter(|r| {
                 q.is_empty()

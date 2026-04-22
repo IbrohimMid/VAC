@@ -19,7 +19,7 @@ pub fn render_rulebook_switcher(f: &mut Frame, state: &mut AppState) {
 
     let input = Paragraph::new(Line::from(vec![
         Span::styled("Filter ", state.theme.style(StyleKey::Muted)),
-        Span::raw(&state.rulebook_search_input),
+        Span::raw(&state.switchers.rulebook_search),
     ]))
     .block(
         Block::default()
@@ -33,12 +33,12 @@ pub fn render_rulebook_switcher(f: &mut Frame, state: &mut AppState) {
         .iter()
         .enumerate()
         .map(|(i, r)| {
-            let style = if i == state.rulebook_switcher_selected {
+            let style = if i == state.switchers.rulebook_selected {
                 state.theme.style(StyleKey::ListSelected)
             } else {
                 Style::default()
             };
-            let prefix = if state.selected_rulebooks.contains(&r.id) {
+            let prefix = if state.switchers.selected_rulebooks.contains(&r.id) {
                 "[x] "
             } else {
                 "[ ] "
