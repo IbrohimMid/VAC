@@ -14,6 +14,7 @@ pub mod lanes;
 pub mod loop_control;
 pub mod orchestrator;
 pub mod patterns;
+pub mod strategy;
 pub mod policy_bridge;
 pub mod protocol;
 pub mod reasoning_fsm;
