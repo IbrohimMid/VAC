@@ -69,6 +69,28 @@ impl<'a> SignalRegistry<'a> {
     pub fn distill(&self, id: &str, tail_size: usize) -> Option<DistilledView> {
         self.get(id).map(|b| b.distilled_default(tail_size))
     }
+
+    /// Persist every registered buffer into a [`RewindStore`][crate::rewind::RewindStore].
+    /// Appends each line with the current wall-clock timestamp. Useful for
+    /// session teardown or a manual "snapshot to disk" operation.
+    ///
+    /// Only builds with the `rewind` feature. Callers hold the lock on the
+    /// store.
+    #[cfg(feature = "rewind")]
+    pub fn persist_to_rewind(
+        &self,
+        store: &mut crate::rewind::RewindStore,
+    ) -> Result<usize, crate::rewind::RewindError> {
+        let now = chrono::Utc::now().timestamp();
+        let mut count = 0;
+        for (id, buf) in &self.entries {
+            for line in buf.iter() {
+                store.append(id, buf.kind(), line, now)?;
+                count += 1;
+            }
+        }
+        Ok(count)
+    }
 }
 
 impl<'a> Default for SignalRegistry<'a> {
@@ -107,6 +129,28 @@ mod tests {
         assert_eq!(summary.len(), 2);
         assert_eq!(summary[0].lines, 2);
         assert_eq!(summary[1].lines, 0);
+    }
+
+    #[cfg(feature = "rewind")]
+    #[test]
+    fn persist_to_rewind_writes_every_line() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db = tmp.path().join("rewind.db");
+        let mut store = crate::rewind::RewindStore::open(&db).unwrap();
+
+        let mut a = SignalBuffer::new(SignalStreamKind::Shell, 10);
+        a.push_line("hello");
+        a.push_line("world");
+        let mut b = SignalBuffer::new(SignalStreamKind::VilDev, 10);
+        b.push_line("Error: boom");
+
+        let mut reg = SignalRegistry::new();
+        reg.register("shell-0", &a).register("vil_dev", &b);
+        let count = reg.persist_to_rewind(&mut store).unwrap();
+        assert_eq!(count, 3);
+
+        let recalled = store.recent("shell-0", 10).unwrap();
+        assert_eq!(recalled.len(), 2);
     }
 
     #[test]
