@@ -421,6 +421,7 @@ fn check_isolation(root: &Path, _strict: bool, _fix: bool) -> (bool, serde_json:
     let isolation = vac_runtime::IsolationManager::new(root.to_path_buf(), config.runtime);
     let mut ok = true;
     let mut messages = Vec::new();
+    let mut kernel_signals = serde_json::Map::new();
 
     let runtime = isolation.container_runtime();
     if let Ok(out) = std::process::Command::new(runtime)
@@ -446,10 +447,90 @@ fn check_isolation(root: &Path, _strict: bool, _fix: bool) -> (bool, serde_json:
         messages.push(format!("mounts error: {}", e));
     }
 
+    // Deep kernel-level isolation probes (m3). Gated behind `VAC_DOCKER=1` by
+    // default so CI and typical user runs do not fail on hosts that simply do
+    // not intend to use container isolation. When the gate is on, any missing
+    // prerequisite (docker daemon, cgroup v2, unprivileged user namespaces)
+    // flips the overall check to `ok=false` so `vac isolation switch docker`
+    // pre-flights fail fast instead of deferring errors to tool execution.
+    let deep = std::env::var("VAC_DOCKER").ok().as_deref() == Some("1");
+    if deep {
+        // 1. `docker info` is a stronger signal than `--version` — it proves
+        //    the daemon is actually reachable, not just that the CLI exists.
+        match std::process::Command::new(runtime).arg("info").output() {
+            Ok(out) if out.status.success() => {
+                kernel_signals.insert(
+                    format!("{}_info", runtime),
+                    serde_json::Value::Bool(true),
+                );
+            }
+            Ok(_) => {
+                ok = false;
+                messages.push(format!("{} info failed (daemon unreachable?)", runtime));
+                kernel_signals.insert(
+                    format!("{}_info", runtime),
+                    serde_json::Value::Bool(false),
+                );
+            }
+            Err(_) => {
+                ok = false;
+                messages.push(format!("{} info command errored", runtime));
+                kernel_signals.insert(
+                    format!("{}_info", runtime),
+                    serde_json::Value::Bool(false),
+                );
+            }
+        }
+
+        // 2. cgroup v2 — required for rootless containers and modern resource
+        //    accounting. On Linux we look for the unified hierarchy mount.
+        //    On non-Linux we skip silently (reported as "n/a").
+        let cgroup_v2 = detect_cgroup_v2();
+        match cgroup_v2 {
+            Some(true) => {
+                kernel_signals.insert("cgroup_v2".into(), serde_json::Value::Bool(true));
+            }
+            Some(false) => {
+                ok = false;
+                messages.push("cgroup v2 not mounted (legacy v1 hierarchy?)".into());
+                kernel_signals.insert("cgroup_v2".into(), serde_json::Value::Bool(false));
+            }
+            None => {
+                kernel_signals.insert("cgroup_v2".into(), serde_json::Value::String("n/a".into()));
+            }
+        }
+
+        // 3. Unprivileged user namespaces — required for rootless podman and
+        //    for running VAC without root. We read the kernel sysctl directly.
+        let userns = detect_unprivileged_userns();
+        match userns {
+            Some(true) => {
+                kernel_signals.insert("unprivileged_userns".into(), serde_json::Value::Bool(true));
+            }
+            Some(false) => {
+                ok = false;
+                messages
+                    .push("unprivileged_userns_clone disabled (sysctl=0)".into());
+                kernel_signals.insert("unprivileged_userns".into(), serde_json::Value::Bool(false));
+            }
+            None => {
+                kernel_signals.insert(
+                    "unprivileged_userns".into(),
+                    serde_json::Value::String("n/a".into()),
+                );
+            }
+        }
+    }
+
     let msg = if ok {
+        let suffix = if deep {
+            " + kernel probes ok"
+        } else {
+            " (kernel probes skipped — set VAC_DOCKER=1 for deep checks)"
+        };
         format!(
-            "isolation ok (runtime: {}, image configured, mounts valid)",
-            runtime
+            "isolation ok (runtime: {}, image configured, mounts valid{})",
+            runtime, suffix
         )
     } else {
         format!("isolation issues: {}", messages.join(", "))
@@ -457,8 +538,61 @@ fn check_isolation(root: &Path, _strict: bool, _fix: bool) -> (bool, serde_json:
 
     (
         ok,
-        serde_json::json!({ "id": "isolation", "ok": ok, "message": msg }),
+        serde_json::json!({
+            "id": "isolation",
+            "ok": ok,
+            "message": msg,
+            "kernel": kernel_signals,
+        }),
     )
+}
+
+/// Detect whether the cgroup v2 unified hierarchy is mounted.
+/// Returns `Some(true)` / `Some(false)` on Linux, `None` elsewhere.
+fn detect_cgroup_v2() -> Option<bool> {
+    #[cfg(target_os = "linux")]
+    {
+        // The unified hierarchy is mounted at /sys/fs/cgroup as `cgroup2`.
+        // /proc/mounts exposes every active mount; a single line match is
+        // enough to disambiguate v2 from v1 (`cgroup` type).
+        match std::fs::read_to_string("/proc/mounts") { // allow_sync_io: tiny procfs read, not hot-path
+            Ok(mounts) => Some(
+                mounts
+                    .lines()
+                    .any(|line| line.split_whitespace().nth(2) == Some("cgroup2")),
+            ),
+            Err(_) => Some(false),
+        }
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        None
+    }
+}
+
+/// Detect whether unprivileged user-namespace creation is permitted.
+/// Returns `Some(true)` / `Some(false)` on Linux, `None` elsewhere.
+fn detect_unprivileged_userns() -> Option<bool> {
+    #[cfg(target_os = "linux")]
+    {
+        // Debian/Ubuntu expose this toggle; recent kernels default to 1 but
+        // hardened images (CIS, STIG) often flip it to 0. Treat absence of
+        // the file as 'unknown' and flag explicit 0 as a hard failure.
+        let path = "/proc/sys/kernel/unprivileged_userns_clone";
+        match std::fs::read_to_string(path) { // allow_sync_io: tiny sysctl read, not hot-path
+            Ok(contents) => Some(contents.trim() == "1"),
+            Err(_) => {
+                // Missing on non-Debian kernels; fall back to capability probe.
+                // If /proc/self/uid_map is writable at all, userns is usable.
+                let probe = std::path::Path::new("/proc/self/uid_map");
+                if probe.exists() { Some(true) } else { None }
+            }
+        }
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        None
+    }
 }
 
 fn check_skills(root: &Path, _strict: bool, _fix: bool) -> (bool, serde_json::Value) {

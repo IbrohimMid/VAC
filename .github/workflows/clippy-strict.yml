@@ -1,0 +1,61 @@
+# Strict clippy gate (n3).
+#
+# Flags every new `unwrap()` / `expect()` in production code so we can harden
+# panic-prone paths incrementally. Runs as *advisory* today (continue-on-error:
+# true) because the tree still carries pre-existing violations (tracked in
+# vil_expr/parser.rs and a handful of other crates). Once each crate has been
+# swept, flip `continue-on-error` to false here OR move the lints into the
+# main `ci.yml` clippy job.
+#
+# Scope: `--lib --bins` only. Tests, benches, examples, and fuzz targets are
+# intentionally excluded — unwrap/expect there is idiomatic and not a hazard.
+
+name: Clippy Strict (advisory)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  clippy-strict:
+    name: clippy --lib --bins -D unwrap_used -D expect_used
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    continue-on-error: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: clippy-strict-$ runner.os -$ hashFiles('**/Cargo.lock') 
+          restore-keys: |
+            clippy-strict-$ runner.os -
+
+      - name: Run clippy (strict, production only)
+        env:
+          RUSTFLAGS: "-Dwarnings"
+        run: |
+          cargo clippy --workspace --lib --bins -- \
+            -D clippy::unwrap_used \
+            -D clippy::expect_used \
+            -A clippy::uninlined_format_args \
+            -A clippy::needless_return
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "::notice::Clippy strict is advisory today. See .github/workflows/clippy-strict.yml for the sweep plan."
