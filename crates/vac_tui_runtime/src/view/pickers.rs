@@ -20,7 +20,7 @@ pub(super) fn render_file_picker(f: &mut Frame, state: &mut AppState) {
         .constraints([Constraint::Length(3), Constraint::Min(1)])
         .split(area);
 
-    let cwd_label = state.file_picker_cwd.to_string_lossy().to_string();
+    let cwd_label = state.file_picker.cwd.to_string_lossy().to_string();
     let title = format!(
         " Files  {}  (Space=select  Tab=enter  Bsp=up  Enter=confirm  Esc) ",
         cwd_label
@@ -29,7 +29,7 @@ pub(super) fn render_file_picker(f: &mut Frame, state: &mut AppState) {
         .title(title.as_str())
         .borders(Borders::ALL)
         .border_style(state.theme.style(StyleKey::OverlayBorder));
-    let search_para = Paragraph::new(state.file_picker_query.as_str())
+    let search_para = Paragraph::new(state.file_picker.query.as_str())
         .block(search_block)
         .style(state.theme.style(StyleKey::InputFg));
     f.render_widget(search_para, chunks[0]);
@@ -46,7 +46,7 @@ pub(super) fn render_file_picker(f: &mut Frame, state: &mut AppState) {
     f.render_widget(list_block, split[0]);
 
     let items: Vec<ListItem> = state
-        .file_picker_results
+        .file_picker.results
         .iter()
         .enumerate()
         .map(|(i, path)| {
@@ -56,7 +56,7 @@ pub(super) fn render_file_picker(f: &mut Frame, state: &mut AppState) {
                 .unwrap_or("?")
                 .to_string();
             let is_dir = path.is_dir();
-            let selected = state.file_picker_multi_selected.contains(&i);
+            let selected = state.file_picker.multi_selected.contains(&i);
             let prefix = if selected {
                 "[✓] "
             } else if is_dir {
@@ -65,7 +65,7 @@ pub(super) fn render_file_picker(f: &mut Frame, state: &mut AppState) {
                 "    "
             };
             let label = format!("{prefix}{name}");
-            let style = if i == state.file_picker_selected {
+            let style = if i == state.file_picker.selected {
                 state.theme.style(StyleKey::OverlaySelected)
             } else if is_dir {
                 state.theme.style(StyleKey::Accent)
@@ -85,7 +85,7 @@ pub(super) fn render_file_picker(f: &mut Frame, state: &mut AppState) {
     let preview_inner = preview_block.inner(split[1]);
     f.render_widget(preview_block, split[1]);
     let preview_text = state
-        .file_picker_preview
+        .file_picker.preview
         .as_deref()
         .unwrap_or("(select a file to preview)");
     let preview_para = Paragraph::new(preview_text)

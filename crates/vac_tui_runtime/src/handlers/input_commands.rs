@@ -423,9 +423,9 @@ fn dispatch_action(
             crate::overlay::open_overlay(state, crate::overlay::OverlayId::Shortcuts);
         }
         ActionId::OpenFilePicker => {
-            state.file_picker_query.clear();
-            state.file_picker_selected = 0;
-            state.file_picker_multi_selected.clear();
+            state.file_picker.query.clear();
+            state.file_picker.selected = 0;
+            state.file_picker.multi_selected.clear();
             crate::handlers::input_popup::refresh_file_picker_results_pub(state);
             crate::overlay::open_overlay(state, crate::overlay::OverlayId::FilePicker);
         }

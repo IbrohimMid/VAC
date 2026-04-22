@@ -11,6 +11,7 @@ use crate::types::*;
 // Re-export all submodule types
 pub mod approvals;
 pub mod billing;
+pub mod file_picker;
 pub mod vil_dev;
 pub mod commands;
 pub mod helpers;
@@ -22,6 +23,7 @@ pub mod support;
 pub mod workbench;
 
 pub use approvals::ApprovalsState;
+pub use file_picker::FilePickerState;
 pub use vil_dev::VilDevState;
 pub use billing::{
     BillingInfo, LoadingOperation, LoadingStateManager, SessionInfo, ShortcutsPopupMode,
@@ -171,13 +173,7 @@ pub struct AppState {
     pub file_search_results: Vec<String>,
 
     // ── File Picker v2 (PR-T6) ────────────────────────────────────────────────
-    pub file_picker_query: String,
-    pub file_picker_selected: usize,
-    pub file_picker_results: Vec<std::path::PathBuf>,
-    pub file_picker_multi_selected: std::collections::HashSet<usize>,
-    pub file_picker_cwd: std::path::PathBuf,
-    pub file_picker_type_filter: Option<String>,
-    pub file_picker_preview: Option<String>,
+    pub file_picker: FilePickerState,
 
     // ── @-mention context chips (PR-T7) ────────────────────────────────────────
     /// Resolved context chips above the input bar.
