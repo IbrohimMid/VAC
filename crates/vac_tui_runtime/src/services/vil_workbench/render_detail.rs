@@ -96,7 +96,7 @@ pub fn render_hover_popup(
         popup_h.min(clamp_area.height),
     );
 
-    state.hover_popup_region = Some(popup_rect);
+    state.lsp_ui.hover_popup_region = Some(popup_rect);
 
     f.render_widget(Clear, popup_rect);
     let para = Paragraph::new(lines)

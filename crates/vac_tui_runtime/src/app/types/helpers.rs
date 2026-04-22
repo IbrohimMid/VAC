@@ -10,7 +10,7 @@ use crate::services::textarea::TextArea;
 use crate::types::*;
 
 use super::{
-    ActivityItem, ActivityKind, AppState, ApprovalsState, AskUserState, AtMentionState, BannerState, ChangesetUiState, CommandPaletteState, FileIndexState, FilePickerState, HelperCommand, LoadingStateManager, MessageUiState, PinsState, SessionResumeState, SidePanelState, SwitchersState, TaskTrayState, VilDevState, WorkbenchChromeState,
+    ActivityItem, ActivityKind, AppState, ApprovalsState, AskUserState, AtMentionState, BannerState, ChangesetUiState, CommandPaletteState, FileIndexState, FilePickerState, HelperCommand, LoadingStateManager, LspUiState, MessageUiState, PasteState, PinsState, QuitState, SessionResumeState, SidePanelState, StreamingState, SwitchersState, TaskTrayState, VilDevState, WorkbenchChromeState,
     Message, QueueMetrics, RenderMetrics, ReviewItem, ReviewItemStatus, ReviewState, RuntimeState,
     ShellState, ShortcutsPopupMode, StartupSnapshot, TokenUsage, VilLogEntry, VilState,
     WorkbenchTab, WorkspaceFocus,
@@ -60,13 +60,8 @@ impl AppState {
             mouse_capture_enabled: true,
             approvals: ApprovalsState::default(),
             shell: ShellState::default(),
-            is_streaming: false,
-            cancel_requested: false,
-            quit_press_count: 0,
-            quit_first_press: None,
-            streaming_message_id: None,
-            streaming_start: None,
-            streaming_tokens: 0,
+            streaming: StreamingState::default(),
+            quit: QuitState::default(),
             command_palette: CommandPaletteState::default(),
             commands: Self::default_commands(),
             switchers: SwitchersState::default(),
@@ -99,9 +94,7 @@ impl AppState {
             pending_kitty_emission: None,
             last_kitty_emission: None,
             image_preview_cache: crate::services::image_preview_cache::ImagePreviewCache::new(),
-            pending_pastes: Vec::new(),
-            is_pasting: false,
-            paste_counter: 0,
+            paste: PasteState::default(),
             todos: Vec::new(),
             current_message_usage: TokenUsage::default(),
             total_session_usage: TokenUsage::default(),
@@ -122,19 +115,9 @@ impl AppState {
             // Unit 9 (Wave 4.1) — VIL Issue Workstation
             // vil workbench fields are in vil: VilState::default()
             // Unit 5 (Wave 3.1) — Attachment tray preview & reorder
-            pending_paste_selected: 0,
-            pending_paste_reorder_mode: false,
             // Context Composer
             context_composer_visible: false,
-            validation_score: None,
-            validation_issues: Vec::new(),
-            lsp_available: false,
-            lsp_diagnostics: None,
-            diagnostics_overlay_cache:
-                crate::services::diagnostics_overlay::DiagnosticsOverlayCache::default(),
-            active_hover: None,
-            hover_popup_region: None,
-            active_hover_row_idx: None,
+            lsp_ui: LspUiState::default(),
             pins: PinsState::default(),
             pending_user_messages: VecDeque::new(),
             queue_metrics: QueueMetrics::default(),
@@ -165,11 +148,11 @@ impl AppState {
     /// a submission.
     pub fn expand_pending_pastes(&mut self, raw: &str) -> String {
         use crate::services::clipboard_paste::PastedKind;
-        if self.pending_pastes.is_empty() {
+        if self.paste.pending_pastes.is_empty() {
             return raw.to_string();
         }
         let mut out = raw.to_string();
-        for item in self.pending_pastes.drain(..) {
+        for item in self.paste.pending_pastes.drain(..) {
             let replacement = match item.kind {
                 PastedKind::Text { content, .. } => content,
                 PastedKind::Image { .. } => String::new(),

@@ -66,26 +66,26 @@ fn handle_global(
             true
         }
         InputEvent::AttemptQuit => {
-            if state.is_streaming {
+            if state.streaming.is_streaming {
                 // First Ctrl+C while streaming: cancel the stream, not the app.
                 let _ = output_tx.try_send(OutputEvent::CancelStream);
-                state.is_streaming = false;
-                state.streaming_start = None;
-                state.streaming_tokens = 0;
+                state.streaming.is_streaming = false;
+                state.streaming.start = None;
+                state.streaming.tokens = 0;
             } else {
                 // Outside streaming: require two presses within 2 s to quit.
                 let now = std::time::Instant::now();
                 let double = state
-                    .quit_first_press
+                    .quit.first_press
                     .map(|t| now.duration_since(t) < std::time::Duration::from_secs(2))
                     .unwrap_or(false);
                 if double {
-                    state.cancel_requested = true;
-                    state.quit_press_count = 0;
-                    state.quit_first_press = None;
+                    state.quit.cancel_requested = true;
+                    state.quit.press_count = 0;
+                    state.quit.first_press = None;
                 } else {
-                    state.quit_press_count = 1;
-                    state.quit_first_press = Some(now);
+                    state.quit.press_count = 1;
+                    state.quit.first_press = Some(now);
                     state.toasts.push(crate::services::Toast::info(
                         "Press Ctrl+C again within 2 s to quit",
                     ));
@@ -269,9 +269,9 @@ fn handle_esc(state: &mut AppState, output_tx: &Sender<OutputEvent>) {
             .is_some()
     {
         shell_handler::background(state);
-    } else if state.is_streaming {
+    } else if state.streaming.is_streaming {
         let _ = output_tx.try_send(OutputEvent::CancelStream);
-        state.is_streaming = false;
+        state.streaming.is_streaming = false;
     } else if state.focus == WorkspaceFocus::Workbench
         && state.workbench_tab == crate::app::WorkbenchTab::Review
         && state.review.open

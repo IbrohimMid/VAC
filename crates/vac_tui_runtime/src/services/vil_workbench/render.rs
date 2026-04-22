@@ -87,11 +87,11 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
     // list rect so dismissal hit-testing matches what the user sees. The
     // popup must render AFTER the list so it paints on top, and it must be
     // clamped to the overall VIL tab area so it never overflows the tab.
-    let hover_to_draw = state.active_hover.clone();
+    let hover_to_draw = state.lsp_ui.active_hover.clone();
     if let Some(detail) = hover_to_draw {
         render_hover_popup(f, state, body[0], area, &detail);
     } else {
-        state.hover_popup_region = None;
+        state.lsp_ui.hover_popup_region = None;
     }
     let log_height = body[1].height.saturating_div(3).clamp(6, 12);
     let right = Layout::default()
@@ -420,7 +420,7 @@ fn render_issue_list(f: &mut Frame, state: &mut AppState, area: Rect, view: &[&V
             let (overlay_spans, gutter_mark): (
                 Vec<crate::services::diagnostics_overlay::DiagnosticSpan>,
                 Option<crate::services::diagnostics_overlay::GutterMark>,
-            ) = match (&issue.file, issue.line, state.lsp_diagnostics.as_ref()) {
+            ) = match (&issue.file, issue.line, state.lsp_ui.lsp_diagnostics.as_ref()) {
                 (Some(file), Some(line_1based), Some(snap)) => {
                     let line0 = (line_1based.saturating_sub(1)) as u32;
                     let width = message.chars().count() as u32;

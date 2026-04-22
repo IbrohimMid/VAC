@@ -27,12 +27,12 @@ pub fn dispatch_click(
     // not also routed to row / tab / body targets underneath). A click
     // inside the popup falls through, so users can still interact with the
     // underlying surface on the next click after reading the detail.
-    if state.active_hover.is_some() {
-        let outside = state.hover_popup_region.is_none_or(|r| !hit(&r, col, row));
+    if state.lsp_ui.active_hover.is_some() {
+        let outside = state.lsp_ui.hover_popup_region.is_none_or(|r| !hit(&r, col, row));
         if outside {
-            state.active_hover = None;
-            state.hover_popup_region = None;
-            state.active_hover_row_idx = None;
+            state.lsp_ui.active_hover = None;
+            state.lsp_ui.hover_popup_region = None;
+            state.lsp_ui.active_hover_row_idx = None;
             return true;
         }
     }
@@ -111,11 +111,11 @@ pub fn dispatch_click(
         // (file, line) position against the LSP snapshot. When any piece is
         // missing (no snapshot, issue has no file/line, no intersecting
         // diag), we clear any stale popup instead of surfacing a blank one.
-        state.active_hover = (|| {
+        state.lsp_ui.active_hover = (|| {
             let issue = crate::services::vil_workbench::selected_issue(state)?;
             let file = issue.file.as_ref()?;
             let line_1based = issue.line?;
-            let snap = state.lsp_diagnostics.as_ref()?;
+            let snap = state.lsp_ui.lsp_diagnostics.as_ref()?;
             let line0 = line_1based.saturating_sub(1);
             let line0_u32 = u32::try_from(line0).ok()?;
             crate::services::diagnostics_overlay::hover_detail_at(
@@ -125,10 +125,10 @@ pub fn dispatch_click(
             )
         })();
         // Renderer will refresh hover_popup_region on the next frame.
-        state.hover_popup_region = None;
+        state.lsp_ui.hover_popup_region = None;
         // R7b hot-path cache: click seeds the cache with the selected row
         // so a subsequent MouseMove on the same row short-circuits.
-        state.active_hover_row_idx = if state.active_hover.is_some() {
+        state.lsp_ui.active_hover_row_idx = if state.lsp_ui.active_hover.is_some() {
             Some(idx)
         } else {
             None
@@ -215,7 +215,7 @@ pub fn dispatch_hover(state: &mut AppState, col: u16, row: u16) -> bool {
         // which clone strings) on every event. Now we record the last
         // probed row index on every probe, Some or None, so a sticky
         // pointer stays cheap regardless of diagnostic presence.
-        if state.active_hover_row_idx == Some(idx) {
+        if state.lsp_ui.active_hover_row_idx == Some(idx) {
             return false;
         }
 
@@ -223,7 +223,7 @@ pub fn dispatch_hover(state: &mut AppState, col: u16, row: u16) -> bool {
             let issue = crate::services::vil_workbench::issue_at_filtered_index(state, idx)?;
             let file = issue.file.as_ref()?;
             let line_1based = issue.line?;
-            let snap = state.lsp_diagnostics.as_ref()?;
+            let snap = state.lsp_ui.lsp_diagnostics.as_ref()?;
             let line0 = line_1based.saturating_sub(1);
             let line0_u32 = u32::try_from(line0).ok()?;
             crate::services::diagnostics_overlay::hover_detail_at(
@@ -233,20 +233,20 @@ pub fn dispatch_hover(state: &mut AppState, col: u16, row: u16) -> bool {
             )
         })();
 
-        let changed = new_hover != state.active_hover;
-        state.active_hover = new_hover;
+        let changed = new_hover != state.lsp_ui.active_hover;
+        state.lsp_ui.active_hover = new_hover;
         // Always record the probed row, even when the probe yielded None.
         // The short-circuit above depends on this invariant.
-        state.active_hover_row_idx = Some(idx);
+        state.lsp_ui.active_hover_row_idx = Some(idx);
         if changed {
             // Renderer will refresh hover_popup_region on the next frame.
-            state.hover_popup_region = None;
+            state.lsp_ui.hover_popup_region = None;
         }
         return changed;
     }
 
     // 2. Over the current popup? Keep it alive.
-    if let Some(rect) = state.hover_popup_region
+    if let Some(rect) = state.lsp_ui.hover_popup_region
         && hit(&rect, col, row)
     {
         return false;
@@ -259,12 +259,12 @@ pub fn dispatch_hover(state: &mut AppState, col: u16, row: u16) -> bool {
     // `active_hover_row_idx` on every probe, Some or None); otherwise
     // a stale row index could make the short-circuit fire on a
     // genuinely different region's first probe.
-    let had_popup = state.active_hover.is_some() || state.hover_popup_region.is_some();
-    let had_sticky_row = state.active_hover_row_idx.is_some();
+    let had_popup = state.lsp_ui.active_hover.is_some() || state.lsp_ui.hover_popup_region.is_some();
+    let had_sticky_row = state.lsp_ui.active_hover_row_idx.is_some();
     if had_popup || had_sticky_row {
-        state.active_hover = None;
-        state.hover_popup_region = None;
-        state.active_hover_row_idx = None;
+        state.lsp_ui.active_hover = None;
+        state.lsp_ui.hover_popup_region = None;
+        state.lsp_ui.active_hover_row_idx = None;
         // Only request a repaint when something *visible* changed.
         // Clearing a sticky-row cache that wasn't driving any popup is
         // purely internal bookkeeping and should not churn the frame.

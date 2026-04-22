@@ -30,13 +30,13 @@ pub(super) fn render_operator_panel(f: &mut Frame, state: &mut AppState, area: R
                 state.theme.style(crate::services::theme::StyleKey::Spinner),
             ),
         ]));
-    } else if state.is_streaming {
+    } else if state.streaming.is_streaming {
         let tok_rate = state
-            .streaming_start
+            .streaming.start
             .map(|start| {
                 let elapsed = start.elapsed().as_secs_f32();
                 if elapsed > 0.1 {
-                    state.streaming_tokens as f32 / elapsed
+                    state.streaming.tokens as f32 / elapsed
                 } else {
                     0.0
                 }

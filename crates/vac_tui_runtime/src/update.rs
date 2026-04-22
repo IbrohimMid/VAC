@@ -17,7 +17,7 @@ pub fn flush_pending_user_messages_if_idle(
     input_tx: &Sender<InputEvent>,
     output_tx: &Sender<OutputEvent>,
 ) {
-    if state.loading_manager.is_loading() || state.loading || state.is_streaming {
+    if state.loading_manager.is_loading() || state.loading || state.streaming.is_streaming {
         return;
     }
 
@@ -110,14 +110,14 @@ pub fn handle_backend_event(
             state.push_activity(crate::app::ActivityKind::Status, "Assistant message");
         }
         InputEvent::StreamAssistantMessage(id, chunk) => {
-            if !state.is_streaming {
-                state.streaming_start = Some(std::time::Instant::now());
-                state.streaming_tokens = 0;
+            if !state.streaming.is_streaming {
+                state.streaming.start = Some(std::time::Instant::now());
+                state.streaming.tokens = 0;
             }
-            state.is_streaming = true;
-            state.streaming_message_id = Some(id);
+            state.streaming.is_streaming = true;
+            state.streaming.message_id = Some(id);
             // Approximate token count: one token ≈ one space-delimited word.
-            state.streaming_tokens += chunk.split_whitespace().count() as u64;
+            state.streaming.tokens += chunk.split_whitespace().count() as u64;
             if let Some(last) = state.messages.last_mut() {
                 if last.role == "assistant" {
                     last.content.push_str(&chunk);
@@ -139,9 +139,9 @@ pub fn handle_backend_event(
             let op_label = format!("{op:?}");
             state.loading_manager.end_operation(op);
             state.loading = state.loading_manager.is_loading();
-            state.is_streaming = false;
-            state.streaming_start = None;
-            state.streaming_tokens = 0;
+            state.streaming.is_streaming = false;
+            state.streaming.start = None;
+            state.streaming.tokens = 0;
             // Stream/LLM turns end here; scan the most recent assistant message
             // for a `<todo>` block and refresh the side-panel surface.
             if let Some(last) = state.messages.iter().rev().find(|m| m.role == "assistant") {
@@ -171,7 +171,7 @@ pub fn handle_backend_event(
                 state.toasts.drain(0..state.toasts.len().saturating_sub(3));
             }
             state.loading = false;
-            state.is_streaming = false;
+            state.streaming.is_streaming = false;
             state.push_activity(crate::app::ActivityKind::Error, msg);
         }
         InputEvent::SetCurrentModel(model) => {
@@ -181,14 +181,14 @@ pub fn handle_backend_event(
             state.switchers.available_models = models;
         }
         InputEvent::ValidationResult(score, issues) => {
-            state.validation_score = Some(score);
-            state.validation_issues = issues;
+            state.lsp_ui.validation_score = Some(score);
+            state.lsp_ui.validation_issues = issues;
         }
         InputEvent::LspStatus(available, _binary_path) => {
-            state.lsp_available = available;
+            state.lsp_ui.lsp_available = available;
         }
         InputEvent::LspDiagnostics(snapshot) => {
-            state.lsp_diagnostics = Some(snapshot);
+            state.lsp_ui.lsp_diagnostics = Some(snapshot);
         }
         InputEvent::TaskCancelled => {
             state.push_activity(crate::app::ActivityKind::Status, "Task cancelled");

@@ -67,7 +67,7 @@ pub static ACTION_SPECS: &[ActionSpec] = &[
         slash_aliases: &[],
         palette_visible: false,
         footer_visible: true,
-        availability: |s| s.is_streaming,
+        availability: |s| s.streaming.is_streaming,
         activity_message: None,
     },
     ActionSpec {

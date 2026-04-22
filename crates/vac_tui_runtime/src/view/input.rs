@@ -19,8 +19,8 @@ pub(super) fn render_input(f: &mut Frame, state: &mut AppState, area: Rect) {
     // Split off a tray above the input when there are pending pastes.
     // Unit 5 (Wave 3.1): tray grows to one row per paste (up to 6) when there
     // are any pending pastes, so each card shows kind/size/tokens/preview.
-    let tray_rows = if !state.pending_pastes.is_empty() {
-        paste_tray_rows(state.pending_pastes.len())
+    let tray_rows = if !state.paste.pending_pastes.is_empty() {
+        paste_tray_rows(state.paste.pending_pastes.len())
     } else {
         0
     };
@@ -130,7 +130,7 @@ pub(crate) fn paste_tray_rows(n: usize) -> u16 {
 
 pub(super) fn render_paste_tray(f: &mut Frame, state: &AppState, area: Rect) {
     // Header line: paste count + reorder-mode hint + clear hint.
-    let mode_hint = if state.pending_paste_reorder_mode {
+    let mode_hint = if state.paste.pending_paste_reorder_mode {
         Span::styled(
             " [REORDER — J/K swap, r exit]",
             state
@@ -153,7 +153,7 @@ pub(super) fn render_paste_tray(f: &mut Frame, state: &AppState, area: Rect) {
             state.theme.style(crate::services::theme::StyleKey::Muted),
         ),
         Span::styled(
-            format!("{} attachment(s)", state.pending_pastes.len()),
+            format!("{} attachment(s)", state.paste.pending_pastes.len()),
             state.theme.style(crate::services::theme::StyleKey::Muted),
         ),
         mode_hint,
@@ -167,12 +167,12 @@ pub(super) fn render_paste_tray(f: &mut Frame, state: &AppState, area: Rect) {
     ]);
 
     let selected = state
-        .pending_paste_selected
-        .min(state.pending_pastes.len().saturating_sub(1));
+        .paste.pending_paste_selected
+        .min(state.paste.pending_pastes.len().saturating_sub(1));
 
     // Show a sliding window of cards so the selected index is always visible.
     let capacity = (area.height.saturating_sub(1)) as usize;
-    let total = state.pending_pastes.len();
+    let total = state.paste.pending_pastes.len();
     let start = if total <= capacity || selected < capacity {
         0
     } else {
@@ -182,11 +182,11 @@ pub(super) fn render_paste_tray(f: &mut Frame, state: &AppState, area: Rect) {
 
     let mut lines: Vec<Line<'static>> = Vec::with_capacity(end - start + 1);
     lines.push(header);
-    for (i, item) in state.pending_pastes[start..end].iter().enumerate() {
+    for (i, item) in state.paste.pending_pastes[start..end].iter().enumerate() {
         let abs = start + i;
         let is_selected = abs == selected;
         let cursor = if is_selected {
-            if state.pending_paste_reorder_mode {
+            if state.paste.pending_paste_reorder_mode {
                 "»"
             } else {
                 ">"

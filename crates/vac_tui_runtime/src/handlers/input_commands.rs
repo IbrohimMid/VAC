@@ -9,45 +9,45 @@ use crate::update::*;
 
 pub fn handle_paste_tray_key(state: &mut AppState, c: char) -> bool {
     use crate::services::clipboard_paste as cp;
-    let len = state.pending_pastes.len();
+    let len = state.paste.pending_pastes.len();
     match c {
-        'j' if !state.pending_paste_reorder_mode => {
-            state.pending_paste_selected = cp::select_next(state.pending_paste_selected, len);
+        'j' if !state.paste.pending_paste_reorder_mode => {
+            state.paste.pending_paste_selected = cp::select_next(state.paste.pending_paste_selected, len);
             true
         }
-        'k' if !state.pending_paste_reorder_mode => {
-            state.pending_paste_selected = cp::select_prev(state.pending_paste_selected, len);
+        'k' if !state.paste.pending_paste_reorder_mode => {
+            state.paste.pending_paste_selected = cp::select_prev(state.paste.pending_paste_selected, len);
             true
         }
-        'J' if state.pending_paste_reorder_mode => {
-            state.pending_paste_selected =
-                cp::swap_with_next(&mut state.pending_pastes, state.pending_paste_selected);
+        'J' if state.paste.pending_paste_reorder_mode => {
+            state.paste.pending_paste_selected =
+                cp::swap_with_next(&mut state.paste.pending_pastes, state.paste.pending_paste_selected);
             true
         }
-        'K' if state.pending_paste_reorder_mode => {
-            state.pending_paste_selected =
-                cp::swap_with_prev(&mut state.pending_pastes, state.pending_paste_selected);
+        'K' if state.paste.pending_paste_reorder_mode => {
+            state.paste.pending_paste_selected =
+                cp::swap_with_prev(&mut state.paste.pending_pastes, state.paste.pending_paste_selected);
             true
         }
         'd' | 'x' => {
-            let sel = state.pending_paste_selected.min(len.saturating_sub(1));
-            if sel < state.pending_pastes.len() {
-                let placeholder = state.pending_pastes[sel].placeholder.clone();
+            let sel = state.paste.pending_paste_selected.min(len.saturating_sub(1));
+            if sel < state.paste.pending_pastes.len() {
+                let placeholder = state.paste.pending_pastes[sel].placeholder.clone();
                 if !state.input.is_empty() {
                     let stripped = state.input.get_content().replace(&placeholder, "");
                     state.input.clear();
                     state.input.insert_str(&stripped);
                 }
-                state.pending_paste_selected = cp::remove_at(&mut state.pending_pastes, sel);
-                if state.pending_pastes.is_empty() {
-                    state.pending_paste_reorder_mode = false;
-                    state.pending_paste_selected = 0;
+                state.paste.pending_paste_selected = cp::remove_at(&mut state.paste.pending_pastes, sel);
+                if state.paste.pending_pastes.is_empty() {
+                    state.paste.pending_paste_reorder_mode = false;
+                    state.paste.pending_paste_selected = 0;
                 }
             }
             true
         }
         'r' => {
-            state.pending_paste_reorder_mode = !state.pending_paste_reorder_mode;
+            state.paste.pending_paste_reorder_mode = !state.paste.pending_paste_reorder_mode;
             true
         }
         _ => false,
@@ -108,7 +108,7 @@ pub fn execute_shortcuts_command(
             true
         }
         CommandAction::Quit => {
-            state.cancel_requested = true;
+            state.quit.cancel_requested = true;
             true
         }
         CommandAction::InsertSlashCommand(s) => dispatch_builtin_command(state, output_tx, s, None),

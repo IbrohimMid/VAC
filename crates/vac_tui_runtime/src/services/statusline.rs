@@ -63,7 +63,7 @@ pub fn render_statusline(f: &mut Frame, state: &AppState, area: Rect) {
         ),
     ];
 
-    if let Some(score) = state.validation_score {
+    if let Some(score) = state.lsp_ui.validation_score {
         text.push(Span::raw(" | "));
         text.push(Span::styled(
             format!("Valid: {:.1}%", score * 100.0),
@@ -101,10 +101,10 @@ pub fn render_statusline(f: &mut Frame, state: &AppState, area: Rect) {
         ));
     }
 
-    if state.lsp_available {
+    if state.lsp_ui.lsp_available {
         text.push(Span::raw(" | "));
         text.push(Span::styled("LSP", state.theme.style(StyleKey::Accent)));
-        if let Some(diag) = &state.lsp_diagnostics {
+        if let Some(diag) = &state.lsp_ui.lsp_diagnostics {
             let errs = diag.total_errors;
             let warns = diag.total_warnings;
             if errs > 0 || warns > 0 {

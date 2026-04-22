@@ -238,7 +238,7 @@ impl WorkbenchTabView for ReviewTab {
                             body[1].width as usize,
                             diff.scroll,
                             diff_height,
-                            state.lsp_diagnostics.as_ref(),
+                            state.lsp_ui.lsp_diagnostics.as_ref(),
                             path_buf,
                         )
                     }
@@ -253,7 +253,7 @@ impl WorkbenchTabView for ReviewTab {
                         body[1].width as usize,
                         diff.scroll,
                         diff_height,
-                        state.lsp_diagnostics.as_ref(),
+                        state.lsp_ui.lsp_diagnostics.as_ref(),
                         path_buf,
                     )
                 }

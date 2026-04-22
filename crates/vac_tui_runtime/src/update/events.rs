@@ -158,8 +158,8 @@ pub fn on_session_restored(
     state.at_mention.trigger_active = false;
     state.at_mention.query.clear();
     state.at_mention.results.clear();
-    state.is_streaming = false;
-    state.streaming_message_id = None;
+    state.streaming.is_streaming = false;
+    state.streaming.message_id = None;
     state.scroll = 0;
     state.input.clear();
     state.review.open = false;
@@ -256,7 +256,7 @@ pub fn on_task_completed(state: &mut AppState, result: vac_core::task::TaskResul
     }
     state.add_assistant_message(content);
     state.loading = false;
-    state.is_streaming = false;
+    state.streaming.is_streaming = false;
     state.push_activity(crate::app::ActivityKind::Status, "Task completed");
 }
 

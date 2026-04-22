@@ -213,8 +213,8 @@ fn dispatch_hover_short_circuits_on_sticky_row_regardless_of_hover_presence() {
         !first,
         "first probe over an empty row must not request a repaint"
     );
-    assert_eq!(state.active_hover_row_idx, Some(7));
-    assert!(state.active_hover.is_none());
+    assert_eq!(state.lsp_ui.active_hover_row_idx, Some(7));
+    assert!(state.lsp_ui.active_hover.is_none());
 
     let second = dispatch_hover(&mut state, 40, 20);
     assert!(
@@ -222,7 +222,7 @@ fn dispatch_hover_short_circuits_on_sticky_row_regardless_of_hover_presence() {
         "sticky-row probe must short-circuit and skip repaint"
     );
     assert_eq!(
-        state.active_hover_row_idx,
+        state.lsp_ui.active_hover_row_idx,
         Some(7),
         "sticky row must remain recorded"
     );
@@ -233,7 +233,7 @@ fn dispatch_hover_short_circuits_on_sticky_row_regardless_of_hover_presence() {
         "off-region move with no prior popup must not request repaint"
     );
     assert_eq!(
-        state.active_hover_row_idx, None,
+        state.lsp_ui.active_hover_row_idx, None,
         "leaving all tracked regions must clear the sticky-row cache"
     );
 }

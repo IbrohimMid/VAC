@@ -394,7 +394,7 @@ pub async fn run_tui(
 
         // Update spinner
         spinner_interval.tick().await;
-        if state.loading || state.is_streaming {
+        if state.loading || state.streaming.is_streaming {
             state.spinner_frame = (state.spinner_frame + 1) % 10;
         }
 
@@ -512,7 +512,7 @@ pub async fn run_tui(
         }
 
         // Check for quit
-        if state.cancel_requested {
+        if state.quit.cancel_requested {
             persist_session_snapshot(&state).await;
             break;
         }

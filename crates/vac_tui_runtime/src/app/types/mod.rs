@@ -18,10 +18,14 @@ pub mod changeset_ui;
 pub mod command_palette;
 pub mod file_index;
 pub mod file_picker;
+pub mod lsp_ui;
 pub mod message_ui;
+pub mod paste;
 pub mod pins;
+pub mod quit;
 pub mod session_resume;
 pub mod side_panel;
+pub mod streaming;
 pub mod task_tray;
 pub mod switchers;
 pub mod vil_dev;
@@ -43,10 +47,14 @@ pub use changeset_ui::ChangesetUiState;
 pub use command_palette::CommandPaletteState;
 pub use file_index::FileIndexState;
 pub use file_picker::FilePickerState;
+pub use lsp_ui::LspUiState;
 pub use message_ui::MessageUiState;
+pub use paste::PasteState;
 pub use pins::PinsState;
+pub use quit::QuitState;
 pub use session_resume::SessionResumeState;
 pub use side_panel::SidePanelState;
+pub use streaming::StreamingState;
 pub use task_tray::TaskTrayState;
 pub use switchers::SwitchersState;
 pub use vil_dev::VilDevState;
@@ -121,17 +129,8 @@ pub struct AppState {
     pub shell: ShellState,
 
     // Streaming state
-    pub is_streaming: bool,
-    pub cancel_requested: bool,
-    /// Number of Ctrl+C presses during a non-streaming idle — two consecutive quits.
-    pub quit_press_count: u8,
-    /// Timestamp of the first Ctrl+C press for quit disambiguation timeout.
-    pub quit_first_press: Option<std::time::Instant>,
-    pub streaming_message_id: Option<Uuid>,
-    /// Wall-clock time streaming started, for tok/s computation.
-    pub streaming_start: Option<std::time::Instant>,
-    /// Total tokens received in the current stream.
-    pub streaming_tokens: u64,
+    pub streaming: StreamingState,
+    pub quit: QuitState,
 
     // Command palette
     pub command_palette: CommandPaletteState,
@@ -246,9 +245,7 @@ pub struct AppState {
     pub image_preview_cache: crate::services::image_preview_cache::ImagePreviewCache,
 
     // Paste ledger (long text + image tray)
-    pub pending_pastes: Vec<crate::services::clipboard_paste::PastedItem>,
-    pub is_pasting: bool,
-    pub paste_counter: usize,
+    pub paste: PasteState,
 
     // File changes popup (compact, searchable)
 
@@ -294,49 +291,22 @@ pub struct AppState {
     // vil_workbench fields moved to VilState.workbench_selected / .workbench_group_filter
 
     // ===== Unit 5 (Wave 3.1) — Attachment tray preview & reorder =====
-    /// Cursor in the paste tray; indexes into `pending_pastes`.
-    pub pending_paste_selected: usize,
-    /// When true, `J` / `K` swap the selected paste with its neighbor
-    /// (instead of selecting). Toggle with `r` while the tray is focused.
-    pub pending_paste_reorder_mode: bool,
 
     // ===== Context Composer (Wave 3) =====
     pub context_composer_visible: bool,
-    pub validation_score: Option<f64>,
-    pub validation_issues: Vec<String>,
-    pub lsp_available: bool,
-    pub lsp_diagnostics: Option<vac_core::lsp::types::LspWorkspaceSnapshot>,
+    pub lsp_ui: LspUiState,
     /// PR-T15 P1 — per-file overlay cache for inline diagnostics squiggles.
     /// Renderers clear it when the focused file changes to avoid stale spans
     /// leaking between files (see `services::diagnostics_overlay`).
-    pub diagnostics_overlay_cache: crate::services::diagnostics_overlay::DiagnosticsOverlayCache,
     /// R7 / PR-T15 — currently-displayed hover popup detail. Populated by
     /// `handlers::mouse::dispatch_click` when a VIL issue row (or other
     /// diagnostic-bearing row) is clicked; cleared on outside-click dismiss.
     /// `None` means no popup is on screen.
-    pub active_hover: Option<crate::services::diagnostics_overlay::HoverDetail>,
+    // active_hover moved into LspUiState.
     /// R7 / PR-T15 — screen rect of the hover popup, recorded during the
     /// render pass. Used by `dispatch_click` to detect outside-popup clicks
     /// so a subsequent click can dismiss the popup before falling through
     /// to row/body hit-testing.
-    pub hover_popup_region: Option<ratatui::layout::Rect>,
-    /// R7b / PR-T15 MouseMove hot-path cache, tightened by the PR-T17
-    /// reviewer audit. Tracks the *last probed* filtered VIL row index,
-    /// not just the row that produced a `Some` hover. Terminals typically
-    /// emit dozens of `MouseEventKind::Moved` events per second while a
-    /// pointer sits over a single row; without this cache every one of
-    /// those events would call `issue_at_filtered_index` and
-    /// `hover_detail_at`, both of which clone issue fields + diagnostic
-    /// strings even when the ultimate answer is "no hover detail for this
-    /// row". The earlier (R7b) incarnation only short-circuited when the
-    /// prior probe had yielded `Some`, so rows with no diagnostic still
-    /// re-ran the clone-heavy lookup on every mouse move.
-    ///
-    /// Now we record the row index on every probe, Some or None, and
-    /// `dispatch_hover` can short-circuit whenever the pointer is still
-    /// over that same row. Cleared on dismiss / off-row move so a later
-    /// filter or diagnostic-snapshot change cannot serve stale state.
-    pub active_hover_row_idx: Option<usize>,
     pub pins: PinsState,
 
     pub pending_user_messages: VecDeque<PendingUserMessage>,

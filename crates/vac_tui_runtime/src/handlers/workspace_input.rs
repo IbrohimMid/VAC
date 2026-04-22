@@ -31,10 +31,10 @@ pub fn handle(state: &mut AppState, output_tx: &Sender<OutputEvent>, event: Inpu
         }
         InputEvent::InputClear => {
             if state.focus == WorkspaceFocus::Input {
-                let had_pastes = !state.pending_pastes.is_empty();
+                let had_pastes = !state.paste.pending_pastes.is_empty();
                 let had_images = !state.pending_image_parts.is_empty();
                 state.input.clear();
-                state.pending_pastes.clear();
+                state.paste.pending_pastes.clear();
                 state.pending_image_parts.clear();
                 if had_pastes || had_images {
                     state.toasts.push(crate::services::Toast::info(
@@ -97,7 +97,7 @@ pub fn handle(state: &mut AppState, output_tx: &Sender<OutputEvent>, event: Inpu
 fn handle_char(state: &mut AppState, output_tx: &Sender<OutputEvent>, c: char) {
     if state.focus == WorkspaceFocus::Input
         && state.input.is_empty()
-        && !state.pending_pastes.is_empty()
+        && !state.paste.pending_pastes.is_empty()
         && handle_paste_tray_key(state, c)
     {
         return;
@@ -287,14 +287,14 @@ fn handle_paste(state: &mut AppState, text: String) {
             state.input.input(' ');
         }
     } else if is_long_paste(&text) {
-        state.paste_counter += 1;
-        let id = make_paste_id(state.paste_counter);
+        state.paste.paste_counter += 1;
+        let id = make_paste_id(state.paste.paste_counter);
         let char_count = text.chars().count();
         let line_count = text.chars().filter(|c| *c == '\n').count() + 1;
         let placeholder = text_placeholder(&id, char_count, line_count);
         state.input.insert_str(&placeholder);
         state.input.input(' ');
-        state.pending_pastes.push(PastedItem {
+        state.paste.pending_pastes.push(PastedItem {
             id,
             placeholder,
             kind: PastedKind::Text {
@@ -475,12 +475,12 @@ fn handle_image_paste(state: &mut AppState) {
                             }),
                         };
                         state.pending_image_parts.push(part);
-                        state.paste_counter += 1;
-                        let id = make_paste_id(state.paste_counter);
+                        state.paste.paste_counter += 1;
+                        let id = make_paste_id(state.paste.paste_counter);
                         let placeholder = image_placeholder(&id, info.width, info.height);
                         state.input.insert_str(&placeholder);
                         state.input.input(' ');
-                        state.pending_pastes.push(PastedItem {
+                        state.paste.pending_pastes.push(PastedItem {
                             id,
                             placeholder,
                             kind: PastedKind::Image {
