@@ -164,7 +164,7 @@ pub async fn run_tui(
     if let Some(v) = latest_version.as_deref() {
         let current = env!("CARGO_PKG_VERSION");
         if v != current {
-            state.banner_message = Some(
+            state.banner.message = Some(
                 crate::services::banner::BannerMessage::persistent_with_action(
                     format!(
                         "New VAC release available: {} (installed: {}). Run /upgrade to update.",

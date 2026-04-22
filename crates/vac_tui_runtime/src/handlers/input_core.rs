@@ -307,25 +307,25 @@ fn handle_mouse_drag_start(
     row: u16,
 ) {
     let banner_active = state
-        .banner_message
+        .banner.message
         .as_ref()
         .is_some_and(|m| !m.is_expired());
 
     if banner_active {
-        if let Some(rect) = state.banner_dismiss_region {
+        if let Some(rect) = state.banner.dismiss_region {
             if col >= rect.x
                 && col < rect.x + rect.width
                 && row >= rect.y
                 && row < rect.y + rect.height
             {
-                state.banner_message = None;
-                state.banner_click_regions.clear();
-                state.banner_dismiss_region = None;
+                state.banner.message = None;
+                state.banner.click_regions.clear();
+                state.banner.dismiss_region = None;
                 return;
             }
         }
         let mut banner_action: Option<String> = None;
-        for (action, rect) in &state.banner_click_regions {
+        for (action, rect) in &state.banner.click_regions {
             if col >= rect.x
                 && col < rect.x + rect.width
                 && row >= rect.y
@@ -336,16 +336,16 @@ fn handle_mouse_drag_start(
             }
         }
         if let Some(action) = banner_action {
-            state.banner_message = None;
-            state.banner_click_regions.clear();
-            state.banner_dismiss_region = None;
+            state.banner.message = None;
+            state.banner.click_regions.clear();
+            state.banner.dismiss_region = None;
             let _ = output_tx.try_send(OutputEvent::UserMessage(action, None, Vec::new(), None));
             return;
         }
-    } else if state.banner_message.is_some() {
-        state.banner_message = None;
-        state.banner_click_regions.clear();
-        state.banner_dismiss_region = None;
+    } else if state.banner.message.is_some() {
+        state.banner.message = None;
+        state.banner.click_regions.clear();
+        state.banner.dismiss_region = None;
     }
 
     if state.side_panel_visible {

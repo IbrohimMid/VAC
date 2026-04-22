@@ -232,7 +232,7 @@ fn fxhash(s: &str) -> u64 {
 }
 
 pub fn banner_height(state: &AppState) -> u16 {
-    match &state.banner_message {
+    match &state.banner.message {
         Some(msg) if !msg.is_expired() => BANNER_VISIBLE_HEIGHT,
         _ => 0,
     }
@@ -272,13 +272,13 @@ fn find_slash_commands(text: &str) -> Vec<(usize, String)> {
 }
 
 pub fn render_banner(f: &mut Frame, area: Rect, state: &mut AppState) {
-    if let Some(msg) = &state.banner_message
+    if let Some(msg) = &state.banner.message
         && msg.is_expired()
     {
-        state.banner_message = None;
+        state.banner.message = None;
     }
 
-    let Some(msg) = &state.banner_message else {
+    let Some(msg) = &state.banner.message else {
         return;
     };
 
@@ -352,7 +352,7 @@ pub fn render_banner(f: &mut Frame, area: Rect, state: &mut AppState) {
     let dismiss_width: u16 = 5;
     let dismiss_x = area.x + area.width.saturating_sub(2 + dismiss_width);
     let dismiss_y = area.y;
-    state.banner_dismiss_region = Some(Rect::new(
+    state.banner.dismiss_region = Some(Rect::new(
         dismiss_x,
         dismiss_y,
         dismiss_width + 2,
@@ -364,7 +364,7 @@ pub fn render_banner(f: &mut Frame, area: Rect, state: &mut AppState) {
         .alignment(Alignment::Left);
 
     f.render_widget(paragraph, area);
-    state.banner_click_regions = click_regions;
+    state.banner.click_regions = click_regions;
 }
 
 #[cfg(test)]

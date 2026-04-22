@@ -190,8 +190,8 @@ pub(crate) fn push_banner_direct(
     severity: crate::services::banner::BannerSeverity,
 ) {
     let msg = crate::services::banner::BannerMessage::new(text, style).with_severity(severity);
-    state.banner_queue.push(msg);
-    state.banner_message = state.banner_queue.current().cloned();
+    state.banner.queue.push(msg);
+    state.banner.message = state.banner.queue.current().cloned();
 }
 
 pub(crate) fn policy_gate_allows_shell_command(state: &mut AppState, cmd: &str) -> bool {

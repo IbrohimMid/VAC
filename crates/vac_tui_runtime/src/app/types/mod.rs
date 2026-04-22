@@ -12,6 +12,7 @@ use crate::types::*;
 pub mod approvals;
 pub mod ask_user;
 pub mod at_mention;
+pub mod banner;
 pub mod billing;
 pub mod changeset_ui;
 pub mod file_picker;
@@ -30,6 +31,7 @@ pub mod workbench;
 pub use approvals::ApprovalsState;
 pub use ask_user::AskUserState;
 pub use at_mention::AtMentionState;
+pub use banner::BannerState;
 pub use changeset_ui::ChangesetUiState;
 pub use file_picker::FilePickerState;
 pub use switchers::SwitchersState;
@@ -207,9 +209,7 @@ pub struct AppState {
     pub pending_image_parts: Vec<crate::types::ContentPart>,
 
     // Banner (top-strip notices / CTAs)
-    pub banner_message: Option<crate::services::banner::BannerMessage>,
-    pub banner_click_regions: Vec<(String, ratatui::layout::Rect)>,
-    pub banner_dismiss_region: Option<ratatui::layout::Rect>,
+    pub banner: BannerState,
     // PR-T16 — mouse click regions for workbench tabs and task tray rows.
     // Populated during view render, consumed by `handlers::mouse::dispatch_click`.
     pub workbench_chrome: WorkbenchChromeState,
@@ -245,8 +245,6 @@ pub struct AppState {
     /// thread delivers the result through an internal channel that the
     /// event loop drains once per iteration before the next draw.
     pub image_preview_cache: crate::services::image_preview_cache::ImagePreviewCache,
-    // Unit 8 (Wave 3.6) — Banner queue + severity
-    pub banner_queue: crate::services::banner::BannerQueue,
 
     // Paste ledger (long text + image tray)
     pub pending_pastes: Vec<crate::services::clipboard_paste::PastedItem>,

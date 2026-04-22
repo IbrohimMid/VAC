@@ -46,10 +46,10 @@ pub fn flush_pending_user_messages_if_idle(
 
     let revert_index = state.pending_revert_index.take();
 
-    if state.banner_message.is_some() {
-        state.banner_message = None;
-        state.banner_click_regions.clear();
-        state.banner_dismiss_region = None;
+    if state.banner.message.is_some() {
+        state.banner.message = None;
+        state.banner.click_regions.clear();
+        state.banner.dismiss_region = None;
     }
 
     match output_tx.try_send(OutputEvent::UserMessage(
@@ -196,8 +196,8 @@ pub fn handle_backend_event(
         InputEvent::ShowBanner(text, style, severity) => {
             let msg =
                 crate::services::banner::BannerMessage::new(text, style).with_severity(severity);
-            state.banner_queue.push(msg);
-            state.banner_message = state.banner_queue.current().cloned();
+            state.banner.queue.push(msg);
+            state.banner.message = state.banner.queue.current().cloned();
         }
         InputEvent::ShowToast(toast) => {
             let lower = toast.message.to_ascii_lowercase();

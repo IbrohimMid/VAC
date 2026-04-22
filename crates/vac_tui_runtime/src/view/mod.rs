@@ -43,8 +43,8 @@ pub fn view(f: &mut Frame, state: &mut AppState) {
     if banner_h > 0 {
         crate::services::banner::render_banner(f, chunks[1], state);
     } else {
-        state.banner_click_regions.clear();
-        state.banner_dismiss_region = None;
+        state.banner.click_regions.clear();
+        state.banner.dismiss_region = None;
     }
     workbench::render_workspace(f, state, chunks[2]);
     crate::services::statusline::render_statusline(f, state, chunks[3]);

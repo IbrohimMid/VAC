@@ -56,14 +56,14 @@ fn mouse_click_on_banner_dismisses() {
     use crate::services::banner::{BannerMessage, BannerStyle};
 
     let (mut state, tx, _rx) = make_state_with_channel();
-    state.banner_message = Some(BannerMessage::persistent("hello", BannerStyle::Info));
-    state.banner_dismiss_region = Some(Rect::new(10, 0, 3, 1));
+    state.banner.message = Some(BannerMessage::persistent("hello", BannerStyle::Info));
+    state.banner.dismiss_region = Some(Rect::new(10, 0, 3, 1));
 
     handle_input_event(&mut state, &tx, InputEvent::MouseDragStart(11, 0));
 
-    assert!(state.banner_message.is_none(), "banner should be dismissed");
-    assert!(state.banner_dismiss_region.is_none());
-    assert!(state.banner_click_regions.is_empty());
+    assert!(state.banner.message.is_none(), "banner should be dismissed");
+    assert!(state.banner.dismiss_region.is_none());
+    assert!(state.banner.click_regions.is_empty());
 }
 
 #[test]
