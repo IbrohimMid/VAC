@@ -26,6 +26,15 @@ impl IrPipeline {
         Ok(pipeline)
     }
 
+    pub async fn new_async(project_root: &Path) -> IrResult<Self> {
+        let project_root = project_root.to_path_buf();
+        tokio::task::spawn_blocking(move || Self::new(&project_root))
+            .await
+            .map_err(|e| {
+                crate::error::IrError::Other(anyhow::anyhow!("IR scan task failed: {e}"))
+            })?
+    }
+
     fn scan_codebase(&mut self) -> IrResult<()> {
         let src_dir = self.project_root.clone();
 
@@ -79,6 +88,17 @@ impl IrPipeline {
 
     pub fn reparse_file(&mut self, path: &Path) -> IrResult<()> {
         let module = parser::parse_file(path)?;
+        self.register_module(path, module);
+        Ok(())
+    }
+
+    pub async fn reparse_file_async(&mut self, path: &Path) -> IrResult<()> {
+        let module = parser::parse_file_async(path).await?;
+        self.register_module(path, module);
+        Ok(())
+    }
+
+    fn register_module(&mut self, path: &Path, module: IrModule) {
         let key = path
             .strip_prefix(&self.project_root)
             .unwrap_or(path)
@@ -86,7 +106,6 @@ impl IrPipeline {
             .to_string();
         self.resolver.register_module(&module);
         self.modules.insert(key, module);
-        Ok(())
     }
 
     pub fn stats(&self) -> IrStats {
@@ -100,6 +119,60 @@ impl IrPipeline {
             stats.total_impls += module.impls.len();
         }
         stats
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn new_async_indexes_rust_files_without_blocking_runtime() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("src");
+        tokio::fs::create_dir_all(&src).await.unwrap();
+        tokio::fs::write(
+            src.join("lib.rs"),
+            r#"
+#[vil::handler]
+pub fn run() {}
+"#,
+        )
+        .await
+        .unwrap();
+
+        let pipeline = IrPipeline::new_async(dir.path()).await.unwrap();
+        assert!(pipeline.modules().contains_key("src/lib.rs"));
+        assert!(
+            pipeline
+                .modules()
+                .get("src/lib.rs")
+                .unwrap()
+                .functions
+                .iter()
+                .any(|f| f.name == "run")
+        );
+    }
+
+    #[tokio::test]
+    async fn reparse_file_async_updates_existing_module() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("src");
+        tokio::fs::create_dir_all(&src).await.unwrap();
+        let file = src.join("lib.rs");
+        tokio::fs::write(&file, "pub fn before() {}\n")
+            .await
+            .unwrap();
+
+        let mut pipeline = IrPipeline::new_async(dir.path()).await.unwrap();
+        tokio::fs::write(&file, "pub fn after() {}\n")
+            .await
+            .unwrap();
+        pipeline.reparse_file_async(&file).await.unwrap();
+
+        let module = pipeline.modules().get("src/lib.rs").unwrap();
+        assert!(module.functions.iter().any(|f| f.name == "after"));
+        assert!(!module.functions.iter().any(|f| f.name == "before"));
     }
 }
 

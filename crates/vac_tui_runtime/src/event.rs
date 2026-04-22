@@ -116,16 +116,23 @@ pub fn map_crossterm_event_to_input_event(event: Event) -> Option<InputEvent> {
                 KeyCode::Char('>') if key.modifiers.contains(KeyModifiers::ALT) => {
                     Some(InputEvent::InputCursorNextWord)
                 }
+                KeyCode::Char('h') if key.modifiers.contains(KeyModifiers::ALT) => {
+                    Some(InputEvent::VilExprTypeHelp)
+                }
+                KeyCode::Char('H') if key.modifiers.contains(KeyModifiers::ALT) => {
+                    Some(InputEvent::VilExprTypeHelp)
+                }
                 KeyCode::Char('h') => {
                     if key.modifiers.contains(KeyModifiers::CONTROL) {
                         Some(InputEvent::InputBackspace)
-                    } else if key.modifiers.contains(KeyModifiers::ALT) {
-                        Some(InputEvent::InputDeleteWord)
                     } else {
                         Some(InputEvent::InputChanged('h'))
                     }
                 }
                 KeyCode::Char('t') if key.modifiers.contains(KeyModifiers::ALT) => {
+                    Some(InputEvent::VilExprTypeHelp)
+                }
+                KeyCode::Char('T') if key.modifiers.contains(KeyModifiers::ALT) => {
                     Some(InputEvent::VilExprTypeHelp)
                 }
                 KeyCode::Char(c) => Some(InputEvent::InputChanged(c)),
@@ -220,5 +227,48 @@ pub fn map_crossterm_event_to_input_event(event: Event) -> Option<InputEvent> {
         Event::Resize(w, h) => Some(InputEvent::Resized(w, h)),
         Event::Paste(p) => Some(InputEvent::HandlePaste(p)),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crossterm::event::{KeyEvent, KeyEventKind, KeyEventState};
+
+    fn key(code: KeyCode, modifiers: KeyModifiers) -> Event {
+        Event::Key(KeyEvent {
+            code,
+            modifiers,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        })
+    }
+
+    #[test]
+    fn alt_h_maps_to_vil_expr_type_help() {
+        assert!(matches!(
+            map_crossterm_event_to_input_event(key(KeyCode::Char('h'), KeyModifiers::ALT)),
+            Some(InputEvent::VilExprTypeHelp)
+        ));
+        assert!(matches!(
+            map_crossterm_event_to_input_event(key(KeyCode::Char('H'), KeyModifiers::ALT)),
+            Some(InputEvent::VilExprTypeHelp)
+        ));
+    }
+
+    #[test]
+    fn alt_t_remains_vil_expr_type_help_alias() {
+        assert!(matches!(
+            map_crossterm_event_to_input_event(key(KeyCode::Char('t'), KeyModifiers::ALT)),
+            Some(InputEvent::VilExprTypeHelp)
+        ));
+    }
+
+    #[test]
+    fn plain_h_stays_text_input() {
+        assert!(matches!(
+            map_crossterm_event_to_input_event(key(KeyCode::Char('h'), KeyModifiers::NONE)),
+            Some(InputEvent::InputChanged('h'))
+        ));
     }
 }

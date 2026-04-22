@@ -31,7 +31,7 @@ pub(crate) fn spawn_vil_profile_detect(
 
         let mut ir_generation_active = false;
         let mut ir_metadata_files = vec![];
-        if let Ok(pipeline) = vil_ir::IrPipeline::new(&project_root) {
+        if let Ok(pipeline) = vil_ir::IrPipeline::new_async(&project_root).await {
             ir_generation_active = true;
             for (path, module) in pipeline.modules() {
                 let has_vil_attr = module.structs.iter().any(|s| !s.vil_attrs.is_empty())

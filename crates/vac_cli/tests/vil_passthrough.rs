@@ -544,3 +544,41 @@ fn vil_doctor_reports_vil_binary_and_vwfd_docs() {
             >= 1
     );
 }
+
+#[test]
+fn vil_doctor_strict_fails_on_missing_vil_binary() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let bin_dir = root.join("bin");
+    write_config(root, None);
+    append_config_section(
+        root,
+        r#"
+[vil]
+binary_path = "definitely-missing-vil"
+min_version = ">=0.1.0"
+vwfd_paths = ["./workflows/**/*.vwfd.yaml"]
+"#,
+    );
+
+    let mut cmd = vac_command(root, &bin_dir, &["doctor", "--strict", "--format", "json"]);
+    let output = cmd.assert().failure().get_output().stdout.clone();
+    let parsed: Value = serde_json::from_slice(&output).unwrap();
+    let checks = parsed
+        .get("checks")
+        .and_then(Value::as_array)
+        .expect("doctor output missing checks");
+    let vil_check = checks
+        .iter()
+        .find(|check| check.get("id") == Some(&Value::String("vil".to_string())))
+        .expect("doctor output missing vil check");
+
+    assert_eq!(vil_check.get("ok").and_then(Value::as_bool), Some(false));
+    assert!(
+        vil_check
+            .get("message")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .contains("vil binary unavailable")
+    );
+}

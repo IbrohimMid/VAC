@@ -78,7 +78,7 @@ pub fn on_changeset_updated(state: &mut AppState) {
     let project_root = state.project_root.clone();
     if let Some(tx) = state.input_tx.clone() {
         tokio::spawn(async move {
-            if let Ok(pipeline) = vil_ir::IrPipeline::new(&project_root) {
+            if let Ok(pipeline) = vil_ir::IrPipeline::new_async(&project_root).await {
                 if let Ok(report) = vil_validate::validate_changes(&pipeline, &files) {
                     let profile = vac_core::detector::VilProjectProfile::detect(&project_root);
                     let mut ir_metadata_files = vec![];

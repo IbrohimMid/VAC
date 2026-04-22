@@ -373,6 +373,43 @@ mod tests {
     }
 
     #[test]
+    fn mouse_click_on_review_row_selects_path_and_focuses() {
+        let (mut state, tx, _rx) = make_state_with_channel();
+        state.focus = WorkspaceFocus::Input;
+        state.workbench_tab = WorkbenchTab::Approvals;
+        state.review.filter.clear();
+        state.review.items.insert(
+            "src/lib.rs".to_string(),
+            crate::app::ReviewItem {
+                path: "src/lib.rs".to_string(),
+                status: crate::app::ReviewItemStatus::Pending,
+                has_snapshot: false,
+                last_error: None,
+                dirty_generation: 0,
+            },
+        );
+        state.review.items.insert(
+            "src/main.rs".to_string(),
+            crate::app::ReviewItem {
+                path: "src/main.rs".to_string(),
+                status: crate::app::ReviewItemStatus::Pending,
+                has_snapshot: false,
+                last_error: None,
+                dirty_generation: 0,
+            },
+        );
+        state
+            .review_file_row_regions
+            .push(("src/main.rs".to_string(), Rect::new(4, 11, 30, 1)));
+
+        let handled = dispatch_click(&mut state, &tx, 10, 11);
+        assert!(handled, "review row click must dispatch");
+        assert_eq!(state.review.selected_path.as_deref(), Some("src/main.rs"));
+        assert_eq!(state.workbench_tab, WorkbenchTab::Review);
+        assert_eq!(state.focus, WorkspaceFocus::Workbench);
+    }
+
+    #[test]
     fn mouse_click_on_vil_issue_row_selects_and_focuses() {
         let (mut state, tx, _rx) = make_state_with_channel();
         state.focus = WorkspaceFocus::Input;
@@ -385,6 +422,46 @@ mod tests {
         assert!(handled, "vil issue row click must dispatch");
         assert_eq!(state.vil.workbench_selected, 2);
         assert_eq!(state.workbench_tab, WorkbenchTab::Vil);
+        assert_eq!(state.focus, WorkspaceFocus::Workbench);
+    }
+
+    #[test]
+    fn mouse_click_on_sessions_row_selects_and_focuses() {
+        let (mut state, tx, _rx) = make_state_with_channel();
+        state.focus = WorkspaceFocus::Input;
+        state.workbench_tab = WorkbenchTab::Review;
+        state.sessions = vec![
+            crate::app::SessionInfo {
+                title: "A".to_string(),
+                id: "session-a".to_string(),
+                updated_at: "now".to_string(),
+                checkpoints: Vec::new(),
+                task_count: 0,
+                last_activity: "first".to_string(),
+                has_checkpoint: false,
+                snapshot_present: false,
+                snapshot_stale: false,
+            },
+            crate::app::SessionInfo {
+                title: "B".to_string(),
+                id: "session-b".to_string(),
+                updated_at: "now".to_string(),
+                checkpoints: Vec::new(),
+                task_count: 1,
+                last_activity: "second".to_string(),
+                has_checkpoint: false,
+                snapshot_present: false,
+                snapshot_stale: false,
+            },
+        ];
+        state
+            .sessions_row_regions
+            .push((1, Rect::new(2, 18, 40, 1)));
+
+        let handled = dispatch_click(&mut state, &tx, 5, 18);
+        assert!(handled, "sessions row click must dispatch");
+        assert_eq!(state.sessions_selected_idx, 1);
+        assert_eq!(state.workbench_tab, WorkbenchTab::Sessions);
         assert_eq!(state.focus, WorkspaceFocus::Workbench);
     }
 

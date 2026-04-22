@@ -415,7 +415,7 @@ mod tests {
     }
 
     #[test]
-    fn alt_t_on_identifier_opens_popup() {
+    fn alt_h_on_identifier_opens_popup() {
         let (tx, _rx) = tokio::sync::mpsc::channel(4);
         let mut state = make_test_state();
 
@@ -424,7 +424,7 @@ mod tests {
             handle_char(&mut state, &tx, c);
         }
 
-        // Dispatch VilExprTypeHelp (Alt+T).
+        // Dispatch VilExprTypeHelp (Alt+H).
         crate::controller::handle_input_event(&mut state, &tx, InputEvent::VilExprTypeHelp);
 
         // Should have a toast with the stub message.
@@ -433,7 +433,7 @@ mod tests {
                 .toasts
                 .iter()
                 .any(|t| t.message.contains("type inference coming soon")),
-            "Alt+T with active payload should show stub type-info toast, got: {:?}",
+            "Alt+H with active payload should show stub type-info toast, got: {:?}",
             state.toasts.iter().map(|t| &t.message).collect::<Vec<_>>()
         );
     }

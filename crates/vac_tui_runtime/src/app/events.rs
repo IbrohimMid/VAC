@@ -165,7 +165,7 @@ pub enum InputEvent {
     MouseRightClick(u16, u16),
     TaskCompleted(vac_core::task::TaskResult),
 
-    /// Alt+T: show type-info popup for vil-expr identifier under cursor (PR-T12.1).
+    /// Alt+H / Alt+T: show type-info popup for vil-expr identifier under cursor (PR-T12.1).
     VilExprTypeHelp,
 
     /// T14: vil dev runner events routed from the background spawn bridge.

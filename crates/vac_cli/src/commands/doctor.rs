@@ -130,6 +130,10 @@ pub async fn execute(
         }
     }
 
+    if strict && !all_ok {
+        anyhow::bail!("doctor strict checks failed");
+    }
+
     Ok(())
 }
 

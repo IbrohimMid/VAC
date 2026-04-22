@@ -193,7 +193,7 @@ fn handle_global(
             let msg = if state.vil_expr_lint.pending_payload.is_some() {
                 "vil-expr type inference coming soon (PR-T12 stub)"
             } else {
-                "Alt+T: no vil-expr: payload detected"
+                "Alt+H: no vil-expr: payload detected"
             };
             state.toasts.push(crate::services::Toast::info(msg));
             true
@@ -405,5 +405,81 @@ fn handle_mouse_drag_start(
         }
     } else {
         crate::services::text_selection::handle_drag_start(state, col, row);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::{SidePanelRowAction, SidePanelSection, WorkbenchTab};
+    use ratatui::layout::Rect;
+    use tokio::sync::mpsc;
+
+    fn make_state_with_channel() -> (
+        AppState,
+        mpsc::Sender<OutputEvent>,
+        mpsc::Receiver<OutputEvent>,
+    ) {
+        let state = AppState::default();
+        let (tx, rx) = mpsc::channel::<OutputEvent>(64);
+        (state, tx, rx)
+    }
+
+    #[test]
+    fn mouse_click_on_side_panel_header_toggles_section() {
+        let (mut state, tx, _rx) = make_state_with_channel();
+        state.side_panel_visible = true;
+        state
+            .side_panel_header_areas
+            .insert(SidePanelSection::Sessions, Rect::new(1, 5, 20, 1));
+
+        handle_input_event(&mut state, &tx, InputEvent::MouseDragStart(2, 5));
+        assert!(
+            state
+                .side_panel_section_collapsed
+                .contains(&SidePanelSection::Sessions)
+        );
+
+        handle_input_event(&mut state, &tx, InputEvent::MouseDragStart(2, 5));
+        assert!(
+            !state
+                .side_panel_section_collapsed
+                .contains(&SidePanelSection::Sessions)
+        );
+    }
+
+    #[test]
+    fn mouse_click_on_side_panel_session_row_emits_switch_session() {
+        let (mut state, tx, mut rx) = make_state_with_channel();
+        state.side_panel_visible = true;
+        state.side_panel_row_areas.push((
+            SidePanelRowAction::SwitchSession("session-42".to_string()),
+            Rect::new(1, 8, 20, 1),
+        ));
+
+        handle_input_event(&mut state, &tx, InputEvent::MouseDragStart(3, 8));
+
+        match rx.try_recv().expect("expected SwitchToSession event") {
+            OutputEvent::SwitchToSession(id) => assert_eq!(id, "session-42"),
+            other => panic!("unexpected output event: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn mouse_click_on_side_panel_vil_issue_row_opens_review() {
+        let (mut state, tx, _rx) = make_state_with_channel();
+        state.side_panel_visible = true;
+        state.focus = WorkspaceFocus::Input;
+        state.workbench_tab = WorkbenchTab::Runtime;
+        state.side_panel_row_areas.push((
+            SidePanelRowAction::JumpToVilIssue("src/lib.rs".to_string()),
+            Rect::new(1, 9, 20, 1),
+        ));
+
+        handle_input_event(&mut state, &tx, InputEvent::MouseDragStart(3, 9));
+
+        assert_eq!(state.review.selected_path.as_deref(), Some("src/lib.rs"));
+        assert_eq!(state.workbench_tab, WorkbenchTab::Review);
+        assert_eq!(state.focus, WorkspaceFocus::Workbench);
     }
 }

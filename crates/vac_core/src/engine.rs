@@ -297,7 +297,7 @@ impl VacEngine {
         }
 
         info!("Initializing IR pipeline...");
-        let ir = vil_ir::IrPipeline::new(&self.project_root)?;
+        let ir = vil_ir::IrPipeline::new_async(&self.project_root).await?;
         self.ir_pipeline = Some(ir);
 
         info!("Initializing context engine...");

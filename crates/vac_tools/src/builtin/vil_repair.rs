@@ -216,7 +216,8 @@ impl VilTool for VilRepairTool {
         let plan = vil_ir::refactor::generate_repair_plan(&module, &source, &input.file);
 
         // Also run validation for the score
-        let pipeline = vil_ir::IrPipeline::new(&context.working_dir)
+        let pipeline = vil_ir::IrPipeline::new_async(&context.working_dir)
+            .await
             .map_err(|e| ToolError::ExecutionFailed(format!("Failed to build IR pipeline: {e}")))?;
         let files = vec![input.file.clone()];
         let report = vil_validate::validate_changes(&pipeline, &files)

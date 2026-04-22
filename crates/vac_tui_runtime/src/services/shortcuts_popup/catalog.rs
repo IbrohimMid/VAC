@@ -59,6 +59,7 @@ pub fn get_all_shortcuts() -> Vec<Shortcut> {
         Shortcut::new("Ctrl+S", "Show shortcuts (this popup)", "UI Controls"),
         Shortcut::new("Ctrl+G", "Show file changes", "UI Controls"),
         Shortcut::new("Ctrl+X", "Copy session ID", "UI Controls"),
+        Shortcut::new("Alt+H", "Show vil-expr type help", "UI Controls"),
         // File Search
         Shortcut::new("@", "Trigger file search", "File Search"),
         Shortcut::new("$", "Enter interactive shell mode", "File Search"),

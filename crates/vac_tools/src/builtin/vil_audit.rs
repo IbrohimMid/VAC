@@ -105,7 +105,8 @@ impl VilTool for VilAuditTool {
             validate_path_within_root(&context.working_dir, file)?;
         }
 
-        let pipeline = vil_ir::IrPipeline::new(&context.working_dir)
+        let pipeline = vil_ir::IrPipeline::new_async(&context.working_dir)
+            .await
             .map_err(|e| ToolError::ExecutionFailed(format!("Failed to build IR pipeline: {e}")))?;
 
         let files: Vec<String> = if input.files.is_empty() {
