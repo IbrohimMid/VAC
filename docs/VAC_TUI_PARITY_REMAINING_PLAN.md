@@ -273,7 +273,7 @@ pub struct VwfdDiff {
 **Behavior:**
 - Spawn `config.vil.dev_command` via `tokio::process::Command`, capture stdout+stderr line-by-line.
 - Stream ke tray item `"vil dev"` + panel Activity.
-- Parse `[vil-checkpoint] <session_id> <iso-ts>` → emit `InputEvent::VilCheckpoint { session_id, ts }` → render dot di PR-T8 session timeline.
+- Parse `[vil-checkpoint] <session_id> <iso-ts>` → emit `InputEvent::VilCheckpoint { session_id, ts }` → append to `vil_dev_checkpoints` Vec + push activity entry (timestamp + session_id). **Reframe (Task-7 Jalur B):** "session timeline markers" = activity log entries with timestamp; dedicated `SessionTimelineMarker` struct not warranted by spec (single bullet, no UI mockup). Covered by Task-6 activity routing.
 - Kill: Esc di tray item → SIGTERM, timeout 5s → SIGKILL.
 
 **Tests:**
