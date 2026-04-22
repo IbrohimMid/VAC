@@ -4,6 +4,7 @@
 //! them into concise, user-facing summaries for `vac observe`, `vac explain`,
 //! and `vac why`.
 
+pub mod decisions;
 mod model;
 mod scan;
 mod session;
