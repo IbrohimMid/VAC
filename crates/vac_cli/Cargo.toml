@@ -94,6 +94,11 @@ assert_cmd = "2.0"
 tempfile = "3"
 predicates = "3"
 vac_session_control = { version = "0.1.0", path = "../vac_session_control" }
+criterion = { workspace = true }
+
+[[bench]]
+name = "cold_start"
+harness = false
 
 [lints]
 workspace = true

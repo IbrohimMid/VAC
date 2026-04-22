@@ -1,0 +1,76 @@
+# Criterion benchmark harness (M3).
+#
+# Runs the workspace benches in a consistent, cache-friendly environment and
+# enforces SLA thresholds via scripts/check_bench_slas.py. Scheduled weekly so
+# long-term drift is visible even without PR activity, and available on-demand
+# via workflow_dispatch for ad-hoc perf triage.
+#
+# This workflow does NOT gate PRs today — benches are noisy on GitHub Actions
+# runners and we need a stable baseline before flipping it to required.
+
+name: Benchmarks
+
+on:
+  workflow_dispatch:
+    inputs:
+      filter:
+        description: "Criterion filter regex (empty = all)"
+        required: false
+        default: ""
+  schedule:
+    - cron: "0 2 * * 0"
+
+concurrency:
+  group: bench-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  bench:
+    name: cargo bench (workspace)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: bench-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            bench-${{ runner.os }}-
+
+      - name: Build bench binaries
+        run: cargo build --release --benches --workspace
+
+      - name: Run benches (bencher-format output)
+        env:
+          CRITERION_FILTER: ${{ inputs.filter }}
+        run: |
+          mkdir -p target/bench-json
+          for crate in vil_ir vil_rag vac_cli; do
+            echo "::group::Running $crate benches"
+            cargo bench -p "$crate" -- --output-format bencher "$CRITERION_FILTER" \
+              | tee "target/bench-json/$crate.txt"
+            echo "::endgroup::"
+          done
+
+      - name: Check SLA thresholds
+        run: python3 scripts/check_bench_slas.py target/bench-json/
+
+      - name: Upload criterion reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: criterion-reports
+          path: |
+            target/criterion/
+            target/bench-json/
+          retention-days: 30

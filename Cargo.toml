@@ -77,6 +77,11 @@ notify = { version = "6" }
 tiktoken-rs = "0.6"
 fastembed = "4.4"
 
+# Benchmarking (M3). `harness = false` on individual benches lets criterion
+# supply its own main() so we get stable, statistically-meaningful timings
+# instead of libtest's noisy microbench.
+criterion = { version = "0.5", features = ["html_reports"] }
+
 # Crypto & signing
 coset = "0.3"
 sha2 = "0.10"
