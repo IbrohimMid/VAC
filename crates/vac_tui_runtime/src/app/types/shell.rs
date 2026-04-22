@@ -8,11 +8,17 @@ pub struct ShellSession {
     pub id: Uuid,
     pub label: String,
     pub command: Option<ShellCommand>,
-    /// Raw terminal output kept as a single String for char-level slicing
-    /// (prompt detection, render). Hard-capped at 1 MiB by the update loop.
+    /// Raw terminal output as a single String. Canonical source for:
+    /// - `vac_shell::detect_prompt_ready` (needs full tail, not lines)
+    /// - TUI rendering with char-level slicing + 1 MiB byte cap
+    /// The two sources are kept in sync at every push site in
+    /// `update.rs::InputEvent::ShellOutput` / `ShellError`.
     pub output: String,
-    /// Parallel signal buffer for distillation/noise filtering. Written
-    /// alongside `output`; does not affect prompt detection or rendering.
+    /// Canonical source for signal-layer consumers:
+    /// - `vac signal tail --stream shell:<idx>:<uuid>`
+    /// - `signal_tail` MCP tool
+    /// - Rewind persistence
+    /// Bounded ring (2_000 lines); survives 1 MiB `output` truncation.
     pub output_signal: vac_signal::SignalBuffer,
     pub history: Vec<String>,
     pub history_idx: Option<usize>,
@@ -111,4 +117,36 @@ impl ShellSessionStore {
 #[derive(Debug, Clone, Default)]
 pub struct ShellState {
     pub session_store: ShellSessionStore,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Contract: a fresh session has both output sources initialized
+    /// empty + in-sync, so write sites stay simple.
+    #[test]
+    fn contract_fresh_session_has_synced_outputs() {
+        let s = ShellSession::new("s0".to_string());
+        assert!(s.output.is_empty());
+        assert_eq!(s.output_signal.len(), 0);
+        assert_eq!(s.output_signal.kind(), vac_signal::SignalStreamKind::Shell);
+    }
+
+    /// Contract: clear() on both in reset() keeps them aligned. Also
+    /// documents the invariant that push sites must mirror writes
+    /// (enforced at `update.rs::InputEvent::ShellOutput`).
+    #[test]
+    fn contract_both_sources_clearable_independently() {
+        let mut s = ShellSession::new("s0".to_string());
+        s.output.push_str("line-1\nline-2\n");
+        s.output_signal.push_line("line-1");
+        s.output_signal.push_line("line-2");
+        assert_eq!(s.output_signal.len(), 2);
+
+        s.output.clear();
+        s.output_signal.clear();
+        assert!(s.output.is_empty());
+        assert_eq!(s.output_signal.len(), 0);
+    }
 }
