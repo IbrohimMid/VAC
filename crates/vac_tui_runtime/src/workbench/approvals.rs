@@ -26,7 +26,7 @@ impl WorkbenchTabView for ApprovalsTab {
 
         // PR-T16 P1 — record per-row click regions for the pending-approvals
         // list. Inner area is `body[0]` minus its 1-char border.
-        state.approvals_row_regions.clear();
+        state.workbench_chrome.approvals_row_regions.clear();
         if body[0].width > 2 && body[0].height > 2 {
             let inner_x = body[0].x + 1;
             let inner_y = body[0].y + 1;
@@ -36,7 +36,7 @@ impl WorkbenchTabView for ApprovalsTab {
                 if idx as u16 >= inner_h {
                     break;
                 }
-                state.approvals_row_regions.push((
+                state.workbench_chrome.approvals_row_regions.push((
                     idx,
                     ratatui::layout::Rect::new(inner_x, inner_y + idx as u16, inner_w, 1),
                 ));

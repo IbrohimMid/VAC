@@ -85,7 +85,7 @@ impl WorkbenchTabView for SessionsTab {
         // matches the review / approvals / vil-issue mouse ergonomics.
         // The List widget draws inside `body[0]` minus a 1-cell border on
         // each side; clamp to at most the number of visible rows.
-        state.sessions_row_regions.clear();
+        state.workbench_chrome.sessions_row_regions.clear();
         let inner_x = body[0].x.saturating_add(1);
         let inner_y = body[0].y.saturating_add(1);
         let inner_w = body[0].width.saturating_sub(2);
@@ -93,7 +93,7 @@ impl WorkbenchTabView for SessionsTab {
         if inner_w > 0 && inner_h > 0 {
             let max_rows = (inner_h as usize).min(state.sessions.len());
             for idx in 0..max_rows {
-                state.sessions_row_regions.push((
+                state.workbench_chrome.sessions_row_regions.push((
                     idx,
                     Rect::new(inner_x, inner_y.saturating_add(idx as u16), inner_w, 1),
                 ));

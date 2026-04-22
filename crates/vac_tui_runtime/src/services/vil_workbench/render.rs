@@ -82,7 +82,7 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
     // PR-T16 P1 — expose the full VIL tab body as a focus-grab click region,
     // so a click anywhere inside the tab brings the workbench into focus even
     // when it misses a specific row.
-    state.workbench_body_region = Some(area);
+    state.workbench_chrome.body_region = Some(area);
     // R7 / PR-T15 — if a hover popup is active, anchor it against the issue
     // list rect so dismissal hit-testing matches what the user sees. The
     // popup must render AFTER the list so it paints on top, and it must be
@@ -354,7 +354,7 @@ fn compact_list(items: &[String], max: usize) -> String {
 
 fn render_issue_list(f: &mut Frame, state: &mut AppState, area: Rect, view: &[&VilIssue]) {
     // PR-T16 P1 — reset issue-row regions at the start of each render.
-    state.vil_issue_row_regions.clear();
+    state.workbench_chrome.vil_issue_row_regions.clear();
 
     let empty_msg = if state.vil.status.validation_issues.is_empty() {
         "No validation issues. Run /vil-status or edit a watched file."
@@ -382,7 +382,7 @@ fn render_issue_list(f: &mut Frame, state: &mut AppState, area: Rect, view: &[&V
                 break;
             }
             state
-                .vil_issue_row_regions
+                .workbench_chrome.vil_issue_row_regions
                 .push((idx, Rect::new(inner_x, inner_y + idx as u16, inner_w, 1)));
         }
     }

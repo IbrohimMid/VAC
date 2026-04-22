@@ -83,7 +83,7 @@ pub(super) fn render_workbench_panel(f: &mut Frame, state: &mut AppState, area: 
     // PR-T16 — record per-tab click regions for the mouse dispatcher.
     // Layout mirrors ratatui::Tabs rendering: each label is drawn inside the
     // bordered block on the first inner row, separated by `" │ "` (3 cols).
-    state.workbench_tab_regions.clear();
+    state.workbench_chrome.tab_regions.clear();
     if chunks[0].height >= 3 && chunks[0].width >= 3 {
         let inner_y = chunks[0].y + 1;
         let inner_x_start = chunks[0].x + 1;
@@ -98,7 +98,7 @@ pub(super) fn render_workbench_panel(f: &mut Frame, state: &mut AppState, area: 
             let rect_w = w.min(avail);
             let rect = ratatui::layout::Rect::new(x, inner_y, rect_w, 1);
             state
-                .workbench_tab_regions
+                .workbench_chrome.tab_regions
                 .push((crate::workbench::tab_from_index(i), rect));
             x = x.saturating_add(w + 3); // " │ " separator between tabs
         }

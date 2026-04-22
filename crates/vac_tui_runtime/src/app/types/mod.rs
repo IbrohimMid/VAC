@@ -16,6 +16,7 @@ pub mod billing;
 pub mod changeset_ui;
 pub mod file_picker;
 pub mod vil_dev;
+pub mod workbench_ui;
 pub mod commands;
 pub mod helpers;
 pub mod messages;
@@ -31,6 +32,7 @@ pub use at_mention::AtMentionState;
 pub use changeset_ui::ChangesetUiState;
 pub use file_picker::FilePickerState;
 pub use vil_dev::VilDevState;
+pub use workbench_ui::WorkbenchChromeState;
 pub use billing::{
     BillingInfo, LoadingOperation, LoadingStateManager, SessionInfo, ShortcutsPopupMode,
     TokenUsage, ToolCallStatus,
@@ -224,12 +226,10 @@ pub struct AppState {
     pub banner_dismiss_region: Option<ratatui::layout::Rect>,
     // PR-T16 — mouse click regions for workbench tabs and task tray rows.
     // Populated during view render, consumed by `handlers::mouse::dispatch_click`.
-    pub workbench_tab_regions: Vec<(WorkbenchTab, ratatui::layout::Rect)>,
-    pub task_tray_row_regions: Vec<ratatui::layout::Rect>,
+    pub workbench_chrome: WorkbenchChromeState,
     // PR-T16 P1 — per-surface click regions (review file list, approvals rows,
     // VIL issue rows, generic workbench body focus grab). Populated each render;
     // consumed by `handlers::mouse::dispatch_click`.
-    pub review_file_row_regions: Vec<(String, ratatui::layout::Rect)>,
     /// PR-T17 / R8c — pending native Kitty graphics emission for the current
     /// frame. Populated by surface renderers (e.g. the review-tab image
     /// preview) when the probed terminal supports Kitty graphics
@@ -259,14 +259,6 @@ pub struct AppState {
     /// thread delivers the result through an internal channel that the
     /// event loop drains once per iteration before the next draw.
     pub image_preview_cache: crate::services::image_preview_cache::ImagePreviewCache,
-    pub approvals_row_regions: Vec<(usize, ratatui::layout::Rect)>,
-    pub vil_issue_row_regions: Vec<(usize, ratatui::layout::Rect)>,
-    /// Per-row click regions for the Sessions workbench tab list
-    /// (PR-T16 R5). Clicking a row selects that session index and
-    /// focuses the workbench, mirroring the review/approvals/vil-issue
-    /// ergonomics.
-    pub sessions_row_regions: Vec<(usize, ratatui::layout::Rect)>,
-    pub workbench_body_region: Option<ratatui::layout::Rect>,
     // Unit 8 (Wave 3.6) — Banner queue + severity
     pub banner_queue: crate::services::banner::BannerQueue,
 

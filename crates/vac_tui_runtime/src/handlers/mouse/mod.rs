@@ -39,7 +39,7 @@ pub fn dispatch_click(
 
     // Workbench tab strip.
     let tab_hit = state
-        .workbench_tab_regions
+        .workbench_chrome.tab_regions
         .iter()
         .find(|(_, rect)| hit(rect, col, row))
         .map(|(tab, _)| *tab);
@@ -55,7 +55,7 @@ pub fn dispatch_click(
         .is_active(crate::overlay::OverlayId::TaskTray)
     {
         let tray_hit = state
-            .task_tray_row_regions
+            .workbench_chrome.task_tray_row_regions
             .iter()
             .position(|rect| hit(rect, col, row));
         if let Some(idx) = tray_hit {
@@ -67,7 +67,7 @@ pub fn dispatch_click(
     // PR-T16 P1 — Review pane file rows. Clicking a row selects that path
     // and focuses the workbench so the diff body becomes visible.
     let review_hit = state
-        .review_file_row_regions
+        .workbench_chrome.review_file_row_regions
         .iter()
         .find(|(_, rect)| hit(rect, col, row))
         .map(|(path, _)| path.clone());
@@ -86,7 +86,7 @@ pub fn dispatch_click(
 
     // PR-T16 P1 — Approvals pane rows.
     let approval_hit = state
-        .approvals_row_regions
+        .workbench_chrome.approvals_row_regions
         .iter()
         .find(|(_, rect)| hit(rect, col, row))
         .map(|(idx, _)| *idx);
@@ -99,7 +99,7 @@ pub fn dispatch_click(
 
     // PR-T16 P1 — vil_workbench issue rows.
     let vil_hit = state
-        .vil_issue_row_regions
+        .workbench_chrome.vil_issue_row_regions
         .iter()
         .find(|(_, rect)| hit(rect, col, row))
         .map(|(idx, _)| *idx);
@@ -142,7 +142,7 @@ pub fn dispatch_click(
     // selected session still lives behind the keyboard shortcut ('r')
     // so a stray click cannot trigger a session switch.
     let sessions_hit = state
-        .sessions_row_regions
+        .workbench_chrome.sessions_row_regions
         .iter()
         .find(|(_, rect)| hit(rect, col, row))
         .map(|(idx, _)| *idx);
@@ -173,7 +173,7 @@ pub fn dispatch_click(
 
     // PR-T16 P1 — Workbench panel body (focus-grab fallback). Only fires if
     // no more-specific region matched above, so row clicks still win.
-    if let Some(rect) = state.workbench_body_region
+    if let Some(rect) = state.workbench_chrome.body_region
         && hit(&rect, col, row)
     {
         state.focus = WorkspaceFocus::Workbench;
@@ -199,7 +199,7 @@ pub fn dispatch_click(
 pub fn dispatch_hover(state: &mut AppState, col: u16, row: u16) -> bool {
     // 1. Over a VIL row?
     let row_idx = state
-        .vil_issue_row_regions
+        .workbench_chrome.vil_issue_row_regions
         .iter()
         .find(|(_, rect)| hit(rect, col, row))
         .map(|(idx, _)| *idx);

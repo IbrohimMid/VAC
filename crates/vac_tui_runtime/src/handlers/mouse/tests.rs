@@ -23,10 +23,10 @@ fn mouse_click_on_tab_switches() {
     state.workbench_tab = WorkbenchTab::Approvals;
     state.focus = WorkspaceFocus::Input;
     state
-        .workbench_tab_regions
+        .workbench_chrome.tab_regions
         .push((WorkbenchTab::Review, Rect::new(2, 0, 6, 1)));
     state
-        .workbench_tab_regions
+        .workbench_chrome.tab_regions
         .push((WorkbenchTab::Sessions, Rect::new(12, 0, 9, 1)));
 
     let handled = dispatch_click(&mut state, &tx, 14, 0);
@@ -42,8 +42,8 @@ fn mouse_click_on_tray_focuses() {
         .overlay_manager
         .push(OverlayId::TaskTray, WorkspaceFocus::Input);
     state.task_tray_selected = 0;
-    state.task_tray_row_regions.push(Rect::new(10, 20, 40, 1));
-    state.task_tray_row_regions.push(Rect::new(10, 21, 40, 1));
+    state.workbench_chrome.task_tray_row_regions.push(Rect::new(10, 20, 40, 1));
+    state.workbench_chrome.task_tray_row_regions.push(Rect::new(10, 21, 40, 1));
 
     let handled = dispatch_click(&mut state, &tx, 15, 21);
     assert!(handled, "click on tray row 2 should be handled");
@@ -71,7 +71,7 @@ fn mouse_click_outside_regions_is_ignored() {
     let (mut state, tx, _rx) = make_state_with_channel();
     let before_tab = state.workbench_tab;
     state
-        .workbench_tab_regions
+        .workbench_chrome.tab_regions
         .push((WorkbenchTab::Review, Rect::new(2, 0, 6, 1)));
     let handled = dispatch_click(&mut state, &tx, 100, 100);
     assert!(!handled);
@@ -84,10 +84,10 @@ fn mouse_click_on_approvals_row_selects_and_focuses() {
     state.focus = WorkspaceFocus::Input;
     state.workbench_tab = WorkbenchTab::Review;
     state
-        .approvals_row_regions
+        .workbench_chrome.approvals_row_regions
         .push((0, Rect::new(4, 10, 30, 1)));
     state
-        .approvals_row_regions
+        .workbench_chrome.approvals_row_regions
         .push((1, Rect::new(4, 11, 30, 1)));
 
     let handled = dispatch_click(&mut state, &tx, 10, 11);
@@ -124,7 +124,7 @@ fn mouse_click_on_review_row_selects_path_and_focuses() {
         },
     );
     state
-        .review_file_row_regions
+        .workbench_chrome.review_file_row_regions
         .push(("src/main.rs".to_string(), Rect::new(4, 11, 30, 1)));
 
     let handled = dispatch_click(&mut state, &tx, 10, 11);
@@ -140,7 +140,7 @@ fn mouse_click_on_vil_issue_row_selects_and_focuses() {
     state.focus = WorkspaceFocus::Input;
     state.workbench_tab = WorkbenchTab::Review;
     state
-        .vil_issue_row_regions
+        .workbench_chrome.vil_issue_row_regions
         .push((2, Rect::new(2, 20, 50, 1)));
 
     let handled = dispatch_click(&mut state, &tx, 5, 20);
@@ -180,7 +180,7 @@ fn mouse_click_on_sessions_row_selects_and_focuses() {
         },
     ];
     state
-        .sessions_row_regions
+        .workbench_chrome.sessions_row_regions
         .push((1, Rect::new(2, 18, 40, 1)));
 
     let handled = dispatch_click(&mut state, &tx, 5, 18);
@@ -194,7 +194,7 @@ fn mouse_click_on_sessions_row_selects_and_focuses() {
 fn mouse_click_on_workbench_body_grabs_focus() {
     let (mut state, tx, _rx) = make_state_with_channel();
     state.focus = WorkspaceFocus::Input;
-    state.workbench_body_region = Some(Rect::new(0, 5, 80, 20));
+    state.workbench_chrome.body_region = Some(Rect::new(0, 5, 80, 20));
 
     let handled = dispatch_click(&mut state, &tx, 40, 15);
     assert!(handled, "workbench body click must grab focus");
@@ -205,7 +205,7 @@ fn mouse_click_on_workbench_body_grabs_focus() {
 fn dispatch_hover_short_circuits_on_sticky_row_regardless_of_hover_presence() {
     let (mut state, _tx, _rx) = make_state_with_channel();
     state
-        .vil_issue_row_regions
+        .workbench_chrome.vil_issue_row_regions
         .push((7, Rect::new(2, 20, 50, 1)));
 
     let first = dispatch_hover(&mut state, 5, 20);
@@ -243,9 +243,9 @@ fn mouse_click_row_region_wins_over_body_fallback() {
     let (mut state, tx, _rx) = make_state_with_channel();
     state.focus = WorkspaceFocus::Input;
     state.workbench_tab = WorkbenchTab::Review;
-    state.workbench_body_region = Some(Rect::new(0, 5, 80, 20));
+    state.workbench_chrome.body_region = Some(Rect::new(0, 5, 80, 20));
     state
-        .vil_issue_row_regions
+        .workbench_chrome.vil_issue_row_regions
         .push((0, Rect::new(2, 10, 20, 1)));
 
     let handled = dispatch_click(&mut state, &tx, 5, 10);
@@ -272,7 +272,7 @@ fn dispatch_click_selects_review_row_at_position() {
         },
     );
     state
-        .review_file_row_regions
+        .workbench_chrome.review_file_row_regions
         .push(("a.rs".to_string(), Rect::new(0, 5, 40, 1)));
 
     let handled = dispatch_click(&mut state, &tx, 10, 5);
@@ -319,10 +319,10 @@ fn dispatch_click_triggers_approval_action() {
     let (mut state, tx, _rx) = make_state_with_channel();
     state.focus = WorkspaceFocus::Input;
     state
-        .approvals_row_regions
+        .workbench_chrome.approvals_row_regions
         .push((0, Rect::new(0, 10, 20, 1)));
     state
-        .approvals_row_regions
+        .workbench_chrome.approvals_row_regions
         .push((1, Rect::new(0, 11, 20, 1)));
 
     let handled = dispatch_click(&mut state, &tx, 5, 10);
@@ -344,7 +344,7 @@ fn dispatch_click_scrolls_task_tray_overlay_on_hit() {
     state.task_tray_selected = 0;
     for row_y in 5u16..10 {
         state
-            .task_tray_row_regions
+            .workbench_chrome.task_tray_row_regions
             .push(Rect::new(0, row_y, 40, 1));
     }
 
@@ -360,10 +360,10 @@ fn dispatch_click_on_workbench_tab_changes_view() {
     state.workbench_tab = WorkbenchTab::Sessions;
     state.focus = WorkspaceFocus::Input;
     state
-        .workbench_tab_regions
+        .workbench_chrome.tab_regions
         .push((WorkbenchTab::Review, Rect::new(0, 0, 8, 1)));
     state
-        .workbench_tab_regions
+        .workbench_chrome.tab_regions
         .push((WorkbenchTab::Approvals, Rect::new(9, 0, 10, 1)));
 
     let handled = dispatch_click(&mut state, &tx, 12, 0);

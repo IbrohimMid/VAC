@@ -10,7 +10,7 @@ use crate::services::textarea::TextArea;
 use crate::types::*;
 
 use super::{
-    ActivityItem, ActivityKind, AppState, ApprovalsState, AskUserState, AtMentionState, ChangesetUiState, FilePickerState, HelperCommand, LoadingStateManager, VilDevState,
+    ActivityItem, ActivityKind, AppState, ApprovalsState, AskUserState, AtMentionState, ChangesetUiState, FilePickerState, HelperCommand, LoadingStateManager, VilDevState, WorkbenchChromeState,
     Message, QueueMetrics, RenderMetrics, ReviewItem, ReviewItemStatus, ReviewState, RuntimeState,
     ShellState, ShortcutsPopupMode, StartupSnapshot, TokenUsage, VilLogEntry, VilState,
     WorkbenchTab, WorkspaceFocus,
@@ -134,16 +134,10 @@ impl AppState {
             banner_message: None,
             banner_click_regions: Vec::new(),
             banner_dismiss_region: None,
-            workbench_tab_regions: Vec::new(),
-            task_tray_row_regions: Vec::new(),
-            review_file_row_regions: Vec::new(),
+            workbench_chrome: WorkbenchChromeState::default(),
             pending_kitty_emission: None,
             last_kitty_emission: None,
             image_preview_cache: crate::services::image_preview_cache::ImagePreviewCache::new(),
-            approvals_row_regions: Vec::new(),
-            vil_issue_row_regions: Vec::new(),
-            sessions_row_regions: Vec::new(),
-            workbench_body_region: None,
             banner_queue: crate::services::banner::BannerQueue::new(),
             pending_pastes: Vec::new(),
             is_pasting: false,
