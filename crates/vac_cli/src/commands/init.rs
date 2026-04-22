@@ -1,11 +1,12 @@
 //! `vac init` — Initialize project context.
 
 use std::path::PathBuf;
+use tokio::io::AsyncWriteExt;
 
 pub async fn execute(project_root: PathBuf, force: bool) -> anyhow::Result<()> {
     let vac_dir = project_root.join(".vac");
 
-    if vac_dir.exists() && !force {
+    if tokio::fs::try_exists(&vac_dir).await? && !force {
         println!(
             "✓ Project already initialized at {}",
             project_root.display()
@@ -20,17 +21,17 @@ pub async fn execute(project_root: PathBuf, force: bool) -> anyhow::Result<()> {
     );
 
     // Create .vac directory structure
-    std::fs::create_dir_all(vac_dir.join("sessions"))?;
-    std::fs::create_dir_all(vac_dir.join("memory"))?;
-    std::fs::create_dir_all(vac_dir.join("traces"))?;
-    std::fs::create_dir_all(vac_dir.join("cache"))?;
-    std::fs::create_dir_all(vac_dir.join("skills"))?;
-    std::fs::create_dir_all(vac_dir.join("approvals"))?;
-    std::fs::create_dir_all(project_root.join("workflows"))?;
+    tokio::fs::create_dir_all(vac_dir.join("sessions")).await?;
+    tokio::fs::create_dir_all(vac_dir.join("memory")).await?;
+    tokio::fs::create_dir_all(vac_dir.join("traces")).await?;
+    tokio::fs::create_dir_all(vac_dir.join("cache")).await?;
+    tokio::fs::create_dir_all(vac_dir.join("skills")).await?;
+    tokio::fs::create_dir_all(vac_dir.join("approvals")).await?;
+    tokio::fs::create_dir_all(project_root.join("workflows")).await?;
 
     // Create default config if not exists
     let config_path = vac_dir.join("config.toml");
-    if !config_path.exists() {
+    if !tokio::fs::try_exists(&config_path).await? {
         let default_config = r#"# VAC Configuration
 # VIL-Native Autonomous Development Agent
 # See https://vastar.id/docs/vac/config for full reference
@@ -221,12 +222,12 @@ max_concurrent_jobs = 2
 # =============================================================================
 # Custom skills are loaded from .vac/skills/*.toml
 "#;
-        std::fs::write(&config_path, default_config)?;
+        tokio::fs::write(&config_path, default_config).await?;
         println!("   📝 Created default config: .vac/config.toml");
     }
 
     let example_vwfd_path = project_root.join("workflows/example.vwfd.yaml");
-    if !example_vwfd_path.exists() {
+    if !tokio::fs::try_exists(&example_vwfd_path).await? {
         let example_vwfd = r#"apiVersion: vil.vastar.io/v1
 kind: VilServer
 metadata:
@@ -242,13 +243,13 @@ spec:
     - name: validate_input
       execution: native
 "#;
-        std::fs::write(&example_vwfd_path, example_vwfd)?;
+        tokio::fs::write(&example_vwfd_path, example_vwfd).await?;
         println!("   📝 Created example VWFD: workflows/example.vwfd.yaml");
     }
 
     // Create empty rulebook template if not exists
     let rules_path = vac_dir.join("rules.toml");
-    if !rules_path.exists() {
+    if !tokio::fs::try_exists(&rules_path).await? {
         let rules_template = r#"# VAC Rulebook — team/repo constraints (overlay only)
 # VIL semantic contracts from llm_knowledge/ always take precedence over these rules.
 
@@ -272,20 +273,20 @@ name = "Project Rules"
 # description = "Never commit API keys or secrets to source control"
 # severity = "block"
 "#;
-        std::fs::write(&rules_path, rules_template)?;
+        tokio::fs::write(&rules_path, rules_template).await?;
         println!("   📋 Created rulebook template: .vac/rules.toml");
     }
 
     // Add .vac to .gitignore if not already there
     let gitignore_path = project_root.join(".gitignore");
-    if gitignore_path.exists() {
-        let content = std::fs::read_to_string(&gitignore_path)?;
+    if tokio::fs::try_exists(&gitignore_path).await? {
+        let content = tokio::fs::read_to_string(&gitignore_path).await?;
         if !content.contains(".vac/") {
-            let mut file = std::fs::OpenOptions::new()
+            let mut file = tokio::fs::OpenOptions::new()
                 .append(true)
-                .open(&gitignore_path)?;
-            use std::io::Write;
-            writeln!(file, "\n# VAC agent data\n.vac/")?;
+                .open(&gitignore_path)
+                .await?;
+            file.write_all(b"\n# VAC agent data\n.vac/\n").await?;
             println!("   📂 Added .vac/ to .gitignore");
         }
     }

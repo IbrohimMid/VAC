@@ -1,7 +1,6 @@
 //! `vac vil` — passthrough command surface for the external VIL binary.
 
 use std::collections::HashSet;
-use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -11,6 +10,7 @@ use glob::glob;
 use regex::Regex;
 use semver::{Version, VersionReq};
 use serde_json::json;
+use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 use uuid::Uuid;
 
@@ -289,25 +289,7 @@ async fn execute_codegen(
     let execution_mode = vil_vwfd::codegen::parse_execution_mode(&execution_mode)?;
     let artifact = vil_vwfd::generate_handler(kind, execution_mode, &name)?;
     let staging_dir = tempfile::tempdir().context("failed to create staging dir")?;
-    write_generated_artifact_to(staging_dir.path(), &artifact)?;
-
-    let scaffold_root = staging_dir
-        .path()
-        .join("handlers")
-        .join(&artifact.document.metadata.name);
-    let parity_issues = vil_validate::passes::vwfd_parity_pass(&artifact.document, &scaffold_root);
-    if !parity_issues.is_empty() {
-        let details = parity_issues
-            .iter()
-            .map(|issue| issue.label())
-            .collect::<Vec<_>>()
-            .join("; ");
-        return Err(anyhow!(
-            "VWFD parity gate failed for `{}`: {}",
-            artifact.document.metadata.name,
-            details
-        ));
-    }
+    write_generated_artifact_to(staging_dir.path(), &artifact).await?;
 
     let scaffold_name = artifact.document.metadata.name.clone();
     let preview = artifact.preview.clone();
@@ -358,7 +340,25 @@ async fn execute_codegen(
         return Err(anyhow!("`vil gen` rejected by user"));
     }
 
-    write_generated_artifact_to(project_root, &artifact)?;
+    let scaffold_root = staging_dir
+        .path()
+        .join("handlers")
+        .join(&artifact.document.metadata.name);
+    let parity_issues = vil_validate::passes::vwfd_parity_pass(&artifact.document, &scaffold_root);
+    if !parity_issues.is_empty() {
+        let details = parity_issues
+            .iter()
+            .map(|issue| issue.label())
+            .collect::<Vec<_>>()
+            .join("; ");
+        return Err(anyhow!(
+            "VWFD parity gate failed for `{}`: {}",
+            artifact.document.metadata.name,
+            details
+        ));
+    }
+
+    write_generated_artifact_to(project_root, &artifact).await?;
 
     println!(
         "Generated {} file(s) for `{}`",
@@ -368,14 +368,15 @@ async fn execute_codegen(
     Ok(())
 }
 
-fn write_generated_artifact_to(
+async fn write_generated_artifact_to(
     project_root: &Path,
     artifact: &vil_vwfd::GeneratedArtifact,
 ) -> anyhow::Result<()> {
     for file in &artifact.files {
         let target = project_root.join(&file.path);
-        if target.exists() {
-            let existing = fs::read_to_string(&target)
+        if tokio::fs::try_exists(&target).await? {
+            let existing = tokio::fs::read_to_string(&target)
+                .await
                 .with_context(|| format!("failed to read existing {}", target.display()))?;
             if existing != file.contents {
                 return Err(anyhow!(
@@ -388,29 +389,26 @@ fn write_generated_artifact_to(
 
     for file in &artifact.files {
         let target = project_root.join(&file.path);
-        if target.exists() {
+        if tokio::fs::try_exists(&target).await? {
             continue;
         }
 
         if let Some(parent) = target.parent() {
-            fs::create_dir_all(parent)?;
+            tokio::fs::create_dir_all(parent)
+                .await
+                .with_context(|| format!("failed to create parent {}", parent.display()))?;
         }
 
-        let parent_dir = target.parent().unwrap_or(project_root);
-        let mut temp = tempfile::NamedTempFile::new_in(parent_dir)
-            .with_context(|| format!("failed to create temp file for {}", target.display()))?;
-        temp.write_all(file.contents.as_bytes())
-            .with_context(|| format!("failed to stage {}", target.display()))?;
-        temp.persist_noclobber(&target).map_err(|err| {
-            if err.error.kind() == std::io::ErrorKind::AlreadyExists {
-                anyhow!(
-                    "refusing to overwrite existing file with different contents: {}",
-                    target.display()
-                )
-            } else {
-                anyhow!("failed to write {}: {}", target.display(), err.error)
-            }
-        })?;
+        let mut handle = tokio::fs::OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .open(&target)
+            .await
+            .with_context(|| format!("failed to create {}", target.display()))?;
+        handle
+            .write_all(file.contents.as_bytes())
+            .await
+            .with_context(|| format!("failed to write {}", target.display()))?;
     }
 
     Ok(())

@@ -332,7 +332,7 @@ mod tests {
 
         let cp_dir = checkpoint_dir(&root);
         fs::create_dir_all(&cp_dir).await.unwrap();
-        fs::write(cp_dir.join(format!("{sid}_state.json")), "{}")
+        tokio::fs::write(cp_dir.join(format!("{sid}_state.json")), "{}")
             .await
             .unwrap();
 
