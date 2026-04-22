@@ -183,6 +183,16 @@ crates/vac_tui_runtime/src/services/recorder.rs:        std::fs::create_dir_all(
 crates/vac_tui_runtime/src/services/recorder.rs:        std::fs::write(&path, format!("{good}\n{torn}\n{good}\n")).unwrap();
 crates/vac_tui_runtime/src/services/recorder.rs:        std::fs::write(&path, "").unwrap();
 crates/vac_tui_runtime/src/services/recorder.rs:use std::fs::{File, OpenOptions};
+crates/vac_tui_runtime/src/services/review/mod.rs:        let current_content = std::fs::read_to_string(file_path)
+crates/vac_tui_runtime/src/services/review/mod.rs:        std::fs::create_dir_all(dir.path().join(".vac/backups").join(session_id.to_string()))
+crates/vac_tui_runtime/src/services/review/mod.rs:        std::fs::read_to_string(&abs_path)
+crates/vac_tui_runtime/src/services/review/mod.rs:        std::fs::read_to_string(&snap_path)
+crates/vac_tui_runtime/src/services/review/mod.rs:        std::fs::write(dir.path().join("a.txt"), "new").unwrap();
+crates/vac_tui_runtime/src/services/review/mod.rs:        std::fs::write(dir.path().join("a.txt"), "new").unwrap();
+crates/vac_tui_runtime/src/services/review/mod.rs:        std::fs::write(&file_path, new).unwrap();
+crates/vac_tui_runtime/src/services/review/mod.rs:        std::fs::write(&file_path, old).unwrap();
+crates/vac_tui_runtime/src/services/review/mod.rs:        std::fs::write(file_path, reverted)
+crates/vac_tui_runtime/src/services/review/mod.rs:        std::fs::write(snapshot_path(dir.path(), session_id, "a.txt"), "old").unwrap();
 crates/vac_tui_runtime/src/services/review_preview.rs:    let bytes = std::fs::read(path).map_err(|e| ImagePreviewError::Io(e.to_string()))?;
 crates/vac_tui_runtime/src/services/review_preview.rs:    let (width, height) = match image::image_dimensions(path) {
 crates/vac_tui_runtime/src/services/review_preview.rs:    match std::fs::metadata(path) {
@@ -190,16 +200,6 @@ crates/vac_tui_runtime/src/services/review_preview.rs:        std::fs::File::cre
 crates/vac_tui_runtime/src/services/review_preview.rs:        std::fs::File::create(&path)
 crates/vac_tui_runtime/src/services/review_preview.rs:        std::fs::File::create(&path)
 crates/vac_tui_runtime/src/services/review_preview.rs:        std::fs::File::create(&path)
-crates/vac_tui_runtime/src/services/review.rs:        let current_content = std::fs::read_to_string(file_path)
-crates/vac_tui_runtime/src/services/review.rs:        std::fs::create_dir_all(dir.path().join(".vac/backups").join(session_id.to_string()))
-crates/vac_tui_runtime/src/services/review.rs:        std::fs::read_to_string(&abs_path)
-crates/vac_tui_runtime/src/services/review.rs:        std::fs::read_to_string(&snap_path)
-crates/vac_tui_runtime/src/services/review.rs:        std::fs::write(dir.path().join("a.txt"), "new").unwrap();
-crates/vac_tui_runtime/src/services/review.rs:        std::fs::write(dir.path().join("a.txt"), "new").unwrap();
-crates/vac_tui_runtime/src/services/review.rs:        std::fs::write(&file_path, new).unwrap();
-crates/vac_tui_runtime/src/services/review.rs:        std::fs::write(&file_path, old).unwrap();
-crates/vac_tui_runtime/src/services/review.rs:        std::fs::write(file_path, reverted)
-crates/vac_tui_runtime/src/services/review.rs:        std::fs::write(snapshot_path(dir.path(), session_id, "a.txt"), "old").unwrap();
 crates/vac_tui_runtime/src/services/theme_loader.rs:    match std::fs::read_to_string(path) {
 crates/vac_tui_runtime/src/services/theme_loader.rs:        std::fs::write(&path, "preset = \"Dark\"\n").unwrap();
 crates/vac_tui_runtime/src/services/theme_loader.rs:        std::fs::write(&path, "preset = \"Light\"\n").unwrap();

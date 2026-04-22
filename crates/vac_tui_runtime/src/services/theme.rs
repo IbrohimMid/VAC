@@ -1,8 +1,8 @@
 //! Theme system — named colour palettes for the TUI.
 //!
-//! Themes are plain Rust structs (no TOML at runtime for now; TOML loading can
-//! be layered on later).  All view code should call `Theme::style(StyleKey)`
-//! rather than constructing raw `Style::new().fg(Color::…)` inline.
+//! Runtime TOML loading and hot-reload are handled by `services::theme_loader`.
+//! All view code should call `Theme::style(StyleKey)` rather than constructing
+//! raw `Style::new().fg(Color::…)` inline.
 
 use ratatui::style::{Color, Modifier, Style};
 

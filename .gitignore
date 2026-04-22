@@ -30,3 +30,5 @@ target/
 # Stakpak session files
 .stakpak/session*
 .stakpak/
+*.rlib
+*.txt
