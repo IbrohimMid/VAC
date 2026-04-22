@@ -12,6 +12,7 @@
 pub mod buffer;
 pub mod config;
 pub mod distill;
+pub mod registry;
 pub mod score;
 
 #[cfg(feature = "rewind")]
@@ -20,4 +21,5 @@ pub mod rewind;
 pub use buffer::{SignalBuffer, SignalLine, SignalStreamKind};
 pub use config::SignalConfig;
 pub use distill::{DistilledView, Distiller, TailDistiller};
+pub use registry::{RegistrySummary, SignalRegistry};
 pub use score::{RegexScorer, ScoreClass, Scorer};

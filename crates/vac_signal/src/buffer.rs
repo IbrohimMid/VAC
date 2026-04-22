@@ -106,6 +106,16 @@ impl SignalBuffer {
         let skip = self.lines.len().saturating_sub(n);
         self.lines.iter().skip(skip).map(|l| l.text.as_str()).collect()
     }
+
+    /// Distill this buffer using default heuristics (`RegexScorer` +
+    /// `TailDistiller`). Convenience wrapper so callers do not need to
+    /// assemble scorer + distiller for common cases.
+    pub fn distilled_default(&self, tail_size: usize) -> crate::distill::DistilledView {
+        use crate::distill::{Distiller, TailDistiller};
+        use crate::score::RegexScorer;
+        let scorer = RegexScorer::default_heuristics();
+        TailDistiller::new(&scorer, tail_size).distill(self)
+    }
 }
 
 #[cfg(test)]
