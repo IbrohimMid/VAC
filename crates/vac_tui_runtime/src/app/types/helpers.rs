@@ -534,4 +534,54 @@ impl AppState {
     fn approval_reset_detail(&mut self) {
         self.approvals.approval_detail_scroll = 0;
     }
+
+    /// Build a borrowing snapshot registry of every signal buffer owned by
+    /// this AppState. Used by MCP retrieval tools, distillation surfaces,
+    /// and future trajectory exporters so they don't need per-subsystem
+    /// knowledge. Stream IDs follow the `<kind>:<identifier>` convention.
+    pub fn signal_registry(&self) -> vac_signal::SignalRegistry<'_> {
+        let mut reg = vac_signal::SignalRegistry::new();
+        reg.register("vil_dev", &self.vil_dev.output);
+        for (idx, session) in self.shell.session_store.sessions.iter().enumerate() {
+            reg.register(format!("shell:{idx}:{}", session.id), &session.output_signal);
+        }
+        reg
+    }
+
+    /// Convenience: distilled view of the `vil dev` output stream using
+    /// default heuristics. Returns `None` if the buffer is empty.
+    pub fn vil_dev_distilled(&self, tail_size: usize) -> Option<vac_signal::DistilledView> {
+        if self.vil_dev.output.is_empty() {
+            return None;
+        }
+        Some(self.vil_dev.output.distilled_default(tail_size))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn signal_registry_includes_vil_dev_and_shell_sessions() {
+        let mut state = AppState::default();
+        state.vil_dev.output.push_line("boot ok");
+        state.shell.session_store.push_new("shell-0".to_string());
+        state.shell.session_store.push_new("shell-1".to_string());
+
+        let reg = state.signal_registry();
+        let ids: Vec<_> = reg.ids().collect();
+        assert_eq!(ids.len(), 3);
+        assert!(ids.iter().any(|id| *id == "vil_dev"));
+        assert!(ids.iter().filter(|id| id.starts_with("shell:")).count() == 2);
+    }
+
+    #[test]
+    fn vil_dev_distilled_is_none_when_empty_else_some() {
+        let mut state = AppState::default();
+        assert!(state.vil_dev_distilled(10).is_none());
+        state.vil_dev.output.push_line("Error: something");
+        let view = state.vil_dev_distilled(5).expect("present");
+        assert!(view.key_lines.iter().any(|l| l.contains("Error")));
+    }
 }
