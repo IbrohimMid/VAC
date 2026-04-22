@@ -127,7 +127,7 @@ async fn run_vil(
         args.join(" ")
     };
 
-    let binary = resolve_vil_binary_from_config(vil);
+    let binary = resolve_vil_binary_from_config(project_root, vil);
     if let Some(requirement) = vil.min_version.as_ref() {
         let version = probe_vil_version(&binary)
             .await
@@ -180,17 +180,32 @@ async fn run_vil(
     Ok(())
 }
 
-pub fn resolve_vil_binary_from_config(vil: &vac_core::VilConfig) -> PathBuf {
+pub fn resolve_vil_binary_from_config(project_root: &Path, vil: &vac_core::VilConfig) -> PathBuf {
     if let Ok(override_bin) = std::env::var("VAC_VIL_BIN") {
         let trimmed = override_bin.trim();
         if !trimmed.is_empty() {
-            return PathBuf::from(trimmed);
+            return resolve_binary_candidate(project_root, Path::new(trimmed));
         }
     }
 
     vil.binary_path
-        .clone()
+        .as_deref()
+        .map(|path| resolve_binary_candidate(project_root, path))
         .unwrap_or_else(|| PathBuf::from("vil"))
+}
+
+fn resolve_binary_candidate(project_root: &Path, candidate: &Path) -> PathBuf {
+    if candidate.is_absolute() || is_bare_command_name(candidate) {
+        candidate.to_path_buf()
+    } else {
+        project_root.join(candidate)
+    }
+}
+
+fn is_bare_command_name(candidate: &Path) -> bool {
+    let mut components = candidate.components();
+    matches!(components.next(), Some(std::path::Component::Normal(_)))
+        && components.next().is_none()
 }
 
 pub fn collect_vwfd_documents(
@@ -268,7 +283,9 @@ async fn execute_codegen(
         return Err(anyhow!("unsupported VIL generator entity: {entity}"));
     }
 
+    let kind_label = kind.trim().to_string();
     let kind = vil_vwfd::codegen::parse_kind(&kind)?;
+    let execution_mode_label = execution_mode.trim().to_string();
     let execution_mode = vil_vwfd::codegen::parse_execution_mode(&execution_mode)?;
     let artifact = vil_vwfd::generate_handler(kind, execution_mode, &name)?;
     let staging_dir = tempfile::tempdir().context("failed to create staging dir")?;
@@ -292,6 +309,55 @@ async fn execute_codegen(
         ));
     }
 
+    let scaffold_name = artifact.document.metadata.name.clone();
+    let preview = artifact.preview.clone();
+    println!("{}", preview);
+    let entity_label = entity.clone();
+
+    let approval_store = vac_approvals::ApprovalStore::new(project_root.to_path_buf());
+    let tool_call_id = format!("vil-gen-{}", Uuid::new_v4());
+    let approval_payload = json!({
+        "action": "gen",
+        "entity": entity_label.clone(),
+        "kind": kind_label.clone(),
+        "execution_mode": execution_mode_label.clone(),
+        "name": scaffold_name.clone(),
+        "files": artifact.files.iter().map(|file| json!({
+            "path": file.path.display().to_string(),
+            "bytes": file.contents.len(),
+        })).collect::<Vec<_>>(),
+        "vwfd_preview": preview,
+    });
+    approval_store.record_request(
+        tool_call_id.clone(),
+        "vil gen".to_string(),
+        approval_payload,
+        Some(format!(
+            "Generate {kind_label} scaffold with {} file(s)",
+            artifact.files.len()
+        )),
+        None,
+        None,
+    )?;
+
+    eprint!(
+        "Proceed with `vil gen {entity_label} --kind {kind_label} --execution-mode {execution_mode_label} --name {scaffold_name}`? [y/N]: "
+    );
+    std::io::stderr().flush()?;
+
+    let input = crate::io::read_line_async().await.unwrap_or_default();
+    let approved = matches!(input.trim().to_lowercase().as_str(), "y" | "yes");
+    let reason = if approved {
+        Some("Approved via vac vil gen".to_string())
+    } else {
+        Some("Rejected via vac vil gen".to_string())
+    };
+    approval_store.record_decision(tool_call_id, approved, reason)?;
+
+    if !approved {
+        return Err(anyhow!("`vil gen` rejected by user"));
+    }
+
     write_generated_artifact_to(project_root, &artifact)?;
 
     println!(
@@ -299,7 +365,6 @@ async fn execute_codegen(
         artifact.files.len(),
         artifact.document.metadata.name.as_str()
     );
-    println!("{}", artifact.preview);
     Ok(())
 }
 
@@ -309,10 +374,6 @@ fn write_generated_artifact_to(
 ) -> anyhow::Result<()> {
     for file in &artifact.files {
         let target = project_root.join(&file.path);
-        if let Some(parent) = target.parent() {
-            fs::create_dir_all(parent)?;
-        }
-
         if target.exists() {
             let existing = fs::read_to_string(&target)
                 .with_context(|| format!("failed to read existing {}", target.display()))?;
@@ -322,11 +383,34 @@ fn write_generated_artifact_to(
                     target.display()
                 ));
             }
+        }
+    }
+
+    for file in &artifact.files {
+        let target = project_root.join(&file.path);
+        if target.exists() {
             continue;
         }
 
-        fs::write(&target, &file.contents)
-            .with_context(|| format!("failed to write {}", target.display()))?;
+        if let Some(parent) = target.parent() {
+            fs::create_dir_all(parent)?;
+        }
+
+        let parent_dir = target.parent().unwrap_or(project_root);
+        let mut temp = tempfile::NamedTempFile::new_in(parent_dir)
+            .with_context(|| format!("failed to create temp file for {}", target.display()))?;
+        temp.write_all(file.contents.as_bytes())
+            .with_context(|| format!("failed to stage {}", target.display()))?;
+        temp.persist_noclobber(&target).map_err(|err| {
+            if err.error.kind() == std::io::ErrorKind::AlreadyExists {
+                anyhow!(
+                    "refusing to overwrite existing file with different contents: {}",
+                    target.display()
+                )
+            } else {
+                anyhow!("failed to write {}: {}", target.display(), err.error)
+            }
+        })?;
     }
 
     Ok(())

@@ -626,7 +626,7 @@ async fn check_vil(root: &Path, strict: bool, _fix: bool) -> (bool, serde_json::
         }
     };
 
-    let binary = crate::commands::vil::resolve_vil_binary_from_config(&config.vil);
+    let binary = crate::commands::vil::resolve_vil_binary_from_config(root, &config.vil);
     let binary_check = crate::commands::vil::probe_vil_version(&binary).await;
     let min_version = config.vil.min_version.as_ref();
     let mut ok = true;

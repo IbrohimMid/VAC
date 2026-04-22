@@ -170,6 +170,31 @@ min_version = ">=2.0.0"
 }
 
 #[test]
+fn vil_init_resolves_relative_binary_path_against_project_root() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let bin_dir = root.join("bin");
+    install_fake_vil(&bin_dir);
+    write_config(root, None);
+    append_config_section(
+        root,
+        r#"
+[vil]
+binary_path = "bin/vil"
+"#,
+    );
+
+    let marker = root.join("vil-marker.log");
+    let mut cmd = vac_command(root, &bin_dir, &["vil", "init"]);
+    cmd.env("FAKE_VIL_MARKER_FILE", &marker)
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("vil-init-ok"));
+
+    assert_eq!(read_marker(&marker).trim(), "init");
+}
+
+#[test]
 fn vil_dev_streams_stdout_and_checkpoint_marker() {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
@@ -210,6 +235,7 @@ fn vil_gen_writes_native_handler_scaffold() {
         ],
     );
     cmd.env("PATH", &bin_dir)
+        .write_stdin("y\n")
         .assert()
         .success()
         .stdout(predicates::str::contains(
@@ -236,6 +262,73 @@ fn vil_gen_writes_native_handler_scaffold() {
         doc.spec.handlers[0].entrypoint.as_deref(),
         Some("handlers::my_handler::run")
     );
+
+    let approval = read_single_approval(root);
+    assert_eq!(approval.tool_name, "vil gen");
+    assert_eq!(approval.state, vac_approvals::ApprovalState::Approved);
+    assert_eq!(
+        approval.arguments["action"],
+        Value::String("gen".to_string())
+    );
+    assert_eq!(
+        approval.arguments["entity"],
+        Value::String("handler".to_string())
+    );
+    assert_eq!(
+        approval.arguments["kind"],
+        Value::String("vilserver".to_string())
+    );
+    assert_eq!(
+        approval.arguments["execution_mode"],
+        Value::String("native".to_string())
+    );
+    assert_eq!(
+        approval.arguments["name"],
+        Value::String("my_handler".to_string())
+    );
+    assert!(
+        approval
+            .arguments
+            .get("vwfd_preview")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .contains("kind: VilServer")
+    );
+}
+
+#[test]
+fn vil_gen_rejects_without_writing_files() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let bin_dir = root.join("bin");
+
+    let mut cmd = vac_command(
+        root,
+        &bin_dir,
+        &[
+            "vil",
+            "gen",
+            "handler",
+            "--kind",
+            "vilserver",
+            "--execution-mode",
+            "native",
+            "--name",
+            "blocked_handler",
+        ],
+    );
+    cmd.env("PATH", &bin_dir)
+        .write_stdin("n\n")
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("rejected by user"));
+
+    assert!(!root.join("handlers/blocked_handler").exists());
+    assert!(!root.join("workflows/blocked_handler.vwfd.yaml").exists());
+
+    let approval = read_single_approval(root);
+    assert_eq!(approval.tool_name, "vil gen");
+    assert_eq!(approval.state, vac_approvals::ApprovalState::Rejected);
 }
 
 #[test]
@@ -260,6 +353,7 @@ fn vil_gen_writes_wasm_handler_scaffold() {
         ],
     );
     cmd.env("PATH", &bin_dir)
+        .write_stdin("y\n")
         .assert()
         .success()
         .stdout(predicates::str::contains(
