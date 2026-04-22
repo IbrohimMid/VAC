@@ -18,6 +18,7 @@ pub mod changeset_ui;
 pub mod command_palette;
 pub mod file_index;
 pub mod file_picker;
+pub mod pins;
 pub mod switchers;
 pub mod vil_dev;
 pub mod workbench_ui;
@@ -38,6 +39,7 @@ pub use changeset_ui::ChangesetUiState;
 pub use command_palette::CommandPaletteState;
 pub use file_index::FileIndexState;
 pub use file_picker::FilePickerState;
+pub use pins::PinsState;
 pub use switchers::SwitchersState;
 pub use vil_dev::VilDevState;
 pub use workbench_ui::WorkbenchChromeState;
@@ -347,11 +349,7 @@ pub struct AppState {
     /// over that same row. Cleared on dismiss / off-row move so a later
     /// filter or diagnostic-snapshot change cannot serve stale state.
     pub active_hover_row_idx: Option<usize>,
-    pub pinned_files: Vec<String>,
-    pub pinned_diffs: Vec<String>,
-    pub pinned_diagnostics: Vec<String>,
-    pub pinned_runtime_items: Vec<String>,
-    pub pinned_plan_items: Vec<String>,
+    pub pins: PinsState,
 
     pub pending_user_messages: VecDeque<PendingUserMessage>,
 

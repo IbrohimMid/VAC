@@ -273,8 +273,8 @@ mod tests {
         });
         state.hydrated = true;
         state.side_panel_visible = true;
-        state.pinned_files.push("src/lib.rs".to_string());
-        state.pinned_diagnostics.push("src/main.rs".to_string());
+        state.pins.files.push("src/lib.rs".to_string());
+        state.pins.diagnostics.push("src/main.rs".to_string());
 
         terminal.draw(|f| view(f, &mut state)).unwrap();
         let rendered = render_to_string(&terminal);

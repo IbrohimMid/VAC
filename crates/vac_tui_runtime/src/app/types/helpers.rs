@@ -10,7 +10,7 @@ use crate::services::textarea::TextArea;
 use crate::types::*;
 
 use super::{
-    ActivityItem, ActivityKind, AppState, ApprovalsState, AskUserState, AtMentionState, BannerState, ChangesetUiState, CommandPaletteState, FileIndexState, FilePickerState, HelperCommand, LoadingStateManager, SwitchersState, VilDevState, WorkbenchChromeState,
+    ActivityItem, ActivityKind, AppState, ApprovalsState, AskUserState, AtMentionState, BannerState, ChangesetUiState, CommandPaletteState, FileIndexState, FilePickerState, HelperCommand, LoadingStateManager, PinsState, SwitchersState, VilDevState, WorkbenchChromeState,
     Message, QueueMetrics, RenderMetrics, ReviewItem, ReviewItemStatus, ReviewState, RuntimeState,
     ShellState, ShortcutsPopupMode, StartupSnapshot, TokenUsage, VilLogEntry, VilState,
     WorkbenchTab, WorkspaceFocus,
@@ -151,11 +151,7 @@ impl AppState {
             active_hover: None,
             hover_popup_region: None,
             active_hover_row_idx: None,
-            pinned_files: Vec::new(),
-            pinned_diffs: Vec::new(),
-            pinned_diagnostics: Vec::new(),
-            pinned_runtime_items: Vec::new(),
-            pinned_plan_items: Vec::new(),
+            pins: PinsState::default(),
             pending_user_messages: VecDeque::new(),
             queue_metrics: QueueMetrics::default(),
             // T14: vil dev runner state

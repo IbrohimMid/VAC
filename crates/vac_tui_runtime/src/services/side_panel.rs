@@ -42,9 +42,9 @@ pub fn render_side_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
         .contains(&SidePanelSection::Usage);
 
     let collapsed_height = 1;
-    let context_extra = (!state.pinned_files.is_empty()) as u16
-        + (!state.pinned_diffs.is_empty()) as u16
-        + (!state.pinned_diagnostics.is_empty()) as u16;
+    let context_extra = (!state.pins.files.is_empty()) as u16
+        + (!state.pins.diffs.is_empty()) as u16
+        + (!state.pins.diagnostics.is_empty()) as u16;
     let context_height = if context_collapsed {
         collapsed_height
     } else {
@@ -260,24 +260,24 @@ fn render_context_section(f: &mut Frame, state: &AppState, area: Rect, collapsed
         ]));
     }
 
-    if !state.pinned_files.is_empty() {
+    if !state.pins.files.is_empty() {
         lines.push(Line::from(vec![
             Span::styled("    Files: ", state.theme.style(StyleKey::Muted)),
-            Span::raw(compact_items(&state.pinned_files, 2)),
+            Span::raw(compact_items(&state.pins.files, 2)),
         ]));
     }
-    if !state.pinned_diffs.is_empty() {
+    if !state.pins.diffs.is_empty() {
         lines.push(Line::from(vec![
             Span::styled("    Diffs: ", state.theme.style(StyleKey::Muted)),
-            Span::raw(compact_items(&state.pinned_diffs, 2)),
+            Span::raw(compact_items(&state.pins.diffs, 2)),
         ]));
     }
-    if !state.pinned_diagnostics.is_empty() {
+    if !state.pins.diagnostics.is_empty() {
         lines.push(Line::from(vec![
             Span::styled("    Diagnostics: ", state.theme.style(StyleKey::Muted)),
-            Span::raw(compact_items(&state.pinned_diagnostics, 2)),
+            Span::raw(compact_items(&state.pins.diagnostics, 2)),
         ]));
-    } else if state.pinned_files.is_empty() && state.pinned_diffs.is_empty() {
+    } else if state.pins.files.is_empty() && state.pins.diffs.is_empty() {
         lines.push(Line::styled(
             "    No pinned context yet. Use /context pin <file> to add one.",
             state

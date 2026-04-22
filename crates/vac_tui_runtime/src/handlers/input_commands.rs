@@ -283,10 +283,10 @@ fn dispatch_action(
                     let file = args.trim_start_matches("pin ").trim();
                     if file.is_empty() {
                         state.add_assistant_message("Usage: /context pin <file>".to_string());
-                    } else if state.pinned_files.iter().any(|p| p == file) {
+                    } else if state.pins.files.iter().any(|p| p == file) {
                         state.add_assistant_message(format!("Already pinned in context: {file}"));
                     } else {
-                        state.pinned_files.push(file.to_string());
+                        state.pins.files.push(file.to_string());
                         state.push_activity(
                             crate::app::ActivityKind::Status,
                             format!("Pinned context file: {file}"),
