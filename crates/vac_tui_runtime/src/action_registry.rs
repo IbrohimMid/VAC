@@ -128,7 +128,7 @@ pub static ACTION_SPECS: &[ActionSpec] = &[
         slash_aliases: &[],
         palette_visible: false,
         footer_visible: true,
-        availability: |s| !s.pending_approvals.is_empty(),
+        availability: |s| !s.approvals.pending_approvals.is_empty(),
         activity_message: None,
     },
     ActionSpec {
@@ -140,7 +140,7 @@ pub static ACTION_SPECS: &[ActionSpec] = &[
         slash_aliases: &[],
         palette_visible: false,
         footer_visible: true,
-        availability: |s| !s.pending_approvals.is_empty(),
+        availability: |s| !s.approvals.pending_approvals.is_empty(),
         activity_message: None,
     },
     ActionSpec {
@@ -152,7 +152,7 @@ pub static ACTION_SPECS: &[ActionSpec] = &[
         slash_aliases: &[],
         palette_visible: false,
         footer_visible: true,
-        availability: |s| !s.pending_approvals.is_empty(),
+        availability: |s| !s.approvals.pending_approvals.is_empty(),
         activity_message: None,
     },
     // Workbench — Review

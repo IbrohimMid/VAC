@@ -91,7 +91,7 @@ pub fn dispatch_click(
         .find(|(_, rect)| hit(rect, col, row))
         .map(|(idx, _)| *idx);
     if let Some(idx) = approval_hit {
-        state.approval_selected_idx = idx;
+        state.approvals.approval_selected_idx = idx;
         state.focus = WorkspaceFocus::Workbench;
         state.workbench_tab = crate::app::WorkbenchTab::Approvals;
         return true;

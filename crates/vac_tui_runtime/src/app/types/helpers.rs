@@ -10,8 +10,8 @@ use crate::services::textarea::TextArea;
 use crate::types::*;
 
 use super::{
-    ActivityItem, ActivityKind, AppState, HelperCommand, LoadingStateManager, Message,
-    QueueMetrics, RenderMetrics, ReviewItem, ReviewItemStatus, ReviewState, RuntimeState,
+    ActivityItem, ActivityKind, AppState, ApprovalsState, HelperCommand, LoadingStateManager,
+    Message, QueueMetrics, RenderMetrics, ReviewItem, ReviewItemStatus, ReviewState, RuntimeState,
     ShellState, ShortcutsPopupMode, StartupSnapshot, TokenUsage, VilLogEntry, VilState,
     WorkbenchTab, WorkspaceFocus,
 };
@@ -62,14 +62,7 @@ impl AppState {
             checkpoint_path: options.checkpoint_path,
             current_model: options.model,
             mouse_capture_enabled: true,
-            pending_approvals: Vec::new(),
-            pending_tool_calls: Vec::new(),
-            approved_tools: Vec::new(),
-            rejected_tools: Vec::new(),
-            approval_selected_idx: 0,
-            approval_detail_scroll: 0,
-            approval_explanations: HashMap::new(),
-            reject_reason_input: None,
+            approvals: ApprovalsState::default(),
             shell: ShellState::default(),
             is_streaming: false,
             cancel_requested: false,
@@ -520,13 +513,13 @@ impl AppState {
     }
 
     pub fn approval_normalize_selection(&mut self) {
-        if self.pending_approvals.is_empty() {
-            self.approval_selected_idx = 0;
+        if self.approvals.pending_approvals.is_empty() {
+            self.approvals.approval_selected_idx = 0;
             self.approval_reset_detail();
             return;
         }
-        if self.approval_selected_idx >= self.pending_approvals.len() {
-            self.approval_selected_idx = self.pending_approvals.len() - 1;
+        if self.approvals.approval_selected_idx >= self.approvals.pending_approvals.len() {
+            self.approvals.approval_selected_idx = self.approvals.pending_approvals.len() - 1;
             self.approval_reset_detail();
         }
     }
@@ -545,6 +538,6 @@ impl AppState {
     }
 
     fn approval_reset_detail(&mut self) {
-        self.approval_detail_scroll = 0;
+        self.approvals.approval_detail_scroll = 0;
     }
 }

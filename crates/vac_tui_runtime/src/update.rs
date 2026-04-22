@@ -453,9 +453,9 @@ pub fn handle_backend_event(
                 open_ask_user_popup(state, &tc);
                 return;
             }
-            state.pending_approvals.push(tc.clone());
-            state.approval_selected_idx = state.pending_approvals.len().saturating_sub(1);
-            state.approval_explanations.insert(tc.id.clone(), None);
+            state.approvals.pending_approvals.push(tc.clone());
+            state.approvals.approval_selected_idx = state.approvals.pending_approvals.len().saturating_sub(1);
+            state.approvals.approval_explanations.insert(tc.id.clone(), None);
             state.approval_normalize_selection();
             state.workbench_tab = crate::app::WorkbenchTab::Approvals;
             state.focus = crate::app::WorkspaceFocus::Workbench;
@@ -470,16 +470,17 @@ pub fn handle_backend_event(
                 return;
             }
             if state.auto_approve && is_low_risk_tool(&tc.function.name) {
-                state.approved_tools.push(tc.clone());
+                state.approvals.approved_tools.push(tc.clone());
                 let _ = output_tx.try_send(OutputEvent::AcceptTool(tc));
                 state.push_activity(
                     crate::app::ActivityKind::Approval,
                     "Auto-approved low risk tool",
                 );
             } else {
-                state.pending_approvals.push(tc.clone());
-                state.approval_selected_idx = state.pending_approvals.len().saturating_sub(1);
+                state.approvals.pending_approvals.push(tc.clone());
+                state.approvals.approval_selected_idx = state.approvals.pending_approvals.len().saturating_sub(1);
                 state
+                    .approvals
                     .approval_explanations
                     .insert(tc.id.clone(), explanation);
                 state.approval_normalize_selection();
@@ -492,7 +493,7 @@ pub fn handle_backend_event(
             }
         }
         InputEvent::RunToolCall(tc) => {
-            state.pending_tool_calls.push(tc.clone());
+            state.approvals.pending_tool_calls.push(tc.clone());
             state.push_activity(
                 crate::app::ActivityKind::Tool,
                 format!("Tool started: {}", tc.function.name),

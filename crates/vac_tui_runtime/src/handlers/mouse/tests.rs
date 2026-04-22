@@ -92,7 +92,7 @@ fn mouse_click_on_approvals_row_selects_and_focuses() {
 
     let handled = dispatch_click(&mut state, &tx, 10, 11);
     assert!(handled, "approvals row 1 click must dispatch");
-    assert_eq!(state.approval_selected_idx, 1);
+    assert_eq!(state.approvals.approval_selected_idx, 1);
     assert_eq!(state.workbench_tab, WorkbenchTab::Approvals);
     assert_eq!(state.focus, WorkspaceFocus::Workbench);
 }
@@ -327,12 +327,12 @@ fn dispatch_click_triggers_approval_action() {
 
     let handled = dispatch_click(&mut state, &tx, 5, 10);
     assert!(handled, "click on approval row 0 must dispatch");
-    assert_eq!(state.approval_selected_idx, 0);
+    assert_eq!(state.approvals.approval_selected_idx, 0);
     assert_eq!(state.workbench_tab, WorkbenchTab::Approvals);
 
     let handled2 = dispatch_click(&mut state, &tx, 5, 11);
     assert!(handled2);
-    assert_eq!(state.approval_selected_idx, 1);
+    assert_eq!(state.approvals.approval_selected_idx, 1);
 }
 
 #[test]

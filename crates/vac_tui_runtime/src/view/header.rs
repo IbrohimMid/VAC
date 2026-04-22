@@ -109,7 +109,7 @@ pub(super) fn render_header(f: &mut Frame, state: &mut AppState, area: Rect) {
 
     spans.push(Span::raw("  "));
     spans.push(Span::styled(
-        format!("approvals {}", state.pending_approvals.len()),
+        format!("approvals {}", state.approvals.pending_approvals.len()),
         state.theme.style(StyleKey::Warning),
     ));
     spans.push(Span::raw("  "));

@@ -129,7 +129,7 @@ fn handle_reject_reason(state: &mut AppState, output_tx: &Sender<OutputEvent>, e
             let _ = approval::confirm_reject_current(&mut ctx);
         }
         InputEvent::HandleEsc => {
-            ctx.state.reject_reason_input = None;
+            ctx.state.approvals.reject_reason_input = None;
             ctx.state.overlay_manager.pop(OverlayId::RejectReason);
             let _ = approval::reject_current(&mut ctx);
         }

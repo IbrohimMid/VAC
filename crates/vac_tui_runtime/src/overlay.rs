@@ -174,11 +174,11 @@ fn sync_domain_state(state: &mut AppState, id: OverlayId, value: bool) {
         }
         OverlayId::RejectReason => {
             if value {
-                if state.reject_reason_input.is_none() {
-                    state.reject_reason_input = Some(String::new());
+                if state.approvals.reject_reason_input.is_none() {
+                    state.approvals.reject_reason_input = Some(String::new());
                 }
             } else {
-                state.reject_reason_input = None;
+                state.approvals.reject_reason_input = None;
             }
         }
         OverlayId::ReviewPane => state.review.open = value,
@@ -261,13 +261,13 @@ mod tests {
     #[test]
     fn sync_reject_reason_input_on_open_overlay() {
         let mut state = make_state();
-        assert!(state.reject_reason_input.is_none());
+        assert!(state.approvals.reject_reason_input.is_none());
         open_overlay(&mut state, OverlayId::RejectReason);
         assert!(state.overlay_manager.is_active(OverlayId::RejectReason));
-        assert!(state.reject_reason_input.is_some());
+        assert!(state.approvals.reject_reason_input.is_some());
         close_overlay(&mut state, OverlayId::RejectReason);
         assert!(!state.overlay_manager.is_active(OverlayId::RejectReason));
-        assert!(state.reject_reason_input.is_none());
+        assert!(state.approvals.reject_reason_input.is_none());
     }
 
     #[test]

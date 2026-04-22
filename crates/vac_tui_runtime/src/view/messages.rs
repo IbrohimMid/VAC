@@ -89,7 +89,7 @@ pub(super) fn render_messages(f: &mut Frame, state: &mut AppState, area: Rect) {
     state.render_metrics.cache_misses += misses;
 
     // Render pending tool calls from state
-    for tc in &state.pending_tool_calls {
+    for tc in &state.approvals.pending_tool_calls {
         lines.extend(render_tool_call_pending(tc));
     }
 

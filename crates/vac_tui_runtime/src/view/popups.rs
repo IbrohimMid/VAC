@@ -123,7 +123,7 @@ pub(super) fn render_at_dropdown(f: &mut Frame, state: &mut AppState) {
 
 pub(super) fn render_footer(f: &mut Frame, state: &mut AppState, area: Rect) {
     // Reject reason prompt takes priority
-    if let Some(reason) = &state.reject_reason_input {
+    if let Some(reason) = &state.approvals.reject_reason_input {
         let hints = vec![
             Span::styled(
                 "REJECT REASON ",

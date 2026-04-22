@@ -110,7 +110,7 @@ pub(super) fn render_operator_panel(f: &mut Frame, state: &mut AppState, area: R
             state.theme.style(crate::services::theme::StyleKey::Muted),
         ),
         Span::styled(
-            format!("{}", state.pending_tool_calls.len()),
+            format!("{}", state.approvals.pending_tool_calls.len()),
             state.theme.style(crate::services::theme::StyleKey::Warning),
         ),
         Span::styled(
@@ -118,7 +118,7 @@ pub(super) fn render_operator_panel(f: &mut Frame, state: &mut AppState, area: R
             state.theme.style(crate::services::theme::StyleKey::Muted),
         ),
         Span::styled(
-            format!("{}", state.pending_approvals.len()),
+            format!("{}", state.approvals.pending_approvals.len()),
             state.theme.style(crate::services::theme::StyleKey::Warning),
         ),
         Span::styled(

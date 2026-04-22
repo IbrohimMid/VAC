@@ -147,14 +147,14 @@ pub fn on_session_restored(
     state.loading = false;
 
     // Clear transient UI state to prevent leakage between sessions
-    state.pending_approvals.clear();
-    state.pending_tool_calls.clear();
-    state.approved_tools.clear();
-    state.rejected_tools.clear();
-    state.approval_explanations.clear();
-    state.approval_selected_idx = 0;
-    state.approval_detail_scroll = 0;
-    state.reject_reason_input = None;
+    state.approvals.pending_approvals.clear();
+    state.approvals.pending_tool_calls.clear();
+    state.approvals.approved_tools.clear();
+    state.approvals.rejected_tools.clear();
+    state.approvals.approval_explanations.clear();
+    state.approvals.approval_selected_idx = 0;
+    state.approvals.approval_detail_scroll = 0;
+    state.approvals.reject_reason_input = None;
     state.at_trigger_active = false;
     state.at_query.clear();
     state.at_results.clear();
@@ -263,8 +263,8 @@ pub fn on_task_completed(state: &mut AppState, result: vac_core::task::TaskResul
 /// `InputEvent::ToolResult` — reconcile pending/approved pools, surface error
 /// banners, and route VIL-flavoured tool logs.
 pub fn on_tool_result(state: &mut AppState, result: crate::types::ToolCallResult) {
-    state.pending_tool_calls.retain(|c| c.id != result.call.id);
-    state.approved_tools.retain(|c| c.id != result.call.id);
+    state.approvals.pending_tool_calls.retain(|c| c.id != result.call.id);
+    state.approvals.approved_tools.retain(|c| c.id != result.call.id);
     if result.status == crate::types::ToolCallResultStatus::Error {
         if let Some((style, severity)) = classify_critical_banner(&result.result) {
             push_banner_direct(

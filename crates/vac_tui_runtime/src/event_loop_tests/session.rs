@@ -169,7 +169,7 @@ async fn session_restore_clears_approval_state() {
     let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
 
     // Add approval state
-    state.pending_approvals.push(crate::ToolCall {
+    state.approvals.pending_approvals.push(crate::ToolCall {
         id: "tc-1".to_string(),
         r#type: "function".to_string(),
         function: crate::FunctionCall {
@@ -178,7 +178,7 @@ async fn session_restore_clears_approval_state() {
         },
         metadata: None,
     });
-    state.approved_tools.push(crate::ToolCall {
+    state.approvals.approved_tools.push(crate::ToolCall {
         id: "tc-2".to_string(),
         r#type: "function".to_string(),
         function: crate::FunctionCall {
@@ -200,9 +200,9 @@ async fn session_restore_clears_approval_state() {
     );
 
     // Verify approval state cleared
-    assert_eq!(state.pending_approvals.len(), 0);
-    assert_eq!(state.approved_tools.len(), 0);
-    assert_eq!(state.rejected_tools.len(), 0);
+    assert_eq!(state.approvals.pending_approvals.len(), 0);
+    assert_eq!(state.approvals.approved_tools.len(), 0);
+    assert_eq!(state.approvals.rejected_tools.len(), 0);
 }
 
 #[test]

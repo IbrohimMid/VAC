@@ -108,7 +108,7 @@ pub(crate) fn build_session_snapshot(
     );
     snapshot.metadata.insert(
         "pending_approvals".into(),
-        state.pending_approvals.len().to_string(),
+        state.approvals.pending_approvals.len().to_string(),
     );
     snapshot.metadata.insert(
         "queue_depth".into(),

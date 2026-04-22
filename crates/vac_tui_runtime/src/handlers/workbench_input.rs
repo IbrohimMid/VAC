@@ -113,8 +113,8 @@ fn handle_char(state: &mut AppState, output_tx: &Sender<OutputEvent>, c: char) {
 fn handle_up(state: &mut AppState, output_tx: &Sender<OutputEvent>) {
     match state.workbench_tab {
         WorkbenchTab::Approvals => {
-            state.approval_selected_idx = state.approval_selected_idx.saturating_sub(1);
-            state.approval_detail_scroll = 0;
+            state.approvals.approval_selected_idx = state.approvals.approval_selected_idx.saturating_sub(1);
+            state.approvals.approval_detail_scroll = 0;
         }
         WorkbenchTab::Sessions => {
             state.sessions_selected_idx = state.sessions_selected_idx.saturating_sub(1);
@@ -145,9 +145,9 @@ fn handle_up(state: &mut AppState, output_tx: &Sender<OutputEvent>) {
 fn handle_down(state: &mut AppState, output_tx: &Sender<OutputEvent>) {
     match state.workbench_tab {
         WorkbenchTab::Approvals => {
-            if state.approval_selected_idx + 1 < state.pending_approvals.len() {
-                state.approval_selected_idx += 1;
-                state.approval_detail_scroll = 0;
+            if state.approvals.approval_selected_idx + 1 < state.approvals.pending_approvals.len() {
+                state.approvals.approval_selected_idx += 1;
+                state.approvals.approval_detail_scroll = 0;
             }
         }
         WorkbenchTab::Sessions => {

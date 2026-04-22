@@ -9,6 +9,7 @@ use crate::services::textarea::TextArea;
 use crate::types::*;
 
 // Re-export all submodule types
+pub mod approvals;
 pub mod billing;
 pub mod commands;
 pub mod helpers;
@@ -19,6 +20,7 @@ pub mod shell;
 pub mod support;
 pub mod workbench;
 
+pub use approvals::ApprovalsState;
 pub use billing::{
     BillingInfo, LoadingOperation, LoadingStateManager, SessionInfo, ShortcutsPopupMode,
     TokenUsage, ToolCallStatus,
@@ -86,15 +88,8 @@ pub struct AppState {
     // Mouse capture
     pub mouse_capture_enabled: bool,
 
-    // Approval state
-    pub pending_approvals: Vec<ToolCall>,
-    pub pending_tool_calls: Vec<ToolCall>,
-    pub approved_tools: Vec<ToolCall>,
-    pub rejected_tools: Vec<ToolCall>,
-    pub approval_selected_idx: usize,
-    pub approval_detail_scroll: usize,
-    pub approval_explanations: HashMap<String, Option<String>>,
-    pub reject_reason_input: Option<String>, // Some(_) = reason prompt active
+    // Approval state — see ApprovalsState for field details
+    pub approvals: ApprovalsState,
 
     // Shell domain state
     pub shell: ShellState,

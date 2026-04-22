@@ -232,7 +232,7 @@ mod tests {
             project_root: std::env::current_dir().unwrap(),
         });
 
-        state.pending_approvals.push(crate::ToolCall {
+        state.approvals.pending_approvals.push(crate::ToolCall {
             id: "tc-1".to_string(),
             r#type: "function".to_string(),
             function: crate::FunctionCall {

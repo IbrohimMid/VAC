@@ -13,18 +13,18 @@ pub fn open(ctx: &mut HandlerContext) -> HandlerResult {
 
 /// Select next approval in queue.
 pub fn select_next(ctx: &mut HandlerContext) -> HandlerResult {
-    if !ctx.state.pending_approvals.is_empty() {
-        ctx.state.approval_selected_idx = (ctx.state.approval_selected_idx + 1)
-            .min(ctx.state.pending_approvals.len().saturating_sub(1));
-        ctx.state.approval_detail_scroll = 0;
+    if !ctx.state.approvals.pending_approvals.is_empty() {
+        ctx.state.approvals.approval_selected_idx = (ctx.state.approvals.approval_selected_idx + 1)
+            .min(ctx.state.approvals.pending_approvals.len().saturating_sub(1));
+        ctx.state.approvals.approval_detail_scroll = 0;
     }
     Ok(())
 }
 
 /// Select previous approval in queue.
 pub fn select_prev(ctx: &mut HandlerContext) -> HandlerResult {
-    ctx.state.approval_selected_idx = ctx.state.approval_selected_idx.saturating_sub(1);
-    ctx.state.approval_detail_scroll = 0;
+    ctx.state.approvals.approval_selected_idx = ctx.state.approvals.approval_selected_idx.saturating_sub(1);
+    ctx.state.approvals.approval_detail_scroll = 0;
     Ok(())
 }
 
@@ -32,13 +32,13 @@ pub fn select_prev(ctx: &mut HandlerContext) -> HandlerResult {
 pub fn approve_current(ctx: &mut HandlerContext) -> HandlerResult {
     if let Some(tc) = ctx
         .state
-        .pending_approvals
-        .get(ctx.state.approval_selected_idx)
+        .approvals.pending_approvals
+        .get(ctx.state.approvals.approval_selected_idx)
         .cloned()
     {
-        ctx.state.pending_approvals.retain(|t| t.id != tc.id);
-        ctx.state.approval_explanations.remove(&tc.id);
-        ctx.state.approved_tools.push(tc.clone());
+        ctx.state.approvals.pending_approvals.retain(|t| t.id != tc.id);
+        ctx.state.approvals.approval_explanations.remove(&tc.id);
+        ctx.state.approvals.approved_tools.push(tc.clone());
         ctx.state.approval_normalize_selection();
 
         let tool_name = tc.function.name.clone();
@@ -56,13 +56,13 @@ pub fn approve_current(ctx: &mut HandlerContext) -> HandlerResult {
 pub fn reject_current(ctx: &mut HandlerContext) -> HandlerResult {
     if let Some(tc) = ctx
         .state
-        .pending_approvals
-        .get(ctx.state.approval_selected_idx)
+        .approvals.pending_approvals
+        .get(ctx.state.approvals.approval_selected_idx)
         .cloned()
     {
-        ctx.state.pending_approvals.retain(|t| t.id != tc.id);
-        ctx.state.approval_explanations.remove(&tc.id);
-        ctx.state.rejected_tools.push(tc.clone());
+        ctx.state.approvals.pending_approvals.retain(|t| t.id != tc.id);
+        ctx.state.approvals.approval_explanations.remove(&tc.id);
+        ctx.state.approvals.rejected_tools.push(tc.clone());
         ctx.state.approval_normalize_selection();
 
         let tool_name = tc.function.name.clone();
@@ -80,19 +80,19 @@ pub fn reject_current(ctx: &mut HandlerContext) -> HandlerResult {
 
 /// Approve all pending tools at once.
 pub fn approve_all(ctx: &mut HandlerContext) -> HandlerResult {
-    let tools: Vec<_> = ctx.state.pending_approvals.drain(..).collect();
+    let tools: Vec<_> = ctx.state.approvals.pending_approvals.drain(..).collect();
     if tools.is_empty() {
         return Ok(());
     }
     for tc in tools {
-        ctx.state.approval_explanations.remove(&tc.id);
+        ctx.state.approvals.approval_explanations.remove(&tc.id);
         let tool_name = tc.function.name.clone();
         let _ = ctx.output_tx.try_send(OutputEvent::AcceptTool(tc.clone()));
-        ctx.state.approved_tools.push(tc);
+        ctx.state.approvals.approved_tools.push(tc);
         ctx.state
             .push_activity(ActivityKind::Approval, format!("Approved: {}", tool_name));
     }
-    ctx.state.approval_selected_idx = 0;
+    ctx.state.approvals.approval_selected_idx = 0;
     ctx.state
         .toasts
         .push(Toast::success("All tools approved".to_string()));
@@ -101,7 +101,7 @@ pub fn approve_all(ctx: &mut HandlerContext) -> HandlerResult {
 
 /// Activate reject reason prompt for current tool.
 pub fn begin_reject_current(ctx: &mut HandlerContext) -> HandlerResult {
-    if !ctx.state.pending_approvals.is_empty() {
+    if !ctx.state.approvals.pending_approvals.is_empty() {
         crate::overlay::open_overlay(ctx.state, crate::overlay::OverlayId::RejectReason);
     }
     Ok(())
@@ -109,7 +109,7 @@ pub fn begin_reject_current(ctx: &mut HandlerContext) -> HandlerResult {
 
 /// Append char to reject reason input.
 pub fn reason_input_push(ctx: &mut HandlerContext, c: char) -> HandlerResult {
-    if let Some(r) = &mut ctx.state.reject_reason_input {
+    if let Some(r) = &mut ctx.state.approvals.reject_reason_input {
         r.push(c);
     }
     Ok(())
@@ -117,7 +117,7 @@ pub fn reason_input_push(ctx: &mut HandlerContext, c: char) -> HandlerResult {
 
 /// Delete last char from reject reason input.
 pub fn reason_input_pop(ctx: &mut HandlerContext) -> HandlerResult {
-    if let Some(r) = &mut ctx.state.reject_reason_input {
+    if let Some(r) = &mut ctx.state.approvals.reject_reason_input {
         r.pop();
     }
     Ok(())
@@ -125,19 +125,19 @@ pub fn reason_input_pop(ctx: &mut HandlerContext) -> HandlerResult {
 
 /// Confirm reason and reject current tool.
 pub fn confirm_reject_current(ctx: &mut HandlerContext) -> HandlerResult {
-    let reason = ctx.state.reject_reason_input.take();
+    let reason = ctx.state.approvals.reject_reason_input.take();
     ctx.state
         .overlay_manager
         .pop(crate::overlay::OverlayId::RejectReason);
     if let Some(tc) = ctx
         .state
-        .pending_approvals
-        .get(ctx.state.approval_selected_idx)
+        .approvals.pending_approvals
+        .get(ctx.state.approvals.approval_selected_idx)
         .cloned()
     {
-        ctx.state.pending_approvals.retain(|t| t.id != tc.id);
-        ctx.state.approval_explanations.remove(&tc.id);
-        ctx.state.rejected_tools.push(tc.clone());
+        ctx.state.approvals.pending_approvals.retain(|t| t.id != tc.id);
+        ctx.state.approvals.approval_explanations.remove(&tc.id);
+        ctx.state.approvals.rejected_tools.push(tc.clone());
         ctx.state.approval_normalize_selection();
         let tool_name = tc.function.name.clone();
         let _ = ctx
@@ -154,25 +154,25 @@ pub fn confirm_reject_current(ctx: &mut HandlerContext) -> HandlerResult {
 
 /// Confirm reason and reject all pending tools.
 pub fn confirm_reject_all(ctx: &mut HandlerContext) -> HandlerResult {
-    let reason = ctx.state.reject_reason_input.take();
+    let reason = ctx.state.approvals.reject_reason_input.take();
     ctx.state
         .overlay_manager
         .pop(crate::overlay::OverlayId::RejectReason);
-    let tools: Vec<_> = ctx.state.pending_approvals.drain(..).collect();
+    let tools: Vec<_> = ctx.state.approvals.pending_approvals.drain(..).collect();
     if tools.is_empty() {
         return Ok(());
     }
     for tc in tools {
-        ctx.state.approval_explanations.remove(&tc.id);
+        ctx.state.approvals.approval_explanations.remove(&tc.id);
         let tool_name = tc.function.name.clone();
         let _ = ctx
             .output_tx
             .try_send(OutputEvent::RejectTool(tc.clone(), false, reason.clone()));
-        ctx.state.rejected_tools.push(tc);
+        ctx.state.approvals.rejected_tools.push(tc);
         ctx.state
             .push_activity(ActivityKind::Approval, format!("Rejected: {}", tool_name));
     }
-    ctx.state.approval_selected_idx = 0;
+    ctx.state.approvals.approval_selected_idx = 0;
     ctx.state
         .toasts
         .push(Toast::error("All tools rejected".to_string()));
@@ -244,6 +244,6 @@ mod tests {
         let mut ctx = HandlerContext::new(&mut state, &tx);
 
         assert!(select_next(&mut ctx).is_ok());
-        assert_eq!(ctx.state.approval_selected_idx, 0);
+        assert_eq!(ctx.state.approvals.approval_selected_idx, 0);
     }
 }
