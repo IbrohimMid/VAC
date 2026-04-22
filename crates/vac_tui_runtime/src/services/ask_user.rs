@@ -105,47 +105,47 @@ pub fn transcript_annotation(question: &str, answer: &str) -> String {
 
 /// Build the answer payload for the tool result, including metadata round-trip.
 pub fn build_answer(state: &AppState, multi_selected: &HashSet<usize>) -> serde_json::Value {
-    let kind = state.ask_user_question_kind;
+    let kind = state.ask_user.question_kind;
 
     match kind {
         AskUserQuestionKind::FreeText => {
             serde_json::json!({
                 "kind": "free_text",
-                "text": state.ask_user_input,
-                "metadata": state.ask_user_metadata,
+                "text": state.ask_user.input,
+                "metadata": state.ask_user.metadata,
             })
         }
         AskUserQuestionKind::SingleSelect => {
-            let sel = state.ask_user_options.get(state.ask_user_selected);
+            let sel = state.ask_user.options.get(state.ask_user.selected);
             serde_json::json!({
                 "kind": "single_select",
                 "selected": sel.map(|o| &o.id),
                 "label": sel.map(|o| o.label.as_str()),
                 "metadata": sel.map(|o| &o.metadata).unwrap_or(&HashMap::new()),
-                "question_metadata": state.ask_user_metadata,
+                "question_metadata": state.ask_user.metadata,
             })
         }
         AskUserQuestionKind::MultiSelect => {
             let selected: Vec<&AskUserOption> = multi_selected
                 .iter()
-                .filter_map(|&i| state.ask_user_options.get(i))
+                .filter_map(|&i| state.ask_user.options.get(i))
                 .collect();
             serde_json::json!({
                 "kind": "multi_select",
                 "selected": selected.iter().map(|o| &o.id).collect::<Vec<_>>(),
                 "labels": selected.iter().map(|o| o.label.as_str()).collect::<Vec<_>>(),
                 "metadata": selected.iter().map(|o| &o.metadata).collect::<Vec<_>>(),
-                "question_metadata": state.ask_user_metadata,
+                "question_metadata": state.ask_user.metadata,
             })
         }
         AskUserQuestionKind::Mixed => {
-            let sel = state.ask_user_options.get(state.ask_user_selected);
+            let sel = state.ask_user.options.get(state.ask_user.selected);
             serde_json::json!({
                 "kind": "mixed",
                 "selected": sel.map(|o| &o.id),
-                "text": state.ask_user_input,
+                "text": state.ask_user.input,
                 "metadata": sel.map(|o| &o.metadata).unwrap_or(&HashMap::new()),
-                "question_metadata": state.ask_user_metadata,
+                "question_metadata": state.ask_user.metadata,
             })
         }
     }
@@ -193,24 +193,24 @@ pub fn filtered_option_indices(query: &str, options: &[AskUserOption]) -> Vec<us
 }
 
 pub fn answer_summary(state: &AppState, filtered: &[usize]) -> String {
-    match state.ask_user_question_kind {
-        AskUserQuestionKind::FreeText => state.ask_user_input.trim().to_string(),
+    match state.ask_user.question_kind {
+        AskUserQuestionKind::FreeText => state.ask_user.input.trim().to_string(),
         AskUserQuestionKind::SingleSelect => state
-            .ask_user_options
-            .get(state.ask_user_selected)
+            .ask_user.options
+            .get(state.ask_user.selected)
             .map(|o| o.label.clone())
             .unwrap_or_default(),
         AskUserQuestionKind::MultiSelect => {
             let mut labels = state
-                .ask_user_multi_selected
+                .ask_user.multi_selected
                 .iter()
-                .filter_map(|&i| state.ask_user_options.get(i).map(|o| o.label.clone()))
+                .filter_map(|&i| state.ask_user.options.get(i).map(|o| o.label.clone()))
                 .collect::<Vec<_>>();
             labels.sort();
             if labels.is_empty() {
                 if let Some(&idx) = filtered.first() {
                     return state
-                        .ask_user_options
+                        .ask_user.options
                         .get(idx)
                         .map(|o| o.label.clone())
                         .unwrap_or_default();
@@ -219,13 +219,13 @@ pub fn answer_summary(state: &AppState, filtered: &[usize]) -> String {
             labels.join(", ")
         }
         AskUserQuestionKind::Mixed => {
-            let t = state.ask_user_input.trim();
+            let t = state.ask_user.input.trim();
             if !t.is_empty() {
                 return t.to_string();
             }
             state
-                .ask_user_options
-                .get(state.ask_user_selected)
+                .ask_user.options
+                .get(state.ask_user.selected)
                 .map(|o| o.label.clone())
                 .unwrap_or_default()
         }
@@ -246,8 +246,8 @@ pub fn render_ask_user_popup(f: &mut Frame, state: &AppState) {
         return;
     }
     let width = (terminal.width * 70 / 100).max(60).min(terminal.width);
-    let option_count = state.ask_user_options.len() as u16;
-    let show_search = !state.ask_user_options.is_empty();
+    let option_count = state.ask_user.options.len() as u16;
+    let show_search = !state.ask_user.options.is_empty();
     let list_cap = option_count.clamp(1, 10);
     let height = (if show_search { 13 } else { 10 } + list_cap).min(terminal.height);
     let x = (terminal.width.saturating_sub(width)) / 2;
@@ -291,7 +291,7 @@ pub fn render_ask_user_popup(f: &mut Frame, state: &AppState) {
     let footer_chunk_idx = if show_search { 4 } else { 3 };
 
     // Question
-    let question = state.ask_user_question.clone().unwrap_or_default();
+    let question = state.ask_user.question.clone().unwrap_or_default();
     let q_para = Paragraph::new(Line::from(Span::styled(
         question,
         state.theme.style(StyleKey::Text),
@@ -303,9 +303,9 @@ pub fn render_ask_user_popup(f: &mut Frame, state: &AppState) {
         let prompt = ">";
         let cursor = "|";
         let placeholder = "Type to filter options";
-        let active = state.ask_user_search_active;
+        let active = state.ask_user.search_active;
 
-        let spans = if state.ask_user_filter.is_empty() {
+        let spans = if state.ask_user.filter.is_empty() {
             vec![
                 Span::raw(" "),
                 Span::styled(prompt, state.theme.style(StyleKey::AppTitle)),
@@ -327,7 +327,7 @@ pub fn render_ask_user_popup(f: &mut Frame, state: &AppState) {
                 Span::styled(prompt, state.theme.style(StyleKey::AppTitle)),
                 Span::raw(" "),
                 Span::styled(
-                    &state.ask_user_filter,
+                    &state.ask_user.filter,
                     state
                         .theme
                         .style(StyleKey::Text)
@@ -350,16 +350,16 @@ pub fn render_ask_user_popup(f: &mut Frame, state: &AppState) {
     }
 
     // Options list — render depends on question kind
-    let kind = state.ask_user_question_kind;
+    let kind = state.ask_user.question_kind;
     let is_multi = kind == AskUserQuestionKind::MultiSelect;
     let mut opt_lines: Vec<Line> = Vec::new();
-    let filtered = filtered_option_indices(&state.ask_user_filter, &state.ask_user_options);
-    if filtered.is_empty() && !state.ask_user_options.is_empty() {
+    let filtered = filtered_option_indices(&state.ask_user.filter, &state.ask_user.options);
+    if filtered.is_empty() && !state.ask_user.options.is_empty() {
         opt_lines.push(Line::from(Span::styled(
             "  (no options match your filter)",
             state.theme.style(StyleKey::Muted),
         )));
-    } else if state.ask_user_options.is_empty() {
+    } else if state.ask_user.options.is_empty() {
         opt_lines.push(Line::from(Span::styled(
             "  (no options — type your answer below)",
             state.theme.style(StyleKey::Muted),
@@ -368,10 +368,10 @@ pub fn render_ask_user_popup(f: &mut Frame, state: &AppState) {
         let visible = chunks[option_chunk_idx].height as usize;
         let sel_pos = filtered
             .iter()
-            .position(|&i| i == state.ask_user_selected)
+            .position(|&i| i == state.ask_user.selected)
             .unwrap_or(0);
 
-        let mut scroll = state.ask_user_scroll.min(sel_pos);
+        let mut scroll = state.ask_user.scroll.min(sel_pos);
         if sel_pos >= scroll.saturating_add(visible) {
             scroll = sel_pos + 1 - visible;
         }
@@ -397,9 +397,9 @@ pub fn render_ask_user_popup(f: &mut Frame, state: &AppState) {
                 break;
             }
             let opt_idx = filtered[pos];
-            let opt = &state.ask_user_options[opt_idx];
-            let is_cursor = opt_idx == state.ask_user_selected;
-            let is_checked = state.ask_user_multi_selected.contains(&opt_idx);
+            let opt = &state.ask_user.options[opt_idx];
+            let is_cursor = opt_idx == state.ask_user.selected;
+            let is_checked = state.ask_user.multi_selected.contains(&opt_idx);
             let style = if is_cursor {
                 state
                     .theme
@@ -431,10 +431,10 @@ pub fn render_ask_user_popup(f: &mut Frame, state: &AppState) {
 
     // Free text input row — title + styling reflect whether the caller
     // permits a free-text answer for this question.
-    let (title, body_line) = if state.ask_user_allow_free_text {
+    let (title, body_line) = if state.ask_user.allow_free_text {
         (
             " Free text (Enter to submit) ".to_string(),
-            Line::from(Span::raw(state.ask_user_input.clone())),
+            Line::from(Span::raw(state.ask_user.input.clone())),
         )
     } else {
         (

@@ -179,10 +179,59 @@ impl LlmRouter {
         self
     }
 
+    /// Register the Kilo Gateway via the OpenAI-compatible preset (recommended).
+    /// Uses `https://api.kilo.ai/api/gateway` and expects `KILO_API_KEY`.
+    pub fn with_kilo(&mut self) -> &mut Self {
+        self.add_provider_named(
+            "kilo",
+            Arc::new(crate::providers::openai_compat::OpenAiCompatProvider::new_kilo()),
+        );
+        self
+    }
+
+    /// Legacy Kilo Gateway registration that uses the (misnamed) Anthropic
+    /// provider struct. Prefer [`with_kilo`] for new code — this helper is
+    /// kept for compatibility with existing callers.
     pub fn with_kilo_gateway(&mut self) -> &mut Self {
         self.add_provider_named(
             "kilo_gateway",
             Arc::new(crate::providers::anthropic::AnthropicProvider::new()),
+        );
+        self
+    }
+
+    /// Register Groq (`https://api.groq.com/openai/v1`, `GROQ_API_KEY`).
+    pub fn with_groq(&mut self) -> &mut Self {
+        self.add_provider_named(
+            "groq",
+            Arc::new(crate::providers::openai_compat::OpenAiCompatProvider::new_groq()),
+        );
+        self
+    }
+
+    /// Register OpenRouter (`https://openrouter.ai/api/v1`, `OPENROUTER_API_KEY`).
+    pub fn with_openrouter(&mut self) -> &mut Self {
+        self.add_provider_named(
+            "openrouter",
+            Arc::new(crate::providers::openai_compat::OpenAiCompatProvider::new_openrouter()),
+        );
+        self
+    }
+
+    /// Register DeepSeek (`https://api.deepseek.com/v1`, `DEEPSEEK_API_KEY`).
+    pub fn with_deepseek(&mut self) -> &mut Self {
+        self.add_provider_named(
+            "deepseek",
+            Arc::new(crate::providers::openai_compat::OpenAiCompatProvider::new_deepseek()),
+        );
+        self
+    }
+
+    /// Register Together AI (`https://api.together.xyz/v1`, `TOGETHER_API_KEY`).
+    pub fn with_together(&mut self) -> &mut Self {
+        self.add_provider_named(
+            "together",
+            Arc::new(crate::providers::openai_compat::OpenAiCompatProvider::new_together()),
         );
         self
     }

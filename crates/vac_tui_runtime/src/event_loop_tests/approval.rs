@@ -38,26 +38,26 @@ async fn ask_user_filter_and_shortcuts_update_state_and_send_structured_result()
             .is_active(crate::overlay::OverlayId::AskUser)
     );
     assert_eq!(
-        state.ask_user_question_kind,
+        state.ask_user.question_kind,
         crate::services::ask_user::AskUserQuestionKind::MultiSelect
     );
-    assert_eq!(state.ask_user_metadata.get("source").unwrap(), "test");
+    assert_eq!(state.ask_user.metadata.get("source").unwrap(), "test");
 
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::Tab);
-    assert!(state.ask_user_search_active);
+    assert!(state.ask_user.search_active);
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::InputChanged('b'));
-    assert_eq!(state.ask_user_filter, "b");
-    assert_eq!(state.ask_user_selected, 1);
+    assert_eq!(state.ask_user.filter, "b");
+    assert_eq!(state.ask_user.selected, 1);
 
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::Tab);
-    assert!(!state.ask_user_search_active);
+    assert!(!state.ask_user.search_active);
 
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::InputCursorStart);
-    assert!(state.ask_user_multi_selected.contains(&1));
-    assert_eq!(state.ask_user_multi_selected.len(), 1);
+    assert!(state.ask_user.multi_selected.contains(&1));
+    assert_eq!(state.ask_user.multi_selected.len(), 1);
 
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::InputClear);
-    assert!(state.ask_user_multi_selected.is_empty());
+    assert!(state.ask_user.multi_selected.is_empty());
 
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::InputSubmitted);
     let ev = rx.recv().await.unwrap();

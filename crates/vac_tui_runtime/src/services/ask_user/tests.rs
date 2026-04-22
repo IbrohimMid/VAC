@@ -122,28 +122,26 @@ fn render_respects_filter_and_cursor_highlight() {
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
 
-    let mut state = AppState {
-        ask_user_question: Some("Pick one".into()),
-        ask_user_options: vec![
-            AskUserOption {
-                id: "rust".into(),
-                label: "Rust".into(),
-                description: None,
-                metadata: HashMap::new(),
-            },
-            AskUserOption {
-                id: "ruby".into(),
-                label: "Ruby".into(),
-                description: None,
-                metadata: HashMap::new(),
-            },
-        ],
-        ask_user_question_kind: AskUserQuestionKind::SingleSelect,
-        ask_user_selected: 0,
-        ask_user_filter: "rb".into(),
-        ask_user_scroll: 0,
-        ..Default::default()
-    };
+    let mut state = AppState::default();
+    state.ask_user.question = Some("Pick one".into());
+    state.ask_user.options = vec![
+        AskUserOption {
+            id: "rust".into(),
+            label: "Rust".into(),
+            description: None,
+            metadata: HashMap::new(),
+        },
+        AskUserOption {
+            id: "ruby".into(),
+            label: "Ruby".into(),
+            description: None,
+            metadata: HashMap::new(),
+        },
+    ];
+    state.ask_user.question_kind = AskUserQuestionKind::SingleSelect;
+    state.ask_user.selected = 0;
+    state.ask_user.filter = "rb".into();
+    state.ask_user.scroll = 0;
     crate::overlay::open_overlay(&mut state, crate::overlay::OverlayId::AskUser);
     let state = state;
 

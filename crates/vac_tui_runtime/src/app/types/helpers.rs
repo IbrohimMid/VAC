@@ -10,7 +10,7 @@ use crate::services::textarea::TextArea;
 use crate::types::*;
 
 use super::{
-    ActivityItem, ActivityKind, AppState, ApprovalsState, AtMentionState, FilePickerState, HelperCommand, LoadingStateManager, VilDevState,
+    ActivityItem, ActivityKind, AppState, ApprovalsState, AskUserState, AtMentionState, FilePickerState, HelperCommand, LoadingStateManager, VilDevState,
     Message, QueueMetrics, RenderMetrics, ReviewItem, ReviewItemStatus, ReviewState, RuntimeState,
     ShellState, ShortcutsPopupMode, StartupSnapshot, TokenUsage, VilLogEntry, VilState,
     WorkbenchTab, WorkspaceFocus,
@@ -163,18 +163,7 @@ impl AppState {
             line_to_message_map: Vec::new(),
             pending_revert_index: None,
             plan: super::PlanState::default(),
-            ask_user_question: None,
-            ask_user_options: Vec::new(),
-            ask_user_selected: 0,
-            ask_user_input: String::new(),
-            ask_user_tool_call_id: None,
-            ask_user_allow_free_text: true,
-            ask_user_question_kind: crate::services::ask_user::AskUserQuestionKind::SingleSelect,
-            ask_user_multi_selected: std::collections::HashSet::new(),
-            ask_user_metadata: std::collections::HashMap::new(),
-            ask_user_filter: String::new(),
-            ask_user_search_active: false,
-            ask_user_scroll: 0,
+            ask_user: AskUserState::default(),
             selection_state: crate::services::text_selection::SelectionState::default(),
             per_message_cache: HashMap::new(),
             render_metrics: RenderMetrics::default(),

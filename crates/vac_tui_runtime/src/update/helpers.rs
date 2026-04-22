@@ -60,18 +60,18 @@ pub fn open_ask_user_popup(state: &mut AppState, tc: &crate::types::ToolCall) {
             std::collections::HashMap::new(),
         ),
     };
-    state.ask_user_question = question;
-    state.ask_user_options = options;
-    state.ask_user_selected = 0;
-    state.ask_user_input.clear();
-    state.ask_user_allow_free_text = allow_free_text;
-    state.ask_user_question_kind = kind;
-    state.ask_user_metadata = metadata;
-    state.ask_user_multi_selected.clear();
-    state.ask_user_filter.clear();
-    state.ask_user_search_active = false;
-    state.ask_user_scroll = 0;
-    state.ask_user_tool_call_id = Some(tc.id.clone());
+    state.ask_user.question = question;
+    state.ask_user.options = options;
+    state.ask_user.selected = 0;
+    state.ask_user.input.clear();
+    state.ask_user.allow_free_text = allow_free_text;
+    state.ask_user.question_kind = kind;
+    state.ask_user.metadata = metadata;
+    state.ask_user.multi_selected.clear();
+    state.ask_user.filter.clear();
+    state.ask_user.search_active = false;
+    state.ask_user.scroll = 0;
+    state.ask_user.tool_call_id = Some(tc.id.clone());
     crate::overlay::open_overlay(state, crate::overlay::OverlayId::AskUser);
     state.push_activity(
         crate::app::ActivityKind::Approval,

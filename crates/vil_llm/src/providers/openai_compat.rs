@@ -103,6 +103,85 @@ impl OpenAiCompatProvider {
         self
     }
 
+    // -----------------------------------------------------------------
+    // Cloud gateway presets (all OpenAI-wire, differ only in base URL /
+    // default model / required env var). Use these when you want a ready-
+    // made config that honors the standard env var for that vendor.
+    //
+    // Each preset:
+    // * sets a provider name matching the config key callers use,
+    // * sets the canonical base URL,
+    // * marks the API key as required with a vendor-specific env var so
+    //   missing credentials surface as `LlmError::ApiKeyMissing` naming
+    //   the exact variable to set,
+    // * pre-populates a reasonable default model, which callers can
+    //   override via `.with_model(...)` or config `[llm.providers.*].model`.
+    //
+    // NOTE: `kilo` / `kilo_gateway` preset lives here because Kilo Gateway
+    // currently exposes only the OpenAI-compatible `/chat/completions` path
+    // (per kilo.ai/docs/gateway/api-reference; Anthropic `/v1/messages`
+    // support is still an open feature request, see Kilo-Org/kilocode#7397).
+    // The legacy `providers::anthropic::AnthropicProvider` struct also
+    // targets Kilo Gateway (misnomer — see docs/PROVIDER_PARITY.md). Prefer
+    // this preset for new code.
+    // -----------------------------------------------------------------
+
+    /// Kilo Gateway preset — `https://api.kilo.ai/api/gateway`.
+    /// Free tier model id: `kilo-auto/free`. Paid models use
+    /// `provider/model-name`, e.g. `anthropic/claude-sonnet-4.6`.
+    pub fn new_kilo() -> Self {
+        Self::new()
+            .with_name("kilo")
+            .with_base_url("https://api.kilo.ai/api/gateway")
+            .with_base_url_env("KILO_GATEWAY_URL")
+            .require_api_key("KILO_API_KEY")
+            .with_model("kilo-auto/free")
+    }
+
+    /// Groq preset — `https://api.groq.com/openai/v1`.
+    /// Default model: `llama-3.3-70b-versatile`.
+    pub fn new_groq() -> Self {
+        Self::new()
+            .with_name("groq")
+            .with_base_url("https://api.groq.com/openai/v1")
+            .with_base_url_env("GROQ_BASE_URL")
+            .require_api_key("GROQ_API_KEY")
+            .with_model("llama-3.3-70b-versatile")
+    }
+
+    /// OpenRouter preset — `https://openrouter.ai/api/v1`.
+    /// Default model: `openrouter/auto` (router-selected).
+    pub fn new_openrouter() -> Self {
+        Self::new()
+            .with_name("openrouter")
+            .with_base_url("https://openrouter.ai/api/v1")
+            .with_base_url_env("OPENROUTER_BASE_URL")
+            .require_api_key("OPENROUTER_API_KEY")
+            .with_model("openrouter/auto")
+    }
+
+    /// DeepSeek preset — `https://api.deepseek.com/v1`.
+    /// Default model: `deepseek-chat`.
+    pub fn new_deepseek() -> Self {
+        Self::new()
+            .with_name("deepseek")
+            .with_base_url("https://api.deepseek.com/v1")
+            .with_base_url_env("DEEPSEEK_BASE_URL")
+            .require_api_key("DEEPSEEK_API_KEY")
+            .with_model("deepseek-chat")
+    }
+
+    /// Together AI preset — `https://api.together.xyz/v1`.
+    /// Default model: `meta-llama/Llama-3.3-70B-Instruct-Turbo`.
+    pub fn new_together() -> Self {
+        Self::new()
+            .with_name("together")
+            .with_base_url("https://api.together.xyz/v1")
+            .with_base_url_env("TOGETHER_BASE_URL")
+            .require_api_key("TOGETHER_API_KEY")
+            .with_model("meta-llama/Llama-3.3-70B-Instruct-Turbo")
+    }
+
     fn build_headers(&self) -> LlmResult<HeaderMap> {
         if self.api_key.is_empty() {
             if let Some(env) = &self.required_api_key_env {
@@ -678,6 +757,77 @@ mod tests {
         assert_eq!(resp.model, "llama3.1");
         assert_eq!(resp.usage.total_tokens, 7);
         assert_eq!(provider.name(), "ollama");
+    }
+
+    // ---------------------------------------------------------------------
+    // Preset tests (offline — verify static config only, no HTTP).
+    // ---------------------------------------------------------------------
+
+    #[test]
+    fn kilo_preset_has_expected_config() {
+        let provider = OpenAiCompatProvider::new_kilo();
+        assert_eq!(provider.name(), "kilo");
+        assert_eq!(provider.base_url, "https://api.kilo.ai/api/gateway");
+        assert_eq!(provider.model, "kilo-auto/free");
+        assert_eq!(
+            provider.required_api_key_env.as_deref(),
+            Some("KILO_API_KEY")
+        );
+    }
+
+    #[test]
+    fn groq_preset_has_expected_config() {
+        let provider = OpenAiCompatProvider::new_groq();
+        assert_eq!(provider.name(), "groq");
+        assert_eq!(provider.base_url, "https://api.groq.com/openai/v1");
+        assert_eq!(
+            provider.required_api_key_env.as_deref(),
+            Some("GROQ_API_KEY")
+        );
+    }
+
+    #[test]
+    fn openrouter_preset_has_expected_config() {
+        let provider = OpenAiCompatProvider::new_openrouter();
+        assert_eq!(provider.name(), "openrouter");
+        assert_eq!(provider.base_url, "https://openrouter.ai/api/v1");
+        assert_eq!(
+            provider.required_api_key_env.as_deref(),
+            Some("OPENROUTER_API_KEY")
+        );
+    }
+
+    #[test]
+    fn deepseek_preset_has_expected_config() {
+        let provider = OpenAiCompatProvider::new_deepseek();
+        assert_eq!(provider.name(), "deepseek");
+        assert_eq!(provider.base_url, "https://api.deepseek.com/v1");
+        assert_eq!(
+            provider.required_api_key_env.as_deref(),
+            Some("DEEPSEEK_API_KEY")
+        );
+    }
+
+    #[test]
+    fn together_preset_has_expected_config() {
+        let provider = OpenAiCompatProvider::new_together();
+        assert_eq!(provider.name(), "together");
+        assert_eq!(provider.base_url, "https://api.together.xyz/v1");
+        assert_eq!(
+            provider.required_api_key_env.as_deref(),
+            Some("TOGETHER_API_KEY")
+        );
+    }
+
+    #[tokio::test]
+    async fn kilo_preset_errors_without_api_key() {
+        // Preset marks KILO_API_KEY as required; missing key surfaces as
+        // ApiKeyMissing naming the env var.
+        let provider = OpenAiCompatProvider::new_kilo().with_api_key("");
+        let req = LlmRequest::new(vec![Message::user("ping")]);
+        let err = provider.complete(&req).await.unwrap_err();
+        let msg = format!("{err}");
+        assert!(msg.contains("KILO_API_KEY"), "got: {msg}");
     }
 
     #[tokio::test]

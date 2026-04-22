@@ -10,6 +10,7 @@ use crate::types::*;
 
 // Re-export all submodule types
 pub mod approvals;
+pub mod ask_user;
 pub mod at_mention;
 pub mod billing;
 pub mod file_picker;
@@ -24,6 +25,7 @@ pub mod support;
 pub mod workbench;
 
 pub use approvals::ApprovalsState;
+pub use ask_user::AskUserState;
 pub use at_mention::AtMentionState;
 pub use file_picker::FilePickerState;
 pub use vil_dev::VilDevState;
@@ -299,19 +301,7 @@ pub struct AppState {
     pub plan: PlanState,
 
     // Ask-User popup (triggered by `ask_user` tool call)
-    pub ask_user_question: Option<String>,
-    pub ask_user_options: Vec<crate::services::ask_user::AskUserOption>,
-    pub ask_user_selected: usize,
-    pub ask_user_input: String,
-    pub ask_user_tool_call_id: Option<String>,
-    pub ask_user_allow_free_text: bool,
-    // Unit 7 (Wave 3.5) — structured ask-user UX
-    pub ask_user_question_kind: crate::services::ask_user::AskUserQuestionKind,
-    pub ask_user_multi_selected: std::collections::HashSet<usize>,
-    pub ask_user_metadata: std::collections::HashMap<String, String>,
-    pub ask_user_filter: String,
-    pub ask_user_search_active: bool,
-    pub ask_user_scroll: usize,
+    pub ask_user: AskUserState,
 
     // Text Selection
     pub selection_state: crate::services::text_selection::SelectionState,
