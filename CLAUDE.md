@@ -70,7 +70,23 @@ Source lives in `crates/`. Key crates:
 - `vac_cli` — TUI binary (entry point)
 - `vac_core` — engine
 - `vac_tools`, `vac_trace` — tool runtime and tracing
+- `vac_signal` — bounded output buffers, scoring, distillation (OMNI-inspired)
 - `vil_llm`, `vil_rag`, `vil_knowledge`, `vil_ir`, `vil_swarm` — VIL subsystems
 
 Worktrees (`wt-pr-3*`) are for PR review; treat them as read-only unless
 the task is specifically about one of them.
+
+## Signal layer (`vac_signal`)
+
+Noisy subsystem output (shell, `vil dev`, runtime jobs, MCP) should go
+through `vac_signal::SignalBuffer` instead of ad-hoc `VecDeque<String>`
+or unbounded `String` accumulators. The buffer is a bounded ring with a
+monotonic sequence counter and drop tracking; pair it with a `Scorer`
++ `Distiller` (default: `RegexScorer::default_heuristics` +
+`TailDistiller`) when you need a compact view for prompts or summary
+panes. Config lives at `VacConfig.signal` (`SignalConfig`). Optional
+SQLite-backed archive is gated behind the `rewind` feature.
+
+Currently wired: `AppState.vil_dev_output`. Deferred (need line-oriented
+alternatives to existing byte-level APIs): `ShellSession.output` (char-
+boundary truncation + `detect_prompt_ready`).
