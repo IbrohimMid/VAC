@@ -289,6 +289,7 @@ pub fn handle_backend_event(
             };
             if let Some(session) = target {
                 session.output.push_str(&text);
+                session.output_signal.push_chunk(&text);
 
                 let max_size = 1024 * 1024;
                 if session.output.len() > max_size {
@@ -321,7 +322,9 @@ pub fn handle_backend_event(
                 if !session.output.ends_with('\n') && !session.output.is_empty() {
                     session.output.push('\n');
                 }
-                session.output.push_str(&format!("[shell error] {text}\n"));
+                let err_line = format!("[shell error] {text}\n");
+                session.output.push_str(&err_line);
+                session.output_signal.push_line(format!("[shell error] {text}"));
 
                 let max_size = 1024 * 1024;
                 if session.output.len() > max_size {

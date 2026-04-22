@@ -8,7 +8,12 @@ pub struct ShellSession {
     pub id: Uuid,
     pub label: String,
     pub command: Option<ShellCommand>,
+    /// Raw terminal output kept as a single String for char-level slicing
+    /// (prompt detection, render). Hard-capped at 1 MiB by the update loop.
     pub output: String,
+    /// Parallel signal buffer for distillation/noise filtering. Written
+    /// alongside `output`; does not affect prompt detection or rendering.
+    pub output_signal: vac_signal::SignalBuffer,
     pub history: Vec<String>,
     pub history_idx: Option<usize>,
     pub waiting_for_input: bool,
@@ -27,6 +32,10 @@ impl ShellSession {
             label,
             command: None,
             output: String::new(),
+            output_signal: vac_signal::SignalBuffer::new(
+                vac_signal::SignalStreamKind::Shell,
+                2_000,
+            ),
             history: Vec::new(),
             history_idx: None,
             waiting_for_input: false,

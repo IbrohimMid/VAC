@@ -136,6 +136,7 @@ pub fn reset(state: &mut AppState) {
     if let Some(session) = state.shell.session_store.active_mut() {
         session.command = None;
         session.output.clear();
+        session.output_signal.clear();
         session.history.clear();
         session.history_idx = None;
         session.waiting_for_input = false;
