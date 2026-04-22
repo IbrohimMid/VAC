@@ -1,10 +1,10 @@
 //! Main rendering for the unified popup
 
 use crate::app::ShortcutsPopupMode;
-use crate::services::detect_term::ThemeColors;
+use crate::services::theme::StyleKey;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Modifier, Style},
+    style::Modifier,
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph, Tabs},
     Frame,
@@ -27,7 +27,7 @@ pub fn render_shortcuts_popup(f: &mut Frame, state: &mut crate::app::AppState) {
     // Create the main block with border and background
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(ThemeColors::cyan()));
+        .border_style(state.theme.style(StyleKey::OverlayBorder));
 
     // Split area for title, tabs, and content - layout differs by mode
     let inner_area = Rect {
@@ -39,8 +39,9 @@ pub fn render_shortcuts_popup(f: &mut Frame, state: &mut crate::app::AppState) {
 
     // Render title inside the popup
     let title = " Command Palette";
-    let title_style = Style::default()
-        .fg(ThemeColors::title())
+    let title_style = state
+        .theme
+        .style(StyleKey::AppTitle)
         .add_modifier(Modifier::BOLD);
     let title_line = Line::from(Span::styled(title, title_style));
     let title_paragraph = Paragraph::new(title_line);
@@ -54,10 +55,11 @@ pub fn render_shortcuts_popup(f: &mut Frame, state: &mut crate::app::AppState) {
     };
     let tabs = Tabs::new(tab_titles)
         .select(selected_tab)
-        .style(Style::default().fg(ThemeColors::muted()))
+        .style(state.theme.style(StyleKey::Muted))
         .highlight_style(
-            Style::default()
-                .fg(ThemeColors::accent())
+            state
+                .theme
+                .style(StyleKey::Accent)
                 .add_modifier(Modifier::BOLD),
         )
         .divider(" | ");

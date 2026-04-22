@@ -9,7 +9,7 @@
 //! ```
 
 use crate::app::AppState;
-use crate::services::detect_term::ThemeColors;
+use crate::services::theme::StyleKey;
 use nucleo_matcher::{
     Config, Matcher, Utf32Str,
     pattern::{AtomKind, CaseMatching, Normalization, Pattern},
@@ -257,12 +257,10 @@ pub fn render_ask_user_popup(f: &mut Frame, state: &AppState) {
     f.render_widget(Clear, area);
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(ThemeColors::cyan()))
+        .border_style(state.theme.style(StyleKey::Accent))
         .title(Span::styled(
             " Assistant is asking… ",
-            Style::default()
-                .fg(ThemeColors::yellow())
-                .add_modifier(Modifier::BOLD),
+            state.theme.style(StyleKey::Warning).add_modifier(Modifier::BOLD),
         ));
     f.render_widget(block, area);
 
@@ -293,7 +291,7 @@ pub fn render_ask_user_popup(f: &mut Frame, state: &AppState) {
     let question = state.ask_user_question.clone().unwrap_or_default();
     let q_para = Paragraph::new(Line::from(Span::styled(
         question,
-        Style::default().fg(ThemeColors::text()),
+        state.theme.style(StyleKey::Text),
     )))
     .wrap(Wrap { trim: false });
     f.render_widget(q_para, chunks[0]);
@@ -307,36 +305,34 @@ pub fn render_ask_user_popup(f: &mut Frame, state: &AppState) {
         let spans = if state.ask_user_filter.is_empty() {
             vec![
                 Span::raw(" "),
-                Span::styled(prompt, Style::default().fg(ThemeColors::magenta())),
+                Span::styled(prompt, state.theme.style(StyleKey::AppTitle)),
                 Span::raw(" "),
                 Span::styled(
                     cursor,
                     if active {
-                        Style::default().fg(ThemeColors::cyan())
+                        state.theme.style(StyleKey::Accent)
                     } else {
-                        Style::default().fg(ThemeColors::dark_gray())
+                        state.theme.style(StyleKey::Muted)
                     },
                 ),
-                Span::styled(placeholder, Style::default().fg(ThemeColors::dark_gray())),
+                Span::styled(placeholder, state.theme.style(StyleKey::Muted)),
                 Span::raw(" "),
             ]
         } else {
             vec![
                 Span::raw(" "),
-                Span::styled(prompt, Style::default().fg(ThemeColors::magenta())),
+                Span::styled(prompt, state.theme.style(StyleKey::AppTitle)),
                 Span::raw(" "),
                 Span::styled(
                     &state.ask_user_filter,
-                    Style::default()
-                        .fg(ThemeColors::text())
-                        .add_modifier(Modifier::BOLD),
+                    state.theme.style(StyleKey::Text).add_modifier(Modifier::BOLD),
                 ),
                 Span::styled(
                     cursor,
                     if active {
-                        Style::default().fg(ThemeColors::cyan())
+                        state.theme.style(StyleKey::Accent)
                     } else {
-                        Style::default().fg(ThemeColors::dark_gray())
+                        state.theme.style(StyleKey::Muted)
                     },
                 ),
                 Span::raw(" "),
@@ -355,12 +351,12 @@ pub fn render_ask_user_popup(f: &mut Frame, state: &AppState) {
     if filtered.is_empty() && !state.ask_user_options.is_empty() {
         opt_lines.push(Line::from(Span::styled(
             "  (no options match your filter)",
-            Style::default().fg(ThemeColors::dark_gray()),
+            state.theme.style(StyleKey::Muted),
         )));
     } else if state.ask_user_options.is_empty() {
         opt_lines.push(Line::from(Span::styled(
             "  (no options — type your answer below)",
-            Style::default().fg(ThemeColors::dark_gray()),
+            state.theme.style(StyleKey::Muted),
         )));
     } else {
         let visible = chunks[option_chunk_idx].height as usize;
@@ -381,7 +377,7 @@ pub fn render_ask_user_popup(f: &mut Frame, state: &AppState) {
         if has_above && available > 0 {
             opt_lines.push(Line::from(Span::styled(
                 " ▲",
-                Style::default().fg(ThemeColors::dark_gray()),
+                state.theme.style(StyleKey::Muted),
             )));
             available = available.saturating_sub(1);
         }
@@ -399,9 +395,8 @@ pub fn render_ask_user_popup(f: &mut Frame, state: &AppState) {
             let is_cursor = opt_idx == state.ask_user_selected;
             let is_checked = state.ask_user_multi_selected.contains(&opt_idx);
             let style = if is_cursor {
-                Style::default()
-                    .fg(ThemeColors::highlight_fg())
-                    .bg(ThemeColors::highlight_bg())
+                state.theme.style(StyleKey::HighlightFg)
+                    .patch(state.theme.style(StyleKey::HighlightBg))
             } else {
                 Style::default()
             };
@@ -420,7 +415,7 @@ pub fn render_ask_user_popup(f: &mut Frame, state: &AppState) {
         if has_below {
             opt_lines.push(Line::from(Span::styled(
                 " ▼",
-                Style::default().fg(ThemeColors::dark_gray()),
+                state.theme.style(StyleKey::Muted),
             )));
         }
     }
@@ -447,71 +442,39 @@ pub fn render_ask_user_popup(f: &mut Frame, state: &AppState) {
     f.render_widget(input_para, chunks[input_chunk_idx]);
 
     // Footer — varies by question kind
+    let accent = state.theme.style(StyleKey::Accent);
+    let muted = state.theme.style(StyleKey::Muted);
     let mut hints = vec![
         Span::raw(" "),
-        Span::styled("↑/↓", Style::default().fg(ThemeColors::cyan())),
-        Span::styled(": Option  ", Style::default().fg(ThemeColors::dark_gray())),
+        Span::styled("↑/↓", accent),
+        Span::styled(": Option  ", muted),
     ];
     if show_search {
-        hints.push(Span::styled(
-            "Tab",
-            Style::default().fg(ThemeColors::cyan()),
-        ));
-        hints.push(Span::styled(
-            ": Search  ",
-            Style::default().fg(ThemeColors::dark_gray()),
-        ));
+        hints.push(Span::styled("Tab", accent));
+        hints.push(Span::styled(": Search  ", muted));
     }
     if is_multi {
-        hints.push(Span::styled(
-            "Space",
-            Style::default().fg(ThemeColors::cyan()),
-        ));
-        hints.push(Span::styled(
-            ": Toggle  ",
-            Style::default().fg(ThemeColors::dark_gray()),
-        ));
-        hints.push(Span::styled(
-            "Ctrl+A",
-            Style::default().fg(ThemeColors::cyan()),
-        ));
-        hints.push(Span::styled(
-            ": All  ",
-            Style::default().fg(ThemeColors::dark_gray()),
-        ));
-        hints.push(Span::styled(
-            "Ctrl+U",
-            Style::default().fg(ThemeColors::cyan()),
-        ));
-        hints.push(Span::styled(
-            ": None  ",
-            Style::default().fg(ThemeColors::dark_gray()),
-        ));
+        hints.push(Span::styled("Space", accent));
+        hints.push(Span::styled(": Toggle  ", muted));
+        hints.push(Span::styled("Ctrl+A", accent));
+        hints.push(Span::styled(": All  ", muted));
+        hints.push(Span::styled("Ctrl+U", accent));
+        hints.push(Span::styled(": None  ", muted));
     }
-    hints.push(Span::styled(
-        "Enter",
-        Style::default().fg(ThemeColors::cyan()),
-    ));
-    hints.push(Span::styled(
-        ": Confirm  ",
-        Style::default().fg(ThemeColors::dark_gray()),
-    ));
-    hints.push(Span::styled(
-        "Esc",
-        Style::default().fg(ThemeColors::cyan()),
-    ));
-    hints.push(Span::styled(
-        ": Cancel",
-        Style::default().fg(ThemeColors::dark_gray()),
-    ));
+    hints.push(Span::styled("Enter", accent));
+    hints.push(Span::styled(": Confirm  ", muted));
+    hints.push(Span::styled("Esc", accent));
+    hints.push(Span::styled(": Cancel", muted));
     let footer = Line::from(hints);
     f.render_widget(Paragraph::new(footer), chunks[footer_chunk_idx]);
 }
+
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
 
     #[test]
     fn parse_args_with_kind_and_metadata() {

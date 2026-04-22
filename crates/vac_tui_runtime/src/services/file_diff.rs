@@ -104,7 +104,7 @@ pub fn render_diff_with_diagnostics(
                 // Delete rows have no new-side line number, so the gutter is
                 // always an empty placeholder for consistent alignment.
                 lines.push(Line::from(vec![
-                    render_gutter_cell(None, Style::default()),
+                    render_gutter_cell(None, Style::default(), theme),
                     Span::styled("- ", theme.style(StyleKey::DiffRemoved)),
                     Span::styled(truncated, theme.style(StyleKey::DiffRemoved)),
                 ]));
@@ -114,7 +114,7 @@ pub fn render_diff_with_diagnostics(
                 let overlay = diagnostics_overlay_for(snapshot, file_path, new_line_no, &truncated);
                 let gutter = diagnostics_gutter_for(snapshot, file_path, new_line_no);
                 let mut row: Vec<Span<'static>> = vec![
-                    render_gutter_cell(gutter.as_ref(), Style::default()),
+                    render_gutter_cell(gutter.as_ref(), Style::default(), theme),
                     Span::styled("+ ", theme.style(StyleKey::DiffAdded)),
                 ];
                 if overlay.is_empty() && !truncated.trim().starts_with("#[vil_") {
@@ -126,7 +126,7 @@ pub fn render_diff_with_diagnostics(
                         base.add_modifier(Modifier::BOLD),
                     ));
                 } else {
-                    let overlayed = render_line_with_diagnostics(&truncated, &overlay, base);
+                    let overlayed = render_line_with_diagnostics(&truncated, &overlay, base, theme);
                     for s in overlayed.spans.into_iter() {
                         row.push(Span::styled(s.content.into_owned(), s.style));
                     }
@@ -137,7 +137,7 @@ pub fn render_diff_with_diagnostics(
             similar::ChangeTag::Equal => {
                 let overlay = diagnostics_overlay_for(snapshot, file_path, new_line_no, &truncated);
                 let gutter = diagnostics_gutter_for(snapshot, file_path, new_line_no);
-                let gutter_span = render_gutter_cell(gutter.as_ref(), Style::default());
+                let gutter_span = render_gutter_cell(gutter.as_ref(), Style::default(), theme);
                 if overlay.is_empty() {
                     lines.push(Line::from(vec![
                         gutter_span,
@@ -146,7 +146,7 @@ pub fn render_diff_with_diagnostics(
                     ]));
                 } else {
                     let overlayed =
-                        render_line_with_diagnostics(&truncated, &overlay, Style::default());
+                        render_line_with_diagnostics(&truncated, &overlay, Style::default(), theme);
                     let mut row: Vec<Span<'static>> = vec![gutter_span, Span::raw("  ")];
                     for s in overlayed.spans.into_iter() {
                         row.push(Span::styled(s.content.into_owned(), s.style));

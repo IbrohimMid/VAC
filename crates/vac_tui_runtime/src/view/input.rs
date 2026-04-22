@@ -68,7 +68,7 @@ pub(super) fn render_input(f: &mut Frame, state: &mut AppState, area: Rect) {
     let widget = Paragraph::new(lines)
         .block(Block::default().borders(Borders::ALL).title(Span::styled(
             "Input",
-            focus_style(state.focus == WorkspaceFocus::Input),
+            focus_style(state.focus == WorkspaceFocus::Input, &state.theme),
         )))
         .wrap(Wrap { trim: false });
     f.render_widget(widget, actual_input_area);

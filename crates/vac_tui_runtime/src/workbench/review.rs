@@ -218,6 +218,34 @@ impl WorkbenchTabView for ReviewTab {
             if let (Some(old), Some(new)) =
                 (diff.old_content.as_deref(), diff.new_content.as_deref())
             {
+                // T13: VIL-aware diff for .vwfd.yaml files
+                let is_vwfd = state.review.selected_path.as_deref()
+                    .map(|p| p.ends_with(".vwfd.yaml") || p.ends_with(".vwfd.yml"))
+                    .unwrap_or(false);
+                if is_vwfd {
+                    if let (Ok(old_doc), Ok(new_doc)) = (
+                        vil_vwfd::from_yaml(old),
+                        vil_vwfd::from_yaml(new),
+                    ) {
+                        let vwfd_diff = vac_changeset::formats::vwfd::diff(&old_doc, &new_doc);
+                        crate::services::vwfd_diff_render::build_lines(&vwfd_diff, &state.theme)
+                            .into_iter()
+                            .map(|l| Line::from(
+                                l.spans.into_iter()
+                                    .map(|s| Span::styled(s.content.into_owned(), s.style))
+                                    .collect::<Vec<_>>()
+                            ))
+                            .collect()
+                    } else {
+                        // Fallback to generic diff if VWFD parse fails
+                        let selected_path = state.review.selected_path.clone();
+                        let path_buf = selected_path.as_deref().map(std::path::Path::new);
+                        crate::services::review::render_diff_viewport_with_diagnostics(
+                            old, new, body[1].width as usize, diff.scroll, diff_height,
+                            state.lsp_diagnostics.as_ref(), path_buf,
+                        )
+                    }
+                } else {
                 // PR-T15 P1 — overlay inline LSP diagnostics on new-side rows
                 // when a snapshot + selected path are available.
                 let selected_path = state.review.selected_path.clone();
@@ -231,6 +259,7 @@ impl WorkbenchTabView for ReviewTab {
                     state.lsp_diagnostics.as_ref(),
                     path_buf,
                 )
+                }
             } else if let Some(err) = &diff.last_error {
                 vec![Line::from(Span::styled(
                     err.clone(),

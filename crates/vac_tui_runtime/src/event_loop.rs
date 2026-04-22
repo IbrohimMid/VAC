@@ -229,6 +229,16 @@ pub async fn run_tui(
         spawn_mcp_probe(servers, input_tx.clone());
     }
 
+    // PR-W25-2: hot-reload theme from `.vac/theme.toml` / `$VAC_THEME`.
+    if let Some(theme_path) = crate::services::theme_loader::resolve_theme_path() {
+        crate::services::theme_loader::watch_theme(theme_path, input_tx.clone());
+    }
+
+    // PR-T14: spawn `vil dev` bridge if configured in `.vac/config.toml`.
+    if let Some(dev_cmd) = config.vil.dev_command.as_deref() {
+        crate::runner::vil_tasks::spawn_vil_dev_bridge(dev_cmd, &project_root, input_tx.clone());
+    }
+
     // Spawn background task to detect VIL project profile
     spawn_vil_profile_detect(project_root.clone(), input_tx.clone());
 

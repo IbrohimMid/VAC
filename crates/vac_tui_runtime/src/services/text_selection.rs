@@ -496,10 +496,12 @@ fn is_light_color(color: Color) -> bool {
     }
 }
 
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
+    use super::{decorative_prefix_width, extract_selected_text_from_lines, strip_decorative_prefix_residue};
     use ratatui::style::Style;
     use ratatui::text::{Line, Span};
 

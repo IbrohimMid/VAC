@@ -226,6 +226,63 @@ pub fn open_in_editor(ctx: &mut HandlerContext) -> HandlerResult {
     Ok(())
 }
 
+/// T11: Open a specific file + optional line in the user's editor. Used by the
+/// VWFD inspector jump-to-source (Enter key on an inspector node).
+pub fn open_file_in_editor(ctx: &mut HandlerContext, path: &str, line: usize) -> HandlerResult {
+    use crossterm::{
+        event::{EnableBracketedPaste, EnableMouseCapture},
+        execute,
+        terminal::{
+            Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode,
+            enable_raw_mode,
+        },
+    };
+
+    let preferred = std::env::var("VAC_EDITOR")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| std::env::var("EDITOR").ok().filter(|s| !s.trim().is_empty()))
+        .and_then(|s| s.split_whitespace().next().map(|t| t.to_string()));
+
+    let Some(editor) = crate::services::review::detect_editor(preferred) else {
+        ctx.state.add_assistant_message(
+            "No editor available. Set VAC_EDITOR/EDITOR or install nvim/vim/nano.".to_string(),
+        );
+        return Ok(());
+    };
+
+    ctx.state.push_activity(
+        ActivityKind::Status,
+        format!("VWFD: open {path}:{line}"),
+    );
+
+    let _ = disable_raw_mode();
+    let _ = execute!(std::io::stdout(), LeaveAlternateScreen);
+
+    // Run the blocking editor process off the tokio reactor via spawn_blocking
+    // so we don't stall other async tasks while the user edits.
+    let editor_clone = editor.clone();
+    let path_clone = path.to_string();
+    let line_arg = format!("+{line}");
+    tokio::task::block_in_place(|| {
+        let _ = std::process::Command::new(&editor_clone)
+            .arg(&line_arg)
+            .arg(&path_clone)
+            .status()
+            .or_else(|_| std::process::Command::new(&editor_clone).arg(&path_clone).status());
+    });
+
+    let _ = execute!(
+        std::io::stdout(),
+        EnterAlternateScreen,
+        EnableBracketedPaste,
+        EnableMouseCapture,
+        Clear(ClearType::All)
+    );
+    let _ = enable_raw_mode();
+    Ok(())
+}
+
 /// Emit a direct VIL tool invocation (no LLM round-trip).
 fn invoke_tool(ctx: &mut HandlerContext, tool_name: &str, args: serde_json::Value) {
     ctx.state

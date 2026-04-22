@@ -4,7 +4,6 @@
 //! line numbers, status badge, comment count, and keyboard footer.
 
 use crate::app::AppState;
-use crate::services::detect_term::ThemeColors;
 use crate::services::plan::PlanStatus;
 use crate::services::theme::StyleKey;
 use ratatui::{
@@ -27,7 +26,7 @@ pub fn render_plan_review(f: &mut Frame, state: &AppState) {
     f.render_widget(
         Block::default()
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(ThemeColors::cyan())),
+            .border_style(state.theme.style(StyleKey::Accent)),
         area,
     );
 
@@ -49,7 +48,7 @@ pub fn render_plan_review(f: &mut Frame, state: &AppState) {
 
     render_title(f, state, chunks[0]);
     render_body(f, state, chunks[1]);
-    render_footer(f, chunks[2]);
+    render_footer(f, state, chunks[2]);
 }
 
 fn render_title(f: &mut Frame, state: &AppState, area: Rect) {
@@ -66,18 +65,16 @@ fn render_title(f: &mut Frame, state: &AppState, area: Rect) {
 
     let comment_count = state.plan.comments.len();
     let line1 = Line::from(vec![
-        Span::styled("  Plan: ", Style::default().fg(ThemeColors::dark_gray())),
+        Span::styled("  Plan: ", state.theme.style(StyleKey::Muted)),
         Span::styled(
             title,
-            Style::default()
-                .fg(ThemeColors::yellow())
+            state
+                .theme
+                .style(StyleKey::Warning)
                 .add_modifier(Modifier::BOLD),
         ),
         Span::raw("  "),
-        Span::styled(
-            format!("v{}", version),
-            Style::default().fg(ThemeColors::dark_gray()),
-        ),
+        Span::styled(format!("v{}", version), state.theme.style(StyleKey::Muted)),
         Span::raw("  "),
         Span::styled(
             status_label,
@@ -88,11 +85,11 @@ fn render_title(f: &mut Frame, state: &AppState, area: Rect) {
     let line2 = Line::from(vec![
         Span::styled(
             format!("  {} lines  ", count_body_lines(state)),
-            Style::default().fg(ThemeColors::dark_gray()),
+            state.theme.style(StyleKey::Muted),
         ),
         Span::styled(
             format!("{} comments", comment_count),
-            Style::default().fg(ThemeColors::dark_gray()),
+            state.theme.style(StyleKey::Muted),
         ),
     ]);
 
@@ -106,16 +103,18 @@ fn render_body(f: &mut Frame, state: &AppState, area: Rect) {
     for (i, line_str) in lines_iter.enumerate() {
         let is_selected = i == state.plan.review_selected;
         let num_style = if is_selected {
-            Style::default()
-                .fg(ThemeColors::yellow())
+            state
+                .theme
+                .style(StyleKey::Warning)
                 .add_modifier(Modifier::BOLD)
         } else {
-            Style::default().fg(ThemeColors::dark_gray())
+            state.theme.style(StyleKey::Muted)
         };
         let body_style = if is_selected {
-            Style::default()
-                .bg(ThemeColors::highlight_bg())
-                .fg(ThemeColors::highlight_fg())
+            state
+                .theme
+                .style(StyleKey::HighlightBg)
+                .patch(state.theme.style(StyleKey::HighlightFg))
         } else {
             Style::default()
         };
@@ -131,22 +130,21 @@ fn render_body(f: &mut Frame, state: &AppState, area: Rect) {
     f.render_widget(para, area);
 }
 
-fn render_footer(f: &mut Frame, area: Rect) {
+fn render_footer(f: &mut Frame, state: &AppState, area: Rect) {
+    let accent = state.theme.style(StyleKey::Accent);
+    let muted = state.theme.style(StyleKey::Muted);
     let footer = Line::from(vec![
         Span::raw(" "),
-        Span::styled("↑/↓", Style::default().fg(ThemeColors::cyan())),
-        Span::styled(": Line  ", Style::default().fg(ThemeColors::dark_gray())),
-        Span::styled("PgUp/PgDn", Style::default().fg(ThemeColors::cyan())),
-        Span::styled(": Scroll  ", Style::default().fg(ThemeColors::dark_gray())),
-        Span::styled("a", Style::default().fg(ThemeColors::cyan())),
-        Span::styled(": Approve  ", Style::default().fg(ThemeColors::dark_gray())),
-        Span::styled("r", Style::default().fg(ThemeColors::cyan())),
-        Span::styled(
-            ": Request changes  ",
-            Style::default().fg(ThemeColors::dark_gray()),
-        ),
-        Span::styled("Esc", Style::default().fg(ThemeColors::cyan())),
-        Span::styled(": Close", Style::default().fg(ThemeColors::dark_gray())),
+        Span::styled("↑/↓", accent),
+        Span::styled(": Line  ", muted),
+        Span::styled("PgUp/PgDn", accent),
+        Span::styled(": Scroll  ", muted),
+        Span::styled("a", accent),
+        Span::styled(": Approve  ", muted),
+        Span::styled("r", accent),
+        Span::styled(": Request changes  ", muted),
+        Span::styled("Esc", accent),
+        Span::styled(": Close", muted),
     ]);
     f.render_widget(Paragraph::new(footer), area);
 }

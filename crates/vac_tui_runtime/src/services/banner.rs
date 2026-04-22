@@ -6,11 +6,11 @@
 //! individual slash-commands inside the text become clickable regions).
 
 use crate::app::AppState;
-use crate::services::detect_term::ThemeColors;
+use crate::services::theme::StyleKey;
 use ratatui::{
     Frame,
     layout::{Alignment, Rect},
-    style::{Color, Modifier, Style},
+    style::Modifier,
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph},
 };
@@ -64,12 +64,12 @@ pub enum BannerStyle {
 }
 
 impl BannerStyle {
-    pub fn color(&self) -> Color {
+    pub fn style_key(&self) -> StyleKey {
         match self {
-            BannerStyle::Warning => ThemeColors::warning(),
-            BannerStyle::Error => ThemeColors::danger(),
-            BannerStyle::Info => ThemeColors::accent(),
-            BannerStyle::Success => ThemeColors::success(),
+            BannerStyle::Warning => StyleKey::Warning,
+            BannerStyle::Error => StyleKey::Error,
+            BannerStyle::Info => StyleKey::Accent,
+            BannerStyle::Success => StyleKey::Success,
         }
     }
 }
@@ -282,8 +282,8 @@ pub fn render_banner(f: &mut Frame, area: Rect, state: &mut AppState) {
         return;
     };
 
-    let border_style = Style::default().fg(msg.style.color());
-    let accent_color = ThemeColors::accent();
+    let border_style = state.theme.style(msg.style.style_key());
+    let accent_style = state.theme.style(StyleKey::Accent);
 
     let block = Block::default()
         .borders(Borders::ALL)
@@ -318,9 +318,7 @@ pub fn render_banner(f: &mut Frame, area: Rect, state: &mut AppState) {
 
             let styled = Span::styled(
                 cmd.clone(),
-                Style::default()
-                    .fg(accent_color)
-                    .add_modifier(Modifier::UNDERLINED),
+                accent_style.add_modifier(Modifier::UNDERLINED),
             );
             spans.push(styled);
 
@@ -348,8 +346,9 @@ pub fn render_banner(f: &mut Frame, area: Rect, state: &mut AppState) {
     }
     spans.push(Span::styled(
         dismiss_label.to_string(),
-        Style::default()
-            .fg(msg.style.color())
+        state
+            .theme
+            .style(msg.style.style_key())
             .add_modifier(Modifier::DIM),
     ));
 

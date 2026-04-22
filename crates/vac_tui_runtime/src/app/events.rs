@@ -168,6 +168,9 @@ pub enum InputEvent {
     /// Alt+T: show type-info popup for vil-expr identifier under cursor (PR-T12.1).
     VilExprTypeHelp,
 
+    /// T14: vil dev runner events routed from the background spawn bridge.
+    VilDevEvent(crate::services::vil_dev_runner::RunnerEvent),
+
     // Raw Crossterm event mapped dynamically
     CrosstermEvent(crossterm::event::Event),
 }

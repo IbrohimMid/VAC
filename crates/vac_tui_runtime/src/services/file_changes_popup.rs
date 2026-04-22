@@ -4,7 +4,7 @@
 //! Complements the full-screen changeset workstation (`show_changeset`).
 
 use crate::app::AppState;
-use crate::services::detect_term::ThemeColors;
+use crate::services::theme::StyleKey;
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
@@ -38,7 +38,7 @@ pub fn render_file_changes_popup(f: &mut Frame, state: &AppState) {
 
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(ThemeColors::cyan()));
+        .border_style(state.theme.style(StyleKey::Accent));
     f.render_widget(block, area);
 
     let inner = Rect {
@@ -79,12 +79,10 @@ pub fn render_file_changes_popup(f: &mut Frame, state: &AppState) {
     let title_spans = vec![
         Span::styled(
             left,
-            Style::default()
-                .fg(ThemeColors::yellow())
-                .add_modifier(Modifier::BOLD),
+            state.theme.style(StyleKey::Warning).add_modifier(Modifier::BOLD),
         ),
         Span::raw(" ".repeat(spacing)),
-        Span::styled(count_text, Style::default().fg(ThemeColors::cyan())),
+        Span::styled(count_text, state.theme.style(StyleKey::Accent)),
         Span::raw(" "),
     ];
     f.render_widget(Paragraph::new(Line::from(title_spans)), chunks[0]);
@@ -93,26 +91,24 @@ pub fn render_file_changes_popup(f: &mut Frame, state: &AppState) {
     let search_spans = if state.file_changes_search.is_empty() {
         vec![
             Span::raw(" "),
-            Span::styled(">", Style::default().fg(ThemeColors::magenta())),
+            Span::styled(">", state.theme.style(StyleKey::AppTitle)),
             Span::raw(" "),
-            Span::styled("|", Style::default().fg(ThemeColors::cyan())),
+            Span::styled("|", state.theme.style(StyleKey::Accent)),
             Span::styled(
                 "Type to filter",
-                Style::default().fg(ThemeColors::dark_gray()),
+                state.theme.style(StyleKey::Muted),
             ),
         ]
     } else {
         vec![
             Span::raw(" "),
-            Span::styled(">", Style::default().fg(ThemeColors::magenta())),
+            Span::styled(">", state.theme.style(StyleKey::AppTitle)),
             Span::raw(" "),
             Span::styled(
                 state.file_changes_search.clone(),
-                Style::default()
-                    .fg(ThemeColors::text())
-                    .add_modifier(Modifier::BOLD),
+                state.theme.style(StyleKey::Text).add_modifier(Modifier::BOLD),
             ),
-            Span::styled("|", Style::default().fg(ThemeColors::cyan())),
+            Span::styled("|", state.theme.style(StyleKey::Accent)),
         ]
     };
     f.render_widget(
@@ -138,27 +134,28 @@ pub fn render_file_changes_popup(f: &mut Frame, state: &AppState) {
         let entry = filtered[idx];
         let is_selected = idx == state.file_changes_selected;
         let bg_color = if is_selected {
-            ThemeColors::highlight_bg()
+            state.theme.style(StyleKey::HighlightBg).bg.unwrap_or(Color::Reset)
         } else {
             Color::Reset
         };
 
-        let (label, label_color) = match entry.state {
-            FileState::Created => ("[+]", ThemeColors::green()),
-            FileState::Modified => ("[~]", ThemeColors::yellow()),
-            FileState::Removed => ("[-]", ThemeColors::red()),
-            FileState::Reverted => ("[✓]", ThemeColors::cyan()),
-            FileState::FailedRestore => ("[✗]", ThemeColors::red()),
+        let (label, label_style) = match entry.state {
+            FileState::Created => ("[+]", state.theme.style(StyleKey::DiffAdded)),
+            FileState::Modified => ("[~]", state.theme.style(StyleKey::Warning)),
+            FileState::Removed => ("[-]", state.theme.style(StyleKey::DiffRemoved)),
+            FileState::Reverted => ("[✓]", state.theme.style(StyleKey::Accent)),
+            FileState::FailedRestore => ("[✗]", state.theme.style(StyleKey::Error)),
         };
 
         let name_style = match entry.state {
-            FileState::Reverted | FileState::Removed | FileState::FailedRestore => Style::default()
-                .fg(ThemeColors::dark_gray())
-                .add_modifier(Modifier::CROSSED_OUT)
-                .bg(bg_color),
+            FileState::Reverted | FileState::Removed | FileState::FailedRestore => {
+                state.theme.style(StyleKey::Muted)
+                    .add_modifier(Modifier::CROSSED_OUT)
+                    .bg(bg_color)
+            }
             _ => {
                 let s = if is_selected {
-                    Style::default().fg(ThemeColors::highlight_fg())
+                    state.theme.style(StyleKey::HighlightFg)
                 } else {
                     Style::default()
                 };
@@ -168,7 +165,7 @@ pub fn render_file_changes_popup(f: &mut Frame, state: &AppState) {
 
         lines.push(Line::from(vec![
             Span::styled(" ", Style::default().bg(bg_color)),
-            Span::styled(label, Style::default().fg(label_color).bg(bg_color)),
+            Span::styled(label, label_style.bg(bg_color)),
             Span::styled(" ", Style::default().bg(bg_color)),
             Span::styled(entry.path.clone(), name_style),
         ]));
@@ -178,15 +175,12 @@ pub fn render_file_changes_popup(f: &mut Frame, state: &AppState) {
     // Footer
     let footer = vec![
         Span::raw(" "),
-        Span::styled("↑/↓", Style::default().fg(ThemeColors::cyan())),
-        Span::styled(
-            ": Navigate  ",
-            Style::default().fg(ThemeColors::dark_gray()),
-        ),
-        Span::styled("Ctrl+X", Style::default().fg(ThemeColors::cyan())),
-        Span::styled(": Revert  ", Style::default().fg(ThemeColors::dark_gray())),
-        Span::styled("Esc", Style::default().fg(ThemeColors::cyan())),
-        Span::styled(": Close", Style::default().fg(ThemeColors::dark_gray())),
+        Span::styled("↑/↓", state.theme.style(StyleKey::Accent)),
+        Span::styled(": Navigate  ", state.theme.style(StyleKey::Muted)),
+        Span::styled("Ctrl+X", state.theme.style(StyleKey::Accent)),
+        Span::styled(": Revert  ", state.theme.style(StyleKey::Muted)),
+        Span::styled("Esc", state.theme.style(StyleKey::Accent)),
+        Span::styled(": Close", state.theme.style(StyleKey::Muted)),
     ];
     f.render_widget(Paragraph::new(Line::from(footer)), chunks[3]);
 }

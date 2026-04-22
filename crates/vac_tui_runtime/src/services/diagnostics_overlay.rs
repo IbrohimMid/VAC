@@ -23,6 +23,8 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use vac_core::lsp::types::{LspSeverity, LspWorkspaceSnapshot};
 
+use crate::services::theme::{StyleKey, Theme};
+
 // Note on hover precision: `hover_detail_at` is *line-level* only — it takes
 // `(snapshot, file_path, line_index)` and selects the highest-severity
 // diagnostic whose range covers that line. Column position is not
@@ -94,6 +96,7 @@ pub fn render_line_with_diagnostics<'a>(
     line: &'a str,
     spans: &[DiagnosticSpan],
     base: Style,
+    theme: &Theme,
 ) -> Line<'a> {
     if spans.is_empty() {
         return Line::from(Span::styled(line, base));
@@ -119,7 +122,7 @@ pub fn render_line_with_diagnostics<'a>(
             };
             out.push(Span::styled(
                 &line[byte_lo..byte_hi],
-                style_for_severity(&span.severity),
+                style_for_severity(&span.severity, theme),
             ));
         }
         cursor = cursor.max(end);
@@ -131,20 +134,12 @@ pub fn render_line_with_diagnostics<'a>(
     Line::from(out)
 }
 
-/// Minimal fallback styling used when the caller cannot supply a theme
-/// lookup. Dark-theme-ish colors; callers with access to `state.theme`
-/// should prefer `theme.style(StyleKey::ValidationError)` etc.
-fn style_for_severity(sev: &LspSeverity) -> Style {
+/// Resolve diagnostic severity to a themed style via [`Theme::style`].
+fn style_for_severity(sev: &LspSeverity, theme: &Theme) -> Style {
     match sev {
-        LspSeverity::Error => Style::default()
-            .fg(ratatui::style::Color::Red)
-            .add_modifier(Modifier::UNDERLINED),
-        LspSeverity::Warning => Style::default()
-            .fg(ratatui::style::Color::Yellow)
-            .add_modifier(Modifier::UNDERLINED),
-        LspSeverity::Information | LspSeverity::Hint => Style::default()
-            .fg(ratatui::style::Color::Blue)
-            .add_modifier(Modifier::UNDERLINED),
+        LspSeverity::Error => theme.style(StyleKey::DiagError),
+        LspSeverity::Warning => theme.style(StyleKey::DiagWarning),
+        LspSeverity::Information | LspSeverity::Hint => theme.style(StyleKey::DiagInfo),
     }
 }
 
@@ -250,11 +245,11 @@ pub fn gutter_mark_for_line(
 /// Render the 2-column gutter cell for a line: `"<glyph> "` styled by severity
 /// when a mark is present, or `"  "` styled with `base` otherwise. Callers
 /// prepend this unconditionally so row prefix width stays constant (2 cols).
-pub fn render_gutter_cell(mark: Option<&GutterMark>, base: Style) -> Span<'static> {
+pub fn render_gutter_cell(mark: Option<&GutterMark>, base: Style, theme: &Theme) -> Span<'static> {
     match mark {
         Some(m) => Span::styled(
             format!("{} ", m.glyph),
-            style_for_severity(&m.severity).add_modifier(Modifier::BOLD),
+            style_for_severity(&m.severity, theme).add_modifier(Modifier::BOLD),
         ),
         None => Span::styled("  ".to_string(), base),
     }
@@ -333,10 +328,18 @@ pub fn hover_detail_at(
     })
 }
 
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::{Path, PathBuf};
+    use ratatui::style::{Modifier, Style};
+    use crate::services::theme::Theme;
     use vac_core::lsp::types::{LspDiagnostic, LspRange, LspSeverity, LspWorkspaceSnapshot};
+
+    fn test_theme() -> Theme {
+        Theme::default()
+    }
 
     fn snapshot_with(diags: Vec<LspDiagnostic>) -> LspWorkspaceSnapshot {
         let mut snap = LspWorkspaceSnapshot {
@@ -378,7 +381,8 @@ mod tests {
             }]
         );
 
-        let rendered = render_line_with_diagnostics("let x = broken_call;", &spans, Style::default());
+        let theme = test_theme();
+        let rendered = render_line_with_diagnostics("let x = broken_call;", &spans, Style::default(), &theme);
         // Expect three spans: prefix (base), underlined run, suffix (base).
         assert_eq!(rendered.spans.len(), 3);
         assert_eq!(rendered.spans[0].content, "let ");
@@ -391,9 +395,9 @@ mod tests {
             "underlined modifier must be set on the error range"
         );
         assert_eq!(
-            rendered.spans[1].style.fg,
-            Some(ratatui::style::Color::Red),
-            "error severity must render red"
+            rendered.spans[1].style,
+            theme.style(StyleKey::DiagError),
+            "error severity must use DiagError theme style"
         );
         assert_eq!(rendered.spans[2].content, "broken_call;");
     }
@@ -453,7 +457,8 @@ mod tests {
 
     #[test]
     fn render_with_no_spans_returns_base_only() {
-        let rendered = render_line_with_diagnostics("plain", &[], Style::default());
+        let theme = test_theme();
+        let rendered = render_line_with_diagnostics("plain", &[], Style::default(), &theme);
         assert_eq!(rendered.spans.len(), 1);
         assert_eq!(rendered.spans[0].content, "plain");
     }
@@ -539,30 +544,35 @@ mod tests {
 
     #[test]
     fn render_gutter_cell_styled_by_severity() {
+        let theme = test_theme();
+
         let err_mark = GutterMark::new(LspSeverity::Error);
-        let err_span = render_gutter_cell(Some(&err_mark), Style::default());
+        let err_span = render_gutter_cell(Some(&err_mark), Style::default(), &theme);
         assert_eq!(err_span.content, "● ");
-        assert_eq!(err_span.style.fg, Some(ratatui::style::Color::Red));
-        assert!(err_span.style.add_modifier.contains(Modifier::BOLD));
+        // DiagError style + BOLD applied by render_gutter_cell.
+        let expected_err = theme.style(StyleKey::DiagError).add_modifier(Modifier::BOLD);
+        assert_eq!(err_span.style, expected_err);
 
         let warn_mark = GutterMark::new(LspSeverity::Warning);
-        let warn_span = render_gutter_cell(Some(&warn_mark), Style::default());
+        let warn_span = render_gutter_cell(Some(&warn_mark), Style::default(), &theme);
         assert_eq!(warn_span.content, "▲ ");
-        assert_eq!(warn_span.style.fg, Some(ratatui::style::Color::Yellow));
+        let expected_warn = theme.style(StyleKey::DiagWarning).add_modifier(Modifier::BOLD);
+        assert_eq!(warn_span.style, expected_warn);
 
         let info_mark = GutterMark::new(LspSeverity::Information);
-        let info_span = render_gutter_cell(Some(&info_mark), Style::default());
+        let info_span = render_gutter_cell(Some(&info_mark), Style::default(), &theme);
         assert_eq!(info_span.content, "ℹ ");
-        assert_eq!(info_span.style.fg, Some(ratatui::style::Color::Blue));
+        let expected_info = theme.style(StyleKey::DiagInfo).add_modifier(Modifier::BOLD);
+        assert_eq!(info_span.style, expected_info);
 
         let hint_mark = GutterMark::new(LspSeverity::Hint);
-        let hint_span = render_gutter_cell(Some(&hint_mark), Style::default());
+        let hint_span = render_gutter_cell(Some(&hint_mark), Style::default(), &theme);
         // Hint shares the info glyph by design (single-char gutter budget).
         assert_eq!(hint_span.content, "ℹ ");
-        assert_eq!(hint_span.style.fg, Some(ratatui::style::Color::Blue));
+        assert_eq!(hint_span.style, expected_info);
 
         // None — returns a 2-space placeholder so row width stays constant.
-        let empty_span = render_gutter_cell(None, Style::default());
+        let empty_span = render_gutter_cell(None, Style::default(), &theme);
         assert_eq!(empty_span.content, "  ");
         assert_eq!(empty_span.style.fg, None);
     }

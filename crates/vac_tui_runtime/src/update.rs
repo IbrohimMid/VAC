@@ -500,6 +500,47 @@ pub fn handle_backend_event(
         }
         InputEvent::ToolResult(result) => events::on_tool_result(state, result),
         InputEvent::TaskCompleted(result) => events::on_task_completed(state, result),
+        // T14: vil dev runner events → state + activity panel
+        InputEvent::VilDevEvent(runner_event) => {
+            use crate::services::vil_dev_runner::RunnerEvent;
+            match runner_event {
+                RunnerEvent::Started { pid } => {
+                    state.vil_dev_pid = Some(pid);
+                    state.push_activity(
+                        crate::app::ActivityKind::Status,
+                        format!("vil dev started (PID {pid})"),
+                    );
+                }
+                RunnerEvent::Stdout(line) => {
+                    state.vil_dev_output.push_back(line);
+                    if state.vil_dev_output.len() > 500 {
+                        state.vil_dev_output.pop_front();
+                    }
+                }
+                RunnerEvent::Stderr(line) => {
+                    state.vil_dev_output.push_back(format!("[stderr] {line}"));
+                    if state.vil_dev_output.len() > 500 {
+                        state.vil_dev_output.pop_front();
+                    }
+                }
+                RunnerEvent::Checkpoint { session_id, ts } => {
+                    state.vil_dev_checkpoints.push((session_id.clone(), ts.clone()));
+                    state.push_activity(
+                        crate::app::ActivityKind::Status,
+                        format!("vil checkpoint: {session_id} @ {ts}"),
+                    );
+                }
+                RunnerEvent::Exited { code, signal } => {
+                    state.vil_dev_pid = None;
+                    let msg = match (code, signal) {
+                        (Some(c), _) => format!("vil dev exited (code {c})"),
+                        (None, Some(s)) => format!("vil dev killed (signal {s})"),
+                        _ => "vil dev exited".to_string(),
+                    };
+                    state.push_activity(crate::app::ActivityKind::Status, msg);
+                }
+            }
+        }
         _ => {}
     }
 }

@@ -3,12 +3,11 @@
 //! This module provides the shortcut data structure, the catalog of all
 //! keyboard shortcuts, and rendering helpers for cached shortcut content.
 
-use crate::services::detect_term::ThemeColors;
+use crate::services::theme::{StyleKey, Theme};
 use ratatui::{
-    style::{Color, Modifier, Style},
+    style::Modifier,
     text::{Line, Span},
 };
-use std::sync::OnceLock;
 
 #[derive(Debug, Clone)]
 pub struct Shortcut {
@@ -79,85 +78,80 @@ pub fn get_all_shortcuts() -> Vec<Shortcut> {
     shortcuts
 }
 
-// Cache the shortcuts content to prevent constant recreation
-static SHORTCUTS_CACHE: OnceLock<Vec<Line<'static>>> = OnceLock::new();
+pub fn build_shortcuts_content(theme: &Theme, width: Option<usize>) -> Vec<Line<'static>> {
+    let shortcuts = get_all_shortcuts();
 
-pub fn get_cached_shortcuts_content(width: Option<usize>) -> &'static Vec<Line<'static>> {
-    SHORTCUTS_CACHE.get_or_init(|| {
-        let shortcuts = get_all_shortcuts();
+    // Group shortcuts by category
+    let mut categories: std::collections::HashMap<&str, Vec<&Shortcut>> =
+        std::collections::HashMap::new();
+    for shortcut in &shortcuts {
+        categories
+            .entry(&shortcut.category)
+            .or_default()
+            .push(shortcut);
+    }
 
-        // Group shortcuts by category
-        let mut categories: std::collections::HashMap<&str, Vec<&Shortcut>> =
-            std::collections::HashMap::new();
-        for shortcut in &shortcuts {
-            categories
-                .entry(&shortcut.category)
-                .or_default()
-                .push(shortcut);
-        }
+    // Define the EXACT order we want categories to appear
+    let category_order = vec![
+        "Navigation",
+        "Text Input",
+        "Tool Management",
+        "UI Controls",
+        "Commands",
+        "File Search",
+        "Mouse",
+    ];
 
-        // Define the EXACT order we want categories to appear
-        let category_order = vec![
-            "Navigation",
-            "Text Input",
-            "Tool Management",
-            "UI Controls",
-            "Commands",
-            "File Search",
-            "Mouse",
-        ];
+    // Create all lines for the popup
+    let mut all_lines = Vec::new();
+    // push empty line
+    all_lines.push(Line::from(""));
 
-        // Create all lines for the popup
-        let mut all_lines = Vec::new();
-        // push empty line
-        all_lines.push(Line::from(""));
+    // Process categories in the EXACT order defined above
+    for category_name in &category_order {
+        if let Some(category_shortcuts) = categories.get(category_name) {
+            // Add category header
+            let category_style = theme
+                .style(StyleKey::CategoryHeader)
+                .add_modifier(Modifier::BOLD);
+            let category_width = width.unwrap_or(40).saturating_sub(category_name.len() + 5);
+            all_lines.push(Line::from(vec![
+                Span::styled(format!(" {} ", category_name), category_style),
+                Span::styled(
+                    "─".repeat(category_width).to_string(),
+                    theme.style(StyleKey::Muted),
+                ), // Fixed width to avoid recalculation
+            ]));
 
-        // Process categories in the EXACT order defined above
-        for category_name in &category_order {
-            if let Some(category_shortcuts) = categories.get(category_name) {
-                // Add category header
-                let category_style = Style::default()
-                    .fg(ThemeColors::cyan())
-                    .add_modifier(Modifier::BOLD);
-                let category_width = width.unwrap_or(40).saturating_sub(category_name.len() + 5);
-                all_lines.push(Line::from(vec![
-                    Span::styled(format!(" {} ", category_name), category_style),
+            // Add shortcuts for this category - FIXED ALIGNMENT
+            for shortcut in category_shortcuts {
+                // Use fixed-width formatting for perfect alignment
+                let key_formatted = format!(" {:<25}", shortcut.key); // Left-align in 25 chars
+                let description_formatted =
+                    format!("{:<40} ", shortcut.description); // Left-align in 40 chars
+
+                let spans = vec![
                     Span::styled(
-                        "─".repeat(category_width).to_string(),
-                        Style::default().fg(ThemeColors::dark_gray()),
-                    ), // Fixed width to avoid recalculation
-                ]));
+                        key_formatted,
+                        theme
+                            .style(StyleKey::KeybindBadge)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                    Span::styled(
+                        description_formatted,
+                        theme.style(StyleKey::Text),
+                    ),
+                ];
 
-                // Add shortcuts for this category - FIXED ALIGNMENT
-                for shortcut in category_shortcuts {
-                    // Use fixed-width formatting for perfect alignment
-                    let key_formatted = format!(" {:<25}", shortcut.key); // Left-align in 25 chars
-                    let description_formatted =
-                        format!("{:<40} ", shortcut.description); // Left-align in 40 chars
-
-                    let spans = vec![
-                        Span::styled(
-                            key_formatted,
-                            Style::default()
-                                .fg(ThemeColors::green())
-                                .add_modifier(Modifier::BOLD),
-                        ),
-                        Span::styled(
-                            description_formatted,
-                            Style::default().fg(ThemeColors::text()),
-                        ),
-                    ];
-
-                    all_lines.push(Line::from(spans));
-                }
-
-                // Add empty line between categories
-                all_lines.push(Line::from(""));
+                all_lines.push(Line::from(spans));
             }
-        }
 
-        all_lines
-    })
+            // Add empty line between categories
+            all_lines.push(Line::from(""));
+        }
+    }
+
+    all_lines
 }
 
 /// Get the total count of actual shortcuts (green items only)

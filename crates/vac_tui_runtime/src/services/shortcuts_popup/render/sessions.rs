@@ -1,9 +1,9 @@
 //! Sessions section rendering
 
-use crate::services::detect_term::ThemeColors;
+use crate::services::theme::StyleKey;
 use ratatui::{
     layout::Rect,
-    style::{Modifier, Style},
+    style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::Paragraph,
     Frame,
@@ -25,23 +25,24 @@ pub fn render_sessions_section(
     let search_spans = if search_term.is_empty() {
         vec![
             Span::raw(" "),
-            Span::styled(search_prompt, Style::default().fg(ThemeColors::magenta())),
+            Span::styled(search_prompt, state.theme.style(StyleKey::AppTitle)),
             Span::raw(" "),
-            Span::styled(cursor, Style::default().fg(ThemeColors::cyan())),
-            Span::styled(placeholder, Style::default().fg(ThemeColors::dark_gray())),
+            Span::styled(cursor, state.theme.style(StyleKey::Accent)),
+            Span::styled(placeholder, state.theme.style(StyleKey::Muted)),
         ]
     } else {
         vec![
             Span::raw(" "),
-            Span::styled(search_prompt, Style::default().fg(ThemeColors::magenta())),
+            Span::styled(search_prompt, state.theme.style(StyleKey::AppTitle)),
             Span::raw(" "),
             Span::styled(
                 search_term.clone(),
-                Style::default()
-                    .fg(ThemeColors::text())
+                state
+                    .theme
+                    .style(StyleKey::Text)
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::styled(cursor, Style::default().fg(ThemeColors::cyan())),
+            Span::styled(cursor, state.theme.style(StyleKey::Accent)),
         ]
     };
 
@@ -67,7 +68,7 @@ pub fn render_sessions_section(
         };
         let empty_widget = Paragraph::new(Line::from(vec![Span::styled(
             empty_message,
-            Style::default().fg(ThemeColors::dark_gray()),
+            state.theme.style(StyleKey::Muted),
         )]));
         f.render_widget(empty_widget, content_area);
         f.render_widget(Paragraph::new(""), scroll_area);
@@ -93,7 +94,7 @@ pub fn render_sessions_section(
         if has_content_above {
             visible_lines.push(Line::from(vec![Span::styled(
                 " ▲",
-                Style::default().fg(ThemeColors::dark_gray()),
+                state.theme.style(StyleKey::Muted),
             )]));
         }
 
@@ -117,16 +118,22 @@ pub fn render_sessions_section(
             let text = format!(" {} . {}", formatted_datetime, session.title);
             let is_selected = *original_idx == state.sessions_selected_idx;
 
-            let (fg, bg) = if is_selected {
-                (ThemeColors::highlight_fg(), ThemeColors::highlight_bg())
-            } else {
-                (ratatui::style::Color::White, ratatui::style::Color::Reset)
-            };
-
             let style = if is_selected {
+                let fg = state
+                    .theme
+                    .style(StyleKey::HighlightFg)
+                    .fg
+                    .unwrap_or(Color::Reset);
+                let bg = state
+                    .theme
+                    .style(StyleKey::HighlightBg)
+                    .fg
+                    .unwrap_or(Color::Reset);
                 Style::default().fg(fg).bg(bg).add_modifier(Modifier::BOLD)
             } else {
-                Style::default().fg(fg).bg(bg)
+                Style::default()
+                    .fg(Color::White)
+                    .bg(Color::Reset)
             };
 
             visible_lines.push(Line::from(vec![Span::styled(text, style)]));
@@ -146,7 +153,7 @@ pub fn render_sessions_section(
             if has_content_below {
                 indicator_spans.push(Span::styled(
                     " ▼",
-                    Style::default().fg(ThemeColors::dark_gray()),
+                    state.theme.style(StyleKey::Muted),
                 ));
             }
 
@@ -156,17 +163,17 @@ pub fn render_sessions_section(
     }
 
     let help = Paragraph::new(Line::from(vec![
-        Span::styled(" ↑/↓", Style::default().fg(ThemeColors::dark_gray())),
-        Span::styled(" navigate", Style::default().fg(ThemeColors::cyan())),
+        Span::styled(" ↑/↓", state.theme.style(StyleKey::Muted)),
+        Span::styled(" navigate", state.theme.style(StyleKey::Accent)),
         Span::raw("  "),
-        Span::styled("enter", Style::default().fg(ThemeColors::dark_gray())),
-        Span::styled(" select", Style::default().fg(ThemeColors::cyan())),
+        Span::styled("enter", state.theme.style(StyleKey::Muted)),
+        Span::styled(" select", state.theme.style(StyleKey::Accent)),
         Span::raw("  "),
-        Span::styled("tab", Style::default().fg(ThemeColors::dark_gray())),
-        Span::styled(" switch", Style::default().fg(ThemeColors::cyan())),
+        Span::styled("tab", state.theme.style(StyleKey::Muted)),
+        Span::styled(" switch", state.theme.style(StyleKey::Accent)),
         Span::raw("  "),
-        Span::styled("esc", Style::default().fg(ThemeColors::dark_gray())),
-        Span::styled(" close", Style::default().fg(ThemeColors::cyan())),
+        Span::styled("esc", state.theme.style(StyleKey::Muted)),
+        Span::styled(" close", state.theme.style(StyleKey::Accent)),
     ]));
 
     f.render_widget(help, help_area);

@@ -62,7 +62,7 @@ impl WorkbenchTabView for PlanTab {
             state.theme.style(StyleKey::Muted),
         )));
 
-        let focus_style = focus_style(state.focus == WorkspaceFocus::Workbench);
+        let focus_style = focus_style(state.focus == WorkspaceFocus::Workbench, &state.theme);
 
         let para = Paragraph::new(lines)
             .block(

@@ -20,7 +20,7 @@ mod runtime_tasks;
 mod session_tasks;
 mod shell_dispatch;
 mod startup;
-mod vil_tasks;
+pub(crate) mod vil_tasks;
 
 #[cfg(test)]
 #[path = "runner/tests.rs"]

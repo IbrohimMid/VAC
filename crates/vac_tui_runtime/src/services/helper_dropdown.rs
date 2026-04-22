@@ -1,4 +1,4 @@
-use crate::{app::AppState, app::CommandSource, services::detect_term::ThemeColors};
+use crate::{app::AppState, app::CommandSource};
 use nucleo_matcher::{
     Config, Matcher,
     pattern::{CaseMatching, Normalization, Pattern},
@@ -267,7 +267,8 @@ fn render_file_dropdown(f: &mut Frame, state: &AppState, area: Rect) {
     }
 
     // Set title and styling based on trigger
-    let (title, title_color) = ("📁 Files", ThemeColors::cyan());
+    let title = "📁 Files";
+    let title_style = state.theme.style(StyleKey::Accent);
     let items: Vec<ListItem> = files
         .iter()
         .enumerate()
@@ -278,7 +279,7 @@ fn render_file_dropdown(f: &mut Frame, state: &AppState, area: Rect) {
                     .style(StyleKey::OverlaySelected)
                     .add_modifier(Modifier::BOLD)
             } else {
-                Style::default().fg(ThemeColors::text())
+                state.theme.style(StyleKey::Text)
             };
 
             let display_text = format!("{} {}", get_file_icon(item), item);
@@ -293,7 +294,7 @@ fn render_file_dropdown(f: &mut Frame, state: &AppState, area: Rect) {
         Block::default()
             .borders(Borders::ALL)
             .title(title)
-            .border_style(Style::default().fg(title_color)),
+            .border_style(title_style),
     );
 
     f.render_stateful_widget(list, area, &mut list_state);

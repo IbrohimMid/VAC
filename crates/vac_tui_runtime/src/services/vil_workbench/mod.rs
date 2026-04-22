@@ -8,6 +8,7 @@
 //! module [`crate::handlers::vil_workbench`].
 
 pub mod render;
+pub mod render_detail;
 
 use crate::app::{AppState, VilIssue, VilIssueKind};
 

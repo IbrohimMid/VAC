@@ -5,14 +5,16 @@ use syntect::highlighting::{Color as SyntectColor, ThemeSet};
 use syntect::parsing::SyntaxSet;
 use syntect::util::LinesWithEndings;
 
-use crate::services::detect_term::{ThemeColors, is_light_mode, should_use_rgb_colors};
+use crate::services::detect_term::{is_light_mode, should_use_rgb_colors};
 
 fn syntect_color_to_ratatui_color(syntect_color: SyntectColor) -> Color {
     if should_use_rgb_colors() {
         Color::Rgb(syntect_color.r, syntect_color.g, syntect_color.b)
     } else {
-        // For non-RGB terminals, use a theme-aware cyan color
-        ThemeColors::cyan()
+        // For non-RGB terminals, use a basic cyan fallback.
+        // This is raw Color::Cyan because syntect returns per-token colors
+        // that cannot go through the semantic theme system.
+        Color::Cyan
     }
 }
 

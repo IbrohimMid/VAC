@@ -1,10 +1,10 @@
 //! Commands section rendering
 
 use crate::constants::SCROLL_BUFFER_LINES;
-use crate::services::detect_term::ThemeColors;
+use crate::services::theme::StyleKey;
 use ratatui::{
     layout::Rect,
-    style::{Modifier, Style},
+    style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::Paragraph,
     Frame,
@@ -29,24 +29,25 @@ pub fn render_commands_section(
     let search_spans = if state.command_palette_input.is_empty() {
         vec![
             Span::raw(" "), // Small space before
-            Span::styled(search_prompt, Style::default().fg(ThemeColors::magenta())),
+            Span::styled(search_prompt, state.theme.style(StyleKey::AppTitle)),
             Span::raw(" "),
-            Span::styled(cursor, Style::default().fg(ThemeColors::cyan())),
-            Span::styled(placeholder, Style::default().fg(ThemeColors::dark_gray())),
+            Span::styled(cursor, state.theme.style(StyleKey::Accent)),
+            Span::styled(placeholder, state.theme.style(StyleKey::Muted)),
             Span::raw(" "), // Small space after
         ]
     } else {
         vec![
             Span::raw(" "), // Small space before
-            Span::styled(search_prompt, Style::default().fg(ThemeColors::magenta())),
+            Span::styled(search_prompt, state.theme.style(StyleKey::AppTitle)),
             Span::raw(" "),
             Span::styled(
                 &state.command_palette_input,
-                Style::default()
-                    .fg(ThemeColors::text())
+                state
+                    .theme
+                    .style(StyleKey::Text)
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::styled(cursor, Style::default().fg(ThemeColors::cyan())),
+            Span::styled(cursor, state.theme.style(StyleKey::Accent)),
             Span::raw(" "), // Small space after
         ]
     };
@@ -87,14 +88,26 @@ pub fn render_commands_section(
             let available_width = area.width as usize - 2; // Account for borders
             let is_selected = line_index == state.command_palette_selected;
             let bg_color = if is_selected {
-                ThemeColors::highlight_bg()
+                state
+                    .theme
+                    .style(StyleKey::HighlightBg)
+                    .fg
+                    .unwrap_or(Color::Reset)
             } else {
-                ratatui::style::Color::Reset
+                Color::Reset
             };
             let text_color = if is_selected {
-                ThemeColors::highlight_fg()
+                state
+                    .theme
+                    .style(StyleKey::HighlightFg)
+                    .fg
+                    .unwrap_or(Color::Reset)
             } else {
-                ThemeColors::text()
+                state
+                    .theme
+                    .style(StyleKey::Text)
+                    .fg
+                    .unwrap_or(Color::Reset)
             };
 
             let name_formatted = format!(
@@ -104,17 +117,25 @@ pub fn render_commands_section(
             );
             let shortcut_formatted = format!("{} ", command.shortcut);
 
+            let shortcut_fg = if is_selected {
+                state
+                    .theme
+                    .style(StyleKey::HighlightFg)
+                    .fg
+                    .unwrap_or(Color::Reset)
+            } else {
+                state
+                    .theme
+                    .style(StyleKey::Muted)
+                    .fg
+                    .unwrap_or(Color::Reset)
+            };
+
             let spans = vec![
                 Span::styled(name_formatted, Style::default().fg(text_color).bg(bg_color)),
                 Span::styled(
                     shortcut_formatted,
-                    Style::default()
-                        .fg(if is_selected {
-                            ThemeColors::highlight_fg()
-                        } else {
-                            ThemeColors::dark_gray()
-                        })
-                        .bg(bg_color),
+                    Style::default().fg(shortcut_fg).bg(bg_color),
                 ),
             ];
 
@@ -146,7 +167,7 @@ pub fn render_commands_section(
         if has_content_below {
             indicator_spans.push(Span::styled(
                 " ▼",
-                Style::default().fg(ThemeColors::dark_gray()),
+                state.theme.style(StyleKey::Muted),
             ));
         }
 
@@ -158,17 +179,17 @@ pub fn render_commands_section(
 
     // Help text
     let help = Paragraph::new(Line::from(vec![
-        Span::styled(" ↑/↓", Style::default().fg(ThemeColors::dark_gray())),
-        Span::styled(" navigate", Style::default().fg(ThemeColors::cyan())),
+        Span::styled(" ↑/↓", state.theme.style(StyleKey::Muted)),
+        Span::styled(" navigate", state.theme.style(StyleKey::Accent)),
         Span::raw("  "),
-        Span::styled("enter", Style::default().fg(ThemeColors::dark_gray())),
-        Span::styled(" select", Style::default().fg(ThemeColors::cyan())),
+        Span::styled("enter", state.theme.style(StyleKey::Muted)),
+        Span::styled(" select", state.theme.style(StyleKey::Accent)),
         Span::raw("  "),
-        Span::styled("tab", Style::default().fg(ThemeColors::dark_gray())),
-        Span::styled(" switch", Style::default().fg(ThemeColors::cyan())),
+        Span::styled("tab", state.theme.style(StyleKey::Muted)),
+        Span::styled(" switch", state.theme.style(StyleKey::Accent)),
         Span::raw("  "),
-        Span::styled("esc", Style::default().fg(ThemeColors::dark_gray())),
-        Span::styled(" close", Style::default().fg(ThemeColors::cyan())),
+        Span::styled("esc", state.theme.style(StyleKey::Muted)),
+        Span::styled(" close", state.theme.style(StyleKey::Accent)),
     ]));
 
     f.render_widget(help, help_area);

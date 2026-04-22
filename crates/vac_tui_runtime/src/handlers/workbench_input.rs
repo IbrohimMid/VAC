@@ -194,6 +194,13 @@ fn handle_submit(state: &mut AppState, output_tx: &Sender<OutputEvent>) {
                 state.push_activity(crate::app::ActivityKind::Session, "Switch session");
             }
         }
+        // T11: Enter on VWFD inspector → jump to source file in editor
+        WorkbenchTab::Vwfd => {
+            if let Some((path, line)) = state.vwfd_inspector.selected_source_location() {
+                let mut ctx = HandlerContext::new(state, output_tx);
+                let _ = vil_workbench::open_file_in_editor(&mut ctx, &path, line);
+            }
+        }
         _ => {}
     }
 }

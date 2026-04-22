@@ -89,6 +89,15 @@ impl VwfdInspectorState {
     pub fn selected(&self) -> Option<VwfdTreeNode> {
         self.flat_tree().get(self.selected_idx).cloned()
     }
+
+    /// T11: Return the source file path and a best-effort line number for the
+    /// currently selected node so the caller can open it in an editor.
+    pub fn selected_source_location(&self) -> Option<(String, usize)> {
+        let path = self.source_path.clone()?;
+        // Use the node index as a rough line proxy until VWFD stores span info.
+        let line = self.selected_idx.saturating_add(1);
+        Some((path, line))
+    }
 }
 
 // ── Tree node model ───────────────────────────────────────────────────────────

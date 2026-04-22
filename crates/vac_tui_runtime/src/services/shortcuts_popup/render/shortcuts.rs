@@ -1,7 +1,7 @@
 //! Shortcuts section rendering
 
 use crate::constants::SCROLL_BUFFER_LINES;
-use crate::services::detect_term::ThemeColors;
+use crate::services::theme::StyleKey;
 use ratatui::{
     layout::Rect,
     style::{Modifier, Style},
@@ -10,7 +10,7 @@ use ratatui::{
     Frame,
 };
 
-use super::super::catalog::{get_all_shortcuts, get_cached_shortcuts_content, get_shortcuts_count, Shortcut};
+use super::super::catalog::{build_shortcuts_content, get_all_shortcuts, get_shortcuts_count, Shortcut};
 
 pub fn render_shortcuts_section(
     f: &mut Frame,
@@ -30,39 +30,40 @@ pub fn render_shortcuts_section(
     let search_spans = if search_term.is_empty() {
         vec![
             Span::raw(" "),
-            Span::styled(search_prompt, Style::default().fg(ThemeColors::magenta())),
+            Span::styled(search_prompt, state.theme.style(StyleKey::AppTitle)),
             Span::raw(" "),
-            Span::styled(cursor, Style::default().fg(ThemeColors::cyan())),
-            Span::styled(placeholder, Style::default().fg(ThemeColors::dark_gray())),
+            Span::styled(cursor, state.theme.style(StyleKey::Accent)),
+            Span::styled(placeholder, state.theme.style(StyleKey::Muted)),
             Span::raw(" "),
         ]
     } else {
         vec![
             Span::raw(" "),
-            Span::styled(search_prompt, Style::default().fg(ThemeColors::magenta())),
+            Span::styled(search_prompt, state.theme.style(StyleKey::AppTitle)),
             Span::raw(" "),
-            Span::styled(search_term, Style::default().fg(ThemeColors::text())),
-            Span::styled(cursor, Style::default().fg(ThemeColors::cyan())),
+            Span::styled(search_term, state.theme.style(StyleKey::Text)),
+            Span::styled(cursor, state.theme.style(StyleKey::Accent)),
         ]
     };
 
     f.render_widget(
         Paragraph::new(Line::from(search_spans))
-            .block(Block::default().border_style(Style::default().fg(ThemeColors::dark_gray()))),
+            .block(Block::default().border_style(state.theme.style(StyleKey::Muted))),
         search_area,
     );
 
-    // Get shortcuts content (filtered or cached)
+    // Get shortcuts content (filtered or freshly built)
     let search_lower = search_term.to_lowercase();
     let all_lines = if search_term.is_empty() {
-        get_cached_shortcuts_content(Some(area.width as usize)).clone()
+        build_shortcuts_content(&state.theme, Some(area.width as usize))
     } else {
-        build_filtered_shortcuts(&search_lower, area)
+        build_filtered_shortcuts(&search_lower, area, state)
     };
 
     let total_lines = all_lines.len();
     let height = content_area.height as usize;
-    let shortcuts_count = count_shortcuts(&all_lines, search_term);
+    let keybind_style = state.theme.style(StyleKey::KeybindBadge);
+    let shortcuts_count = count_shortcuts(&all_lines, search_term, keybind_style);
 
     // Calculate scroll position
     let max_scroll = total_lines.saturating_sub(height.saturating_sub(SCROLL_BUFFER_LINES));
@@ -94,7 +95,7 @@ pub fn render_shortcuts_section(
     f.render_widget(content_paragraph, content_area);
 
     // Calculate cumulative shortcuts count
-    let cumulative_shortcuts_count = count_cumulative_shortcuts(&all_lines, scroll, height);
+    let cumulative_shortcuts_count = count_cumulative_shortcuts(&all_lines, scroll, height, keybind_style);
 
     // Scroll indicators
     let has_content_above = scroll > 0;
@@ -111,7 +112,7 @@ pub fn render_shortcuts_section(
         if has_content_below {
             indicator_spans.push(Span::styled(
                 " ▼",
-                Style::default().fg(ThemeColors::dark_gray()),
+                state.theme.style(StyleKey::Muted),
             ));
         }
 
@@ -123,21 +124,21 @@ pub fn render_shortcuts_section(
 
     // Help text
     let help = Paragraph::new(Line::from(vec![
-        Span::styled(" ↑/↓", Style::default().fg(ThemeColors::dark_gray())),
-        Span::styled(" scroll", Style::default().fg(ThemeColors::cyan())),
+        Span::styled(" ↑/↓", state.theme.style(StyleKey::Muted)),
+        Span::styled(" scroll", state.theme.style(StyleKey::Accent)),
         Span::raw("  "),
-        Span::styled("tab", Style::default().fg(ThemeColors::dark_gray())),
-        Span::styled(" switch", Style::default().fg(ThemeColors::cyan())),
+        Span::styled("tab", state.theme.style(StyleKey::Muted)),
+        Span::styled(" switch", state.theme.style(StyleKey::Accent)),
         Span::raw("  "),
-        Span::styled("esc", Style::default().fg(ThemeColors::dark_gray())),
-        Span::styled(" close", Style::default().fg(ThemeColors::cyan())),
+        Span::styled("esc", state.theme.style(StyleKey::Muted)),
+        Span::styled(" close", state.theme.style(StyleKey::Accent)),
     ]));
 
     f.render_widget(help, help_area);
 }
 
 /// Build filtered shortcuts lines for dynamic search results
-fn build_filtered_shortcuts(search_lower: &str, area: Rect) -> Vec<Line<'static>> {
+fn build_filtered_shortcuts(search_lower: &str, area: Rect, state: &crate::app::AppState) -> Vec<Line<'static>> {
     let all_shortcuts = get_all_shortcuts();
     let filtered: Vec<&Shortcut> = all_shortcuts
         .iter()
@@ -169,15 +170,16 @@ fn build_filtered_shortcuts(search_lower: &str, area: Rect) -> Vec<Line<'static>
 
     for category_name in &category_order {
         if let Some(category_shortcuts) = categories.get(category_name) {
-            let category_style = Style::default()
-                .fg(ThemeColors::cyan())
+            let category_style = state
+                .theme
+                .style(StyleKey::CategoryHeader)
                 .add_modifier(Modifier::BOLD);
             let category_width = area.width.saturating_sub(category_name.len() as u16 + 5) as usize;
             lines.push(Line::from(vec![
                 Span::styled(format!(" {} ", category_name), category_style),
                 Span::styled(
                     "─".repeat(category_width).to_string(),
-                    Style::default().fg(ThemeColors::dark_gray()),
+                    state.theme.style(StyleKey::Muted),
                 ),
             ]));
 
@@ -188,13 +190,14 @@ fn build_filtered_shortcuts(search_lower: &str, area: Rect) -> Vec<Line<'static>
                 lines.push(Line::from(vec![
                     Span::styled(
                         key_formatted,
-                        Style::default()
-                            .fg(ThemeColors::green())
+                        state
+                            .theme
+                            .style(StyleKey::KeybindBadge)
                             .add_modifier(Modifier::BOLD),
                     ),
                     Span::styled(
                         description_formatted,
-                        Style::default().fg(ThemeColors::text()),
+                        state.theme.style(StyleKey::Text),
                     ),
                 ]));
             }
@@ -205,14 +208,15 @@ fn build_filtered_shortcuts(search_lower: &str, area: Rect) -> Vec<Line<'static>
 }
 
 /// Count the total number of shortcuts in displayed lines
-fn count_shortcuts(all_lines: &[Line], search_term: &str) -> usize {
+fn count_shortcuts(all_lines: &[Line], search_term: &str, keybind_style: Style) -> usize {
     if search_term.is_empty() {
         get_shortcuts_count()
     } else {
+        let keybind_fg = keybind_style.fg;
         let mut count = 0;
         for line in all_lines {
             for span in &line.spans {
-                if span.style.fg == Some(ThemeColors::green()) {
+                if span.style.fg == keybind_fg {
                     count += 1;
                     break;
                 }
@@ -223,13 +227,14 @@ fn count_shortcuts(all_lines: &[Line], search_term: &str) -> usize {
 }
 
 /// Count shortcuts from beginning up to the current scroll position + visible area
-fn count_cumulative_shortcuts(all_lines: &[Line], scroll: usize, height: usize) -> usize {
+fn count_cumulative_shortcuts(all_lines: &[Line], scroll: usize, height: usize, keybind_style: Style) -> usize {
+    let keybind_fg = keybind_style.fg;
     let mut count = 0;
     for line_index in 0..=(scroll + height).min(all_lines.len().saturating_sub(1)) {
         if line_index < all_lines.len() {
             let line = &all_lines[line_index];
             for span in &line.spans {
-                if span.style.fg == Some(ThemeColors::green())
+                if span.style.fg == keybind_fg
                     && span.style.add_modifier.contains(Modifier::BOLD)
                 {
                     count += 1;

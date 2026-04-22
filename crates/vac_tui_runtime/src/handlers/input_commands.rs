@@ -540,10 +540,12 @@ fn levenshtein(a: &str, b: &str) -> usize {
     row[n]
 }
 
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
+    use super::show_unknown_slash_suggestions;
     use crate::action_registry::{ACTION_SPECS, spec_by_slash_alias};
     use crate::app::{AppState, AppStateOptions};
 

@@ -253,33 +253,29 @@ mod tests {
 
     #[test]
     fn test_high_contrast_theme_creation() {
-        // Test that high contrast theme can be created
+        // Test that high contrast theme can be created and has expected structure
         let style = MarkdownStyle::high_contrast_theme();
 
-        // Verify reset colors are used for better compatibility
-        match style.text_style.fg {
-            Some(Color::Reset) => {
-                // Expected for high contrast theme
-            }
-            _ => panic!("High contrast theme should use reset colors"),
-        }
-
-        // Verify no backgrounds are used for code blocks
+        // Text style should have a foreground colour set (White via theme)
         assert!(
-            style.code_style.bg.is_none(),
-            "Code style should not have background"
-        );
-        assert!(
-            style.code_block_style.bg.is_none(),
-            "Code block style should not have background"
+            style.text_style.fg.is_some(),
+            "High contrast text should have fg colour"
         );
 
-        // Verify cyan color is used for code blocks
+        // Code blocks should use Cyan fg (via MarkdownCodeBlock StyleKey)
         match style.code_block_style.fg {
             Some(Color::Cyan) => {
                 // Expected for high contrast theme
             }
             _ => panic!("Code block style should use cyan color"),
+        }
+
+        // Code inline should use Red fg (via MarkdownCodeInline StyleKey)
+        match style.code_style.fg {
+            Some(Color::Red) => {
+                // Expected for high contrast theme
+            }
+            _ => panic!("Inline code style should use red color"),
         }
     }
 

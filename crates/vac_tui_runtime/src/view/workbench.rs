@@ -71,7 +71,7 @@ pub(super) fn render_workbench_panel(f: &mut Frame, state: &mut AppState, area: 
         .select(idx)
         .block(Block::default().borders(Borders::ALL).title(Span::styled(
             "Workbench",
-            focus_style(state.focus == WorkspaceFocus::Workbench),
+            focus_style(state.focus == WorkspaceFocus::Workbench, &state.theme),
         )))
         .highlight_style(state.theme.style(crate::services::theme::StyleKey::ListSelected));
     f.render_widget(tabs, chunks[0]);

@@ -223,7 +223,7 @@ pub(super) fn render_activity_panel(f: &mut Frame, state: &mut AppState, area: R
     let widget = Paragraph::new(lines)
         .block(Block::default().borders(Borders::ALL).title(Span::styled(
             "Activity",
-            focus_style(state.focus == WorkspaceFocus::Activity),
+            focus_style(state.focus == WorkspaceFocus::Activity, &state.theme),
         )))
         .wrap(Wrap { trim: true });
     f.render_widget(widget, area);

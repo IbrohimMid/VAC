@@ -9,6 +9,6 @@ pub mod catalog;
 pub mod render;
 pub mod search;
 
-pub use catalog::{get_all_shortcuts, get_cached_shortcuts_content, get_shortcuts_count, Shortcut};
+pub use catalog::{build_shortcuts_content, get_all_shortcuts, get_shortcuts_count, Shortcut};
 pub use render::render_shortcuts_popup;
 pub use search::filter_commands;

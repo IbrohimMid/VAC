@@ -106,7 +106,7 @@ pub(super) fn render_messages(f: &mut Frame, state: &mut AppState, area: Rect) {
     let widget = Paragraph::new(highlighted_lines)
         .block(Block::default().borders(Borders::ALL).title(ratatui::text::Span::styled(
             "Conversation",
-            focus_style(state.focus == WorkspaceFocus::Conversation),
+            focus_style(state.focus == WorkspaceFocus::Conversation, &state.theme),
         )))
         .wrap(Wrap { trim: false })
         .scroll((state.scroll as u16, 0));

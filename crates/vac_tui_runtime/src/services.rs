@@ -53,7 +53,6 @@ pub use approval_bar::approval_preview;
 pub use clipboard_paste::{
     copy_to_clipboard, extract_file_paths_from_text, paste_image_to_temp_png,
 };
-pub use detect_term::ThemeColors;
 pub use file_diff::{preview_file_diff, render_diff};
 pub use file_search::{build_file_index, fuzzy_search_files};
 pub use helper_block::welcome_messages;

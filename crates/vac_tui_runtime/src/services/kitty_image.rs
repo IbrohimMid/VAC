@@ -293,10 +293,12 @@ fn centered_label(label: &str, width: usize) -> String {
     format!("{}{}{}", " ".repeat(left), text, " ".repeat(right))
 }
 
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::{Cursor, Write};
+    use std::io::{Cursor, Read, Write};
+    use std::time::{Duration, Instant};
 
     /// Helper: build an in-memory reader that returns the given bytes
     /// slowly enough to force the timeout path. Because `Cursor` is
