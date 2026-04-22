@@ -306,4 +306,63 @@ mod tests {
         assert_eq!(ctx.state.approvals.pending_approvals.len(), 0);
         assert_eq!(ctx.state.approvals.approved_tools.len(), 3);
     }
+
+    // ── M3 — Reject-reason modal cancelability contract ─────────────
+    //
+    // Invariant: opening the reject-reason prompt and then dismissing
+    // it (via overlay close, i.e. Esc handler) must leave the tool in
+    // `pending_approvals` — neither approved nor rejected. Confirms
+    // the modal is non-destructive until Enter.
+
+    #[test]
+    fn contract_reject_reason_cancel_leaves_tool_pending() {
+        let (mut state, tx, _rx) = create_test_context();
+        let mut ctx = HandlerContext::new(&mut state, &tx);
+        push_pending(&mut ctx, "tc-9", "bash");
+
+        assert!(begin_reject_current(&mut ctx).is_ok());
+        assert!(ctx
+            .state
+            .overlay_manager
+            .is_active(crate::overlay::OverlayId::RejectReason));
+        assert!(ctx.state.approvals.reject_reason_input.is_some());
+
+        // Cancel via close_overlay (what the Esc key handler invokes).
+        crate::overlay::close_overlay(ctx.state, crate::overlay::OverlayId::RejectReason);
+
+        assert!(!ctx
+            .state
+            .overlay_manager
+            .is_active(crate::overlay::OverlayId::RejectReason));
+        assert!(ctx.state.approvals.reject_reason_input.is_none());
+        assert_eq!(ctx.state.approvals.pending_approvals.len(), 1);
+        assert_eq!(ctx.state.approvals.rejected_tools.len(), 0);
+        assert_eq!(ctx.state.approvals.approved_tools.len(), 0);
+    }
+
+    #[test]
+    fn contract_reject_reason_reopening_starts_fresh() {
+        let (mut state, tx, _rx) = create_test_context();
+        let mut ctx = HandlerContext::new(&mut state, &tx);
+        push_pending(&mut ctx, "tc-10", "bash");
+
+        assert!(begin_reject_current(&mut ctx).is_ok());
+        let _ = reason_input_push(&mut ctx, 't');
+        let _ = reason_input_push(&mut ctx, 'o');
+        let _ = reason_input_push(&mut ctx, 'o');
+        assert_eq!(
+            ctx.state.approvals.reject_reason_input.as_deref(),
+            Some("too")
+        );
+
+        crate::overlay::close_overlay(ctx.state, crate::overlay::OverlayId::RejectReason);
+        assert!(ctx.state.approvals.reject_reason_input.is_none());
+
+        // Reopening yields an empty buffer, not the dismissed one.
+        assert!(begin_reject_current(&mut ctx).is_ok());
+        assert_eq!(
+            ctx.state.approvals.reject_reason_input.as_deref(),
+            Some("")
+        );
+    }
 }
