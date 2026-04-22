@@ -17,6 +17,17 @@ fastembed = { workspace = true }
 redb = { workspace = true }
 tokio = { workspace = true }
 
+# HNSW (B2 Paket C scaffold). Pure-Rust, no FFI, serde-compatible.
+# Gated behind `hnsw` feature so default builds stay identical to the
+# HashMap-backed implementation while the migration is scaffolded.
+instant-distance = { version = "0.6", optional = true }
+
+[features]
+default = []
+# Enables the HNSW ANN backend in `ann.rs`. Opt-in today; will become the
+# default path once Paket C lands the redb-backed store and persistence glue.
+hnsw = ["dep:instant-distance"]
+
 [dev-dependencies]
 tempfile = "3.14"
 criterion = { workspace = true }
