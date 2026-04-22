@@ -82,10 +82,25 @@ impl OverlayManager {
         Self::default()
     }
 
+    /// Maximum simultaneous overlays. Deeper modal nesting hurts
+    /// cognitive load (Claude-Code-friction rule). New pushes beyond this
+    /// depth are refused with a `tracing::warn!` log so upstream code can
+    /// notice the bug without crashing the session.
+    pub const MAX_STACK_DEPTH: usize = 2;
+
     /// Push an overlay onto the active stack.  Idempotent: pushing an already-
-    /// active overlay is a no-op.
+    /// active overlay is a no-op. Refuses to push if stack is already at
+    /// `MAX_STACK_DEPTH`.
     pub fn push(&mut self, id: OverlayId, current_focus: WorkspaceFocus) {
         if !self.stack.contains(&id) {
+            if self.stack.len() >= Self::MAX_STACK_DEPTH {
+                tracing::warn!(
+                    topmost = ?self.stack.last(),
+                    rejected = ?id,
+                    "overlay push refused: stack at MAX_STACK_DEPTH"
+                );
+                return;
+            }
             if self.stack.is_empty() {
                 self.saved_focus = Some(current_focus);
             }
@@ -298,8 +313,7 @@ mod tests {
         let mut m = OverlayManager::new();
         m.push(OverlayId::CommandPalette, WorkspaceFocus::Input);
         m.push(OverlayId::Shortcuts, WorkspaceFocus::Input);
-        m.push(OverlayId::AskUser, WorkspaceFocus::Input);
-        assert_eq!(m.topmost(), Some(OverlayId::AskUser));
+        assert_eq!(m.topmost(), Some(OverlayId::Shortcuts));
     }
 
     #[test]
@@ -307,11 +321,10 @@ mod tests {
         let mut m = OverlayManager::new();
         m.push(OverlayId::CommandPalette, WorkspaceFocus::Input);
         m.push(OverlayId::Shortcuts, WorkspaceFocus::Input);
-        m.push(OverlayId::AskUser, WorkspaceFocus::Input);
-        m.pop(OverlayId::Shortcuts);
-        assert!(!m.is_active(OverlayId::Shortcuts));
-        assert!(m.is_active(OverlayId::CommandPalette));
-        assert_eq!(m.topmost(), Some(OverlayId::AskUser));
+        m.pop(OverlayId::CommandPalette);
+        assert!(!m.is_active(OverlayId::CommandPalette));
+        assert!(m.is_active(OverlayId::Shortcuts));
+        assert_eq!(m.topmost(), Some(OverlayId::Shortcuts));
     }
 
     #[test]
@@ -324,6 +337,20 @@ mod tests {
         // Popping the last one restores the original focus (the one saved
         // on first push).
         assert_eq!(m.pop(OverlayId::CommandPalette), Some(WorkspaceFocus::Input));
+    }
+
+    #[test]
+    fn contract_stack_depth_capped_at_max() {
+        let mut m = OverlayManager::new();
+        m.push(OverlayId::CommandPalette, WorkspaceFocus::Input);
+        m.push(OverlayId::Shortcuts, WorkspaceFocus::Input);
+        // Third push should be rejected (warning logged).
+        m.push(OverlayId::AskUser, WorkspaceFocus::Input);
+        assert_eq!(
+            m.render_order().count(),
+            OverlayManager::MAX_STACK_DEPTH
+        );
+        assert!(!m.is_active(OverlayId::AskUser));
     }
 
     #[test]
