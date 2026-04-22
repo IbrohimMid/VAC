@@ -510,7 +510,7 @@ pub fn handle_backend_event(
             use vac_runtime::{Job, JobKind, JobStatus};
             match runner_event {
                 RunnerEvent::Started { pid } => {
-                    state.vil_dev_pid = Some(pid);
+                    state.vil_dev.pid = Some(pid);
                     state.push_activity(
                         crate::app::ActivityKind::Status,
                         format!("vil dev: started (PID {pid})"),
@@ -518,15 +518,15 @@ pub fn handle_backend_event(
                     let mut job =
                         Job::new(JobKind::RunTask { description: "vil dev".to_string() });
                     job.status = JobStatus::Running;
-                    state.vil_dev_job_id = Some(job.id);
+                    state.vil_dev.job_id = Some(job.id);
                     state.runtime.jobs.push(job);
                 }
                 RunnerEvent::Stdout(line) => {
-                    state.vil_dev_output.push_line(line);
+                    state.vil_dev.output.push_line(line);
                 }
                 RunnerEvent::Stderr(line) => {
                     let first_line = line.lines().next().unwrap_or(&line).to_string();
-                    state.vil_dev_output.push_line(format!("[stderr] {line}"));
+                    state.vil_dev.output.push_line(format!("[stderr] {line}"));
                     state.push_activity(
                         crate::app::ActivityKind::Error,
                         format!("vil dev: {first_line}"),
@@ -534,7 +534,8 @@ pub fn handle_backend_event(
                 }
                 RunnerEvent::Checkpoint { session_id, ts } => {
                     state
-                        .vil_dev_checkpoints
+                        .vil_dev
+                        .checkpoints
                         .push((session_id.clone(), ts.clone()));
                     state.push_activity(
                         crate::app::ActivityKind::Status,
@@ -542,7 +543,7 @@ pub fn handle_backend_event(
                     );
                 }
                 RunnerEvent::Exited { code, signal } => {
-                    state.vil_dev_pid = None;
+                    state.vil_dev.pid = None;
                     let (msg, is_error) = match (code, signal) {
                         (Some(0), _) => ("vil dev: exited (code 0)".to_string(), false),
                         (Some(c), _) => (format!("vil dev: exited (code {c})"), true),
@@ -555,7 +556,7 @@ pub fn handle_backend_event(
                         crate::app::ActivityKind::Status
                     };
                     state.push_activity(kind, msg.clone());
-                    if let Some(job_id) = state.vil_dev_job_id.take() {
+                    if let Some(job_id) = state.vil_dev.job_id.take() {
                         if let Some(job) =
                             state.runtime.jobs.iter_mut().find(|j| j.id == job_id)
                         {
@@ -572,7 +573,7 @@ pub fn handle_backend_event(
                         crate::app::ActivityKind::Error,
                         format!("vil dev: error — {msg}"),
                     );
-                    if let Some(job_id) = state.vil_dev_job_id.take() {
+                    if let Some(job_id) = state.vil_dev.job_id.take() {
                         if let Some(job) =
                             state.runtime.jobs.iter_mut().find(|j| j.id == job_id)
                         {

@@ -11,6 +11,7 @@ use crate::types::*;
 // Re-export all submodule types
 pub mod approvals;
 pub mod billing;
+pub mod vil_dev;
 pub mod commands;
 pub mod helpers;
 pub mod messages;
@@ -21,6 +22,7 @@ pub mod support;
 pub mod workbench;
 
 pub use approvals::ApprovalsState;
+pub use vil_dev::VilDevState;
 pub use billing::{
     BillingInfo, LoadingOperation, LoadingStateManager, SessionInfo, ShortcutsPopupMode,
     TokenUsage, ToolCallStatus,
@@ -203,14 +205,8 @@ pub struct AppState {
     // VIL domain state
     pub vil: VilState,
 
-    // T14: vil dev runner output buffer (ring-capped at 500 lines) + PID.
-    // Backed by vac_signal::SignalBuffer so the same primitive can power
-    // distillation/rewind in future milestones.
-    pub vil_dev_output: vac_signal::SignalBuffer,
-    pub vil_dev_pid: Option<u32>,
-    pub vil_dev_checkpoints: Vec<(String, String)>,
-    /// Job ID of the vil dev task tray entry, set on Started, cleared on Exited/Error.
-    pub vil_dev_job_id: Option<uuid::Uuid>,
+    // T14: vil dev runner state grouped into VilDevState
+    pub vil_dev: VilDevState,
 
     // VWFD inspector state (PR-T11). Default is an empty inspector; loaded
     // lazily when the user opens a .vwfd.yaml via the changeset or commands.

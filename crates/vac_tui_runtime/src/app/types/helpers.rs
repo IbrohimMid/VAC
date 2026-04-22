@@ -10,7 +10,7 @@ use crate::services::textarea::TextArea;
 use crate::types::*;
 
 use super::{
-    ActivityItem, ActivityKind, AppState, ApprovalsState, HelperCommand, LoadingStateManager,
+    ActivityItem, ActivityKind, AppState, ApprovalsState, HelperCommand, LoadingStateManager, VilDevState,
     Message, QueueMetrics, RenderMetrics, ReviewItem, ReviewItemStatus, ReviewState, RuntimeState,
     ShellState, ShortcutsPopupMode, StartupSnapshot, TokenUsage, VilLogEntry, VilState,
     WorkbenchTab, WorkspaceFocus,
@@ -227,13 +227,7 @@ impl AppState {
             pending_user_messages: VecDeque::new(),
             queue_metrics: QueueMetrics::default(),
             // T14: vil dev runner state
-            vil_dev_output: vac_signal::SignalBuffer::new(
-                vac_signal::SignalStreamKind::VilDev,
-                500,
-            ),
-            vil_dev_pid: None,
-            vil_dev_checkpoints: Vec::new(),
-            vil_dev_job_id: None,
+            vil_dev: VilDevState::default(),
         }
     }
 
