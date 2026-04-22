@@ -126,6 +126,7 @@ vil_rag = { path = "crates/vil_rag" }
 vil_metrics = { path = "crates/vil_metrics" }
 vil_validate = { path = "crates/vil_validate" }
 vil_vwfd = { path = "crates/vil_vwfd" }
+vil_expr = { path = "crates/vil_expr" }
 vac_ingest = { path = "crates/vac_ingest" }
 vac_runtime = { path = "crates/vac_runtime" }
 

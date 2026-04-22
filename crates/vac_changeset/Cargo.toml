@@ -12,6 +12,7 @@ description.workspace = true
 [dependencies]
 indexmap = "2"
 serde_json = { workspace = true }
+vil_expr = { workspace = true }
 vil_vwfd = { path = "../vil_vwfd" }
 
 [lints]

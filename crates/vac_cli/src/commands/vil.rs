@@ -271,7 +271,28 @@ async fn execute_codegen(
     let kind = vil_vwfd::codegen::parse_kind(&kind)?;
     let execution_mode = vil_vwfd::codegen::parse_execution_mode(&execution_mode)?;
     let artifact = vil_vwfd::generate_handler(kind, execution_mode, &name)?;
-    write_generated_artifact(project_root, &artifact)?;
+    let staging_dir = tempfile::tempdir().context("failed to create staging dir")?;
+    write_generated_artifact_to(staging_dir.path(), &artifact)?;
+
+    let scaffold_root = staging_dir
+        .path()
+        .join("handlers")
+        .join(&artifact.document.metadata.name);
+    let parity_issues = vil_validate::passes::vwfd_parity_pass(&artifact.document, &scaffold_root);
+    if !parity_issues.is_empty() {
+        let details = parity_issues
+            .iter()
+            .map(|issue| issue.label())
+            .collect::<Vec<_>>()
+            .join("; ");
+        return Err(anyhow!(
+            "VWFD parity gate failed for `{}`: {}",
+            artifact.document.metadata.name,
+            details
+        ));
+    }
+
+    write_generated_artifact_to(project_root, &artifact)?;
 
     println!(
         "Generated {} file(s) for `{}`",
@@ -282,7 +303,7 @@ async fn execute_codegen(
     Ok(())
 }
 
-fn write_generated_artifact(
+fn write_generated_artifact_to(
     project_root: &Path,
     artifact: &vil_vwfd::GeneratedArtifact,
 ) -> anyhow::Result<()> {

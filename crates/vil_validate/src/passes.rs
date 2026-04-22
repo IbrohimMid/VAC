@@ -9,12 +9,23 @@
 //!   6. Generated Plumbing (manual impl + duplicate macro detection)
 //!   7. Semantic Macro Coverage
 
+use std::path::Path;
+
 use vil_ir::semantic::{BoundaryType, MessageRole, SemanticModel};
 use vil_ir::types::{IrModule, TypeRef};
+use vil_vwfd::{ParityIssue, VwfdDocument};
 
 pub struct ValidationReport {
     pub score: f64,
     pub issues: Vec<String>,
+}
+
+/// VWFD parity pass used by `vac vil gen` and downstream validators.
+///
+/// This is a thin wrapper around the VWFD parity scanner so the validator
+/// crate owns the public pass surface requested by the section-8 plan.
+pub fn vwfd_parity_pass(vwfd: &VwfdDocument, rust_root: &Path) -> Vec<ParityIssue> {
+    vil_vwfd::parity_pass(vwfd, rust_root)
 }
 
 /// Run all VIL semantic validation passes on a module.

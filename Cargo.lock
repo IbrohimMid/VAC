@@ -5323,6 +5323,7 @@ version = "0.1.0"
 dependencies = [
  "indexmap 2.14.0",
  "serde_json",
+ "vil_expr",
  "vil_vwfd",
 ]
 
@@ -5808,9 +5809,11 @@ dependencies = [
  "anyhow",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror 2.0.18",
  "tracing",
  "vil_ir",
+ "vil_vwfd",
 ]
 
 [[package]]

@@ -13,7 +13,7 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::schema::VwfdDocument;
+use crate::schema::{VwfdDocument, VwfdExecutionMode};
 
 /// A single parity finding between a VWFD document and the Rust source tree.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -58,12 +58,20 @@ pub fn parity_pass(vwfd: &VwfdDocument, rust_root: &Path) -> Vec<ParityIssue> {
     let rust_handlers = scan_rust_handlers(rust_root);
     let rust_names: std::collections::HashSet<&str> =
         rust_handlers.iter().map(|h| h.name.as_str()).collect();
-    let vwfd_names: std::collections::HashSet<&str> =
-        vwfd.spec.handlers.iter().map(|h| h.name.as_str()).collect();
+    let native_vwfd_names: std::collections::HashSet<&str> = vwfd
+        .spec
+        .handlers
+        .iter()
+        .filter(|h| matches!(h.execution, VwfdExecutionMode::Native))
+        .map(|h| h.name.as_str())
+        .collect();
 
     let mut issues = Vec::new();
 
     for handler in &vwfd.spec.handlers {
+        if !matches!(handler.execution, VwfdExecutionMode::Native) {
+            continue;
+        }
         if !rust_names.contains(handler.name.as_str()) {
             issues.push(ParityIssue::MissingRust {
                 handler: handler.name.clone(),
@@ -72,7 +80,7 @@ pub fn parity_pass(vwfd: &VwfdDocument, rust_root: &Path) -> Vec<ParityIssue> {
     }
 
     for rust in &rust_handlers {
-        if !vwfd_names.contains(rust.name.as_str()) {
+        if !native_vwfd_names.contains(rust.name.as_str()) {
             issues.push(ParityIssue::OrphanRust {
                 handler: rust.name.clone(),
                 source_path: rust.source_path.clone(),
@@ -138,12 +146,13 @@ fn extract_handlers_from_source(src: &str, path: &Path, out: &mut Vec<RustHandle
         if !trimmed.starts_with("#[vil_handler") {
             continue;
         }
+        let attr_name = parse_vil_handler_attr_name(trimmed);
         // Find the fn declaration in the next few lines.
         for peek in lines.iter().take(idx + 6).skip(idx + 1) {
             let peek_trim = peek.trim_start();
             if let Some(name) = parse_fn_name(peek_trim) {
                 out.push(RustHandler {
-                    name,
+                    name: attr_name.unwrap_or(name),
                     source_path: path.to_path_buf(),
                     line: idx + 1,
                 });
@@ -174,6 +183,25 @@ fn parse_fn_name(line: &str) -> Option<String> {
         return None;
     }
     Some(after_fn[..end].to_string())
+}
+
+fn parse_vil_handler_attr_name(line: &str) -> Option<String> {
+    let name_idx = line.find("name")?;
+    let after_name = &line[name_idx..];
+    let eq_idx = after_name.find('=')?;
+    let after_eq = after_name[eq_idx + 1..].trim_start();
+    let quote = after_eq.chars().next()?;
+    if quote != '"' && quote != '\'' {
+        return None;
+    }
+    let remainder = &after_eq[quote.len_utf8()..];
+    let end = remainder.find(quote)?;
+    let name = remainder[..end].trim();
+    if name.is_empty() {
+        None
+    } else {
+        Some(name.to_string())
+    }
 }
 
 #[cfg(test)]
@@ -282,5 +310,53 @@ pub async fn orphaned(ctx: ServiceCtx) -> VilResponse<String> { todo!() }
             }
             other => panic!("unexpected issue: {other:?}"),
         }
+    }
+
+    #[test]
+    fn parity_pass_ignores_non_native_handlers() {
+        let dir = tempdir().unwrap();
+        let vwfd_yaml = r#"
+apiVersion: vil.vastar.io/v1
+kind: VilServer
+metadata:
+  name: sample
+spec:
+  handlers:
+    - name: wasm_handler
+      execution: wasm
+    - name: sidecar_handler
+      execution: sidecar
+"#;
+        let vwfd = from_yaml(vwfd_yaml).unwrap();
+        let issues = parity_pass(&vwfd, dir.path());
+        assert!(issues.is_empty(), "{issues:?}");
+    }
+
+    #[test]
+    fn parity_pass_prefers_handler_attribute_name() {
+        let dir = tempdir().unwrap();
+        write_rs(
+            dir.path(),
+            "src/handlers.rs",
+            r#"
+#[vil_handler(name = "my_handler")]
+pub async fn run(ctx: ServiceCtx) -> VilResponse<String> {
+    VilResponse::ok("ready".into())
+}
+"#,
+        );
+        let vwfd_yaml = r#"
+apiVersion: vil.vastar.io/v1
+kind: VilServer
+metadata:
+  name: sample
+spec:
+  handlers:
+    - name: my_handler
+      execution: native
+"#;
+        let vwfd = from_yaml(vwfd_yaml).unwrap();
+        let issues = parity_pass(&vwfd, dir.path());
+        assert!(issues.is_empty(), "{issues:?}");
     }
 }

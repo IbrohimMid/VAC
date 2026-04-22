@@ -6,12 +6,14 @@
 //! keys by `<workflow>/<step_id>` so identical step ids across different
 //! workflows don't collide.
 //!
-//! Scope: step-level and first-class expression fields. Deeper AST delta
-//! (per-token `vil-expr` walk) is left to a follow-up once `vil_expr` grows
-//! beyond the placeholder parser.
+//! Scope: step-level and first-class expression fields. Expression-bearing
+//! strings are normalized through `vil_expr` before comparison so formatting
+//! noise does not show up as a diff.
 
 use std::collections::BTreeMap;
 
+use serde_json::Value;
+use vil_expr::parse as parse_vil_expr;
 use vil_vwfd::VwfdDocument;
 use vil_vwfd::schema::VwfdStep;
 
@@ -134,7 +136,7 @@ fn diff_step(
         });
     }
 
-    if old.condition != new.condition {
+    if !option_exprs_semantically_equal(old.condition.as_ref(), new.condition.as_ref()) {
         changed = true;
         m.condition_changed = Some((old.condition.clone(), new.condition.clone()));
         deltas.push(ExpressionDelta {
@@ -145,7 +147,7 @@ fn diff_step(
         });
     }
 
-    if old.on_error != new.on_error {
+    if !option_exprs_semantically_equal(old.on_error.as_ref(), new.on_error.as_ref()) {
         changed = true;
         m.on_error_changed = Some((old.on_error.clone(), new.on_error.clone()));
         deltas.push(ExpressionDelta {
@@ -156,7 +158,7 @@ fn diff_step(
         });
     }
 
-    if old.inputs != new.inputs {
+    if !json_map_semantically_equal(&old.inputs, &new.inputs) {
         changed = true;
         m.inputs_changed = true;
         deltas.push(ExpressionDelta {
@@ -167,7 +169,7 @@ fn diff_step(
         });
     }
 
-    if old.outputs != new.outputs {
+    if !json_map_semantically_equal(&old.outputs, &new.outputs) {
         changed = true;
         m.outputs_changed = true;
         deltas.push(ExpressionDelta {
@@ -186,6 +188,80 @@ fn format_json_map(map: &std::collections::HashMap<String, serde_json::Value>) -
     sorted.sort_by_key(|(k, _)| k.as_str());
     let pairs: Vec<String> = sorted.iter().map(|(k, v)| format!("{k}={v}")).collect();
     format!("{{{}}}", pairs.join(", "))
+}
+
+fn option_exprs_semantically_equal(before: Option<&String>, after: Option<&String>) -> bool {
+    match (before, after) {
+        (None, None) => true,
+        (Some(before), Some(after)) => {
+            canonical_string_value(before) == canonical_string_value(after)
+        }
+        _ => false,
+    }
+}
+
+fn json_map_semantically_equal(
+    before: &std::collections::HashMap<String, Value>,
+    after: &std::collections::HashMap<String, Value>,
+) -> bool {
+    canonical_json_object(before) == canonical_json_object(after)
+}
+
+fn canonical_json_object(map: &std::collections::HashMap<String, Value>) -> String {
+    let mut sorted: Vec<(&String, &Value)> = map.iter().collect();
+    sorted.sort_by_key(|(k, _)| k.as_str());
+    let entries = sorted
+        .into_iter()
+        .map(|(k, v)| {
+            format!(
+                "{}:{}",
+                serde_json::to_string(k).unwrap(),
+                canonical_json_value(v)
+            )
+        })
+        .collect::<Vec<_>>();
+    format!("{{{}}}", entries.join(","))
+}
+
+fn canonical_json_value(value: &Value) -> String {
+    match value {
+        Value::Null => "null".to_string(),
+        Value::Bool(v) => v.to_string(),
+        Value::Number(v) => v.to_string(),
+        Value::String(v) => canonical_string_value(v),
+        Value::Array(values) => format!(
+            "[{}]",
+            values
+                .iter()
+                .map(canonical_json_value)
+                .collect::<Vec<_>>()
+                .join(",")
+        ),
+        Value::Object(map) => {
+            let mut sorted: Vec<(&String, &Value)> = map.iter().collect();
+            sorted.sort_by_key(|(k, _)| k.as_str());
+            let entries = sorted
+                .into_iter()
+                .map(|(k, v)| {
+                    format!(
+                        "{}:{}",
+                        serde_json::to_string(k).unwrap(),
+                        canonical_json_value(v)
+                    )
+                })
+                .collect::<Vec<_>>();
+            format!("{{{}}}", entries.join(","))
+        }
+    }
+}
+
+fn canonical_string_value(raw: &str) -> String {
+    let trimmed = raw.trim();
+    if let Ok(expr) = parse_vil_expr(trimmed) {
+        serde_json::to_string(&expr).unwrap_or_else(|_| trimmed.to_string())
+    } else {
+        serde_json::to_string(raw).unwrap_or_else(|_| raw.to_string())
+    }
 }
 
 #[cfg(test)]
@@ -270,6 +346,18 @@ spec:
         assert_eq!(delta.field, ExpressionField::Condition);
         assert_eq!(delta.before.as_deref(), Some("a > 1"));
         assert_eq!(delta.after.as_deref(), Some("a > 2"));
+    }
+
+    #[test]
+    fn diff_ignores_semantically_equivalent_expression_formatting() {
+        let old = doc(
+            "        - id: s1\n          handler: h1\n          condition: 'a + b'\n          inputs:\n            selector: 'foo(1)'\n",
+        );
+        let new = doc(
+            "        - id: s1\n          handler: h1\n          condition: 'a+b'\n          inputs:\n            selector: 'foo( 1 )'\n",
+        );
+        let d = diff(&old, &new);
+        assert!(d.is_empty(), "{d:?}");
     }
 
     #[test]

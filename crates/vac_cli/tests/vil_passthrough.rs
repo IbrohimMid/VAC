@@ -225,7 +225,7 @@ fn vil_gen_writes_native_handler_scaffold() {
     assert!(workflow_file.exists());
 
     let handler_source = fs::read_to_string(&handler_mod).unwrap();
-    assert!(handler_source.contains("#[vil_handler]"));
+    assert!(handler_source.contains("#[vil_handler(name = \"my_handler\")]"));
     assert!(handler_source.contains("pub async fn run"));
 
     let workflow_yaml = fs::read_to_string(&workflow_file).unwrap();
@@ -236,6 +236,44 @@ fn vil_gen_writes_native_handler_scaffold() {
         doc.spec.handlers[0].entrypoint.as_deref(),
         Some("handlers::my_handler::run")
     );
+}
+
+#[test]
+fn vil_gen_writes_wasm_handler_scaffold() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let bin_dir = root.join("bin");
+
+    let mut cmd = vac_command(
+        root,
+        &bin_dir,
+        &[
+            "vil",
+            "gen",
+            "handler",
+            "--kind",
+            "pipeline",
+            "--execution-mode",
+            "wasm",
+            "--name",
+            "metrics",
+        ],
+    );
+    cmd.env("PATH", &bin_dir)
+        .assert()
+        .success()
+        .stdout(predicates::str::contains(
+            "Generated 3 file(s) for `metrics`",
+        ))
+        .stdout(predicates::str::contains("kind: Pipeline"));
+
+    let wasm_cargo = root.join("handlers/metrics/Cargo.toml");
+    let wasm_lib = root.join("handlers/metrics/src/lib.rs");
+    assert!(wasm_cargo.exists());
+    assert!(wasm_lib.exists());
+
+    let cargo_toml = fs::read_to_string(&wasm_cargo).unwrap();
+    assert!(cargo_toml.contains("crate-type = [\"cdylib\"]"));
 }
 
 #[test]

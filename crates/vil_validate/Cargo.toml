@@ -9,11 +9,15 @@ description = "VIL Validate — 10-pass IR validation, VIL Way compliance checke
 
 [dependencies]
 vil_ir = { workspace = true }
+vil_vwfd = { workspace = true }
 
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 anyhow = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"
 [lints]
 workspace = true
