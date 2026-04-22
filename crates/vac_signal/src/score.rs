@@ -64,6 +64,75 @@ impl Scorer for RegexScorer {
     }
 }
 
+/// Chained scorer: delegate to each inner scorer in turn; the first
+/// classification higher than `Low` wins (custom rules override defaults
+/// at medium/high/noise, otherwise the tail scorer's judgement stands).
+pub struct ChainedScorer {
+    scorers: Vec<Box<dyn Scorer>>,
+}
+
+impl ChainedScorer {
+    pub fn new(scorers: Vec<Box<dyn Scorer>>) -> Self {
+        Self { scorers }
+    }
+
+    /// Build a `ChainedScorer` from default heuristics followed by custom
+    /// rules loaded from `SignalConfig`. Returns `None` if all supplied
+    /// patterns fail to compile.
+    pub fn from_config(
+        cfg: &crate::config::SignalConfig,
+    ) -> Result<Self, regex::Error> {
+        let default = Box::new(RegexScorer::default_heuristics());
+        let mut scorers: Vec<Box<dyn Scorer>> = vec![default];
+        if !cfg.custom_filters.is_empty() {
+            let custom = CustomRulesScorer::from_rules(&cfg.custom_filters)?;
+            scorers.push(Box::new(custom));
+        }
+        Ok(Self::new(scorers))
+    }
+}
+
+impl Scorer for ChainedScorer {
+    fn score(&self, line: &str) -> ScoreClass {
+        let mut result = ScoreClass::Low;
+        for s in &self.scorers {
+            let c = s.score(line);
+            if c != ScoreClass::Low {
+                result = c;
+            }
+        }
+        result
+    }
+}
+
+/// Scorer built from a list of user-supplied [`FilterRule`]s.
+pub struct CustomRulesScorer {
+    rules: Vec<(regex::Regex, ScoreClass)>,
+}
+
+impl CustomRulesScorer {
+    pub fn from_rules(
+        rules: &[crate::config::FilterRule],
+    ) -> Result<Self, regex::Error> {
+        let mut compiled = Vec::with_capacity(rules.len());
+        for r in rules {
+            compiled.push((regex::Regex::new(&r.pattern)?, r.class));
+        }
+        Ok(Self { rules: compiled })
+    }
+}
+
+impl Scorer for CustomRulesScorer {
+    fn score(&self, line: &str) -> ScoreClass {
+        for (re, class) in &self.rules {
+            if re.is_match(line) {
+                return *class;
+            }
+        }
+        ScoreClass::Low
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -92,5 +161,28 @@ mod tests {
     fn default_classifies_plain_as_low() {
         let s = RegexScorer::default_heuristics();
         assert_eq!(s.score("built foo in 0.3s"), ScoreClass::Low);
+    }
+
+    #[test]
+    fn chained_scorer_custom_rule_overrides_default() {
+        use crate::config::{FilterRule, SignalConfig};
+        let mut cfg = SignalConfig::default();
+        cfg.custom_filters.push(FilterRule {
+            pattern: r"DEPRECATED_API_XYZ".into(),
+            class: ScoreClass::High,
+            trust_tier: None,
+        });
+        let chained = ChainedScorer::from_config(&cfg).unwrap();
+        // Default heuristics would score this Low; custom rule makes it High.
+        assert_eq!(chained.score("call to DEPRECATED_API_XYZ()"), ScoreClass::High);
+    }
+
+    #[test]
+    fn chained_scorer_without_custom_matches_default() {
+        use crate::config::SignalConfig;
+        let cfg = SignalConfig::default();
+        let chained = ChainedScorer::from_config(&cfg).unwrap();
+        assert_eq!(chained.score("Error: boom"), ScoreClass::High);
+        assert_eq!(chained.score("ok"), ScoreClass::Low);
     }
 }
