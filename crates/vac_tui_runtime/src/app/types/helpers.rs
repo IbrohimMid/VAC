@@ -10,7 +10,7 @@ use crate::services::textarea::TextArea;
 use crate::types::*;
 
 use super::{
-    ActivityItem, ActivityKind, AppState, ApprovalsState, AskUserState, AtMentionState, BannerState, ChangesetUiState, CommandPaletteState, FileIndexState, FilePickerState, HelperCommand, LoadingStateManager, MessageUiState, PinsState, SidePanelState, SwitchersState, VilDevState, WorkbenchChromeState,
+    ActivityItem, ActivityKind, AppState, ApprovalsState, AskUserState, AtMentionState, BannerState, ChangesetUiState, CommandPaletteState, FileIndexState, FilePickerState, HelperCommand, LoadingStateManager, MessageUiState, PinsState, SessionResumeState, SidePanelState, SwitchersState, TaskTrayState, VilDevState, WorkbenchChromeState,
     Message, QueueMetrics, RenderMetrics, ReviewItem, ReviewItemStatus, ReviewState, RuntimeState,
     ShellState, ShortcutsPopupMode, StartupSnapshot, TokenUsage, VilLogEntry, VilState,
     WorkbenchTab, WorkspaceFocus,
@@ -115,16 +115,10 @@ impl AppState {
             render_metrics: RenderMetrics::default(),
             input_tx: None,
             overlay_manager: crate::overlay::OverlayManager::new(),
-            task_tray_selected: 0,
-            task_tray_scroll: 0,
-            task_tray_filter_active_only: false,
+            task_tray: TaskTrayState::default(),
             theme: crate::services::theme::Theme::default(),
             theme_picker_selected: 0,
-            session_resume_query: String::new(),
-            session_resume_selected: 0,
-            session_resume_list: Vec::new(),
-            session_resume_filtered_indices: Vec::new(),
-            session_resume_date_filter_days: None,
+            session_resume: SessionResumeState::default(),
             // Unit 9 (Wave 4.1) — VIL Issue Workstation
             // vil workbench fields are in vil: VilState::default()
             // Unit 5 (Wave 3.1) — Attachment tray preview & reorder

@@ -355,7 +355,7 @@ fn session_resume_fuzzy_orders_by_score() {
     let mut state = make_state(std::env::current_dir().unwrap(), Uuid::new_v4());
 
     let now = Utc::now();
-    state.session_resume_list = vec![
+    state.session_resume.list = vec![
         SessionResumeEntry {
             session_id: Uuid::new_v4(),
             title: "refactor auth module".to_string(),
@@ -387,17 +387,17 @@ fn session_resume_fuzzy_orders_by_score() {
 
     // Query "auth" — should match "refactor auth module" and "auth token validation"
     // but not "fix login bug"
-    state.session_resume_query = "auth".to_string();
+    state.session_resume.query = "auth".to_string();
     refresh_session_resume_filtered(&mut state);
 
     assert!(
-        !state.session_resume_filtered_indices.is_empty(),
+        !state.session_resume.filtered_indices.is_empty(),
         "fuzzy search should return results for 'auth'"
     );
     // "fix login bug" should not appear (no 'auth' anywhere)
-    for &idx in &state.session_resume_filtered_indices {
+    for &idx in &state.session_resume.filtered_indices {
         assert_ne!(
-            state.session_resume_list[idx].title, "fix login bug",
+            state.session_resume.list[idx].title, "fix login bug",
             "non-matching entry should be excluded"
         );
     }
@@ -418,7 +418,7 @@ fn session_resume_ctrl_r_keyboard_nav() {
     let id_a = Uuid::new_v4();
     let id_b = Uuid::new_v4();
     let id_c = Uuid::new_v4();
-    state.session_resume_list = vec![
+    state.session_resume.list = vec![
         SessionResumeEntry {
             session_id: id_a,
             title: "session alpha".to_string(),
@@ -452,31 +452,31 @@ fn session_resume_ctrl_r_keyboard_nav() {
     refresh_session_resume_filtered(&mut state);
 
     // Initially shows all 3, sorted newest first (alpha, beta, gamma)
-    assert_eq!(state.session_resume_filtered_indices.len(), 3);
-    assert_eq!(state.session_resume_selected, 0);
+    assert_eq!(state.session_resume.filtered_indices.len(), 3);
+    assert_eq!(state.session_resume.selected, 0);
 
     // Down twice — select index 2 (gamma)
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::Down);
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::Down);
-    assert_eq!(state.session_resume_selected, 2);
+    assert_eq!(state.session_resume.selected, 2);
 
     // Type query "beta" — should filter to 1 result, reset selection to 0
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::InputChanged('b'));
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::InputChanged('e'));
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::InputChanged('t'));
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::InputChanged('a'));
-    assert_eq!(state.session_resume_selected, 0);
-    assert_eq!(state.session_resume_filtered_indices.len(), 1);
-    let matched_idx = state.session_resume_filtered_indices[0];
-    assert_eq!(state.session_resume_list[matched_idx].session_id, id_b);
+    assert_eq!(state.session_resume.selected, 0);
+    assert_eq!(state.session_resume.filtered_indices.len(), 1);
+    let matched_idx = state.session_resume.filtered_indices[0];
+    assert_eq!(state.session_resume.list[matched_idx].session_id, id_b);
 
     // Backspace clears 'a' — "bet" still matches beta
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::InputBackspace);
-    assert!(!state.session_resume_filtered_indices.is_empty());
+    assert!(!state.session_resume.filtered_indices.is_empty());
 
     // Esc closes overlay and clears query
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::HandleEsc);
     assert!(!state.overlay_manager.is_active(OverlayId::SessionResume));
-    assert!(state.session_resume_query.is_empty());
-    assert!(state.session_resume_filtered_indices.is_empty());
+    assert!(state.session_resume.query.is_empty());
+    assert!(state.session_resume.filtered_indices.is_empty());
 }

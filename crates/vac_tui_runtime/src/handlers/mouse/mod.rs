@@ -59,7 +59,7 @@ pub fn dispatch_click(
             .iter()
             .position(|rect| hit(rect, col, row));
         if let Some(idx) = tray_hit {
-            state.task_tray_selected = idx;
+            state.task_tray.selected = idx;
             return true;
         }
     }

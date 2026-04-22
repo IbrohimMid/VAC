@@ -224,20 +224,20 @@ pub fn handle_task_tray(state: &mut AppState, _output_tx: &Sender<OutputEvent>, 
             crate::overlay::close_overlay(state, OverlayId::TaskTray);
         }
         InputEvent::Up | InputEvent::ScrollUp => {
-            state.task_tray_selected = state.task_tray_selected.saturating_sub(1);
+            state.task_tray.selected = state.task_tray.selected.saturating_sub(1);
         }
         InputEvent::Down | InputEvent::ScrollDown => {
             if job_count > 0 {
-                state.task_tray_selected =
-                    (state.task_tray_selected + 1).min(job_count.saturating_sub(1));
+                state.task_tray.selected =
+                    (state.task_tray.selected + 1).min(job_count.saturating_sub(1));
             }
         }
         InputEvent::InputChanged('f') | InputEvent::InputChanged('F') => {
-            state.task_tray_filter_active_only = !state.task_tray_filter_active_only;
-            state.task_tray_selected = 0;
+            state.task_tray.filter_active_only = !state.task_tray.filter_active_only;
+            state.task_tray.selected = 0;
         }
         InputEvent::InputChanged('x') | InputEvent::InputChanged('X') => {
-            if let Some(job) = state.runtime.jobs.get(state.task_tray_selected) {
+            if let Some(job) = state.runtime.jobs.get(state.task_tray.selected) {
                 let id = job.id;
                 let _ = _output_tx.try_send(OutputEvent::CancelRuntimeJob(id));
             }

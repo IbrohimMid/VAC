@@ -20,7 +20,9 @@ pub mod file_index;
 pub mod file_picker;
 pub mod message_ui;
 pub mod pins;
+pub mod session_resume;
 pub mod side_panel;
+pub mod task_tray;
 pub mod switchers;
 pub mod vil_dev;
 pub mod workbench_ui;
@@ -43,7 +45,9 @@ pub use file_index::FileIndexState;
 pub use file_picker::FilePickerState;
 pub use message_ui::MessageUiState;
 pub use pins::PinsState;
+pub use session_resume::SessionResumeState;
 pub use side_panel::SidePanelState;
+pub use task_tray::TaskTrayState;
 pub use switchers::SwitchersState;
 pub use vil_dev::VilDevState;
 pub use workbench_ui::WorkbenchChromeState;
@@ -278,23 +282,14 @@ pub struct AppState {
     pub overlay_manager: crate::overlay::OverlayManager,
 
     // ── Task Tray (PR-T9) ────────────────────────────────────────────────────
-    pub task_tray_selected: usize,
-    pub task_tray_scroll: usize,
-    /// Whether the task tray shows only active (running/queued) or all jobs.
-    pub task_tray_filter_active_only: bool,
+    pub task_tray: TaskTrayState,
 
     // ── Theme (PR-T5) ────────────────────────────────────────────────────────
     pub theme: crate::services::theme::Theme,
     pub theme_picker_selected: usize,
 
     // ── Session Resume Overlay (PR-T8) ───────────────────────────────────────
-    pub session_resume_query: String,
-    pub session_resume_selected: usize,
-    pub session_resume_list: Vec<crate::app::types::SessionResumeEntry>,
-    /// Sorted indices into `session_resume_list` after fuzzy + date filter.
-    pub session_resume_filtered_indices: Vec<usize>,
-    /// Date filter: `None` = all time, `Some(n)` = last n days.
-    pub session_resume_date_filter_days: Option<u32>,
+    pub session_resume: SessionResumeState,
 
     // vil_workbench fields moved to VilState.workbench_selected / .workbench_group_filter
 

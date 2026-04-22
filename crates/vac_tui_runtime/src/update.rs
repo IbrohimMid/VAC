@@ -219,8 +219,8 @@ pub fn handle_backend_event(
             state.push_activity(crate::app::ActivityKind::Session, "Sessions updated");
         }
         InputEvent::SetSessionResumeList(entries) => {
-            state.session_resume_list = entries;
-            state.session_resume_selected = 0;
+            state.session_resume.list = entries;
+            state.session_resume.selected = 0;
             crate::handlers::input_popup::refresh_session_resume_filtered(state);
         }
         InputEvent::SetAgentTasks(tasks) => {

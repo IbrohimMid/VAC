@@ -41,13 +41,13 @@ fn mouse_click_on_tray_focuses() {
     state
         .overlay_manager
         .push(OverlayId::TaskTray, WorkspaceFocus::Input);
-    state.task_tray_selected = 0;
+    state.task_tray.selected = 0;
     state.workbench_chrome.task_tray_row_regions.push(Rect::new(10, 20, 40, 1));
     state.workbench_chrome.task_tray_row_regions.push(Rect::new(10, 21, 40, 1));
 
     let handled = dispatch_click(&mut state, &tx, 15, 21);
     assert!(handled, "click on tray row 2 should be handled");
-    assert_eq!(state.task_tray_selected, 1);
+    assert_eq!(state.task_tray.selected, 1);
 }
 
 #[test]
@@ -341,7 +341,7 @@ fn dispatch_click_scrolls_task_tray_overlay_on_hit() {
     state
         .overlay_manager
         .push(OverlayId::TaskTray, WorkspaceFocus::Input);
-    state.task_tray_selected = 0;
+    state.task_tray.selected = 0;
     for row_y in 5u16..10 {
         state
             .workbench_chrome.task_tray_row_regions
@@ -351,7 +351,7 @@ fn dispatch_click_scrolls_task_tray_overlay_on_hit() {
     let handled = dispatch_click(&mut state, &tx, 5, 8);
     assert!(handled, "click on tray row must be handled");
     // row index 3 (y=5→0, y=6→1, y=7→2, y=8→3)
-    assert_eq!(state.task_tray_selected, 3);
+    assert_eq!(state.task_tray.selected, 3);
 }
 
 #[test]

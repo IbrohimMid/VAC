@@ -430,8 +430,8 @@ fn dispatch_action(
             crate::overlay::open_overlay(state, crate::overlay::OverlayId::FilePicker);
         }
         ActionId::OpenTaskTray => {
-            state.task_tray_selected = 0;
-            state.task_tray_scroll = 0;
+            state.task_tray.selected = 0;
+            state.task_tray.scroll = 0;
             let _ = output_tx.try_send(crate::app::OutputEvent::ListRuntimeJobs);
             crate::overlay::open_overlay(state, crate::overlay::OverlayId::TaskTray);
         }
@@ -440,8 +440,8 @@ fn dispatch_action(
             crate::overlay::open_overlay(state, crate::overlay::OverlayId::ThemePicker);
         }
         ActionId::OpenSessionResume => {
-            state.session_resume_query.clear();
-            state.session_resume_selected = 0;
+            state.session_resume.query.clear();
+            state.session_resume.selected = 0;
             let _ = output_tx.try_send(crate::app::OutputEvent::LoadSessionResumeList);
             crate::overlay::open_overlay(state, crate::overlay::OverlayId::SessionResume);
         }

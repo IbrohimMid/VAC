@@ -117,7 +117,7 @@ pub(super) fn render_task_tray(f: &mut Frame, state: &mut AppState) {
     use vac_runtime::jobs::JobStatus;
     let area = f.area();
     let width = 52u16.min(area.width.saturating_sub(2));
-    let jobs: Vec<_> = if state.task_tray_filter_active_only {
+    let jobs: Vec<_> = if state.task_tray.filter_active_only {
         state
             .runtime
             .jobs
@@ -140,7 +140,7 @@ pub(super) fn render_task_tray(f: &mut Frame, state: &mut AppState) {
     };
     f.render_widget(Clear, rect);
 
-    let filter_label = if state.task_tray_filter_active_only {
+    let filter_label = if state.task_tray.filter_active_only {
         " [active] "
     } else {
         " [all] "
@@ -165,7 +165,7 @@ pub(super) fn render_task_tray(f: &mut Frame, state: &mut AppState) {
                 JobStatus::Cancelled => ("— ", state.theme.style(StyleKey::Muted)),
             };
             let label = format!("{status_sym}{:?}", job.kind);
-            let line = if i == state.task_tray_selected {
+            let line = if i == state.task_tray.selected {
                 Line::styled(label, state.theme.style(StyleKey::OverlaySelected))
             } else {
                 Line::from(vec![Span::styled(label, status_style)])
@@ -239,15 +239,15 @@ pub(super) fn render_session_resume(f: &mut Frame, state: &mut AppState) {
         .constraints([Constraint::Length(3), Constraint::Min(1)])
         .split(area);
 
-    let date_hint = match state.session_resume_date_filter_days {
+    let date_hint = match state.session_resume.date_filter_days {
         None => "all time",
         Some(7) => "last 7d",
         Some(30) => "last 30d",
         Some(90) => "last 90d",
         Some(_) => "custom",
     };
-    let filtered_count = state.session_resume_filtered_indices.len();
-    let total_count = state.session_resume_list.len();
+    let filtered_count = state.session_resume.filtered_indices.len();
+    let total_count = state.session_resume.list.len();
     let title = format!(
         " Resume Session  [{date_hint}]  {filtered_count}/{total_count}  (Tab=date  ↑↓=nav  Enter=open  Esc) "
     );
@@ -256,7 +256,7 @@ pub(super) fn render_session_resume(f: &mut Frame, state: &mut AppState) {
         .title(title.as_str())
         .borders(Borders::ALL)
         .border_style(state.theme.style(StyleKey::OverlayBorder));
-    let search_input = Paragraph::new(state.session_resume_query.as_str())
+    let search_input = Paragraph::new(state.session_resume.query.as_str())
         .block(search_block)
         .style(state.theme.style(StyleKey::InputFg));
     f.render_widget(search_input, chunks[0]);
@@ -267,14 +267,14 @@ pub(super) fn render_session_resume(f: &mut Frame, state: &mut AppState) {
     let inner = list_block.inner(chunks[1]);
     f.render_widget(list_block, chunks[1]);
 
-    let selected = state.session_resume_selected;
-    let indices = state.session_resume_filtered_indices.clone();
+    let selected = state.session_resume.selected;
+    let indices = state.session_resume.filtered_indices.clone();
     let items: Vec<ListItem> = indices
         .iter()
         .enumerate()
         .filter_map(|(display_i, &list_i)| {
             state
-                .session_resume_list
+                .session_resume.list
                 .get(list_i)
                 .map(|e| (display_i, e))
         })
