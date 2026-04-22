@@ -16,6 +16,8 @@ default = []
 # TUI2: Transplanted TUI from Stakpak (Apache 2.0)
 # Enable with --features tui2
 tui2 = []
+# Enables `vac signal tail` (requires vac_signal rewind + SQLite).
+signal-rewind = ["vac_signal/rewind"]
 
 [dependencies]
 vac_core = { workspace = true }
@@ -27,6 +29,7 @@ vac_tools = { workspace = true }
 vac_runtime = { workspace = true }
 vac_ingest = { workspace = true }
 vac_trajectory = { workspace = true }
+vac_signal = { workspace = true }
 vil_ir = { workspace = true }
 vil_validate = { workspace = true }
 vil_vwfd = { workspace = true }

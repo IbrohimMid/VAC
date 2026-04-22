@@ -147,6 +147,12 @@ enum Commands {
         #[arg(long = "no-redact", action = clap::ArgAction::SetFalse, default_value_t = true)]
         redact: bool,
     },
+    /// Inspect vac_signal rewind databases. Tail captured output streams
+    /// that were persisted via `SignalRegistry::persist_to_rewind`, or
+    /// list their summaries. Requires the signal layer's `rewind` feature
+    /// to be active at runtime.
+    #[command(next_help_heading = "Trace & Export", subcommand)]
+    Signal(SignalCommand),
     /// Observe recent trajectory artifacts
     #[command(next_help_heading = "Trace & Export")]
     Observe {
@@ -423,6 +429,7 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Restore { file } => commands::restore::execute(project_root, file).await?,
         Commands::Status => commands::status::execute(project_root, &cli.format).await?,
+        Commands::Signal(cmd) => commands::signal::dispatch(project_root, &cli.format, cmd).await?,
         Commands::Observe { limit } => {
             commands::trajectory::observe(project_root, &cli.format, limit).await?
         }
@@ -544,4 +551,22 @@ async fn main() -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+#[derive(Subcommand, Debug)]
+pub enum SignalCommand {
+    /// List rewind-database files under `.vac/signal/`.
+    List,
+    /// Tail a stream from a rewind database.
+    Tail {
+        /// Path to the rewind SQLite database.
+        #[arg(value_name = "DB")]
+        db_path: std::path::PathBuf,
+        /// Stream id (e.g. "vil_dev", "shell:0:<uuid>").
+        #[arg(long)]
+        stream: String,
+        /// How many lines to tail.
+        #[arg(long, default_value_t = 50)]
+        n: i64,
+    },
 }
