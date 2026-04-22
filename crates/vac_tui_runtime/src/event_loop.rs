@@ -10,7 +10,7 @@ use crate::event::map_crossterm_event_to_input_event;
 use crate::services::helper_block::welcome_messages;
 // Re-exported so tests can use `super::apply_session_snapshot` etc.
 pub(crate) use crate::session_snapshot::{
-    apply_session_snapshot, build_session_snapshot, load_session_snapshot, persist_session_snapshot,
+    apply_session_snapshot, load_session_snapshot, persist_session_snapshot,
 };
 use crate::terminal::TerminalGuard;
 use crate::view::view;

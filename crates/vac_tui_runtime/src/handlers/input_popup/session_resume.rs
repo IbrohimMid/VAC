@@ -83,7 +83,7 @@ pub(crate) fn refresh_session_resume_filtered(state: &mut AppState) {
             .session_resume_list
             .iter()
             .enumerate()
-            .filter(|(_, e)| cutoff.map_or(true, |c| e.last_active > c))
+            .filter(|(_, e)| cutoff.is_none_or(|c| e.last_active > c))
             .map(|(i, _)| i)
             .collect();
         indices.sort_by(|&a, &b| {
@@ -108,7 +108,7 @@ pub(crate) fn refresh_session_resume_filtered(state: &mut AppState) {
         .session_resume_list
         .iter()
         .enumerate()
-        .filter(|(_, e)| cutoff.map_or(true, |c| e.last_active > c))
+        .filter(|(_, e)| cutoff.is_none_or(|c| e.last_active > c))
         .filter_map(|(i, e)| {
             let haystack_str = format!(
                 "{}/{} \u{2014} {}",

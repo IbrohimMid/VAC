@@ -53,13 +53,11 @@ pub fn handle_ask_user(state: &mut AppState, output_tx: &Sender<OutputEvent>, ev
                 state.ask_user_filter.clear();
                 state.ask_user_search_active = false;
                 state.ask_user_scroll = 0;
-                return;
             }
             InputEvent::Tab => {
                 if has_options {
                     state.ask_user_search_active = !state.ask_user_search_active;
                 }
-                return;
             }
             InputEvent::Up | InputEvent::ScrollUp => {
                 if !filtered.is_empty() && selected_pos > 0 {
@@ -67,7 +65,6 @@ pub fn handle_ask_user(state: &mut AppState, output_tx: &Sender<OutputEvent>, ev
                     state.ask_user_selected = filtered[new_pos];
                     state.ask_user_scroll = state.ask_user_scroll.min(new_pos);
                 }
-                return;
             }
             InputEvent::Down | InputEvent::ScrollDown => {
                 if !filtered.is_empty() && selected_pos + 1 < filtered.len() {
@@ -79,7 +76,6 @@ pub fn handle_ask_user(state: &mut AppState, output_tx: &Sender<OutputEvent>, ev
                         state.ask_user_scroll = new_pos + 1 - max_visible;
                     }
                 }
-                return;
             }
             InputEvent::InputChanged(c) => {
                 if state.ask_user_search_active {
@@ -92,10 +88,7 @@ pub fn handle_ask_user(state: &mut AppState, output_tx: &Sender<OutputEvent>, ev
                     if let Some(&first) = filtered.first() {
                         state.ask_user_selected = first;
                     }
-                    return;
-                }
-
-                if kind == crate::services::ask_user::AskUserQuestionKind::MultiSelect
+                } else if kind == crate::services::ask_user::AskUserQuestionKind::MultiSelect
                     && c == ' '
                     && !filtered.is_empty()
                 {
@@ -111,24 +104,21 @@ pub fn handle_ask_user(state: &mut AppState, output_tx: &Sender<OutputEvent>, ev
                             .ask_user_multi_selected
                             .insert(state.ask_user_selected);
                     }
-                    return;
-                }
-
-                // Number shortcut: 1-9 selects options[n-1] when free-text is empty.
-                if state.ask_user_input.is_empty() && c.is_ascii_digit() && c != '0' {
-                    let idx = (c as u8 - b'1') as usize;
-                    if idx < filtered.len() {
-                        state.ask_user_selected = filtered[idx];
-                        return;
+                } else {
+                    // Number shortcut: 1-9 selects options[n-1] when free-text is empty.
+                    if state.ask_user_input.is_empty() && c.is_ascii_digit() && c != '0' {
+                        let idx = (c as u8 - b'1') as usize;
+                        if idx < filtered.len() {
+                            state.ask_user_selected = filtered[idx];
+                            return;
+                        }
+                    }
+                    // Honor `allow_free_text`: when the caller disabled it,
+                    // typed characters that aren't number shortcuts are dropped.
+                    if state.ask_user_allow_free_text {
+                        state.ask_user_input.push(c);
                     }
                 }
-                // Honor `allow_free_text`: when the caller disabled it,
-                // typed characters that aren't number shortcuts are dropped.
-                if !state.ask_user_allow_free_text {
-                    return;
-                }
-                state.ask_user_input.push(c);
-                return;
             }
             InputEvent::InputBackspace => {
                 if state.ask_user_search_active {
@@ -141,25 +131,19 @@ pub fn handle_ask_user(state: &mut AppState, output_tx: &Sender<OutputEvent>, ev
                     if let Some(&first) = filtered.first() {
                         state.ask_user_selected = first;
                     }
-                    return;
-                }
-                if state.ask_user_allow_free_text {
+                } else if state.ask_user_allow_free_text {
                     state.ask_user_input.pop();
                 }
-                return;
             }
             InputEvent::InputClear => {
                 if state.ask_user_search_active {
                     state.ask_user_filter.clear();
                     state.ask_user_scroll = 0;
-                    return;
-                }
-                if kind == crate::services::ask_user::AskUserQuestionKind::MultiSelect {
+                } else if kind == crate::services::ask_user::AskUserQuestionKind::MultiSelect {
                     state.ask_user_multi_selected.clear();
                 } else if state.ask_user_allow_free_text {
                     state.ask_user_input.clear();
                 }
-                return;
             }
             InputEvent::InputCursorStart => {
                 if kind == crate::services::ask_user::AskUserQuestionKind::MultiSelect {
@@ -170,7 +154,6 @@ pub fn handle_ask_user(state: &mut AppState, output_tx: &Sender<OutputEvent>, ev
                     };
                     state.ask_user_multi_selected = indices.into_iter().collect();
                 }
-                return;
             }
             InputEvent::InputSubmitted => {
                 if let Some(tc_id) = state.ask_user_tool_call_id.take() {
@@ -212,7 +195,6 @@ pub fn handle_ask_user(state: &mut AppState, output_tx: &Sender<OutputEvent>, ev
                 state.ask_user_filter.clear();
                 state.ask_user_search_active = false;
                 state.ask_user_scroll = 0;
-                return;
             }
             _ => {}
         }

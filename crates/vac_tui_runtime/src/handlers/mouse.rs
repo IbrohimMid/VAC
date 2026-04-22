@@ -28,9 +28,7 @@ pub fn dispatch_click(
     // inside the popup falls through, so users can still interact with the
     // underlying surface on the next click after reading the detail.
     if state.active_hover.is_some() {
-        let outside = state
-            .hover_popup_region
-            .map_or(true, |r| !hit(&r, col, row));
+        let outside = state.hover_popup_region.is_none_or(|r| !hit(&r, col, row));
         if outside {
             state.active_hover = None;
             state.hover_popup_region = None;

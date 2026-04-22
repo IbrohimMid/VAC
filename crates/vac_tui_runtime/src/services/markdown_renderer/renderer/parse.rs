@@ -2,7 +2,6 @@ use crate::services::syntax_highlighter;
 use crossterm;
 
 use super::super::super::MarkdownComponent;
-use super::super::MarkdownStyle;
 use super::super::inline;
 use super::super::layout;
 use super::MarkdownRenderer;
@@ -355,11 +354,6 @@ impl MarkdownRenderer {
         let has_links = line.contains('[') && line.contains("](");
 
         has_bold || has_italic || has_code || has_strikethrough || has_links
-    }
-
-    // Simplified check for basic formatting
-    fn has_simple_formatting(&self, line: &str) -> bool {
-        line.len() < 1000 && (line.contains("**") || line.contains('`') || line.contains('['))
     }
 
     fn parse_inline_formatting_safe(&self, line: &str) -> MarkdownComponent {

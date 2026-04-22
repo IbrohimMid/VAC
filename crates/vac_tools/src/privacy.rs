@@ -86,10 +86,15 @@ impl PrivacyVault {
         out = p
             .aws_account
             .replace_all(&out, |caps: &regex::Captures| {
-                let id = caps.name("id").unwrap().as_str();
-                let full_match = caps.get(0).unwrap().as_str();
-                let alias = self.alias("AWS_ACCOUNT_ID", id);
-                full_match.replace(id, &alias)
+                match (caps.name("id"), caps.get(0)) {
+                    (Some(id), Some(full_match)) => {
+                        let alias = self.alias("AWS_ACCOUNT_ID", id.as_str());
+                        full_match.as_str().replace(id.as_str(), &alias)
+                    }
+                    _ => caps
+                        .get(0)
+                        .map_or_else(String::new, |m| m.as_str().to_string()),
+                }
             })
             .into_owned();
         out =

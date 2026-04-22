@@ -73,7 +73,7 @@ use crate::services::theme::StyleKey;
 use ratatui::{
     Frame,
     layout::Rect,
-    style::{Modifier, Style},
+    style::Modifier,
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem, ListState},
 };

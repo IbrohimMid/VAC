@@ -212,13 +212,7 @@ fn canonical_json_object(map: &std::collections::HashMap<String, Value>) -> Stri
     sorted.sort_by_key(|(k, _)| k.as_str());
     let entries = sorted
         .into_iter()
-        .map(|(k, v)| {
-            format!(
-                "{}:{}",
-                serde_json::to_string(k).unwrap(),
-                canonical_json_value(v)
-            )
-        })
+        .map(|(k, v)| format!("{}:{}", json_string(k), canonical_json_value(v)))
         .collect::<Vec<_>>();
     format!("{{{}}}", entries.join(","))
 }
@@ -242,13 +236,7 @@ fn canonical_json_value(value: &Value) -> String {
             sorted.sort_by_key(|(k, _)| k.as_str());
             let entries = sorted
                 .into_iter()
-                .map(|(k, v)| {
-                    format!(
-                        "{}:{}",
-                        serde_json::to_string(k).unwrap(),
-                        canonical_json_value(v)
-                    )
-                })
+                .map(|(k, v)| format!("{}:{}", json_string(k), canonical_json_value(v)))
                 .collect::<Vec<_>>();
             format!("{{{}}}", entries.join(","))
         }
@@ -262,6 +250,10 @@ fn canonical_string_value(raw: &str) -> String {
     } else {
         serde_json::to_string(raw).unwrap_or_else(|_| raw.to_string())
     }
+}
+
+fn json_string(value: &str) -> String {
+    serde_json::to_string(value).unwrap_or_else(|_| format!("\"{}\"", value))
 }
 
 #[cfg(test)]
@@ -292,7 +284,10 @@ spec:
       execution: native
 "#,
         );
-        from_yaml(&yaml).unwrap()
+        match from_yaml(&yaml) {
+            Ok(doc) => doc,
+            Err(err) => panic!("test VWFD fixture must parse: {err}"),
+        }
     }
 
     #[test]

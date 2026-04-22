@@ -42,9 +42,10 @@ pub fn extract_payload(raw: &str) -> Option<&str> {
 }
 
 /// Outcome of one synchronous lint run.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub enum LintOutcome {
     /// No payload detected — caller should clear issues.
+    #[default]
     NoPayload,
     /// Payload empty (just `vil-expr:` with no body) — also clear issues.
     Empty,
@@ -52,12 +53,6 @@ pub enum LintOutcome {
     ParseError { message: String },
     /// Validator returned a report (may be empty = valid).
     Validated(ValidationReport),
-}
-
-impl Default for LintOutcome {
-    fn default() -> Self {
-        LintOutcome::NoPayload
-    }
 }
 
 impl LintOutcome {

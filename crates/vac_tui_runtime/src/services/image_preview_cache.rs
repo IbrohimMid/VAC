@@ -122,13 +122,17 @@ impl ImagePreviewCache {
             .insert(path.clone(), ImagePreviewCacheEntry::Loading);
         let tx = self.tx.clone();
         let load_path = path.clone();
-        std::thread::Builder::new()
+        if std::thread::Builder::new()
             .name(format!("image-preview:{}", path.display()))
             .spawn(move || {
                 let result = prepare_image_preview(&load_path, IMAGE_PREVIEW_MAX_BYTES);
                 let _ = tx.send((load_path, result));
             })
-            .expect("OS thread spawn for image preview cannot fail");
+            .is_err()
+        {
+            self.entries.remove(&path);
+            return false;
+        }
         true
     }
 

@@ -10,7 +10,7 @@ pub async fn read_line_async() -> anyhow::Result<String> {
 }
 
 pub async fn read_secret_async() -> anyhow::Result<String> {
-    tokio::task::spawn_blocking(|| read_secret()).await?
+    tokio::task::spawn_blocking(read_secret).await?
 }
 
 fn read_secret() -> anyhow::Result<String> {

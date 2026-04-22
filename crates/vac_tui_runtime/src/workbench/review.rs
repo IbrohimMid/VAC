@@ -166,7 +166,7 @@ impl WorkbenchTabView for ReviewTab {
                             inner_w, inner_h, &label,
                         )
                         .into_iter()
-                        .map(|s| Line::raw(s))
+                        .map(Line::raw)
                         .collect();
                         (lines, Some(preview.bytes))
                     }
@@ -187,7 +187,7 @@ impl WorkbenchTabView for ReviewTab {
                             inner_w, inner_h, &label,
                         )
                         .into_iter()
-                        .map(|s| Line::raw(s))
+                        .map(Line::raw)
                         .collect();
                         (lines, None)
                     }

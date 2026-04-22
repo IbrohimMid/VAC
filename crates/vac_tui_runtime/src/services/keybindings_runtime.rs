@@ -13,14 +13,14 @@
 //! ## Chord string format
 //!
 //! Matches the format used in `ACTION_SPECS`:
-//!   - Single char:       "a", "?", "x"
-//!   - Named key:         "Enter", "Esc", "Tab", "F1", "Up", "Down", "Left",
-//!                        "Right", "Home", "End", "PageUp", "PageDown",
-//!                        "Backspace", "Delete", "Space"
-//!   - With modifiers:    "Ctrl+P", "Alt+T", "Ctrl+Shift+P"
-//!   - Repeated:          "Ctrl+C×2" (the override layer does *not* handle
-//!                        double-press detection; see `AttemptQuit` logic.
-//!                        Entries containing '×' are intentionally skipped.)
+//!     - Single char:       "a", "?", "x"
+//!     - Named key:         "Enter", "Esc", "Tab", "F1", "Up", "Down", "Left",
+//!                            "Right", "Home", "End", "PageUp", "PageDown",
+//!                            "Backspace", "Delete", "Space"
+//!     - With modifiers:    "Ctrl+P", "Alt+T", "Ctrl+Shift+P"
+//!     - Repeated:          "Ctrl+C×2" (the override layer does *not* handle
+//!                            double-press detection; see `AttemptQuit` logic.
+//!                            Entries containing '×' are intentionally skipped.)
 
 use std::collections::HashMap;
 use std::sync::{Arc, OnceLock, RwLock};

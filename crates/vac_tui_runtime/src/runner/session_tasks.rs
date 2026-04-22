@@ -1,7 +1,7 @@
 //! Session task helpers — resume, switch, snapshot, cleanup.
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::{Mutex, mpsc};
 use vac_core::RuntimeUpdate;
@@ -13,12 +13,12 @@ use crate::{InputEvent, ToolCall};
 /// Handle `OutputEvent::ListSessions` — load all sessions with checkpoint/snapshot metadata.
 pub(super) async fn handle_list_sessions(
     engine: &Arc<Mutex<VacEngine>>,
-    project_root: &PathBuf,
+    project_root: &Path,
     input_tx: &mpsc::Sender<InputEvent>,
 ) {
     let eng = engine.lock().await;
     if let Ok(sessions) = eng.list_sessions().await {
-        let project_root = project_root.clone();
+        let project_root = project_root.to_path_buf();
         let input_tx = input_tx.clone();
         tokio::spawn(async move {
             let snapshots = vac_session_control::list_snapshots_async(project_root.clone())
@@ -77,10 +77,10 @@ pub(super) async fn handle_list_sessions(
 
 /// Handle `OutputEvent::LoadSessionResumeList` — load snapshots for the resume picker.
 pub(super) async fn handle_load_session_resume_list(
-    project_root: &PathBuf,
+    project_root: &Path,
     input_tx: &mpsc::Sender<InputEvent>,
 ) {
-    let root = project_root.clone();
+    let root = project_root.to_path_buf();
     let tx = input_tx.clone();
     tokio::spawn(async move {
         let snapshots = vac_session_control::list_snapshots_async(root.clone())
@@ -134,7 +134,7 @@ pub(super) async fn handle_new_session(
 
 /// Handle `OutputEvent::CleanupSession` — async cleanup.
 pub(super) async fn handle_cleanup_session(
-    project_root: &PathBuf,
+    project_root: &Path,
     input_tx: &mpsc::Sender<InputEvent>,
     session_id_str: String,
 ) {
@@ -150,7 +150,7 @@ pub(super) async fn handle_cleanup_session(
         }
     };
 
-    let report = vac_session_control::cleanup_session_async(project_root.clone(), session_id)
+    let report = vac_session_control::cleanup_session_async(project_root.to_path_buf(), session_id)
         .await
         .unwrap_or(vac_session_control::CleanupReport {
             snapshot_removed: false,

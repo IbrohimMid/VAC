@@ -4,7 +4,7 @@
 //! with appropriate styling for TUI display.
 
 use crate::services::theme::{StyleKey, Theme};
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Modifier;
 use ratatui::text::{Line, Span};
 
 /// A detected bash block extracted from text.

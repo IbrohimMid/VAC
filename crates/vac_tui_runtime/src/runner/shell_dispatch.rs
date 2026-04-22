@@ -1,6 +1,6 @@
 //! Shell command dispatch — ExecuteCommand handler extracted from the main loop.
 
-use std::path::PathBuf;
+use std::path::Path;
 use tokio::sync::mpsc;
 
 use crate::InputEvent;
@@ -17,17 +17,16 @@ pub(super) enum ShellSpecOutcome {
 pub(super) async fn resolve_shell_spec(
     cmd: &str,
     active_isolation_mode: &str,
-    project_root: &PathBuf,
+    project_root: &Path,
     input_tx: &mpsc::Sender<InputEvent>,
 ) -> ShellSpecOutcome {
-    let runtime_project_root_for_shell = project_root.clone();
+    let runtime_project_root_for_shell = project_root.to_path_buf();
     let config_result = tokio::task::spawn_blocking(move || {
         vac_core::VacConfig::load_with_fallback(&runtime_project_root_for_shell)
     })
     .await
     .unwrap_or_else(|_| {
-        Err(vac_core::error::VacError::Io(std::io::Error::new(
-            std::io::ErrorKind::Other,
+        Err(vac_core::error::VacError::Io(std::io::Error::other(
             "spawn_blocking failed",
         )))
     });
@@ -85,7 +84,7 @@ pub(super) async fn resolve_shell_spec(
         || config.runtime.execution_environment == vac_core::ExecutionEnvironment::IsolatedBatch
     {
         let isolation =
-            vac_runtime::IsolationManager::new(project_root.clone(), config.runtime.clone());
+            vac_runtime::IsolationManager::new(project_root.to_path_buf(), config.runtime.clone());
 
         if is_interactive {
             match isolation.build_interactive_shell_spec() {
@@ -117,7 +116,7 @@ pub(super) async fn resolve_shell_spec(
                     ShellSpecOutcome::Spec(Some(vac_runtime::IsolationLaunchSpec {
                         program,
                         args,
-                        cwd: project_root.clone(),
+                        cwd: project_root.to_path_buf(),
                         env,
                     }))
                 }

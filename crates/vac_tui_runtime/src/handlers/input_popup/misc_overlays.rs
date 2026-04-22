@@ -3,7 +3,7 @@
 
 use crate::app::{AppState, InputEvent, OutputEvent};
 use crate::handlers::HandlerContext;
-use crate::handlers::{changeset as changeset_handler, review as review_handler};
+use crate::handlers::review as review_handler;
 use crate::overlay::OverlayId;
 use tokio::sync::mpsc::Sender;
 

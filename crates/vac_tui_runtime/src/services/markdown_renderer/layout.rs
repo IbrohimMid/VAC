@@ -1,12 +1,10 @@
 /// Get display width accounting for Unicode characters and emojis
 pub fn display_width(text: &str) -> usize {
-    text.chars().map(|c| char_display_width(c)).sum()
+    text.chars().map(char_display_width).sum()
 }
 
 /// Get the actual display width of a single character using Unicode width properties
 pub fn char_display_width(c: char) -> usize {
-    use unicode_width::UnicodeWidthChar;
-
     if c.is_ascii() {
         return 1;
     }

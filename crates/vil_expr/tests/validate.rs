@@ -1,4 +1,4 @@
-use vil_expr::{parse, validate, Severity, SymbolTable};
+use vil_expr::{parse, validate, SymbolTable};
 
 #[test]
 fn validate_rejects_v_cel_legacy_terms() {

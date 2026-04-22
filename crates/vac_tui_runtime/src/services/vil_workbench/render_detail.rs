@@ -8,7 +8,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap},
+    widgets::{Block, Borders, Clear, Paragraph, Wrap},
 };
 
 use crate::app::{AppState, VilIssue, VilIssueKind};
@@ -139,7 +139,7 @@ pub fn render_lineage_panel(f: &mut Frame, state: &AppState, area: Rect, view: &
         Line::from(vec![
             Span::styled("Kind: ", Style::default().add_modifier(Modifier::BOLD)),
             Span::styled(
-                format!("{}", issue.kind.label()),
+                issue.kind.label().to_string(),
                 kind_style(&state.theme, issue.kind),
             ),
         ]),

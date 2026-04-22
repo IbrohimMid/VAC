@@ -1,14 +1,13 @@
 //! Render functions and helpers for VIL Issue Workstation.
 
-use super::render_detail::{kind_style, render_hover_popup, render_lineage_panel, textwrap_lines};
+use super::render_detail::{kind_style, render_hover_popup, render_lineage_panel};
 
 use std::path::Path;
 
 use crate::services::diagnostics_overlay::{
-    HoverDetail, gutter_mark_for_line, render_gutter_cell, render_line_with_diagnostics,
-    squiggly_spans_for_line,
+    gutter_mark_for_line, render_gutter_cell, render_line_with_diagnostics, squiggly_spans_for_line,
 };
-use crate::services::theme::{StyleKey, Theme};
+use crate::services::theme::StyleKey;
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
@@ -16,9 +15,8 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem, Paragraph, Wrap},
 };
-use vac_core::lsp::types::LspSeverity;
 
-use crate::app::{AppState, VilIssue, VilIssueKind};
+use crate::app::{AppState, VilIssue};
 
 /// Render the full VIL Issue Workstation tab body.
 pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {

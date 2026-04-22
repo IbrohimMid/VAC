@@ -261,7 +261,7 @@ pub(crate) fn render_boot_skeleton(f: &mut Frame, state: &AppState) {
         }
     );
 
-    let body = Paragraph::new(vec![provider_line, model_line, session_line, vil_line].join("\n"))
+    let body = Paragraph::new([provider_line, model_line, session_line, vil_line].join("\n"))
         .block(Block::default().borders(Borders::NONE))
         .style(state.theme.style(StyleKey::Muted));
     f.render_widget(body, chunks[1]);

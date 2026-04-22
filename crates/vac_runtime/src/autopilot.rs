@@ -589,8 +589,8 @@ impl AutopilotController {
     }
 }
 
-fn write_state_at(path: &PathBuf, state: AutopilotStateFile) {
-    crate::state_writer::write_state_atomic(path.clone(), state);
+fn write_state_at(path: &Path, state: AutopilotStateFile) {
+    crate::state_writer::write_state_atomic(path.to_path_buf(), state);
 }
 
 async fn queued_len(queue: &TaskQueue) -> usize {

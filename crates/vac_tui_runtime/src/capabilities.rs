@@ -89,14 +89,17 @@ impl TerminalCapabilities {
     pub fn detect() -> TerminalCapabilities {
         thread_local! {
             static CACHE: std::cell::RefCell<Option<TerminalCapabilities>> =
-                std::cell::RefCell::new(None);
+                const { std::cell::RefCell::new(None) };
         }
         CACHE.with(|cell| {
             let mut cached = cell.borrow_mut();
             if cached.is_none() {
                 *cached = Some(Self::detect_uncached());
             }
-            cached.clone().unwrap()
+            match cached.as_ref() {
+                Some(value) => value.clone(),
+                None => unreachable!("terminal capability cache is initialized above"),
+            }
         })
     }
 

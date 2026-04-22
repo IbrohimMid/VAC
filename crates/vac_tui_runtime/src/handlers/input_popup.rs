@@ -16,7 +16,6 @@ pub(crate) use session_resume::refresh_session_resume_filtered;
 
 use crate::app::{AppState, InputEvent, OutputEvent};
 use crate::handlers::HandlerContext;
-use crate::handlers::input_commands::{dispatch_builtin_command, execute_shortcuts_command};
 use crate::handlers::{
     approval, changeset as changeset_handler, isolation_switcher, message_action, profile_switcher,
     review as review_handler, rulebook_switcher,

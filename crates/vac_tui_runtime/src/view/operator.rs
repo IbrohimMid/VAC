@@ -6,7 +6,6 @@ use crate::ui::style::focus_style;
 use ratatui::{
     Frame,
     layout::Rect,
-    style::Modifier,
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph, Wrap},
 };

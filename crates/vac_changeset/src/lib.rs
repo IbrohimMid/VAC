@@ -89,7 +89,7 @@ impl ChangesetStore {
     pub fn file_created(&mut self, path: String, actor: String) {
         self.generation += 1;
         if let Some(idx) = self.entry_index(&path) {
-            let entry = self.entries.get_mut(idx).expect("path index out of sync");
+            let entry = &mut self.entries[idx];
             entry.state = FileState::Created;
             entry.dirty_generation = self.generation;
             entry.timestamp = SystemTime::now();
@@ -106,7 +106,7 @@ impl ChangesetStore {
     pub fn file_modified(&mut self, path: String, actor: String, has_snapshot: bool) {
         self.generation += 1;
         if let Some(idx) = self.entry_index(&path) {
-            let entry = self.entries.get_mut(idx).expect("path index out of sync");
+            let entry = &mut self.entries[idx];
             if entry.state != FileState::Created {
                 entry.state = FileState::Modified;
             }
@@ -127,7 +127,7 @@ impl ChangesetStore {
     pub fn file_removed(&mut self, path: String, actor: String) {
         self.generation += 1;
         if let Some(idx) = self.entry_index(&path) {
-            let entry = self.entries.get_mut(idx).expect("path index out of sync");
+            let entry = &mut self.entries[idx];
             entry.state = FileState::Removed;
             entry.dirty_generation = self.generation;
             entry.timestamp = SystemTime::now();
@@ -144,7 +144,7 @@ impl ChangesetStore {
     pub fn revert_success(&mut self, path: &str) {
         self.generation += 1;
         if let Some(idx) = self.entry_index(path) {
-            let entry = self.entries.get_mut(idx).expect("path index out of sync");
+            let entry = &mut self.entries[idx];
             entry.state = FileState::Reverted;
             entry.dirty_generation = self.generation;
             entry.timestamp = SystemTime::now();
@@ -162,7 +162,7 @@ impl ChangesetStore {
     pub fn revert_failed(&mut self, path: &str, error: String) {
         self.generation += 1;
         if let Some(idx) = self.entry_index(path) {
-            let entry = self.entries.get_mut(idx).expect("path index out of sync");
+            let entry = &mut self.entries[idx];
             entry.state = FileState::FailedRestore;
             entry.dirty_generation = self.generation;
             entry.timestamp = SystemTime::now();

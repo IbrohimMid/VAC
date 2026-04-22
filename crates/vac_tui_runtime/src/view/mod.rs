@@ -18,10 +18,8 @@ use ratatui::{
 pub use pickers::render_context_chips;
 
 // For event_loop and other usages
-pub(crate) use overlays::centered_rect;
 
 // Public functions from popups used elsewhere
-pub(crate) use popups::render_boot_skeleton;
 
 /// Main view function — layout orchestrator that calls sub-render functions
 pub fn view(f: &mut Frame, state: &mut AppState) {

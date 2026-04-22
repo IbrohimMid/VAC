@@ -79,7 +79,10 @@ fn mouse_dispatch_ignores_click_outside_every_region() {
 // silently, every user-configured chord for those IDs becomes a dead binding.
 // =============================================================================
 
-const REACHABLE_ACTIONS: &[(ActionId, fn(&InputEvent) -> bool)] = &[
+type ActionMatcher = fn(&InputEvent) -> bool;
+type ReachableAction = (ActionId, ActionMatcher);
+
+const REACHABLE_ACTIONS: &[ReachableAction] = &[
     (ActionId::Quit, is_attempt_quit),
     (ActionId::OpenCommandPalette, is_show_command_palette),
     (ActionId::OpenShortcuts, is_show_shortcuts),
