@@ -26,19 +26,19 @@ pub fn render_side_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
     };
 
     let context_collapsed = state
-        .side_panel_section_collapsed
+        .side_panel.section_collapsed
         .contains(&SidePanelSection::Context);
     let runtime_collapsed = state
-        .side_panel_section_collapsed
+        .side_panel.section_collapsed
         .contains(&SidePanelSection::Runtime);
     let mcp_collapsed = state
-        .side_panel_section_collapsed
+        .side_panel.section_collapsed
         .contains(&SidePanelSection::Mcp);
     let sessions_collapsed = state
-        .side_panel_section_collapsed
+        .side_panel.section_collapsed
         .contains(&SidePanelSection::Sessions);
     let usage_collapsed = state
-        .side_panel_section_collapsed
+        .side_panel.section_collapsed
         .contains(&SidePanelSection::Usage);
 
     let collapsed_height = 1;
@@ -109,8 +109,8 @@ pub fn render_side_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
         ])
         .split(padded_area);
 
-    state.side_panel_header_areas.clear();
-    state.side_panel_row_areas.clear();
+    state.side_panel.header_areas.clear();
+    state.side_panel.row_areas.clear();
     let mut sections: Vec<(SidePanelSection, Rect)> = vec![(SidePanelSection::Context, chunks[0])];
     if usage_visible {
         sections.push((SidePanelSection::Usage, chunks[1]));
@@ -126,7 +126,7 @@ pub fn render_side_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
     }
     for (sec, mut rect) in sections {
         rect.height = 1;
-        state.side_panel_header_areas.insert(sec, rect);
+        state.side_panel.header_areas.insert(sec, rect);
     }
 
     render_context_section(f, state, chunks[0], context_collapsed);
@@ -342,7 +342,7 @@ fn render_sessions_section(f: &mut Frame, state: &mut AppState, area: Rect, coll
             // Track row rect for click handling (header is row 0, sessions start at row 1)
             let row_y = area.y + 1 + i as u16;
             if row_y < area.y + area.height {
-                state.side_panel_row_areas.push((
+                state.side_panel.row_areas.push((
                     crate::app::SidePanelRowAction::SwitchSession(session.id.clone()),
                     Rect::new(area.x, row_y, area.width, 1),
                 ));
@@ -390,7 +390,7 @@ fn render_mcp_section(f: &mut Frame, state: &mut AppState, area: Rect, collapsed
             // Track row for click
             let row_y = area.y + row_offset;
             if row_y < area.y + area.height {
-                state.side_panel_row_areas.push((
+                state.side_panel.row_areas.push((
                     crate::app::SidePanelRowAction::ShowMcpDetail(name.clone()),
                     Rect::new(area.x, row_y, area.width, 1),
                 ));

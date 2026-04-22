@@ -20,6 +20,7 @@ pub mod file_index;
 pub mod file_picker;
 pub mod message_ui;
 pub mod pins;
+pub mod side_panel;
 pub mod switchers;
 pub mod vil_dev;
 pub mod workbench_ui;
@@ -42,6 +43,7 @@ pub use file_index::FileIndexState;
 pub use file_picker::FilePickerState;
 pub use message_ui::MessageUiState;
 pub use pins::PinsState;
+pub use side_panel::SidePanelState;
 pub use switchers::SwitchersState;
 pub use vil_dev::VilDevState;
 pub use workbench_ui::WorkbenchChromeState;
@@ -80,11 +82,7 @@ pub struct AppState {
     /// Deadline after which a missing StartupHydrated forces hydration with fallback data.
     pub hydration_deadline: std::time::Instant,
     // Layout state
-    pub side_panel_visible: bool,
-    pub side_panel_width: u16,
-    pub side_panel_section_collapsed: std::collections::HashSet<SidePanelSection>,
-    pub side_panel_header_areas: std::collections::HashMap<SidePanelSection, ratatui::layout::Rect>,
-    pub side_panel_row_areas: Vec<(SidePanelRowAction, ratatui::layout::Rect)>,
+    pub side_panel: SidePanelState,
 
     // Input state
     pub input: TextArea,

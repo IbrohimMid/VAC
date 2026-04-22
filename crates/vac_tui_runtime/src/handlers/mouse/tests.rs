@@ -286,19 +286,19 @@ fn dispatch_click_switches_side_panel_tab() {
     let (mut state, tx, _rx) = make_state_with_channel();
     assert!(
         !state
-            .side_panel_section_collapsed
+            .side_panel.section_collapsed
             .contains(&SidePanelSection::Context),
         "Context section should start expanded"
     );
     state
-        .side_panel_header_areas
+        .side_panel.header_areas
         .insert(SidePanelSection::Context, Rect::new(0, 2, 30, 1));
 
     let handled = dispatch_click(&mut state, &tx, 5, 2);
     assert!(handled, "click on side panel header must be handled");
     assert!(
         state
-            .side_panel_section_collapsed
+            .side_panel.section_collapsed
             .contains(&SidePanelSection::Context),
         "Context section should be collapsed after click"
     );
@@ -308,7 +308,7 @@ fn dispatch_click_switches_side_panel_tab() {
     assert!(handled2);
     assert!(
         !state
-            .side_panel_section_collapsed
+            .side_panel.section_collapsed
             .contains(&SidePanelSection::Context),
         "Context section should be expanded after second click"
     );

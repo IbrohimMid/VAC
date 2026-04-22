@@ -16,11 +16,11 @@ use super::operator::render_activity_panel;
 use super::operator::render_operator_panel;
 
 pub(super) fn render_workspace(f: &mut Frame, state: &mut AppState, area: Rect) {
-    let main_area = if state.side_panel_visible {
+    let main_area = if state.side_panel.visible {
         let h_chunks = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([
-                Constraint::Length(state.side_panel_width),
+                Constraint::Length(state.side_panel.width),
                 Constraint::Min(0),
             ])
             .split(area);

@@ -30,7 +30,7 @@ async fn session_snapshot_bridge_restores_tui_state() {
     state.workbench_tab = crate::app::WorkbenchTab::Runtime;
     state.sessions_selected_idx = 3;
     state
-        .side_panel_section_collapsed
+        .side_panel.section_collapsed
         .insert(crate::app::SidePanelSection::Runtime);
     state.total_session_usage.total_tokens = 2048;
     state.modified_files = vec!["src/main.rs".to_string()];
@@ -61,7 +61,7 @@ async fn session_snapshot_bridge_restores_tui_state() {
     assert_eq!(restored.sessions_selected_idx, 3);
     assert!(
         restored
-            .side_panel_section_collapsed
+            .side_panel.section_collapsed
             .contains(&crate::app::SidePanelSection::Runtime)
     );
     assert_eq!(restored.total_session_usage.total_tokens, 0);

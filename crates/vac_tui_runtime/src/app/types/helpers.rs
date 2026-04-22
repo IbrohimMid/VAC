@@ -10,7 +10,7 @@ use crate::services::textarea::TextArea;
 use crate::types::*;
 
 use super::{
-    ActivityItem, ActivityKind, AppState, ApprovalsState, AskUserState, AtMentionState, BannerState, ChangesetUiState, CommandPaletteState, FileIndexState, FilePickerState, HelperCommand, LoadingStateManager, MessageUiState, PinsState, SwitchersState, VilDevState, WorkbenchChromeState,
+    ActivityItem, ActivityKind, AppState, ApprovalsState, AskUserState, AtMentionState, BannerState, ChangesetUiState, CommandPaletteState, FileIndexState, FilePickerState, HelperCommand, LoadingStateManager, MessageUiState, PinsState, SidePanelState, SwitchersState, VilDevState, WorkbenchChromeState,
     Message, QueueMetrics, RenderMetrics, ReviewItem, ReviewItemStatus, ReviewState, RuntimeState,
     ShellState, ShortcutsPopupMode, StartupSnapshot, TokenUsage, VilLogEntry, VilState,
     WorkbenchTab, WorkspaceFocus,
@@ -41,11 +41,7 @@ impl AppState {
             startup: StartupSnapshot::default(),
             hydrated: false,
             hydration_deadline: std::time::Instant::now() + std::time::Duration::from_secs(10),
-            side_panel_visible: false,
-            side_panel_width: 30,
-            side_panel_section_collapsed: std::collections::HashSet::new(),
-            side_panel_header_areas: std::collections::HashMap::new(),
-            side_panel_row_areas: vec![],
+            side_panel: SidePanelState::default(),
             input: TextArea::new(),
             cursor_position: 0,
             focus: WorkspaceFocus::Input,

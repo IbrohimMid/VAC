@@ -88,7 +88,7 @@ pub(crate) fn build_session_snapshot(
     snapshot.tui_state.history_selection = Some(state.sessions_selected_idx);
     snapshot.tui_state.last_focus = Some(focus_to_label(state.focus).to_string());
     snapshot.tui_state.collapsed_sections = state
-        .side_panel_section_collapsed
+        .side_panel.section_collapsed
         .iter()
         .map(|section| side_panel_section_to_label(*section).to_string())
         .collect();
@@ -148,7 +148,7 @@ pub(crate) fn apply_session_snapshot(
     if let Some(focus) = snapshot.tui_state.last_focus.as_deref() {
         state.focus = focus_from_label(focus);
     }
-    state.side_panel_section_collapsed = snapshot
+    state.side_panel.section_collapsed = snapshot
         .tui_state
         .collapsed_sections
         .iter()

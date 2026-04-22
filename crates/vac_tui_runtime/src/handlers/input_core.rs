@@ -199,9 +199,9 @@ fn handle_global(
             true
         }
         InputEvent::ToggleSidePanel => {
-            state.side_panel_visible = !state.side_panel_visible;
-            if !state.side_panel_visible {
-                state.side_panel_row_areas.clear();
+            state.side_panel.visible = !state.side_panel.visible;
+            if !state.side_panel.visible {
+                state.side_panel.row_areas.clear();
             }
             true
         }
@@ -348,22 +348,22 @@ fn handle_mouse_drag_start(
         state.banner.dismiss_region = None;
     }
 
-    if state.side_panel_visible {
-        for (sec, rect) in &state.side_panel_header_areas {
+    if state.side_panel.visible {
+        for (sec, rect) in &state.side_panel.header_areas {
             if col >= rect.x
                 && col < rect.x + rect.width
                 && row >= rect.y
                 && row < rect.y + rect.height
             {
-                if state.side_panel_section_collapsed.contains(sec) {
-                    state.side_panel_section_collapsed.remove(sec);
+                if state.side_panel.section_collapsed.contains(sec) {
+                    state.side_panel.section_collapsed.remove(sec);
                 } else {
-                    state.side_panel_section_collapsed.insert(*sec);
+                    state.side_panel.section_collapsed.insert(*sec);
                 }
                 return;
             }
         }
-        for (action, rect) in &state.side_panel_row_areas {
+        for (action, rect) in &state.side_panel.row_areas {
             if col >= rect.x
                 && col < rect.x + rect.width
                 && row >= rect.y
@@ -401,7 +401,7 @@ fn handle_mouse_drag_start(
     if row == 0 {
         let term_width = crossterm::terminal::size().map(|s| s.0).unwrap_or(80);
         if col > term_width.saturating_sub(40) {
-            state.side_panel_visible = !state.side_panel_visible;
+            state.side_panel.visible = !state.side_panel.visible;
         }
     } else {
         crate::services::text_selection::handle_drag_start(state, col, row);
@@ -428,22 +428,22 @@ mod tests {
     #[test]
     fn mouse_click_on_side_panel_header_toggles_section() {
         let (mut state, tx, _rx) = make_state_with_channel();
-        state.side_panel_visible = true;
+        state.side_panel.visible = true;
         state
-            .side_panel_header_areas
+            .side_panel.header_areas
             .insert(SidePanelSection::Sessions, Rect::new(1, 5, 20, 1));
 
         handle_input_event(&mut state, &tx, InputEvent::MouseDragStart(2, 5));
         assert!(
             state
-                .side_panel_section_collapsed
+                .side_panel.section_collapsed
                 .contains(&SidePanelSection::Sessions)
         );
 
         handle_input_event(&mut state, &tx, InputEvent::MouseDragStart(2, 5));
         assert!(
             !state
-                .side_panel_section_collapsed
+                .side_panel.section_collapsed
                 .contains(&SidePanelSection::Sessions)
         );
     }
@@ -451,8 +451,8 @@ mod tests {
     #[test]
     fn mouse_click_on_side_panel_session_row_emits_switch_session() {
         let (mut state, tx, mut rx) = make_state_with_channel();
-        state.side_panel_visible = true;
-        state.side_panel_row_areas.push((
+        state.side_panel.visible = true;
+        state.side_panel.row_areas.push((
             SidePanelRowAction::SwitchSession("session-42".to_string()),
             Rect::new(1, 8, 20, 1),
         ));
@@ -468,10 +468,10 @@ mod tests {
     #[test]
     fn mouse_click_on_side_panel_vil_issue_row_opens_review() {
         let (mut state, tx, _rx) = make_state_with_channel();
-        state.side_panel_visible = true;
+        state.side_panel.visible = true;
         state.focus = WorkspaceFocus::Input;
         state.workbench_tab = WorkbenchTab::Runtime;
-        state.side_panel_row_areas.push((
+        state.side_panel.row_areas.push((
             SidePanelRowAction::JumpToVilIssue("src/lib.rs".to_string()),
             Rect::new(1, 9, 20, 1),
         ));

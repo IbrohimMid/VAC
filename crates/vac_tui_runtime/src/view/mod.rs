@@ -272,7 +272,7 @@ mod tests {
             project_root: std::env::current_dir().unwrap(),
         });
         state.hydrated = true;
-        state.side_panel_visible = true;
+        state.side_panel.visible = true;
         state.pins.files.push("src/lib.rs".to_string());
         state.pins.diagnostics.push("src/main.rs".to_string());
 
@@ -298,7 +298,7 @@ mod tests {
         assert!(rendered.contains("no active model selected"));
         assert!(rendered.contains("No pending approvals"));
 
-        state.side_panel_visible = true;
+        state.side_panel.visible = true;
         let rendered = render_state_to_string(&mut state);
         let rendered = normalized_rendered(&rendered);
         assert!(rendered.contains("No pinned context yet"));

@@ -158,15 +158,15 @@ pub fn dispatch_click(
     // PR-T16 T5 — Side panel section header areas. Clicking a section
     // header toggles its collapse state, matching keyboard 'c' behaviour.
     let section_hit = state
-        .side_panel_header_areas
+        .side_panel.header_areas
         .iter()
         .find(|(_, rect)| hit(rect, col, row))
         .map(|(section, _)| *section);
     if let Some(section) = section_hit {
-        if state.side_panel_section_collapsed.contains(&section) {
-            state.side_panel_section_collapsed.remove(&section);
+        if state.side_panel.section_collapsed.contains(&section) {
+            state.side_panel.section_collapsed.remove(&section);
         } else {
-            state.side_panel_section_collapsed.insert(section);
+            state.side_panel.section_collapsed.insert(section);
         }
         return true;
     }
