@@ -134,6 +134,11 @@ pub struct SwarmOrchestrator {
     /// Active profile name (e.g. "strict-vil", "spec-hardening"). Thread-safe alternative to env var.
     active_profile: Option<String>,
     pub loop_controller: crate::loop_control::LoopController,
+    /// Active agent-decision strategy. Drives how `choose_next` would
+    /// arbitrate tool-call vs ask-user at the policy boundary. Held as a
+    /// trait object so research/eval builds can swap it via
+    /// `SwarmConfig.strategy`.
+    strategy: Box<dyn crate::strategy::AgentStrategy>,
 }
 
 /// Lightweight diagnostic context from vil-lsp, decoupled from vac_core types.
@@ -218,7 +223,12 @@ impl SwarmOrchestrator {
             loop_controller: crate::loop_control::LoopController::new(
                 crate::loop_control::LoopConfig::default(),
             ),
+            strategy: Box::new(crate::strategy::DefaultStrategy),
         };
+        tracing::info!(
+            strategy = orchestrator.strategy.name(),
+            "SwarmOrchestrator initialized with agent strategy"
+        );
 
         let roles = [
             AgentRole::Architect,
@@ -278,6 +288,33 @@ impl SwarmOrchestrator {
     /// Set rulebook overlay (formatted prompt string). Appended after VIL knowledge, never before.
     pub fn set_rulebook(&mut self, overlay: String) {
         self.rulebook = Some(overlay);
+    }
+
+    /// Set the agent-decision strategy by config name ("default" or
+    /// "conservative"). Falls back to DefaultStrategy on unknown input.
+    pub fn set_strategy_by_name(&mut self, name: &str) {
+        let prev = self.strategy.name().to_string();
+        self.strategy = crate::strategy::strategy_from_name(name);
+        tracing::info!(
+            previous = %prev,
+            active = self.strategy.name(),
+            "agent strategy switched"
+        );
+    }
+
+    /// Name of the currently active agent strategy.
+    pub fn strategy_name(&self) -> &str {
+        self.strategy.name()
+    }
+
+    /// Evaluate the strategy with the given context. Exposed so callers
+    /// (orchestrator loop, eval harness) can consult it as a policy hint
+    /// without having to reach inside the trait object.
+    pub fn strategy_choose(
+        &self,
+        ctx: &crate::strategy::StrategyContext<'_>,
+    ) -> crate::strategy::StrategyAction {
+        self.strategy.choose_next(ctx)
     }
 
     pub fn set_llm_router(&mut self, llm_router: Option<Arc<LlmRouter>>) {

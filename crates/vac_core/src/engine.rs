@@ -438,6 +438,8 @@ impl VacEngine {
             self.privacy_vault.clone(),
         )
         .await?;
+        // Wire agent strategy from config (SwarmConfig.strategy).
+        swarm.set_strategy_by_name(&self.config.swarm.strategy);
 
         // Phase 5: inject VIL project profile + knowledge into swarm
         let profile = crate::detector::VilProjectProfile::detect(&self.project_root);
