@@ -411,6 +411,15 @@ pub fn handle_backend_event(
                     crate::services::banner::BannerSeverity::Suggested,
                 );
             }
+            // L5 — also route status into the signal pipeline so
+            // `vac signal tail --stream mcp:<name>` can recall it.
+            let buf = state
+                .mcp_signals
+                .entry(name.clone())
+                .or_insert_with(|| {
+                    vac_signal::SignalBuffer::new(vac_signal::SignalStreamKind::Mcp, 200)
+                });
+            buf.push_line(format!("status: {:?}", conn_state.status));
             state.mcp_server_states.insert(name, conn_state);
         }
         InputEvent::VilStatusUpdated(snapshot) => {

@@ -185,6 +185,9 @@ pub struct AppState {
 
     // MCP
     pub mcp_server_states: HashMap<String, vac_tools::mcp::McpConnectionState>,
+    /// Per-server signal buffers — status changes are pushed here so they
+    /// flow through the signal pipeline (rewind + MCP retrieval tools).
+    pub mcp_signals: HashMap<String, vac_signal::SignalBuffer>,
 
     // VIL domain state
     pub vil: VilState,

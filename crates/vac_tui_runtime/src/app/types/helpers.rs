@@ -85,6 +85,7 @@ impl AppState {
             auto_approve: false,
             project_root: options.project_root,
             mcp_server_states: HashMap::new(),
+            mcp_signals: HashMap::new(),
             vil: VilState::default(),
             vwfd_inspector: crate::services::vwfd_inspector::VwfdInspectorState::default(),
             vil_expr_lint: crate::services::vil_expr_lint::LintState::new(),
@@ -439,6 +440,9 @@ impl AppState {
         reg.register("vil_dev", &self.vil_dev.output);
         for (idx, session) in self.shell.session_store.sessions.iter().enumerate() {
             reg.register(format!("shell:{idx}:{}", session.id), &session.output_signal);
+        }
+        for (name, buf) in &self.mcp_signals {
+            reg.register(format!("mcp:{name}"), buf);
         }
         reg
     }
