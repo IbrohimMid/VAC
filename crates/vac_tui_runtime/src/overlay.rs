@@ -165,11 +165,11 @@ fn sync_domain_state(state: &mut AppState, id: OverlayId, value: bool) {
         OverlayId::PlanReview => state.plan.review_open = value,
         OverlayId::ShellPopup => state.shell.session_store.popup_visible = value,
         OverlayId::AtDropdown => {
-            state.at_trigger_active = value;
+            state.at_mention.trigger_active = value;
             if !value {
-                state.at_query.clear();
-                state.at_results.clear();
-                state.at_selected_idx = 0;
+                state.at_mention.query.clear();
+                state.at_mention.results.clear();
+                state.at_mention.selected_idx = 0;
             }
         }
         OverlayId::RejectReason => {
@@ -249,13 +249,13 @@ mod tests {
     #[test]
     fn sync_at_trigger_active_on_open_overlay() {
         let mut state = make_state();
-        assert!(!state.at_trigger_active);
+        assert!(!state.at_mention.trigger_active);
         open_overlay(&mut state, OverlayId::AtDropdown);
         assert!(state.overlay_manager.is_active(OverlayId::AtDropdown));
-        assert!(state.at_trigger_active);
+        assert!(state.at_mention.trigger_active);
         close_overlay(&mut state, OverlayId::AtDropdown);
         assert!(!state.overlay_manager.is_active(OverlayId::AtDropdown));
-        assert!(!state.at_trigger_active);
+        assert!(!state.at_mention.trigger_active);
     }
 
     #[test]

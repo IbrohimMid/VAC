@@ -72,7 +72,7 @@ pub(super) fn render_shell_popup(f: &mut Frame, state: &mut AppState) {
 
 pub(super) fn render_at_dropdown(f: &mut Frame, state: &mut AppState) {
     let area = f.area();
-    let count = state.at_results.len().min(8) as u16;
+    let count = state.at_mention.results.len().min(8) as u16;
     if count == 0 {
         return;
     }
@@ -91,14 +91,14 @@ pub(super) fn render_at_dropdown(f: &mut Frame, state: &mut AppState) {
     f.render_widget(Clear, rect);
 
     let items: Vec<ListItem> = state
-        .at_results
+        .at_mention.results
         .iter()
         .enumerate()
         .map(|(i, path)| {
             let selected = i
                 == state
-                    .at_selected_idx
-                    .min(state.at_results.len().saturating_sub(1));
+                    .at_mention.selected_idx
+                    .min(state.at_mention.results.len().saturating_sub(1));
             let style = if selected {
                 state.theme.style(StyleKey::ListSelected)
             } else {
@@ -108,10 +108,10 @@ pub(super) fn render_at_dropdown(f: &mut Frame, state: &mut AppState) {
         })
         .collect();
 
-    let query_hint = if state.at_query.is_empty() {
+    let query_hint = if state.at_mention.query.is_empty() {
         "@".to_string()
     } else {
-        format!("@{}", state.at_query)
+        format!("@{}", state.at_mention.query)
     };
 
     let list = List::new(items).block(Block::default().borders(Borders::ALL).title(Span::styled(
@@ -144,7 +144,7 @@ pub(super) fn render_footer(f: &mut Frame, state: &mut AppState, area: Rect) {
         return;
     }
 
-    if state.at_trigger_active {
+    if state.at_mention.trigger_active {
         let hints = vec![
             Span::styled(
                 "@ FILE ",
@@ -153,7 +153,7 @@ pub(super) fn render_footer(f: &mut Frame, state: &mut AppState, area: Rect) {
                     .style(StyleKey::Accent)
                     .add_modifier(ratatui::style::Modifier::BOLD),
             ),
-            Span::styled(&state.at_query, state.theme.style(StyleKey::Normal)),
+            Span::styled(&state.at_mention.query, state.theme.style(StyleKey::Normal)),
             Span::styled(
                 "  ↑↓: select  Enter: insert  Esc: cancel",
                 state.theme.style(StyleKey::Muted),

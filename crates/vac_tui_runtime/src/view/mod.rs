@@ -158,7 +158,7 @@ pub fn view(f: &mut Frame, state: &mut AppState) {
         };
         f.render_widget(ratatui::widgets::Clear, rect);
         crate::services::helper_dropdown::render_file_search_dropdown(f, state, rect);
-    } else if state.at_trigger_active && !state.at_results.is_empty() {
+    } else if state.at_mention.trigger_active && !state.at_mention.results.is_empty() {
         popups::render_at_dropdown(f, state);
     }
 

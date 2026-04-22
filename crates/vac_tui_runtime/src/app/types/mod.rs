@@ -10,6 +10,7 @@ use crate::types::*;
 
 // Re-export all submodule types
 pub mod approvals;
+pub mod at_mention;
 pub mod billing;
 pub mod file_picker;
 pub mod vil_dev;
@@ -23,6 +24,7 @@ pub mod support;
 pub mod workbench;
 
 pub use approvals::ApprovalsState;
+pub use at_mention::AtMentionState;
 pub use file_picker::FilePickerState;
 pub use vil_dev::VilDevState;
 pub use billing::{
@@ -181,10 +183,7 @@ pub struct AppState {
     pub context_chip_cursor: Option<usize>,
 
     // Inline @ file picker
-    pub at_trigger_active: bool,
-    pub at_query: String,
-    pub at_results: Vec<String>,
-    pub at_selected_idx: usize,
+    pub at_mention: AtMentionState,
 
     pub changeset_selected_idx: usize,
     pub changeset_diff_scroll: usize,

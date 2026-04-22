@@ -121,20 +121,20 @@ fn handle_char(state: &mut AppState, output_tx: &Sender<OutputEvent>, c: char) {
         crate::services::helper_dropdown::filter_helpers_sync(state);
         state.helper_selected = 0;
         state.helper_scroll = 0;
-    } else if c == '@' && !state.at_trigger_active {
+    } else if c == '@' && !state.at_mention.trigger_active {
         crate::overlay::open_overlay(state, crate::overlay::OverlayId::AtDropdown);
-        state.at_query = String::new();
-        state.at_selected_idx = 0;
+        state.at_mention.query = String::new();
+        state.at_mention.selected_idx = 0;
         if state.all_files.is_empty() {
             state.all_files = crate::services::build_file_index(&state.project_root);
         }
-        state.at_results = crate::services::fuzzy_search_files("", &state.all_files, 8);
+        state.at_mention.results = crate::services::fuzzy_search_files("", &state.all_files, 8);
         state.input.input(c);
-    } else if state.at_trigger_active {
-        state.at_query.push(c);
-        state.at_selected_idx = 0;
-        state.at_results =
-            crate::services::fuzzy_search_files(&state.at_query, &state.all_files, 8);
+    } else if state.at_mention.trigger_active {
+        state.at_mention.query.push(c);
+        state.at_mention.selected_idx = 0;
+        state.at_mention.results =
+            crate::services::fuzzy_search_files(&state.at_mention.query, &state.all_files, 8);
         state.input.input(c);
     } else {
         state.input.input(c);
@@ -156,16 +156,16 @@ fn handle_backspace(state: &mut AppState) {
         crate::services::helper_dropdown::filter_helpers_sync(state);
         state.helper_selected = 0;
         state.helper_scroll = 0;
-    } else if state.at_trigger_active {
-        if state.at_query.is_empty() {
-            state.at_trigger_active = false;
-            state.at_results.clear();
-            state.at_selected_idx = 0;
+    } else if state.at_mention.trigger_active {
+        if state.at_mention.query.is_empty() {
+            state.at_mention.trigger_active = false;
+            state.at_mention.results.clear();
+            state.at_mention.selected_idx = 0;
         } else {
-            state.at_query.pop();
-            state.at_selected_idx = 0;
-            state.at_results =
-                crate::services::fuzzy_search_files(&state.at_query, &state.all_files, 8);
+            state.at_mention.query.pop();
+            state.at_mention.selected_idx = 0;
+            state.at_mention.results =
+                crate::services::fuzzy_search_files(&state.at_mention.query, &state.all_files, 8);
         }
         state.input.backspace();
     } else {

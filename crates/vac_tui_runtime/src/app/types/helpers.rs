@@ -10,7 +10,7 @@ use crate::services::textarea::TextArea;
 use crate::types::*;
 
 use super::{
-    ActivityItem, ActivityKind, AppState, ApprovalsState, FilePickerState, HelperCommand, LoadingStateManager, VilDevState,
+    ActivityItem, ActivityKind, AppState, ApprovalsState, AtMentionState, FilePickerState, HelperCommand, LoadingStateManager, VilDevState,
     Message, QueueMetrics, RenderMetrics, ReviewItem, ReviewItemStatus, ReviewState, RuntimeState,
     ShellState, ShortcutsPopupMode, StartupSnapshot, TokenUsage, VilLogEntry, VilState,
     WorkbenchTab, WorkspaceFocus,
@@ -122,10 +122,7 @@ impl AppState {
             file_picker: FilePickerState::new(options.project_root.clone()),
             context_chips: Vec::new(),
             context_chip_cursor: None,
-            at_trigger_active: false,
-            at_query: String::new(),
-            at_results: Vec::new(),
-            at_selected_idx: 0,
+            at_mention: AtMentionState::default(),
             changeset_selected_idx: 0,
             changeset_diff_scroll: 0,
             changeset_selected_path: None,

@@ -9,23 +9,23 @@ pub(super) fn handle_at_dropdown(state: &mut AppState, event: InputEvent) {
     }
     match event {
         InputEvent::Up => {
-            state.at_selected_idx = state.at_selected_idx.saturating_sub(1);
+            state.at_mention.selected_idx = state.at_mention.selected_idx.saturating_sub(1);
         }
         InputEvent::Down => {
-            if !state.at_results.is_empty() {
-                state.at_selected_idx =
-                    (state.at_selected_idx + 1).min(state.at_results.len().saturating_sub(1));
+            if !state.at_mention.results.is_empty() {
+                state.at_mention.selected_idx =
+                    (state.at_mention.selected_idx + 1).min(state.at_mention.results.len().saturating_sub(1));
             }
         }
         InputEvent::InputSubmitted => {
-            if let Some(path) = state.at_results.get(state.at_selected_idx).cloned() {
+            if let Some(path) = state.at_mention.results.get(state.at_mention.selected_idx).cloned() {
                 // Remove the @<query> from the input buffer
-                let remove_len = state.at_query.len() + 1; // +1 for '@'
+                let remove_len = state.at_mention.query.len() + 1; // +1 for '@'
                 for _ in 0..remove_len {
                     state.input.backspace();
                 }
                 // Detect namespace prefix: @@skill, @#todo, @!session
-                let (namespace, label) = parse_at_namespace(&state.at_query, &path);
+                let (namespace, label) = parse_at_namespace(&state.at_mention.query, &path);
                 let content = match namespace {
                     crate::app::types::ChipNamespace::File => std::fs::read_to_string(&path)
                         .unwrap_or_else(|_| format!("(could not read {path})")),
@@ -47,20 +47,20 @@ pub(super) fn handle_at_dropdown(state: &mut AppState, event: InputEvent) {
             crate::overlay::close_overlay(state, OverlayId::AtDropdown);
         }
         InputEvent::InputChanged(c) => {
-            state.at_query.push(c);
-            state.at_selected_idx = 0;
-            state.at_results =
-                crate::services::fuzzy_search_files(&state.at_query, &state.all_files, 8);
+            state.at_mention.query.push(c);
+            state.at_mention.selected_idx = 0;
+            state.at_mention.results =
+                crate::services::fuzzy_search_files(&state.at_mention.query, &state.all_files, 8);
             state.input.input(c);
         }
         InputEvent::InputBackspace => {
-            if state.at_query.is_empty() {
+            if state.at_mention.query.is_empty() {
                 crate::overlay::close_overlay(state, OverlayId::AtDropdown);
             } else {
-                state.at_query.pop();
-                state.at_selected_idx = 0;
-                state.at_results =
-                    crate::services::fuzzy_search_files(&state.at_query, &state.all_files, 8);
+                state.at_mention.query.pop();
+                state.at_mention.selected_idx = 0;
+                state.at_mention.results =
+                    crate::services::fuzzy_search_files(&state.at_mention.query, &state.all_files, 8);
             }
             state.input.backspace();
         }

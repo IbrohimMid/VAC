@@ -155,9 +155,9 @@ pub fn on_session_restored(
     state.approvals.approval_selected_idx = 0;
     state.approvals.approval_detail_scroll = 0;
     state.approvals.reject_reason_input = None;
-    state.at_trigger_active = false;
-    state.at_query.clear();
-    state.at_results.clear();
+    state.at_mention.trigger_active = false;
+    state.at_mention.query.clear();
+    state.at_mention.results.clear();
     state.is_streaming = false;
     state.streaming_message_id = None;
     state.scroll = 0;
