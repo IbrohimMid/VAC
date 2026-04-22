@@ -15,7 +15,7 @@ use ratatui::{
 use vac_changeset::FileState;
 
 pub fn filtered_paths(state: &AppState) -> Vec<String> {
-    let query = state.file_changes_search.to_lowercase();
+    let query = state.file_index.changes_search.to_lowercase();
     state
         .changeset_store
         .entries()
@@ -59,7 +59,7 @@ pub fn render_file_changes_popup(f: &mut Frame, state: &AppState) {
         .split(inner);
 
     let all_entries: Vec<_> = state.changeset_store.entries().iter().collect();
-    let query = state.file_changes_search.to_lowercase();
+    let query = state.file_index.changes_search.to_lowercase();
     let filtered: Vec<_> = all_entries
         .iter()
         .filter(|e| query.is_empty() || e.path.to_lowercase().contains(&query))
@@ -91,7 +91,7 @@ pub fn render_file_changes_popup(f: &mut Frame, state: &AppState) {
     f.render_widget(Paragraph::new(Line::from(title_spans)), chunks[0]);
 
     // Search
-    let search_spans = if state.file_changes_search.is_empty() {
+    let search_spans = if state.file_index.changes_search.is_empty() {
         vec![
             Span::raw(" "),
             Span::styled(">", state.theme.style(StyleKey::AppTitle)),
@@ -105,7 +105,7 @@ pub fn render_file_changes_popup(f: &mut Frame, state: &AppState) {
             Span::styled(">", state.theme.style(StyleKey::AppTitle)),
             Span::raw(" "),
             Span::styled(
-                state.file_changes_search.clone(),
+                state.file_index.changes_search.clone(),
                 state
                     .theme
                     .style(StyleKey::Text)
@@ -126,7 +126,7 @@ pub fn render_file_changes_popup(f: &mut Frame, state: &AppState) {
     // List
     let height = chunks[2].height as usize;
     let total = filtered.len();
-    let scroll = state.file_changes_scroll;
+    let scroll = state.file_index.changes_scroll;
     let mut lines: Vec<Line> = Vec::new();
 
     for i in 0..height {
@@ -135,7 +135,7 @@ pub fn render_file_changes_popup(f: &mut Frame, state: &AppState) {
             break;
         }
         let entry = filtered[idx];
-        let is_selected = idx == state.file_changes_selected;
+        let is_selected = idx == state.file_index.changes_selected;
         let bg_color = if is_selected {
             state
                 .theme

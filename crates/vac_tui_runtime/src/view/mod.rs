@@ -250,7 +250,7 @@ mod tests {
         });
         open_overlay(&mut state, OverlayId::ModelSwitcher);
         open_overlay(&mut state, OverlayId::FileSearch);
-        state.file_search_results = vec!["src/main.rs".to_string()];
+        state.file_index.search_results = vec!["src/main.rs".to_string()];
         open_overlay(&mut state, OverlayId::Changeset);
         state
             .changeset_store

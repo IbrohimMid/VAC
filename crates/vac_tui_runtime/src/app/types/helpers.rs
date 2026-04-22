@@ -10,7 +10,7 @@ use crate::services::textarea::TextArea;
 use crate::types::*;
 
 use super::{
-    ActivityItem, ActivityKind, AppState, ApprovalsState, AskUserState, AtMentionState, BannerState, ChangesetUiState, FilePickerState, HelperCommand, LoadingStateManager, SwitchersState, VilDevState, WorkbenchChromeState,
+    ActivityItem, ActivityKind, AppState, ApprovalsState, AskUserState, AtMentionState, BannerState, ChangesetUiState, FileIndexState, FilePickerState, HelperCommand, LoadingStateManager, SwitchersState, VilDevState, WorkbenchChromeState,
     Message, QueueMetrics, RenderMetrics, ReviewItem, ReviewItemStatus, ReviewState, RuntimeState,
     ShellState, ShortcutsPopupMode, StartupSnapshot, TokenUsage, VilLogEntry, VilState,
     WorkbenchTab, WorkspaceFocus,
@@ -94,10 +94,7 @@ impl AppState {
             activity: Vec::new(),
             activity_scroll: 0,
             toasts: Vec::new(),
-            all_files: Vec::new(),
-            file_search_query: String::new(),
-            file_search_selected_idx: 0,
-            file_search_results: Vec::new(),
+            file_index: FileIndexState::default(),
             file_picker: FilePickerState::new(options.project_root.clone()),
             context_chips: Vec::new(),
             context_chip_cursor: None,
@@ -118,9 +115,6 @@ impl AppState {
             pending_pastes: Vec::new(),
             is_pasting: false,
             paste_counter: 0,
-            file_changes_selected: 0,
-            file_changes_search: String::new(),
-            file_changes_scroll: 0,
             todos: Vec::new(),
             current_message_usage: TokenUsage::default(),
             total_session_usage: TokenUsage::default(),

@@ -15,6 +15,7 @@ pub mod at_mention;
 pub mod banner;
 pub mod billing;
 pub mod changeset_ui;
+pub mod file_index;
 pub mod file_picker;
 pub mod switchers;
 pub mod vil_dev;
@@ -33,6 +34,7 @@ pub use ask_user::AskUserState;
 pub use at_mention::AtMentionState;
 pub use banner::BannerState;
 pub use changeset_ui::ChangesetUiState;
+pub use file_index::FileIndexState;
 pub use file_picker::FilePickerState;
 pub use switchers::SwitchersState;
 pub use vil_dev::VilDevState;
@@ -163,10 +165,7 @@ pub struct AppState {
     pub toasts: Vec<Toast>,
 
 
-    pub all_files: Vec<String>,
-    pub file_search_query: String,
-    pub file_search_selected_idx: usize,
-    pub file_search_results: Vec<String>,
+    pub file_index: FileIndexState,
 
     // ── File Picker v2 (PR-T6) ────────────────────────────────────────────────
     pub file_picker: FilePickerState,
@@ -252,9 +251,6 @@ pub struct AppState {
     pub paste_counter: usize,
 
     // File changes popup (compact, searchable)
-    pub file_changes_selected: usize,
-    pub file_changes_search: String,
-    pub file_changes_scroll: usize,
 
     // Todos extracted from <todo>…</todo> blocks in assistant messages
     pub todos: Vec<vac_changeset::TodoItem>,

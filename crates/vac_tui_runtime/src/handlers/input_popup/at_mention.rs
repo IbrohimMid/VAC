@@ -50,7 +50,7 @@ pub(super) fn handle_at_dropdown(state: &mut AppState, event: InputEvent) {
             state.at_mention.query.push(c);
             state.at_mention.selected_idx = 0;
             state.at_mention.results =
-                crate::services::fuzzy_search_files(&state.at_mention.query, &state.all_files, 8);
+                crate::services::fuzzy_search_files(&state.at_mention.query, &state.file_index.all_files, 8);
             state.input.input(c);
         }
         InputEvent::InputBackspace => {
@@ -60,7 +60,7 @@ pub(super) fn handle_at_dropdown(state: &mut AppState, event: InputEvent) {
                 state.at_mention.query.pop();
                 state.at_mention.selected_idx = 0;
                 state.at_mention.results =
-                    crate::services::fuzzy_search_files(&state.at_mention.query, &state.all_files, 8);
+                    crate::services::fuzzy_search_files(&state.at_mention.query, &state.file_index.all_files, 8);
             }
             state.input.backspace();
         }

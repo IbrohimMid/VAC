@@ -180,9 +180,9 @@ pub fn on_session_restored(
     state.switchers.model_filter.clear();
     state.switchers.model_selected = 0;
     crate::overlay::close_overlay(state, crate::overlay::OverlayId::FileSearch);
-    state.file_search_query.clear();
-    state.file_search_selected_idx = 0;
-    state.file_search_results.clear();
+    state.file_index.search_query.clear();
+    state.file_index.search_selected_idx = 0;
+    state.file_index.search_results.clear();
     crate::overlay::close_overlay(state, crate::overlay::OverlayId::Changeset);
     state.changeset_ui.selected_idx = 0;
     state.changeset_ui.diff_scroll = 0;

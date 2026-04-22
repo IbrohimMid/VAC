@@ -5,7 +5,7 @@ use crate::services::{Toast, build_file_index, fuzzy_search_files};
 
 /// Open file search popup.
 pub fn open(ctx: &mut HandlerContext) -> HandlerResult {
-    if ctx.state.all_files.is_empty() {
+    if ctx.state.file_index.all_files.is_empty() {
         if let Some(tx) = ctx.state.input_tx.clone() {
             let root = ctx.state.project_root.clone();
             tokio::spawn(async move {
@@ -18,49 +18,49 @@ pub fn open(ctx: &mut HandlerContext) -> HandlerResult {
                 .toasts
                 .push(Toast::info("Indexing files in background...".to_string()));
         } else {
-            ctx.state.all_files = build_file_index(&ctx.state.project_root);
+            ctx.state.file_index.all_files = build_file_index(&ctx.state.project_root);
         }
     }
     crate::overlay::open_overlay(ctx.state, crate::overlay::OverlayId::FileSearch);
-    ctx.state.file_search_query.clear();
-    ctx.state.file_search_results.clear();
-    ctx.state.file_search_selected_idx = 0;
+    ctx.state.file_index.search_query.clear();
+    ctx.state.file_index.search_results.clear();
+    ctx.state.file_index.search_selected_idx = 0;
     Ok(())
 }
 
 /// Close file search popup.
 pub fn close(ctx: &mut HandlerContext) -> HandlerResult {
     crate::overlay::close_overlay(ctx.state, crate::overlay::OverlayId::FileSearch);
-    ctx.state.file_search_query.clear();
-    ctx.state.file_search_results.clear();
-    ctx.state.file_search_selected_idx = 0;
+    ctx.state.file_index.search_query.clear();
+    ctx.state.file_index.search_results.clear();
+    ctx.state.file_index.search_selected_idx = 0;
     Ok(())
 }
 
 /// Update search query and refresh results.
 pub fn update_query(ctx: &mut HandlerContext, query: String) -> HandlerResult {
-    ctx.state.file_search_query = query.clone();
+    ctx.state.file_index.search_query = query.clone();
     if query.is_empty() {
-        ctx.state.file_search_results.clear();
+        ctx.state.file_index.search_results.clear();
     } else {
-        ctx.state.file_search_results = fuzzy_search_files(&query, &ctx.state.all_files, 50);
+        ctx.state.file_index.search_results = fuzzy_search_files(&query, &ctx.state.file_index.all_files, 50);
     }
-    ctx.state.file_search_selected_idx = 0;
+    ctx.state.file_index.search_selected_idx = 0;
     Ok(())
 }
 
 /// Select next result.
 pub fn select_next(ctx: &mut HandlerContext) -> HandlerResult {
-    if !ctx.state.file_search_results.is_empty() {
-        ctx.state.file_search_selected_idx = (ctx.state.file_search_selected_idx + 1)
-            .min(ctx.state.file_search_results.len().saturating_sub(1));
+    if !ctx.state.file_index.search_results.is_empty() {
+        ctx.state.file_index.search_selected_idx = (ctx.state.file_index.search_selected_idx + 1)
+            .min(ctx.state.file_index.search_results.len().saturating_sub(1));
     }
     Ok(())
 }
 
 /// Select previous result.
 pub fn select_prev(ctx: &mut HandlerContext) -> HandlerResult {
-    ctx.state.file_search_selected_idx = ctx.state.file_search_selected_idx.saturating_sub(1);
+    ctx.state.file_index.search_selected_idx = ctx.state.file_index.search_selected_idx.saturating_sub(1);
     Ok(())
 }
 
@@ -68,8 +68,8 @@ pub fn select_prev(ctx: &mut HandlerContext) -> HandlerResult {
 pub fn insert_selected(ctx: &mut HandlerContext) -> HandlerResult {
     if let Some(path) = ctx
         .state
-        .file_search_results
-        .get(ctx.state.file_search_selected_idx)
+        .file_index.search_results
+        .get(ctx.state.file_index.search_selected_idx)
     {
         let path = path.clone();
         ctx.state.input.insert_str(&path);
@@ -115,7 +115,7 @@ mod tests {
                 .overlay_manager
                 .is_active(crate::overlay::OverlayId::FileSearch)
         );
-        assert_eq!(ctx.state.file_search_selected_idx, 0);
+        assert_eq!(ctx.state.file_index.search_selected_idx, 0);
     }
 
     #[test]
@@ -124,7 +124,7 @@ mod tests {
         let mut ctx = HandlerContext::new(&mut state, &tx);
 
         crate::overlay::open_overlay(ctx.state, crate::overlay::OverlayId::FileSearch);
-        ctx.state.file_search_query = "test".to_string();
+        ctx.state.file_index.search_query = "test".to_string();
 
         assert!(close(&mut ctx).is_ok());
         assert!(
@@ -132,7 +132,7 @@ mod tests {
                 .overlay_manager
                 .is_active(crate::overlay::OverlayId::FileSearch)
         );
-        assert!(ctx.state.file_search_query.is_empty());
+        assert!(ctx.state.file_index.search_query.is_empty());
     }
 
     #[test]
@@ -141,7 +141,7 @@ mod tests {
         let mut ctx = HandlerContext::new(&mut state, &tx);
 
         assert!(update_query(&mut ctx, "main.rs".to_string()).is_ok());
-        assert_eq!(ctx.state.file_search_query, "main.rs");
-        assert_eq!(ctx.state.file_search_selected_idx, 0);
+        assert_eq!(ctx.state.file_index.search_query, "main.rs");
+        assert_eq!(ctx.state.file_index.search_selected_idx, 0);
     }
 }

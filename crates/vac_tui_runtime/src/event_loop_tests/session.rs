@@ -99,7 +99,7 @@ async fn session_restore_clears_popup_state() {
     crate::overlay::open_overlay(&mut state, crate::overlay::OverlayId::FileSearch);
     crate::overlay::open_overlay(&mut state, crate::overlay::OverlayId::Changeset);
     state.switchers.model_filter = "test".to_string();
-    state.file_search_query = "query".to_string();
+    state.file_index.search_query = "query".to_string();
 
     // Trigger session restore
     crate::controller::handle_backend_event(
@@ -129,7 +129,7 @@ async fn session_restore_clears_popup_state() {
             .is_active(crate::overlay::OverlayId::Changeset)
     );
     assert!(state.switchers.model_filter.is_empty());
-    assert!(state.file_search_query.is_empty());
+    assert!(state.file_index.search_query.is_empty());
 }
 
 #[tokio::test]

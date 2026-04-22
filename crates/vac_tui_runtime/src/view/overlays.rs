@@ -68,17 +68,17 @@ pub(super) fn render_file_search(f: &mut Frame, state: &mut AppState) {
 
     let input = Paragraph::new(Line::from(vec![
         Span::styled("Query ", state.theme.style(StyleKey::Muted)),
-        Span::raw(&state.file_search_query),
+        Span::raw(&state.file_index.search_query),
     ]))
     .block(Block::default().borders(Borders::ALL).title("File Search"));
     f.render_widget(input, chunks[0]);
 
     let items: Vec<ListItem> = state
-        .file_search_results
+        .file_index.search_results
         .iter()
         .enumerate()
         .map(|(i, path)| {
-            let style = if i == state.file_search_selected_idx {
+            let style = if i == state.file_index.search_selected_idx {
                 state.theme.style(StyleKey::ListSelected)
             } else {
                 Style::default()

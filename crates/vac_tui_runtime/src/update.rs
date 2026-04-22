@@ -250,8 +250,8 @@ pub fn handle_backend_event(
             );
         }
         InputEvent::FileIndexReady(files) => {
-            state.all_files = files;
-            state.file_search_results = state.all_files.iter().take(50).cloned().collect();
+            state.file_index.all_files = files;
+            state.file_index.search_results = state.file_index.all_files.iter().take(50).cloned().collect();
             state.toasts.push(crate::services::Toast::success(
                 "File index ready".to_string(),
             ));

@@ -242,7 +242,7 @@ pub fn render_file_search_dropdown(f: &mut Frame, state: &AppState, area: Rect) 
     if state
         .overlay_manager
         .is_active(crate::overlay::OverlayId::FileSearch)
-        && !state.file_search_results.is_empty()
+        && !state.file_index.search_results.is_empty()
     {
         render_file_dropdown(f, state, area);
     } else if state
@@ -255,7 +255,7 @@ pub fn render_file_search_dropdown(f: &mut Frame, state: &AppState, area: Rect) 
 }
 
 fn render_file_dropdown(f: &mut Frame, state: &AppState, area: Rect) {
-    let files = &state.file_search_results;
+    let files = &state.file_index.search_results;
     if files.is_empty() {
         return;
     }
@@ -267,7 +267,7 @@ fn render_file_dropdown(f: &mut Frame, state: &AppState, area: Rect) {
         .iter()
         .enumerate()
         .map(|(i, item)| {
-            let style = if i == state.file_search_selected_idx {
+            let style = if i == state.file_index.search_selected_idx {
                 state
                     .theme
                     .style(StyleKey::OverlaySelected)
@@ -282,7 +282,7 @@ fn render_file_dropdown(f: &mut Frame, state: &AppState, area: Rect) {
         .collect();
 
     let mut list_state = ListState::default();
-    list_state.select(Some(state.file_search_selected_idx));
+    list_state.select(Some(state.file_index.search_selected_idx));
 
     let list = List::new(items).block(
         Block::default()

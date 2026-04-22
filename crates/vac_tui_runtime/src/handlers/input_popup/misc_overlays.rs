@@ -19,31 +19,31 @@ pub fn handle_file_changes(
             crate::overlay::close_overlay(state, OverlayId::FileChanges);
         }
         InputEvent::Up | InputEvent::ScrollUp => {
-            state.file_changes_selected = state.file_changes_selected.saturating_sub(1);
-            if state.file_changes_selected < state.file_changes_scroll {
-                state.file_changes_scroll = state.file_changes_selected;
+            state.file_index.changes_selected = state.file_index.changes_selected.saturating_sub(1);
+            if state.file_index.changes_selected < state.file_index.changes_scroll {
+                state.file_index.changes_scroll = state.file_index.changes_selected;
             }
         }
         InputEvent::Down | InputEvent::ScrollDown => {
             if !filtered.is_empty() {
                 let max_idx = filtered.len().saturating_sub(1);
-                if state.file_changes_selected < max_idx {
-                    state.file_changes_selected += 1;
+                if state.file_index.changes_selected < max_idx {
+                    state.file_index.changes_selected += 1;
                 }
             }
         }
         InputEvent::InputChanged(c) => {
-            state.file_changes_search.push(c);
-            state.file_changes_selected = 0;
-            state.file_changes_scroll = 0;
+            state.file_index.changes_search.push(c);
+            state.file_index.changes_selected = 0;
+            state.file_index.changes_scroll = 0;
         }
         InputEvent::InputBackspace => {
-            state.file_changes_search.pop();
-            state.file_changes_selected = 0;
-            state.file_changes_scroll = 0;
+            state.file_index.changes_search.pop();
+            state.file_index.changes_selected = 0;
+            state.file_index.changes_scroll = 0;
         }
         InputEvent::ReviewRevertSelected => {
-            if let Some(path) = filtered.get(state.file_changes_selected).cloned() {
+            if let Some(path) = filtered.get(state.file_index.changes_selected).cloned() {
                 let prior = state.review.selected_path.clone();
                 state.review.selected_path = Some(path);
                 let mut ctx = HandlerContext::new(state, output_tx);
@@ -52,7 +52,7 @@ pub fn handle_file_changes(
             }
         }
         InputEvent::InputSubmitted => {
-            if let Some(path) = filtered.get(state.file_changes_selected).cloned() {
+            if let Some(path) = filtered.get(state.file_index.changes_selected).cloned() {
                 state.review.selected_path = Some(path);
                 state.workbench_tab = crate::app::WorkbenchTab::Review;
                 state.focus = crate::app::WorkspaceFocus::Workbench;

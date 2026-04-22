@@ -125,16 +125,16 @@ fn handle_char(state: &mut AppState, output_tx: &Sender<OutputEvent>, c: char) {
         crate::overlay::open_overlay(state, crate::overlay::OverlayId::AtDropdown);
         state.at_mention.query = String::new();
         state.at_mention.selected_idx = 0;
-        if state.all_files.is_empty() {
-            state.all_files = crate::services::build_file_index(&state.project_root);
+        if state.file_index.all_files.is_empty() {
+            state.file_index.all_files = crate::services::build_file_index(&state.project_root);
         }
-        state.at_mention.results = crate::services::fuzzy_search_files("", &state.all_files, 8);
+        state.at_mention.results = crate::services::fuzzy_search_files("", &state.file_index.all_files, 8);
         state.input.input(c);
     } else if state.at_mention.trigger_active {
         state.at_mention.query.push(c);
         state.at_mention.selected_idx = 0;
         state.at_mention.results =
-            crate::services::fuzzy_search_files(&state.at_mention.query, &state.all_files, 8);
+            crate::services::fuzzy_search_files(&state.at_mention.query, &state.file_index.all_files, 8);
         state.input.input(c);
     } else {
         state.input.input(c);
@@ -165,7 +165,7 @@ fn handle_backspace(state: &mut AppState) {
             state.at_mention.query.pop();
             state.at_mention.selected_idx = 0;
             state.at_mention.results =
-                crate::services::fuzzy_search_files(&state.at_mention.query, &state.all_files, 8);
+                crate::services::fuzzy_search_files(&state.at_mention.query, &state.file_index.all_files, 8);
         }
         state.input.backspace();
     } else {

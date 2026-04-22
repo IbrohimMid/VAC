@@ -11,15 +11,15 @@ pub(super) fn handle_file_search(
     output_tx: &Sender<OutputEvent>,
     event: InputEvent,
 ) {
-    if state.all_files.is_empty() {
-        state.all_files = crate::services::build_file_index(&state.project_root);
+    if state.file_index.all_files.is_empty() {
+        state.file_index.all_files = crate::services::build_file_index(&state.project_root);
     }
-    if state.file_search_results.is_empty() {
-        let q = state.file_search_query.clone();
-        let results = crate::services::fuzzy_search_files(&q, &state.all_files, 50);
+    if state.file_index.search_results.is_empty() {
+        let q = state.file_index.search_query.clone();
+        let results = crate::services::fuzzy_search_files(&q, &state.file_index.all_files, 50);
         let max = results.len().saturating_sub(1);
-        state.file_search_results = results;
-        state.file_search_selected_idx = state.file_search_selected_idx.min(max);
+        state.file_index.search_results = results;
+        state.file_index.search_selected_idx = state.file_index.search_selected_idx.min(max);
     }
     let mut ctx = HandlerContext::new(state, output_tx);
     match event {
@@ -27,12 +27,12 @@ pub(super) fn handle_file_search(
             let _ = file_search::close(&mut ctx);
         }
         InputEvent::InputChanged(c) => {
-            let mut q = ctx.state.file_search_query.clone();
+            let mut q = ctx.state.file_index.search_query.clone();
             q.push(c);
             let _ = file_search::update_query(&mut ctx, q);
         }
         InputEvent::InputBackspace => {
-            let mut q = ctx.state.file_search_query.clone();
+            let mut q = ctx.state.file_index.search_query.clone();
             q.pop();
             let _ = file_search::update_query(&mut ctx, q);
         }

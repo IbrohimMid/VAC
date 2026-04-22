@@ -359,9 +359,9 @@ fn dispatch_action(
         }
         ActionId::FileChanges => {
             crate::overlay::open_overlay(state, crate::overlay::OverlayId::FileChanges);
-            state.file_changes_selected = 0;
-            state.file_changes_scroll = 0;
-            state.file_changes_search.clear();
+            state.file_index.changes_selected = 0;
+            state.file_index.changes_scroll = 0;
+            state.file_index.changes_search.clear();
         }
         ActionId::OpenPlan => {
             // /plan — load or create plan.md and switch to Plan tab

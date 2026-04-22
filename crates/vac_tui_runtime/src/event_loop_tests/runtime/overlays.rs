@@ -103,7 +103,7 @@ fn show_file_search_event_routes_via_handler() {
             .overlay_manager
             .is_active(crate::overlay::OverlayId::FileSearch)
     );
-    assert!(state.file_search_query.is_empty());
+    assert!(state.file_index.search_query.is_empty());
 }
 
 #[test]

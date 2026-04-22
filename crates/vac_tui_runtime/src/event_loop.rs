@@ -107,8 +107,8 @@ pub async fn run_tui(
             state.session_title = Some(title);
         }
         if !project_context.file_index.is_empty() {
-            state.all_files = project_context.file_index;
-            state.file_search_results = state.all_files.iter().take(50).cloned().collect();
+            state.file_index.all_files = project_context.file_index;
+            state.file_index.search_results = state.file_index.all_files.iter().take(50).cloned().collect();
         }
         if !project_context.pending_changes.is_empty() {
             state.modified_files = project_context.pending_changes;
