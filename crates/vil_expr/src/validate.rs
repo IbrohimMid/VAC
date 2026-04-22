@@ -43,6 +43,12 @@ impl SymbolTable {
     }
 }
 
+impl Default for SymbolTable {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub fn validate(expr: &Expr, raw_input: &str, symbols: &SymbolTable) -> ValidationReport {
     let mut report = ValidationReport::default();
 

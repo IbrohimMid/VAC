@@ -115,23 +115,14 @@ pub fn summarize_trace_records(
             RecordType::ToolCall => {
                 tool_calls += 1;
                 if let Some(tool_name) = record.content.get("tool").and_then(|v| v.as_str()) {
-                    let mut snippets = collect_strings(&record.content);
-                    snippets.retain(|snippet| !snippet.trim().is_empty());
-                    snippets.retain(|snippet| snippet.len() <= 200);
-                    if !snippets.is_empty() {
-                        snippets.sort();
-                        snippets.dedup();
-                        for snippet in &snippets {
-                            if path_like(snippet) {
-                                target_paths.push(snippet.clone());
-                            }
-                            if module_like(snippet) {
-                                target_modules.push(snippet.clone());
-                            }
-                        }
+                    let mut hints = ToolHints::default();
+                    collect_tool_hints(&record.content, &mut hints);
+                    if !hints.is_empty() {
+                        target_paths.extend(hints.paths.iter().cloned());
+                        target_modules.extend(hints.modules.iter().cloned());
                         evidence.push(TrajectoryEvidence {
                             label: format!("tool call: {tool_name}"),
-                            detail: snippets.join(", "),
+                            detail: hints.describe(),
                         });
                     } else {
                         evidence.push(TrajectoryEvidence {
@@ -144,15 +135,12 @@ pub fn summarize_trace_records(
             RecordType::ToolResult => {
                 tool_results += 1;
                 if let Some(tool_name) = record.content.get("tool").and_then(|v| v.as_str()) {
-                    let mut snippets = collect_strings(&record.content);
-                    snippets.retain(|snippet| !snippet.trim().is_empty());
-                    snippets.retain(|snippet| snippet.len() <= 200);
-                    if !snippets.is_empty() {
-                        snippets.sort();
-                        snippets.dedup();
+                    let mut hints = ToolHints::default();
+                    collect_tool_hints(&record.content, &mut hints);
+                    if !hints.is_empty() {
                         evidence.push(TrajectoryEvidence {
                             label: format!("tool result: {tool_name}"),
-                            detail: snippets.join(", "),
+                            detail: hints.describe(),
                         });
                     }
                 }
@@ -232,48 +220,122 @@ pub fn summarize_trace_records(
     }
 }
 
-fn collect_strings(value: &serde_json::Value) -> Vec<String> {
-    fn walk(value: &serde_json::Value, out: &mut Vec<String>) {
-        match value {
-            serde_json::Value::String(s) => {
-                if !s.is_empty() && s.len() <= 200 {
-                    out.push(s.clone());
-                }
-            }
-            serde_json::Value::Array(items) => {
-                for item in items.iter().take(32) {
-                    walk(item, out);
-                }
-            }
-            serde_json::Value::Object(map) => {
-                for (key, value) in map {
-                    if matches!(key.as_str(), "content" | "message" | "summary") {
-                        if let Some(s) = value.as_str() {
-                            if s.len() <= 200 {
-                                out.push(s.to_string());
-                            }
-                        }
-                        continue;
-                    }
-                    walk(value, out);
-                }
-            }
-            _ => {}
-        }
+#[derive(Default)]
+struct ToolHints {
+    paths: Vec<String>,
+    modules: Vec<String>,
+}
+
+impl ToolHints {
+    fn is_empty(&self) -> bool {
+        self.paths.is_empty() && self.modules.is_empty()
     }
 
-    let mut out = Vec::new();
-    walk(value, &mut out);
-    out
+    fn describe(&self) -> String {
+        let mut parts = Vec::new();
+        if !self.paths.is_empty() {
+            parts.push(format!("paths: {}", self.paths.join(", ")));
+        }
+        if !self.modules.is_empty() {
+            parts.push(format!("modules: {}", self.modules.join(", ")));
+        }
+        parts.join("; ")
+    }
 }
 
-fn path_like(snippet: &str) -> bool {
-    snippet.contains('/')
-        || snippet.contains('\\')
-        || snippet.ends_with(".rs")
-        || snippet.ends_with(".json")
+fn collect_tool_hints(value: &serde_json::Value, hints: &mut ToolHints) {
+    match value {
+        serde_json::Value::Object(map) => {
+            for (key, value) in map {
+                match key.as_str() {
+                    "path" | "file" | "file_path" | "target_path" | "source_path" => {
+                        collect_path_value(value, hints)
+                    }
+                    "paths" | "files" | "file_paths" | "target_paths" => {
+                        collect_path_array(value, hints)
+                    }
+                    "module" | "module_path" | "target_module" => {
+                        collect_module_value(value, hints)
+                    }
+                    "modules" | "target_modules" => collect_module_array(value, hints),
+                    _ => {}
+                }
+
+                if matches!(
+                    value,
+                    serde_json::Value::Object(_) | serde_json::Value::Array(_)
+                ) {
+                    collect_tool_hints(value, hints);
+                }
+            }
+        }
+        serde_json::Value::Array(items) => {
+            for item in items.iter().take(32) {
+                collect_tool_hints(item, hints);
+            }
+        }
+        _ => {}
+    }
 }
 
-fn module_like(snippet: &str) -> bool {
-    snippet.contains("::") || snippet.contains("mod ")
+fn collect_path_value(value: &serde_json::Value, hints: &mut ToolHints) {
+    if let Some(path) = value.as_str() {
+        push_path(path, hints);
+        return;
+    }
+    if let Some(items) = value.as_array() {
+        for item in items.iter().take(32) {
+            collect_path_value(item, hints);
+        }
+    }
+}
+
+fn collect_module_value(value: &serde_json::Value, hints: &mut ToolHints) {
+    if let Some(module) = value.as_str() {
+        push_module(module, hints);
+        return;
+    }
+    if let Some(items) = value.as_array() {
+        for item in items.iter().take(32) {
+            collect_module_value(item, hints);
+        }
+    }
+}
+
+fn collect_path_array(value: &serde_json::Value, hints: &mut ToolHints) {
+    collect_path_value(value, hints);
+}
+
+fn collect_module_array(value: &serde_json::Value, hints: &mut ToolHints) {
+    collect_module_value(value, hints);
+}
+
+fn push_path(candidate: &str, hints: &mut ToolHints) {
+    let normalized = candidate
+        .replace('\\', "/")
+        .trim_start_matches("./")
+        .to_string();
+    if normalized.is_empty() || normalized.len() > 240 {
+        return;
+    }
+    if (normalized.contains('/') || normalized.contains("::") || normalized.ends_with(".rs"))
+        && !hints.paths.iter().any(|existing| existing == &normalized)
+    {
+        hints.paths.push(normalized);
+    }
+}
+
+fn push_module(candidate: &str, hints: &mut ToolHints) {
+    let normalized = candidate.trim().to_string();
+    if normalized.is_empty() || normalized.len() > 240 {
+        return;
+    }
+    if (normalized.contains("::")
+        || normalized.contains('/')
+        || normalized.contains("mod ")
+        || normalized.ends_with(".rs"))
+        && !hints.modules.iter().any(|existing| existing == &normalized)
+    {
+        hints.modules.push(normalized);
+    }
 }

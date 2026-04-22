@@ -98,15 +98,16 @@ pub fn summarize_session_artifact(
         })
         .filter(|description| !description.trim().is_empty());
 
-    let task_result = result_task_id
+    let primary_summary = result_task_id
         .and_then(|task_id| parsed.results.get(&task_id.to_string()))
-        .or_else(|| {
-            parsed.results.values().find(|result| {
-                !result.summary.trim().is_empty()
-                    || !result.modified_files.is_empty()
-                    || !result.created_files.is_empty()
-            })
-        });
+        .and_then(|result| (!result.summary.trim().is_empty()).then(|| result.summary.clone()));
+    let mut fallback_summaries: Vec<(String, String)> = parsed
+        .results
+        .iter()
+        .filter(|(_, result)| !result.summary.trim().is_empty())
+        .map(|(task_id, result)| (task_id.clone(), result.summary.clone()))
+        .collect();
+    fallback_summaries.sort_by(|left, right| left.0.cmp(&right.0));
 
     let mut modified_files = Vec::new();
     let mut created_files = Vec::new();
@@ -175,8 +176,12 @@ pub fn summarize_session_artifact(
     target_modules.sort();
     target_modules.dedup();
 
-    let summary = task_result
-        .and_then(|result| (!result.summary.trim().is_empty()).then(|| result.summary.clone()))
+    let summary = primary_summary
+        .or_else(|| {
+            fallback_summaries
+                .first()
+                .map(|(_, summary)| summary.clone())
+        })
         .or_else(|| {
             if !modified_files.is_empty() || !created_files.is_empty() {
                 Some(format!(

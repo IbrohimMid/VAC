@@ -78,6 +78,10 @@ pub async fn why_file_changed(
         None => artifacts,
     };
 
+    if candidates.is_empty() {
+        return Ok(None);
+    }
+
     for artifact in candidates {
         for candidate in artifact
             .modified_files
@@ -144,10 +148,6 @@ pub async fn why_file_changed(
                     .cmp(&left.artifact.updated_at.unwrap_or_else(epoch))
             })
     });
-
-    if matches.is_empty() {
-        return Ok(None);
-    }
 
     Ok(Some(FileWhyReport {
         path: file.display().to_string(),
@@ -231,8 +231,8 @@ fn short_label(path: &Path) -> String {
         .to_string()
 }
 
-fn select_artifact<'a>(
-    artifacts: &'a [TrajectoryArtifact],
+fn select_artifact(
+    artifacts: &[TrajectoryArtifact],
     selector: Option<&str>,
 ) -> Option<TrajectoryArtifact> {
     match selector {

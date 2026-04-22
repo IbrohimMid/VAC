@@ -131,3 +131,16 @@ fn why_reports_file_match_from_session() {
         .stdout(predicates::str::contains("modified file"))
         .stdout(predicates::str::contains("updated docs"));
 }
+
+#[test]
+fn why_reports_no_direct_evidence_when_path_has_no_match() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    write_session(root);
+
+    vac_command(root, &["why", "src/absent.rs"])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("Why: src/absent.rs"))
+        .stdout(predicates::str::contains("no direct evidence found"));
+}

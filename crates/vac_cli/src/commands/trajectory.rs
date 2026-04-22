@@ -47,9 +47,9 @@ pub async fn why(
     path: PathBuf,
     trajectory: Option<String>,
 ) -> anyhow::Result<()> {
-    let report =
-        vac_trajectory::why_file_changed(&project_root, &path, trajectory.as_deref()).await?;
-    let report = report.context("no trajectory matched the requested file")?;
+    let report = vac_trajectory::why_file_changed(&project_root, &path, trajectory.as_deref())
+        .await?
+        .context("no trajectory matched the requested selector")?;
 
     if format == "json" {
         return crate::output::print_json(&report);
@@ -127,6 +127,10 @@ fn print_explain_report(report: &vac_trajectory::ExplainReport) {
 fn print_why_report(report: &vac_trajectory::FileWhyReport) {
     println!("Why: {}", report.path);
     println!("  normalized: {}", report.normalized_path);
+    if report.matches.is_empty() {
+        println!("  note: no direct evidence found in recent trajectories");
+        return;
+    }
     for (idx, item) in report.matches.iter().take(3).enumerate() {
         println!(
             "  match {}: [{}] {}",
