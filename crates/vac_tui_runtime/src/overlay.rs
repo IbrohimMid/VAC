@@ -281,4 +281,61 @@ mod tests {
         assert!(!state.overlay_manager.is_active(OverlayId::ReviewPane));
         assert!(!state.review.open);
     }
+
+    // ── Z-order / stack contract tests (D3) ─────────────────────────────
+
+    #[test]
+    fn contract_push_is_idempotent() {
+        let mut m = OverlayManager::new();
+        m.push(OverlayId::CommandPalette, WorkspaceFocus::Input);
+        m.push(OverlayId::CommandPalette, WorkspaceFocus::Input);
+        m.push(OverlayId::CommandPalette, WorkspaceFocus::Input);
+        assert_eq!(m.render_order().count(), 1);
+    }
+
+    #[test]
+    fn contract_topmost_is_last_pushed() {
+        let mut m = OverlayManager::new();
+        m.push(OverlayId::CommandPalette, WorkspaceFocus::Input);
+        m.push(OverlayId::Shortcuts, WorkspaceFocus::Input);
+        m.push(OverlayId::AskUser, WorkspaceFocus::Input);
+        assert_eq!(m.topmost(), Some(OverlayId::AskUser));
+    }
+
+    #[test]
+    fn contract_pop_from_middle_removes_only_that_overlay() {
+        let mut m = OverlayManager::new();
+        m.push(OverlayId::CommandPalette, WorkspaceFocus::Input);
+        m.push(OverlayId::Shortcuts, WorkspaceFocus::Input);
+        m.push(OverlayId::AskUser, WorkspaceFocus::Input);
+        m.pop(OverlayId::Shortcuts);
+        assert!(!m.is_active(OverlayId::Shortcuts));
+        assert!(m.is_active(OverlayId::CommandPalette));
+        assert_eq!(m.topmost(), Some(OverlayId::AskUser));
+    }
+
+    #[test]
+    fn contract_saved_focus_only_restored_when_stack_empties() {
+        let mut m = OverlayManager::new();
+        m.push(OverlayId::CommandPalette, WorkspaceFocus::Input);
+        m.push(OverlayId::Shortcuts, WorkspaceFocus::Workbench);
+        // Popping one does not restore focus.
+        assert!(m.pop(OverlayId::Shortcuts).is_none());
+        // Popping the last one restores the original focus (the one saved
+        // on first push).
+        assert_eq!(m.pop(OverlayId::CommandPalette), Some(WorkspaceFocus::Input));
+    }
+
+    #[test]
+    fn contract_render_order_follows_canonical_not_push_order() {
+        // Push in "wrong" order and verify render_order re-sorts via RENDER_ORDER.
+        let mut m = OverlayManager::new();
+        m.push(OverlayId::TaskTray, WorkspaceFocus::Input);
+        m.push(OverlayId::ReviewPane, WorkspaceFocus::Input);
+        let order: Vec<_> = m.render_order().collect();
+        let review_idx = order.iter().position(|&x| x == OverlayId::ReviewPane).unwrap();
+        let tray_idx = order.iter().position(|&x| x == OverlayId::TaskTray).unwrap();
+        // Per RENDER_ORDER, ReviewPane renders below TaskTray.
+        assert!(review_idx < tray_idx);
+    }
 }
