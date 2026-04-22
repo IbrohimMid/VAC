@@ -176,6 +176,10 @@ enum Commands {
         /// Task wall-clock duration in milliseconds.
         #[arg(long, default_value_t = 0u64)]
         duration_ms: u64,
+        /// Compare against a golden decision file (JSON array of
+        /// { chosen, rejected, rationale } records). Prints match-rate %.
+        #[arg(long)]
+        golden: Option<std::path::PathBuf>,
     },
     /// Explain a trajectory by id, label, or file path
     #[command(next_help_heading = "Trace & Export")]
@@ -429,9 +433,17 @@ async fn main() -> anyhow::Result<()> {
             path,
             succeeded,
             duration_ms,
+            golden,
         } => {
-            commands::trajectory::eval(project_root, &cli.format, path, succeeded, duration_ms)
-                .await?
+            commands::trajectory::eval(
+                project_root,
+                &cli.format,
+                path,
+                succeeded,
+                duration_ms,
+                golden,
+            )
+            .await?
         }
         Commands::Explain { target } => {
             commands::trajectory::explain(project_root, &cli.format, target).await?

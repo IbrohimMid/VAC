@@ -120,9 +120,10 @@ pub async fn eval(
     path: Option<PathBuf>,
     succeeded: bool,
     duration_ms: u64,
+    golden: Option<PathBuf>,
 ) -> anyhow::Result<()> {
     use vac_trajectory::decisions::{
-        DecisionOutcome, DecisionStats, load_decisions_from_file, score_decisions,
+        DecisionOutcome, DecisionRecord, DecisionStats, load_decisions_from_file, score_decisions,
     };
 
     let trace_path = resolve_trace_path(&project_root, path)?;
@@ -131,12 +132,33 @@ pub async fn eval(
     let outcome = DecisionOutcome { task_succeeded: succeeded, duration_ms };
     let report = score_decisions(&records, outcome);
 
+    // Optional golden-file comparison.
+    let mut golden_match_rate: Option<f64> = None;
+    let mut golden_details: Vec<(String, String, bool)> = Vec::new();
+    if let Some(gpath) = golden.as_ref() {
+        let content = tokio::fs::read_to_string(gpath).await?;
+        let golden_records: Vec<DecisionRecord> = serde_json::from_str(&content)?;
+        let n = records.len().min(golden_records.len());
+        let mut matches = 0usize;
+        for i in 0..n {
+            let actual = &records[i].chosen;
+            let expected = &golden_records[i].chosen;
+            let hit = actual == expected;
+            if hit { matches += 1; }
+            golden_details.push((actual.clone(), expected.clone(), hit));
+        }
+        let denom = records.len().max(golden_records.len()).max(1);
+        golden_match_rate = Some((matches as f64 / denom as f64) * 100.0);
+    }
+
     if format == "json" {
         return crate::output::print_json(&serde_json::json!({
             "trace": trace_path,
             "outcome": outcome,
             "stats": stats,
             "score": report,
+            "golden_match_rate_pct": golden_match_rate,
+            "golden_details": golden_details,
         }));
     }
 
@@ -148,6 +170,13 @@ pub async fn eval(
     println!("  decisions:      {} total", stats.total);
     println!("  score:          {}/100", report.score);
     println!("  rationale:      {}", report.rationale);
+    if let Some(rate) = golden_match_rate {
+        println!("  golden match:   {:.1}% ({} pairs)", rate, golden_details.len());
+        for (i, (actual, expected, hit)) in golden_details.iter().enumerate().take(10) {
+            let mark = if *hit { "✓" } else { "✗" };
+            println!("    [{i:>2}] {mark} actual={actual}  expected={expected}");
+        }
+    }
     Ok(())
 }
 
