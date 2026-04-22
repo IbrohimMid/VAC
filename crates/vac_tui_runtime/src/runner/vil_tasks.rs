@@ -48,12 +48,9 @@ pub(super) fn handle_invoke_vil_tool(
         let eng = engine.lock().await;
         match eng.execute_tool_direct(&tool_name, args).await {
             Ok(result) => {
-                let formatted = serde_json::to_string_pretty(&result)
-                    .unwrap_or_else(|_| result.to_string());
-                let content = format!(
-                    "**`{}`** result:\n\n```json\n{}\n```",
-                    tool_name, formatted
-                );
+                let formatted =
+                    serde_json::to_string_pretty(&result).unwrap_or_else(|_| result.to_string());
+                let content = format!("**`{}`** result:\n\n```json\n{}\n```", tool_name, formatted);
                 let _ = input_tx.send(InputEvent::AssistantMessage(content)).await;
             }
             Err(e) => {

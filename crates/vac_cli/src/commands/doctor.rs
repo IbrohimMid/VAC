@@ -17,7 +17,7 @@ pub async fn execute(
         println!(
             "What is your primary LLM provider? [anthropic/openai/local] (default: anthropic): "
         );
-        let mut provider = crate::io::read_line_async().await?;
+        let provider = crate::io::read_line_async().await?;
         let provider = provider.trim();
         let provider = if provider.is_empty() {
             "anthropic"
@@ -85,6 +85,10 @@ pub async fn execute(
     let res = check_rulebooks(&project_root, strict, fix);
     // rulebooks check is non-blocking in original, but let's keep all_ok logic
     // actually, let's keep it non-blocking
+    results.push(res.1);
+
+    let res = check_vil(&project_root, strict, fix).await;
+    all_ok &= res.0;
     results.push(res.1);
 
     let llm_cfg = vil_llm::LlmConfig::load(&project_root).unwrap_or_else(|e| {
@@ -605,4 +609,149 @@ fn check_rulebooks(root: &Path, strict: bool, _fix: bool) -> (bool, serde_json::
             }),
         )
     }
+}
+
+async fn check_vil(root: &Path, strict: bool, _fix: bool) -> (bool, serde_json::Value) {
+    let config = match vac_core::VacConfig::load_with_fallback(root) {
+        Ok(cfg) => cfg,
+        Err(e) => {
+            return (
+                false,
+                serde_json::json!({
+                    "id": "vil",
+                    "ok": false,
+                    "message": format!("config parse error: {e}")
+                }),
+            );
+        }
+    };
+
+    let binary = crate::commands::vil::resolve_vil_binary_from_config(&config.vil);
+    let binary_check = crate::commands::vil::probe_vil_version(&binary).await;
+    let min_version = config.vil.min_version.as_ref();
+    let mut ok = true;
+    let mut messages = Vec::new();
+    let mut fix_message = None::<String>;
+    let mut version_value: Option<String> = None;
+
+    match binary_check {
+        Ok(Some(version)) => {
+            version_value = Some(version.to_string());
+            if let Some(req) = min_version {
+                if crate::commands::vil::version_satisfies(&version, Some(req)) {
+                    messages.push(format!("vil binary {} matches {}", binary.display(), req));
+                } else {
+                    ok = false;
+                    messages.push(format!(
+                        "vil binary {} reports {} but requires {}",
+                        binary.display(),
+                        version,
+                        req
+                    ));
+                }
+            } else {
+                messages.push(format!(
+                    "vil binary available: {} ({})",
+                    binary.display(),
+                    version
+                ));
+            }
+        }
+        Ok(None) => {
+            if min_version.is_some() || strict {
+                ok = false;
+                messages.push(format!(
+                    "vil binary {} did not report a parseable semantic version",
+                    binary.display()
+                ));
+            } else {
+                messages.push(format!(
+                    "vil binary available: {} (version unavailable)",
+                    binary.display()
+                ));
+            }
+        }
+        Err(e) => {
+            if min_version.is_some() || strict {
+                ok = false;
+                messages.push(format!(
+                    "vil binary unavailable: {} ({e})",
+                    binary.display()
+                ));
+            } else {
+                messages.push(format!(
+                    "vil binary unavailable: {} ({e})",
+                    binary.display()
+                ));
+                fix_message = Some(
+                    "Fix: install `vil` or set [vil].binary_path in .vac/config.toml".to_string(),
+                );
+            }
+        }
+    }
+
+    let docs = match crate::commands::vil::collect_vwfd_documents(root, &config.vil.vwfd_paths) {
+        Ok(docs) => docs,
+        Err(e) => {
+            ok = false;
+            messages.push(format!("invalid VWFD path pattern: {e}"));
+            Vec::new()
+        }
+    };
+
+    let mut parsed_docs = 0usize;
+    let mut parse_errors = Vec::new();
+    for doc in &docs {
+        match vil_vwfd::from_file(doc) {
+            Ok(_) => parsed_docs += 1,
+            Err(e) => parse_errors.push(format!("{}: {}", doc.display(), e)),
+        }
+    }
+
+    if !parse_errors.is_empty() {
+        ok = false;
+        messages.push(format!(
+            "{} VWFD document(s) failed schema validation",
+            parse_errors.len()
+        ));
+    }
+
+    if docs.is_empty() {
+        if strict {
+            ok = false;
+        }
+        messages.push("no VWFD documents found for configured [vil].vwfd_paths".to_string());
+        if fix_message.is_none() {
+            fix_message = Some(
+                "Fix: run `vac init` or add a valid .vwfd.yaml under the configured paths"
+                    .to_string(),
+            );
+        }
+    } else {
+        messages.push(format!(
+            "{} VWFD document(s) discovered, {} parsed successfully",
+            docs.len(),
+            parsed_docs
+        ));
+    }
+
+    (
+        ok,
+        serde_json::json!({
+            "id": "vil",
+            "ok": ok,
+            "message": messages.join("; "),
+            "binary": {
+                "path": binary.display().to_string(),
+                "version": version_value,
+                "min_version": min_version.map(ToString::to_string),
+            },
+            "documents": {
+                "paths": docs.iter().map(|p| p.display().to_string()).collect::<Vec<_>>(),
+                "parsed": parsed_docs,
+                "errors": parse_errors,
+            },
+            "fix_message": fix_message,
+        }),
+    )
 }

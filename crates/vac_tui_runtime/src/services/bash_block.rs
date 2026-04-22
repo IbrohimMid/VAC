@@ -70,9 +70,11 @@ pub fn render_bash_blocks_in_text(theme: &Theme, text: &str, width: usize) -> Ve
     split_content_segments(text)
         .into_iter()
         .filter_map(|seg| match seg {
-            super::message::ContentSegment::Code { language, content } => {
-                Some(render_bash_block(theme, &BashBlock { language, content }, width))
-            }
+            super::message::ContentSegment::Code { language, content } => Some(render_bash_block(
+                theme,
+                &BashBlock { language, content },
+                width,
+            )),
             _ => None,
         })
         .flatten()

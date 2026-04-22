@@ -2,8 +2,8 @@
 
 use super::WorkbenchTabView;
 use crate::app::{AppState, WorkspaceFocus};
-use crate::ui::style::focus_style;
 use crate::services::theme::StyleKey;
+use crate::ui::style::focus_style;
 use ratatui::{
     Frame,
     layout::Rect,
@@ -35,12 +35,17 @@ impl WorkbenchTabView for PlanTab {
                 Span::styled("Title: ", state.theme.style(StyleKey::Muted)),
                 Span::styled(
                     meta.title.clone(),
-                    state.theme.style(StyleKey::Warning).add_modifier(Modifier::BOLD),
+                    state
+                        .theme
+                        .style(StyleKey::Warning)
+                        .add_modifier(Modifier::BOLD),
                 ),
             ]));
             let (status_label, status_key) = match meta.status {
                 crate::services::plan::PlanStatus::Drafting => ("drafting", StyleKey::Warning),
-                crate::services::plan::PlanStatus::PendingReview => ("pending_review", StyleKey::Accent),
+                crate::services::plan::PlanStatus::PendingReview => {
+                    ("pending_review", StyleKey::Accent)
+                }
                 crate::services::plan::PlanStatus::Approved => ("approved", StyleKey::Success),
             };
             lines.push(Line::from(vec![

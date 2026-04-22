@@ -10,10 +10,10 @@ use crate::services::textarea::TextArea;
 use crate::types::*;
 
 use super::{
-    ActivityItem, ActivityKind, AppState, HelperCommand, LoadingStateManager,
-    Message, QueueMetrics, RenderMetrics, ReviewItem, ReviewItemStatus,
-    ReviewState, RuntimeState, ShellState, ShortcutsPopupMode, StartupSnapshot,
-    TokenUsage, VilLogEntry, VilState, WorkbenchTab, WorkspaceFocus,
+    ActivityItem, ActivityKind, AppState, HelperCommand, LoadingStateManager, Message,
+    QueueMetrics, RenderMetrics, ReviewItem, ReviewItemStatus, ReviewState, RuntimeState,
+    ShellState, ShortcutsPopupMode, StartupSnapshot, TokenUsage, VilLogEntry, VilState,
+    WorkbenchTab, WorkspaceFocus,
 };
 
 /// Options for creating AppState
@@ -158,8 +158,7 @@ impl AppState {
             review_file_row_regions: Vec::new(),
             pending_kitty_emission: None,
             last_kitty_emission: None,
-            image_preview_cache:
-                crate::services::image_preview_cache::ImagePreviewCache::new(),
+            image_preview_cache: crate::services::image_preview_cache::ImagePreviewCache::new(),
             approvals_row_regions: Vec::new(),
             vil_issue_row_regions: Vec::new(),
             sessions_row_regions: Vec::new(),
@@ -222,7 +221,8 @@ impl AppState {
             validation_issues: Vec::new(),
             lsp_available: false,
             lsp_diagnostics: None,
-            diagnostics_overlay_cache: crate::services::diagnostics_overlay::DiagnosticsOverlayCache::default(),
+            diagnostics_overlay_cache:
+                crate::services::diagnostics_overlay::DiagnosticsOverlayCache::default(),
             active_hover: None,
             hover_popup_region: None,
             active_hover_row_idx: None,

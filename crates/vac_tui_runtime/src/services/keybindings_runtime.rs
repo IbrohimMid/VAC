@@ -412,7 +412,13 @@ mod tests {
             vec!["Ctrl+p".to_string(), "Ctrl+t".to_string()],
         );
         let map = ChordKeymap::from_effective(&effective);
-        assert!(map.lookup(&press(KeyCode::Char('p'), KeyModifiers::CONTROL)).is_some());
-        assert!(map.lookup(&press(KeyCode::Char('t'), KeyModifiers::CONTROL)).is_some());
+        assert!(
+            map.lookup(&press(KeyCode::Char('p'), KeyModifiers::CONTROL))
+                .is_some()
+        );
+        assert!(
+            map.lookup(&press(KeyCode::Char('t'), KeyModifiers::CONTROL))
+                .is_some()
+        );
     }
 }

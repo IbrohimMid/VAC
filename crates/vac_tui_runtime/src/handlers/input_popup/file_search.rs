@@ -121,25 +121,23 @@ pub(super) fn handle_file_picker(
             refresh_file_picker_results(state);
         }
         InputEvent::InputSubmitted => {
-            let selected: Vec<std::path::PathBuf> =
-                if state.file_picker_multi_selected.is_empty() {
-                    state
-                        .file_picker_results
-                        .get(state.file_picker_selected)
-                        .filter(|p| p.is_file())
-                        .cloned()
-                        .into_iter()
-                        .collect()
-                } else {
-                    let mut sel: Vec<_> =
-                        state.file_picker_multi_selected.iter().copied().collect();
-                    sel.sort();
-                    sel.into_iter()
-                        .filter_map(|i| state.file_picker_results.get(i))
-                        .filter(|p| p.is_file())
-                        .cloned()
-                        .collect()
-                };
+            let selected: Vec<std::path::PathBuf> = if state.file_picker_multi_selected.is_empty() {
+                state
+                    .file_picker_results
+                    .get(state.file_picker_selected)
+                    .filter(|p| p.is_file())
+                    .cloned()
+                    .into_iter()
+                    .collect()
+            } else {
+                let mut sel: Vec<_> = state.file_picker_multi_selected.iter().copied().collect();
+                sel.sort();
+                sel.into_iter()
+                    .filter_map(|i| state.file_picker_results.get(i))
+                    .filter(|p| p.is_file())
+                    .cloned()
+                    .collect()
+            };
             if !selected.is_empty() {
                 let _ = output_tx.try_send(OutputEvent::FilesAttached(selected));
             }

@@ -118,6 +118,11 @@ enum Commands {
         #[command(subcommand)]
         action: RulebookAction,
     },
+    /// Manage the external VIL binary
+    Vil {
+        #[command(subcommand)]
+        action: VilAction,
+    },
     /// Start ACP editor-facing agent server
     Acp {
         #[arg(long, default_value = "4123")]
@@ -185,6 +190,33 @@ enum RulebookAction {
     Apply {
         /// Path to the markdown rulebook file
         path: PathBuf,
+    },
+}
+
+#[derive(Subcommand)]
+enum VilAction {
+    /// Initialize a VIL project
+    Init,
+    /// Run the VIL development loop
+    Dev,
+    /// Generate VIL artifacts
+    Gen {
+        /// Artifact template to generate, e.g. `handler`
+        entity: String,
+        /// VIL semantic kind for the generated artifact
+        #[arg(long, value_name = "KIND")]
+        kind: String,
+        /// Execution mode for the generated artifact
+        #[arg(long = "execution-mode", value_name = "MODE")]
+        execution_mode: String,
+        /// Output name for the generated artifact
+        #[arg(long)]
+        name: String,
+    },
+    /// Deploy VIL artifacts
+    Deploy {
+        /// Optional deploy target
+        target: Option<String>,
     },
 }
 
@@ -293,9 +325,11 @@ async fn main() -> anyhow::Result<()> {
         } => {
             commands::run::execute(project_root, task, priority, profile, approve, target).await?;
         }
-        Commands::Interactive { resume, record, replay } => {
-            commands::interactive::execute(project_root, resume, record, replay).await?
-        }
+        Commands::Interactive {
+            resume,
+            record,
+            replay,
+        } => commands::interactive::execute(project_root, resume, record, replay).await?,
         Commands::Resume { checkpoint } => {
             commands::resume::execute(project_root, checkpoint).await?
         }
@@ -336,6 +370,9 @@ async fn main() -> anyhow::Result<()> {
                 commands::rulebook::execute_apply(project_root, path).await?
             }
         },
+        Commands::Vil { action } => {
+            commands::vil::execute(project_root, &cli.format, action).await?;
+        }
         Commands::Acp { port } => commands::acp::execute(project_root, port).await?,
         Commands::Runtime { action } => match action {
             RuntimeAction::Status => {

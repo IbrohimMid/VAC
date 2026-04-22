@@ -1,12 +1,14 @@
 //! `vil_vwfd` — VIL Workflow Definition schema, loader, and validator.
 
+pub mod codegen;
 pub mod error;
 pub mod migrate;
 pub mod parity;
 pub mod schema;
 pub mod version;
 
-pub use parity::{parity_pass, ParityIssue};
+pub use codegen::{GeneratedArtifact, GeneratedFile, generate_handler};
+pub use parity::{ParityIssue, parity_pass};
 
 pub use error::VwfdError;
 pub use schema::{

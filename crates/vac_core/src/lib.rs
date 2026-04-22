@@ -23,7 +23,7 @@ pub use auth::{AuthStatus, StoredAuth};
 pub use bundle::{BundleMetadata, VacBundle};
 pub use config::{
     ExecutionEnvironment, LlmConfig, LlmProviderConfig, NetworkPolicy, RulebookConfig,
-    RuntimeConfig, VacConfig, VilLspConfig,
+    RuntimeConfig, VacConfig, VilConfig, VilLspConfig,
 };
 pub use detector::{VilArchetype, VilProjectProfile};
 pub use engine::{EngineStatus, RuntimeUpdate, TaskHistoryEntry, VacEngine};

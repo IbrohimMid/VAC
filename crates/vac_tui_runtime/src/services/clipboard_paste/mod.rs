@@ -1,13 +1,13 @@
-pub mod path_extraction;
 pub mod image_handling;
+pub mod path_extraction;
 
 // Re-export public API
-pub use path_extraction::{
-    extract_file_paths_from_text, normalize_pasted_path, find_image_file_by_name,
-};
 pub use image_handling::{
-    paste_image_as_png, paste_image_to_temp_png, PasteImageError, EncodedImageFormat,
-    PastedImageInfo,
+    EncodedImageFormat, PasteImageError, PastedImageInfo, paste_image_as_png,
+    paste_image_to_temp_png,
+};
+pub use path_extraction::{
+    extract_file_paths_from_text, find_image_file_by_name, normalize_pasted_path,
 };
 
 /// A single pasted attachment (long text or image) tracked in the input ledger.

@@ -172,10 +172,8 @@ pub async fn run_tui(
     {
         let kb_path = project_root.join(".vac").join("keybindings.toml");
         let outcome = crate::services::keybindings_loader::load_keybindings(&kb_path);
-        let effective =
-            crate::services::keybindings_loader::resolve_effective(&outcome.overrides);
-        let keymap =
-            crate::services::keybindings_runtime::ChordKeymap::from_effective(&effective);
+        let effective = crate::services::keybindings_loader::resolve_effective(&outcome.overrides);
+        let keymap = crate::services::keybindings_runtime::ChordKeymap::from_effective(&effective);
         // PR-T19 R1: collect diagnostic strings BEFORE the keymap is moved
         // into the global OnceLock so we can also surface non-fatal issues
         // (skipped non-reachable overrides + duplicate chord conflicts).
@@ -217,10 +215,7 @@ pub async fn run_tui(
         // `.vac/keybindings.toml` edits while the TUI is running. The
         // watcher is tolerant of a missing file — it just polls mtime
         // and reloads on change.
-        crate::services::keybindings_watcher::spawn_keybindings_watcher(
-            kb_path,
-            input_tx.clone(),
-        );
+        crate::services::keybindings_watcher::spawn_keybindings_watcher(kb_path, input_tx.clone());
     }
 
     // Probe MCP servers in background
@@ -259,9 +254,9 @@ pub async fn run_tui(
                 Err(_) => return,
             };
             for line in replay {
-                let Some(cte) = crate::services::replay_bridge::recorded_input_to_crossterm_event(
-                    &line.event,
-                ) else {
+                let Some(cte) =
+                    crate::services::replay_bridge::recorded_input_to_crossterm_event(&line.event)
+                else {
                     continue;
                 };
                 let Some(ev) = map_crossterm_event_to_input_event(cte) else {
@@ -274,10 +269,8 @@ pub async fn run_tui(
         });
     } else {
         // Live terminal input. Optionally tap into a Recorder.
-        let recorder: Option<Arc<std::sync::Mutex<crate::services::recorder::Recorder>>> = io_mode
-            .record_dir
-            .as_ref()
-            .and_then(|dir| {
+        let recorder: Option<Arc<std::sync::Mutex<crate::services::recorder::Recorder>>> =
+            io_mode.record_dir.as_ref().and_then(|dir| {
                 let cfg = crate::services::recorder::RecorderConfig::new(dir.clone());
                 match crate::services::recorder::Recorder::open(cfg) {
                     Ok(r) => Some(Arc::new(std::sync::Mutex::new(r))),
@@ -410,9 +403,7 @@ pub async fn run_tui(
                     let inner_col = rect.x.saturating_add(1);
                     let inner_row = rect.y.saturating_add(1);
                     let payload = crate::services::kitty_image::emit_positioned_kitty_image(
-                        inner_col,
-                        inner_row,
-                        &png_bytes,
+                        inner_col, inner_row, &png_bytes,
                     );
                     if !payload.is_empty() {
                         let mut stdout = std::io::stdout();

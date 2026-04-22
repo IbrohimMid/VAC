@@ -26,7 +26,7 @@ use vac_tui_runtime::services::keybindings_runtime::{
     ChordKeymap, action_id_to_input_event, key_event_to_chord,
 };
 use vac_tui_runtime::services::recorder::{
-    Recorder, RecorderConfig, RecordedInput, RecordedLine, Replay,
+    RecordedInput, RecordedLine, Recorder, RecorderConfig, Replay,
 };
 
 use support::{drain_output, effective, fresh_state, key, rect};
@@ -220,17 +220,19 @@ fn chord_keymap_detects_chord_bound_to_multiple_actions() {
         (ActionId::OpenFileSearch, vec!["Ctrl+p"]),
     ]));
     let conflicts = keymap.conflicts();
-    assert_eq!(conflicts.len(), 1, "exactly one chord should be in conflict");
+    assert_eq!(
+        conflicts.len(),
+        1,
+        "exactly one chord should be in conflict"
+    );
     let (chord, ids) = &conflicts[0];
     assert_eq!(chord, "Ctrl+p");
     assert_eq!(ids.len(), 2);
     assert!(ids.contains(&ActionId::OpenShortcuts));
     assert!(ids.contains(&ActionId::OpenFileSearch));
     // Non-conflicting unique chord must not show up in `conflicts()`.
-    let single = ChordKeymap::from_effective(&effective([(
-        ActionId::OpenShortcuts,
-        vec!["Ctrl+p"],
-    )]));
+    let single =
+        ChordKeymap::from_effective(&effective([(ActionId::OpenShortcuts, vec!["Ctrl+p"])]));
     assert!(single.conflicts().is_empty());
 }
 
@@ -293,10 +295,7 @@ fn recorder_replay_roundtrip_preserves_event_stream() {
             },
             10,
         ),
-        (
-            RecordedInput::MouseDragStart { col: 4, row: 9 },
-            20,
-        ),
+        (RecordedInput::MouseDragStart { col: 4, row: 9 }, 20),
         (
             RecordedInput::Paste {
                 text: "hello".into(),

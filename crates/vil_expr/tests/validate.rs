@@ -7,7 +7,10 @@ fn validate_rejects_v_cel_legacy_terms() {
     let symbols = SymbolTable::new();
     let report = validate(&expr, input, &symbols);
     assert!(!report.is_valid());
-    assert!(report.issues.iter().any(|i| i.message.contains("legacy alias 'v-cel'")));
+    assert!(report
+        .issues
+        .iter()
+        .any(|i| i.message.contains("legacy alias 'v-cel'")));
 }
 
 #[test]
@@ -17,7 +20,10 @@ fn validate_unknown_identifier_errors() {
     let symbols = SymbolTable::new();
     let report = validate(&expr, input, &symbols);
     assert!(!report.is_valid());
-    assert!(report.issues.iter().any(|i| i.message.contains("Unknown identifier: unknown_ident")));
+    assert!(report
+        .issues
+        .iter()
+        .any(|i| i.message.contains("Unknown identifier: unknown_ident")));
 }
 #[test]
 fn validate_accepts_valid_expr() {

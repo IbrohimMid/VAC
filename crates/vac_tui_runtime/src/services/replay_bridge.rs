@@ -21,8 +21,7 @@
 //!   unicode chars round-trip through `KeyCode::Char(c)`.
 
 use crossterm::event::{
-    Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEvent,
-    MouseEventKind,
+    Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
 };
 
 use crate::services::recorder::RecordedInput;
@@ -135,8 +134,7 @@ pub fn recorded_input_to_crossterm_event(input: &RecordedInput) -> Option<Event>
         RecordedInput::Paste { text } => Some(Event::Paste(text.clone())),
         RecordedInput::KeyRelease { code, modifiers } => {
             let key_code = string_to_key_code(code)?;
-            let mut key =
-                KeyEvent::new(key_code, KeyModifiers::from_bits_truncate(*modifiers));
+            let mut key = KeyEvent::new(key_code, KeyModifiers::from_bits_truncate(*modifiers));
             key.kind = KeyEventKind::Release;
             Some(Event::Key(key))
         }
@@ -386,20 +384,13 @@ mod tests {
     #[test]
     fn resize_and_paste_round_trip() {
         let r = crossterm_event_to_recorded_input(&Event::Resize(80, 24)).unwrap();
-        assert_eq!(
-            r,
-            RecordedInput::Resize {
-                cols: 80,
-                rows: 24
-            }
-        );
+        assert_eq!(r, RecordedInput::Resize { cols: 80, rows: 24 });
         assert!(matches!(
             recorded_input_to_crossterm_event(&r).unwrap(),
             Event::Resize(80, 24)
         ));
 
-        let p =
-            crossterm_event_to_recorded_input(&Event::Paste("hi".to_string())).unwrap();
+        let p = crossterm_event_to_recorded_input(&Event::Paste("hi".to_string())).unwrap();
         assert_eq!(
             p,
             RecordedInput::Paste {

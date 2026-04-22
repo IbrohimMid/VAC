@@ -8,7 +8,6 @@ use crate::services::diagnostics_overlay::{
     HoverDetail, gutter_mark_for_line, render_gutter_cell, render_line_with_diagnostics,
     squiggly_spans_for_line,
 };
-use vac_core::lsp::types::LspSeverity;
 use crate::services::theme::{StyleKey, Theme};
 use ratatui::{
     Frame,
@@ -17,6 +16,7 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem, Paragraph, Wrap},
 };
+use vac_core::lsp::types::LspSeverity;
 
 use crate::app::{AppState, VilIssue, VilIssueKind};
 
@@ -35,10 +35,7 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
 
     // PR-T16 P1 — snapshot issues into an owned Vec so subsequent refs do
     // not borrow from `state`; this frees us to mutate region fields below.
-    let issues_owned: Vec<VilIssue> = super::classify_issues(state)
-        .into_iter()
-        .cloned()
-        .collect();
+    let issues_owned: Vec<VilIssue> = super::classify_issues(state).into_iter().cloned().collect();
     let issues: Vec<&VilIssue> = issues_owned.iter().collect();
     let counts = super::group_counts(&issues);
 
@@ -62,11 +59,17 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
         .block(
             Block::default().borders(Borders::ALL).title(Span::styled(
                 "Issue Groups",
-                state.theme.style(StyleKey::Warning).add_modifier(Modifier::BOLD),
+                state
+                    .theme
+                    .style(StyleKey::Warning)
+                    .add_modifier(Modifier::BOLD),
             )),
         )
         .highlight_style(
-            state.theme.style(StyleKey::Warning).add_modifier(Modifier::BOLD),
+            state
+                .theme
+                .style(StyleKey::Warning)
+                .add_modifier(Modifier::BOLD),
         );
     f.render_widget(tabs, chunks[1]);
 
@@ -192,7 +195,10 @@ fn render_status_panel(f: &mut Frame, state: &AppState, area: Rect) {
         Span::styled(
             rulebook_display,
             if has_conflict {
-                state.theme.style(StyleKey::Error).add_modifier(Modifier::BOLD)
+                state
+                    .theme
+                    .style(StyleKey::Error)
+                    .add_modifier(Modifier::BOLD)
             } else {
                 state.theme.style(StyleKey::Accent)
             },
@@ -207,10 +213,7 @@ fn render_status_panel(f: &mut Frame, state: &AppState, area: Rect) {
             state.theme.style(StyleKey::Success),
         ));
     } else {
-        meta.push(Span::styled(
-            "Inactive",
-            state.theme.style(StyleKey::Muted),
-        ));
+        meta.push(Span::styled("Inactive", state.theme.style(StyleKey::Muted)));
     }
 
     if let Some(profile) = &state.vil.status.profile {
@@ -247,7 +250,10 @@ fn render_status_panel(f: &mut Frame, state: &AppState, area: Rect) {
     } else {
         Line::styled(
             "Scanning profile...",
-            state.theme.style(StyleKey::Muted).add_modifier(Modifier::ITALIC),
+            state
+                .theme
+                .style(StyleKey::Muted)
+                .add_modifier(Modifier::ITALIC),
         )
     };
 
@@ -266,14 +272,20 @@ fn render_status_panel(f: &mut Frame, state: &AppState, area: Rect) {
     if !recommendations.is_empty() {
         lines_to_render.push(Line::styled(
             recommendations.join(" | "),
-            state.theme.style(StyleKey::Warning).add_modifier(Modifier::ITALIC),
+            state
+                .theme
+                .style(StyleKey::Warning)
+                .add_modifier(Modifier::ITALIC),
         ));
     }
 
     let p = Paragraph::new(lines_to_render).block(
         Block::default().borders(Borders::ALL).title(Span::styled(
             "VIL Workstation - Rulebook Cockpit & Validation Heatmap",
-            state.theme.style(StyleKey::Warning).add_modifier(Modifier::BOLD),
+            state
+                .theme
+                .style(StyleKey::Warning)
+                .add_modifier(Modifier::BOLD),
         )),
     );
 
@@ -353,12 +365,9 @@ fn render_issue_list(f: &mut Frame, state: &mut AppState, area: Rect, view: &[&V
     };
 
     if view.is_empty() {
-        let widget = Paragraph::new(Line::styled(
-            empty_msg,
-            state.theme.style(StyleKey::Muted),
-        ))
-        .block(Block::default().borders(Borders::ALL).title("Issues"))
-        .wrap(Wrap { trim: true });
+        let widget = Paragraph::new(Line::styled(empty_msg, state.theme.style(StyleKey::Muted)))
+            .block(Block::default().borders(Borders::ALL).title("Issues"))
+            .wrap(Wrap { trim: true });
         f.render_widget(widget, area);
         return;
     }
@@ -374,10 +383,9 @@ fn render_issue_list(f: &mut Frame, state: &mut AppState, area: Rect, view: &[&V
             if idx as u16 >= inner_h {
                 break;
             }
-            state.vil_issue_row_regions.push((
-                idx,
-                Rect::new(inner_x, inner_y + idx as u16, inner_w, 1),
-            ));
+            state
+                .vil_issue_row_regions
+                .push((idx, Rect::new(inner_x, inner_y + idx as u16, inner_w, 1)));
         }
     }
 
@@ -391,7 +399,10 @@ fn render_issue_list(f: &mut Frame, state: &mut AppState, area: Rect, view: &[&V
         .map(|(idx, issue)| {
             let selected = idx == sel;
             let style = if selected {
-                state.theme.style(StyleKey::Warning).add_modifier(Modifier::BOLD)
+                state
+                    .theme
+                    .style(StyleKey::Warning)
+                    .add_modifier(Modifier::BOLD)
             } else {
                 Style::default()
             };
@@ -435,7 +446,8 @@ fn render_issue_list(f: &mut Frame, state: &mut AppState, area: Rect, view: &[&V
             } else {
                 // Promote the whole message to an overlayed Line, then flatten
                 // its spans into this row so the ListItem remains a single Line.
-                let overlayed = render_line_with_diagnostics(&message, &overlay_spans, style, &state.theme);
+                let overlayed =
+                    render_line_with_diagnostics(&message, &overlay_spans, style, &state.theme);
                 for s in overlayed.spans.into_iter() {
                     spans.push(Span::styled(s.content.into_owned(), s.style));
                 }
@@ -448,4 +460,3 @@ fn render_issue_list(f: &mut Frame, state: &mut AppState, area: Rect, view: &[&V
     let list = List::new(items).block(Block::default().borders(Borders::ALL).title(title));
     f.render_widget(list, area);
 }
-

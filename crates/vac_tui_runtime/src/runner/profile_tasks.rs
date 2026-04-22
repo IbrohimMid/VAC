@@ -21,9 +21,7 @@ pub(super) async fn handle_switch_to_model(
                 format!("Model: {}", model.name),
             )))
             .await;
-        let _ = input_tx
-            .send(InputEvent::SetCurrentModel(model))
-            .await;
+        let _ = input_tx.send(InputEvent::SetCurrentModel(model)).await;
     }
 }
 
@@ -112,10 +110,8 @@ pub(super) fn handle_apply_rulebooks(
             let s = profile.archetype.to_string();
             if s == "Unknown" { None } else { Some(s) }
         };
-        let resolved = vac_core::rulebook::ResolvedRuleContext::build(
-            filtered,
-            archetype_str.as_deref(),
-        );
+        let resolved =
+            vac_core::rulebook::ResolvedRuleContext::build(filtered, archetype_str.as_deref());
         if let Some(overlay) = resolved.to_prompt_overlay() {
             let eng = engine.lock().await;
             if let Some(swarm) = eng.swarm_mut() {

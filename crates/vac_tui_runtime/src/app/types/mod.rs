@@ -9,25 +9,42 @@ use crate::services::textarea::TextArea;
 use crate::types::*;
 
 // Re-export all submodule types
-pub mod rendering;
-pub mod shell;
-pub mod workbench;
-pub mod runtime;
-pub mod commands;
 pub mod billing;
-pub mod messages;
-pub mod support;
+pub mod commands;
 pub mod helpers;
+pub mod messages;
+pub mod rendering;
+pub mod runtime;
+pub mod shell;
+pub mod support;
+pub mod workbench;
 
-pub use rendering::{MessageLinesCache, PerMessageCache, QueueMetrics, RenderedMessageCache, RenderMetrics, VisibleLinesCache};
-pub use shell::{ShellSession, ShellSessionStore, ShellState};
-pub use workbench::{PlanState, ReviewDiffState, ReviewItem, ReviewItemStatus, ReviewState, WorkbenchTab, WorkspaceFocus};
-pub use runtime::{ActivityItem, ActivityKind, RuntimeState, VilIssue, VilIssueKind, VilLogEntry, VilSeverity, VilState, VilStatusSnapshot};
-pub use commands::{CommandSource, ExistingPlanPrompt, HelperCommand, PendingUserMessage, PlanComment};
-pub use billing::{BillingInfo, LoadingOperation, LoadingStateManager, SessionInfo, ShortcutsPopupMode, TokenUsage, ToolCallStatus};
-pub use messages::Message;
-pub use support::{ChipNamespace, ContextChip, SessionResumeEntry, SidePanelRowAction, SidePanelSection, StartupSnapshot};
+pub use billing::{
+    BillingInfo, LoadingOperation, LoadingStateManager, SessionInfo, ShortcutsPopupMode,
+    TokenUsage, ToolCallStatus,
+};
+pub use commands::{
+    CommandSource, ExistingPlanPrompt, HelperCommand, PendingUserMessage, PlanComment,
+};
 pub use helpers::AppStateOptions;
+pub use messages::Message;
+pub use rendering::{
+    MessageLinesCache, PerMessageCache, QueueMetrics, RenderMetrics, RenderedMessageCache,
+    VisibleLinesCache,
+};
+pub use runtime::{
+    ActivityItem, ActivityKind, RuntimeState, VilIssue, VilIssueKind, VilLogEntry, VilSeverity,
+    VilState, VilStatusSnapshot,
+};
+pub use shell::{ShellSession, ShellSessionStore, ShellState};
+pub use support::{
+    ChipNamespace, ContextChip, SessionResumeEntry, SidePanelRowAction, SidePanelSection,
+    StartupSnapshot,
+};
+pub use workbench::{
+    PlanState, ReviewDiffState, ReviewItem, ReviewItemStatus, ReviewState, WorkbenchTab,
+    WorkspaceFocus,
+};
 
 /// Main application state for TUI
 pub struct AppState {

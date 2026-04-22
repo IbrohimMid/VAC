@@ -26,6 +26,7 @@ pub async fn execute(project_root: PathBuf, force: bool) -> anyhow::Result<()> {
     std::fs::create_dir_all(vac_dir.join("cache"))?;
     std::fs::create_dir_all(vac_dir.join("skills"))?;
     std::fs::create_dir_all(vac_dir.join("approvals"))?;
+    std::fs::create_dir_all(project_root.join("workflows"))?;
 
     // Create default config if not exists
     let config_path = vac_dir.join("config.toml");
@@ -152,6 +153,17 @@ output_path = ".vac/traces"
 enable_signing = false
 
 # =============================================================================
+# VIL Workflow Definition (VWFD)
+# =============================================================================
+
+[vil]
+binary_path = "vil"
+min_version = ">=0.1.0"
+vwfd_paths = ["./workflows/**/*.vwfd.yaml"]
+dev_command = "vac vil dev"
+checkpoint_interval_secs = 300
+
+# =============================================================================
 # Runtime & Isolation
 # =============================================================================
 
@@ -211,6 +223,27 @@ max_concurrent_jobs = 2
 "#;
         std::fs::write(&config_path, default_config)?;
         println!("   📝 Created default config: .vac/config.toml");
+    }
+
+    let example_vwfd_path = project_root.join("workflows/example.vwfd.yaml");
+    if !example_vwfd_path.exists() {
+        let example_vwfd = r#"apiVersion: vil.vastar.io/v1
+kind: VilServer
+metadata:
+  name: example-service
+spec:
+  workflows:
+    - name: main
+      description: Example workflow scaffold created by vac init
+      steps:
+        - id: validate
+          handler: validate_input
+  handlers:
+    - name: validate_input
+      execution: native
+"#;
+        std::fs::write(&example_vwfd_path, example_vwfd)?;
+        println!("   📝 Created example VWFD: workflows/example.vwfd.yaml");
     }
 
     // Create empty rulebook template if not exists

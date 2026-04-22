@@ -232,7 +232,10 @@ fn render_tree(f: &mut Frame, state: &VwfdInspectorState, theme: &Theme, area: R
                 theme.style(StyleKey::Muted),
             ))],
         };
-        f.render_widget(Paragraph::new(msg).block(block).wrap(Wrap { trim: true }), area);
+        f.render_widget(
+            Paragraph::new(msg).block(block).wrap(Wrap { trim: true }),
+            area,
+        );
         return;
     }
 
@@ -241,14 +244,14 @@ fn render_tree(f: &mut Frame, state: &VwfdInspectorState, theme: &Theme, area: R
         .map(|node| {
             let indent = "  ".repeat(node.depth as usize);
             let style = match node.kind {
-                VwfdNodeKind::SectionRoot => theme
-                    .style(StyleKey::Warning)
-                    .add_modifier(Modifier::BOLD),
+                VwfdNodeKind::SectionRoot => {
+                    theme.style(StyleKey::Warning).add_modifier(Modifier::BOLD)
+                }
                 VwfdNodeKind::SectionWorkflows
                 | VwfdNodeKind::SectionTriggers
-                | VwfdNodeKind::SectionHandlers => theme
-                    .style(StyleKey::Accent)
-                    .add_modifier(Modifier::BOLD),
+                | VwfdNodeKind::SectionHandlers => {
+                    theme.style(StyleKey::Accent).add_modifier(Modifier::BOLD)
+                }
                 _ => theme.style(StyleKey::Normal),
             };
             ListItem::new(Line::from(vec![
@@ -296,9 +299,7 @@ fn render_detail(f: &mut Frame, state: &VwfdInspectorState, theme: &Theme, area:
             detail_section_count("Workflows", doc.spec.workflows.len(), theme)
         }
         Some(VwfdNodeKind::Workflow(idx)) => detail_workflow(doc, idx, theme),
-        Some(VwfdNodeKind::Step { workflow, step }) => {
-            detail_step(doc, workflow, step, theme)
-        }
+        Some(VwfdNodeKind::Step { workflow, step }) => detail_step(doc, workflow, step, theme),
         Some(VwfdNodeKind::SectionTriggers) => {
             detail_section_count("Triggers", doc.spec.triggers.len(), theme)
         }
@@ -340,11 +341,7 @@ fn detail_root(doc: &VwfdDocument, theme: &Theme) -> Vec<Line<'static>> {
                 .unwrap_or_else(|| "(default)".to_string()),
             theme,
         ),
-        kv(
-            "workflows",
-            doc.spec.workflows.len().to_string(),
-            theme,
-        ),
+        kv("workflows", doc.spec.workflows.len().to_string(), theme),
         kv("triggers", doc.spec.triggers.len().to_string(), theme),
         kv("handlers", doc.spec.handlers.len().to_string(), theme),
     ]
@@ -420,11 +417,7 @@ fn detail_step(
             step.condition.clone().unwrap_or_default(),
             theme,
         ),
-        kv(
-            "onError",
-            step.on_error.clone().unwrap_or_default(),
-            theme,
-        ),
+        kv("onError", step.on_error.clone().unwrap_or_default(), theme),
         kv("inputs", step.inputs.len().to_string(), theme),
         kv("outputs", step.outputs.len().to_string(), theme),
     ]

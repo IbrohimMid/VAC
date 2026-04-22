@@ -81,8 +81,7 @@ pub(super) async fn resolve_shell_spec(
             .push(vac_core::config::MountPreset::Python);
     }
 
-    if config.runtime.execution_environment
-        == vac_core::ExecutionEnvironment::IsolatedInteractive
+    if config.runtime.execution_environment == vac_core::ExecutionEnvironment::IsolatedInteractive
         || config.runtime.execution_environment == vac_core::ExecutionEnvironment::IsolatedBatch
     {
         let isolation =

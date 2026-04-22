@@ -19,9 +19,7 @@ use crate::schema::VwfdDocument;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ParityIssue {
     /// Declared as a handler in VWFD but no matching Rust `#[vil_handler]` fn found.
-    MissingRust {
-        handler: String,
-    },
+    MissingRust { handler: String },
     /// `#[vil_handler]` fn exists in Rust but no VWFD handler with that name.
     OrphanRust {
         handler: String,
@@ -37,7 +35,11 @@ impl ParityIssue {
             ParityIssue::MissingRust { handler } => {
                 format!("missing Rust impl for handler `{handler}`")
             }
-            ParityIssue::OrphanRust { handler, source_path, line } => format!(
+            ParityIssue::OrphanRust {
+                handler,
+                source_path,
+                line,
+            } => format!(
                 "orphan Rust handler `{handler}` at {}:{}",
                 source_path.display(),
                 line,
@@ -56,12 +58,8 @@ pub fn parity_pass(vwfd: &VwfdDocument, rust_root: &Path) -> Vec<ParityIssue> {
     let rust_handlers = scan_rust_handlers(rust_root);
     let rust_names: std::collections::HashSet<&str> =
         rust_handlers.iter().map(|h| h.name.as_str()).collect();
-    let vwfd_names: std::collections::HashSet<&str> = vwfd
-        .spec
-        .handlers
-        .iter()
-        .map(|h| h.name.as_str())
-        .collect();
+    let vwfd_names: std::collections::HashSet<&str> =
+        vwfd.spec.handlers.iter().map(|h| h.name.as_str()).collect();
 
     let mut issues = Vec::new();
 

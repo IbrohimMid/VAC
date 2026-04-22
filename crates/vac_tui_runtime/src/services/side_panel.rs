@@ -280,7 +280,10 @@ fn render_context_section(f: &mut Frame, state: &AppState, area: Rect, collapsed
     } else if state.pinned_files.is_empty() && state.pinned_diffs.is_empty() {
         lines.push(Line::styled(
             "    No pinned context yet. Use /context pin <file> to add one.",
-            state.theme.style(StyleKey::Muted).add_modifier(Modifier::ITALIC),
+            state
+                .theme
+                .style(StyleKey::Muted)
+                .add_modifier(Modifier::ITALIC),
         ));
     }
 
@@ -313,7 +316,10 @@ fn render_sessions_section(f: &mut Frame, state: &mut AppState, area: Rect, coll
     if state.sessions.is_empty() {
         lines.push(Line::styled(
             "    No sessions loaded yet. Run /sessions to open saved sessions.",
-            state.theme.style(StyleKey::Muted).add_modifier(Modifier::ITALIC),
+            state
+                .theme
+                .style(StyleKey::Muted)
+                .add_modifier(Modifier::ITALIC),
         ));
     } else {
         for (i, session) in state.sessions.iter().take(5).enumerate() {
@@ -331,10 +337,7 @@ fn render_sessions_section(f: &mut Frame, state: &mut AppState, area: Rect, coll
             let prefix = if is_active { "    * " } else { "      " };
             lines.push(Line::from(vec![
                 Span::styled(prefix, row_style),
-                Span::styled(
-                    title.chars().take(20).collect::<String>(),
-                    row_style,
-                ),
+                Span::styled(title.chars().take(20).collect::<String>(), row_style),
             ]));
             // Track row rect for click handling (header is row 0, sessions start at row 1)
             let row_y = area.y + 1 + i as u16;
@@ -376,7 +379,10 @@ fn render_mcp_section(f: &mut Frame, state: &mut AppState, area: Rect, collapsed
     if total == 0 {
         lines.push(Line::styled(
             "    No MCP servers configured.",
-            state.theme.style(StyleKey::Muted).add_modifier(Modifier::ITALIC),
+            state
+                .theme
+                .style(StyleKey::Muted)
+                .add_modifier(Modifier::ITALIC),
         ));
     } else {
         let mut row_offset = 1u16; // header is row 0
@@ -413,8 +419,12 @@ fn render_mcp_section(f: &mut Frame, state: &mut AppState, area: Rect, collapsed
             if let Some(trust) = &conn_state.trust_class {
                 let (trust_badge, trust_key) = match trust {
                     vac_tools::mcp::McpTrustClass::LocalTrusted => ("[Local]", StyleKey::Success),
-                    vac_tools::mcp::McpTrustClass::RemoteVerified => ("[Verified]", StyleKey::Warning),
-                    vac_tools::mcp::McpTrustClass::RemoteUntrusted => ("[Untrusted]", StyleKey::Error),
+                    vac_tools::mcp::McpTrustClass::RemoteVerified => {
+                        ("[Verified]", StyleKey::Warning)
+                    }
+                    vac_tools::mcp::McpTrustClass::RemoteUntrusted => {
+                        ("[Untrusted]", StyleKey::Error)
+                    }
                 };
                 line_spans.push(Span::raw(" "));
                 line_spans.push(Span::styled(trust_badge, state.theme.style(trust_key)));
@@ -430,7 +440,10 @@ fn render_mcp_section(f: &mut Frame, state: &mut AppState, area: Rect, collapsed
                 line_spans.push(Span::raw(" "));
                 line_spans.push(Span::styled(
                     "⚠️ Mode Mismatch",
-                    state.theme.style(StyleKey::Error).add_modifier(Modifier::BOLD),
+                    state
+                        .theme
+                        .style(StyleKey::Error)
+                        .add_modifier(Modifier::BOLD),
                 ));
             }
 

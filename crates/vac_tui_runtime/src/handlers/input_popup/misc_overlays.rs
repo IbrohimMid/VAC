@@ -8,7 +8,11 @@ use crate::overlay::OverlayId;
 use tokio::sync::mpsc::Sender;
 
 /// Handle file changes overlay (select modified files).
-pub fn handle_file_changes(state: &mut AppState, output_tx: &Sender<OutputEvent>, event: InputEvent) {
+pub fn handle_file_changes(
+    state: &mut AppState,
+    output_tx: &Sender<OutputEvent>,
+    event: InputEvent,
+) {
     let filtered = crate::services::file_changes_popup::filtered_paths(state);
     match event {
         InputEvent::HandleEsc => {
@@ -106,7 +110,7 @@ pub fn handle_command_palette(
     event: InputEvent,
 ) {
     use crate::handlers::input_commands::dispatch_builtin_command;
-    
+
     match event {
         InputEvent::HandleEsc | InputEvent::HideCommandPalette => {
             crate::overlay::close_overlay(state, OverlayId::CommandPalette);
@@ -149,7 +153,7 @@ pub fn handle_command_palette(
 /// Handle shortcuts overlay (keyboard shortcuts help + session switcher).
 pub fn handle_shortcuts(state: &mut AppState, output_tx: &Sender<OutputEvent>, event: InputEvent) {
     use crate::handlers::input_commands::execute_shortcuts_command;
-    
+
     match event {
         InputEvent::HandleEsc | InputEvent::HideShortcuts => {
             crate::overlay::close_overlay(state, OverlayId::Shortcuts);

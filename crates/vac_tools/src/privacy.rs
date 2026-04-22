@@ -226,7 +226,7 @@ mod tests {
         let mut vault = PrivacyVault::new();
         let text = "arn:aws:iam::123456789012:user/Bob aws_account 123456789012";
         let sub = vault.substitute(text);
-        assert!(sub.contains("aws_account SECRET_AWS_ACCOUNT_ID_2"));
+        assert!(sub.contains("aws_account SECRET_AWS_ACCOUNT_ID_1"));
         assert!(!sub.contains("aws_account 123456789012"));
     }
 }

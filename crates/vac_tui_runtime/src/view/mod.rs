@@ -1,16 +1,19 @@
 //! TUI view rendering orchestration
 
 mod header;
-mod messages;
-mod workbench;
 mod input;
-mod overlays;
+mod messages;
 mod operator;
-mod popups;
+mod overlays;
 mod pickers;
+mod popups;
+mod workbench;
 
 use crate::app::AppState;
-use ratatui::{Frame, layout::{Constraint, Direction, Layout}};
+use ratatui::{
+    Frame,
+    layout::{Constraint, Direction, Layout},
+};
 
 pub use pickers::render_context_chips;
 

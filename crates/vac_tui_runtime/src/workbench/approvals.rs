@@ -50,7 +50,10 @@ impl WorkbenchTabView for ApprovalsTab {
             .map(|(idx, tc)| {
                 let selected = idx == state.approval_selected_idx;
                 let style = if selected {
-                    state.theme.style(StyleKey::Warning).add_modifier(Modifier::BOLD)
+                    state
+                        .theme
+                        .style(StyleKey::Warning)
+                        .add_modifier(Modifier::BOLD)
                 } else {
                     Style::default()
                 };
@@ -70,7 +73,10 @@ impl WorkbenchTabView for ApprovalsTab {
         if let Some(tc) = state.pending_approvals.get(state.approval_selected_idx) {
             lines.push(Line::from(vec![
                 Span::styled("Tool: ", Style::default().add_modifier(Modifier::BOLD)),
-                Span::styled(tc.function.name.clone(), state.theme.style(StyleKey::Warning)),
+                Span::styled(
+                    tc.function.name.clone(),
+                    state.theme.style(StyleKey::Warning),
+                ),
             ]));
             lines.push(Line::raw(""));
 

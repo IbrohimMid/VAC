@@ -1,9 +1,11 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use super::make_state;
+use crate::Model;
 use crate::app::{InputEvent, OutputEvent};
-use crate::session_snapshot::{apply_session_snapshot, build_session_snapshot, load_session_snapshot};
-use crate::{Model};
+use crate::session_snapshot::{
+    apply_session_snapshot, build_session_snapshot, load_session_snapshot,
+};
 
 #[tokio::test]
 async fn session_snapshot_bridge_restores_tui_state() {

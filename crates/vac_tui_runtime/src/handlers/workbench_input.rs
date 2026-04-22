@@ -205,7 +205,7 @@ fn handle_submit(state: &mut AppState, output_tx: &Sender<OutputEvent>) {
     }
 }
 
-/// Dispatch async session cleanup via OutputEvent (PR-W25-9 — no more block_in_place).
+/// Dispatch async session cleanup via OutputEvent (PR-W25-9).
 fn cleanup_session(state: &mut AppState, output_tx: &Sender<OutputEvent>) {
     if let Some(sel) = state.sessions.get(state.sessions_selected_idx).cloned() {
         let _ = output_tx.try_send(OutputEvent::CleanupSession(sel.id));

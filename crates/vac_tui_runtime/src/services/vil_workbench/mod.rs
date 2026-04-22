@@ -51,8 +51,10 @@ pub fn filtered<'a>(state: &AppState, issues: &'a [&VilIssue]) -> Vec<&'a VilIss
 pub fn heatmap_by_file(
     issues: &[&VilIssue],
 ) -> std::collections::BTreeMap<String, std::collections::HashMap<crate::app::VilSeverity, usize>> {
-    let mut map: std::collections::BTreeMap<String, std::collections::HashMap<crate::app::VilSeverity, usize>> =
-        std::collections::BTreeMap::new();
+    let mut map: std::collections::BTreeMap<
+        String,
+        std::collections::HashMap<crate::app::VilSeverity, usize>,
+    > = std::collections::BTreeMap::new();
     for issue in issues {
         if let Some(file) = &issue.file {
             *map.entry(file.clone())

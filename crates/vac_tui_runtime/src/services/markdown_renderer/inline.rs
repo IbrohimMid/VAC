@@ -1,5 +1,5 @@
-use ratatui::text::Span;
 use super::MarkdownStyle;
+use ratatui::text::Span;
 
 /// Parse image syntax: ![alt](url)
 pub fn parse_image(text: &str) -> Option<(String, String)> {
@@ -48,15 +48,9 @@ pub fn parse_link(text: &str) -> Option<(String, String)> {
 }
 
 /// Parse inline formatting (bold, inline code) with proper styling
-pub fn parse_inline_formatting(
-    line: &str,
-    style: &MarkdownStyle,
-) -> Vec<Span<'static>> {
+pub fn parse_inline_formatting(line: &str, style: &MarkdownStyle) -> Vec<Span<'static>> {
     if line.len() > 2000 {
-        return vec![Span::styled(
-            line.to_string(),
-            style.text_style,
-        )];
+        return vec![Span::styled(line.to_string(), style.text_style)];
     }
 
     let mut spans = Vec::new();
@@ -102,20 +96,14 @@ pub fn parse_inline_formatting(
             remaining_for_code = remaining_for_code[start + 1 + end + 1..].to_string();
         } else {
             // No closing backtick, treat as regular text
-            spans.push(Span::styled(
-                remaining_for_code.clone(),
-                style.text_style,
-            ));
+            spans.push(Span::styled(remaining_for_code.clone(), style.text_style));
             break;
         }
     }
 
     // Add any remaining text
     if !remaining_for_code.is_empty() {
-        spans.push(Span::styled(
-            remaining_for_code.clone(),
-            style.text_style,
-        ));
+        spans.push(Span::styled(remaining_for_code.clone(), style.text_style));
     }
 
     spans

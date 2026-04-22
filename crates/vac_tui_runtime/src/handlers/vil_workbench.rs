@@ -241,7 +241,11 @@ pub fn open_file_in_editor(ctx: &mut HandlerContext, path: &str, line: usize) ->
     let preferred = std::env::var("VAC_EDITOR")
         .ok()
         .filter(|s| !s.trim().is_empty())
-        .or_else(|| std::env::var("EDITOR").ok().filter(|s| !s.trim().is_empty()))
+        .or_else(|| {
+            std::env::var("EDITOR")
+                .ok()
+                .filter(|s| !s.trim().is_empty())
+        })
         .and_then(|s| s.split_whitespace().next().map(|t| t.to_string()));
 
     let Some(editor) = crate::services::review::detect_editor(preferred) else {
@@ -251,26 +255,18 @@ pub fn open_file_in_editor(ctx: &mut HandlerContext, path: &str, line: usize) ->
         return Ok(());
     };
 
-    ctx.state.push_activity(
-        ActivityKind::Status,
-        format!("VWFD: open {path}:{line}"),
-    );
+    ctx.state
+        .push_activity(ActivityKind::Status, format!("VWFD: open {path}:{line}"));
 
     let _ = disable_raw_mode();
     let _ = execute!(std::io::stdout(), LeaveAlternateScreen);
 
-    // Run the blocking editor process off the tokio reactor via spawn_blocking
-    // so we don't stall other async tasks while the user edits.
-    let editor_clone = editor.clone();
-    let path_clone = path.to_string();
     let line_arg = format!("+{line}");
-    tokio::task::block_in_place(|| {
-        let _ = std::process::Command::new(&editor_clone)
-            .arg(&line_arg)
-            .arg(&path_clone)
-            .status()
-            .or_else(|_| std::process::Command::new(&editor_clone).arg(&path_clone).status());
-    });
+    let _ = std::process::Command::new(&editor)
+        .arg(&line_arg)
+        .arg(path)
+        .status()
+        .or_else(|_| std::process::Command::new(&editor).arg(path).status());
 
     let _ = execute!(
         std::io::stdout(),

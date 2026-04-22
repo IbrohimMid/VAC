@@ -205,9 +205,11 @@ impl VilTool for VilRepairTool {
         let abs_path = validate_path_within_root(&context.working_dir, &input.file)?;
 
         // Parse the module for real repair analysis
-        let module = vil_ir::parser::parse_file(&abs_path)
+        let module = vil_ir::parser::parse_file_async(&abs_path)
+            .await
             .map_err(|e| ToolError::ExecutionFailed(format!("Failed to parse file: {e}")))?;
-        let source = std::fs::read_to_string(&abs_path)
+        let source = tokio::fs::read_to_string(&abs_path)
+            .await
             .map_err(|e| ToolError::ExecutionFailed(format!("Failed to read file: {e}")))?;
 
         // Run real repair engine (3 deterministic patterns)

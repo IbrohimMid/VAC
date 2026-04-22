@@ -52,6 +52,10 @@ pub struct VacConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VilConfig {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub binary_path: Option<PathBuf>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_version: Option<semver::VersionReq>,
     #[serde(default = "default_vwfd_paths")]
     pub vwfd_paths: Vec<PathBuf>,
     #[serde(default = "default_dev_command")]
@@ -75,6 +79,8 @@ fn default_vil_checkpoint_interval() -> u64 {
 impl Default for VilConfig {
     fn default() -> Self {
         Self {
+            binary_path: None,
+            min_version: None,
             vwfd_paths: default_vwfd_paths(),
             dev_command: default_dev_command(),
             checkpoint_interval_secs: default_vil_checkpoint_interval(),

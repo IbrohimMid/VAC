@@ -122,19 +122,14 @@ pub fn watch_theme(path: PathBuf, tx: Sender<InputEvent>) -> JoinHandle<()> {
                 Ok(_event) => {
                     let now = std::time::Instant::now();
                     if let Some(prev) = last_reload {
-                        if now.duration_since(prev)
-                            < std::time::Duration::from_millis(250)
-                        {
+                        if now.duration_since(prev) < std::time::Duration::from_millis(250) {
                             continue; // debounce rapid bursts
                         }
                     }
                     last_reload = Some(now);
                     if let Ok(cfg) = load_theme_toml(&path) {
                         let theme = cfg.to_theme();
-                        if tx
-                            .blocking_send(InputEvent::ThemeReloaded(theme))
-                            .is_err()
-                        {
+                        if tx.blocking_send(InputEvent::ThemeReloaded(theme)).is_err() {
                             break; // receiver dropped mid-send
                         }
                     }
@@ -187,8 +182,7 @@ mod tests {
         // Wait up to 2s for the event. Notify recommended-watcher on some
         // platforms (macOS FSEvents, Linux inotify) can debounce bursts up
         // to ~1s, so 500 ms was too tight and made this test flaky.
-        let result =
-            tokio::time::timeout(std::time::Duration::from_secs(2), rx.recv()).await;
+        let result = tokio::time::timeout(std::time::Duration::from_secs(2), rx.recv()).await;
         assert!(
             matches!(result, Ok(Some(InputEvent::ThemeReloaded(_)))),
             "expected ThemeReloaded event within 2s, got {result:?}"

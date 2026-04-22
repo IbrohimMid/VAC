@@ -524,7 +524,9 @@ pub fn handle_backend_event(
                     }
                 }
                 RunnerEvent::Checkpoint { session_id, ts } => {
-                    state.vil_dev_checkpoints.push((session_id.clone(), ts.clone()));
+                    state
+                        .vil_dev_checkpoints
+                        .push((session_id.clone(), ts.clone()));
                     state.push_activity(
                         crate::app::ActivityKind::Status,
                         format!("vil checkpoint: {session_id} @ {ts}"),

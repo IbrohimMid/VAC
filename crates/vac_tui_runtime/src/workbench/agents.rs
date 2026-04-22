@@ -1,8 +1,8 @@
 //! Agents tab — monitor swarm agent tasks and worker pool.
 
 use super::WorkbenchTabView;
-use crate::services::theme::StyleKey;
 use crate::app::AppState;
+use crate::services::theme::StyleKey;
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
@@ -47,7 +47,10 @@ impl WorkbenchTabView for AgentsTab {
             .map(|(idx, task)| {
                 let selected = idx == state.runtime.agent_selected;
                 let style = if selected {
-                    state.theme.style(StyleKey::Warning).add_modifier(Modifier::BOLD)
+                    state
+                        .theme
+                        .style(StyleKey::Warning)
+                        .add_modifier(Modifier::BOLD)
                 } else {
                     Style::default()
                 };
@@ -70,7 +73,10 @@ impl WorkbenchTabView for AgentsTab {
                 };
                 let role = Span::styled(
                     task.role.label(),
-                    state.theme.style(StyleKey::AppTitle).add_modifier(Modifier::BOLD),
+                    state
+                        .theme
+                        .style(StyleKey::AppTitle)
+                        .add_modifier(Modifier::BOLD),
                 );
                 let short_id = task.id.to_string().chars().take(8).collect::<String>();
                 let mut desc = task.description.clone();
@@ -99,11 +105,17 @@ impl WorkbenchTabView for AgentsTab {
             Span::raw("  "),
             Span::styled(format!("R {running}"), state.theme.style(StyleKey::Accent)),
             Span::raw("  "),
-            Span::styled(format!("C {completed}"), state.theme.style(StyleKey::Success)),
+            Span::styled(
+                format!("C {completed}"),
+                state.theme.style(StyleKey::Success),
+            ),
             Span::raw("  "),
             Span::styled(format!("F {failed}"), state.theme.style(StyleKey::Error)),
             Span::raw("  "),
-            Span::styled(format!("X {cancelled}"), state.theme.style(StyleKey::Warning)),
+            Span::styled(
+                format!("X {cancelled}"),
+                state.theme.style(StyleKey::Warning),
+            ),
         ]));
         lines.push(Line::raw(""));
 
@@ -115,7 +127,10 @@ impl WorkbenchTabView for AgentsTab {
             for w in &snapshot.workers {
                 let role = Span::styled(
                     w.role.label(),
-                    state.theme.style(StyleKey::AppTitle).add_modifier(Modifier::BOLD),
+                    state
+                        .theme
+                        .style(StyleKey::AppTitle)
+                        .add_modifier(Modifier::BOLD),
                 );
                 let status = match &w.status {
                     vac_runtime::AgentWorkerStatus::Idle => {

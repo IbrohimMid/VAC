@@ -97,10 +97,7 @@ pub fn is_image_path(path: &str) -> bool {
 
 fn extension_of(path: &str) -> Option<String> {
     // Defensively strip URL-style tails so `foo.png?v=1` still matches.
-    let cleaned = path
-        .split(['?', '#'])
-        .next()
-        .unwrap_or(path);
+    let cleaned = path.split(['?', '#']).next().unwrap_or(path);
     Path::new(cleaned)
         .extension()
         .and_then(|ext| ext.to_str())
@@ -179,8 +176,7 @@ mod tests {
         0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77, 0x53, 0xDE, // bit depth/color/filter/CRC
         0x00, 0x00, 0x00, 0x0C, 0x49, 0x44, 0x41, 0x54, // IDAT
         0x08, 0x99, 0x63, 0xF8, 0xCF, 0xC0, 0x00, 0x00, // compressed RGB(255,0,0)
-        0x00, 0x03, 0x00, 0x01,
-        0x5B, 0x6E, 0x2A, 0xA8, // IDAT CRC
+        0x00, 0x03, 0x00, 0x01, 0x5B, 0x6E, 0x2A, 0xA8, // IDAT CRC
         0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, // IEND
         0xAE, 0x42, 0x60, 0x82,
     ];
@@ -214,8 +210,8 @@ mod tests {
             .and_then(|mut f| f.write_all(TINY_PNG))
             .expect("write tiny.png");
 
-        let preview = prepare_image_preview(&path, IMAGE_PREVIEW_MAX_BYTES)
-            .expect("valid PNG must decode");
+        let preview =
+            prepare_image_preview(&path, IMAGE_PREVIEW_MAX_BYTES).expect("valid PNG must decode");
         assert_eq!(preview.width, 1, "tiny.png is 1x1");
         assert_eq!(preview.height, 1);
         assert_eq!(preview.extension, "png");
@@ -249,8 +245,7 @@ mod tests {
         std::fs::File::create(&path)
             .and_then(|mut f| f.write_all(&body))
             .expect("write huge.png");
-        let err = prepare_image_preview(&path, 1024)
-            .expect_err("oversize must error");
+        let err = prepare_image_preview(&path, 1024).expect_err("oversize must error");
         match err {
             ImagePreviewError::TooLarge { bytes, cap } => {
                 assert_eq!(bytes, 2048);

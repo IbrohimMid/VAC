@@ -4,14 +4,14 @@
 // - layout.rs: Text layout, wrapping, and display width calculations
 // - inline.rs: Inline formatting parsing (bold, code, links, images)
 
-pub mod style;
-pub mod renderer;
-pub mod layout;
 pub mod inline;
+pub mod layout;
+pub mod renderer;
+pub mod style;
 
 // Re-export public API
-pub use style::MarkdownStyle;
 pub use renderer::MarkdownRenderer;
+pub use style::MarkdownStyle;
 
 use ratatui::text::{Line, Span};
 use regex::Regex;
@@ -185,10 +185,10 @@ pub fn render_markdown_to_lines_safe(
 fn render_with_timeout(
     markdown_content: &str,
 ) -> Result<Vec<Line<'static>>, Box<dyn std::error::Error>> {
+    use crate::services::theme::{StyleKey, Theme};
     use std::sync::mpsc;
     use std::thread;
     use std::time::Duration;
-    use crate::services::theme::{StyleKey, Theme};
 
     let (tx, rx) = mpsc::channel();
     let content = markdown_content.to_string();
@@ -224,7 +224,7 @@ fn render_with_timeout(
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
-    use ratatui::style::Color;
+    use ratatui::style::Color as C;
 
     #[test]
     fn test_adaptive_style_creation() {
@@ -244,7 +244,7 @@ mod tests {
 
         // Verify RGB colors are used
         match style.h1_style.fg {
-            Some(Color::Rgb(_, _, _)) => {
+            Some(C::Rgb(_, _, _)) => {
                 // Expected for RGB theme
             }
             _ => panic!("Dark theme should use RGB colors"),
@@ -264,7 +264,7 @@ mod tests {
 
         // Code blocks should use Cyan fg (via MarkdownCodeBlock StyleKey)
         match style.code_block_style.fg {
-            Some(Color::Cyan) => {
+            Some(C::Cyan) => {
                 // Expected for high contrast theme
             }
             _ => panic!("Code block style should use cyan color"),
@@ -272,7 +272,7 @@ mod tests {
 
         // Code inline should use Red fg (via MarkdownCodeInline StyleKey)
         match style.code_style.fg {
-            Some(Color::Red) => {
+            Some(C::Red) => {
                 // Expected for high contrast theme
             }
             _ => panic!("Inline code style should use red color"),

@@ -88,32 +88,50 @@ fn operator_surfaces_hide_passthrough_commands_and_match_parity() {
 #[test]
 fn popup_precedence_blocks_lower_priority_open_requests() {
     let mut state = AppState::default();
-    state.overlay_manager.push(vac_tui_runtime::overlay::OverlayId::AskUser, state.focus);
+    state
+        .overlay_manager
+        .push(vac_tui_runtime::overlay::OverlayId::AskUser, state.focus);
 
     let (output_tx, _output_rx) = mpsc::channel(8);
     input_core::handle_input_event(&mut state, &output_tx, InputEvent::ShowProfileSwitcher);
 
-    assert!(state.overlay_manager.is_active(vac_tui_runtime::overlay::OverlayId::AskUser));
-    assert!(!state.overlay_manager.is_active(vac_tui_runtime::overlay::OverlayId::ProfileSwitcher));
+    assert!(
+        state
+            .overlay_manager
+            .is_active(vac_tui_runtime::overlay::OverlayId::AskUser)
+    );
+    assert!(
+        !state
+            .overlay_manager
+            .is_active(vac_tui_runtime::overlay::OverlayId::ProfileSwitcher)
+    );
 }
 
 #[test]
 fn shortcuts_popup_swallows_input_without_touching_editor_state() {
     let mut state = AppState::default();
-    state.overlay_manager.push(vac_tui_runtime::overlay::OverlayId::Shortcuts, state.focus);
+    state
+        .overlay_manager
+        .push(vac_tui_runtime::overlay::OverlayId::Shortcuts, state.focus);
     state.input.set_content("seed");
 
     let (output_tx, _output_rx) = mpsc::channel(8);
     input_core::handle_input_event(&mut state, &output_tx, InputEvent::InputChanged('x'));
 
-    assert!(state.overlay_manager.is_active(vac_tui_runtime::overlay::OverlayId::Shortcuts));
+    assert!(
+        state
+            .overlay_manager
+            .is_active(vac_tui_runtime::overlay::OverlayId::Shortcuts)
+    );
     assert_eq!(state.input.get_content(), "seed");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn shortcuts_popup_executes_slash_commands_directly() {
     let mut state = AppState::default();
-    state.overlay_manager.push(vac_tui_runtime::overlay::OverlayId::Shortcuts, state.focus);
+    state
+        .overlay_manager
+        .push(vac_tui_runtime::overlay::OverlayId::Shortcuts, state.focus);
     state.shortcuts_mode = ShortcutsPopupMode::Commands;
     state.input.set_content("seed");
 
@@ -132,15 +150,25 @@ async fn shortcuts_popup_executes_slash_commands_directly() {
     let (output_tx, _output_rx) = mpsc::channel(8);
     input_core::handle_input_event(&mut state, &output_tx, InputEvent::InputSubmitted);
 
-    assert!(state.overlay_manager.is_active(vac_tui_runtime::overlay::OverlayId::ModelSwitcher));
-    assert!(!state.overlay_manager.is_active(vac_tui_runtime::overlay::OverlayId::Shortcuts));
+    assert!(
+        state
+            .overlay_manager
+            .is_active(vac_tui_runtime::overlay::OverlayId::ModelSwitcher)
+    );
+    assert!(
+        !state
+            .overlay_manager
+            .is_active(vac_tui_runtime::overlay::OverlayId::Shortcuts)
+    );
     assert_eq!(state.input.get_content(), "seed");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn shortcuts_popup_can_switch_tabs_without_closing() {
     let mut state = AppState::default();
-    state.overlay_manager.push(vac_tui_runtime::overlay::OverlayId::Shortcuts, state.focus);
+    state
+        .overlay_manager
+        .push(vac_tui_runtime::overlay::OverlayId::Shortcuts, state.focus);
     state.shortcuts_mode = ShortcutsPopupMode::Commands;
     state.command_palette_input = "stale filter".to_string();
 
@@ -154,7 +182,11 @@ async fn shortcuts_popup_can_switch_tabs_without_closing() {
     let (output_tx, _output_rx) = mpsc::channel(8);
     input_core::handle_input_event(&mut state, &output_tx, InputEvent::InputSubmitted);
 
-    assert!(state.overlay_manager.is_active(vac_tui_runtime::overlay::OverlayId::Shortcuts));
+    assert!(
+        state
+            .overlay_manager
+            .is_active(vac_tui_runtime::overlay::OverlayId::Shortcuts)
+    );
     assert_eq!(state.shortcuts_mode, ShortcutsPopupMode::Sessions);
     assert_eq!(state.shortcuts_scroll, 0);
     assert!(state.command_palette_input.is_empty());
@@ -223,7 +255,11 @@ async fn profile_switcher_request_on_open_and_submit_is_deterministic() {
     input_core::handle_input_event(&mut state, &output_tx, InputEvent::ShowProfileSwitcher);
     {
         let mut ctx = HandlerContext::new(&mut state, &output_tx);
-        assert!(ctx.state.overlay_manager.is_active(vac_tui_runtime::overlay::OverlayId::ProfileSwitcher));
+        assert!(
+            ctx.state
+                .overlay_manager
+                .is_active(vac_tui_runtime::overlay::OverlayId::ProfileSwitcher)
+        );
         let filtered = ctx.state.profile_switcher_filtered();
         assert!(
             filtered.iter().any(|p| p == "migration"),
@@ -237,7 +273,11 @@ async fn profile_switcher_request_on_open_and_submit_is_deterministic() {
         OutputEvent::SwitchProfile(profile) => assert_eq!(profile, "migration"),
         other => panic!("unexpected output event: {other:?}"),
     }
-    assert!(!state.overlay_manager.is_active(vac_tui_runtime::overlay::OverlayId::ProfileSwitcher));
+    assert!(
+        !state
+            .overlay_manager
+            .is_active(vac_tui_runtime::overlay::OverlayId::ProfileSwitcher)
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -273,7 +313,11 @@ severity = "warn"
     input_core::handle_input_event(&mut state, &output_tx, InputEvent::ShowRulebookSwitcher);
     {
         let mut ctx = HandlerContext::new(&mut state, &output_tx);
-        assert!(ctx.state.overlay_manager.is_active(vac_tui_runtime::overlay::OverlayId::RulebookSwitcher));
+        assert!(
+            ctx.state
+                .overlay_manager
+                .is_active(vac_tui_runtime::overlay::OverlayId::RulebookSwitcher)
+        );
         assert_eq!(ctx.state.available_rulebooks.len(), 1);
         assert_eq!(ctx.state.available_rulebooks[0].id, "workspace");
         assert_eq!(ctx.state.rulebook_switcher_selected, 0);
@@ -286,7 +330,11 @@ severity = "warn"
         }
         other => panic!("unexpected output event: {other:?}"),
     }
-    assert!(!state.overlay_manager.is_active(vac_tui_runtime::overlay::OverlayId::RulebookSwitcher));
+    assert!(
+        !state
+            .overlay_manager
+            .is_active(vac_tui_runtime::overlay::OverlayId::RulebookSwitcher)
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -357,8 +405,15 @@ async fn sessions_tab_cleans_selected_session_artifacts_and_refreshes() {
         .expect("cleanup_session_async should succeed");
     assert!(report.snapshot_removed, "snapshot should be removed");
     assert!(report.checkpoint_removed, "checkpoint should be removed");
-    assert_eq!(report.approvals_removed, 1, "one approval file should be removed");
-    assert!(report.errors.is_empty(), "cleanup should not report errors: {:?}", report.errors);
+    assert_eq!(
+        report.approvals_removed, 1,
+        "one approval file should be removed"
+    );
+    assert!(
+        report.errors.is_empty(),
+        "cleanup should not report errors: {:?}",
+        report.errors
+    );
 
     assert!(
         !root
@@ -388,9 +443,7 @@ async fn sessions_tab_cleans_selected_session_artifacts_and_refreshes() {
 mod pr_t16_mouse_dispatch_e2e {
     use ratatui::layout::Rect;
     use tokio::sync::mpsc;
-    use vac_tui_runtime::app::{
-        AppState, OutputEvent, WorkbenchTab, WorkspaceFocus,
-    };
+    use vac_tui_runtime::app::{AppState, OutputEvent, WorkbenchTab, WorkspaceFocus};
     use vac_tui_runtime::handlers::mouse::dispatch_click;
 
     fn make_state() -> (
@@ -502,15 +555,9 @@ mod pr_t16_mouse_dispatch_e2e {
             make_session("gamma"),
         ];
         state.sessions_selected_idx = 0;
-        state
-            .sessions_row_regions
-            .push((0, Rect::new(2, 5, 30, 1)));
-        state
-            .sessions_row_regions
-            .push((1, Rect::new(2, 6, 30, 1)));
-        state
-            .sessions_row_regions
-            .push((2, Rect::new(2, 7, 30, 1)));
+        state.sessions_row_regions.push((0, Rect::new(2, 5, 30, 1)));
+        state.sessions_row_regions.push((1, Rect::new(2, 6, 30, 1)));
+        state.sessions_row_regions.push((2, Rect::new(2, 7, 30, 1)));
 
         let handled = dispatch_click(&mut state, &tx, 10, 7);
         assert!(handled, "click inside sessions row region must be consumed");
@@ -528,9 +575,7 @@ mod pr_t16_mouse_dispatch_e2e {
         state.focus = WorkspaceFocus::Input;
         state.workbench_tab = WorkbenchTab::Review;
         state.sessions.clear();
-        state
-            .sessions_row_regions
-            .push((5, Rect::new(2, 5, 30, 1)));
+        state.sessions_row_regions.push((5, Rect::new(2, 5, 30, 1)));
 
         let handled = dispatch_click(&mut state, &tx, 10, 5);
         assert!(
@@ -570,10 +615,10 @@ mod pr_t16_mouse_dispatch_e2e {
 mod pr_t15_hover_popup_e2e {
     use ratatui::layout::Rect;
     use tokio::sync::mpsc;
+    use vac_core::lsp::types::LspSeverity;
     use vac_tui_runtime::app::{AppState, OutputEvent, WorkbenchTab, WorkspaceFocus};
     use vac_tui_runtime::handlers::mouse::dispatch_click;
     use vac_tui_runtime::services::diagnostics_overlay::HoverDetail;
-    use vac_core::lsp::types::LspSeverity;
 
     fn make_state() -> (
         AppState,
@@ -714,10 +759,10 @@ mod pr_t15_hover_popup_e2e {
 
 mod pr_t15_hover_move_e2e {
     use ratatui::layout::Rect;
+    use vac_core::lsp::types::LspSeverity;
     use vac_tui_runtime::app::{AppState, WorkbenchTab};
     use vac_tui_runtime::handlers::mouse::dispatch_hover;
     use vac_tui_runtime::services::diagnostics_overlay::HoverDetail;
-    use vac_core::lsp::types::LspSeverity;
 
     fn seeded_hover() -> HoverDetail {
         HoverDetail {
@@ -740,7 +785,10 @@ mod pr_t15_hover_move_e2e {
         state.hover_popup_region = Some(Rect::new(20, 10, 40, 7));
 
         let changed = dispatch_hover(&mut state, 2, 2);
-        assert!(changed, "off-region move must be reported as a state change");
+        assert!(
+            changed,
+            "off-region move must be reported as a state change"
+        );
         assert!(state.active_hover.is_none());
         assert!(state.hover_popup_region.is_none());
     }

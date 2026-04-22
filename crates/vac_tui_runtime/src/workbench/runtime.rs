@@ -1,8 +1,8 @@
 //! Runtime tab — job queue, autopilot state, MCP servers, task graph.
 
 use super::WorkbenchTabView;
-use crate::services::theme::StyleKey;
 use crate::app::AppState;
+use crate::services::theme::StyleKey;
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
@@ -47,7 +47,10 @@ impl WorkbenchTabView for RuntimeTab {
             .map(|(idx, job)| {
                 let selected = idx == state.runtime.selected_idx;
                 let style = if selected {
-                    state.theme.style(StyleKey::Warning).add_modifier(Modifier::BOLD)
+                    state
+                        .theme
+                        .style(StyleKey::Warning)
+                        .add_modifier(Modifier::BOLD)
                 } else {
                     Style::default()
                 };
@@ -91,11 +94,17 @@ impl WorkbenchTabView for RuntimeTab {
             Span::raw("  "),
             Span::styled(format!("R {running}"), state.theme.style(StyleKey::Accent)),
             Span::raw("  "),
-            Span::styled(format!("C {completed}"), state.theme.style(StyleKey::Success)),
+            Span::styled(
+                format!("C {completed}"),
+                state.theme.style(StyleKey::Success),
+            ),
             Span::raw("  "),
             Span::styled(format!("F {failed}"), state.theme.style(StyleKey::Error)),
             Span::raw("  "),
-            Span::styled(format!("X {cancelled}"), state.theme.style(StyleKey::Warning)),
+            Span::styled(
+                format!("X {cancelled}"),
+                state.theme.style(StyleKey::Warning),
+            ),
         ]));
         lines.push(Line::raw(""));
 
@@ -220,10 +229,18 @@ impl WorkbenchTabView for RuntimeTab {
             for node in projection.nodes.iter().take(5) {
                 let status_style = match &node.status {
                     vac_core::engine::TaskNodeStatus::Pending => state.theme.style(StyleKey::Muted),
-                    vac_core::engine::TaskNodeStatus::Running => state.theme.style(StyleKey::TaskRunning),
-                    vac_core::engine::TaskNodeStatus::Completed => state.theme.style(StyleKey::TaskCompleted),
-                    vac_core::engine::TaskNodeStatus::Failed(_) => state.theme.style(StyleKey::TaskFailed),
-                    vac_core::engine::TaskNodeStatus::Blocked => state.theme.style(StyleKey::Warning),
+                    vac_core::engine::TaskNodeStatus::Running => {
+                        state.theme.style(StyleKey::TaskRunning)
+                    }
+                    vac_core::engine::TaskNodeStatus::Completed => {
+                        state.theme.style(StyleKey::TaskCompleted)
+                    }
+                    vac_core::engine::TaskNodeStatus::Failed(_) => {
+                        state.theme.style(StyleKey::TaskFailed)
+                    }
+                    vac_core::engine::TaskNodeStatus::Blocked => {
+                        state.theme.style(StyleKey::Warning)
+                    }
                 };
                 let status_label = match &node.status {
                     vac_core::engine::TaskNodeStatus::Pending => "P",
@@ -234,10 +251,7 @@ impl WorkbenchTabView for RuntimeTab {
                 };
                 let approval = if node.approval_required { "⚠" } else { "" };
                 lines.push(Line::from(vec![
-                    Span::styled(
-                        format!("    [{}] ", status_label),
-                        status_style,
-                    ),
+                    Span::styled(format!("    [{}] ", status_label), status_style),
                     Span::raw(node.label.chars().take(24).collect::<String>()),
                     Span::styled(approval.to_string(), state.theme.style(StyleKey::Warning)),
                 ]));

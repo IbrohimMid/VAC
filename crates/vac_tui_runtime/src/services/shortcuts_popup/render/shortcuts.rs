@@ -3,14 +3,16 @@
 use crate::constants::SCROLL_BUFFER_LINES;
 use crate::services::theme::StyleKey;
 use ratatui::{
+    Frame,
     layout::Rect,
     style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Paragraph},
-    Frame,
 };
 
-use super::super::catalog::{build_shortcuts_content, get_all_shortcuts, get_shortcuts_count, Shortcut};
+use super::super::catalog::{
+    Shortcut, build_shortcuts_content, get_all_shortcuts, get_shortcuts_count,
+};
 
 pub fn render_shortcuts_section(
     f: &mut Frame,
@@ -95,7 +97,8 @@ pub fn render_shortcuts_section(
     f.render_widget(content_paragraph, content_area);
 
     // Calculate cumulative shortcuts count
-    let cumulative_shortcuts_count = count_cumulative_shortcuts(&all_lines, scroll, height, keybind_style);
+    let cumulative_shortcuts_count =
+        count_cumulative_shortcuts(&all_lines, scroll, height, keybind_style);
 
     // Scroll indicators
     let has_content_above = scroll > 0;
@@ -110,10 +113,7 @@ pub fn render_shortcuts_section(
         ));
 
         if has_content_below {
-            indicator_spans.push(Span::styled(
-                " ▼",
-                state.theme.style(StyleKey::Muted),
-            ));
+            indicator_spans.push(Span::styled(" ▼", state.theme.style(StyleKey::Muted)));
         }
 
         let indicator_paragraph = Paragraph::new(Line::from(indicator_spans));
@@ -138,7 +138,11 @@ pub fn render_shortcuts_section(
 }
 
 /// Build filtered shortcuts lines for dynamic search results
-fn build_filtered_shortcuts(search_lower: &str, area: Rect, state: &crate::app::AppState) -> Vec<Line<'static>> {
+fn build_filtered_shortcuts(
+    search_lower: &str,
+    area: Rect,
+    state: &crate::app::AppState,
+) -> Vec<Line<'static>> {
     let all_shortcuts = get_all_shortcuts();
     let filtered: Vec<&Shortcut> = all_shortcuts
         .iter()
@@ -195,10 +199,7 @@ fn build_filtered_shortcuts(search_lower: &str, area: Rect, state: &crate::app::
                             .style(StyleKey::KeybindBadge)
                             .add_modifier(Modifier::BOLD),
                     ),
-                    Span::styled(
-                        description_formatted,
-                        state.theme.style(StyleKey::Text),
-                    ),
+                    Span::styled(description_formatted, state.theme.style(StyleKey::Text)),
                 ]));
             }
             lines.push(Line::from(""));
@@ -227,16 +228,19 @@ fn count_shortcuts(all_lines: &[Line], search_term: &str, keybind_style: Style) 
 }
 
 /// Count shortcuts from beginning up to the current scroll position + visible area
-fn count_cumulative_shortcuts(all_lines: &[Line], scroll: usize, height: usize, keybind_style: Style) -> usize {
+fn count_cumulative_shortcuts(
+    all_lines: &[Line],
+    scroll: usize,
+    height: usize,
+    keybind_style: Style,
+) -> usize {
     let keybind_fg = keybind_style.fg;
     let mut count = 0;
     for line_index in 0..=(scroll + height).min(all_lines.len().saturating_sub(1)) {
         if line_index < all_lines.len() {
             let line = &all_lines[line_index];
             for span in &line.spans {
-                if span.style.fg == keybind_fg
-                    && span.style.add_modifier.contains(Modifier::BOLD)
-                {
+                if span.style.fg == keybind_fg && span.style.add_modifier.contains(Modifier::BOLD) {
                     count += 1;
                     break;
                 }

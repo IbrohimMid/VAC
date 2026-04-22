@@ -104,7 +104,9 @@ pub fn load_keybindings(path: &Path) -> LoadOutcome {
 /// Merge user overrides over the compiled-in defaults in `ACTION_SPECS`.
 /// Every [`ActionId`] appearing in the registry is represented in the
 /// returned map (even if with an empty chord list).
-pub fn resolve_effective(overrides: &HashMap<ActionId, Vec<String>>) -> HashMap<ActionId, Vec<String>> {
+pub fn resolve_effective(
+    overrides: &HashMap<ActionId, Vec<String>>,
+) -> HashMap<ActionId, Vec<String>> {
     let mut effective: HashMap<ActionId, Vec<String>> = HashMap::new();
     for spec in ACTION_SPECS.iter() {
         let chords = if let Some(custom) = overrides.get(&spec.id) {
@@ -220,7 +222,11 @@ OpenShortcuts = "F1"
 OpenFileSearch = ["Ctrl+P", "Ctrl+T"]
 "#;
         let outcome = parse_keybindings_str(toml_content);
-        assert!(outcome.warnings.is_empty(), "unexpected warnings: {:?}", outcome.warnings);
+        assert!(
+            outcome.warnings.is_empty(),
+            "unexpected warnings: {:?}",
+            outcome.warnings
+        );
 
         let effective = resolve_effective(&outcome.overrides);
         // Custom override replaces the default "?" binding.

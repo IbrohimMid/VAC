@@ -28,11 +28,7 @@ pub(super) fn render_file_picker(f: &mut Frame, state: &mut AppState) {
     let search_block = Block::default()
         .title(title.as_str())
         .borders(Borders::ALL)
-        .border_style(
-            state
-                .theme
-                .style(StyleKey::OverlayBorder),
-        );
+        .border_style(state.theme.style(StyleKey::OverlayBorder));
     let search_para = Paragraph::new(state.file_picker_query.as_str())
         .block(search_block)
         .style(state.theme.style(StyleKey::InputFg));
@@ -43,11 +39,9 @@ pub(super) fn render_file_picker(f: &mut Frame, state: &mut AppState) {
         .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
         .split(chunks[1]);
 
-    let list_block = Block::default().borders(Borders::ALL).border_style(
-        state
-            .theme
-            .style(StyleKey::BorderNormal),
-    );
+    let list_block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(state.theme.style(StyleKey::BorderNormal));
     let list_inner = list_block.inner(split[0]);
     f.render_widget(list_block, split[0]);
 
@@ -72,9 +66,7 @@ pub(super) fn render_file_picker(f: &mut Frame, state: &mut AppState) {
             };
             let label = format!("{prefix}{name}");
             let style = if i == state.file_picker_selected {
-                state
-                    .theme
-                    .style(StyleKey::OverlaySelected)
+                state.theme.style(StyleKey::OverlaySelected)
             } else if is_dir {
                 state.theme.style(StyleKey::Accent)
             } else {
@@ -89,11 +81,7 @@ pub(super) fn render_file_picker(f: &mut Frame, state: &mut AppState) {
     let preview_block = Block::default()
         .title(" Preview ")
         .borders(Borders::ALL)
-        .border_style(
-            state
-                .theme
-                .style(StyleKey::BorderNormal),
-        );
+        .border_style(state.theme.style(StyleKey::BorderNormal));
     let preview_inner = preview_block.inner(split[1]);
     f.render_widget(preview_block, split[1]);
     let preview_text = state
@@ -114,9 +102,7 @@ pub fn render_context_chips(f: &mut Frame, state: &AppState, area: Rect) {
     for (i, chip) in state.context_chips.iter().enumerate() {
         let is_focused = state.context_chip_cursor == Some(i);
         let style = if is_focused {
-            state
-                .theme
-                .style(StyleKey::OverlaySelected)
+            state.theme.style(StyleKey::OverlaySelected)
         } else {
             state.theme.style(StyleKey::Accent)
         };
@@ -163,11 +149,7 @@ pub(super) fn render_task_tray(f: &mut Frame, state: &mut AppState) {
     let block = Block::default()
         .title(title.as_str())
         .borders(Borders::ALL)
-        .border_style(
-            state
-                .theme
-                .style(StyleKey::OverlayBorder),
-        );
+        .border_style(state.theme.style(StyleKey::OverlayBorder));
     let inner = block.inner(rect);
     f.render_widget(block, rect);
 
@@ -176,43 +158,15 @@ pub(super) fn render_task_tray(f: &mut Frame, state: &mut AppState) {
         .enumerate()
         .map(|(i, job)| {
             let (status_sym, status_style) = match &job.status {
-                JobStatus::Running => (
-                    "▶ ",
-                    state
-                        .theme
-                        .style(StyleKey::TaskRunning),
-                ),
-                JobStatus::Queued => (
-                    "⏳",
-                    state
-                        .theme
-                        .style(StyleKey::TaskQueued),
-                ),
-                JobStatus::Completed => (
-                    "✓ ",
-                    state
-                        .theme
-                        .style(StyleKey::TaskCompleted),
-                ),
-                JobStatus::Failed(_) => (
-                    "✗ ",
-                    state
-                        .theme
-                        .style(StyleKey::TaskFailed),
-                ),
-                JobStatus::Cancelled => (
-                    "— ",
-                    state.theme.style(StyleKey::Muted),
-                ),
+                JobStatus::Running => ("▶ ", state.theme.style(StyleKey::TaskRunning)),
+                JobStatus::Queued => ("⏳", state.theme.style(StyleKey::TaskQueued)),
+                JobStatus::Completed => ("✓ ", state.theme.style(StyleKey::TaskCompleted)),
+                JobStatus::Failed(_) => ("✗ ", state.theme.style(StyleKey::TaskFailed)),
+                JobStatus::Cancelled => ("— ", state.theme.style(StyleKey::Muted)),
             };
             let label = format!("{status_sym}{:?}", job.kind);
             let line = if i == state.task_tray_selected {
-                Line::styled(
-                    label,
-                    state
-                        .theme
-                        .style(StyleKey::OverlaySelected),
-                )
+                Line::styled(label, state.theme.style(StyleKey::OverlaySelected))
             } else {
                 Line::from(vec![Span::styled(label, status_style)])
             };
@@ -247,11 +201,7 @@ pub(super) fn render_theme_picker(f: &mut Frame, state: &mut AppState) {
     let block = Block::default()
         .title(" Theme Picker  (↑↓ select  Enter apply  Esc cancel) ")
         .borders(Borders::ALL)
-        .border_style(
-            state
-                .theme
-                .style(StyleKey::OverlayBorder),
-        );
+        .border_style(state.theme.style(StyleKey::OverlayBorder));
     let inner = block.inner(area);
     f.render_widget(block, area);
 
@@ -269,9 +219,7 @@ pub(super) fn render_theme_picker(f: &mut Frame, state: &mut AppState) {
                 preset.label()
             );
             let style = if i == state.theme_picker_selected {
-                state
-                    .theme
-                    .style(StyleKey::OverlaySelected)
+                state.theme.style(StyleKey::OverlaySelected)
             } else {
                 state.theme.style(StyleKey::Normal)
             };

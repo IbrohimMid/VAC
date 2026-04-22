@@ -10,6 +10,7 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use vac_approvals::{ActiveApprovalRegistry, ApprovalHandle, ApprovalStore};
+use vac_ingest::ProjectContext;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum TaskNodeStatus {
@@ -63,6 +64,7 @@ pub struct VacEngine {
     pub privacy_vault: Arc<RwLock<vac_tools::PrivacyVault>>,
     pub active_approvals: ActiveApprovalRegistry,
     pub inspector_ui: Arc<RwLock<InspectorUI>>,
+    project_context: Option<ProjectContext>,
 }
 
 impl VacEngine {
@@ -71,6 +73,13 @@ impl VacEngine {
         let config = VacConfig::load_with_fallback(&project_root)?;
         let session = Session::load_latest(&project_root)?
             .unwrap_or_else(|| Session::new(project_root.clone()));
+        let project_context = match vac_ingest::bootstrap(project_root.clone()).await {
+            Ok(context) => Some(context),
+            Err(e) => {
+                warn!(error = %e, "project context bootstrap failed");
+                None
+            }
+        };
 
         info!(project = %project_root.display(), "VAC Engine initialized");
 
@@ -89,7 +98,12 @@ impl VacEngine {
             privacy_vault: Arc::new(RwLock::new(vac_tools::PrivacyVault::new())),
             active_approvals: ActiveApprovalRegistry::new(),
             inspector_ui: Arc::new(RwLock::new(InspectorUI::default())),
+            project_context,
         })
+    }
+
+    pub fn project_context(&self) -> Option<&ProjectContext> {
+        self.project_context.as_ref()
     }
 
     pub fn approval_handle(&self) -> ApprovalHandle {

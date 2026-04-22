@@ -18,9 +18,7 @@ pub(super) fn handle_export_bundle(
             vac_core::bundle::export_bundle_to_path(&project_root, None, Some(&path), true)
         })
         .await
-        .unwrap_or_else(|e| {
-            Err(vac_core::VacError::Task(format!("join error: {e}")))
-        });
+        .unwrap_or_else(|e| Err(vac_core::VacError::Task(format!("join error: {e}"))));
         match result {
             Ok(out_path) => {
                 let _ = input_tx
@@ -60,9 +58,7 @@ pub(super) fn handle_import_bundle(
             vac_core::bundle::import_bundle_from_path(&project_root, &path)
         })
         .await
-        .unwrap_or_else(|e| {
-            Err(vac_core::VacError::Task(format!("join error: {e}")))
-        });
+        .unwrap_or_else(|e| Err(vac_core::VacError::Task(format!("join error: {e}"))));
         match result {
             Ok(session_id) => {
                 let _ = input_tx

@@ -1,8 +1,8 @@
 //! Modal overlays: model switcher, file search, changeset, toast, command palette, shortcuts
 
 use crate::app::AppState;
-use crate::services::theme::StyleKey;
 use crate::services::ToastStyle;
+use crate::services::theme::StyleKey;
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
@@ -152,7 +152,11 @@ pub(super) fn render_changeset(f: &mut Frame, state: &mut AppState) {
             ));
         } else if let (Some(old), Some(new)) = (&diff.old_content, &diff.new_content) {
             lines.extend(crate::services::preview_file_diff(
-                &state.theme, &diff.path, old, new, width,
+                &state.theme,
+                &diff.path,
+                old,
+                new,
+                width,
             ));
         } else {
             lines.push(Line::styled(

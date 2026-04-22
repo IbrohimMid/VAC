@@ -14,6 +14,15 @@ pub fn parse_file(path: &Path) -> IrResult<IrModule> {
     parse_source(&content, &path.display().to_string())
 }
 
+/// Parse a single Rust source file into IR using async file IO.
+pub async fn parse_file_async(path: &Path) -> IrResult<IrModule> {
+    let content = tokio::fs::read_to_string(path)
+        .await
+        .map_err(|_| IrError::FileNotFound(path.display().to_string()))?;
+
+    parse_source(&content, &path.display().to_string())
+}
+
 /// Parse Rust source code string into IR.
 pub fn parse_source(source: &str, file_name: &str) -> IrResult<IrModule> {
     let syntax = syn::parse_file(source).map_err(|e| IrError::Parse {

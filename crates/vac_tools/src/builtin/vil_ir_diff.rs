@@ -187,23 +187,26 @@ impl VilTool for VilIrDiffTool {
             .to_string();
 
         // Resolve mode + validate all revs that will be used.
-        let (old_module, new_module, mode): (_, _, &'static str) = match (&input.from, &input.to) {
-            (Some(from), Some(to)) => {
-                validate_rev(from)?;
-                validate_rev(to)?;
-                let old = load_ir_at_rev(&context.working_dir, from, &safe_rel)?;
-                let new = load_ir_at_rev(&context.working_dir, to, &safe_rel)?;
-                (old, new, "rev_range")
-            }
-            _ => {
-                validate_rev(&input.from_rev)?;
-                let old = load_ir_at_rev(&context.working_dir, &input.from_rev, &safe_rel)?;
-                let new = Some(vil_ir::parser::parse_file(&abs_path).map_err(|e| {
-                    ToolError::ExecutionFailed(format!("Failed to parse current file: {e}"))
-                })?);
-                (old, new, "rev_vs_worktree")
-            }
-        };
+        let (old_module, new_module, mode): (_, _, &'static str) =
+            match (&input.from, &input.to) {
+                (Some(from), Some(to)) => {
+                    validate_rev(from)?;
+                    validate_rev(to)?;
+                    let old = load_ir_at_rev(&context.working_dir, from, &safe_rel)?;
+                    let new = load_ir_at_rev(&context.working_dir, to, &safe_rel)?;
+                    (old, new, "rev_range")
+                }
+                _ => {
+                    validate_rev(&input.from_rev)?;
+                    let old = load_ir_at_rev(&context.working_dir, &input.from_rev, &safe_rel)?;
+                    let new = Some(vil_ir::parser::parse_file_async(&abs_path).await.map_err(
+                        |e| {
+                            ToolError::ExecutionFailed(format!("Failed to parse current file: {e}"))
+                        },
+                    )?);
+                    (old, new, "rev_vs_worktree")
+                }
+            };
 
         let diff = vil_ir::diff::diff_modules(old_module.as_ref(), new_module.as_ref());
 

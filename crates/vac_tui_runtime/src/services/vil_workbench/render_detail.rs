@@ -84,8 +84,14 @@ pub fn render_hover_popup(
     );
 
     let popup_rect = Rect::new(
-        anchor_x.clamp(clamp_area.x, clamp_area.x + clamp_area.width.saturating_sub(popup_w)),
-        anchor_y.clamp(clamp_area.y, clamp_area.y + clamp_area.height.saturating_sub(popup_h)),
+        anchor_x.clamp(
+            clamp_area.x,
+            clamp_area.x + clamp_area.width.saturating_sub(popup_w),
+        ),
+        anchor_y.clamp(
+            clamp_area.y,
+            clamp_area.y + clamp_area.height.saturating_sub(popup_h),
+        ),
         popup_w.min(clamp_area.width),
         popup_h.min(clamp_area.height),
     );
@@ -98,19 +104,17 @@ pub fn render_hover_popup(
             Block::default()
                 .borders(Borders::ALL)
                 .border_style(severity_style)
-                .title(Span::styled("Hover", severity_style.add_modifier(Modifier::BOLD))),
+                .title(Span::styled(
+                    "Hover",
+                    severity_style.add_modifier(Modifier::BOLD),
+                )),
         )
         .wrap(Wrap { trim: false });
     f.render_widget(para, popup_rect);
 }
 
 /// Render the lineage / detail panel on the right side.
-pub fn render_lineage_panel(
-    f: &mut Frame,
-    state: &AppState,
-    area: Rect,
-    view: &[&VilIssue],
-) {
+pub fn render_lineage_panel(f: &mut Frame, state: &AppState, area: Rect, view: &[&VilIssue]) {
     if view.is_empty() {
         let widget = Paragraph::new(Line::styled(
             "Select an issue to see details",
@@ -147,16 +151,16 @@ pub fn render_lineage_panel(
     if let (Some(f), Some(l)) = (&issue.file, issue.line) {
         meta_lines.push(Line::from(vec![
             Span::styled("Location: ", Style::default().add_modifier(Modifier::BOLD)),
-            Span::styled(
-                format!("{}:{}", f, l),
-                state.theme.style(StyleKey::Accent),
-            ),
+            Span::styled(format!("{}:{}", f, l), state.theme.style(StyleKey::Accent)),
         ]));
     }
     if issue.inferred {
         meta_lines.push(Line::from(Span::styled(
             "[inferred]",
-            state.theme.style(StyleKey::Muted).add_modifier(Modifier::ITALIC),
+            state
+                .theme
+                .style(StyleKey::Muted)
+                .add_modifier(Modifier::ITALIC),
         )));
     }
     let meta = Paragraph::new(meta_lines)
@@ -168,7 +172,10 @@ pub fn render_lineage_panel(
     let detail_text: Vec<Line> = if let Some(repair) = &issue.repair_proposal {
         let mut lines = vec![Line::from(Span::styled(
             "Repair suggestion:",
-            state.theme.style(StyleKey::Success).add_modifier(Modifier::BOLD),
+            state
+                .theme
+                .style(StyleKey::Success)
+                .add_modifier(Modifier::BOLD),
         ))];
         for l in textwrap_lines(repair, (chunks[1].width.saturating_sub(4)) as usize) {
             lines.push(Line::from(Span::raw(l)));

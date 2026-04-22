@@ -158,7 +158,8 @@ impl VilTool for VilPlumbingTool {
 
         let abs_path = validate_path_within_root(&context.working_dir, &input.file)?;
 
-        let module = vil_ir::parser::parse_file(&abs_path)
+        let module = vil_ir::parser::parse_file_async(&abs_path)
+            .await
             .map_err(|e| ToolError::ExecutionFailed(format!("Failed to parse file: {e}")))?;
 
         let mut entries = Vec::new();

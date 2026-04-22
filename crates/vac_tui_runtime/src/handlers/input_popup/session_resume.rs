@@ -67,8 +67,8 @@ pub(super) fn handle_session_resume(
 /// Uses nucleo fuzzy scoring on `"{project}/{title} — {last_message_preview}"`.
 pub(crate) fn refresh_session_resume_filtered(state: &mut AppState) {
     use nucleo_matcher::{
-        pattern::{AtomKind, CaseMatching, Normalization, Pattern},
         Matcher, Utf32Str,
+        pattern::{AtomKind, CaseMatching, Normalization, Pattern},
     };
 
     let cutoff = state
@@ -110,8 +110,10 @@ pub(crate) fn refresh_session_resume_filtered(state: &mut AppState) {
         .enumerate()
         .filter(|(_, e)| cutoff.map_or(true, |c| e.last_active > c))
         .filter_map(|(i, e)| {
-            let haystack_str =
-                format!("{}/{} \u{2014} {}", e.project, e.title, e.last_message_preview);
+            let haystack_str = format!(
+                "{}/{} \u{2014} {}",
+                e.project, e.title, e.last_message_preview
+            );
             let haystack = Utf32Str::new(&haystack_str, &mut utf32buf);
             pattern.score(haystack, &mut matcher).map(|s| (s, i))
         })

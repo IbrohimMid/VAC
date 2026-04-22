@@ -14,17 +14,26 @@ use ratatui::text::{Line, Span};
 use vac_core::lsp::types::LspWorkspaceSnapshot;
 
 /// Render a simple diff between old and new content
-pub fn render_diff(theme: &Theme, old_content: &str, new_content: &str, max_width: usize) -> Vec<Line<'static>> {
+pub fn render_diff(
+    theme: &Theme,
+    old_content: &str,
+    new_content: &str,
+    max_width: usize,
+) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
 
     // Header
     lines.push(Line::from(vec![Span::styled(
         "--- Old",
-        theme.style(StyleKey::DiffRemoved).add_modifier(Modifier::BOLD),
+        theme
+            .style(StyleKey::DiffRemoved)
+            .add_modifier(Modifier::BOLD),
     )]));
     lines.push(Line::from(vec![Span::styled(
         "+++ New",
-        theme.style(StyleKey::DiffAdded).add_modifier(Modifier::BOLD),
+        theme
+            .style(StyleKey::DiffAdded)
+            .add_modifier(Modifier::BOLD),
     )]));
     lines.push(Line::from(""));
 
@@ -48,7 +57,9 @@ pub fn render_diff(theme: &Theme, old_content: &str, new_content: &str, max_widt
                 if truncated.trim().starts_with("#[vil_") {
                     span = Span::styled(
                         format!("{} (VIL-generated plumbing)", truncated),
-                        theme.style(StyleKey::DiffAdded).add_modifier(Modifier::BOLD),
+                        theme
+                            .style(StyleKey::DiffAdded)
+                            .add_modifier(Modifier::BOLD),
                     );
                 }
                 lines.push(Line::from(vec![
@@ -81,11 +92,15 @@ pub fn render_diff_with_diagnostics(
 
     lines.push(Line::from(vec![Span::styled(
         "--- Old",
-        theme.style(StyleKey::DiffRemoved).add_modifier(Modifier::BOLD),
+        theme
+            .style(StyleKey::DiffRemoved)
+            .add_modifier(Modifier::BOLD),
     )]));
     lines.push(Line::from(vec![Span::styled(
         "+++ New",
-        theme.style(StyleKey::DiffAdded).add_modifier(Modifier::BOLD),
+        theme
+            .style(StyleKey::DiffAdded)
+            .add_modifier(Modifier::BOLD),
     )]));
     lines.push(Line::from(""));
 
@@ -304,11 +319,7 @@ mod tests {
         // "insta-style" pinned assertion the Per-PR Bar asks for without
         // adding a snapshot-file dep.
         use ratatui::{
-            Terminal,
-            backend::TestBackend,
-            layout::Rect,
-            text::Text,
-            widgets::Paragraph,
+            Terminal, backend::TestBackend, layout::Rect, text::Text, widgets::Paragraph,
         };
 
         let theme = Theme::default();
@@ -376,7 +387,9 @@ mod tests {
         // PR-T15 R6 pin: the Error severity must render the filled-circle
         // glyph in the left-most gutter column of the underlined row.
         assert!(
-            underlined_row_gutter_cols.iter().any(|g| g.starts_with('●')),
+            underlined_row_gutter_cols
+                .iter()
+                .any(|g| g.starts_with('●')),
             "expected Error gutter glyph '●' at col 0 of an underlined row, got gutter cells: {:?}",
             underlined_row_gutter_cols
         );

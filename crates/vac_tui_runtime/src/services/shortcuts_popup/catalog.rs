@@ -127,8 +127,7 @@ pub fn build_shortcuts_content(theme: &Theme, width: Option<usize>) -> Vec<Line<
             for shortcut in category_shortcuts {
                 // Use fixed-width formatting for perfect alignment
                 let key_formatted = format!(" {:<25}", shortcut.key); // Left-align in 25 chars
-                let description_formatted =
-                    format!("{:<40} ", shortcut.description); // Left-align in 40 chars
+                let description_formatted = format!("{:<40} ", shortcut.description); // Left-align in 40 chars
 
                 let spans = vec![
                     Span::styled(
@@ -137,10 +136,7 @@ pub fn build_shortcuts_content(theme: &Theme, width: Option<usize>) -> Vec<Line<
                             .style(StyleKey::KeybindBadge)
                             .add_modifier(Modifier::BOLD),
                     ),
-                    Span::styled(
-                        description_formatted,
-                        theme.style(StyleKey::Text),
-                    ),
+                    Span::styled(description_formatted, theme.style(StyleKey::Text)),
                 ];
 
                 all_lines.push(Line::from(spans));

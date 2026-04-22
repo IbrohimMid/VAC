@@ -8,7 +8,7 @@ use crate::services::theme::StyleKey;
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Color as C, Modifier, Style},
     text::{Line, Span, Text},
     widgets::{Block, Borders, Clear, Paragraph},
 };
@@ -79,7 +79,10 @@ pub fn render_file_changes_popup(f: &mut Frame, state: &AppState) {
     let title_spans = vec![
         Span::styled(
             left,
-            state.theme.style(StyleKey::Warning).add_modifier(Modifier::BOLD),
+            state
+                .theme
+                .style(StyleKey::Warning)
+                .add_modifier(Modifier::BOLD),
         ),
         Span::raw(" ".repeat(spacing)),
         Span::styled(count_text, state.theme.style(StyleKey::Accent)),
@@ -94,10 +97,7 @@ pub fn render_file_changes_popup(f: &mut Frame, state: &AppState) {
             Span::styled(">", state.theme.style(StyleKey::AppTitle)),
             Span::raw(" "),
             Span::styled("|", state.theme.style(StyleKey::Accent)),
-            Span::styled(
-                "Type to filter",
-                state.theme.style(StyleKey::Muted),
-            ),
+            Span::styled("Type to filter", state.theme.style(StyleKey::Muted)),
         ]
     } else {
         vec![
@@ -106,7 +106,10 @@ pub fn render_file_changes_popup(f: &mut Frame, state: &AppState) {
             Span::raw(" "),
             Span::styled(
                 state.file_changes_search.clone(),
-                state.theme.style(StyleKey::Text).add_modifier(Modifier::BOLD),
+                state
+                    .theme
+                    .style(StyleKey::Text)
+                    .add_modifier(Modifier::BOLD),
             ),
             Span::styled("|", state.theme.style(StyleKey::Accent)),
         ]
@@ -134,9 +137,13 @@ pub fn render_file_changes_popup(f: &mut Frame, state: &AppState) {
         let entry = filtered[idx];
         let is_selected = idx == state.file_changes_selected;
         let bg_color = if is_selected {
-            state.theme.style(StyleKey::HighlightBg).bg.unwrap_or(Color::Reset)
+            state
+                .theme
+                .style(StyleKey::HighlightBg)
+                .bg
+                .unwrap_or(C::Reset)
         } else {
-            Color::Reset
+            C::Reset
         };
 
         let (label, label_style) = match entry.state {
@@ -148,11 +155,11 @@ pub fn render_file_changes_popup(f: &mut Frame, state: &AppState) {
         };
 
         let name_style = match entry.state {
-            FileState::Reverted | FileState::Removed | FileState::FailedRestore => {
-                state.theme.style(StyleKey::Muted)
-                    .add_modifier(Modifier::CROSSED_OUT)
-                    .bg(bg_color)
-            }
+            FileState::Reverted | FileState::Removed | FileState::FailedRestore => state
+                .theme
+                .style(StyleKey::Muted)
+                .add_modifier(Modifier::CROSSED_OUT)
+                .bg(bg_color),
             _ => {
                 let s = if is_selected {
                     state.theme.style(StyleKey::HighlightFg)

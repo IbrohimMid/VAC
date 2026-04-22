@@ -1,9 +1,12 @@
 //! Input and paste tray rendering
 
 use crate::app::AppState;
-use crate::ui::style::focus_style;
 use crate::app::WorkspaceFocus;
-use crate::services::clipboard_paste::{PastedKind, kind_badge, preview_text, size_label, token_estimate};
+use crate::services::clipboard_paste::{
+    PastedKind, kind_badge, preview_text, size_label, token_estimate,
+};
+use crate::services::theme::StyleKey;
+use crate::ui::style::focus_style;
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
@@ -11,7 +14,6 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph, Wrap},
 };
-use crate::services::theme::StyleKey;
 
 pub(super) fn render_input(f: &mut Frame, state: &mut AppState, area: Rect) {
     // Split off a tray above the input when there are pending pastes.
@@ -51,19 +53,15 @@ pub(super) fn render_input(f: &mut Frame, state: &mut AppState, area: Rect) {
     // Split off lint issue rows below the input when there are active issues.
     let lint_issues = state.vil_expr_lint.issues();
     let lint_rows = lint_issues.len().min(3) as u16; // cap at 3 visible
-    let (actual_input_area, lint_area) =
-        if lint_rows > 0 && input_area.height > lint_rows + 3 {
-            let split = Layout::default()
-                .direction(Direction::Vertical)
-                .constraints([
-                    Constraint::Min(3),
-                    Constraint::Length(lint_rows),
-                ])
-                .split(input_area);
-            (split[0], Some(split[1]))
-        } else {
-            (input_area, None)
-        };
+    let (actual_input_area, lint_area) = if lint_rows > 0 && input_area.height > lint_rows + 3 {
+        let split = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Min(3), Constraint::Length(lint_rows)])
+            .split(input_area);
+        (split[0], Some(split[1]))
+    } else {
+        (input_area, None)
+    };
 
     let widget = Paragraph::new(lines)
         .block(Block::default().borders(Borders::ALL).title(Span::styled(
@@ -84,7 +82,13 @@ pub(super) fn render_input(f: &mut Frame, state: &mut AppState, area: Rect) {
                     vil_expr::Severity::Warning => state.theme.style(StyleKey::ValidationWarning),
                 };
                 Line::from(Span::styled(
-                    format!("  {} [{}:{}] {}", severity_icon(&issue.severity), issue.line, issue.col, issue.message),
+                    format!(
+                        "  {} [{}:{}] {}",
+                        severity_icon(&issue.severity),
+                        issue.line,
+                        issue.col,
+                        issue.message
+                    ),
                     style,
                 ))
             })
@@ -101,8 +105,10 @@ pub(super) fn render_input(f: &mut Frame, state: &mut AppState, area: Rect) {
             .is_active(crate::overlay::OverlayId::Shortcuts)
     {
         let (row, col) = state.input.cursor;
-        let cy = actual_input_area.y + 1 + (row as u16).min(actual_input_area.height.saturating_sub(3));
-        let cx = actual_input_area.x + 1 + (col as u16).min(actual_input_area.width.saturating_sub(3));
+        let cy =
+            actual_input_area.y + 1 + (row as u16).min(actual_input_area.height.saturating_sub(3));
+        let cx =
+            actual_input_area.x + 1 + (col as u16).min(actual_input_area.width.saturating_sub(3));
         f.set_cursor_position((cx, cy));
     }
 }
@@ -142,7 +148,10 @@ pub(super) fn render_paste_tray(f: &mut Frame, state: &AppState, area: Rect) {
         )
     };
     let header = Line::from(vec![
-        Span::styled("📎 ", state.theme.style(crate::services::theme::StyleKey::Muted)),
+        Span::styled(
+            "📎 ",
+            state.theme.style(crate::services::theme::StyleKey::Muted),
+        ),
         Span::styled(
             format!("{} attachment(s)", state.pending_pastes.len()),
             state.theme.style(crate::services::theme::StyleKey::Muted),
@@ -187,7 +196,9 @@ pub(super) fn render_paste_tray(f: &mut Frame, state: &AppState, area: Rect) {
         };
         let badge_style = match &item.kind {
             PastedKind::Text { .. } => state.theme.style(crate::services::theme::StyleKey::Accent),
-            PastedKind::Image { .. } => state.theme.style(crate::services::theme::StyleKey::Streaming),
+            PastedKind::Image { .. } => state
+                .theme
+                .style(crate::services::theme::StyleKey::Streaming),
         };
         let row_style = if is_selected {
             state
@@ -212,7 +223,10 @@ pub(super) fn render_paste_tray(f: &mut Frame, state: &AppState, area: Rect) {
             Span::raw(" "),
             Span::styled(format!("#{}", item.id), row_style),
             Span::raw(" "),
-            Span::styled(size_label(&item.kind), state.theme.style(crate::services::theme::StyleKey::Muted)),
+            Span::styled(
+                size_label(&item.kind),
+                state.theme.style(crate::services::theme::StyleKey::Muted),
+            ),
             Span::raw(" "),
             Span::styled(
                 format!("~{}tok", token_estimate(&item.kind)),

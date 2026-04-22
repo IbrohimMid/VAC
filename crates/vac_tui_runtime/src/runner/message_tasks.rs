@@ -6,8 +6,11 @@ use tokio::sync::{Mutex, mpsc};
 use vac_core::RuntimeUpdate;
 use vac_core::engine::VacEngine;
 
+use super::{
+    ActiveUpdateTx,
+    backend::{handle_runtime_update, resolve_tool_approval},
+};
 use crate::{ContentPart, InputEvent, LoadingOperation, ToolCall};
-use super::{ActiveUpdateTx, backend::{handle_runtime_update, resolve_tool_approval}};
 
 /// Handle `OutputEvent::UserMessage` — send a user turn to the engine with optional
 /// multimodal image parts, wiring runtime updates back into the TUI input channel.
@@ -35,13 +38,8 @@ pub(super) async fn handle_user_message(
         tokio::spawn(async move {
             let mut active_tools: HashMap<String, ToolCall> = HashMap::new();
             while let Some(update) = update_rx.recv().await {
-                handle_runtime_update(
-                    update,
-                    &input_tx_inner,
-                    stream_uuid,
-                    &mut active_tools,
-                )
-                .await;
+                handle_runtime_update(update, &input_tx_inner, stream_uuid, &mut active_tools)
+                    .await;
             }
         });
 
@@ -70,13 +68,7 @@ pub(super) async fn handle_user_message(
                 .await;
         } else {
             let _ = eng
-                .run_task_with_images(
-                    &msg,
-                    Some(update_tx),
-                    None,
-                    None,
-                    image_parts,
-                )
+                .run_task_with_images(&msg, Some(update_tx), None, None, image_parts)
                 .await;
         }
 
@@ -86,10 +78,7 @@ pub(super) async fn handle_user_message(
 }
 
 /// Handle `OutputEvent::AcceptTool` — resolve a pending tool approval as accepted.
-pub(super) async fn handle_accept_tool(
-    approvals: &vac_approvals::ApprovalHandle,
-    tc: ToolCall,
-) {
+pub(super) async fn handle_accept_tool(approvals: &vac_approvals::ApprovalHandle, tc: ToolCall) {
     if let Err(e) = resolve_tool_approval(approvals, tc.id.clone(), true, None).await {
         log::error!("Failed to approve tool call {}: {}", tc.id, e);
     }

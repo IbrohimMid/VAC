@@ -3,8 +3,8 @@ use log;
 use std::path::PathBuf;
 use tempfile::Builder;
 
-use super::path_extraction::normalize_pasted_path;
 use super::path_extraction::find_image_file_by_name;
+use super::path_extraction::normalize_pasted_path;
 
 /// Errors that can occur while reading or materializing a clipboard image.
 #[derive(Debug)]

@@ -2,11 +2,11 @@
 //!
 //! Types, context logic, and query helpers live in `action_ids.rs`.
 
-pub use crate::action_ids::{
-    ActionContext, ActionId, ActionSpec, KeyChord,
-    footer_specs, spec_by_slash_alias, specs_for_context,
-};
 use crate::action_ids::always_available;
+pub use crate::action_ids::{
+    ActionContext, ActionId, ActionSpec, KeyChord, footer_specs, spec_by_slash_alias,
+    specs_for_context,
+};
 
 /// Static registry of all action specs. Single source of truth.
 pub static ACTION_SPECS: &[ActionSpec] = &[

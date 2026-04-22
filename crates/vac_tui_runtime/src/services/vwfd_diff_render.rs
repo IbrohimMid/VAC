@@ -7,7 +7,7 @@
 //! `render` convenience that draws into a `Rect` using a `Paragraph`.
 //!
 //! Styling flows entirely through the workspace `Theme::style(StyleKey::…)`
-//! contract — no raw ratatui `Color::*` is used, so dark / light / Dracula
+//! contract — no raw ratatui color enums are used, so dark / light / Dracula
 //! / Solarized presets all re-colour correctly.
 
 use ratatui::{
@@ -17,9 +17,7 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph, Wrap},
 };
 
-use vac_changeset::formats::vwfd::{
-    ExpressionDelta, ExpressionField, ModifiedStep, VwfdDiff,
-};
+use vac_changeset::formats::vwfd::{ExpressionDelta, ExpressionField, ModifiedStep, VwfdDiff};
 
 use crate::services::theme::{StyleKey, Theme};
 
@@ -144,10 +142,7 @@ fn push_expressions<'a>(out: &mut Vec<Line<'a>>, diff: &'a VwfdDiff, theme: &The
 fn push_section_header<'a>(out: &mut Vec<Line<'a>>, label: &'a str, count: usize, theme: &Theme) {
     out.push(Line::from(vec![
         Span::styled(label, theme.style(StyleKey::Warning)),
-        Span::styled(
-            format!("  ({count})"),
-            theme.style(StyleKey::Muted),
-        ),
+        Span::styled(format!("  ({count})"), theme.style(StyleKey::Muted)),
     ]));
 }
 
@@ -189,11 +184,7 @@ fn push_modified_step<'a>(out: &mut Vec<Line<'a>>, step: &'a ModifiedStep, theme
     }
 }
 
-fn push_expression_delta<'a>(
-    out: &mut Vec<Line<'a>>,
-    delta: &'a ExpressionDelta,
-    theme: &Theme,
-) {
+fn push_expression_delta<'a>(out: &mut Vec<Line<'a>>, delta: &'a ExpressionDelta, theme: &Theme) {
     let field_label: &'static str = match delta.field {
         ExpressionField::Condition => "condition",
         ExpressionField::OnError => "on_error",
@@ -232,10 +223,7 @@ fn indent_two_field_change(
 ) -> Line<'static> {
     Line::from(vec![
         Span::styled("      ", theme.style(StyleKey::Muted)),
-        Span::styled(
-            field.to_string(),
-            theme.style(StyleKey::Muted),
-        ),
+        Span::styled(field.to_string(), theme.style(StyleKey::Muted)),
         Span::styled(": ", theme.style(StyleKey::Muted)),
         Span::styled(
             before.unwrap_or("∅").to_string(),
@@ -252,10 +240,7 @@ fn indent_two_field_change(
 fn indent_flag(field: &str, theme: &Theme) -> Line<'static> {
     Line::from(vec![
         Span::styled("      ", theme.style(StyleKey::Muted)),
-        Span::styled(
-            field.to_string(),
-            theme.style(StyleKey::Muted),
-        ),
+        Span::styled(field.to_string(), theme.style(StyleKey::Muted)),
         Span::styled(": changed", theme.style(StyleKey::Warning)),
     ])
 }
@@ -343,9 +328,18 @@ mod tests {
         assert!(modified_idx < expr_idx);
 
         // Modified-step fields surface per-field indented lines.
-        assert!(flat.iter().any(|l| l.contains("handler") && l.contains("h-old") && l.contains("h-new")));
-        assert!(flat.iter().any(|l| l.contains("condition") && l.contains("always")));
-        assert!(flat.iter().any(|l| l.contains("inputs") && l.contains("changed")));
+        assert!(
+            flat.iter()
+                .any(|l| l.contains("handler") && l.contains("h-old") && l.contains("h-new"))
+        );
+        assert!(
+            flat.iter()
+                .any(|l| l.contains("condition") && l.contains("always"))
+        );
+        assert!(
+            flat.iter()
+                .any(|l| l.contains("inputs") && l.contains("changed"))
+        );
         assert!(!flat.iter().any(|l| l.contains("outputs: changed")));
     }
 

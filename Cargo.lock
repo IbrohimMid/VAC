@@ -1428,6 +1428,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "float-cmp"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b09cf3155332e944990140d967ff5eceb70df778b34f77d8075db46e4704e6d8"
+dependencies = [
+ "num-traits",
+]
+
+[[package]]
 name = "fnv"
 version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2708,6 +2717,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0676bb32a98c1a483ce53e500a81ad9c3d5b3f7c920c28c24e9cb0980d0b5bc8"
 
 [[package]]
+name = "normalize-line-endings"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "61807f77802ff30975e01f4f071c8ba10c022052f98b3294119f3e615d13e5be"
+
+[[package]]
 name = "notify"
 version = "6.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3307,7 +3322,10 @@ checksum = "ada8f2932f28a27ee7b70dd6c1c39ea0675c55a36879ab92f3a715eaa1e63cfe"
 dependencies = [
  "anstyle",
  "difflib",
+ "float-cmp",
+ "normalize-line-endings",
  "predicates-core",
+ "regex",
 ]
 
 [[package]]
@@ -5322,6 +5340,7 @@ dependencies = [
  "clap",
  "crossterm",
  "dirs 5.0.1",
+ "glob",
  "ignore",
  "image",
  "libc",
@@ -5333,9 +5352,11 @@ dependencies = [
  "opentelemetry-otlp",
  "opentelemetry_sdk",
  "portable-pty 0.8.1",
+ "predicates",
  "rand 0.9.2",
  "ratatui",
  "regex",
+ "semver",
  "serde",
  "serde_json",
  "serde_yaml",
@@ -5368,6 +5389,7 @@ dependencies = [
  "vil_llm",
  "vil_swarm",
  "vil_validate",
+ "vil_vwfd",
  "vt100",
 ]
 
@@ -5385,6 +5407,7 @@ dependencies = [
  "proptest",
  "rand 0.8.5",
  "regex",
+ "semver",
  "serde",
  "serde_json",
  "shell-words",
@@ -5397,6 +5420,7 @@ dependencies = [
  "trybuild",
  "uuid",
  "vac_approvals",
+ "vac_ingest",
  "vac_runtime",
  "vac_tools",
  "vac_trace",
@@ -5409,6 +5433,19 @@ dependencies = [
  "vil_trust",
  "vil_validate",
  "walkdir",
+]
+
+[[package]]
+name = "vac_ingest"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "ignore",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -5635,6 +5672,7 @@ dependencies = [
  "syn",
  "tempfile",
  "thiserror 2.0.18",
+ "tokio",
  "tracing",
  "walkdir",
 ]

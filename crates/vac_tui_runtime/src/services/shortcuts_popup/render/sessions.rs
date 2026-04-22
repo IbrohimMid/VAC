@@ -2,11 +2,11 @@
 
 use crate::services::theme::StyleKey;
 use ratatui::{
+    Frame,
     layout::Rect,
-    style::{Color, Modifier, Style},
+    style::{Color as C, Modifier, Style},
     text::{Line, Span},
     widgets::Paragraph,
-    Frame,
 };
 
 pub fn render_sessions_section(
@@ -123,17 +123,15 @@ pub fn render_sessions_section(
                     .theme
                     .style(StyleKey::HighlightFg)
                     .fg
-                    .unwrap_or(Color::Reset);
+                    .unwrap_or(C::Reset);
                 let bg = state
                     .theme
                     .style(StyleKey::HighlightBg)
                     .fg
-                    .unwrap_or(Color::Reset);
+                    .unwrap_or(C::Reset);
                 Style::default().fg(fg).bg(bg).add_modifier(Modifier::BOLD)
             } else {
-                Style::default()
-                    .fg(Color::White)
-                    .bg(Color::Reset)
+                Style::default().fg(C::White).bg(C::Reset)
             };
 
             visible_lines.push(Line::from(vec![Span::styled(text, style)]));
@@ -151,10 +149,7 @@ pub fn render_sessions_section(
             ));
 
             if has_content_below {
-                indicator_spans.push(Span::styled(
-                    " ▼",
-                    state.theme.style(StyleKey::Muted),
-                ));
+                indicator_spans.push(Span::styled(" ▼", state.theme.style(StyleKey::Muted)));
             }
 
             let indicator_paragraph = Paragraph::new(Line::from(indicator_spans));

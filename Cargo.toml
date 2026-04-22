@@ -16,7 +16,7 @@ members = [
     "crates/vac_trace",
     "crates/vac_cli",
     "crates/vac_runtime", "crates/vac_approvals", "crates/vac_changeset", "crates/vac_shell", "crates/vac_session_control", "crates/vac_tui_runtime",
-    "crates/vil_vwfd", "crates/vil_expr",
+    "crates/vil_vwfd", "crates/vil_expr", "crates/vac_ingest",
 ]
 resolver = "2"
 
@@ -125,6 +125,8 @@ vil_inference = { path = "crates/vil_inference" }
 vil_rag = { path = "crates/vil_rag" }
 vil_metrics = { path = "crates/vil_metrics" }
 vil_validate = { path = "crates/vil_validate" }
+vil_vwfd = { path = "crates/vil_vwfd" }
+vac_ingest = { path = "crates/vac_ingest" }
 vac_runtime = { path = "crates/vac_runtime" }
 
 [profile.release]

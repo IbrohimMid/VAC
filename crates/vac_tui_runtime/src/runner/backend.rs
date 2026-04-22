@@ -1,7 +1,7 @@
 //! Backend send/recv helpers — tool approval, runtime update dispatch.
 
-use std::collections::HashMap;
 use anyhow::Result;
+use std::collections::HashMap;
 use tokio::sync::mpsc;
 
 use crate::{

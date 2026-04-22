@@ -1,0 +1,22 @@
+[package]
+name = "vac_ingest"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "VAC project context ingestion — root detection, file indexing, and pending change snapshots"
+
+[dependencies]
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+ignore = "0.4.23"
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+tempfile = "3"

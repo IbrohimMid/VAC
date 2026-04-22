@@ -182,7 +182,8 @@ pub async fn run_vac_tui_with_io(
                     );
                 }
                 OutputEvent::ListSessions => {
-                    handle_list_sessions(&engine_clone, &runtime_project_root, &input_tx_clone).await;
+                    handle_list_sessions(&engine_clone, &runtime_project_root, &input_tx_clone)
+                        .await;
                 }
                 OutputEvent::ListRuntimeJobs => {
                     let jobs = load_runtime_jobs(&runtime_project_root).await;
@@ -237,7 +238,8 @@ pub async fn run_vac_tui_with_io(
                 OutputEvent::CleanupSession(id) => {
                     handle_cleanup_session(&runtime_project_root, &input_tx_clone, id).await;
                     // Refresh session list after cleanup
-                    handle_list_sessions(&engine_clone, &runtime_project_root, &input_tx_clone).await;
+                    handle_list_sessions(&engine_clone, &runtime_project_root, &input_tx_clone)
+                        .await;
                 }
                 _ => {}
             }

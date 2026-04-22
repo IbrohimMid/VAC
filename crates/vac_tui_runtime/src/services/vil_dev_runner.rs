@@ -29,11 +29,19 @@ use tokio::time::timeout;
 /// Structured event emitted by a running `vil dev` process.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RunnerEvent {
-    Started { pid: u32 },
+    Started {
+        pid: u32,
+    },
     Stdout(String),
     Stderr(String),
-    Checkpoint { session_id: String, ts: String },
-    Exited { code: Option<i32>, signal: Option<i32> },
+    Checkpoint {
+        session_id: String,
+        ts: String,
+    },
+    Exited {
+        code: Option<i32>,
+        signal: Option<i32>,
+    },
 }
 
 // ── Parser ────────────────────────────────────────────────────────────────
@@ -121,9 +129,9 @@ impl VilDevRunner {
             .stdin(Stdio::null())
             .kill_on_drop(true);
 
-        let mut child = cmd.spawn().with_context(|| {
-            format!("failed to spawn vil dev command: {command:?}")
-        })?;
+        let mut child = cmd
+            .spawn()
+            .with_context(|| format!("failed to spawn vil dev command: {command:?}"))?;
 
         let pid = child.id();
         if let Some(pid) = pid {
@@ -136,9 +144,7 @@ impl VilDevRunner {
                 let mut lines = BufReader::new(stdout).lines();
                 while let Ok(Some(line)) = lines.next_line().await {
                     if let Some((session_id, ts)) = parse_checkpoint_line(&line) {
-                        let _ = tx
-                            .send(RunnerEvent::Checkpoint { session_id, ts })
-                            .await;
+                        let _ = tx.send(RunnerEvent::Checkpoint { session_id, ts }).await;
                     }
                     if tx.send(RunnerEvent::Stdout(line)).await.is_err() {
                         break;
@@ -325,11 +331,13 @@ mod tests {
             events.push(ev);
         }
 
-        let saw_hello = events.iter().any(|e| matches!(e, RunnerEvent::Stdout(l) if l == "hello"));
-        let saw_checkpoint = events.iter().any(
-            |e| matches!(e, RunnerEvent::Checkpoint { session_id, ts }
-                if session_id == "s1" && ts == "2026-04-21T00:00:00Z"),
-        );
+        let saw_hello = events
+            .iter()
+            .any(|e| matches!(e, RunnerEvent::Stdout(l) if l == "hello"));
+        let saw_checkpoint = events.iter().any(|e| {
+            matches!(e, RunnerEvent::Checkpoint { session_id, ts }
+                if session_id == "s1" && ts == "2026-04-21T00:00:00Z")
+        });
         let saw_exit = events
             .iter()
             .any(|e| matches!(e, RunnerEvent::Exited { code: Some(0), .. }));

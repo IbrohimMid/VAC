@@ -55,6 +55,13 @@ enable = true
 output_path = ".vac/traces"
 enable_signing = false
 
+[vil]
+binary_path = "vil"
+min_version = ">=0.1.0"
+vwfd_paths = ["./workflows/**/*.vwfd.yaml"]
+dev_command = "vac vil dev"
+checkpoint_interval_secs = 300
+
 [vil_lsp]
 enable = true
 binary_path = "vil-lsp"
@@ -140,22 +147,46 @@ fn conflicting_network_policy_is_rejected() {
 #[test]
 fn vil_section_defaults() {
     let config = VacConfig::default();
-    assert_eq!(config.vil.vwfd_paths, vec![std::path::PathBuf::from("./workflows/**/*.vwfd.yaml")]);
+    assert!(config.vil.binary_path.is_none());
+    assert!(config.vil.min_version.is_none());
+    assert_eq!(
+        config.vil.vwfd_paths,
+        vec![std::path::PathBuf::from("./workflows/**/*.vwfd.yaml")]
+    );
     assert_eq!(config.vil.dev_command.unwrap(), "vac vil dev");
     assert_eq!(config.vil.checkpoint_interval_secs, 300);
 }
 
 #[test]
 fn vac_config_parses_vil_section() {
-    let mut toml = INIT_CONFIG_TEMPLATE.to_string();
-    toml.push_str(r#"
-[vil]
-vwfd_paths = ["custom/**/*.yaml"]
-dev_command = "vil dev"
-checkpoint_interval_secs = 60
-"#);
+    let toml = INIT_CONFIG_TEMPLATE
+        .replace(r#"binary_path = "vil""#, r#"binary_path = "vil-custom""#)
+        .replace(r#"min_version = ">=0.1.0""#, r#"min_version = ">=1.2.3""#)
+        .replace(
+            r#"vwfd_paths = ["./workflows/**/*.vwfd.yaml"]"#,
+            r#"vwfd_paths = ["custom/**/*.yaml"]"#,
+        )
+        .replace(
+            r#"dev_command = "vac vil dev""#,
+            r#"dev_command = "vil dev""#,
+        )
+        .replace(
+            r#"checkpoint_interval_secs = 300"#,
+            r#"checkpoint_interval_secs = 60"#,
+        );
     let config: VacConfig = toml::from_str(&toml).unwrap();
-    assert_eq!(config.vil.vwfd_paths, vec![std::path::PathBuf::from("custom/**/*.yaml")]);
+    assert_eq!(
+        config.vil.binary_path,
+        Some(std::path::PathBuf::from("vil-custom"))
+    );
+    assert_eq!(
+        config.vil.min_version.as_ref().map(ToString::to_string),
+        Some(">=1.2.3".to_string())
+    );
+    assert_eq!(
+        config.vil.vwfd_paths,
+        vec![std::path::PathBuf::from("custom/**/*.yaml")]
+    );
     assert_eq!(config.vil.dev_command.unwrap(), "vil dev");
     assert_eq!(config.vil.checkpoint_interval_secs, 60);
 }

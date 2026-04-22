@@ -1,8 +1,8 @@
 //! Workbench panel rendering
 
 use crate::app::AppState;
-use crate::ui::style::focus_style;
 use crate::app::WorkspaceFocus;
+use crate::ui::style::focus_style;
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
@@ -10,10 +10,10 @@ use ratatui::{
     widgets::{Block, Borders, Tabs},
 };
 
-use super::messages::render_messages;
 use super::input::render_input;
-use super::operator::render_operator_panel;
+use super::messages::render_messages;
 use super::operator::render_activity_panel;
+use super::operator::render_operator_panel;
 
 pub(super) fn render_workspace(f: &mut Frame, state: &mut AppState, area: Rect) {
     let main_area = if state.side_panel_visible {
@@ -73,7 +73,11 @@ pub(super) fn render_workbench_panel(f: &mut Frame, state: &mut AppState, area: 
             "Workbench",
             focus_style(state.focus == WorkspaceFocus::Workbench, &state.theme),
         )))
-        .highlight_style(state.theme.style(crate::services::theme::StyleKey::ListSelected));
+        .highlight_style(
+            state
+                .theme
+                .style(crate::services::theme::StyleKey::ListSelected),
+        );
     f.render_widget(tabs, chunks[0]);
 
     // PR-T16 — record per-tab click regions for the mouse dispatcher.

@@ -1,8 +1,8 @@
 //! Operator panel, activity panel, and related status indicators
 
+use crate::app::WorkspaceFocus;
 use crate::app::{ActivityKind, AppState};
 use crate::ui::style::focus_style;
-use crate::app::WorkspaceFocus;
 use ratatui::{
     Frame,
     layout::Rect,
@@ -21,9 +21,15 @@ pub(super) fn render_operator_panel(f: &mut Frame, state: &mut AppState, area: R
             _ => "⠸",
         };
         lines.push(Line::from(vec![
-            Span::styled(spinner, state.theme.style(crate::services::theme::StyleKey::Spinner)),
+            Span::styled(
+                spinner,
+                state.theme.style(crate::services::theme::StyleKey::Spinner),
+            ),
             Span::raw(" "),
-            Span::styled("thinking", state.theme.style(crate::services::theme::StyleKey::Spinner)),
+            Span::styled(
+                "thinking",
+                state.theme.style(crate::services::theme::StyleKey::Spinner),
+            ),
         ]));
     } else if state.is_streaming {
         let tok_rate = state
@@ -44,21 +50,31 @@ pub(super) fn render_operator_panel(f: &mut Frame, state: &mut AppState, area: R
         };
         lines.push(Line::styled(
             rate_str,
-            state.theme.style(crate::services::theme::StyleKey::Streaming),
+            state
+                .theme
+                .style(crate::services::theme::StyleKey::Streaming),
         ));
     } else {
-        lines.push(Line::styled("idle", state.theme.style(crate::services::theme::StyleKey::Muted)));
+        lines.push(Line::styled(
+            "idle",
+            state.theme.style(crate::services::theme::StyleKey::Muted),
+        ));
     }
 
     if let Some(snapshot) = &state.runtime.snapshot {
         let (exec_label, exec_style) = match snapshot.execution_environment {
-            vac_core::ExecutionEnvironment::Host => ("host", state.theme.style(crate::services::theme::StyleKey::Warning)),
-            vac_core::ExecutionEnvironment::IsolatedBatch => {
-                ("isolated-batch", state.theme.style(crate::services::theme::StyleKey::Success))
-            }
-            vac_core::ExecutionEnvironment::IsolatedInteractive => {
-                ("isolated-interactive", state.theme.style(crate::services::theme::StyleKey::Accent))
-            }
+            vac_core::ExecutionEnvironment::Host => (
+                "host",
+                state.theme.style(crate::services::theme::StyleKey::Warning),
+            ),
+            vac_core::ExecutionEnvironment::IsolatedBatch => (
+                "isolated-batch",
+                state.theme.style(crate::services::theme::StyleKey::Success),
+            ),
+            vac_core::ExecutionEnvironment::IsolatedInteractive => (
+                "isolated-interactive",
+                state.theme.style(crate::services::theme::StyleKey::Accent),
+            ),
         };
         let env_style = if snapshot.environment_mode.contains("trusted-networked") {
             state.theme.style(crate::services::theme::StyleKey::Error)
@@ -66,32 +82,50 @@ pub(super) fn render_operator_panel(f: &mut Frame, state: &mut AppState, area: R
             state.theme.style(crate::services::theme::StyleKey::Success)
         };
         lines.push(Line::from(vec![
-            Span::styled("exec ", state.theme.style(crate::services::theme::StyleKey::Muted)),
+            Span::styled(
+                "exec ",
+                state.theme.style(crate::services::theme::StyleKey::Muted),
+            ),
             Span::styled(exec_label, exec_style),
             Span::raw("  "),
-            Span::styled("intent ", state.theme.style(crate::services::theme::StyleKey::Muted)),
+            Span::styled(
+                "intent ",
+                state.theme.style(crate::services::theme::StyleKey::Muted),
+            ),
             Span::styled(
                 snapshot.task_intent_mode.to_string(),
                 state.theme.style(crate::services::theme::StyleKey::Accent),
             ),
             Span::raw("  "),
-            Span::styled("env ", state.theme.style(crate::services::theme::StyleKey::Muted)),
+            Span::styled(
+                "env ",
+                state.theme.style(crate::services::theme::StyleKey::Muted),
+            ),
             Span::styled(snapshot.environment_mode.clone(), env_style),
         ]));
     }
 
     lines.push(Line::from(vec![
-        Span::styled("tools ", state.theme.style(crate::services::theme::StyleKey::Muted)),
+        Span::styled(
+            "tools ",
+            state.theme.style(crate::services::theme::StyleKey::Muted),
+        ),
         Span::styled(
             format!("{}", state.pending_tool_calls.len()),
             state.theme.style(crate::services::theme::StyleKey::Warning),
         ),
-        Span::styled("  approvals ", state.theme.style(crate::services::theme::StyleKey::Muted)),
+        Span::styled(
+            "  approvals ",
+            state.theme.style(crate::services::theme::StyleKey::Muted),
+        ),
         Span::styled(
             format!("{}", state.pending_approvals.len()),
             state.theme.style(crate::services::theme::StyleKey::Warning),
         ),
-        Span::styled("  modified ", state.theme.style(crate::services::theme::StyleKey::Muted)),
+        Span::styled(
+            "  modified ",
+            state.theme.style(crate::services::theme::StyleKey::Muted),
+        ),
         Span::styled(
             format!("{}", state.changeset_store.active_entries().len()),
             state.theme.style(crate::services::theme::StyleKey::Accent),
@@ -112,10 +146,19 @@ pub(super) fn render_operator_panel(f: &mut Frame, state: &mut AppState, area: R
                 "idle"
             };
             lines.push(Line::from(vec![
-                Span::styled("shell ", state.theme.style(crate::services::theme::StyleKey::Muted)),
-                Span::styled(shell_state, state.theme.style(crate::services::theme::StyleKey::Accent)),
+                Span::styled(
+                    "shell ",
+                    state.theme.style(crate::services::theme::StyleKey::Muted),
+                ),
+                Span::styled(
+                    shell_state,
+                    state.theme.style(crate::services::theme::StyleKey::Accent),
+                ),
                 Span::raw("  "),
-                Span::styled(session.label.clone(), state.theme.style(crate::services::theme::StyleKey::Muted)),
+                Span::styled(
+                    session.label.clone(),
+                    state.theme.style(crate::services::theme::StyleKey::Muted),
+                ),
             ]));
         }
 
@@ -133,7 +176,10 @@ pub(super) fn render_operator_panel(f: &mut Frame, state: &mut AppState, area: R
             lines.push(Line::raw(""));
             for l in last.lines() {
                 lines.push(Line::from(vec![
-                    Span::styled("shell ", state.theme.style(crate::services::theme::StyleKey::Muted)),
+                    Span::styled(
+                        "shell ",
+                        state.theme.style(crate::services::theme::StyleKey::Muted),
+                    ),
                     Span::raw(l.to_string()),
                 ]));
             }
@@ -153,7 +199,10 @@ pub(super) fn render_operator_panel(f: &mut Frame, state: &mut AppState, area: R
             state.theme.style(crate::services::theme::StyleKey::Warning)
         };
         lines.push(Line::from(vec![
-            Span::styled("mcp ", state.theme.style(crate::services::theme::StyleKey::Muted)),
+            Span::styled(
+                "mcp ",
+                state.theme.style(crate::services::theme::StyleKey::Muted),
+            ),
             Span::styled(format!("{}/{} connected", connected, total), mcp_style),
         ]));
     }
@@ -161,7 +210,10 @@ pub(super) fn render_operator_panel(f: &mut Frame, state: &mut AppState, area: R
     // Render budget indicator — only shown when over 16ms
     if state.render_metrics.ema_render_time_us > 16_000 {
         lines.push(Line::from(vec![
-            Span::styled("render ", state.theme.style(crate::services::theme::StyleKey::Muted)),
+            Span::styled(
+                "render ",
+                state.theme.style(crate::services::theme::StyleKey::Muted),
+            ),
             Span::styled(
                 format!("{}ms avg ⚠", state.render_metrics.ema_render_time_us / 1000),
                 state.theme.style(crate::services::theme::StyleKey::Error),
@@ -203,7 +255,10 @@ pub(super) fn render_activity_panel(f: &mut Frame, state: &mut AppState, area: R
     for item in &state.activity[start..end] {
         let ts = item.at.format("%H:%M:%S").to_string();
         lines.push(Line::from(vec![
-            Span::styled(ts, state.theme.style(crate::services::theme::StyleKey::Muted)),
+            Span::styled(
+                ts,
+                state.theme.style(crate::services::theme::StyleKey::Muted),
+            ),
             Span::raw(" "),
             Span::styled(
                 activity_icon(item.kind),

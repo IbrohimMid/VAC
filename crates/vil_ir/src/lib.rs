@@ -11,5 +11,6 @@ pub mod types;
 
 pub use diff::{ChangeKind, FunctionRename, IrChange, IrDiffReport, ModuleDiff, diff_modules};
 pub use error::IrError;
+pub use parser::parse_file_async;
 pub use pipeline::IrPipeline;
 pub use types::{IrEnum, IrFunction, IrImpl, IrModule, IrStruct, IrTrait};

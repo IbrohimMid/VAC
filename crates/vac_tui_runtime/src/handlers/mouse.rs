@@ -276,8 +276,11 @@ mod tests {
     use ratatui::layout::Rect;
     use tokio::sync::mpsc;
 
-    fn make_state_with_channel() -> (AppState, mpsc::Sender<OutputEvent>, mpsc::Receiver<OutputEvent>)
-    {
+    fn make_state_with_channel() -> (
+        AppState,
+        mpsc::Sender<OutputEvent>,
+        mpsc::Receiver<OutputEvent>,
+    ) {
         let state = AppState::default();
         let (tx, rx) = mpsc::channel::<OutputEvent>(64);
         (state, tx, rx)
@@ -311,12 +314,8 @@ mod tests {
             .overlay_manager
             .push(OverlayId::TaskTray, WorkspaceFocus::Input);
         state.task_tray_selected = 0;
-        state
-            .task_tray_row_regions
-            .push(Rect::new(10, 20, 40, 1));
-        state
-            .task_tray_row_regions
-            .push(Rect::new(10, 21, 40, 1));
+        state.task_tray_row_regions.push(Rect::new(10, 20, 40, 1));
+        state.task_tray_row_regions.push(Rect::new(10, 21, 40, 1));
 
         let handled = dispatch_click(&mut state, &tx, 15, 21);
         assert!(handled, "click on tray row 2 should be handled");

@@ -7,8 +7,8 @@ use tokio::sync::{Mutex, mpsc};
 use vac_core::RuntimeUpdate;
 use vac_core::engine::VacEngine;
 
-use crate::{InputEvent, ToolCall};
 use super::{ActiveUpdateTx, backend::handle_runtime_update};
+use crate::{InputEvent, ToolCall};
 
 /// Handle `OutputEvent::ListSessions` — load all sessions with checkpoint/snapshot metadata.
 pub(super) async fn handle_list_sessions(
@@ -132,7 +132,7 @@ pub(super) async fn handle_new_session(
     }
 }
 
-/// Handle `OutputEvent::CleanupSession` — async cleanup without block_in_place.
+/// Handle `OutputEvent::CleanupSession` — async cleanup.
 pub(super) async fn handle_cleanup_session(
     project_root: &PathBuf,
     input_tx: &mpsc::Sender<InputEvent>,
@@ -186,9 +186,11 @@ pub(super) async fn handle_cleanup_session(
             .await;
     }
     // Refresh session list after cleanup
-    let _ = input_tx.send(InputEvent::ShowToast(crate::services::Toast::info(
-        "Refreshing session list...".to_string(),
-    ))).await;
+    let _ = input_tx
+        .send(InputEvent::ShowToast(crate::services::Toast::info(
+            "Refreshing session list...".to_string(),
+        )))
+        .await;
 }
 
 pub(super) async fn resume_session_into_tui(

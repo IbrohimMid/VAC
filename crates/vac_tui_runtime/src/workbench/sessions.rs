@@ -1,8 +1,8 @@
 //! Sessions tab — browse and restore saved sessions.
 
 use super::WorkbenchTabView;
-use crate::services::theme::StyleKey;
 use crate::app::AppState;
+use crate::services::theme::StyleKey;
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
@@ -31,7 +31,10 @@ impl WorkbenchTabView for SessionsTab {
             .map(|(idx, s)| {
                 let sel = idx == state.sessions_selected_idx;
                 let style = if sel {
-                    state.theme.style(StyleKey::Warning).add_modifier(Modifier::BOLD)
+                    state
+                        .theme
+                        .style(StyleKey::Warning)
+                        .add_modifier(Modifier::BOLD)
                 } else {
                     Style::default()
                 };
@@ -92,12 +95,7 @@ impl WorkbenchTabView for SessionsTab {
             for idx in 0..max_rows {
                 state.sessions_row_regions.push((
                     idx,
-                    Rect::new(
-                        inner_x,
-                        inner_y.saturating_add(idx as u16),
-                        inner_w,
-                        1,
-                    ),
+                    Rect::new(inner_x, inner_y.saturating_add(idx as u16), inner_w, 1),
                 ));
             }
         }

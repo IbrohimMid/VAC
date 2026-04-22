@@ -4,8 +4,8 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use uuid::Uuid;
 use tokio::fs;
+use uuid::Uuid;
 
 /// Current schema version for session snapshots.
 pub const CURRENT_SCHEMA_VERSION: u32 = 1;
@@ -104,7 +104,10 @@ pub async fn save_snapshot_async(snapshot: SessionSnapshot) -> Result<PathBuf> {
 }
 
 /// Load a session snapshot from disk.
-pub async fn load_snapshot_async(project_root: PathBuf, session_id: Uuid) -> Result<SessionSnapshot> {
+pub async fn load_snapshot_async(
+    project_root: PathBuf,
+    session_id: Uuid,
+) -> Result<SessionSnapshot> {
     let path = snapshot_path(&project_root, session_id);
     if !fs::try_exists(&path).await? {
         return Err(SessionControlError::NotFound(session_id));
@@ -187,7 +190,10 @@ pub struct CleanupReport {
 }
 
 /// Clean up all artifacts associated with a session.
-pub async fn cleanup_session_async(project_root: PathBuf, session_id: Uuid) -> Result<CleanupReport> {
+pub async fn cleanup_session_async(
+    project_root: PathBuf,
+    session_id: Uuid,
+) -> Result<CleanupReport> {
     let mut report = CleanupReport {
         snapshot_removed: false,
         checkpoint_removed: false,
@@ -294,7 +300,9 @@ mod tests {
     #[tokio::test]
     async fn load_nonexistent_session_returns_not_found() {
         let tmp = tempfile::tempdir().unwrap();
-        let err = load_snapshot_async(tmp.path().to_path_buf(), Uuid::new_v4()).await.unwrap_err();
+        let err = load_snapshot_async(tmp.path().to_path_buf(), Uuid::new_v4())
+            .await
+            .unwrap_err();
         assert!(matches!(err, SessionControlError::NotFound(_)));
     }
 
@@ -324,7 +332,9 @@ mod tests {
 
         let cp_dir = checkpoint_dir(&root);
         fs::create_dir_all(&cp_dir).await.unwrap();
-        fs::write(cp_dir.join(format!("{sid}_state.json")), "{}").await.unwrap();
+        fs::write(cp_dir.join(format!("{sid}_state.json")), "{}")
+            .await
+            .unwrap();
 
         let report = cleanup_session_async(root, sid).await.unwrap();
         assert!(report.snapshot_removed);

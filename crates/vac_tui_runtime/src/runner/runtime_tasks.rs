@@ -1,7 +1,7 @@
 //! Runtime task helpers — queue polling, state loading, cancel/retry.
 
-use std::path::Path;
 use crate::InputEvent;
+use std::path::Path;
 use tokio::sync::mpsc;
 
 pub(super) async fn load_runtime_queue_items<Q>(queue: &Q) -> Vec<Q::Item>

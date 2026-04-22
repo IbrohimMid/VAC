@@ -146,10 +146,7 @@ pub fn render_helper_dropdown(f: &mut Frame, state: &AppState, dropdown_area: Re
         // Add top arrow indicator if there are hidden items above
         let has_content_above = scroll > 0;
         if has_content_above {
-            visible_lines.push(Line::from(vec![Span::styled(
-                " ▲",
-                dropdown_muted_style,
-            )]));
+            visible_lines.push(Line::from(vec![Span::styled(" ▲", dropdown_muted_style)]));
         }
 
         // Create exactly the number of visible lines (no extra spacing)
@@ -199,10 +196,7 @@ pub fn render_helper_dropdown(f: &mut Frame, state: &AppState, dropdown_area: Re
 
         // Add bottom arrow indicator if there are hidden items below
         if has_content_below {
-            visible_lines.push(Line::from(vec![Span::styled(
-                " ▼",
-                dropdown_muted_style,
-            )]));
+            visible_lines.push(Line::from(vec![Span::styled(" ▼", dropdown_muted_style)]));
         }
 
         // Calculate current selected item position (1-based)

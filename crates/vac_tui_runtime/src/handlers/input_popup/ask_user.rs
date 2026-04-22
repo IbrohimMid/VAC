@@ -1,8 +1,8 @@
 //! Ask-user overlay handler (approval/selection dialogs).
 
 use crate::app::{AppState, InputEvent, OutputEvent};
-use tokio::sync::mpsc::Sender;
 use crate::overlay::OverlayId;
+use tokio::sync::mpsc::Sender;
 
 /// Handle ask-user question interactions (single-select, multi-select, free-text).
 pub fn handle_ask_user(state: &mut AppState, output_tx: &Sender<OutputEvent>, event: InputEvent) {

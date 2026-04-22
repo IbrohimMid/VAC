@@ -391,7 +391,9 @@ mod tests {
 
         // Before debounce expires → tick should not fire.
         assert!(
-            !state.vil_expr_lint.tick(&symbols, now + Duration::from_millis(100)),
+            !state
+                .vil_expr_lint
+                .tick(&symbols, now + Duration::from_millis(100)),
             "tick should NOT fire before debounce window"
         );
         assert!(
@@ -401,7 +403,9 @@ mod tests {
 
         // After debounce expires → tick should fire and return true (= redraw needed).
         assert!(
-            state.vil_expr_lint.tick(&symbols, now + Duration::from_millis(300)),
+            state
+                .vil_expr_lint
+                .tick(&symbols, now + Duration::from_millis(300)),
             "tick should fire after debounce window — return true signals redraw"
         );
         assert!(
@@ -421,15 +425,14 @@ mod tests {
         }
 
         // Dispatch VilExprTypeHelp (Alt+T).
-        crate::controller::handle_input_event(
-            &mut state,
-            &tx,
-            InputEvent::VilExprTypeHelp,
-        );
+        crate::controller::handle_input_event(&mut state, &tx, InputEvent::VilExprTypeHelp);
 
         // Should have a toast with the stub message.
         assert!(
-            state.toasts.iter().any(|t| t.message.contains("type inference coming soon")),
+            state
+                .toasts
+                .iter()
+                .any(|t| t.message.contains("type inference coming soon")),
             "Alt+T with active payload should show stub type-info toast, got: {:?}",
             state.toasts.iter().map(|t| &t.message).collect::<Vec<_>>()
         );

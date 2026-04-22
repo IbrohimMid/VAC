@@ -316,10 +316,7 @@ pub fn render_banner(f: &mut Frame, area: Rect, state: &mut AppState) {
             );
             per_cmd_regions.push((cmd.clone(), cmd_rect));
 
-            let styled = Span::styled(
-                cmd.clone(),
-                accent_style.add_modifier(Modifier::UNDERLINED),
-            );
+            let styled = Span::styled(cmd.clone(), accent_style.add_modifier(Modifier::UNDERLINED));
             spans.push(styled);
 
             char_x += cmd_width;

@@ -1,8 +1,8 @@
 //! Review tab — inspect and revert file changes.
 
 use super::WorkbenchTabView;
-use crate::services::theme::StyleKey;
 use crate::app::AppState;
+use crate::services::theme::StyleKey;
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
@@ -61,15 +61,8 @@ impl WorkbenchTabView for ReviewTab {
                 if idx as u16 >= inner_h {
                     break;
                 }
-                let rect = ratatui::layout::Rect::new(
-                    inner_x,
-                    inner_y + idx as u16,
-                    inner_w,
-                    1,
-                );
-                state
-                    .review_file_row_regions
-                    .push((path.clone(), rect));
+                let rect = ratatui::layout::Rect::new(inner_x, inner_y + idx as u16, inner_w, 1);
+                state.review_file_row_regions.push((path.clone(), rect));
             }
         }
         let items: Vec<ListItem> = files
@@ -78,7 +71,10 @@ impl WorkbenchTabView for ReviewTab {
             .map(|(idx, path)| {
                 let is_selected = idx == state.review.selected_idx;
                 let style = if is_selected {
-                    state.theme.style(StyleKey::Warning).add_modifier(Modifier::BOLD)
+                    state
+                        .theme
+                        .style(StyleKey::Warning)
+                        .add_modifier(Modifier::BOLD)
                 } else {
                     state.theme.style(StyleKey::Normal)
                 };
@@ -165,17 +161,13 @@ impl WorkbenchTabView for ReviewTab {
                 use crate::services::image_preview_cache::ImagePreviewCacheEntry;
                 match state.image_preview_cache.get(&abs_path).cloned() {
                     Some(ImagePreviewCacheEntry::Ready(Ok(preview))) => {
-                        let label = format!(
-                            "{} ({}x{})",
-                            path, preview.width, preview.height
-                        );
-                        let lines: Vec<Line> =
-                            crate::services::kitty_image::render_ascii_fallback(
-                                inner_w, inner_h, &label,
-                            )
-                            .into_iter()
-                            .map(|s| Line::raw(s))
-                            .collect();
+                        let label = format!("{} ({}x{})", path, preview.width, preview.height);
+                        let lines: Vec<Line> = crate::services::kitty_image::render_ascii_fallback(
+                            inner_w, inner_h, &label,
+                        )
+                        .into_iter()
+                        .map(|s| Line::raw(s))
+                        .collect();
                         (lines, Some(preview.bytes))
                     }
                     Some(ImagePreviewCacheEntry::Ready(Err(e))) => (
@@ -189,28 +181,23 @@ impl WorkbenchTabView for ReviewTab {
                         // Schedule the load on first sight; subsequent
                         // frames observe `Loading` and short-circuit the
                         // spawn inside `request_load`.
-                        state
-                            .image_preview_cache
-                            .request_load(abs_path.clone());
+                        state.image_preview_cache.request_load(abs_path.clone());
                         let label = format!("{} (loading…)", path);
-                        let lines: Vec<Line> =
-                            crate::services::kitty_image::render_ascii_fallback(
-                                inner_w, inner_h, &label,
-                            )
-                            .into_iter()
-                            .map(|s| Line::raw(s))
-                            .collect();
+                        let lines: Vec<Line> = crate::services::kitty_image::render_ascii_fallback(
+                            inner_w, inner_h, &label,
+                        )
+                        .into_iter()
+                        .map(|s| Line::raw(s))
+                        .collect();
                         (lines, None)
                     }
                 }
             });
-        let (image_preview_lines, image_preview_bytes): (
-            Option<Vec<Line>>,
-            Option<Vec<u8>>,
-        ) = match image_branch {
-            Some((lines, bytes)) => (Some(lines), bytes),
-            None => (None, None),
-        };
+        let (image_preview_lines, image_preview_bytes): (Option<Vec<Line>>, Option<Vec<u8>>) =
+            match image_branch {
+                Some((lines, bytes)) => (Some(lines), bytes),
+                None => (None, None),
+            };
 
         let diff_lines: Vec<Line> = if let Some(lines) = image_preview_lines {
             lines
@@ -219,46 +206,56 @@ impl WorkbenchTabView for ReviewTab {
                 (diff.old_content.as_deref(), diff.new_content.as_deref())
             {
                 // T13: VIL-aware diff for .vwfd.yaml files
-                let is_vwfd = state.review.selected_path.as_deref()
+                let is_vwfd = state
+                    .review
+                    .selected_path
+                    .as_deref()
                     .map(|p| p.ends_with(".vwfd.yaml") || p.ends_with(".vwfd.yml"))
                     .unwrap_or(false);
                 if is_vwfd {
-                    if let (Ok(old_doc), Ok(new_doc)) = (
-                        vil_vwfd::from_yaml(old),
-                        vil_vwfd::from_yaml(new),
-                    ) {
+                    if let (Ok(old_doc), Ok(new_doc)) =
+                        (vil_vwfd::from_yaml(old), vil_vwfd::from_yaml(new))
+                    {
                         let vwfd_diff = vac_changeset::formats::vwfd::diff(&old_doc, &new_doc);
                         crate::services::vwfd_diff_render::build_lines(&vwfd_diff, &state.theme)
                             .into_iter()
-                            .map(|l| Line::from(
-                                l.spans.into_iter()
-                                    .map(|s| Span::styled(s.content.into_owned(), s.style))
-                                    .collect::<Vec<_>>()
-                            ))
+                            .map(|l| {
+                                Line::from(
+                                    l.spans
+                                        .into_iter()
+                                        .map(|s| Span::styled(s.content.into_owned(), s.style))
+                                        .collect::<Vec<_>>(),
+                                )
+                            })
                             .collect()
                     } else {
                         // Fallback to generic diff if VWFD parse fails
                         let selected_path = state.review.selected_path.clone();
                         let path_buf = selected_path.as_deref().map(std::path::Path::new);
                         crate::services::review::render_diff_viewport_with_diagnostics(
-                            old, new, body[1].width as usize, diff.scroll, diff_height,
-                            state.lsp_diagnostics.as_ref(), path_buf,
+                            old,
+                            new,
+                            body[1].width as usize,
+                            diff.scroll,
+                            diff_height,
+                            state.lsp_diagnostics.as_ref(),
+                            path_buf,
                         )
                     }
                 } else {
-                // PR-T15 P1 — overlay inline LSP diagnostics on new-side rows
-                // when a snapshot + selected path are available.
-                let selected_path = state.review.selected_path.clone();
-                let path_buf = selected_path.as_deref().map(std::path::Path::new);
-                crate::services::review::render_diff_viewport_with_diagnostics(
-                    old,
-                    new,
-                    body[1].width as usize,
-                    diff.scroll,
-                    diff_height,
-                    state.lsp_diagnostics.as_ref(),
-                    path_buf,
-                )
+                    // PR-T15 P1 — overlay inline LSP diagnostics on new-side rows
+                    // when a snapshot + selected path are available.
+                    let selected_path = state.review.selected_path.clone();
+                    let path_buf = selected_path.as_deref().map(std::path::Path::new);
+                    crate::services::review::render_diff_viewport_with_diagnostics(
+                        old,
+                        new,
+                        body[1].width as usize,
+                        diff.scroll,
+                        diff_height,
+                        state.lsp_diagnostics.as_ref(),
+                        path_buf,
+                    )
                 }
             } else if let Some(err) = &diff.last_error {
                 vec![Line::from(Span::styled(

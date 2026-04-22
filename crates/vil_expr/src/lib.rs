@@ -7,4 +7,4 @@ pub mod validate;
 
 pub use ast::*;
 pub use parser::{parse, ParseError};
-pub use validate::{validate, SymbolTable, ValidationReport, ValidationIssue, Severity};
+pub use validate::{validate, Severity, SymbolTable, ValidationIssue, ValidationReport};

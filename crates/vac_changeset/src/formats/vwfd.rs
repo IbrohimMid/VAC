@@ -261,10 +261,8 @@ spec:
 
     #[test]
     fn diff_condition_expression_delta_is_captured() {
-        let old =
-            doc("        - id: s1\n          handler: h1\n          condition: 'a > 1'\n");
-        let new =
-            doc("        - id: s1\n          handler: h1\n          condition: 'a > 2'\n");
+        let old = doc("        - id: s1\n          handler: h1\n          condition: 'a > 1'\n");
+        let new = doc("        - id: s1\n          handler: h1\n          condition: 'a > 2'\n");
         let d = diff(&old, &new);
         assert_eq!(d.modified_steps.len(), 1);
         assert_eq!(d.modified_expressions.len(), 1);

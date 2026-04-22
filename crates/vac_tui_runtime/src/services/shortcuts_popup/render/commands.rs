@@ -3,11 +3,11 @@
 use crate::constants::SCROLL_BUFFER_LINES;
 use crate::services::theme::StyleKey;
 use ratatui::{
+    Frame,
     layout::Rect,
-    style::{Color, Modifier, Style},
+    style::{Color as C, Modifier, Style},
     text::{Line, Span},
     widgets::Paragraph,
-    Frame,
 };
 
 use super::super::search::filter_commands;
@@ -92,22 +92,18 @@ pub fn render_commands_section(
                     .theme
                     .style(StyleKey::HighlightBg)
                     .fg
-                    .unwrap_or(Color::Reset)
+                    .unwrap_or(C::Reset)
             } else {
-                Color::Reset
+                C::Reset
             };
             let text_color = if is_selected {
                 state
                     .theme
                     .style(StyleKey::HighlightFg)
                     .fg
-                    .unwrap_or(Color::Reset)
+                    .unwrap_or(C::Reset)
             } else {
-                state
-                    .theme
-                    .style(StyleKey::Text)
-                    .fg
-                    .unwrap_or(Color::Reset)
+                state.theme.style(StyleKey::Text).fg.unwrap_or(C::Reset)
             };
 
             let name_formatted = format!(
@@ -122,13 +118,9 @@ pub fn render_commands_section(
                     .theme
                     .style(StyleKey::HighlightFg)
                     .fg
-                    .unwrap_or(Color::Reset)
+                    .unwrap_or(C::Reset)
             } else {
-                state
-                    .theme
-                    .style(StyleKey::Muted)
-                    .fg
-                    .unwrap_or(Color::Reset)
+                state.theme.style(StyleKey::Muted).fg.unwrap_or(C::Reset)
             };
 
             let spans = vec![
@@ -165,10 +157,7 @@ pub fn render_commands_section(
         ));
 
         if has_content_below {
-            indicator_spans.push(Span::styled(
-                " ▼",
-                state.theme.style(StyleKey::Muted),
-            ));
+            indicator_spans.push(Span::styled(" ▼", state.theme.style(StyleKey::Muted)));
         }
 
         let indicator_paragraph = Paragraph::new(Line::from(indicator_spans));

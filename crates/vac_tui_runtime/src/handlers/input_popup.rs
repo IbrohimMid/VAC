@@ -144,8 +144,6 @@ fn handle_reject_reason(state: &mut AppState, output_tx: &Sender<OutputEvent>, e
     }
 }
 
-
-
 fn handle_profile_switcher(
     state: &mut AppState,
     output_tx: &Sender<OutputEvent>,
@@ -283,5 +281,3 @@ fn handle_review_pane(state: &mut AppState, output_tx: &Sender<OutputEvent>, eve
         _ => {}
     }
 }
-
-

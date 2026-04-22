@@ -113,7 +113,10 @@ pub fn extract_full_command_arguments(tool_call: &ToolCall) -> String {
 pub fn render_user_message(content: &str, width: usize) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
     lines.push(Line::from(vec![
-        Span::styled("▌ ", crate::services::theme::Theme::default().style(StyleKey::Accent)),
+        Span::styled(
+            "▌ ",
+            crate::services::theme::Theme::default().style(StyleKey::Accent),
+        ),
         Span::styled(
             "You",
             crate::services::theme::Theme::default()
@@ -124,7 +127,10 @@ pub fn render_user_message(content: &str, width: usize) -> Vec<Line<'static>> {
     for line in content.lines() {
         let truncated = truncate_chars(line, width);
         lines.push(Line::from(vec![
-            Span::styled("▌ ", crate::services::theme::Theme::default().style(StyleKey::Accent)),
+            Span::styled(
+                "▌ ",
+                crate::services::theme::Theme::default().style(StyleKey::Accent),
+            ),
             Span::raw(truncated),
         ]));
     }
@@ -255,14 +261,20 @@ pub fn render_assistant_message_with_theme(
 /// Render a pending tool call bubble.
 pub fn render_tool_call_pending(tool_call: &ToolCall) -> Vec<Line<'static>> {
     let mut lines = vec![Line::from(vec![
-        Span::styled("⏳ ", crate::services::theme::Theme::default().style(StyleKey::Warning)),
+        Span::styled(
+            "⏳ ",
+            crate::services::theme::Theme::default().style(StyleKey::Warning),
+        ),
         Span::styled(
             tool_call.function.name.clone(),
             crate::services::theme::Theme::default()
                 .style(StyleKey::Warning)
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::styled(" [pending approval]", crate::services::theme::Theme::default().style(StyleKey::Muted)),
+        Span::styled(
+            " [pending approval]",
+            crate::services::theme::Theme::default().style(StyleKey::Muted),
+        ),
     ])];
     let args = extract_full_command_arguments(tool_call);
     if !args.is_empty() {
@@ -326,7 +338,9 @@ pub fn render_tool_result(result: &ToolCallResult) -> Vec<Line<'static>> {
             Span::raw("    "),
             Span::styled(
                 "... (output truncated)",
-                crate::services::theme::Theme::default().style(StyleKey::Muted).add_modifier(Modifier::ITALIC),
+                crate::services::theme::Theme::default()
+                    .style(StyleKey::Muted)
+                    .add_modifier(Modifier::ITALIC),
             ),
         ]));
     }

@@ -197,10 +197,7 @@ mod tests {
             extract_payload("vil-expr: first\nvil-expr: second"),
             Some("second")
         );
-        assert_eq!(
-            extract_payload("vil-expr: body\ntrailing"),
-            Some("body")
-        );
+        assert_eq!(extract_payload("vil-expr: body\ntrailing"), Some("body"));
         assert_eq!(extract_payload("no marker here"), None);
     }
 

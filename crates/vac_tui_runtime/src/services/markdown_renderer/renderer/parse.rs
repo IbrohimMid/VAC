@@ -2,9 +2,9 @@ use crate::services::syntax_highlighter;
 use crossterm;
 
 use super::super::super::MarkdownComponent;
+use super::super::MarkdownStyle;
 use super::super::inline;
 use super::super::layout;
-use super::super::MarkdownStyle;
 use super::MarkdownRenderer;
 
 impl MarkdownRenderer {
