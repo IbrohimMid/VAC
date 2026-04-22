@@ -1,38 +1,39 @@
 # VAC TUI Parity — Remaining Work Plan (Wave 2.5 → 3 → 4)
 
 > Diturunkan dari `VAC_TUI_PARITY_PLAN_WAVE_25_TO_4.md` pada 2026-04-21 setelah PR-T12 service-layer landed.
+> **Status map diperbarui 2026-04-22** setelah audit HEAD `7d47b55`.
 > Fokus dokumen ini: **apa yang belum selesai + cara kerjakan + kriteria audit.**
 > Local coding agent adalah eksekutor; dokumen ini adalah directive + test plan + review rubric.
 
 ---
 
-## 1. Status map (evidence-based, 2026-04-21)
+## 1. Status map (evidence-based, 2026-04-22)
 
 | PR | Status | Evidence |
 |---|---|---|
-| W25-1 Theme sweep | ❌ | Dashboard: 187 raw `Color::` tersisa |
-| W25-2 PR-T5 TOML + notify | ✅ | `services/theme_loader.rs` ada; `parses_sample_toml` + `falls_back_to_builtin` hijau. **Belum jelas**: `watch_theme_emits_within_500ms` — perlu audit |
-| W25-3 Split shortcuts_popup | ✅ | `services/shortcuts_popup/catalog.rs` ada |
-| W25-4 Split input_popup | ⚠️ partial | `handlers/input_popup/misc_overlays.rs` ada, struktur submodul beda dari spec (bukan session_resume/file_search/at_mention/model_switcher terpisah) — audit LOC |
-| W25-5 Split markdown_renderer | ⚠️ partial | `services/markdown_renderer/{renderer,layout,...}` ada, struktur beda dari spec (bukan code_block/tables/lists/inline/diff) — audit LOC |
-| W25-6 Split view.rs | ⚠️ partial | `view/{mod,overlays,operator,...}` ada — audit LOC per submodul |
-| W25-7 Split event_loop_tests | ❌ | Tidak ada bukti submodul `event_loop_tests/*` |
-| W25-8 Split app/types.rs | ✅ | `app/types/mod.rs` ada sebagai folder |
-| W25-9 Split runner.rs + async | ⚠️ partial | `vac_session_control` async ✓ tapi 1 `block_in_place` masih di TUI handlers (dashboard ⚠️); `runner.rs` belum dipecah |
-| §8 PR-2 vil_expr crate | ✅ | Commit `28e461f` |
-| §8 PR-3 VacConfig::vil | ✅ | Commit `426a063` |
-| PR-T11 VWFD inspector | ❌ | — |
-| PR-T12 vil-expr validator | ⚠️ partial | Service-layer landed; UI hook + render + Alt+H popup DEFERRED |
-| §8 PR-5b vwfd_parity_pass | ❌ | — |
-| §8 PR-6 VWFD semantic diff | ❌ | — |
-| PR-T13 VIL-aware diff overlay | ❌ | Blocked by §8 PR-5b + PR-6 |
-| PR-T14 Background vil dev | ❌ | — |
-| PR-T15..T19 (Wave 4) | ❌ | Semua belum |
-
-**Audit gap terpisah** (harus dijalankan sebelum Wave 3 lanjut):
-- Count LOC per file hasil W25-4/5/6 vs target <600.
-- Cek `watch_theme_emits_within_500ms` test ada/tidak di `theme_loader`.
-- Verifikasi `grep -rn 'Color::' crates/vac_tui_runtime/src/services crates/vac_tui_runtime/src/workbench | grep -v '//' | wc -l` = 0 (exit gate W25-1).
+| W25-1 Theme sweep | ✅ **complete** | raw `Color::` outside theme = 0 (audited 2026-04-22) |
+| W25-2 PR-T5 TOML + notify | ✅ **complete** | `services/theme_loader.rs` + `watch_theme_emits_within_500ms` hijau |
+| W25-3 Split shortcuts_popup | ✅ **complete** | `services/shortcuts_popup/catalog.rs` ada |
+| W25-4 Split input_popup | ✅ **complete** | `handlers/input_popup/misc_overlays.rs`; max file < 600 LOC |
+| W25-5 Split markdown_renderer | ✅ **complete** | `services/markdown_renderer/{renderer,layout,...}`; max file < 600 LOC |
+| W25-6 Split view.rs | ✅ **complete** | `view/{mod,overlays,operator,...}`; max file < 600 LOC |
+| W25-7 Split event_loop_tests | ✅ **complete** | `event_loop_tests/{session,approval,shell,runtime}.rs` ada |
+| W25-8 Split app/types.rs | ✅ **complete** | `app/types/mod.rs` ada sebagai folder |
+| W25-9 Split runner.rs + async | ✅ **complete** | `runner.rs` = 427 LOC; `block_in_place` = 0 |
+| §8 PR-2 vil_expr crate | ✅ **complete** | Commit `28e461f` |
+| §8 PR-3 VacConfig::vil | ✅ **complete** | Commit `426a063` (subsumed inline — ADR-0001) |
+| PR-T11 VWFD inspector | ✅ **complete** | `VwfdInspectorState` wired, service + handlers present |
+| PR-T12 vil-expr validator | ✅ **complete** | Service-layer + 6 tests; UI hook (T12.1) → Task-4 |
+| PR-T12.1 UI wiring | ⚠️ **partial** | Input hook + render + Alt+H popup → Task-4 |
+| §8 PR-5b vwfd_parity_pass | ✅ **complete** | `vwfd_parity_pass` wired |
+| §8 PR-6 VWFD semantic diff | ✅ **complete** | `vac_changeset::formats::vwfd` present |
+| PR-T13 VIL-aware diff overlay | ✅ **complete** | `vwfd_diff_render` delegation in `services/review.rs` |
+| PR-T14 Background vil dev | ⚠️ **materially-advanced** | Substrate + log panel; runner event routing → Task-6, Task-7 |
+| PR-T15 Inline diagnostics | ✅ **complete** | `diagnostics_consumers` wired |
+| PR-T16 Mouse dispatch | ⚠️ **partial** | Tab/tray/banner wired; surface gap → Task-5 |
+| PR-T17 Kitty image | ⚠️ **partial** | DCS probe + cache; LRU + PTY e2e → Task-8, Task-9 |
+| PR-T18 Recorder + Replay | ✅ **complete** | JSONL writer/reader + event-loop tap + CLI flag |
+| PR-T19 Keybindings | ✅ **complete** | Loader + watcher + runtime wiring |
 
 ---
 

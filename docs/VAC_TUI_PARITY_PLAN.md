@@ -1,53 +1,47 @@
 # VAC TUI Parity Plan — Outclass Claude Code, Stakpak, Trae
 
-**Status:** Wave 1 partial, Wave 2 partial — see reconciliation below
-**Scope:** VAC TUI/UX only. §8 VIL-native coding plan (`VAC_SECTION_8_IMPLEMENTATION_PLAN.md`) paused until Wave 2.5 closes.
-**Date:** 2026-04-20
+**Status:** Wave 1 complete, Wave 2 functionally-complete, Wave 2.5 functionally-complete, Wave 3 materially-advanced, Wave 4 materially-advanced — see reconciliation below
+**Scope:** VAC TUI/UX only. §8 VIL-native coding plan (`VAC_SECTION_8_IMPLEMENTATION_PLAN.md`) in progress.
+**Date updated:** 2026-04-22 (calibrated to HEAD `7d47b55`)
 **Primary surface:** `crates/vac_cli` + `crates/vac_tui_runtime`
 
 ---
 
-## Current Reconciliation (2026-04-20)
+## Current Reconciliation (2026-04-22)
 
-### Wave 1 — PARTIAL
+### Wave 1 — COMPLETE
 
 - [x] Boot truthfulness: `state.hydrated` gate, `render_boot_skeleton`, hydration deadline timeout
 - [x] Zero `vunknown`/`Model: none` placeholder strings
 - [x] Single ActionSpec dispatch path (`dispatch_action` via `spec_by_slash_alias`)
 - [x] Unknown slash: 3-tier fuzzy suggestions (prefix → subsequence → Levenshtein ≤ 2)
 - [x] Capability registry live (`capabilities.rs`, `detect_term.rs` is shim) — PR-T4
-- [ ] **Controller files <600 lines — 14 files still over (hard gate):**
-  - `markdown_renderer.rs` 2010, `view.rs` 1662, `event_loop_tests.rs` 1624,
-    `app/types.rs` 1564, `runner.rs` 1346, `shortcuts_popup.rs` 996,
-    `update.rs` 973, `input_popup.rs` 918, `clipboard_paste.rs` 871,
-    `vil_workbench.rs` 770, `action_registry.rs` 749, `text_selection.rs` 714,
-    `ask_user.rs` 676, `review.rs` 675
+- [x] **Controller files <600 lines — 0 files over gate** (audited 2026-04-22, max=587)
 
-### Wave 2 — PARTIAL
+See `docs/audit/WAVE1_GATE_MAPPING.md` for full 15-gate evidence table.
+
+### Wave 2 — FUNCTIONALLY-COMPLETE
 
 - [x] PR-T6 File picker v2: multi-select (Space), dir nav (Tab/Bsp), 40-line preview, `FilesAttached` event
 - [x] PR-T7 @-mention context chips: `ContextChip` + `ChipNamespace`, `@@skill`/`@#todo`/`@!session` namespaces, XML context injection on submit
 - [x] PR-T9 Background task tray overlay (Ctrl+T / `/tasks`), filter active-only, cancel job
 - [x] PR-T10 Streaming polish: tok/s indicator, Ctrl+C once=cancel stream / twice=quit (2s window + toast)
-- [~] PR-T5 Theme system: `Theme`/`ThemePreset`/`StyleKey` API + `view.rs` fully migrated.
-  **Remaining:** 404 raw `Color::` in `services/` + `workbench/` (21 files). TOML loading and `notify` hot-reload deferred.
-- [~] PR-T8 Session switcher v2: `SessionResumeEntry`, snapshot loading via `spawn_blocking`, `SessionResume` overlay scaffolded.
-  **Remaining:** fuzzy search with date-range filter fully wired, Ctrl+R overlay keyboard nav.
+- [x] PR-T5 Theme system: complete — TOML loader + `notify` hot-reload + `watch_theme_emits_within_500ms` test + raw `Color::` outside theme = 0
+- [x] PR-T8 Session switcher v2: fuzzy search + date filter + Ctrl+R nav fully wired
 
-### Wave 2.5 — TODO (gate before Wave 3)
+### Wave 2.5 — FUNCTIONALLY-COMPLETE
 
-> **Rencana eksekusi detail**: lihat [`VAC_TUI_PARITY_PLAN_WAVE_25_TO_4.md`](./VAC_TUI_PARITY_PLAN_WAVE_25_TO_4.md) untuk breakdown per-PR (W25-1 s/d W25-9), landing order, deps, dan acceptance.
+> **Rencana eksekusi detail**: lihat [`VAC_TUI_PARITY_PLAN_WAVE_25_TO_4.md`](./VAC_TUI_PARITY_PLAN_WAVE_25_TO_4.md) untuk breakdown per-PR (W25-1 s/d W25-9).
 
-- [x] PR-T8 fuzzy session search + date filter + full Ctrl+R nav (commit `d511945`)
-- [x] Split `action_registry.rs` 793→575 + `action_ids.rs` 188 (commit `8b16374`)
-- [x] Split `update.rs` 974→500 + `update/helpers.rs` 227 + `update/events.rs` 291 (commit `302c99c`)
-- [ ] **W25-1** Theme migration sweep (21 file, 404 raw `Color::`)
-- [ ] **W25-2** PR-T5 closeout: TOML loader + `notify` hot-reload
-- [ ] **W25-3** Split `services/shortcuts_popup.rs` (996→<600)
-- [ ] **W25-4** Split `handlers/input_popup.rs` (1176→<600)
-- [ ] **W25-5** Split `services/markdown_renderer.rs` (2010→<600)
-- [ ] **W25-6** Split `view.rs` (1921→<600) — depends on W25-1+W25-5
-- [ ] **W25-7** Split `event_loop_tests.rs` (1839→<600)
+- [x] W25-1 Theme migration sweep — raw `Color::` outside theme = 0 (audited 2026-04-22)
+- [x] W25-2 PR-T5 closeout: TOML loader + `notify` hot-reload
+- [x] W25-3 Split `services/shortcuts_popup.rs` → submodule
+- [x] W25-4 Split `handlers/input_popup.rs` → submodule
+- [x] W25-5 Split `services/markdown_renderer.rs` → submodule
+- [x] W25-6 Split `view.rs` → submodule
+- [x] W25-7 Split `event_loop_tests.rs` → per-feature modules (session/approval/shell/runtime)
+- [x] W25-8 Split `app/types.rs` → `app/types/mod.rs` folder
+- [x] W25-9 Split `runner.rs` (427 LOC) + async migration (`block_in_place` = 0)
 - [ ] **W25-8** Split `app/types.rs` (1570→<600) — last, after surface stable
 - [ ] **W25-9** Split `runner.rs` (1347→<600) + migrate 3 deprecated `vac_session_control` sync calls to async
 

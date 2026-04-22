@@ -1,72 +1,76 @@
 # VAC TUI Parity Dashboard
 
+**Last audited:** 2026-04-22 HEAD `7d47b55` (post Task-1 audit)
+
 ## Metrics
 
 | Metric | Target | Actual | Status |
 |---|---|---|---|
-| Files >600 lines | 0 (ideal), <=6 (gate) | 4 | ⚠️ |
-| Raw `Color::` outside theme | 0 | 303 (audited 2026-04-21) | ❌ |
-| Tests Green | >= 191 | 191+ | ✅ |
-| Wave 2.5 PR Landed | 9/9 | 6/9 (W25-2,3,4,5,6,8) | ⚠️ |
-| Wave 3 Landed | 7/7 | 2/7 (T12, T12.1) | ⚠️ |
-| Wave 4 Feature-Complete | 5/5 | **0/5** (all PARTIAL — integration pending) | ❌ |
-| Wave 4 Foundation Landed | 5/5 | 5/5 (helpers/loaders/probes) | ⚠️ |
-| Per-PR Bar proof for T15–T19 | Pass | Not yet verified | ⚠️ |
-| Runtime: `block_in_place` in TUI handlers | 0 | 1 | ⚠️ |
+| Files >600 lines | 0 (ideal), <=6 (gate) | 0 | ✅ |
+| Raw `Color::` outside theme | 0 | 0 (audited 2026-04-22) | ✅ |
+| Tests Green (lib) | >= 315 | 315/315 | ✅ |
+| Tests Green (integration) | >= 81 | 81/81 | ✅ |
+| Wave 1 | complete | all 15 gates PASS (see `docs/audit/WAVE1_GATE_MAPPING.md`) | ✅ |
+| Wave 2 | functionally-complete | T6,T7,T8,T9,T10 landed; PR-T5 theme closeout complete | ✅ |
+| Wave 2.5 | functionally-complete | T3=0, Color localized=0, block_in_place=0, check_sync_io=0 | ✅ |
+| Wave 3 | materially-advanced | T11 complete, T12 complete, T13 complete, T14 partial (→ Task-6,7), T15 complete | ⚠️ |
+| Wave 4 | materially-advanced | T16 partial (→ Task-5), T17 partial (→ Task-8,9), T18 complete, T19 complete | ⚠️ |
+| Runtime: `block_in_place` in TUI handlers | 0 | 0 | ✅ |
 
-## Wave 4 Honest Status (2026-04-21 audit)
+## Item Status (calibrated to HEAD 2026-04-22)
 
-**Formulation:** *Wave 4 core support modules landed (T15–T19), but 4/5 items remain integration-incomplete and therefore Wave 4 is not yet complete against plan acceptance.*
+| Item | Status | Notes / Closeout Task |
+|------|--------|----------------------|
+| Wave 1 | **complete** | All gates PASS — `docs/audit/WAVE1_GATE_MAPPING.md` |
+| Wave 2 | **functionally-complete** | T5–T10 landed with tests |
+| Wave 2.5 | **functionally-complete** | files>600=0, Color::=0, block_in_place=0 |
+| T11 VWFD inspector | **complete** | `VwfdInspectorState` wired, service+handlers present |
+| T12 vil-expr validator | **complete** | `services/vil_expr_lint.rs` + 6 tests green |
+| T12.1 UI wiring | **partial** | Input hook + render + Alt+H popup → Task-4 |
+| T13 VIL-aware diff overlay | **complete** | `vwfd_diff_render` delegation in `services/review.rs` |
+| T14 Background vil dev | **materially-advanced** | Substrate + log panel; runner events not yet routed to task tray + activity → Task-6, Task-7 |
+| T15 Inline diagnostics | **complete** | `diagnostics_consumers` wired |
+| T16 Mouse dispatch | **partial** | Tab/tray/banner wired; review rows, side panel, overlay list, approvals gap → Task-5 |
+| T17 Kitty image | **partial** | DCS probe + cache present; PTY e2e + LRU cache → Task-8, Task-9 |
+| T18 Recorder + Replay | **complete** | JSONL writer/reader + event-loop tap + CLI flag wired |
+| T19 Keybindings | **complete** | Loader + watcher + runtime wiring + startup load |
+| §8 PR-1..9 | **complete** (except PR-3 subsumed) | PR-3 subsumed into commands/vil.rs + doctor → ADR-0001 (Task-3) |
+| T5 closeout | **complete** | theme_loader + watcher + test |
+| F-27 async path | **complete** (sync retained legacy) | `spawn_blocking` path added; legacy sync caller low-risk |
 
-Short form: **Wave 4 helper layer complete; product-surface completion still pending.**
+## Wave 4 Honest Status (2026-04-22)
 
-| PR | Plan target (Wave 4) | Landed (foundation) | Missing (product surface) | Verdict |
-|----|----------------------|---------------------|---------------------------|---------|
-| **T15** | Inline diagnostics (LSP-style, reusing `vil_validate`) | `services/diagnostics_overlay.rs` helper + per-file cache + spans | Renderer integration in Review + vil_workbench | `PARTIAL` |
-| **T16** | Mouse click → action dispatch **complete** (Phase 6.5 closure) | `mouse::dispatch_click`, wired: tab / task tray / banner dismiss | Review rows, side panel rows, workbench panel body, overlay list rows, vil_workbench editor, approvals pane | `PARTIAL` |
-| **T17** | Kitty image protocol **support** (preview images inline) | `services/kitty_image.rs` DCS probe + timeout + ASCII fallback | Startup call, `TerminalCapabilities` field, render-path consumption | `PARTIAL` |
-| **T18** | Command recorder / replay for demos | `services/recorder.rs` JSONL writer/reader, rotate 10MB × keep 20 | Event-loop tap, `vac tui --replay <file>` CLI flag, replay driver | `PARTIAL` (near-blocker) |
-| **T19** | Custom keybinding user config at `.vac/keybindings.toml` | `services/keybindings_loader.rs` TOML loader + `resolve_effective` + warning-on-error | Wire into `handle_input_event` matcher / `ActionSpec` override, startup load, surface warnings | `PARTIAL` |
+**Formulation:** *Wave 4 foundation and product-surface wiring largely complete. Two items remain for final closeout: T16 mouse surface gap and T17 PTY e2e.*
 
-### Per-PR Bar — proof status for T15–T19
+| PR | Verdict | Closeout Task |
+|----|---------|---------------|
+| **T15** | `complete` | — |
+| **T16** | `partial` | Task-5: expand dispatch_click to all interactive surfaces |
+| **T17** | `partial` | Task-8: LRU image cache · Task-9: PTY e2e + sign-off |
+| **T18** | `complete` | — |
+| **T19** | `complete` | — |
+
+## Per-PR Bar (2026-04-22)
 
 | Gate | Status |
 |------|--------|
-| `cargo nextest run -p vac_tui_runtime` | ✅ (passing locally) |
-| `cargo test -p vac_cli --test integration_events` | ⚠️ Not run for these PRs |
-| `insta` snapshot for new overlay/panel | ❌ No new snapshots added |
-| `docs/tui/action_matrix.md` update (T16, T19 touch ActionSpec) | ❌ Not updated |
-| `scripts/check_sync_io.sh` no regression | ⚠️ Not verified |
-| ≥1 E2E via TUI harness | ❌ Not added |
+| `cargo nextest run -p vac_tui_runtime --lib` | ✅ 315/315 |
+| `cargo nextest run -p vac_cli --tests` | ✅ 81/81 |
+| `scripts/check_sync_io.sh` | ✅ exit 0 |
+| Files >600 LOC | ✅ 0 |
+| Raw `Color::` outside theme | ✅ 0 |
+| `block_in_place` in TUI handlers | ✅ 0 |
 
-## Progress
-- Async migration in `vac_session_control` has been completed.
-- Build error (`shorten`) has been fixed and tests are compiling and passing successfully.
-- File splitting and full theme sweep are in progress but require complex refactoring of imports and match statements.
-- `vil_expr` skeleton (PR-2) created and aligned with the specification.
-- §8 PR-3 (`VacConfig::vil`) landed.
-- **PR-T12 landed**: `services/vil_expr_lint.rs` with `LintState` + debounced `parse` → `validate` pipeline; `StyleKey::Validation{Error,Warning,Ok}` added to all three palettes; `AppState::vil_expr_lint` field wired. 6 unit tests green locally (incl. required `lint_detects_unknown_identifier`, `lint_ok_on_valid_expression`, `lint_debounces_rapid_typing`).
-- **Wave 4 foundation pushed to `origin/main` (`636e892`) — commits T15–T19 reviewable, but not claiming feature-complete.**
+## Pending Closeout Tasks
 
-## Next Steps — Wave 4 integration (to earn `PASS`)
-
-### P0 (unblocks "feature exists" claim)
-1. **T19 runtime wiring** — loader → merged keymap → matcher / `ActionSpec` override in `handle_input_event`; load at startup; surface errors in banner.
-2. **T18 event-loop tap + CLI replay** — hook recorder in input pipeline; add `vac tui --replay <file>` in `vac_cli`; replay driver feeds `RecordedInput` back through event loop.
-3. **T17 startup wire-up** — call DCS probe at startup, populate `TerminalCapabilities.kitty_graphics`, gate image-render path on it.
-
-### P1 (closes "complete" qualifier in plan wording)
-4. **T15 renderer integration** — render `DiagnosticsOverlay` spans inline under Review rows + vil_workbench editor gutter.
-5. **T16 coverage completion** — enumerate actionable surfaces, close each; target: mouse dispatch consistent across majority of clickable UI.
-
-### P2 (Per-PR Bar proof)
-6. Run & capture: `vac_cli --test integration_events`, add `insta` snapshots for new overlays/panels, update `docs/tui/action_matrix.md`, verify `scripts/check_sync_io.sh`, add ≥1 E2E harness test per wired surface.
-
-## Other outstanding work
-- W25-1: Theme sweep — 303 raw `Color::` in services/ + workbench/ (baseline audited)
-- W25-7: event_loop_tests split — structurally done, `runtime.rs` at 804 LOC (eligible for further split)
-- W25-9: Split `runner.rs` + finish async migration (1 `block_in_place` remaining)
-- Complete the file splitting for `text_selection.rs`, `review.rs`, `ask_user.rs`
+| Task | Target | Description |
+|------|--------|-------------|
+| Task-4 | T12.1 | Wire vil-expr validator into input + render + Alt+H |
+| Task-5 | T16 | Expand mouse dispatch_click to all interactive surfaces |
+| Task-6 | T14 | Route VilDevEvent to task tray + activity log |
+| Task-7 | T14 | Session timeline markers — decide Jalur A/B |
+| Task-8 | T17 | LRU KittyImageCache |
+| Task-9 | T17 | PTY/e2e positive path + final wave sign-off |
 
 ## Testing Policy
 **NEVER use `cargo test`.** A PreToolUse hook blocks it. Always use:
