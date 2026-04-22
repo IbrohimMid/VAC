@@ -378,14 +378,39 @@ pub async fn run_tui(
                         "vil_dev distilled summary"
                     );
                 }
+                // L4 — session rollup: write a per-session summary JSON
+                // alongside the rewind DB. Each persist tick overwrites
+                // the file; consumers (vac signal list, trajectory
+                // exporters) can read the latest rollup without opening
+                // the DB.
+                let reg = state.signal_registry();
+                let summary_streams: Vec<serde_json::Value> = reg
+                    .summary()
+                    .into_iter()
+                    .map(|s| serde_json::json!({
+                        "id": s.id,
+                        "kind": s.kind,
+                        "lines": s.lines,
+                        "dropped": s.dropped,
+                    }))
+                    .collect();
+                let summary_path = db_path.with_extension("summary.json");
+                let summary_doc = serde_json::json!({
+                    "session_id": state.session_id,
+                    "persisted_at_epoch_s": std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_secs())
+                        .unwrap_or(0),
+                    "streams": summary_streams,
+                });
+                if let Ok(bytes) = serde_json::to_vec_pretty(&summary_doc) {
+                    let _ = std::fs::write(&summary_path, bytes);
+                }
                 match vac_signal::rewind::RewindStore::open(db_path) {
-                    Ok(mut store) => {
-                        let reg = state.signal_registry();
-                        match reg.persist_to_rewind(&mut store) {
-                            Ok(count) => tracing::debug!(lines = count, "persisted signal"),
-                            Err(e) => tracing::warn!(error = %e, "signal persist failed"),
-                        }
-                    }
+                    Ok(mut store) => match reg.persist_to_rewind(&mut store) {
+                        Ok(count) => tracing::debug!(lines = count, "persisted signal"),
+                        Err(e) => tracing::warn!(error = %e, "signal persist failed"),
+                    },
                     Err(e) => tracing::warn!(error = %e, "signal rewind open failed"),
                 }
                 last_signal_persist = Instant::now();

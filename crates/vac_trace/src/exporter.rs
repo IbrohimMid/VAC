@@ -133,6 +133,7 @@ fn record_type_label(rt: &RecordType) -> &'static str {
         RecordType::PatchProposed => "PatchProposed",
         RecordType::PatchMerged => "PatchMerged",
         RecordType::AgentDecision => "AgentDecision",
+        RecordType::SignalSummary => "SignalSummary",
         RecordType::Error => "Error",
     }
 }

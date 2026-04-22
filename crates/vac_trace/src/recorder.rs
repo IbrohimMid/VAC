@@ -51,6 +51,11 @@ pub enum RecordType {
     /// Trae-inspired: enables offline evaluation of agent-loop decisions
     /// without a separate subsystem.
     AgentDecision,
+    /// Periodic session rollup: aggregate signal counts per stream
+    /// (total lines captured, dropped, distilled key-line count).
+    /// Content shape:
+    /// `{ "streams": [{ "id": string, "kind": string, "lines": usize, "dropped": u64, "key_lines": usize }] }`
+    SignalSummary,
     Error,
 }
 
@@ -232,6 +237,17 @@ impl TraceRecorder {
             RecordType::PatchMerged,
             None,
             serde_json::json!({ "sandbox_id": id }),
+        );
+    }
+
+    /// Record a signal-layer rollup (per-stream line counts + dropped
+    /// + distilled key-line count). Emitted periodically by the TUI
+    /// event loop for long-running sessions and at session end.
+    pub fn record_signal_summary(&mut self, streams: serde_json::Value) {
+        self.record(
+            RecordType::SignalSummary,
+            None,
+            serde_json::json!({ "streams": streams }),
         );
     }
 
