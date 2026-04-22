@@ -1,0 +1,32 @@
+[package]
+name = "vac_signal"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "VAC Signal — bounded output buffers, scoring, distillation, and optional rewind store for terminal/subsystem streams"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+regex = { workspace = true }
+chrono = { workspace = true }
+toml = { workspace = true }
+
+# Optional rewind persistence (OMNI-inspired). Gated behind `rewind` feature
+# so default builds stay light; enable explicitly when SQLite-backed recall
+# is desired.
+rusqlite = { version = "0.32", features = ["bundled"], optional = true }
+
+[features]
+default = []
+rewind = ["dep:rusqlite"]
+
+[dev-dependencies]
+tempfile = "3.14"
+
+[lints]
+workspace = true
