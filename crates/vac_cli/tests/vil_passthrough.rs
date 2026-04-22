@@ -331,6 +331,49 @@ fn vil_gen_rejects_without_writing_files() {
     assert_eq!(approval.state, vac_approvals::ApprovalState::Rejected);
 }
 
+#[cfg(unix)]
+#[test]
+fn vil_gen_rolls_back_files_when_final_write_fails() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let bin_dir = root.join("bin");
+    let handler_dir = root.join("handlers/rollback_handler");
+    fs::create_dir_all(&handler_dir).unwrap();
+    let mut permissions = fs::metadata(&handler_dir).unwrap().permissions();
+    permissions.set_mode(0o555);
+    fs::set_permissions(&handler_dir, permissions).unwrap();
+
+    let mut cmd = vac_command(
+        root,
+        &bin_dir,
+        &[
+            "vil",
+            "gen",
+            "handler",
+            "--kind",
+            "vilserver",
+            "--execution-mode",
+            "native",
+            "--name",
+            "rollback_handler",
+        ],
+    );
+    cmd.env("PATH", &bin_dir)
+        .write_stdin("y\n")
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("failed to create"));
+
+    let mut permissions = fs::metadata(&handler_dir).unwrap().permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&handler_dir, permissions).unwrap();
+
+    assert!(!root.join("workflows/rollback_handler.vwfd.yaml").exists());
+    assert!(!root.join("handlers/rollback_handler/mod.rs").exists());
+}
+
 #[test]
 fn vil_gen_writes_wasm_handler_scaffold() {
     let dir = tempfile::tempdir().unwrap();

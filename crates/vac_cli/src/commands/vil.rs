@@ -387,31 +387,53 @@ async fn write_generated_artifact_to(
         }
     }
 
+    let mut created_files = Vec::new();
     for file in &artifact.files {
         let target = project_root.join(&file.path);
         if tokio::fs::try_exists(&target).await? {
             continue;
         }
 
-        if let Some(parent) = target.parent() {
-            tokio::fs::create_dir_all(parent)
-                .await
-                .with_context(|| format!("failed to create parent {}", parent.display()))?;
+        if let Err(error) = write_new_generated_file(&target, &file.contents).await {
+            rollback_created_files(&created_files).await;
+            return Err(error);
         }
-
-        let mut handle = tokio::fs::OpenOptions::new()
-            .create_new(true)
-            .write(true)
-            .open(&target)
-            .await
-            .with_context(|| format!("failed to create {}", target.display()))?;
-        handle
-            .write_all(file.contents.as_bytes())
-            .await
-            .with_context(|| format!("failed to write {}", target.display()))?;
+        created_files.push(target);
     }
 
     Ok(())
+}
+
+async fn write_new_generated_file(target: &Path, contents: &str) -> anyhow::Result<()> {
+    if let Some(parent) = target.parent() {
+        tokio::fs::create_dir_all(parent)
+            .await
+            .with_context(|| format!("failed to create parent {}", parent.display()))?;
+    }
+
+    let mut handle = tokio::fs::OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .open(target)
+        .await
+        .with_context(|| format!("failed to create {}", target.display()))?;
+    if let Err(error) = handle.write_all(contents.as_bytes()).await {
+        let _ = tokio::fs::remove_file(target).await;
+        return Err(error).with_context(|| format!("failed to write {}", target.display()));
+    }
+    if let Err(error) = handle.flush().await {
+        drop(handle);
+        let _ = tokio::fs::remove_file(target).await;
+        return Err(error).with_context(|| format!("failed to flush {}", target.display()));
+    }
+
+    Ok(())
+}
+
+async fn rollback_created_files(created_files: &[PathBuf]) {
+    for path in created_files.iter().rev() {
+        let _ = tokio::fs::remove_file(path).await;
+    }
 }
 
 fn extract_version(text: &str) -> Option<Version> {
