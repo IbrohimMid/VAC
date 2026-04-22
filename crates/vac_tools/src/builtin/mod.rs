@@ -12,6 +12,8 @@ pub mod search;
 pub mod sequential_think;
 pub mod signal_list;
 pub mod signal_tail;
+#[cfg(test)]
+pub(crate) mod test_util;
 pub mod skill_runner;
 pub mod task_done;
 pub mod todo;

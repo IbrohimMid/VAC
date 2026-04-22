@@ -114,25 +114,12 @@ fn query_streams(db_path: &std::path::Path) -> Result<Vec<String>, ToolError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
-    use tokio::sync::RwLock;
-
-    fn ctx(working_dir: std::path::PathBuf, session_id: uuid::Uuid) -> ToolContext {
-        ToolContext {
-            working_dir,
-            env_vars: std::collections::HashMap::new(),
-            session_id,
-            shm: None,
-            agent_zone: crate::registry::AgentZone::ParentAgent,
-            environment_mode: "host".to_string(),
-            privacy: Arc::new(RwLock::new(crate::PrivacyVault::new())),
-        }
-    }
+    use crate::builtin::test_util::make_ctx;
 
     #[tokio::test]
     async fn empty_when_no_signal_dir() {
         let tmp = tempfile::tempdir().unwrap();
-        let c = ctx(tmp.path().to_path_buf(), uuid::Uuid::new_v4());
+        let c = make_ctx(tmp.path().to_path_buf(), uuid::Uuid::new_v4());
         let out = SignalListTool::new()
             .execute(serde_json::json!({}), &c)
             .await
@@ -159,7 +146,7 @@ mod tests {
                 )
                 .unwrap();
         }
-        let c = ctx(tmp.path().to_path_buf(), current);
+        let c = make_ctx(tmp.path().to_path_buf(), current);
         let out = SignalListTool::new()
             .execute(serde_json::json!({}), &c)
             .await

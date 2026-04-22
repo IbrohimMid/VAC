@@ -96,9 +96,12 @@ impl Scorer for ChainedScorer {
     fn score(&self, line: &str) -> ScoreClass {
         let mut result = ScoreClass::Low;
         for s in &self.scorers {
-            let c = s.score(line);
-            if c != ScoreClass::Low {
-                result = c;
+            match s.score(line) {
+                // High is authoritative across the chain; later scorers
+                // can't downgrade it, so short-circuit.
+                ScoreClass::High => return ScoreClass::High,
+                c @ (ScoreClass::Medium | ScoreClass::Noise) => result = c,
+                ScoreClass::Low => {}
             }
         }
         result

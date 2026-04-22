@@ -151,6 +151,15 @@ impl InferenceEngine {
         Self { backend }
     }
 
+    /// Convenience constructor for the Candle backend (B1 primary). Only
+    /// available when the `candle` feature is enabled.
+    #[cfg(feature = "candle")]
+    pub fn with_candle() -> Self {
+        Self {
+            backend: Arc::new(crate::backends::CandleBackend::new_cpu()),
+        }
+    }
+
     pub fn backend_kind(&self) -> BackendKind {
         self.backend.kind()
     }

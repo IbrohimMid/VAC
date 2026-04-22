@@ -1263,11 +1263,8 @@ fn record_agent_event(
                     arguments,
                 } => {
                     rec.record_tool_call(name, arguments);
-                    // Also emit an AgentDecision so `vac decisions` / eval
-                    // can replay real runtime choices. `rejected` is left
-                    // empty here (LLM supplies one tool at a time); future
-                    // integration with AgentStrategy may populate it with
-                    // considered-but-suppressed alternatives.
+                    // Paired AgentDecision for replay/eval. `rejected` is
+                    // empty until AgentStrategy supplies alternatives.
                     rec.record_agent_decision(
                         None,
                         name,

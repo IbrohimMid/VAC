@@ -15,5 +15,22 @@ thiserror = { workspace = true }
 tracing = { workspace = true }
 anyhow = { workspace = true }
 async-trait = { workspace = true }
+
+# B1 Candle backend (primary, pure Rust). Default ON — no FFI/C++ toolchain.
+# Opt out with `--no-default-features` for minimal stub-only builds.
+candle-core = { workspace = true, optional = true }
+candle-nn = { workspace = true, optional = true }
+candle-transformers = { workspace = true, optional = true }
+tokenizers = { workspace = true, optional = true }
+
+[features]
+default = ["candle"]
+candle = [
+    "dep:candle-core",
+    "dep:candle-nn",
+    "dep:candle-transformers",
+    "dep:tokenizers",
+]
+
 [lints]
 workspace = true
