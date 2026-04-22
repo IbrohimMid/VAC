@@ -17,7 +17,7 @@ pub fn render_sessions_section(
     scroll_area: Rect,
     help_area: Rect,
 ) {
-    let search_term = &state.command_palette_input;
+    let search_term = &state.command_palette.input;
     let search_prompt = ">";
     let cursor = "|";
     let placeholder = "Type to filter sessions";

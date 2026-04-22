@@ -15,6 +15,7 @@ pub mod at_mention;
 pub mod banner;
 pub mod billing;
 pub mod changeset_ui;
+pub mod command_palette;
 pub mod file_index;
 pub mod file_picker;
 pub mod switchers;
@@ -34,6 +35,7 @@ pub use ask_user::AskUserState;
 pub use at_mention::AtMentionState;
 pub use banner::BannerState;
 pub use changeset_ui::ChangesetUiState;
+pub use command_palette::CommandPaletteState;
 pub use file_index::FileIndexState;
 pub use file_picker::FilePickerState;
 pub use switchers::SwitchersState;
@@ -126,20 +128,12 @@ pub struct AppState {
     pub streaming_tokens: u64,
 
     // Command palette
-    pub command_palette_input: String,
-    pub command_palette_selected: usize,
-    pub command_palette_scroll: usize,
+    pub command_palette: CommandPaletteState,
     pub commands: Vec<HelperCommand>,
 
     // Helper Dropdown
-    pub helper_scroll: usize,
-    pub helper_selected: usize,
-    pub filtered_helpers: Vec<HelperCommand>,
-    pub recent_commands: crate::services::recent_commands::RecentCommands,
 
     // Shortcuts popup
-    pub shortcuts_mode: ShortcutsPopupMode,
-    pub shortcuts_scroll: usize,
 
     // Switchers (isolation, profile, rulebook, model)
     pub switchers: SwitchersState,

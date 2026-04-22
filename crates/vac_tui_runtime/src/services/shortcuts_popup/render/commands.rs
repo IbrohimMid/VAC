@@ -26,7 +26,7 @@ pub fn render_commands_section(
     let cursor = "|";
     let placeholder = "Type to filter";
 
-    let search_spans = if state.command_palette_input.is_empty() {
+    let search_spans = if state.command_palette.input.is_empty() {
         vec![
             Span::raw(" "), // Small space before
             Span::styled(search_prompt, state.theme.style(StyleKey::AppTitle)),
@@ -41,7 +41,7 @@ pub fn render_commands_section(
             Span::styled(search_prompt, state.theme.style(StyleKey::AppTitle)),
             Span::raw(" "),
             Span::styled(
-                &state.command_palette_input,
+                &state.command_palette.input,
                 state
                     .theme
                     .style(StyleKey::Text)
@@ -61,16 +61,16 @@ pub fn render_commands_section(
     f.render_widget(search_paragraph, search_area);
 
     // Get filtered commands
-    let filtered_commands = filter_commands(&state.command_palette_input, state);
+    let filtered_commands = filter_commands(&state.command_palette.input, state);
     let total_commands = filtered_commands.len();
     let height = content_area.height as usize;
 
     // Calculate scroll position
     let max_scroll = total_commands.saturating_sub(height.saturating_sub(SCROLL_BUFFER_LINES));
-    let scroll = if state.command_palette_scroll > max_scroll {
+    let scroll = if state.command_palette.scroll > max_scroll {
         max_scroll
     } else {
-        state.command_palette_scroll
+        state.command_palette.scroll
     };
 
     // Add top arrow indicator if there are hidden items above
@@ -86,7 +86,7 @@ pub fn render_commands_section(
         if line_index < total_commands {
             let command = &filtered_commands[line_index];
             let available_width = area.width as usize - 2; // Account for borders
-            let is_selected = line_index == state.command_palette_selected;
+            let is_selected = line_index == state.command_palette.selected;
             let bg_color = if is_selected {
                 state
                     .theme

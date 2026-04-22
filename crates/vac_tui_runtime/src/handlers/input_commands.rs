@@ -71,18 +71,18 @@ pub fn execute_shortcuts_command(
             true
         }
         CommandAction::OpenSessions => {
-            state.shortcuts_mode = crate::app::ShortcutsPopupMode::Sessions;
-            state.shortcuts_scroll = 0;
-            state.command_palette_input.clear();
-            state.command_palette_selected = 0;
+            state.command_palette.shortcuts_mode = crate::app::ShortcutsPopupMode::Sessions;
+            state.command_palette.shortcuts_scroll = 0;
+            state.command_palette.input.clear();
+            state.command_palette.selected = 0;
             crate::overlay::open_overlay(state, crate::overlay::OverlayId::Shortcuts);
             true
         }
         CommandAction::OpenShortcuts => {
-            state.shortcuts_mode = crate::app::ShortcutsPopupMode::Shortcuts;
-            state.shortcuts_scroll = 0;
-            state.command_palette_input.clear();
-            state.command_palette_selected = 0;
+            state.command_palette.shortcuts_mode = crate::app::ShortcutsPopupMode::Shortcuts;
+            state.command_palette.shortcuts_scroll = 0;
+            state.command_palette.input.clear();
+            state.command_palette.selected = 0;
             crate::overlay::open_overlay(state, crate::overlay::OverlayId::Shortcuts);
             true
         }
@@ -416,10 +416,10 @@ fn dispatch_action(
             let _ = profile_switcher::open(&mut ctx);
         }
         ActionId::OpenShortcuts => {
-            state.shortcuts_mode = crate::app::ShortcutsPopupMode::Shortcuts;
-            state.shortcuts_scroll = 0;
-            state.command_palette_input.clear();
-            state.command_palette_selected = 0;
+            state.command_palette.shortcuts_mode = crate::app::ShortcutsPopupMode::Shortcuts;
+            state.command_palette.shortcuts_scroll = 0;
+            state.command_palette.input.clear();
+            state.command_palette.selected = 0;
             crate::overlay::open_overlay(state, crate::overlay::OverlayId::Shortcuts);
         }
         ActionId::OpenFilePicker => {

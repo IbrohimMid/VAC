@@ -224,7 +224,7 @@ pub(super) fn render_command_palette(f: &mut Frame, state: &mut AppState) {
     // Input
     let input = Paragraph::new(Line::from(vec![
         Span::styled("/", state.theme.style(StyleKey::Warning)),
-        Span::raw(&state.command_palette_input),
+        Span::raw(&state.command_palette.input),
     ]))
     .block(Block::default().borders(Borders::ALL).title("Command"));
     f.render_widget(input, chunks[0]);
@@ -235,7 +235,7 @@ pub(super) fn render_command_palette(f: &mut Frame, state: &mut AppState) {
         .iter()
         .enumerate()
         .map(|(i, cmd)| {
-            let style = if i == state.command_palette_selected {
+            let style = if i == state.command_palette.selected {
                 state.theme.style(StyleKey::ListSelected)
             } else {
                 Style::default()

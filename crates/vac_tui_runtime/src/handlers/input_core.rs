@@ -137,8 +137,8 @@ fn handle_global(
             true
         }
         InputEvent::ShowCommandPalette => {
-            state.command_palette_input.clear();
-            state.command_palette_selected = 0;
+            state.command_palette.input.clear();
+            state.command_palette.selected = 0;
             crate::overlay::open_overlay(state, crate::overlay::OverlayId::CommandPalette);
             true
         }

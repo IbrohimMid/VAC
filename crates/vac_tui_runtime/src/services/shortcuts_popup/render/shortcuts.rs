@@ -24,7 +24,7 @@ pub fn render_shortcuts_section(
     area: Rect,
 ) {
     // Render search input
-    let search_term = &state.command_palette_input;
+    let search_term = &state.command_palette.input;
     let search_prompt = ">";
     let cursor = "|";
     let placeholder = "Type to filter (e.g. 'ctrl+')";
@@ -70,8 +70,8 @@ pub fn render_shortcuts_section(
     // Calculate scroll position
     let max_scroll = total_lines.saturating_sub(height.saturating_sub(SCROLL_BUFFER_LINES));
 
-    state.shortcuts_scroll = state.shortcuts_scroll.min(max_scroll);
-    let scroll = state.shortcuts_scroll;
+    state.command_palette.shortcuts_scroll = state.command_palette.shortcuts_scroll.min(max_scroll);
+    let scroll = state.command_palette.shortcuts_scroll;
 
     // Add top arrow indicator if there are hidden items above
     let mut visible_lines = Vec::new();

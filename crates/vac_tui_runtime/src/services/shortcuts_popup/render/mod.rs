@@ -48,7 +48,7 @@ pub fn render_shortcuts_popup(f: &mut Frame, state: &mut crate::app::AppState) {
 
     // Render tabs
     let tab_titles = vec![" Commands ", " Shortcuts ", " Sessions "];
-    let selected_tab = match state.shortcuts_mode {
+    let selected_tab = match state.command_palette.shortcuts_mode {
         ShortcutsPopupMode::Commands => 0,
         ShortcutsPopupMode::Shortcuts => 1,
         ShortcutsPopupMode::Sessions => 2,
@@ -65,7 +65,7 @@ pub fn render_shortcuts_popup(f: &mut Frame, state: &mut crate::app::AppState) {
         .divider(" | ");
 
     // Render content based on mode with mode-specific layouts
-    match state.shortcuts_mode {
+    match state.command_palette.shortcuts_mode {
         ShortcutsPopupMode::Commands => {
             let chunks = Layout::default()
                 .direction(Direction::Vertical)

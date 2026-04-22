@@ -111,16 +111,16 @@ fn handle_char(state: &mut AppState, output_tx: &Sender<OutputEvent>, c: char) {
         crate::overlay::open_overlay(state, crate::overlay::OverlayId::HelperDropdown);
         state.input.input(c);
         crate::services::helper_dropdown::filter_helpers_sync(state);
-        state.helper_selected = 0;
-        state.helper_scroll = 0;
+        state.command_palette.helper_selected = 0;
+        state.command_palette.helper_scroll = 0;
     } else if state
         .overlay_manager
         .is_active(crate::overlay::OverlayId::HelperDropdown)
     {
         state.input.input(c);
         crate::services::helper_dropdown::filter_helpers_sync(state);
-        state.helper_selected = 0;
-        state.helper_scroll = 0;
+        state.command_palette.helper_selected = 0;
+        state.command_palette.helper_scroll = 0;
     } else if c == '@' && !state.at_mention.trigger_active {
         crate::overlay::open_overlay(state, crate::overlay::OverlayId::AtDropdown);
         state.at_mention.query = String::new();
@@ -154,8 +154,8 @@ fn handle_backspace(state: &mut AppState) {
     {
         state.input.backspace();
         crate::services::helper_dropdown::filter_helpers_sync(state);
-        state.helper_selected = 0;
-        state.helper_scroll = 0;
+        state.command_palette.helper_selected = 0;
+        state.command_palette.helper_scroll = 0;
     } else if state.at_mention.trigger_active {
         if state.at_mention.query.is_empty() {
             state.at_mention.trigger_active = false;
@@ -213,7 +213,7 @@ fn handle_submit(state: &mut AppState, output_tx: &Sender<OutputEvent>) {
     };
 
     if msg.starts_with('/') {
-        state.recent_commands.add_command(msg.clone());
+        state.command_palette.recent_commands.add_command(msg.clone());
         let trimmed = msg.trim();
         let mut parts = trimmed.splitn(2, char::is_whitespace);
         let cmd_word = parts.next().unwrap_or(trimmed);

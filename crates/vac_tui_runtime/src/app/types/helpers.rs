@@ -10,7 +10,7 @@ use crate::services::textarea::TextArea;
 use crate::types::*;
 
 use super::{
-    ActivityItem, ActivityKind, AppState, ApprovalsState, AskUserState, AtMentionState, BannerState, ChangesetUiState, FileIndexState, FilePickerState, HelperCommand, LoadingStateManager, SwitchersState, VilDevState, WorkbenchChromeState,
+    ActivityItem, ActivityKind, AppState, ApprovalsState, AskUserState, AtMentionState, BannerState, ChangesetUiState, CommandPaletteState, FileIndexState, FilePickerState, HelperCommand, LoadingStateManager, SwitchersState, VilDevState, WorkbenchChromeState,
     Message, QueueMetrics, RenderMetrics, ReviewItem, ReviewItemStatus, ReviewState, RuntimeState,
     ShellState, ShortcutsPopupMode, StartupSnapshot, TokenUsage, VilLogEntry, VilState,
     WorkbenchTab, WorkspaceFocus,
@@ -71,17 +71,8 @@ impl AppState {
             streaming_message_id: None,
             streaming_start: None,
             streaming_tokens: 0,
-            command_palette_input: String::new(),
-            command_palette_selected: 0,
-            command_palette_scroll: 0,
+            command_palette: CommandPaletteState::default(),
             commands: Self::default_commands(),
-            helper_scroll: 0,
-            helper_selected: 0,
-            filtered_helpers: Vec::new(),
-            recent_commands: crate::services::recent_commands::RecentCommands::load(),
-
-            shortcuts_mode: ShortcutsPopupMode::default(),
-            shortcuts_scroll: 0,
             switchers: SwitchersState::default(),
             message_action_popup_selected: 0,
             message_action_target_id: None,
@@ -237,7 +228,7 @@ impl AppState {
     }
 
     pub fn filtered_commands(&self) -> Vec<HelperCommand> {
-        let mut cmds: Vec<_> = if self.command_palette_input.is_empty() {
+        let mut cmds: Vec<_> = if self.command_palette.input.is_empty() {
             self.commands
                 .iter()
                 .filter(|c| c.surface != crate::services::commands::CommandSurface::Hidden)
@@ -251,10 +242,10 @@ impl AppState {
                         && (c
                             .command
                             .to_lowercase()
-                            .contains(&self.command_palette_input.to_lowercase())
+                            .contains(&self.command_palette.input.to_lowercase())
                             || c.description
                                 .to_lowercase()
-                                .contains(&self.command_palette_input.to_lowercase()))
+                                .contains(&self.command_palette.input.to_lowercase()))
                 })
                 .cloned()
                 .collect()
@@ -262,13 +253,13 @@ impl AppState {
 
         cmds.sort_by_key(|cmd| {
             let freq = self
-                .recent_commands
+                .command_palette.recent_commands
                 .frequencies
                 .get(&cmd.command)
                 .copied()
                 .unwrap_or(0);
             let recent_idx = self
-                .recent_commands
+                .command_palette.recent_commands
                 .history
                 .iter()
                 .position(|h| h == &cmd.command)
@@ -294,7 +285,7 @@ impl AppState {
             .collect::<Vec<_>>();
         out.sort_by_key(|m| {
             let recent_idx = self
-                .recent_commands
+                .command_palette.recent_commands
                 .recent_models
                 .iter()
                 .position(|r| r == &m.id)

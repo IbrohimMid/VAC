@@ -54,7 +54,7 @@ pub fn select_prev(ctx: &mut HandlerContext) -> HandlerResult {
 pub fn submit_selected(ctx: &mut HandlerContext) -> HandlerResult {
     let filtered = ctx.state.model_switcher_filtered();
     if let Some(selected) = filtered.get(ctx.state.switchers.model_selected).cloned() {
-        ctx.state.recent_commands.add_model(selected.id.clone());
+        ctx.state.command_palette.recent_commands.add_model(selected.id.clone());
         ctx.state.current_model = Some(selected.clone());
         let _ = ctx
             .output_tx

@@ -145,7 +145,7 @@ pub fn view(f: &mut Frame, state: &mut AppState) {
     {
         let area = f.area();
         let width = (area.width / 2).max(40).min(area.width.saturating_sub(2));
-        let count = state.filtered_helpers.len().min(5) as u16;
+        let count = state.command_palette.filtered_helpers.len().min(5) as u16;
         let height = count + 2; // + borders or arrows
         let x = area.x + 1;
         let y = area.y + area.height.saturating_sub(height + 2); // above footer

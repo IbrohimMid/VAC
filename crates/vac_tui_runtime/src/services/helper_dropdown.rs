@@ -8,7 +8,7 @@ use std::cmp::Reverse;
 pub fn filter_helpers_sync(state: &mut AppState) {
     let input = state.input.lines.join("");
     if !input.starts_with('/') {
-        state.filtered_helpers.clear();
+        state.command_palette.filtered_helpers.clear();
         crate::overlay::close_overlay(state, crate::overlay::OverlayId::HelperDropdown);
         return;
     }
@@ -24,20 +24,20 @@ pub fn filter_helpers_sync(state: &mut AppState) {
             .collect();
         cmds.sort_by_key(|c| {
             let freq = state
-                .recent_commands
+                .command_palette.recent_commands
                 .frequencies
                 .get(&c.command)
                 .copied()
                 .unwrap_or(0);
             let recent_idx = state
-                .recent_commands
+                .command_palette.recent_commands
                 .history
                 .iter()
                 .position(|h| h == &c.command)
                 .unwrap_or(usize::MAX);
             (Reverse(freq), recent_idx)
         });
-        state.filtered_helpers = cmds;
+        state.command_palette.filtered_helpers = cmds;
         return;
     }
 
@@ -59,7 +59,7 @@ pub fn filter_helpers_sync(state: &mut AppState) {
 
     matches.sort_by_key(|(score, cmd)| {
         let freq = state
-            .recent_commands
+            .command_palette.recent_commands
             .frequencies
             .get(&cmd.command)
             .copied()
@@ -67,7 +67,7 @@ pub fn filter_helpers_sync(state: &mut AppState) {
         (Reverse(*score), Reverse(freq))
     });
 
-    state.filtered_helpers = matches.into_iter().map(|(_, cmd)| cmd).collect();
+    state.command_palette.filtered_helpers = matches.into_iter().map(|(_, cmd)| cmd).collect();
 }
 use crate::services::theme::StyleKey;
 use ratatui::{
@@ -81,7 +81,7 @@ use ratatui::{
 pub fn render_helper_dropdown(f: &mut Frame, state: &AppState, dropdown_area: Rect) {
     let input = state.input.lines.join("\n");
     let input = input.trim();
-    let show = input.starts_with('/') && !state.filtered_helpers.is_empty();
+    let show = input.starts_with('/') && !state.command_palette.filtered_helpers.is_empty();
     if state
         .overlay_manager
         .is_active(crate::overlay::OverlayId::HelperDropdown)
@@ -90,7 +90,7 @@ pub fn render_helper_dropdown(f: &mut Frame, state: &AppState, dropdown_area: Re
         // filtered_helpers is maintained synchronously by filter_helpers_sync():
         // - When input is just "/", it contains all commands
         // - When input is "/foo", it contains only matching commands
-        let commands_to_show = &state.filtered_helpers;
+        let commands_to_show = &state.command_palette.filtered_helpers;
 
         if commands_to_show.is_empty() {
             return;
@@ -101,8 +101,8 @@ pub fn render_helper_dropdown(f: &mut Frame, state: &AppState, dropdown_area: Re
         let visible_height = MAX_VISIBLE_ITEMS.min(total_commands);
 
         // Create a compact area for the dropdown (matching view.rs calculation)
-        let has_content_above = state.helper_scroll > 0;
-        let has_content_below = state.helper_scroll < total_commands.saturating_sub(visible_height);
+        let has_content_above = state.command_palette.helper_scroll > 0;
+        let has_content_below = state.command_palette.helper_scroll < total_commands.saturating_sub(visible_height);
         let arrow_lines =
             if has_content_above { 1 } else { 0 } + if has_content_below { 1 } else { 0 };
         let counter_line = if has_content_above || has_content_below {
@@ -121,10 +121,10 @@ pub fn render_helper_dropdown(f: &mut Frame, state: &AppState, dropdown_area: Re
 
         // Calculate scroll position
         let max_scroll = total_commands.saturating_sub(visible_height);
-        let scroll = if state.helper_scroll > max_scroll {
+        let scroll = if state.command_palette.helper_scroll > max_scroll {
             max_scroll
         } else {
-            state.helper_scroll
+            state.command_palette.helper_scroll
         };
 
         // Find the longest command name to calculate padding
@@ -156,7 +156,7 @@ pub fn render_helper_dropdown(f: &mut Frame, state: &AppState, dropdown_area: Re
                 let command = &commands_to_show[line_index];
                 let padding_needed = max_command_length - command.command.len();
                 let padding = " ".repeat(padding_needed);
-                let is_selected = line_index == state.helper_selected;
+                let is_selected = line_index == state.command_palette.helper_selected;
 
                 let command_style = if is_selected {
                     highlight_style
@@ -200,7 +200,7 @@ pub fn render_helper_dropdown(f: &mut Frame, state: &AppState, dropdown_area: Re
         }
 
         // Calculate current selected item position (1-based)
-        let current_position = state.helper_selected + 1;
+        let current_position = state.command_palette.helper_selected + 1;
 
         // Create navigation indicators
         let mut indicator_spans = vec![];
@@ -248,7 +248,7 @@ pub fn render_file_search_dropdown(f: &mut Frame, state: &AppState, area: Rect) 
     } else if state
         .overlay_manager
         .is_active(crate::overlay::OverlayId::HelperDropdown)
-        && !state.filtered_helpers.is_empty()
+        && !state.command_palette.filtered_helpers.is_empty()
     {
         render_helper_dropdown(f, state, area);
     }

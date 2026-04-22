@@ -104,17 +104,17 @@ fn command_palette_filters_commands_correctly() {
     let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
 
     // Empty filter shows all commands
-    state.command_palette_input = "".to_string();
+    state.command_palette.input = "".to_string();
     let all = state.filtered_commands();
     assert!(!all.is_empty());
 
     // Filter by prefix
-    state.command_palette_input = "/model".to_string();
+    state.command_palette.input = "/model".to_string();
     let filtered = state.filtered_commands();
     assert!(filtered.iter().any(|c| c.command == "/model"));
 
     // Non-matching filter
-    state.command_palette_input = "/nonexistent".to_string();
+    state.command_palette.input = "/nonexistent".to_string();
     let empty = state.filtered_commands();
     assert!(empty.is_empty());
 }
@@ -124,16 +124,16 @@ fn command_palette_selection_stays_within_bounds() {
     let dir = tempfile::tempdir().unwrap();
     let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
 
-    state.command_palette_input = "".to_string();
+    state.command_palette.input = "".to_string();
     let commands = state.filtered_commands();
 
     // Selection should not exceed command count
     if !commands.is_empty() {
-        state.command_palette_selected = 0;
-        assert_eq!(state.command_palette_selected, 0);
+        state.command_palette.selected = 0;
+        assert_eq!(state.command_palette.selected, 0);
 
-        state.command_palette_selected = commands.len() - 1;
-        assert_eq!(state.command_palette_selected, commands.len() - 1);
+        state.command_palette.selected = commands.len() - 1;
+        assert_eq!(state.command_palette.selected, commands.len() - 1);
     }
 }
 

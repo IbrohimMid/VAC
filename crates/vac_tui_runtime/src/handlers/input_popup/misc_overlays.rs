@@ -70,26 +70,26 @@ pub fn handle_helper_dropdown(state: &mut AppState, event: InputEvent) {
     }
     match event {
         InputEvent::Up => {
-            if state.helper_selected > 0 {
-                state.helper_selected -= 1;
-                if state.helper_selected < state.helper_scroll {
-                    state.helper_scroll = state.helper_selected;
+            if state.command_palette.helper_selected > 0 {
+                state.command_palette.helper_selected -= 1;
+                if state.command_palette.helper_selected < state.command_palette.helper_scroll {
+                    state.command_palette.helper_scroll = state.command_palette.helper_selected;
                 }
             }
         }
         InputEvent::Down => {
-            if !state.filtered_helpers.is_empty() {
-                let max_idx = state.filtered_helpers.len().saturating_sub(1);
-                if state.helper_selected < max_idx {
-                    state.helper_selected += 1;
-                    if state.helper_selected >= state.helper_scroll + 5 {
-                        state.helper_scroll = state.helper_selected.saturating_sub(4);
+            if !state.command_palette.filtered_helpers.is_empty() {
+                let max_idx = state.command_palette.filtered_helpers.len().saturating_sub(1);
+                if state.command_palette.helper_selected < max_idx {
+                    state.command_palette.helper_selected += 1;
+                    if state.command_palette.helper_selected >= state.command_palette.helper_scroll + 5 {
+                        state.command_palette.helper_scroll = state.command_palette.helper_selected.saturating_sub(4);
                     }
                 }
             }
         }
         InputEvent::InputSubmitted => {
-            if let Some(cmd) = state.filtered_helpers.get(state.helper_selected).cloned() {
+            if let Some(cmd) = state.command_palette.filtered_helpers.get(state.command_palette.helper_selected).cloned() {
                 state.input.set_content(&cmd.command);
                 state.input.move_cursor_end();
                 state.input.input(' ');
@@ -116,32 +116,32 @@ pub fn handle_command_palette(
             crate::overlay::close_overlay(state, OverlayId::CommandPalette);
         }
         InputEvent::CommandPaletteInput(c) => {
-            state.command_palette_input.push(c);
-            state.command_palette_selected = 0;
+            state.command_palette.input.push(c);
+            state.command_palette.selected = 0;
         }
         InputEvent::CommandPaletteBackspace => {
-            state.command_palette_input.pop();
-            state.command_palette_selected = 0;
+            state.command_palette.input.pop();
+            state.command_palette.selected = 0;
         }
         InputEvent::CommandPaletteUp => {
             let filtered = state.filtered_commands();
-            if state.command_palette_selected > 0 {
-                state.command_palette_selected -= 1;
+            if state.command_palette.selected > 0 {
+                state.command_palette.selected -= 1;
             } else if !filtered.is_empty() {
-                state.command_palette_selected = filtered.len() - 1;
+                state.command_palette.selected = filtered.len() - 1;
             }
         }
         InputEvent::CommandPaletteDown => {
             let filtered = state.filtered_commands();
-            if state.command_palette_selected < filtered.len().saturating_sub(1) {
-                state.command_palette_selected += 1;
+            if state.command_palette.selected < filtered.len().saturating_sub(1) {
+                state.command_palette.selected += 1;
             } else {
-                state.command_palette_selected = 0;
+                state.command_palette.selected = 0;
             }
         }
         InputEvent::CommandPaletteSelect => {
             let filtered = state.filtered_commands();
-            if let Some(cmd) = filtered.get(state.command_palette_selected).cloned() {
+            if let Some(cmd) = filtered.get(state.command_palette.selected).cloned() {
                 dispatch_builtin_command(state, output_tx, &cmd.command, None);
             }
             crate::overlay::close_overlay(state, OverlayId::CommandPalette);
@@ -159,7 +159,7 @@ pub fn handle_shortcuts(state: &mut AppState, output_tx: &Sender<OutputEvent>, e
             crate::overlay::close_overlay(state, OverlayId::Shortcuts);
         }
         InputEvent::Tab => {
-            state.shortcuts_mode = match state.shortcuts_mode {
+            state.command_palette.shortcuts_mode = match state.command_palette.shortcuts_mode {
                 crate::app::ShortcutsPopupMode::Commands => {
                     crate::app::ShortcutsPopupMode::Shortcuts
                 }
@@ -170,13 +170,13 @@ pub fn handle_shortcuts(state: &mut AppState, output_tx: &Sender<OutputEvent>, e
                     crate::app::ShortcutsPopupMode::Commands
                 }
             };
-            state.shortcuts_scroll = 0;
+            state.command_palette.shortcuts_scroll = 0;
         }
         InputEvent::Up => {
-            state.shortcuts_scroll = state.shortcuts_scroll.saturating_sub(1);
+            state.command_palette.shortcuts_scroll = state.command_palette.shortcuts_scroll.saturating_sub(1);
         }
         InputEvent::Down => {
-            let max = match state.shortcuts_mode {
+            let max = match state.command_palette.shortcuts_mode {
                 crate::app::ShortcutsPopupMode::Commands => {
                     crate::services::shortcuts_popup::filter_commands("", state).len()
                 }
@@ -186,20 +186,20 @@ pub fn handle_shortcuts(state: &mut AppState, output_tx: &Sender<OutputEvent>, e
                 crate::app::ShortcutsPopupMode::Sessions => state.sessions.len(),
             }
             .saturating_sub(1);
-            if state.shortcuts_scroll < max {
-                state.shortcuts_scroll += 1;
+            if state.command_palette.shortcuts_scroll < max {
+                state.command_palette.shortcuts_scroll += 1;
             }
         }
         InputEvent::InputSubmitted => {
-            if state.shortcuts_mode == crate::app::ShortcutsPopupMode::Sessions {
-                if let Some(sel) = state.sessions.get(state.shortcuts_scroll).cloned() {
+            if state.command_palette.shortcuts_mode == crate::app::ShortcutsPopupMode::Sessions {
+                if let Some(sel) = state.sessions.get(state.command_palette.shortcuts_scroll).cloned() {
                     let _ = output_tx.try_send(OutputEvent::SwitchToSession(sel.id));
                     state.push_activity(crate::app::ActivityKind::Session, "Switch session");
                     crate::overlay::close_overlay(state, OverlayId::Shortcuts);
                 }
-            } else if state.shortcuts_mode == crate::app::ShortcutsPopupMode::Commands {
+            } else if state.command_palette.shortcuts_mode == crate::app::ShortcutsPopupMode::Commands {
                 let cmds = crate::services::shortcuts_popup::filter_commands("", state);
-                if let Some(cmd) = cmds.get(state.shortcuts_scroll) {
+                if let Some(cmd) = cmds.get(state.command_palette.shortcuts_scroll) {
                     let keep_open = matches!(
                         &cmd.action,
                         crate::services::commands::CommandAction::OpenSessions
