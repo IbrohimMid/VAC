@@ -107,7 +107,7 @@ pub(super) fn render_changeset(f: &mut Frame, state: &mut AppState) {
         .iter()
         .enumerate()
         .map(|(i, entry)| {
-            let style = if i == state.changeset_selected_idx {
+            let style = if i == state.changeset_ui.selected_idx {
                 state.theme.style(StyleKey::ListSelected)
             } else {
                 Style::default()
@@ -141,7 +141,7 @@ pub(super) fn render_changeset(f: &mut Frame, state: &mut AppState) {
 
     let width = body[1].width.saturating_sub(2) as usize;
     let mut lines: Vec<Line> = Vec::new();
-    if let Some(diff) = &state.changeset_diff {
+    if let Some(diff) = &state.changeset_ui.diff {
         if let Some(err) = &diff.last_error {
             lines.push(Line::styled(
                 err.clone(),
@@ -174,7 +174,7 @@ pub(super) fn render_changeset(f: &mut Frame, state: &mut AppState) {
     let detail = Paragraph::new(lines)
         .block(Block::default().borders(Borders::ALL).title("Preview"))
         .wrap(Wrap { trim: false })
-        .scroll((state.changeset_diff_scroll as u16, 0));
+        .scroll((state.changeset_ui.diff_scroll as u16, 0));
     f.render_widget(detail, body[1]);
 }
 

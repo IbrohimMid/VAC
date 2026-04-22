@@ -184,12 +184,12 @@ pub fn on_session_restored(
     state.file_search_selected_idx = 0;
     state.file_search_results.clear();
     crate::overlay::close_overlay(state, crate::overlay::OverlayId::Changeset);
-    state.changeset_selected_idx = 0;
-    state.changeset_diff_scroll = 0;
-    state.changeset_selected_path = None;
+    state.changeset_ui.selected_idx = 0;
+    state.changeset_ui.diff_scroll = 0;
+    state.changeset_ui.selected_path = None;
     state.changeset_store.clear();
     state.modified_files = state.changeset_store.modified_files(); // derived: empty after clear
-    state.changeset_diff = None;
+    state.changeset_ui.diff = None;
     state.vil.score_history.clear();
     state.vil.event_log.clear();
     state.vil.last_score = None;

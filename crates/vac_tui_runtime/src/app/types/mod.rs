@@ -13,6 +13,7 @@ pub mod approvals;
 pub mod ask_user;
 pub mod at_mention;
 pub mod billing;
+pub mod changeset_ui;
 pub mod file_picker;
 pub mod vil_dev;
 pub mod commands;
@@ -27,6 +28,7 @@ pub mod workbench;
 pub use approvals::ApprovalsState;
 pub use ask_user::AskUserState;
 pub use at_mention::AtMentionState;
+pub use changeset_ui::ChangesetUiState;
 pub use file_picker::FilePickerState;
 pub use vil_dev::VilDevState;
 pub use billing::{
@@ -187,10 +189,7 @@ pub struct AppState {
     // Inline @ file picker
     pub at_mention: AtMentionState,
 
-    pub changeset_selected_idx: usize,
-    pub changeset_diff_scroll: usize,
-    pub changeset_selected_path: Option<String>,
-    pub changeset_diff: Option<ReviewDiffState>,
+    pub changeset_ui: ChangesetUiState,
 
     // Permission UX
     pub auto_approve: bool,
