@@ -361,6 +361,27 @@ impl Default for VacConfig {
     }
 }
 
+impl VacConfig {
+    /// Minimal config for research / eval / replay runs where the operator
+    /// wants to strip auxiliary subsystems to observe agent loops in
+    /// isolation.
+    ///
+    /// Disables: trace recording, LLM routing-by-task-kind, MCP presets,
+    /// memory persistence (in-memory only), policy-gate enforcement.
+    /// Keeps: LLM default provider, tool policy, VIL.
+    pub fn minimal() -> Self {
+        let mut cfg = Self::default();
+        cfg.trace.enable = false;
+        cfg.memory.enable_episodic = false;
+        cfg.memory.enable_semantic = false;
+        cfg.mcp_presets.clear();
+        cfg.mcp_servers = None;
+        cfg.policy_gate.enable = false;
+        cfg.signal.enable = false;
+        cfg
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PolicyGateConfig {
     #[serde(default)]
@@ -694,5 +715,24 @@ impl AutopilotConfig {
         }
         let content = std::fs::read_to_string(&path)?;
         Ok(toml::from_str(&content)?)
+    }
+}
+
+#[cfg(test)]
+mod minimal_config_tests {
+    use super::*;
+
+    #[test]
+    fn minimal_disables_auxiliary_subsystems() {
+        let cfg = VacConfig::minimal();
+        assert!(!cfg.trace.enable);
+        assert!(!cfg.memory.enable_episodic);
+        assert!(!cfg.memory.enable_semantic);
+        assert!(!cfg.policy_gate.enable);
+        assert!(!cfg.signal.enable);
+        assert!(cfg.mcp_servers.is_none());
+        assert!(cfg.mcp_presets.is_empty());
+        // Core subsystems preserved:
+        assert_eq!(cfg.llm.default_provider, "anthropic");
     }
 }
