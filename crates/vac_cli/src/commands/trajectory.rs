@@ -41,6 +41,79 @@ pub async fn explain(
     Ok(())
 }
 
+pub async fn decisions(
+    project_root: PathBuf,
+    format: &str,
+    path: Option<PathBuf>,
+) -> anyhow::Result<()> {
+    use vac_trajectory::decisions::{DecisionStats, load_decisions_from_file};
+
+    let trace_path = match path {
+        Some(p) => p,
+        None => {
+            let traces_dir = project_root.join(".vac").join("traces");
+            let mut newest: Option<(std::time::SystemTime, PathBuf)> = None;
+            if let Ok(entries) = std::fs::read_dir(&traces_dir) {
+                for entry in entries.flatten() {
+                    let p = entry.path();
+                    if p.extension().and_then(|s| s.to_str()) != Some("json") {
+                        continue;
+                    }
+                    if let Ok(meta) = entry.metadata() {
+                        if let Ok(modified) = meta.modified() {
+                            if newest
+                                .as_ref()
+                                .is_none_or(|(best, _)| modified > *best)
+                            {
+                                newest = Some((modified, p));
+                            }
+                        }
+                    }
+                }
+            }
+            newest
+                .map(|(_, p)| p)
+                .context("no trace files found under .vac/traces/")?
+        }
+    };
+
+    let records = load_decisions_from_file(&trace_path).await?;
+    let stats = DecisionStats::from_records(&records);
+
+    if format == "json" {
+        return crate::output::print_json(&serde_json::json!({
+            "trace": trace_path,
+            "stats": stats,
+            "records": records,
+        }));
+    }
+
+    println!("Decisions from: {}", trace_path.display());
+    println!(
+        "  total: {}, with_alternatives: {}, with_rationale: {}",
+        stats.total, stats.with_alternatives, stats.with_rationale
+    );
+    if !stats.unique_chosen.is_empty() {
+        println!("  unique chosen: {}", stats.unique_chosen.join(", "));
+    }
+    if records.is_empty() {
+        println!("  (no AgentDecision records in this trace)");
+        return Ok(());
+    }
+    println!();
+    for (idx, r) in records.iter().enumerate() {
+        println!("  [{}] {} -> {}", idx + 1, r.timestamp.to_rfc3339(), r.chosen);
+        if !r.rejected.is_empty() {
+            println!("      rejected: {}", r.rejected.join(", "));
+        }
+        if let Some(rationale) = &r.rationale {
+            println!("      rationale: {}", rationale);
+        }
+    }
+
+    Ok(())
+}
+
 pub async fn why(
     project_root: PathBuf,
     format: &str,

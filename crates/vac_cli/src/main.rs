@@ -153,6 +153,16 @@ enum Commands {
         #[arg(long, default_value_t = 8)]
         limit: usize,
     },
+    /// Dump agent-decision records from a trace file (or the most recent
+    /// one if no path is given). Useful for Trae-style offline evaluation
+    /// of agent loops.
+    #[command(next_help_heading = "Trace & Export")]
+    Decisions {
+        /// Path to a trace JSON file. If omitted, the most recent trace
+        /// under `.vac/traces/` is used.
+        #[arg(value_name = "TRACE")]
+        path: Option<std::path::PathBuf>,
+    },
     /// Explain a trajectory by id, label, or file path
     #[command(next_help_heading = "Trace & Export")]
     Explain {
@@ -397,6 +407,9 @@ async fn main() -> anyhow::Result<()> {
         Commands::Status => commands::status::execute(project_root, &cli.format).await?,
         Commands::Observe { limit } => {
             commands::trajectory::observe(project_root, &cli.format, limit).await?
+        }
+        Commands::Decisions { path } => {
+            commands::trajectory::decisions(project_root, &cli.format, path).await?
         }
         Commands::Explain { target } => {
             commands::trajectory::explain(project_root, &cli.format, target).await?
