@@ -26,7 +26,7 @@
 | Wave 2.5 | **functionally-complete** | files>600=0, Color::=0, block_in_place=0 |
 | T11 VWFD inspector | **complete** | `VwfdInspectorState` wired, service+handlers present |
 | T12 vil-expr validator | **complete** | `services/vil_expr_lint.rs` + 6 tests green |
-| T12.1 UI wiring | **partial** | Input hook + render + Alt+H popup → Task-4 |
+| T12.1 UI wiring | **complete** | 3 tests verified PASS: `workspace_input.rs` tests for input_changed, tick_emits_redraw, alt_h |
 | T13 VIL-aware diff overlay | **complete** | `vwfd_diff_render` delegation in `services/review.rs` |
 | T14 Background vil dev | **materially-advanced** | Substrate + log panel; runner events not yet routed to task tray + activity → Task-6, Task-7 |
 | T15 Inline diagnostics | **complete** | `diagnostics_consumers` wired |
@@ -65,7 +65,7 @@
 
 | Task | Target | Description |
 |------|--------|-------------|
-| Task-4 | T12.1 | Wire vil-expr validator into input + render + Alt+H |
+| ~~Task-4~~ | T12.1 | **done** — 3 tests verified PASS |
 | Task-5 | T16 | Expand mouse dispatch_click to all interactive surfaces |
 | Task-6 | T14 | Route VilDevEvent to task tray + activity log |
 | Task-7 | T14 | Session timeline markers — decide Jalur A/B |

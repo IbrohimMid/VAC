@@ -24,7 +24,7 @@
 | §8 PR-3 VacConfig::vil | ✅ **complete** | Commit `426a063` (subsumed inline — ADR-0001) |
 | PR-T11 VWFD inspector | ✅ **complete** | `VwfdInspectorState` wired, service + handlers present |
 | PR-T12 vil-expr validator | ✅ **complete** | Service-layer + 6 tests; UI hook (T12.1) → Task-4 |
-| PR-T12.1 UI wiring | ⚠️ **partial** | Input hook + render + Alt+H popup → Task-4 |
+| PR-T12.1 UI wiring | ✅ **complete** | `input_changed_updates_vil_expr_lint_state`, `tick_emits_redraw_request_after_debounce`, `alt_h_on_identifier_opens_popup` — all 3 PASS in `handlers/workspace_input.rs` |
 | §8 PR-5b vwfd_parity_pass | ✅ **complete** | `vwfd_parity_pass` wired |
 | §8 PR-6 VWFD semantic diff | ✅ **complete** | `vac_changeset::formats::vwfd` present |
 | PR-T13 VIL-aware diff overlay | ✅ **complete** | `vwfd_diff_render` delegation in `services/review.rs` |
