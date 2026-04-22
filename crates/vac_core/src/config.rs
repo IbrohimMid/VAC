@@ -185,6 +185,14 @@ pub struct SwarmConfig {
     /// Enable parallel agent execution
     #[serde(default = "bool_true")]
     pub enable_parallel: bool,
+    /// Agent decision strategy: "default" | "conservative".
+    /// Resolved at runtime via vil_swarm::strategy::strategy_from_name.
+    #[serde(default = "default_strategy_name")]
+    pub strategy: String,
+}
+
+fn default_strategy_name() -> String {
+    "default".to_string()
 }
 
 fn default_max_agents() -> usize {
@@ -340,6 +348,7 @@ impl Default for VacConfig {
                 max_concurrent_agents: default_max_agents(),
                 checkpoint_interval_secs: default_checkpoint_interval(),
                 enable_parallel: true,
+                strategy: default_strategy_name(),
             },
             trace: TraceConfig {
                 enable: true,
