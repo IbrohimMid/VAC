@@ -334,6 +334,16 @@ pub async fn run_tui(
 
     let mut spinner_interval = interval(Duration::from_millis(150));
     let mut last_session_snapshot_save = Instant::now();
+    let mut last_signal_persist = Instant::now();
+    let signal_persist_interval =
+        Duration::from_secs(boot_config.vil.checkpoint_interval_secs.max(30));
+    let signal_rewind_path = if boot_config.signal.enable {
+        let dir = project_root.join(".vac").join("signal");
+        let _ = std::fs::create_dir_all(&dir);
+        Some(dir.join(format!("{}.db", state.session_id)))
+    } else {
+        None
+    };
 
     loop {
         // Handle internal events
@@ -348,6 +358,27 @@ pub async fn run_tui(
 
         if let Some(tx) = state.input_tx.clone() {
             crate::update::flush_pending_user_messages_if_idle(&mut state, &tx, &output_tx);
+        }
+
+        // Signal-layer rewind persistence (OMNI integration). Runs every
+        // `signal_persist_interval`; opens a per-session SQLite DB under
+        // `.vac/signal/` and dumps every registered SignalBuffer. Cheap
+        // enough to run in-task since buffers are bounded.
+        if let Some(ref db_path) = signal_rewind_path {
+            if last_signal_persist.elapsed() >= signal_persist_interval {
+                let _s = tracing::info_span!("signal_persist").entered();
+                match vac_signal::rewind::RewindStore::open(db_path) {
+                    Ok(mut store) => {
+                        let reg = state.signal_registry();
+                        match reg.persist_to_rewind(&mut store) {
+                            Ok(count) => tracing::debug!(lines = count, "persisted signal"),
+                            Err(e) => tracing::warn!(error = %e, "signal persist failed"),
+                        }
+                    }
+                    Err(e) => tracing::warn!(error = %e, "signal rewind open failed"),
+                }
+                last_signal_persist = Instant::now();
+            }
         }
 
         // Update spinner
