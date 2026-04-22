@@ -8,12 +8,24 @@ mod telemetry;
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
+const VAC_AFTER_HELP: &str = "\
+Command groups:
+  Run:             run, interactive, autopilot, resume
+  Config:          config, auth, rulebook, isolation, migrate, doctor
+  Trace & Export:  export, import, observe, explain, why, status
+  Interop:         acp, mcp
+  VIL Tooling:     init, vil, runtime, restore
+
+Run `vac <COMMAND> --help` for details on a specific command.";
+
 #[derive(Parser)]
 #[command(
     name = "vac",
     version,
     about = "VAC — Vastar Agentic CLI: Autonomous development powered by VIL Engine",
     long_about = None,
+    after_help = VAC_AFTER_HELP,
+    after_long_help = VAC_AFTER_HELP,
 )]
 struct Cli {
     #[arg(short = 'C', long, global = true)]
@@ -34,21 +46,9 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Check VAC subsystem readiness
-    Doctor {
-        #[arg(long)]
-        strict: bool,
-        #[arg(long)]
-        fix: bool,
-        #[arg(long, short)]
-        interactive: bool,
-    },
-    /// Initialize VIL project context
-    Init {
-        #[arg(short, long)]
-        force: bool,
-    },
+    // ----- Run -----
     /// Execute a single task via agent swarm
+    #[command(next_help_heading = "Run")]
     Run {
         task: String,
         #[arg(short, long, default_value = "normal")]
@@ -61,6 +61,7 @@ enum Commands {
         target: Vec<String>,
     },
     /// Interactive REPL mode
+    #[command(next_help_heading = "Run")]
     Interactive {
         #[arg(long)]
         resume: bool,
@@ -71,43 +72,58 @@ enum Commands {
         #[arg(long, value_name = "FILE", conflicts_with = "record")]
         replay: Option<PathBuf>,
     },
+    /// Autopilot daemon — 24/7 autonomous runtime with VIL policy enforcement
+    #[command(next_help_heading = "Run")]
+    Autopilot {
+        #[command(subcommand)]
+        action: AutopilotAction,
+    },
     /// Resume from checkpoint
+    #[command(next_help_heading = "Run")]
     Resume { checkpoint: PathBuf },
-    /// Restore file to pre-agent state from snapshot journal
-    Restore {
-        /// File path to restore (relative to project root)
-        file: PathBuf,
-    },
-    /// Show engine status
-    Status,
-    /// Observe recent trajectory artifacts
-    Observe {
-        #[arg(long, default_value_t = 8)]
-        limit: usize,
-    },
-    /// Explain a trajectory by id, label, or file path
-    Explain {
-        #[arg(value_name = "TARGET")]
-        target: Option<String>,
-    },
-    /// Explain why a file changed
-    Why {
-        #[arg(value_name = "PATH")]
-        path: PathBuf,
-        #[arg(long, value_name = "TARGET")]
-        trajectory: Option<String>,
-    },
+
+    // ----- Config -----
     /// Manage configuration
+    #[command(next_help_heading = "Config")]
     Config {
         #[command(subcommand)]
         action: ConfigAction,
     },
     /// Manage authentication
+    #[command(next_help_heading = "Config")]
     Auth {
         #[command(subcommand)]
         action: AuthAction,
     },
+    /// Manage VIL-native rulebooks (SOP, playbooks, governance constraints)
+    #[command(next_help_heading = "Config", visible_alias = "config-rulebook")]
+    Rulebook {
+        #[command(subcommand)]
+        action: RulebookAction,
+    },
+    /// Execution boundary and isolation management
+    #[command(next_help_heading = "Config", visible_alias = "config-isolation")]
+    Isolation {
+        #[command(subcommand)]
+        action: IsolationAction,
+    },
+    /// Migrate .vac/ schema to the latest version
+    #[command(next_help_heading = "Config")]
+    Migrate,
+    /// Check VAC subsystem readiness
+    #[command(next_help_heading = "Config")]
+    Doctor {
+        #[arg(long)]
+        strict: bool,
+        #[arg(long)]
+        fix: bool,
+        #[arg(long, short)]
+        interactive: bool,
+    },
+
+    // ----- Trace & Export -----
     /// Export session artifact
+    #[command(next_help_heading = "Trace & Export")]
     Export {
         #[arg(short, long)]
         output: Option<PathBuf>,
@@ -117,6 +133,7 @@ enum Commands {
         sign: bool,
     },
     /// Import session bundle into current project
+    #[command(next_help_heading = "Trace & Export")]
     Import {
         input: PathBuf,
         #[arg(short, long, default_value = "bundle-json")]
@@ -130,43 +147,69 @@ enum Commands {
         #[arg(long = "no-redact", action = clap::ArgAction::SetFalse, default_value_t = true)]
         redact: bool,
     },
-    /// Manage VIL-native rulebooks (SOP, playbooks, governance constraints)
-    Rulebook {
-        #[command(subcommand)]
-        action: RulebookAction,
+    /// Observe recent trajectory artifacts
+    #[command(next_help_heading = "Trace & Export")]
+    Observe {
+        #[arg(long, default_value_t = 8)]
+        limit: usize,
     },
-    /// Manage the external VIL binary
-    Vil {
-        #[command(subcommand)]
-        action: VilAction,
+    /// Explain a trajectory by id, label, or file path
+    #[command(next_help_heading = "Trace & Export")]
+    Explain {
+        #[arg(value_name = "TARGET")]
+        target: Option<String>,
     },
+    /// Explain why a file changed
+    #[command(next_help_heading = "Trace & Export")]
+    Why {
+        #[arg(value_name = "PATH")]
+        path: PathBuf,
+        #[arg(long, value_name = "TARGET")]
+        trajectory: Option<String>,
+    },
+    /// Show engine status
+    #[command(next_help_heading = "Trace & Export")]
+    Status,
+
+    // ----- Interop -----
     /// Start ACP editor-facing agent server
+    #[command(next_help_heading = "Interop")]
     Acp {
         #[arg(long, default_value = "4123")]
         port: u16,
     },
-    /// Background runtime management
-    Runtime {
-        #[command(subcommand)]
-        action: RuntimeAction,
-    },
-    /// Execution boundary and isolation management
-    Isolation {
-        #[command(subcommand)]
-        action: IsolationAction,
-    },
     /// Model Context Protocol (MCP) server management
+    #[command(next_help_heading = "Interop")]
     Mcp {
         #[command(subcommand)]
         action: McpAction,
     },
-    /// Autopilot daemon — 24/7 autonomous runtime with VIL policy enforcement
-    Autopilot {
-        #[command(subcommand)]
-        action: AutopilotAction,
+
+    // ----- VIL Tooling -----
+    /// Initialize VIL project context
+    #[command(next_help_heading = "VIL Tooling")]
+    Init {
+        #[arg(short, long)]
+        force: bool,
     },
-    /// Migrate .vac/ schema to the latest version
-    Migrate,
+    /// Manage the external VIL binary
+    #[command(next_help_heading = "VIL Tooling")]
+    Vil {
+        #[command(subcommand)]
+        action: VilAction,
+    },
+    /// Background runtime management
+    #[command(next_help_heading = "VIL Tooling")]
+    Runtime {
+        #[command(subcommand)]
+        action: RuntimeAction,
+    },
+    /// Restore file to pre-agent state from snapshot journal
+    #[command(next_help_heading = "VIL Tooling")]
+    Restore {
+        /// File path to restore (relative to project root)
+        file: PathBuf,
+    },
 }
 
 #[derive(Subcommand)]

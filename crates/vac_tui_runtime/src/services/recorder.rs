@@ -27,6 +27,42 @@ use serde::{Deserialize, Serialize};
 pub const DEFAULT_MAX_BYTES: u64 = 10 * 1024 * 1024;
 pub const DEFAULT_MAX_FILES: usize = 20;
 
+/// Current JSONL recorder schema version. Bump when the on-disk format
+/// changes in a way that old replayers cannot round-trip.
+pub const RECORDER_SCHEMA: &str = "vac-recorder/1";
+
+/// Build-time VAC version. Recorded in the header of every new recording
+/// so replay across versions can surface a mismatch before deterministic
+/// comparison fails for mysterious reasons.
+pub const RECORDER_VAC_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// Optional build-time commit SHA injected by the release pipeline via the
+/// `VAC_GIT_COMMIT` env var. When absent (local builds), the header records
+/// "unknown" and replay never warns on commit mismatch.
+pub const RECORDER_COMMIT: &str = match option_env!("VAC_GIT_COMMIT") {
+    Some(c) => c,
+    None => "unknown",
+};
+
+/// First line of every recording file. Written once on open + on each
+/// rotation. Parsed by [`Replay::open`] to surface version drift.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RecorderHeader {
+    pub schema: String,
+    pub vac_version: String,
+    pub commit: String,
+}
+
+impl RecorderHeader {
+    pub fn current() -> Self {
+        Self {
+            schema: RECORDER_SCHEMA.to_string(),
+            vac_version: RECORDER_VAC_VERSION.to_string(),
+            commit: RECORDER_COMMIT.to_string(),
+        }
+    }
+}
+
 /// User-facing input events that are safe + useful to replay. Mirrors the
 /// subset of crossterm-derived [`InputEvent`] variants consumed by the
 /// global input pipeline.
@@ -140,13 +176,31 @@ impl Recorder {
         std::fs::create_dir_all(&cfg.dir)?;
         let path = mint_path(&cfg.dir, 0);
         let file = OpenOptions::new().create(true).append(true).open(&path)?;
-        Ok(Self {
+        let mut this = Self {
             cfg,
             current_path: path,
             file,
             bytes_written: 0,
             pending_resize: None,
-        })
+        };
+        this.write_header()?;
+        Ok(this)
+    }
+
+    /// Emit the schema/version header as the first line of the current file.
+    /// Called on `open` and after each rotation; the freshly opened file is
+    /// guaranteed to be empty (we mint a new path every time), so we can
+    /// write unconditionally without risk of duplicating the header.
+    fn write_header(&mut self) -> std::io::Result<()> {
+        let header = RecorderHeader::current();
+        let json = serde_json::to_string(&header)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+        self.file.write_all(json.as_bytes())?;
+        self.file.write_all(b"\n")?;
+        // Header size counts against the per-file byte budget so rotation
+        // math stays correct.
+        self.bytes_written += json.len() as u64 + 1;
+        Ok(())
     }
 
     pub fn current_path(&self) -> &Path {
@@ -240,6 +294,9 @@ impl Recorder {
             .open(&new_path)?;
         self.current_path = new_path;
         self.bytes_written = 0;
+        // Every rotated file starts with its own header so out-of-context
+        // replay of a single rotated fragment still carries version info.
+        self.write_header()?;
         prune_old_files(&self.cfg.dir, self.cfg.max_files)?;
         Ok(())
     }
@@ -310,14 +367,70 @@ fn now_ms() -> u128 {
 /// replay of everything that came before.
 pub struct Replay {
     lines: std::io::Lines<BufReader<File>>,
+    /// The `RecorderHeader` parsed from the first line, when present.
+    /// Older recordings (pre-header) leave this as `None` and replay
+    /// silently, preserving backward compatibility.
+    header: Option<RecorderHeader>,
+    /// First non-header line that the header-detection pass already read
+    /// out of the inner iterator. Yielded by the next `next()` call so no
+    /// data is dropped.
+    pending: Option<String>,
 }
 
 impl Replay {
     pub fn open(path: &Path) -> std::io::Result<Self> {
         let file = File::open(path)?;
+        let mut lines = BufReader::new(file).lines();
+        let mut header: Option<RecorderHeader> = None;
+        let mut pending: Option<String> = None;
+        // Peek the first non-empty line. If it parses as a header, consume
+        // it and emit a version-mismatch warning when it disagrees with
+        // the current build. Otherwise, stash it as `pending` so the
+        // iterator still returns it as the first data line.
+        for line in lines.by_ref() {
+            let line = match line {
+                Ok(l) if !l.trim().is_empty() => l,
+                Ok(_) => continue,
+                Err(e) => return Err(e),
+            };
+            if let Ok(parsed) = serde_json::from_str::<RecorderHeader>(&line) {
+                if parsed.schema != RECORDER_SCHEMA
+                    || parsed.vac_version != RECORDER_VAC_VERSION
+                    || (parsed.commit != RECORDER_COMMIT
+                        && parsed.commit != "unknown"
+                        && RECORDER_COMMIT != "unknown")
+                {
+                    tracing::warn!(
+                        target: "vac_tui_runtime::recorder",
+                        recording = %path.display(),
+                        recorded_schema = %parsed.schema,
+                        current_schema = RECORDER_SCHEMA,
+                        recorded_version = %parsed.vac_version,
+                        current_version = RECORDER_VAC_VERSION,
+                        recorded_commit = %parsed.commit,
+                        current_commit = RECORDER_COMMIT,
+                        "replay: recorder header mismatch — determinism is not guaranteed"
+                    );
+                }
+                header = Some(parsed);
+            } else {
+                // Pre-header recording: preserve this line for the
+                // iterator.
+                pending = Some(line);
+            }
+            break;
+        }
         Ok(Self {
-            lines: BufReader::new(file).lines(),
+            lines,
+            header,
+            pending,
         })
+    }
+
+    /// The header parsed from this recording, if any. `None` for legacy
+    /// recordings written before the schema header was introduced.
+    pub fn header(&self) -> Option<&RecorderHeader> {
+        self.header.as_ref()
     }
 }
 
@@ -325,6 +438,13 @@ impl Iterator for Replay {
     type Item = RecordedLine;
 
     fn next(&mut self) -> Option<Self::Item> {
+        // Drain the stashed first-data line, if any.
+        if let Some(line) = self.pending.take() {
+            if let Ok(parsed) = serde_json::from_str::<RecordedLine>(&line) {
+                return Some(parsed);
+            }
+            // Fall through and keep reading if the stashed line was junk.
+        }
         for line in self.lines.by_ref() {
             let line = match line {
                 Ok(l) if !l.trim().is_empty() => l,

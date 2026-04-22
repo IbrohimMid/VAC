@@ -238,6 +238,109 @@ fn non_resize_after_resize_flushes_pending_in_order() {
 }
 
 #[test]
+fn recorder_writes_schema_header_on_open() {
+    let tmp = TempDir::new().unwrap();
+    let cfg = RecorderConfig::new(tmp.path().join("recordings"));
+    let mut rec = Recorder::open(cfg).unwrap();
+    let path = rec.current_path().to_path_buf();
+    rec.flush().unwrap();
+    drop(rec);
+
+    // The first line on disk must be a parseable RecorderHeader.
+    let content = std::fs::read_to_string(&path).unwrap();
+    let first = content.lines().next().expect("recording has at least one line");
+    let header: RecorderHeader =
+        serde_json::from_str(first).expect("first line parses as RecorderHeader");
+    assert_eq!(header.schema, RECORDER_SCHEMA);
+    assert_eq!(header.vac_version, RECORDER_VAC_VERSION);
+    // Commit may be "unknown" in local builds; just ensure it's non-empty.
+    assert!(!header.commit.is_empty(), "commit field must be set");
+}
+
+#[test]
+fn replay_surfaces_recorded_header_and_skips_it() {
+    let tmp = TempDir::new().unwrap();
+    let cfg = RecorderConfig::new(tmp.path().join("recordings"));
+    let mut rec = Recorder::open(cfg).unwrap();
+    let events = sample_events();
+    for (ev, ts) in &events {
+        rec.record_at(ev.clone(), *ts).unwrap();
+    }
+    let path = rec.current_path().to_path_buf();
+    rec.flush().unwrap();
+    drop(rec);
+
+    let replay = Replay::open(&path).unwrap();
+    let header = replay.header().expect("header present for new recordings").clone();
+    assert_eq!(header, RecorderHeader::current());
+    // Replay iterator must not yield the header as a data line.
+    let replayed: Vec<RecordedLine> = replay.collect();
+    assert_eq!(replayed.len(), events.len());
+}
+
+#[test]
+fn replay_without_header_stays_backward_compatible() {
+    // Simulate a pre-header recording: write a single data line directly,
+    // no header in front of it. Replay must still surface it.
+    let tmp = TempDir::new().unwrap();
+    let path = tmp.path().join("legacy.jsonl");
+    let line = RecordedLine {
+        ts_ms: 42,
+        event: RecordedInput::Key {
+            code: "Enter".into(),
+            modifiers: 0,
+        },
+    };
+    std::fs::write(
+        &path,
+        format!("{}\n", serde_json::to_string(&line).unwrap()),
+    )
+    .unwrap();
+
+    let replay = Replay::open(&path).unwrap();
+    assert!(
+        replay.header().is_none(),
+        "legacy recording must yield no header"
+    );
+    let replayed: Vec<RecordedLine> = replay.collect();
+    assert_eq!(replayed, vec![line]);
+}
+
+#[test]
+fn replay_warns_on_schema_mismatch_but_still_replays() {
+    // Write a header with a bumped schema and a valid data line after it.
+    // Replay must expose the recorded (mismatched) header via `header()`
+    // and still yield the data line so determinism inspection is possible.
+    let tmp = TempDir::new().unwrap();
+    let path = tmp.path().join("mismatched.jsonl");
+    let bogus_header = RecorderHeader {
+        schema: "vac-recorder/999".into(),
+        vac_version: "0.0.0-from-the-future".into(),
+        commit: "deadbeef".into(),
+    };
+    let line = RecordedLine {
+        ts_ms: 7,
+        event: RecordedInput::Paste { text: "hi".into() },
+    };
+    let mut content = String::new();
+    content.push_str(&serde_json::to_string(&bogus_header).unwrap());
+    content.push('\n');
+    content.push_str(&serde_json::to_string(&line).unwrap());
+    content.push('\n');
+    std::fs::write(&path, content).unwrap();
+
+    let replay = Replay::open(&path).unwrap();
+    let observed = replay
+        .header()
+        .cloned()
+        .expect("header present on mismatched file");
+    assert_eq!(observed.schema, "vac-recorder/999");
+    assert_ne!(observed.schema, RECORDER_SCHEMA);
+    let replayed: Vec<RecordedLine> = replay.collect();
+    assert_eq!(replayed, vec![line]);
+}
+
+#[test]
 fn new_variants_survive_json_round_trip() {
     // Guard against accidental serde-tag drift on the variants added
     // in PR-T18 R4.

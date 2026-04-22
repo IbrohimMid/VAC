@@ -36,7 +36,7 @@ which is allowed but `cargo check --tests` is preferred for that purpose.
 
 ### Scope to the crate you touched
 
-The workspace has 15+ crates. Never run workspace-wide builds/tests unless
+The workspace has 25 crates (see `crates/` — verified 2026-04-22). Never run workspace-wide builds/tests unless
 you edited something cross-cutting. Examples:
 
 ```bash
