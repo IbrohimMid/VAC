@@ -62,6 +62,9 @@ pub async fn run_tui(
     project_root: std::path::PathBuf,
     io_mode: crate::runner::TuiIoMode,
 ) -> io::Result<()> {
+    let boot_span = tracing::info_span!("tui_boot");
+    let _boot = boot_span.enter();
+
     let _guard = TerminalGuard;
     enable_raw_mode()?;
 
@@ -71,9 +74,12 @@ pub async fn run_tui(
     // and the probe's short (200ms) deadline runs once per startup. The
     // helper is TTY-gated internally so non-interactive runs (pipes,
     // CI) short-circuit to `false` without emitting bytes.
-    let kitty_graphics_supported = crate::services::kitty_image::probe_terminal_kitty_support(
-        crate::services::kitty_image::DEFAULT_PROBE_TIMEOUT,
-    );
+    let kitty_graphics_supported = {
+        let _s = tracing::info_span!("boot_kitty_probe").entered();
+        crate::services::kitty_image::probe_terminal_kitty_support(
+            crate::services::kitty_image::DEFAULT_PROBE_TIMEOUT,
+        )
+    };
 
     execute!(
         std::io::stdout(),
@@ -131,19 +137,23 @@ pub async fn run_tui(
     if !_current_profile_name.is_empty() {
         state.startup.active_profile = Some(_current_profile_name.clone());
     }
-    // Hydrate MCP server count from config
-    {
-        let config = vac_core::VacConfig::load_with_fallback(&project_root).unwrap_or_default();
-        state.startup.mcp_server_count = config.mcp_servers.as_ref().map_or(0, |s| s.len());
-    }
+    // Load config once; reused below for MCP probe + theme + vil dev.
+    let boot_config = {
+        let _s = tracing::info_span!("boot_config_load").entered();
+        vac_core::VacConfig::load_with_fallback(&project_root).unwrap_or_default()
+    };
+    state.startup.mcp_server_count = boot_config.mcp_servers.as_ref().map_or(0, |s| s.len());
     // Provider status from auth_display_info
     state.startup.provider_status = match &state.auth_display_info.0 {
         Some(provider) => format!("ready ({})", provider),
         None => "loading...".to_string(),
     };
 
-    if let Some(snapshot) = load_session_snapshot(&project_root, &state.session_id).await {
-        apply_session_snapshot(&mut state, &snapshot);
+    {
+        let _s = tracing::info_span!("boot_session_snapshot").entered();
+        if let Some(snapshot) = load_session_snapshot(&project_root, &state.session_id).await {
+            apply_session_snapshot(&mut state, &snapshot);
+        }
     }
 
     // Add welcome messages
@@ -231,10 +241,12 @@ pub async fn run_tui(
         crate::services::keybindings_watcher::spawn_keybindings_watcher(kb_path, input_tx.clone());
     }
 
-    // Probe MCP servers in background
-    let config = vac_core::VacConfig::load_with_fallback(&project_root).unwrap_or_default();
-    if let Some(servers) = config.mcp_servers {
-        spawn_mcp_probe(servers, input_tx.clone());
+    // Probe MCP servers in background — reuse boot_config loaded above.
+    {
+        let _s = tracing::info_span!("boot_mcp_probe_spawn").entered();
+        if let Some(servers) = boot_config.mcp_servers {
+            spawn_mcp_probe(servers, input_tx.clone());
+        }
     }
 
     // PR-W25-2: hot-reload theme from `.vac/theme.toml` / `$VAC_THEME`.
@@ -243,7 +255,8 @@ pub async fn run_tui(
     }
 
     // PR-T14: spawn `vil dev` bridge if configured in `.vac/config.toml`.
-    if let Some(dev_cmd) = config.vil.dev_command.as_deref() {
+    if let Some(dev_cmd) = boot_config.vil.dev_command.as_deref() {
+        let _s = tracing::info_span!("boot_vil_dev_spawn").entered();
         crate::runner::vil_tasks::spawn_vil_dev_bridge(dev_cmd, &project_root, input_tx.clone());
     }
 
