@@ -235,3 +235,16 @@ Full details: `docs/SECURITY.md`, `docs/THREAT_MODEL.md`, `docs/privacy_architec
 | `vil_context` | SHM-backed context engine |
 | `vil_memory` | Three-tier persistent memory |
 | `vil_inference` | Type inference engine |
+
+---
+
+## 10. Audit History
+
+Wave-level implementation records are kept under `docs/audit/`:
+
+| Document | Contents |
+|----------|----------|
+| `docs/audit/WAVE_1_TO_4_SIGN_OFF.md` | Exit criteria results, evidence map, commit chain for Wave 1–4 |
+| `docs/audit/WAVE1_GATE_MAPPING.md` | 15-gate pass/fail table for Wave 1 boot truthfulness gates |
+| `docs/adr/ADR-0001-vil-bridge-subsumed.md` | Decision: vil_bridge functionality inlined into CLI commands |
+| `docs/adr/ADR-0002-vwfd-codegen-inline-templates.md` | Decision: VWFD codegen templates kept inline |
