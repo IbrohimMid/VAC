@@ -46,6 +46,11 @@ pub enum RecordType {
     SandboxDestroyed,
     PatchProposed,
     PatchMerged,
+    /// Agent chose among several candidate actions (tool, plan, route).
+    /// Content shape: `{ "chosen": string, "rejected": [string], "rationale": string? }`.
+    /// Trae-inspired: enables offline evaluation of agent-loop decisions
+    /// without a separate subsystem.
+    AgentDecision,
     Error,
 }
 
@@ -228,5 +233,39 @@ impl TraceRecorder {
             None,
             serde_json::json!({ "sandbox_id": id }),
         );
+    }
+
+    /// Record an agent-level decision (Trae-inspired). `chosen` is the
+    /// action the agent picked; `rejected` lists the candidates it considered
+    /// but did not take; `rationale` is an optional short explanation.
+    pub fn record_agent_decision(
+        &mut self,
+        agent_id: Option<&str>,
+        chosen: &str,
+        rejected: &[&str],
+        rationale: Option<&str>,
+    ) {
+        self.record(
+            RecordType::AgentDecision,
+            agent_id,
+            serde_json::json!({
+                "chosen": chosen,
+                "rejected": rejected,
+                "rationale": rationale,
+            }),
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn agent_decision_roundtrips_through_json() {
+        let rt = RecordType::AgentDecision;
+        let s = serde_json::to_string(&rt).unwrap();
+        let back: RecordType = serde_json::from_str(&s).unwrap();
+        assert!(matches!(back, RecordType::AgentDecision));
     }
 }
