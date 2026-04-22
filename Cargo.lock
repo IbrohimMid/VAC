@@ -5609,6 +5609,7 @@ dependencies = [
  "vac_approvals",
  "vac_ingest",
  "vac_runtime",
+ "vac_signal",
  "vac_tools",
  "vac_trace",
  "vil_context",

@@ -4,6 +4,7 @@ use crate::policy_gate::{PolicyGateAction, PolicyGateMode};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+pub use vac_signal::SignalConfig;
 pub use vil_llm::{LlmConfig, ProviderConfig as LlmProviderConfig};
 
 /// Top-level VAC configuration, loaded from `~/.config/vac/config.toml`
@@ -22,6 +23,9 @@ pub struct VacConfig {
     pub swarm: SwarmConfig,
     /// Trace/audit settings
     pub trace: TraceConfig,
+    /// Signal layer (bounded output buffers + distillation)
+    #[serde(default)]
+    pub signal: SignalConfig,
     /// vil-lsp integration settings
     #[serde(default)]
     pub vil_lsp: VilLspConfig,
@@ -343,6 +347,7 @@ impl Default for VacConfig {
                 enable_signing: false,
                 redaction: default_redaction(),
             },
+            signal: SignalConfig::default(),
             vil_lsp: VilLspConfig::default(),
             rulebook: RulebookConfig::default(),
             policy_gate: PolicyGateConfig::default(),
