@@ -87,6 +87,18 @@ monotonic sequence counter and drop tracking; pair it with a `Scorer`
 panes. Config lives at `VacConfig.signal` (`SignalConfig`). Optional
 SQLite-backed archive is gated behind the `rewind` feature.
 
-Currently wired: `AppState.vil_dev_output`. Deferred (need line-oriented
-alternatives to existing byte-level APIs): `ShellSession.output` (char-
-boundary truncation + `detect_prompt_ready`).
+Currently wired: `state.vil_dev.output` and (additively) `ShellSession.output_signal`.
+`SignalRegistry::persist_to_rewind` bridges in-memory buffers to the
+optional SQLite `RewindStore` (feature `rewind`). Inspect persisted
+data via `vac signal list` / `vac signal tail` (build with
+`--features signal-rewind`).
+
+## Agent-loop eval & strategy
+
+- `vil_swarm::strategy` — `AgentStrategy` trait with `DefaultStrategy`
+  (liberal, 8 tools/turn) and `ConservativeStrategy` (ask-user-first,
+  3 tools/turn). Select via `SwarmConfig.strategy` in config.
+- `vac_trajectory::decisions` — extract `AgentDecision` trace records,
+  score them against `DecisionOutcome`.
+- `vac decisions` — dump records. `vac eval` — score. `vac eval --golden <file>` —
+  compare chosen vs expected sequence (Trae-style replay regression).
