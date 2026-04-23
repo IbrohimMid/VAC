@@ -21,6 +21,12 @@ pub enum AnalysisRequest {
     ResolveSymbol { name: String },
     /// Explain a lifetime / borrow-check diagnostic the compiler emitted.
     ExplainLifetime { diagnostic_code: String },
+    /// Fetch workspace diagnostics.
+    WorkspaceDiagnostics,
+    /// Hover over a symbol.
+    Hover { file: PathBuf, line: u32, column: u32 },
+    /// Go to definition.
+    GotoDefinition { file: PathBuf, line: u32, column: u32 },
 }
 
 /// A single analysis response. Variants parallel [`AnalysisRequest`].
@@ -29,6 +35,9 @@ pub enum AnalysisResponse {
     FileSymbols(Vec<Symbol>),
     ResolveSymbol(Vec<Symbol>),
     ExplainLifetime { summary: String, hints: Vec<String> },
+    WorkspaceDiagnostics(Vec<serde_json::Value>),
+    Hover(String),
+    GotoDefinition(Vec<Symbol>),
 }
 
 /// A symbol entry. Kept deliberately format-free so the real backend can

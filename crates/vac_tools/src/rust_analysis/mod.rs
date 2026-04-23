@@ -32,8 +32,10 @@
 //! `vac_tools::rust_analysis::*`.
 
 pub mod host;
+pub mod pty_host;
 
 pub use host::{
     AnalysisHost, AnalysisRequest, AnalysisResponse, AnalysisError, AnalysisResult,
-    StubAnalysisHost,
+    StubAnalysisHost, Symbol,
 };
+pub use pty_host::PortablePtyHost;
