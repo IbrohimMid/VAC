@@ -31,14 +31,17 @@
 pub mod compact;
 pub mod error;
 pub mod event;
+pub mod llm;
 pub mod slash;
 pub mod submit;
 pub mod transcript;
 pub mod usage;
 
-pub use compact::{CompactBoundary, CompactHint, TrivialCompactBoundary};
+pub use compact::{CompactBoundary, CompactHint, CompactInput, TrivialCompactBoundary};
 pub use error::{EngineError, EngineResult};
 pub use event::{SubmitContext, SubmitEvent};
+pub use llm::{EchoAdapter, LlmAdapter, LlmRequest, LlmResponse};
 pub use slash::{SlashCommand, SlashProcessor};
+pub use submit::{CompactConfig, submit_one};
 pub use transcript::{TranscriptEntry, TranscriptHandle, TranscriptKind, TranscriptWriter};
 pub use usage::{UsageSnapshot, UsageTracker};
