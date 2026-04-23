@@ -44,6 +44,31 @@ mod tests {
         }
     }
 
+    // ── AppState domain census (regression guard for M8 refactor) ────────────
+    //
+    // The 367-flat-field AppState was collapsed into ~11 owned domain
+    // sub-structs. If this test fails upward, someone added a flat
+    // field to AppState — push it into the appropriate domain instead.
+    #[test]
+    fn app_state_stays_domain_organized() {
+        let source = include_str!("app/types/mod.rs");
+        let start = source
+            .find("pub struct AppState {")
+            .expect("AppState struct must exist");
+        let tail = &source[start..];
+        let end = tail.find("\n}\n").expect("AppState must close");
+        let body = &tail[..end];
+        let field_count = body
+            .lines()
+            .filter(|l| l.trim_start().starts_with("pub "))
+            .count();
+        assert!(
+            field_count <= 15,
+            "AppState has {} top-level fields — keep it domain-organized (≤15)",
+            field_count
+        );
+    }
+
     // ── OverlayManager journey tests ──────────────────────────────────────────
 
     #[test]
