@@ -1,10 +1,10 @@
 # VAC Agentic CLI — Agent Guide
 
 > 📍 **Where is the plan?** Start at
-> [`docs/ROADMAP.md`](docs/ROADMAP.md); the authoritative execution
-> plan is [`docs/ultraplan-vac-product.md`](docs/ultraplan-vac-product.md).
-> Current adoption score: **66.7% weighted**
-> ([`docs/adoption-score.md`](docs/adoption-score.md)).
+> [`docs/ROADMAP.md`](docs/ROADMAP.md); the authoritative blueprint is
+> [`docs/cc-parity-blueprint.md`](docs/cc-parity-blueprint.md) and the
+> per-milestone execution plan is
+> [`docs/cc-parity-plan.md`](docs/cc-parity-plan.md).
 
 ## Build discipline (READ FIRST)
 
