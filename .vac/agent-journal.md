@@ -33,3 +33,9 @@ Commit: 36f6ef36ee0fddbb26ff697c677413f22b543503
 Tests: cargo check -p vac_ingest -p vac_cli -p vac_tui_runtime --tests
 Evidence: Ingest command reads/writes `~/.vac/bm25.index` instead of memory-only.
 Notes: Created `vac ingest` command, binary serialisation for `Bm25Index`, and integrated `FileIndexReady` with `bm25_index` Option in `vac_tui_runtime`.
+
+## M2 Engine convergence — DONE
+Commit: $(git rev-parse HEAD)
+Tests: cargo nextest run --workspace
+Evidence: M2 in ultraplan §3
+Notes: Removed EngineMode::Legacy, fixed compilation errors and e2e test usages of vac autopilot up.

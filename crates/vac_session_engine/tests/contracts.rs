@@ -242,6 +242,7 @@ async fn compact_boundary_fires_through_submit_one() {
             message_count: 10,
             approx_tokens: 0,
             context_window_tokens: 200_000,
+            ..Default::default()
         },
         Some(tx),
     )
@@ -331,4 +332,44 @@ async fn llm_error_after_request_row_still_writes_aborted() {
     assert!(kinds.contains(&TranscriptKind::LlmRequest));
     assert!(!kinds.contains(&TranscriptKind::LlmResponse));
     assert_eq!(*kinds.last().unwrap(), TranscriptKind::Aborted);
+}
+
+#[tokio::test]
+async fn budget_gate_aborts_submit_when_exceeded() {
+    let tmp = tempfile::tempdir().unwrap();
+    let writer = TranscriptWriter::new(tmp.path().to_path_buf());
+    let ctx = SubmitContext::new(Uuid::new_v4(), "hi");
+    let sid = ctx.session_id;
+
+    let usage = UsageTracker::new();
+    usage.add_input_tokens(10); // used 10
+    
+    let mut compact_cfg = CompactConfig::default();
+    compact_cfg.max_budget_tokens = Some(10); // budget 10 -> exceeded
+
+    let err = submit_one(
+        ctx,
+        &writer,
+        &SlashProcessor::new(),
+        &TrivialCompactBoundary::default(),
+        &usage,
+        &vac_session_engine::EchoAdapter,
+        compact_cfg,
+        None,
+    )
+    .await
+    .unwrap_err();
+
+    assert!(matches!(err, EngineError::BudgetExceeded { .. }));
+
+    let rows = writer.read(sid).await.unwrap();
+    let kinds: Vec<_> = rows.iter().map(|r| r.kind).collect();
+    
+    // Should be Accepted -> Aborted (never reached LLMRequest)
+    assert_eq!(kinds[0], TranscriptKind::Accepted);
+    assert_eq!(*kinds.last().unwrap(), TranscriptKind::Aborted);
+    assert!(!kinds.contains(&TranscriptKind::LlmRequest));
+    
+    let aborted = rows.last().unwrap();
+    assert_eq!(aborted.content["kind"], "budget_exceeded");
 }

@@ -60,11 +60,9 @@ enum Commands {
         approve: bool,
         #[arg(short, long)]
         target: Vec<String>,
-        /// Engine path: `legacy` (VacEngine direct) or `session`
-        /// (vac_session_engine submit_one via VacEngineAdapter).
-        /// Defaults to legacy; env `VAC_ENGINE=session` flips it.
-        #[arg(long, value_name = "legacy|session")]
-        engine: Option<String>,
+        /// Token budget for this submit
+        #[arg(long)]
+        budget_tokens: Option<u64>,
     },
     /// Interactive REPL mode
     #[command(next_help_heading = "Run")]
@@ -462,7 +460,7 @@ async fn main() -> anyhow::Result<()> {
             profile,
             approve,
             target,
-            engine: _,
+            budget_tokens,
         } => {
             commands::run::execute(
                 project_root,
@@ -471,6 +469,7 @@ async fn main() -> anyhow::Result<()> {
                 profile,
                 approve,
                 target,
+                budget_tokens,
             )
             .await?;
         }

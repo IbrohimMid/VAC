@@ -30,6 +30,8 @@ pub struct CompactConfig {
     pub message_count: usize,
     pub approx_tokens: u64,
     pub context_window_tokens: u64,
+    pub max_budget_tokens: Option<u64>,
+    pub max_turns: Option<u32>,
 }
 
 impl Default for CompactConfig {
@@ -38,6 +40,8 @@ impl Default for CompactConfig {
             message_count: 0,
             approx_tokens: 0,
             context_window_tokens: 200_000,
+            max_budget_tokens: None,
+            max_turns: None,
         }
     }
 }
@@ -131,6 +135,16 @@ async fn submit_after_accepted(
         );
         transcript.append(handle, &row).await?;
         emit(events, SubmitEvent::Compacted { kept, dropped });
+    }
+
+    if let Some(budget) = compact_cfg.max_budget_tokens {
+        let used = usage.snapshot().total_tokens();
+        if used >= budget {
+            return Err(crate::error::EngineError::BudgetExceeded {
+                tokens_used: used,
+                budget,
+            });
+        }
     }
 
     // LLM round-trip.
@@ -231,13 +245,18 @@ pub async fn submit_one(
         Ok(snap) => Ok(snap),
         Err(e) => {
             let reason = e.to_string();
+            let kind = match &e {
+                crate::error::EngineError::BudgetExceeded { .. } => "budget_exceeded",
+                crate::error::EngineError::Cancelled => "cancelled",
+                _ => "error",
+            };
             // Best-effort: if the transcript itself is the thing that
             // failed, this append will fail too. Log and continue so
             // the original error is what surfaces to the caller.
             let aborted = TranscriptEntry::new(
                 submit.session_id,
                 TranscriptKind::Aborted,
-                serde_json::json!({ "reason": reason }),
+                serde_json::json!({ "reason": reason, "kind": kind }),
             );
             if let Err(append_err) = transcript.append(&handle, &aborted).await {
                 tracing::warn!(

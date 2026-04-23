@@ -29,6 +29,7 @@ pub async fn execute(
     profile: String,
     approve: bool,
     targets: Vec<String>,
+    budget_tokens: Option<u64>,
 ) -> anyhow::Result<()> {
     let mut engine = vac_core::VacEngine::new(project_root.clone()).await?;
 
@@ -143,6 +144,7 @@ pub async fn execute(
         engine,
         &task_description,
         update_tx,
+        budget_tokens,
     ).await?;
 
     println!("\n{}", "=".repeat(60));
@@ -191,6 +193,7 @@ async fn run_via_session_engine(
     engine: vac_core::VacEngine,
     task_description: &str,
     update_tx: tokio::sync::mpsc::UnboundedSender<vac_core::engine::RuntimeUpdate>,
+    budget_tokens: Option<u64>,
 ) -> anyhow::Result<vac_core::TaskResult> {
     use vac_tui_runtime::runner::engine_adapter::VacEngineAdapter;
     use vac_session_engine::{
@@ -222,6 +225,9 @@ async fn run_via_session_engine(
     let usage = UsageTracker::new();
     let ctx = SubmitContext::new(uuid::Uuid::new_v4(), task_description.to_string());
 
+    let mut compact_cfg = CompactConfig::default();
+    compact_cfg.max_budget_tokens = budget_tokens;
+
     let snap = submit_one(
         ctx,
         &writer,
@@ -229,7 +235,7 @@ async fn run_via_session_engine(
         &compact,
         &usage,
         &adapter,
-        CompactConfig::default(),
+        compact_cfg,
         None,
     )
     .await

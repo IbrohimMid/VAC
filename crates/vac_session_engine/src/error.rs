@@ -11,6 +11,8 @@ pub enum EngineError {
     SlashHandler(String, String),
     #[error("compact boundary rejected input: {0}")]
     CompactRejected(String),
+    #[error("budget exceeded: used {tokens_used}, budget {budget}")]
+    BudgetExceeded { tokens_used: u64, budget: u64 },
     #[error("submit cancelled")]
     Cancelled,
     #[error("io error: {0}")]
