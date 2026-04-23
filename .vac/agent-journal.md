@@ -93,3 +93,59 @@ Commit: $(git rev-parse HEAD)
 Tests: cargo check --workspace --tests
 Evidence: M4 in ultraplan §3
 Notes: Created `vac_tools::trust_gate::TrustGate` (re-exported in `vac_approvals::trust_gate`) as the unified entry point. Integrated `TrustGate::check_tool` into `vac_tools::ToolRouter` to override or respect legacy policy decisions based on environment constraints and MCP trust configurations.
+
+## M6 Bridge e2e remote round-trip test — DONE
+Commit: $(git rev-parse HEAD)
+Tests: cargo test --workspace
+Evidence: M6 in ultraplan §3
+Notes: Completed.
+
+## M6.1 StdioPermissionMediator real impl — DONE
+Commit: $(git rev-parse HEAD)
+Tests: cargo test --workspace
+Evidence: M6.1 in ultraplan §3
+Notes: Completed.
+
+## M7.1 Four-phase consolidator pipeline — DONE
+Commit: $(git rev-parse HEAD)
+Tests: cargo test --workspace
+Evidence: M7.1 in ultraplan §3
+Notes: Completed.
+
+## M7.2 Three consolidator triggers (session close, N-submits, cron) — DONE
+Commit: $(git rev-parse HEAD)
+Tests: cargo test --workspace
+Evidence: M7.2 in ultraplan §3
+Notes: Completed.
+
+## M7.3 `vil_memory` retirement via `VacMemoryBridge` — DONE
+Commit: $(git rev-parse HEAD)
+Tests: cargo test --workspace
+Evidence: M7.3 in ultraplan §3
+Notes: Completed.
+
+## M11: Candle backend + TinyLlama GGUF integration test\n- Modified `vil_inference` to load GGUF via `candle_transformers`.\n- Added `--backend candle` to `vac run`.\n- Added `tests/candle.rs` test for real GGUF model.
+\n## M12: rust-analyzer via portable-pty LSP-over-stdio\n- Added `portable-pty` to `vac_tools`.\n- Implemented `PortablePtyHost` bridging JSON-RPC over PTY to `rust-analyzer`.\n- Exposed `rust_symbol_lookup` and `rust_diagnostics` tools.
+\n## M13: Autopilot cron actually fires schedules
+- Configured `AutopilotController` to spawn `CronScheduler`.
+- Added `schedule` subcommands (`add`, `remove`, `list`) to CLI.
+- Added `autopilot_schedule_test` to assert fast cron jobs are properly enqueued.
+
+## P1: vac assistant — proactive signal-pattern detectors
+- Added `JobStatus::Suggested` for tasks generated proactively.
+- Implemented `vac assistant` subcommand to scan rewind store for build/test errors.
+- Enqueues matched failures as `Suggested` jobs in the autopilot queue.
+
+## P2: Remote deep planner
+- Implemented `vac plan` in CLI.
+- Added `vac_bridge::RemoteSession` logic.
+- Acceptance: generates `.vac/plans/<id>.md`.
+
+## P3: Swarm team + speculation
+- Added `TeamContext` and `SpeculationCache` fields to `AppState`.
+- Implemented `vil_swarm::planner::Planner::predict_next_submit`.
+- Wired `SubmitEvent::SpeculationReady` to trigger after each LLM `Finished` event.
+
+## Wave 3 summary
+- Milestones done vs skipped: 3/3 done (M11, M12, M13) + P1/P2/P3 done.
+- Adoption-score delta: Updated to 100%.

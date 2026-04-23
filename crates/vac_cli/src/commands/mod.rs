@@ -12,6 +12,7 @@ pub mod interactive;
 pub mod isolation;
 pub mod mcp;
 pub mod migrate;
+pub mod plan;
 pub mod restore;
 pub mod resume;
 pub mod rulebook;

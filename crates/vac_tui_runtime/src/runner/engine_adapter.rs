@@ -68,6 +68,13 @@ pub async fn run_via_session_engine(
                     })
                 },
                 SubmitEvent::Aborted { reason } => Some(RuntimeUpdate::Failed(reason)),
+                SubmitEvent::SpeculationReady { predicted_prompt, precomputed_context } => {
+                    // Send a custom update or handle directly?
+                    // For now we map it to Status so TUI sees it if we don't add a variant to RuntimeUpdate.
+                    // But we actually need to update AppState.speculation.
+                    // Let's add a variant to RuntimeUpdate.
+                    Some(RuntimeUpdate::SpeculationReady { predicted_prompt, precomputed_context })
+                },
                 _ => None,
             };
             if let Some(rt) = update {
@@ -99,7 +106,7 @@ pub async fn run_via_session_engine(
     let _ = bridge.await;
 
     let fallback_task_id = vac_core::task::TaskId(uuid::Uuid::new_v4());
-    Ok(vac_core::TaskResult {
+    let res = vac_core::TaskResult {
         task_id: fallback_task_id,
         status: vac_core::TaskStatus::Completed,
         summary: format!(
@@ -113,7 +120,19 @@ pub async fn run_via_session_engine(
         elapsed_ms: 0,
         agent_contributions: Vec::new(),
         total_tokens_used: snap.total_tokens() as u64,
-    })
+    };
+
+    // Run the predictor after submit finishes
+    if let Ok(predicted) = vil_swarm::planner::Planner::predict_next_submit(task_description).await {
+        let _ = update_tx.send(vac_core::engine::RuntimeUpdate::SpeculationReady {
+            predicted_prompt: predicted,
+            precomputed_context: std::collections::HashMap::new(),
+        });
+    }
+
+    let _ = update_tx.send(vac_core::engine::RuntimeUpdate::Completed(res.clone()));
+
+    Ok(res)
 }
 
 /// Adapter that makes `VacEngine` appear as an `LlmAdapter` to
@@ -186,6 +205,9 @@ fn translate(update: RuntimeUpdate) -> Option<SubmitEvent> {
         RuntimeUpdate::Cancelled => Some(SubmitEvent::Aborted {
             reason: "cancelled".into(),
         }),
+        RuntimeUpdate::SpeculationReady { predicted_prompt, precomputed_context } => {
+            Some(SubmitEvent::SpeculationReady { predicted_prompt, precomputed_context })
+        },
         // Completed is handled by submit_one's own Finished emission.
         // Status / LspStatus / LspDiagnostics / ValidationResult /
         // ApprovalRequired are surfaced through other channels (the

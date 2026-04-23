@@ -91,6 +91,21 @@ enum Commands {
         #[arg(long)]
         session: Option<String>,
     },
+    /// Remote deep planner - offloads long planning sessions to remote model
+    #[command(next_help_heading = "Run")]
+    Plan {
+        /// The planning prompt
+        prompt: String,
+        /// Remote endpoint URI
+        #[arg(long)]
+        remote: Option<String>,
+    },
+    /// Apply a generated plan
+    #[command(next_help_heading = "Run")]
+    PlanApply {
+        /// Plan ID to apply
+        plan_id: String,
+    },
     /// Resume from checkpoint
     #[command(next_help_heading = "Run")]
     Resume { checkpoint: PathBuf },
@@ -525,6 +540,12 @@ async fn main() -> anyhow::Result<()> {
         } => commands::interactive::execute(project_root, resume, record, replay).await?,
         Commands::Assistant { session } => {
             commands::assistant::execute(project_root, session).await?
+        }
+        Commands::Plan { prompt, remote } => {
+            commands::plan::execute(project_root, prompt, remote).await?
+        }
+        Commands::PlanApply { plan_id } => {
+            commands::plan::execute_apply(project_root, plan_id).await?
         }
         Commands::Resume { checkpoint } => {
             commands::resume::execute(project_root, checkpoint).await?

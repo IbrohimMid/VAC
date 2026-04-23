@@ -1144,6 +1144,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "data-encoding"
+version = "2.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d7a1e2f27636f116493b8b860f5546edb47c8d8f8ea73e1d2a20be88e28d1fea"
+
+[[package]]
 name = "deadpool"
 version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4764,6 +4770,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "sha1"
+version = "0.10.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e3bf829a2d51ab4a5ddf1352d8470c140cadc8301b2ae1789db023f01cedd6ba"
+dependencies = [
+ "cfg-if",
+ "cpufeatures 0.2.17",
+ "digest",
+]
+
+[[package]]
 name = "sha2"
 version = "0.10.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5473,6 +5490,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "tokio-tungstenite"
+version = "0.29.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8f72a05e828585856dacd553fba484c242c46e391fb0e58917c942ee9202915c"
+dependencies = [
+ "futures-util",
+ "log",
+ "rustls",
+ "rustls-native-certs",
+ "rustls-pki-types",
+ "tokio",
+ "tokio-rustls",
+ "tungstenite",
+]
+
+[[package]]
 name = "tokio-util"
 version = "0.7.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5775,6 +5808,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "tungstenite"
+version = "0.29.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6c01152af293afb9c7c2a57e4b559c5620b421f6d133261c60dd2d0cdb38e6b8"
+dependencies = [
+ "bytes",
+ "data-encoding",
+ "http",
+ "httparse",
+ "log",
+ "rand 0.9.2",
+ "rustls",
+ "rustls-pki-types",
+ "sha1",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "typed-path"
 version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5953,6 +6004,7 @@ dependencies = [
  "tokio",
  "tracing",
  "uuid",
+ "vac_tool_core",
  "vac_tools",
  "vil_swarm",
 ]
@@ -5965,6 +6017,7 @@ dependencies = [
  "chrono",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
@@ -6036,6 +6089,7 @@ dependencies = [
  "url",
  "uuid",
  "vac_approvals",
+ "vac_bridge",
  "vac_changeset",
  "vac_core",
  "vac_ingest",
@@ -6050,6 +6104,7 @@ dependencies = [
  "vac_trace",
  "vac_trajectory",
  "vac_tui_runtime",
+ "vil_inference",
  "vil_ir",
  "vil_llm",
  "vil_swarm",
@@ -6161,6 +6216,7 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "tokio-util",
+ "toml 0.8.23",
  "tracing",
  "uuid",
  "vac_approvals",
@@ -6246,11 +6302,13 @@ dependencies = [
  "chrono",
  "dashmap",
  "futures",
+ "futures-util",
  "glob",
  "grep-regex",
  "grep-searcher",
  "ignore",
  "libc",
+ "portable-pty 0.9.0",
  "regex",
  "reqwest",
  "serde",
@@ -6259,6 +6317,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
+ "tokio-tungstenite",
  "toml 0.8.23",
  "tracing",
  "uuid",
@@ -6350,6 +6409,7 @@ dependencies = [
  "vac_changeset",
  "vac_core",
  "vac_ingest",
+ "vac_mcp_core",
  "vac_memory",
  "vac_runtime",
  "vac_session_control",
@@ -6362,6 +6422,7 @@ dependencies = [
  "vil_ir",
  "vil_llm",
  "vil_metrics",
+ "vil_swarm",
  "vil_validate",
  "vil_vwfd",
 ]
@@ -6489,7 +6550,6 @@ dependencies = [
  "anyhow",
  "chrono",
  "dirs-next",
- "redb",
  "serde",
  "serde_json",
  "tempfile",
@@ -6497,6 +6557,7 @@ dependencies = [
  "tokio",
  "tracing",
  "uuid",
+ "vac_memory",
  "vil_context",
 ]
 

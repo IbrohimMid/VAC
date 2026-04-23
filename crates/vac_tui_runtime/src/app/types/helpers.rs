@@ -128,6 +128,8 @@ impl AppState {
                 },
                 billing: super::BillingState::default(),
             },
+            team: super::TeamContext::default(),
+            speculation: super::SpeculationCache::default(),
         }
     }
 

@@ -91,6 +91,12 @@ pub enum SubmitEvent {
 
     /// Submit aborted (cancel, policy denial, error).
     Aborted { reason: String },
+
+    /// Planner predicted the next task. Emitted after `Finished`.
+    SpeculationReady {
+        predicted_prompt: String,
+        precomputed_context: std::collections::HashMap<String, String>,
+    },
 }
 
 impl SubmitEvent {
@@ -106,6 +112,7 @@ impl SubmitEvent {
             Self::ToolResult { .. } => "tool.result",
             Self::Finished { .. } => "finished",
             Self::Aborted { .. } => "aborted",
+            Self::SpeculationReady { .. } => "speculation_ready",
         }
     }
 }

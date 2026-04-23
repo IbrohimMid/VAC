@@ -1491,6 +1491,10 @@ pub enum RuntimeUpdate {
         arguments: serde_json::Value,
         explanation: Option<String>,
     },
+    SpeculationReady {
+        predicted_prompt: String,
+        precomputed_context: std::collections::HashMap<String, String>,
+    },
 }
 
 #[cfg(test)]

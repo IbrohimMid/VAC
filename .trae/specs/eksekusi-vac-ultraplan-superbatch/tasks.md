@@ -10,11 +10,11 @@
   - [x] SubTask 2.5: M2.1 - Budget gate + orphan permission tracking
   - [x] SubTask 2.6: M2.2 - File history by submit ID
   - [x] SubTask 2.7: M9 - Resume e2e
-- [ ] Task 3: Implementasi Wave 2 (M3, M3.1, M3.2, M5, M5.1, M4, M6, M6.1, M7.1, M7.2, M7.3)
-  - [ ] SubTask 3.1: M3, M3.1, M3.2 - VilTool spec override & ToolResultEnvelope
-  - [ ] SubTask 3.2: M5, M5.1 - MCP primary swap & transports
-  - [ ] SubTask 3.3: M4, M6, M6.1 - TrustGate & Bridge e2e remote
-  - [ ] SubTask 3.4: M7.1, M7.2, M7.3 - Consolidator pipeline & vil_memory retirement
+- [x] Task 3: Implementasi Wave 2 (M3, M3.1, M3.2, M5, M5.1, M4, M6, M6.1, M7.1, M7.2, M7.3)
+  - [x] SubTask 3.1: M3, M3.1, M3.2 - VilTool spec override & ToolResultEnvelope
+  - [x] SubTask 3.2: M5, M5.1 - MCP primary swap & transports
+  - [x] SubTask 3.3: M4, M6, M6.1 - TrustGate & Bridge e2e remote
+  - [x] SubTask 3.4: M7.1, M7.2, M7.3 - Consolidator pipeline & vil_memory retirement
 - [ ] Task 4: Implementasi Wave 3 (M11, M12, M13, P1, P2, P3)
   - [ ] SubTask 4.1: M11 - Candle backend + TinyLlama GGUF
   - [ ] SubTask 4.2: M12 - rust-analyzer via portable-pty
