@@ -85,10 +85,36 @@ or a richer one-shot:
 ```bash
 vac run "write tests for auth module" \
     --approve            # auto-approve tools that match the allow-list
+    --engine session     # route through vac_session_engine (durable
+                         # transcript under .vac/sessions/)
 ```
+
+The `--engine` flag (or `VAC_ENGINE=session` env) selects the engine
+path. Legacy default stays as `VacEngine::run_task_with_approvals`
+during the M2 coexistence window; the session path uses
+`vac_session_engine::submit_one` and produces the same event stream.
 
 CI agents typically want `signal-rewind` OFF (SQLite adds ~2 MB) and
 a scoped `.vac/config.toml` that pins the provider + approvals.
+
+### 4.1 Preview subcommands (ultraplan Wave 3)
+
+These land with Wave 3 of `ultraplan-vac-product.md`. Listed here so
+operators know the surfaces to expect:
+
+```bash
+# P1 — Proactive assistant. Watches the signal pipeline for build
+# failures + test regressions; surfaces tasks as suggestions.
+vac assistant [--session <id>]
+
+# P2 — Remote deep planner. Offloads long planning to a remote
+# model; returns a plan file and optional patch set.
+vac plan "<prompt>" [--remote <endpoint>]
+vac plan apply <plan-id>    # stage plan patches as a changeset
+```
+
+Until Wave 3 ships, these subcommands exit with a `not yet
+implemented` message.
 
 ## 5. Observability
 

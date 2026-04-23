@@ -1,4 +1,11 @@
-# VAC Architecture (post-Fase 10)
+# VAC Architecture
+
+> Originally drafted at end-of-Fase-10. Plan extends via
+> [`ultraplan-vac-product.md`](ultraplan-vac-product.md) — three
+> product threads (P1 proactive assistant, P2 remote deep planner,
+> P3 swarm team + speculation) join the existing 31-crate spine
+> without changing the layer diagram below. See
+> [`ROADMAP.md`](ROADMAP.md) for how the docs fit together.
 
 This document is the single source of truth for how VAC's crate graph
 fits together after the Fase 0–10 implementation plan lands. Five new

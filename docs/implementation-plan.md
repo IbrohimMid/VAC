@@ -1,5 +1,12 @@
 # VAC Implementation Plan — Post-Donor-Audit
 
+> 🔵 **Historical.** This 10-Fase plan (F0..F10) produced the
+> current codebase; all Fases have shipped. For the **current**
+> execution plan, see
+> [`ultraplan-vac-product.md`](ultraplan-vac-product.md) (waves +
+> M1..M14 + P1..P3). Index of all planning docs in
+> [`ROADMAP.md`](ROADMAP.md).
+
 **Generated**: 2026-04-23
 **Basis**: Deep-dive of Trae Agent (ByteDance), Stakpak Agent, and the
 leaked `yasasbanukaofficial/claude-code` TypeScript skeleton, cross-

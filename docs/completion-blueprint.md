@@ -1,5 +1,12 @@
 # VAC Completion Blueprint — Closing the Implementation-Plan Gaps
 
+> ⚫ **Superseded.** The 7-ring convergence plan below has been
+> absorbed into [`ultraplan-vac-product.md`](ultraplan-vac-product.md)
+> §3 milestone table. The ledger in §8 below remains a useful
+> historical record of what shipped in the R0..R6 autonomous run.
+> For current execution plans, start with
+> [`ROADMAP.md`](ROADMAP.md).
+
 **Status:** partial — see §8 for the landed-vs-deferred ledger.
 **Updated:** 2026-04-23
 **Scope:** convergence plan from `docs/implementation-plan.md` Fase 0–10 to

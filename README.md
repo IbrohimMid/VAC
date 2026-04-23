@@ -81,6 +81,11 @@ vac interactive
 
 For full documentation and advanced usage, visit: [https://vastar.id/docs/vac](https://vastar.id/docs/vac)
 
+- [**Roadmap**](docs/ROADMAP.md) ← start here for planning + product direction
+- [**ULTRAPLAN**](docs/ultraplan-vac-product.md) — authoritative execution plan (Waves 1–3)
+- [Adoption Score](docs/adoption-score.md) — current 66.7% weighted baseline
+- [Product Spec](docs/PRODUCT_SPEC.md) — value props + feature surface
+- [Architecture](docs/architecture.md) — 31-crate layered view
 - [Onboarding Guide](docs/onboarding.md)
 - [TUI Hardening Masterplan](docs/tui_hardening_masterplan.md)
 - [Threat Model](docs/THREAT_MODEL.md)

@@ -9,6 +9,12 @@ coverage, production readiness.
 
 **Headline:** **66.7 % weighted** · **63.1 % unweighted** average.
 
+> 🟢 Active snapshot. Regenerate at the end of each ultraplan wave
+> (target: Wave 1 → 79.5%, Wave 2 → 93%, Wave 3 → 100% + P1/P2/P3
+> shipped). Execution plan:
+> [`ultraplan-vac-product.md`](ultraplan-vac-product.md). Index of
+> all planning docs: [`ROADMAP.md`](ROADMAP.md).
+
 Solid architectural foundation (session engine, tool contract, memory
 crate, MCP+bridge crates) all landed. Three critical subsystems are
 scaffolded but unwired (G14 consolidator trigger, G11 real inference,

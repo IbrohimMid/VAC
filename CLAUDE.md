@@ -1,5 +1,11 @@
 # VAC Agentic CLI — Agent Guide
 
+> 📍 **Where is the plan?** Start at
+> [`docs/ROADMAP.md`](docs/ROADMAP.md); the authoritative execution
+> plan is [`docs/ultraplan-vac-product.md`](docs/ultraplan-vac-product.md).
+> Current adoption score: **66.7% weighted**
+> ([`docs/adoption-score.md`](docs/adoption-score.md)).
+
 ## Build discipline (READ FIRST)
 
 This is a Rust workspace with ~583 transitive deps including heavy LLM/RAG

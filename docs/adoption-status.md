@@ -1,5 +1,12 @@
 # Adoption Status — Final Honest Audit
 
+> ⚫ **Superseded by [`adoption-score.md`](adoption-score.md)**
+> (2026-04-23). Historical snapshot from an earlier audit pass, kept
+> for continuity. For the current score (weighted 66.7%) and the
+> execution plan to 100%, see
+> [`ultraplan-vac-product.md`](ultraplan-vac-product.md) and
+> [`ROADMAP.md`](ROADMAP.md).
+
 Evidence-based progress audit against the original Stakpak / Trae /
 Claude Code / OMNI comparison. Scored conservatively: API surface alone
 does not count; implementation must be wired and reachable from a real

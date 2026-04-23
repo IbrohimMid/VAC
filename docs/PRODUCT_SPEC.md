@@ -16,6 +16,8 @@ VAC is the primary development cockpit for engineers working on VIL-native Rust 
 
 ## 2. Core Value Propositions
 
+### Load-bearing (shipped)
+
 | Value | Description |
 |-------|-------------|
 | **Reviewable autonomy** | Every tool call requires explicit approval or pre-authorized policy. No agent action is invisible. |
@@ -24,6 +26,17 @@ VAC is the primary development cockpit for engineers working on VIL-native Rust 
 | **Governable** | Rulebook system, policy gate modes (enforce/permit/audit), MCP trust classification, and approval state machine. |
 | **Resumable** | Every task creates a checkpoint. Sessions are fully recoverable across restarts, network failures, or agent crashes. |
 | **Multi-agent** | Tri-lane (Trigger/Data/Control) swarm orchestrator with Planner, Executor, and Reviewer roles. |
+
+### Product threads (in ultraplan, shipping in Wave 3)
+
+| Thread | Description | Tracking |
+|---|---|---|
+| **Proactive assistant (P1)** | `vac assistant [--session <id>]` watches the signal pipeline for build failures + test regressions; surfaces tasks as suggestions in the autopilot queue. Operator promotes to run. | ultraplan §2 thread F, M-table row P1 |
+| **Remote deep planner (P2)** | `vac plan "<prompt>" --remote <endpoint>` offloads long-budget planning to a remote model via `vac_bridge`; returns structured plan doc + optional patch set; `vac plan apply <id>` stages to a changeset. | ultraplan §2 thread G, P2 |
+| **Swarm team + speculation (P3)** | `TeamContext` + `SpeculationCache` on AppState. Planner warms context for the predicted next submit; team reviewer handles surface pending reviews. | ultraplan §2 thread H, P3 |
+
+See [`ultraplan-vac-product.md`](ultraplan-vac-product.md) for
+evidence anchors and acceptance gates.
 
 ---
 

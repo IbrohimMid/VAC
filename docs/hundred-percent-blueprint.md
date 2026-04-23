@@ -1,5 +1,11 @@
 # VAC — 100% Adoption Blueprint
 
+> ⚫ **Superseded.** M1..M14 milestones below are reproduced and
+> extended in [`ultraplan-vac-product.md`](ultraplan-vac-product.md)
+> §3 (milestone table) and §4 (evidence-anchored deep-dives).
+> Start with [`ROADMAP.md`](ROADMAP.md) for the current execution
+> plan. This doc is kept for dependency-graph reference.
+
 **Goal:** take the Claude-Code pattern adoption score from **66.7% →
 100%** across all 14 goal areas (G1–G14 in `adoption-score.md`).
 **Date:** 2026-04-23
