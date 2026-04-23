@@ -78,10 +78,17 @@ pub enum TickOutcome {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum SkipReason {
     NotIdleYet,
     NoActivityDelta,
     NoTranscript,
+    /// Transient skill / I/O failure. The tick loop should retry on
+    /// the next idle window instead of tearing down.
+    TransientFailure(String),
+    /// Target `.vac/memory/archived` is a symlink — refused to
+    /// traverse outside the project tree.
+    UnsafeArchiveDir,
 }
 
 struct Inner {
@@ -157,7 +164,24 @@ impl AutoDreamService {
         };
 
         // Activity delta: bytes now vs bytes at last dream.
-        let prior_size = self.inner.lock().await.last_dream_size_bytes;
+        // Transcript rotation (e.g. session archive) shrinks the
+        // file. Detect that — current < tracked prior — and reset
+        // the baseline so the next tick can re-fire on genuine new
+        // content rather than being wedged by a stale high-water
+        // mark.
+        let prior_size = {
+            let mut guard = self.inner.lock().await;
+            if transcript_size < guard.last_dream_size_bytes {
+                tracing::info!(
+                    target: "vac_tui_runtime::auto_dream",
+                    old = guard.last_dream_size_bytes,
+                    new = transcript_size,
+                    "transcript rotation detected; resetting delta baseline",
+                );
+                guard.last_dream_size_bytes = 0;
+            }
+            guard.last_dream_size_bytes
+        };
         let delta = transcript_size.saturating_sub(prior_size);
         if delta < self.min_delta_bytes {
             return Ok(TickOutcome::Skipped {
@@ -165,18 +189,59 @@ impl AutoDreamService {
             });
         }
 
-        // Tail-read + simplify.
-        let tail = read_tail(&transcript_path, self.tail_bytes).await?;
-        let collapsed = run_simplify(&tail, &self.project_root).await?;
+        // Tail-read + simplify. Transient failures (I/O glitch,
+        // skill error) become Skipped so the poll loop keeps
+        // running — one hiccup shouldn't kill background
+        // summarisation for the rest of the session.
+        let tail = match read_tail(&transcript_path, self.tail_bytes).await {
+            Ok(t) => t,
+            Err(e) => {
+                tracing::warn!(
+                    target: "vac_tui_runtime::auto_dream",
+                    error = %e,
+                    "tail read failed; skipping",
+                );
+                return Ok(TickOutcome::Skipped {
+                    reason: SkipReason::TransientFailure(e.to_string()),
+                });
+            }
+        };
+        let collapsed = match run_simplify(&tail, &self.project_root).await {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::warn!(
+                    target: "vac_tui_runtime::auto_dream",
+                    error = %e,
+                    "simplify failed; skipping",
+                );
+                return Ok(TickOutcome::Skipped {
+                    reason: SkipReason::TransientFailure(e.to_string()),
+                });
+            }
+        };
 
-        // Persist. Path format:
-        //   .vac/memory/archived/dream-<yyyymmdd-hhmmss>.md
+        // Persist. Target path:
+        //   .vac/memory/archived/dream-<stamp>.md
+        // Refuse to create through a symlink. Same TOCTOU guard as
+        // vac_skill::remember — a compromised / misconfigured
+        // memory dir pointer cannot route writes outside the project.
         let archived_dir = self
             .project_root
             .join(".vac")
             .join("memory")
             .join("archived");
         tokio::fs::create_dir_all(&archived_dir).await?;
+        let meta = tokio::fs::symlink_metadata(&archived_dir).await?;
+        if meta.file_type().is_symlink() {
+            tracing::warn!(
+                target: "vac_tui_runtime::auto_dream",
+                dir = %archived_dir.display(),
+                "refusing to write through symlink",
+            );
+            return Ok(TickOutcome::Skipped {
+                reason: SkipReason::UnsafeArchiveDir,
+            });
+        }
         let stamp = format_stamp(now);
         let path = archived_dir.join(format!("dream-{stamp}.md"));
         let body = format!(
@@ -184,7 +249,10 @@ impl AutoDreamService {
             transcript_path.display(),
             collapsed,
         );
-        tokio::fs::write(&path, body).await?;
+        // Atomic write — temp file in the same dir + rename.
+        let tmp = archived_dir.join(format!("dream-{stamp}.md.tmp"));
+        tokio::fs::write(&tmp, body).await?;
+        tokio::fs::rename(&tmp, &path).await?;
 
         {
             let mut guard = self.inner.lock().await;
@@ -354,25 +422,88 @@ mod tests {
         let svc = mk_service(&tmp, clock.clone());
         seed_transcript(tmp.path(), b"lots of content for the first dream\n")
             .await;
-        let last_activity = clock.now();
+        let initial_activity = clock.now();
         clock.advance(30);
-        let first = svc.tick(last_activity).await.unwrap();
-        matches!(first, TickOutcome::Wrote { .. });
-        // Second tick: same transcript, no delta.
-        clock.advance(30);
-        let second = svc.tick(clock.now()).await.unwrap();
-        // Now simulate more idle after another tick.
-        clock.advance(30);
-        let third = svc.tick(last_activity).await.unwrap();
-        // Either second or third must be a "NoActivityDelta" skip.
-        let had_skip = matches!(
-            second,
-            TickOutcome::Skipped { reason: SkipReason::NotIdleYet | SkipReason::NoActivityDelta }
-        ) || matches!(
-            third,
-            TickOutcome::Skipped { reason: SkipReason::NoActivityDelta }
+        let first = svc.tick(initial_activity).await.unwrap();
+        assert!(
+            matches!(first, TickOutcome::Wrote { .. }),
+            "first tick must dream",
         );
-        assert!(had_skip);
+        // Transcript unchanged; pass `clock.now()` so idle is 0 —
+        // this exercises the NotIdleYet branch deterministically.
+        let still_active = clock.now();
+        let second = svc.tick(still_active).await.unwrap();
+        assert_eq!(
+            second,
+            TickOutcome::Skipped { reason: SkipReason::NotIdleYet },
+        );
+        // Now go idle again with no new transcript content: exact
+        // reason must be NoActivityDelta, not "any skip".
+        clock.advance(30);
+        let third = svc.tick(initial_activity).await.unwrap();
+        assert_eq!(
+            third,
+            TickOutcome::Skipped { reason: SkipReason::NoActivityDelta },
+        );
+    }
+
+    #[tokio::test]
+    async fn transcript_rotation_resets_delta_baseline() {
+        // Session rotation (archive + fresh file) shrinks the
+        // transcript. A naïve saturating_sub would wedge the
+        // service with zero-delta skips forever. After the fix, a
+        // rotation resets the baseline and the next tick re-fires
+        // on the new content.
+        let tmp = tempfile::tempdir().unwrap();
+        let clock = Arc::new(FakeClock::new());
+        let svc = mk_service(&tmp, clock.clone());
+        // Seed a large transcript, dream once.
+        seed_transcript(tmp.path(), &vec![b'a'; 4096]).await;
+        let activity_before = clock.now();
+        clock.advance(30);
+        assert!(matches!(
+            svc.tick(activity_before).await.unwrap(),
+            TickOutcome::Wrote { .. },
+        ));
+        // Rotate: same name, smaller content.
+        seed_transcript(tmp.path(), &vec![b'b'; 128]).await;
+        clock.advance(30);
+        let fresh_activity = clock.now();
+        clock.advance(30);
+        let out = svc.tick(fresh_activity).await.unwrap();
+        // Rotation detected → baseline reset → the 128 bytes now
+        // count as new activity (>= MIN_ACTIVITY_DELTA_BYTES=16 in
+        // the test config) and the tick writes.
+        assert!(
+            matches!(out, TickOutcome::Wrote { .. }),
+            "post-rotation tick must dream; got {out:?}",
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn refuses_to_write_through_symlink_archive_dir() {
+        use std::os::unix::fs::symlink;
+        let tmp = tempfile::tempdir().unwrap();
+        let clock = Arc::new(FakeClock::new());
+        let svc = mk_service(&tmp, clock.clone());
+        // Pre-build `.vac/memory/archived` as a symlink to another
+        // tempdir. tick must refuse.
+        let outside = tempfile::tempdir().unwrap();
+        let mem_dir = tmp.path().join(".vac").join("memory");
+        tokio::fs::create_dir_all(&mem_dir).await.unwrap();
+        symlink(outside.path(), mem_dir.join("archived")).unwrap();
+        seed_transcript(tmp.path(), &vec![b'x'; 2048]).await;
+        let activity = clock.now();
+        clock.advance(30);
+        let out = svc.tick(activity).await.unwrap();
+        assert_eq!(
+            out,
+            TickOutcome::Skipped { reason: SkipReason::UnsafeArchiveDir },
+        );
+        // And nothing landed in the outside dir.
+        let mut rd = tokio::fs::read_dir(outside.path()).await.unwrap();
+        assert!(rd.next_entry().await.unwrap().is_none());
     }
 
     #[tokio::test]

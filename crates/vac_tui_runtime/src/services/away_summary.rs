@@ -26,6 +26,10 @@ pub const LAST_SEEN_FILENAME: &str = "last-seen.json";
 /// Cap on the tail we read from the last transcript to keep the
 /// summary composition bounded.
 pub const TRANSCRIPT_TAIL_BYTES: u64 = 64 * 1024;
+/// Max wall-clock `git log` is allowed to take. A large repo on
+/// flaky FS could stall a resume; 3 s is forgiving while still
+/// keeping the user-visible latency bounded.
+pub const GIT_QUERY_TIMEOUT: Duration = Duration::from_secs(3);
 
 pub trait Clock: Send + Sync + 'static {
     fn now(&self) -> SystemTime;
@@ -194,10 +198,11 @@ async fn count_commits_since(
     project_root: &Path,
     since_unix: i64,
 ) -> anyhow::Result<u32> {
-    let since = format!("@{{{since_unix}}}"); // interpret as git expr
-    let _ = since; // kept as doc
-    // Use `git log --since=<unix>` which git accepts.
-    let out = Command::new("git")
+    // Wrap in a timeout: a large + flaky repo could otherwise block
+    // the resume path for seconds / minutes. On timeout we return
+    // 0 commits rather than failing the whole summary — better to
+    // omit one number than to block the user.
+    let fut = Command::new("git")
         .args([
             "log",
             &format!("--since={since_unix}"),
@@ -206,8 +211,19 @@ async fn count_commits_since(
         .current_dir(project_root)
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
-        .output()
-        .await?;
+        .kill_on_drop(true)
+        .output();
+    let out = match tokio::time::timeout(GIT_QUERY_TIMEOUT, fut).await {
+        Ok(res) => res?,
+        Err(_) => {
+            tracing::warn!(
+                target: "vac_tui_runtime::away_summary",
+                timeout_ms = GIT_QUERY_TIMEOUT.as_millis() as u64,
+                "git log timed out; degrading commit count to 0",
+            );
+            return Ok(0);
+        }
+    };
     if !out.status.success() {
         return Ok(0);
     }
