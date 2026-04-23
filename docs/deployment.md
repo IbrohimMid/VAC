@@ -132,12 +132,33 @@ transcript from any VAC version ≥ 0.1 without schema conversion.
 | Remote bridge (ACP) | off until `vac acp serve` | F5 `vac_bridge` validates handshake + protocol version band |
 | Secrets | `vac_tools::privacy::PrivacyVault` | Redaction layer between tool output and transcript |
 
-## 8. Troubleshooting
+## 8. Testing discipline
+
+Workspace rules (see `CLAUDE.md`):
+
+- `cargo test` is blocked by a PreToolUse hook. Use **`cargo nextest run`**
+  — ~3× faster, one process per test, full parallelism.
+- Scope to the crate you edited: `cargo nextest run -p vac_session_engine`.
+- For SLA tests flaking on noisy CI, export
+  `VAC_SLA_TOLERANCE=3` to triple every budget uniformly without
+  changing the asserted ratios.
+
+Validate the workspace compiles (cheap, ~10–30 s on a warm cache):
+
+```bash
+cargo check --workspace --tests
+```
+
+## 9. Troubleshooting
 
 **Cold start latency > 5 s.** Expected on first boot; subsequent
 boots are <500 ms (hydration deferred per F3.4). If persistent,
-inspect `.vac/sessions/` size — very large session trees slow the
-session list view; prune with `vac session gc`.
+inspect `.vac/sessions/` size and prune manually:
+
+```bash
+# Remove all but the most recent 50 session transcripts:
+ls -t .vac/sessions/*.jsonl | tail -n +51 | xargs -r rm
+```
 
 **Transcript JSONL corruption.** `TranscriptWriter` fsync-per-append
 + per-session mutex (F2) prevents interleaving. If you still see
@@ -146,11 +167,22 @@ refuses to silently drop.
 
 **Memory consolidator never fires.** Check
 `.vac/memory/.consolidator.stamp` — the cooldown gate (default 30
-min, F4.3) requires elapsed time. Override with
-`VacConfig.memory.min_interval_secs` or force via
-`vac memory consolidate --force`.
+min, F4.3) requires elapsed time. Force the next run by removing
+the stamp:
+
+```bash
+rm -f .vac/memory/.consolidator.stamp
+```
+
+Then trigger a submit that would otherwise pass the gate; the
+consolidator re-evaluates on the next session close.
 
 **Rate-limit banner stuck.** The 10-message bank (F7.6) rotates
 only on explicit `next_message()` calls from the driver. If the
 banner text doesn't change, check that the engine is actually
 cycling — it rotates on new throttle events, not on a timer.
+
+**Restoring a reversible edit.** The backup module (F6.4) snapshots
+files to `.vac/backups/<content>_<path>.snap` before edits. Use
+`vac restore <file>` to roll back the most recent snapshot for a
+given path. See `vac restore --help` for the live flag list.

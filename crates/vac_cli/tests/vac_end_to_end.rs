@@ -22,9 +22,9 @@ use uuid::Uuid;
 
 use async_trait::async_trait;
 use vac_session_engine::{
-    CompactConfig, EngineResult, LlmAdapter, LlmRequest, LlmResponse, SlashProcessor,
-    SubmitContext, TranscriptKind, TranscriptWriter, TrivialCompactBoundary,
-    UsageTracker, submit_one,
+    CompactConfig, EchoAdapter, EngineResult, LlmAdapter, LlmRequest, LlmResponse,
+    SlashProcessor, SubmitContext, TranscriptKind, TranscriptWriter,
+    TrivialCompactBoundary, UsageTracker, submit_one,
 };
 
 use vac_memory::{
@@ -38,20 +38,10 @@ use vac_signal::{SignalBuffer, buffer::SignalStreamKind};
 use vac_tui_runtime::app::types::BannerState;
 use vac_tui_runtime::services::memory_banner::push_consolidation_banner;
 
-struct MockAdapter;
-
-#[async_trait]
-impl LlmAdapter for MockAdapter {
-    async fn complete(&self, req: LlmRequest) -> EngineResult<LlmResponse> {
-        Ok(LlmResponse {
-            provider: "mock".into(),
-            model: "e2e-1".into(),
-            content: format!("ack: {}", req.prompt),
-            input_tokens: req.prompt.split_whitespace().count() as u64,
-            output_tokens: 3,
-        })
-    }
-}
+// F10.1 reuses vac_session_engine::EchoAdapter for the mock LLM
+// seam — no need for a local duplicate adapter. Any F2 regression to
+// EchoAdapter's contract fails this test the same way it fails the
+// engine's own suite, by design.
 
 #[tokio::test]
 async fn vac_end_to_end_boot_through_consolidation() {
@@ -69,7 +59,7 @@ async fn vac_end_to_end_boot_through_consolidation() {
         &SlashProcessor::new(),
         &TrivialCompactBoundary::default(),
         &UsageTracker::new(),
-        &MockAdapter,
+        &EchoAdapter,
         CompactConfig::default(),
         None,
     )
@@ -85,13 +75,18 @@ async fn vac_end_to_end_boot_through_consolidation() {
     assert!(kinds.contains(&TranscriptKind::LlmRequest));
     assert!(kinds.contains(&TranscriptKind::LlmResponse));
 
-    // ── 2. Signal buffer: simulate a tool-call stream ──
+    // ── 2. Signal buffer: capture tool-call stream with lines a
+    //       builtin consolidator policy will recognize. The buffer
+    //       is the seam between runtime output and memory — the
+    //       next step *feeds the buffer's contents directly into
+    //       the consolidator* so a shape regression on either side
+    //       fails this test.
     let mut buf = SignalBuffer::new(SignalStreamKind::RuntimeJob, 128);
-    buf.push_line("cargo nextest run -p vac_cli");
-    buf.push_line("test result: ok. 24 passed");
+    buf.push_line("learn: use nextest, never cargo test");
+    buf.push_line("runtime anomaly: ingest hit OOM during build");
     assert_eq!(buf.len(), 2);
 
-    // ── 3. Memory consolidator with matching domain policy ──
+    // ── 3. Memory consolidator consumes the signal buffer ──
     let memdir_root = root.join(".vac").join("memory");
     let scanner = MemoryScanner::new(memdir_root.clone());
     scanner.ensure_layout().await.unwrap();
@@ -103,11 +98,12 @@ async fn vac_end_to_end_boot_through_consolidation() {
             stale_lock_after: std::time::Duration::from_secs(60),
         },
     );
+    // Wire the signal buffer directly into the consolidator so the
+    // e2e actually exercises the seam between runtime output and
+    // memory. A regression that changes either surface breaks here.
+    let raw_lines: Vec<String> = buf.iter().map(|e| e.text.clone()).collect();
     let input = ConsolidationInput {
-        raw_lines: vec![
-            "learn: use nextest, never cargo test".into(),
-            "runtime anomaly: ingest hit OOM".into(),
-        ],
+        raw_lines,
         session_count: 5,
     };
     let report = consolidator

@@ -4,8 +4,14 @@ This document is the single source of truth for how VAC's crate graph
 fits together after the Fase 0–10 implementation plan lands. Five new
 crates (**vac_tool_core**, **vac_session_engine**, **vac_memory**,
 **vac_mcp_core**, **vac_bridge**) joined the tree during this cycle.
-Each layer in the diagram below imports only from layers below it —
-a reverse edge is a regression and fails the layering gate.
+
+Each layer in the diagram below imports only from layers below it.
+This ordering is **convention, enforced by review**. A machine gate
+(`scripts/check_layering.sh`) enforces the narrower `vil_* → vac_*`
+rule (vac crates may depend on vil crates, not the reverse); the
+intra-VAC L1–L5 layering is not currently checked by CI and relies on
+`cargo check --workspace` failing loudly when a reverse edge
+introduces an actual dependency cycle.
 
 ## Layered view
 
@@ -83,6 +89,14 @@ flowchart TB
     vac_tools --> vil_rag
     vac_tools --> vil_context
     vac_trajectory --> vac_trace
+    vac_core --> vil_llm
+    vac_core --> vil_swarm
+    vil_swarm --> vil_llm
+    vil_swarm --> vil_inference
+    vac_changeset --> vil_vwfd
+    vac_changeset --> vil_expr
+    vac_tui_runtime --> vil_vwfd
+    vac_tui_runtime --> vil_expr
 ```
 
 Legend: **★** marks the five crates that landed in Fase 1–5 (`vac_tool_core`,
@@ -143,8 +157,10 @@ version bands + re-entrancy guards + a 10 s timeout.
 These invariants are protected by tests; any commit that violates
 them fails CI:
 
-- **Layering:** L4 cannot depend on L5, L3 cannot depend on L4, etc.
-  Violations surface as `cargo check --workspace` errors.
+- **Layering (convention):** L4 cannot depend on L5, L3 cannot depend
+  on L4, etc. Not machine-enforced across the full L1–L5 stack;
+  `scripts/check_layering.sh` guards only `vil_* → vac_*`. Actual
+  dependency cycles surface as `cargo check --workspace` errors.
 - **Transcript durability:** every `submit_one` terminal state is
   `Finished` or `Aborted` — never a dangling `Accepted`
   (`matrix_terminal_row_invariant_holds_across_all_providers`).
