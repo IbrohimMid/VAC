@@ -298,14 +298,12 @@ mod tests {
     }
 
     #[test]
-    fn save_returns_io_error_on_missing_parent() {
-        let path = std::path::Path::new("/nonexistent_dir_vac_test/session.json");
+    fn save_creates_parent_directories_if_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("nested").join("session.json");
         let env = CheckpointEnvelope::new(None, vec![], serde_json::json!({}));
-        let err = save_checkpoint_to_file(path, &env).unwrap_err();
-        assert!(
-            matches!(err, CheckpointError::Io(_)),
-            "expected Io variant, got: {err}"
-        );
+        save_checkpoint_to_file(&path, &env).unwrap();
+        assert!(path.exists());
     }
 
     #[test]

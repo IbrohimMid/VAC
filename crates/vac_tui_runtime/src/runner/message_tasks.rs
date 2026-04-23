@@ -15,6 +15,7 @@ use crate::{ContentPart, InputEvent, LoadingOperation, ToolCall};
 /// Handle `OutputEvent::UserMessage` — send a user turn to the engine with optional
 /// multimodal image parts, wiring runtime updates back into the TUI input channel.
 pub(super) async fn handle_user_message(
+    project_root: std::path::PathBuf,
     engine: Arc<Mutex<VacEngine>>,
     input_tx: mpsc::Sender<InputEvent>,
     active_update_tx: ActiveUpdateTx,
@@ -43,7 +44,6 @@ pub(super) async fn handle_user_message(
             }
         });
 
-        let mut eng = engine.lock().await;
         // Convert TUI ContentParts to LLM ImageParts for multimodal
         // Generic data-URL parsing: "data:<media_type>;base64,<data>"
         let image_parts: Vec<vil_llm::provider::ImagePart> = parts
@@ -63,10 +63,14 @@ pub(super) async fn handle_user_message(
             .collect();
 
         if image_parts.is_empty() {
-            let _ = eng
-                .run_task_with_approvals(&msg, Some(update_tx), None, None)
-                .await;
+            let _ = super::engine_adapter::run_via_session_engine(
+                project_root,
+                engine.clone(),
+                &msg,
+                update_tx,
+            ).await;
         } else {
+            let mut eng = engine.lock().await;
             let _ = eng
                 .run_task_with_images(&msg, Some(update_tx), None, None, image_parts)
                 .await;

@@ -6315,6 +6315,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "arboard",
+ "async-trait",
  "base64 0.22.1",
  "chrono",
  "criterion",
@@ -6350,6 +6351,7 @@ dependencies = [
  "vac_memory",
  "vac_runtime",
  "vac_session_control",
+ "vac_session_engine",
  "vac_shell",
  "vac_signal",
  "vac_tools",

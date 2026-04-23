@@ -462,9 +462,8 @@ async fn main() -> anyhow::Result<()> {
             profile,
             approve,
             target,
-            engine,
+            engine: _,
         } => {
-            let engine_mode = commands::run::EngineMode::resolve(engine.as_deref());
             commands::run::execute(
                 project_root,
                 task,
@@ -472,7 +471,6 @@ async fn main() -> anyhow::Result<()> {
                 profile,
                 approve,
                 target,
-                engine_mode,
             )
             .await?;
         }

@@ -22,38 +22,6 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use vac_core::{Priority, ProfileName, ProfileOverride};
 
-/// Engine selector for `vac run`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum EngineMode {
-    /// `VacEngine::run_task_with_approvals` — the legacy spine.
-    Legacy,
-    /// `vac_session_engine::submit_one` via `VacEngineAdapter`.
-    Session,
-}
-
-impl EngineMode {
-    /// `--engine <value>` parser with env fallback
-    /// (`VAC_ENGINE=session`). Unknown values fall back to Legacy
-    /// with a warning so no operator gets surprised by a silent
-    /// switch.
-    pub fn resolve(flag: Option<&str>) -> Self {
-        let raw = flag
-            .map(str::to_owned)
-            .or_else(|| std::env::var("VAC_ENGINE").ok());
-        match raw.as_deref() {
-            Some(v) if v.eq_ignore_ascii_case("session") => Self::Session,
-            Some(v) if v.eq_ignore_ascii_case("legacy") => Self::Legacy,
-            Some(v) if !v.is_empty() => {
-                eprintln!(
-                    "vac run: unrecognized engine '{v}' — falling back to legacy",
-                );
-                Self::Legacy
-            }
-            _ => Self::Legacy,
-        }
-    }
-}
-
 pub async fn execute(
     project_root: PathBuf,
     task_description: String,
@@ -61,7 +29,6 @@ pub async fn execute(
     profile: String,
     approve: bool,
     targets: Vec<String>,
-    engine_mode: EngineMode,
 ) -> anyhow::Result<()> {
     let mut engine = vac_core::VacEngine::new(project_root.clone()).await?;
 
@@ -169,27 +136,14 @@ pub async fn execute(
         }
     });
 
-    // R0.b — engine cutover. Legacy path runs VacEngine directly;
-    // Session path wraps it as an LlmAdapter behind submit_one so
-    // the transcript JSONL lands under .vac/sessions/ and the
-    // SubmitEvent contract is uniform across every run.
-    let result = match engine_mode {
-        EngineMode::Legacy => {
-            engine
-                .run_task_with_approvals(&task_description, Some(update_tx), None, None)
-                .await?
-        }
-        EngineMode::Session => {
-            println!("🔀 engine=session → submit_one spine (R0 cutover)");
-            run_via_session_engine(
-                project_root.clone(),
-                engine,
-                &task_description,
-                update_tx,
-            )
-            .await?
-        }
-    };
+    // Drive the task through `vac_session_engine::submit_one`
+    // with a `VacEngineAdapter` wrapping the real `VacEngine`.
+    let result = run_via_session_engine(
+        project_root.clone(),
+        engine,
+        &task_description,
+        update_tx,
+    ).await?;
 
     println!("\n{}", "=".repeat(60));
     match &result.status {
@@ -238,7 +192,7 @@ async fn run_via_session_engine(
     task_description: &str,
     update_tx: tokio::sync::mpsc::UnboundedSender<vac_core::engine::RuntimeUpdate>,
 ) -> anyhow::Result<vac_core::TaskResult> {
-    use crate::commands::engine_adapter::VacEngineAdapter;
+    use vac_tui_runtime::runner::engine_adapter::VacEngineAdapter;
     use vac_session_engine::{
         CompactConfig, SlashProcessor, SubmitContext, SubmitEvent, TranscriptWriter,
         TrivialCompactBoundary, UsageTracker, submit_one,
@@ -350,65 +304,5 @@ fn submit_event_to_runtime_update(
         // Accepted/Compacted/SlashHandled/Finished are engine-layer
         // events without a RuntimeUpdate peer; drop.
         _ => None,
-    }
-}
-
-#[cfg(test)]
-mod engine_mode_tests {
-    use super::*;
-    use std::sync::Mutex as StdMutex;
-
-    static ENV_LOCK: StdMutex<()> = StdMutex::new(());
-
-    fn with_env<F: FnOnce() -> ()>(var: &str, val: Option<&str>, f: F) {
-        let _guard = ENV_LOCK.lock().unwrap();
-        // SAFETY: ENV_LOCK serializes access from this test module.
-        unsafe {
-            match val {
-                Some(v) => std::env::set_var(var, v),
-                None => std::env::remove_var(var),
-            }
-        }
-        f();
-        // Clean up so cross-test order doesn't matter.
-        unsafe {
-            std::env::remove_var(var);
-        }
-    }
-
-    #[test]
-    fn resolve_defaults_to_legacy_without_flag_or_env() {
-        with_env("VAC_ENGINE", None, || {
-            assert_eq!(EngineMode::resolve(None), EngineMode::Legacy);
-        });
-    }
-
-    #[test]
-    fn resolve_honors_env_session() {
-        with_env("VAC_ENGINE", Some("session"), || {
-            assert_eq!(EngineMode::resolve(None), EngineMode::Session);
-        });
-    }
-
-    #[test]
-    fn resolve_flag_overrides_env() {
-        with_env("VAC_ENGINE", Some("session"), || {
-            assert_eq!(EngineMode::resolve(Some("legacy")), EngineMode::Legacy);
-        });
-    }
-
-    #[test]
-    fn resolve_unknown_value_falls_back_to_legacy() {
-        with_env("VAC_ENGINE", None, || {
-            assert_eq!(EngineMode::resolve(Some("quantum")), EngineMode::Legacy);
-        });
-    }
-
-    #[test]
-    fn resolve_case_insensitive() {
-        with_env("VAC_ENGINE", None, || {
-            assert_eq!(EngineMode::resolve(Some("SESSION")), EngineMode::Session);
-            assert_eq!(EngineMode::resolve(Some("Legacy")), EngineMode::Legacy);
-        });
     }
 }

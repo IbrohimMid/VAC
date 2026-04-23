@@ -10,6 +10,8 @@ homepage.workspace = true
 description.workspace = true
 
 [dependencies]
+async-trait = { workspace = true }
+vac_session_engine = { workspace = true }
 anyhow.workspace = true
 arboard = "3.6.1"
 base64 = "0.22.1"

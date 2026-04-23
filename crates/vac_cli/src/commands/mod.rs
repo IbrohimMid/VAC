@@ -3,7 +3,6 @@ pub mod auth;
 pub mod autopilot;
 pub mod config;
 pub mod doctor;
-pub mod engine_adapter;
 pub mod export;
 pub mod import;
 pub mod ingest;

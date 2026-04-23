@@ -74,7 +74,7 @@ fn autopilot_monitor_mode_does_not_execute_job_and_reports_queue() {
     let id = job.id;
     write_queue(root, vec![job]);
 
-    run_vac(root, &["autopilot", "up"]).success();
+    run_vac(root, &["autopilot", "up", "--execute"]).success();
 
     let state_ok = wait_until(Duration::from_secs(2), || {
         root.join(".vac/autopilot.state").exists()
@@ -114,7 +114,7 @@ fn autopilot_auto_mode_executes_job_end_to_end() {
     let id = job.id;
     write_queue(root, vec![job]);
 
-    run_vac(root, &["autopilot", "up"]).success();
+    run_vac(root, &["autopilot", "up", "--execute"]).success();
 
     let completed_ok = wait_until(Duration::from_secs(4), || {
         read_queue(root)
@@ -145,7 +145,7 @@ fn autopilot_waiting_approval_state_is_observable_and_unblocks_on_store_intent()
     let id = job.id;
     write_queue(root, vec![job]);
 
-    run_vac(root, &["autopilot", "up"]).success();
+    run_vac(root, &["autopilot", "up", "--execute"]).success();
 
     let mut tool_call_id: Option<String> = None;
     let waiting_ok = wait_until(Duration::from_secs(4), || {
@@ -214,7 +214,7 @@ fn autopilot_toolcall_reject_flow_blocks_execution() {
     let id = job.id;
     write_queue(root, vec![job]);
 
-    run_vac(root, &["autopilot", "up"]).success();
+    run_vac(root, &["autopilot", "up", "--execute"]).success();
 
     let mut tool_call_id: Option<String> = None;
     let waiting_ok = wait_until(Duration::from_secs(4), || {
@@ -282,7 +282,7 @@ fn autopilot_toolcall_stale_approval_errors_and_does_not_resolve_record() {
     });
     write_queue(root, vec![job]);
 
-    run_vac(root, &["autopilot", "up"]).success();
+    run_vac(root, &["autopilot", "up", "--execute"]).success();
 
     let mut tool_call_id: Option<String> = None;
     let waiting_ok = wait_until(Duration::from_secs(4), || {
@@ -339,7 +339,7 @@ fn autopilot_toolcall_wrong_target_isolation() {
     let id = job.id;
     write_queue(root, vec![job]);
 
-    run_vac(root, &["autopilot", "up"]).success();
+    run_vac(root, &["autopilot", "up", "--execute"]).success();
 
     let mut tool_call_id: Option<String> = None;
     let waiting_ok = wait_until(Duration::from_secs(4), || {

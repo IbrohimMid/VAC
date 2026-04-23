@@ -29,7 +29,7 @@ Evidence: M8 AppState flat-field census ≤ 20
 Notes: Refactored `AppState` into 9 domains (core, layout, composer, transcript, session, workspace, vil_domain, execution, operator_config). Replaced all accessors across `vac_tui_runtime` and tests.
 
 ## M10 Ingest BM25 persistence — DONE
-Commit: (to be added)
+Commit: 36f6ef36ee0fddbb26ff697c677413f22b543503
 Tests: cargo check -p vac_ingest -p vac_cli -p vac_tui_runtime --tests
 Evidence: Ingest command reads/writes `~/.vac/bm25.index` instead of memory-only.
 Notes: Created `vac ingest` command, binary serialisation for `Bm25Index`, and integrated `FileIndexReady` with `bm25_index` Option in `vac_tui_runtime`.

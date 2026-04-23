@@ -21,6 +21,7 @@ pub struct TuiProjectContext {
 
 mod backend;
 mod bundle_tasks;
+pub mod engine_adapter;
 mod message_tasks;
 mod profile_tasks;
 mod runtime_tasks;
@@ -139,6 +140,7 @@ pub async fn run_vac_tui_with_io(
             match event {
                 OutputEvent::UserMessage(msg, _tools, parts, _usize) => {
                     message_tasks::handle_user_message(
+                        runtime_project_root.clone(),
                         engine_clone.clone(),
                         input_tx_clone.clone(),
                         active_update_tx_clone.clone(),
