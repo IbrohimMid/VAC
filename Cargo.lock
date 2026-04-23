@@ -6240,6 +6240,7 @@ dependencies = [
  "arboard",
  "base64 0.22.1",
  "chrono",
+ "criterion",
  "crossterm",
  "dirs 6.0.0",
  "ignore",

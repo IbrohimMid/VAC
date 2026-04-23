@@ -65,6 +65,10 @@ pub enum InputEvent {
         title: String,
         messages: Vec<crate::app::Message>,
     },
+    /// O1 — Snapshot load done in background, ready to apply.
+    /// `None` = no snapshot for this session_id (first-run case).
+    /// Boxed to keep the variant small; SessionSnapshot is ~200 B.
+    SessionSnapshotLoaded(Box<Option<vac_session_control::SessionSnapshot>>),
 
     /// Hot-reload dari theme_loader watcher — ganti theme aktif.
     ThemeReloaded(crate::services::theme::Theme),

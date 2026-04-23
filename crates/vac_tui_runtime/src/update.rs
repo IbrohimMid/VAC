@@ -457,6 +457,14 @@ pub fn handle_backend_event(
             title,
             messages,
         } => events::on_session_restored(state, id, title, messages),
+        InputEvent::SessionSnapshotLoaded(boxed) => {
+            // O1 — Apply deferred snapshot then clear the loading flag
+            // so the footer spinner dismisses.
+            if let Some(snapshot) = boxed.as_ref() {
+                crate::session_snapshot::apply_session_snapshot(state, snapshot);
+            }
+            state.session_loading = false;
+        }
         InputEvent::ShowConfirmationDialog(tc) => {
             if tc.function.name == crate::services::ask_user::ASK_USER_TOOL_NAME {
                 open_ask_user_popup(state, &tc);

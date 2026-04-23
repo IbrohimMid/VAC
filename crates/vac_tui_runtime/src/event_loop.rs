@@ -149,12 +149,9 @@ pub async fn run_tui(
         None => "loading...".to_string(),
     };
 
-    {
-        let _s = tracing::info_span!("boot_session_snapshot").entered();
-        if let Some(snapshot) = load_session_snapshot(&project_root, &state.session_id).await {
-            apply_session_snapshot(&mut state, &snapshot);
-        }
-    }
+    // O1 — Snapshot load deferred to background task after input_tx
+    // is constructed (below). State flag drives footer spinner (O4).
+    state.session_loading = true;
 
     // Add welcome messages
     let welcome = welcome_messages(latest_version.as_deref(), &state);
@@ -187,6 +184,20 @@ pub async fn run_tui(
     // Create input thread
     let (input_tx, mut internal_rx) = tokio::sync::mpsc::channel::<InputEvent>(100);
     state.input_tx = Some(input_tx.clone());
+
+    // O1 — Spawn deferred snapshot load now that input_tx is ready.
+    {
+        let project_root = project_root.clone();
+        let session_id = state.session_id.clone();
+        let input_tx_snap = input_tx.clone();
+        tokio::spawn(async move {
+            let snapshot = load_session_snapshot(&project_root, &session_id).await;
+            tracing::info!(loaded = snapshot.is_some(), "deferred_session_snapshot");
+            let _ = input_tx_snap
+                .send(InputEvent::SessionSnapshotLoaded(Box::new(snapshot)))
+                .await;
+        });
+    }
 
     // PR-T19 wiring: load `.vac/keybindings.toml` (if present), merge over
     // compiled-in defaults, install the process-wide override keymap, and

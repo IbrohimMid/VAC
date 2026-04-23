@@ -188,6 +188,10 @@ pub struct AppState {
     /// Per-server signal buffers — status changes are pushed here so they
     /// flow through the signal pipeline (rewind + MCP retrieval tools).
     pub mcp_signals: HashMap<String, vac_signal::SignalBuffer>,
+    /// O1 — True from boot until the deferred session snapshot load
+    /// completes (SessionSnapshotLoaded event). Drives the footer
+    /// "restoring session..." placeholder.
+    pub session_loading: bool,
 
     // VIL domain state
     pub vil: VilState,

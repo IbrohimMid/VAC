@@ -86,6 +86,7 @@ impl AppState {
             project_root: options.project_root,
             mcp_server_states: HashMap::new(),
             mcp_signals: HashMap::new(),
+            session_loading: false,
             vil: VilState::default(),
             vwfd_inspector: crate::services::vwfd_inspector::VwfdInspectorState::default(),
             vil_expr_lint: crate::services::vil_expr_lint::LintState::new(),
