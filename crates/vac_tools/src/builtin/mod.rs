@@ -16,6 +16,7 @@ pub mod signal_list;
 pub mod signal_tail;
 pub mod task_suite;
 pub mod tool_search;
+pub mod utility;
 pub mod worktree;
 #[cfg(test)]
 pub(crate) mod test_util;
@@ -59,6 +60,8 @@ pub async fn register_builtin_tools(registry: &Arc<ToolRegistry>) -> Result<(), 
     registry
         .register(tool_search::ToolSearchTool::new(registry.clone()))
         .await?;
+    registry.register(utility::SleepTool::new()).await?;
+    registry.register(utility::SendMessageTool::new()).await?;
     registry.register(task_done::TaskDoneTool::new()).await?;
     registry.register(todo::TodoTool::default()).await?;
     registry
