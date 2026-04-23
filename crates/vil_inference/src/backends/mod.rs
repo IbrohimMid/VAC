@@ -12,3 +12,8 @@ pub mod candle;
 
 #[cfg(feature = "candle")]
 pub use candle::CandleBackend;
+
+/// Always-available deterministic mock backend for tests + `--mock`
+/// runs. See module docstring for behaviours.
+pub mod mock;
+pub use mock::{MockBackend, MockBehaviour};

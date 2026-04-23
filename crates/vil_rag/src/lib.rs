@@ -13,6 +13,7 @@ pub mod ann;
 pub mod embedding;
 pub mod error;
 pub mod index;
+pub mod linear;
 pub mod store;
 
 pub use error::RagError;
