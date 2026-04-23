@@ -32,25 +32,17 @@ use crate::engine::{BackendKind, InferenceBackend, InferenceRequest, LoadedModel
 use crate::error::{InferenceError, InferenceResult};
 use async_trait::async_trait;
 use candle_core::{DType, Device, Tensor};
-use candle_nn::VarBuilder;
-use candle_transformers::models::llama::{Cache, Config, Llama, LlamaConfig, LlamaEosToks};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use tokenizers::Tokenizer;
-
-/// Default dtype for weights + activations. F32 keeps CPU path simple; a
-/// follow-up may opt into F16/BF16 per-device.
-const DTYPE: DType = DType::F32;
 
 /// Fallback EOS id when `config.json` does not declare one (rare for Llama
 /// family checkpoints, but we avoid panicking).
 const EOS_TOKEN_ID_DEFAULT: u32 = 2;
 
 struct LoadedLlama {
-    model: Llama,
+    model: candle_transformers::models::quantized_llama::ModelWeights,
     tokenizer: Tokenizer,
-    config: Config,
-    cache: Cache,
     device: Device,
     model_dir: PathBuf,
 }
@@ -97,38 +89,6 @@ impl CandleBackend {
             .unwrap_or(false)
     }
 
-    /// Enumerate safetensors shards inside `dir`. Prefers the single-file
-    /// layout (`model.safetensors`); otherwise returns every
-    /// `*.safetensors` sorted lexicographically.
-    fn discover_safetensors(dir: &Path) -> InferenceResult<Vec<PathBuf>> {
-        let single = dir.join("model.safetensors");
-        if single.exists() {
-            return Ok(vec![single]);
-        }
-        let read = std::fs::read_dir(dir).map_err(|e| {
-            InferenceError::InferenceFailed(format!(
-                "candle: cannot read model dir {}: {e}",
-                dir.display()
-            ))
-        })?;
-        let mut shards: Vec<PathBuf> = read
-            .filter_map(|entry| entry.ok())
-            .map(|e| e.path())
-            .filter(|p| {
-                p.extension().and_then(|s| s.to_str()) == Some("safetensors")
-            })
-            .collect();
-        shards.sort();
-        if shards.is_empty() {
-            Err(InferenceError::ModelNotFound(format!(
-                "candle: no .safetensors file in {}",
-                dir.display()
-            )))
-        } else {
-            Ok(shards)
-        }
-    }
-
     /// Blocking model load path. Separated so both the async `load()` and
     /// future synchronous callers (tests, CLI preload) can share it via
     /// `spawn_blocking`.
@@ -140,17 +100,18 @@ impl CandleBackend {
             )));
         }
         let tokenizer_path = model_dir.join("tokenizer.json");
-        let config_path = model_dir.join("config.json");
+        let model_path = model_dir.join("model.gguf");
+        
         if !tokenizer_path.exists() {
             return Err(InferenceError::ModelNotFound(format!(
                 "candle: missing tokenizer.json at {}",
                 tokenizer_path.display()
             )));
         }
-        if !config_path.exists() {
+        if !model_path.exists() {
             return Err(InferenceError::ModelNotFound(format!(
-                "candle: missing config.json at {}",
-                config_path.display()
+                "candle: missing model.gguf at {}",
+                model_path.display()
             )));
         }
 
@@ -158,40 +119,24 @@ impl CandleBackend {
             InferenceError::InferenceFailed(format!("candle: tokenizer load: {e}"))
         })?;
 
-        let config_bytes = std::fs::read(&config_path).map_err(|e| {
-            InferenceError::InferenceFailed(format!("candle: config read: {e}"))
-        })?;
-        let llama_config: LlamaConfig = serde_json::from_slice(&config_bytes).map_err(|e| {
-            InferenceError::InferenceFailed(format!("candle: config parse: {e}"))
-        })?;
-        let config = llama_config.into_config(false);
-
-        let shards = Self::discover_safetensors(&model_dir)?;
-
-        // SAFETY: safetensors mmap is the Candle-recommended load path; the
-        // mapping outlives the `VarBuilder` because we keep `LoadedLlama`
-        // (which owns the derived `Llama`) alive for the backend lifetime.
-        let vb = unsafe {
-            VarBuilder::from_mmaped_safetensors(&shards, DTYPE, &device).map_err(|e| {
-                InferenceError::InferenceFailed(format!(
-                    "candle: safetensors mmap: {e}"
-                ))
-            })?
-        };
-
-        let cache = Cache::new(true, DTYPE, &config, &device).map_err(|e| {
-            InferenceError::InferenceFailed(format!("candle: cache init: {e}"))
+        let mut file = std::fs::File::open(&model_path).map_err(|e| {
+            InferenceError::InferenceFailed(format!("candle: model read: {e}"))
         })?;
 
-        let model = Llama::load(vb, &config).map_err(|e| {
+        let model = candle_transformers::models::quantized_llama::ModelWeights::from_gguf(
+            candle_core::quantized::gguf_file::Content::read(&mut file).map_err(|e| {
+                InferenceError::InferenceFailed(format!("candle: gguf parse: {e}"))
+            })?,
+            &mut file,
+            &device,
+        )
+        .map_err(|e| {
             InferenceError::InferenceFailed(format!("candle: llama load: {e}"))
         })?;
 
         Ok(LoadedLlama {
             model,
             tokenizer,
-            config,
-            cache,
             device,
             model_dir,
         })
@@ -199,15 +144,8 @@ impl CandleBackend {
 
     /// Resolve the EOS token id from the model config, falling back to a
     /// sensible default when unspecified.
-    fn resolve_eos(config: &Config) -> u32 {
-        config
-            .eos_token_id
-            .as_ref()
-            .and_then(|e| match e {
-                LlamaEosToks::Single(t) => Some(*t),
-                LlamaEosToks::Multiple(v) => v.first().copied(),
-            })
-            .unwrap_or(EOS_TOKEN_ID_DEFAULT)
+    fn resolve_eos(tokenizer: &Tokenizer) -> u32 {
+        tokenizer.token_to_id("</s>").unwrap_or(EOS_TOKEN_ID_DEFAULT)
     }
 
     /// Greedy decoding loop. Runs entirely in a `spawn_blocking` worker.
@@ -237,7 +175,7 @@ impl CandleBackend {
             ));
         }
 
-        let eos_id = Self::resolve_eos(&loaded.config);
+        let eos_id = Self::resolve_eos(&loaded.tokenizer);
         let mut generated = String::new();
         let mut index_pos: usize = 0;
 
@@ -256,7 +194,7 @@ impl CandleBackend {
             })?;
             let logits = loaded
                 .model
-                .forward(&input, index_pos, &mut loaded.cache)
+                .forward(&input, index_pos)
                 .map_err(|e| {
                     InferenceError::InferenceFailed(format!("candle: forward: {e}"))
                 })?;
@@ -319,7 +257,7 @@ impl InferenceBackend for CandleBackend {
         })??;
 
         let path = loaded.model_dir.clone();
-        let max_ctx = Some(loaded.config.max_position_embeddings as u32);
+        let max_ctx = Some(4096);
         *state.lock().map_err(|_| {
             InferenceError::InferenceFailed("candle: mutex poisoned".into())
         })? = Some(loaded);
@@ -420,18 +358,5 @@ mod tests {
             }
             other => panic!("expected InferenceFailed, got {other:?}"),
         }
-    }
-
-    #[test]
-    fn discover_safetensors_empty_dir_returns_not_found() {
-        let tmp = std::env::temp_dir().join("vil_inference_candle_shards_probe");
-        let _ = std::fs::remove_dir_all(&tmp);
-        std::fs::create_dir_all(&tmp).expect("create tmp dir");
-        let err = CandleBackend::discover_safetensors(&tmp).unwrap_err();
-        assert!(
-            matches!(err, InferenceError::ModelNotFound(_)),
-            "expected ModelNotFound for empty dir, got {err:?}"
-        );
-        let _ = std::fs::remove_dir_all(&tmp);
     }
 }

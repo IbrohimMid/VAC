@@ -63,6 +63,9 @@ enum Commands {
         /// Token budget for this submit
         #[arg(long)]
         budget_tokens: Option<u64>,
+        /// Local inference backend
+        #[arg(long)]
+        backend: Option<String>,
     },
     /// Interactive REPL mode
     #[command(next_help_heading = "Run")]
@@ -465,6 +468,7 @@ async fn main() -> anyhow::Result<()> {
             approve,
             target,
             budget_tokens,
+            backend,
         } => {
             commands::run::execute(
                 project_root,
@@ -474,6 +478,7 @@ async fn main() -> anyhow::Result<()> {
                 approve,
                 target,
                 budget_tokens,
+                backend,
             )
             .await?;
         }

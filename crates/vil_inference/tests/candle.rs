@@ -1,12 +1,11 @@
-//! End-to-end Candle backend test against a real local checkpoint.
+//! End-to-end Candle backend test against a real local GGUF checkpoint.
 //!
-//! Opt-in: set `VAC_CANDLE_TEST_MODEL` to the path of a HuggingFace-layout
-//! model directory (containing `tokenizer.json`, `config.json`, and one or
-//! more `*.safetensors` shards) and run with `--ignored`.
+//! Opt-in: set `VAC_CANDLE_TEST_MODEL` to the path of a model directory
+//! (containing `tokenizer.json` and `model.gguf`) and run with `--ignored`.
 //!
 //! Example:
 //! ```sh
-//! export VAC_CANDLE_TEST_MODEL=/models/TinyLlama-1.1B-Chat-v1.0
+//! export VAC_CANDLE_TEST_MODEL=/models/TinyLlama-1.1B-Chat-v1.0-GGUF
 //! cargo nextest run -p vil_inference --features candle --run-ignored only
 //! ```
 //!
