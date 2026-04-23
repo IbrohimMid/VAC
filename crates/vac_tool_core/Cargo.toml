@@ -1,0 +1,16 @@
+[package]
+name = "vac_tool_core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "VAC Tool Core — formal tool contract (spec, capabilities, permissions, result envelope, render hints). Consumed by every tool implementation."
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[lints]
+workspace = true

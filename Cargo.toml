@@ -18,6 +18,7 @@ members = [
     "crates/vac_runtime", "crates/vac_approvals", "crates/vac_changeset", "crates/vac_shell", "crates/vac_session_control", "crates/vac_tui_runtime",
     "crates/vil_vwfd", "crates/vil_expr", "crates/vac_ingest", "crates/vac_trajectory",
     "crates/vac_signal",
+    "crates/vac_tool_core",
 ]
 resolver = "2"
 
@@ -144,6 +145,7 @@ vil_expr = { path = "crates/vil_expr" }
 vac_ingest = { path = "crates/vac_ingest" }
 vac_runtime = { path = "crates/vac_runtime" }
 vac_signal = { path = "crates/vac_signal" }
+vac_tool_core = { path = "crates/vac_tool_core" }
 
 [profile.release]
 lto = "thin"

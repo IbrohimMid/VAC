@@ -6161,6 +6161,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "vac_tool_core"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "vac_tools"
 version = "0.1.0"
 dependencies = [
