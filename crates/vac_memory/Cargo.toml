@@ -1,0 +1,26 @@
+[package]
+name = "vac_memory"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "VAC Memory — filesystem-backed memdir (active/archived/team) with tf-idf retrieval, consolidator policy, and lockfile protection."
+
+[dependencies]
+serde = { workspace = true }
+serde_yaml = { workspace = true }
+tokio = { workspace = true, features = ["sync", "fs", "io-util", "time", "rt", "macros"] }
+tracing = { workspace = true }
+chrono = { workspace = true }
+thiserror = { workspace = true }
+walkdir = { workspace = true }
+regex = { workspace = true }
+async-trait = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3.14"
+tokio = { workspace = true, features = ["full", "test-util"] }
+
+[lints]
+workspace = true

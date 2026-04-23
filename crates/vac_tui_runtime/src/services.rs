@@ -21,6 +21,7 @@ pub mod keybindings_runtime;
 pub mod keybindings_watcher;
 pub mod kitty_image;
 pub mod markdown_renderer;
+pub mod memory_banner;
 pub mod message;
 pub mod message_action_popup;
 pub mod plan;

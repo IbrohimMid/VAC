@@ -6097,6 +6097,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "vac_memory"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "regex",
+ "serde",
+ "serde_yaml",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "walkdir",
+]
+
+[[package]]
 name = "vac_runtime"
 version = "0.1.0"
 dependencies = [
@@ -6296,6 +6312,7 @@ dependencies = [
  "vac_approvals",
  "vac_changeset",
  "vac_core",
+ "vac_memory",
  "vac_runtime",
  "vac_session_control",
  "vac_shell",

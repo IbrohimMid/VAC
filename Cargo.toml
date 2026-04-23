@@ -20,6 +20,7 @@ members = [
     "crates/vac_signal",
     "crates/vac_tool_core",
     "crates/vac_session_engine",
+    "crates/vac_memory",
 ]
 resolver = "2"
 
@@ -148,6 +149,7 @@ vac_runtime = { path = "crates/vac_runtime" }
 vac_signal = { path = "crates/vac_signal" }
 vac_tool_core = { path = "crates/vac_tool_core" }
 vac_session_engine = { path = "crates/vac_session_engine" }
+vac_memory = { path = "crates/vac_memory" }
 
 [profile.release]
 lto = "thin"
