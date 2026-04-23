@@ -1,11 +1,17 @@
-//! P3 — next-submit predictor.
+//! W1.4 — next-submit speculation.
 //!
-//! Minimum-viable: takes the last operator submit + the prompt
-//! history ring, infers a plausible next prompt via a small set of
-//! heuristics, and warms a context map. Pluggable via the
-//! `NextSubmitPredictor` trait so a later implementation can swap in
-//! a real LLM-backed planner without changing the caller.
+//! Two strategies behind the `NextSubmitPredictor` trait:
 //!
+//! - [`HeuristicPredictor`] (P3 default) — rule-based, no LLM, no
+//!   tool calls. Cheap + deterministic; serves as the fallback when
+//!   the fork driver is unavailable or the budget is exhausted.
+//! - [`ForkSpeculationDriver`] (W1.4) — spawns a real
+//!   `vac_session_engine::ForkedAgentRunner` against a cache-safe
+//!   overlay dir, lets it run read-only tools speculatively, and
+//!   exposes the observed reads as a warm cache via the prediction
+//!   context.
+//!
+//! Selection is configuration-driven: see [`SpeculationStrategy`].
 //! Driver wires this after `SubmitEvent::Finished`:
 //!
 //! ```ignore
@@ -16,8 +22,15 @@
 //! ```
 
 use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::Arc;
 
 use async_trait::async_trait;
+use uuid::Uuid;
+
+use vac_session_engine::{
+    CacheSafeParams, ForkBudget, ForkedAgentRunner, LlmAdapter, OverlayGuard,
+};
 
 use crate::services::prompt_suggest::PromptHistory;
 
@@ -115,9 +128,112 @@ impl NextSubmitPredictor for HeuristicPredictor {
     }
 }
 
+/// W1.4 — selects which predictor the driver uses.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SpeculationStrategy {
+    /// Rule-based heuristic, no LLM. Default because it's free.
+    #[default]
+    Heuristic,
+    /// Fork-based — spawns a real speculative sub-submit.
+    Fork,
+}
+
+/// W1.4 — fork-based driver. Given a parent's last-submit summary and
+/// a rough list of files referenced by the next-likely submit, spawns
+/// a `ForkedAgentRunner` against a cache-safe overlay, awaits its
+/// `ForkResult`, and surfaces the observed reads to the caller as
+/// context chips. On fork abort (budget, timeout, error) returns
+/// `None` so the driver can fall back to the heuristic predictor.
+pub struct ForkSpeculationDriver {
+    runner: ForkedAgentRunner,
+    /// Directory under which per-fork overlays are created. Each fork
+    /// gets `<root>/<uuid>/`; cleanup is RAII via `OverlayGuard`.
+    overlay_root: PathBuf,
+    parent_session: Uuid,
+    budget: ForkBudget,
+}
+
+impl ForkSpeculationDriver {
+    pub fn new(
+        adapter: Arc<dyn LlmAdapter>,
+        overlay_root: PathBuf,
+        parent_session: Uuid,
+    ) -> Self {
+        Self {
+            runner: ForkedAgentRunner::new(adapter),
+            overlay_root,
+            parent_session,
+            budget: ForkBudget::default(),
+        }
+    }
+
+    pub fn with_budget(mut self, budget: ForkBudget) -> Self {
+        self.budget = budget;
+        self
+    }
+
+    /// Run one speculation pass. Returns `Some(Prediction)` when the
+    /// fork completed cleanly; `None` on any abort path so the caller
+    /// can fall back. The prediction's `context` encodes each observed
+    /// read as `@<path>` → short hint — the composer renders those
+    /// as warm-context chips.
+    pub async fn speculate(
+        &self,
+        next_likely_prompt: &str,
+        reads_hint: Vec<PathBuf>,
+    ) -> Option<Prediction> {
+        std::fs::create_dir_all(&self.overlay_root).ok()?;
+        let overlay_dir = self.overlay_root.join(Uuid::new_v4().to_string());
+        let _guard = OverlayGuard::new(overlay_dir.clone()).ok()?;
+        let params = CacheSafeParams::new(self.parent_session, overlay_dir);
+        let outcome = self
+            .runner
+            .speculate(&params, next_likely_prompt, reads_hint, self.budget.clone())
+            .await
+            .ok()?;
+        if outcome.reads.is_empty() {
+            return None;
+        }
+        let mut ctx = HashMap::new();
+        ctx.insert(
+            "hint".into(),
+            format!(
+                "fork warmed {} read(s) in {} turn(s)",
+                outcome.reads.len(),
+                outcome.turns
+            ),
+        );
+        for path in &outcome.reads {
+            ctx.insert(
+                format!("@{}", path.display()),
+                "warm-read from fork speculation".into(),
+            );
+        }
+        Some(Prediction {
+            prompt: next_likely_prompt.to_string(),
+            context: ctx,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use vac_session_engine::{EngineResult, LlmRequest, LlmResponse};
+
+    struct CannedAdapter;
+    #[async_trait]
+    impl LlmAdapter for CannedAdapter {
+        async fn complete(&self, _req: LlmRequest) -> EngineResult<LlmResponse> {
+            Ok(LlmResponse {
+                provider: "test".into(),
+                model: "canned".into(),
+                content: "ok".into(),
+                input_tokens: 0,
+                output_tokens: 0,
+            })
+        }
+    }
 
     #[tokio::test]
     async fn write_rule_predicts_run_tests() {
@@ -158,5 +274,85 @@ mod tests {
         let p = HeuristicPredictor;
         let h = PromptHistory::default();
         assert!(p.predict("some random submit", &h).await.is_none());
+    }
+
+    // ── W1.4 ForkSpeculationDriver ────────────────────────────────────
+
+    #[tokio::test]
+    async fn fork_driver_returns_prediction_with_reads() {
+        let tmp = tempfile::tempdir().unwrap();
+        let driver = ForkSpeculationDriver::new(
+            Arc::new(CannedAdapter),
+            tmp.path().to_path_buf(),
+            Uuid::new_v4(),
+        );
+        let reads = vec![PathBuf::from("src/auth/mod.rs")];
+        let pred = driver
+            .speculate("next likely prompt", reads.clone())
+            .await
+            .expect("fork should yield prediction");
+        assert_eq!(pred.prompt, "next likely prompt");
+        assert!(pred.context.contains_key("hint"));
+        assert!(pred.context.contains_key("@src/auth/mod.rs"));
+    }
+
+    #[tokio::test]
+    async fn fork_driver_returns_none_when_reads_hint_empty() {
+        let tmp = tempfile::tempdir().unwrap();
+        let driver = ForkSpeculationDriver::new(
+            Arc::new(CannedAdapter),
+            tmp.path().to_path_buf(),
+            Uuid::new_v4(),
+        );
+        // Empty reads_hint; fork will complete but produce no warm
+        // context — driver returns None so caller falls back.
+        let pred = driver.speculate("p", Vec::new()).await;
+        assert!(pred.is_none());
+    }
+
+    #[tokio::test]
+    async fn fork_driver_cleans_up_overlay_on_drop() {
+        let tmp = tempfile::tempdir().unwrap();
+        let driver = ForkSpeculationDriver::new(
+            Arc::new(CannedAdapter),
+            tmp.path().to_path_buf(),
+            Uuid::new_v4(),
+        );
+        let _ = driver
+            .speculate("p", vec![PathBuf::from("a.rs")])
+            .await;
+        // Overlay root should exist but be empty — each per-fork
+        // subdir was RAII-cleaned.
+        let entries: Vec<_> = std::fs::read_dir(tmp.path())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .collect();
+        assert!(
+            entries.is_empty(),
+            "overlay subdirs must be GC'd on drop, found {}",
+            entries.len()
+        );
+    }
+
+    #[tokio::test]
+    async fn fork_driver_with_custom_budget_uses_it() {
+        use std::time::Duration;
+        let tmp = tempfile::tempdir().unwrap();
+        let driver = ForkSpeculationDriver::new(
+            Arc::new(CannedAdapter),
+            tmp.path().to_path_buf(),
+            Uuid::new_v4(),
+        )
+        .with_budget(ForkBudget {
+            max_duration: Duration::from_secs(30),
+            max_tokens: 16,
+            ..ForkBudget::default()
+        });
+        // CannedAdapter returns 0 tokens so budget doesn't trip —
+        // prediction still lands.
+        let pred = driver
+            .speculate("p", vec![PathBuf::from("x.rs")])
+            .await;
+        assert!(pred.is_some());
     }
 }
