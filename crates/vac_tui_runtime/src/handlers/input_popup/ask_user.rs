@@ -40,6 +40,7 @@ pub fn handle_ask_user(state: &mut AppState, output_tx: &Sender<OutputEvent>, ev
                         call: tool_call,
                         result: "User cancelled.".to_string(),
                         status: crate::types::ToolCallResultStatus::Error,
+                        envelope: None,
                     };
                     let _ =
                         output_tx.try_send(OutputEvent::SendToolResult(result, false, Vec::new()));
@@ -176,6 +177,7 @@ pub fn handle_ask_user(state: &mut AppState, output_tx: &Sender<OutputEvent>, ev
                         call: tool_call,
                         result: answer.clone(),
                         status: crate::types::ToolCallResultStatus::Success,
+                        envelope: None,
                     };
                     let _ =
                         output_tx.try_send(OutputEvent::SendToolResult(result, false, Vec::new()));

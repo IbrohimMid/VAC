@@ -108,6 +108,10 @@ impl VilTool for SpawnSubtaskTool {
         "medium"
     }
 
+    fn spec(&self) -> vac_tool_core::ToolSpec {
+        vac_tools::registry::default_spec(self)
+    }
+
     async fn execute(
         &self,
         args: serde_json::Value,

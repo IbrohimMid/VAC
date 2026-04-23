@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 /// Typed envelope returned by every tool. Normalises over ad-hoc
 /// `serde_json::Value` responses so UI/trace/transcript surfaces can
 /// render uniformly without sniffing shape.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ToolResultEnvelope {
     pub kind: ToolResultKind,
     /// The structured payload (tool-specific).

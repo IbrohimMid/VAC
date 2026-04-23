@@ -42,6 +42,7 @@ base64 = "0.22"
 shell-words = "1.1"
 ed25519-dalek = { workspace = true }
 rand = { workspace = true }
+vac_tool_core.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }

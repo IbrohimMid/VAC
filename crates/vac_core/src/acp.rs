@@ -427,8 +427,9 @@ pub fn runtime_update_to_acp_event(
             name,
             content,
             success,
+            envelope,
         } => Some(serde_json::json!({
-            "event": "tool_result", "data": { "id": id, "name": name, "success": success, "content": content }
+            "event": "tool_result", "data": { "id": id, "name": name, "success": success, "content": content, "envelope": envelope }
         })),
         ApprovalRequired {
             tool_call_id,

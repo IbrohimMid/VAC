@@ -64,6 +64,7 @@ pub struct ToolCallResult {
     pub call: ToolCall,
     pub result: String,
     pub status: ToolCallResultStatus,
+    pub envelope: Option<vac_tool_core::ToolResultEnvelope>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

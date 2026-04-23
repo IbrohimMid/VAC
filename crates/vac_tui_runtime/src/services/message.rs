@@ -316,7 +316,11 @@ pub fn render_tool_result(result: &ToolCallResult) -> Vec<Line<'static>> {
         ]));
     }
 
-    let mut result_lines: Vec<&str> = result.result.lines().collect();
+    let mut result_lines: Vec<&str> = if let Some(envelope) = &result.envelope {
+        envelope.summary.lines().collect()
+    } else {
+        result.result.lines().collect()
+    };
     let truncated = if result_lines.len() > 5 {
         result_lines.truncate(5);
         true

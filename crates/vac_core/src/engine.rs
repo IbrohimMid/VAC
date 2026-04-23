@@ -1362,6 +1362,7 @@ async fn runtime_update_from_agent_event(
             name,
             content,
             success,
+            envelope: None,
         }),
         vil_swarm::AgentLoopEvent::ApprovalRequired {
             tool_call_id,
@@ -1468,8 +1469,9 @@ pub enum RuntimeUpdate {
     ToolResult {
         id: String,
         name: String,
-        content: String,
         success: bool,
+        content: String,
+        envelope: Option<vac_tool_core::ToolResultEnvelope>,
     },
     ValidationResult {
         score: f64,

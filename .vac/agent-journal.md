@@ -59,25 +59,19 @@ Evidence: M9 in ultraplan §3
 Notes: TUI boot detects pending submit via `last_pending_submit`, pushes `AskUser` overlay, and resumes using the stored `Accepted` row. Bumped `SessionSnapshot::schema_version` to 2.
 
 ## M3 Tool spec() explicit — DONE
-Commit: $(git rev-parse HEAD)
+Commit: 3fb9cc9a9040ffcde7bdfd92d42d3c7ed303ce96
 Tests: cargo check -p vac_tools --tests
 Evidence: M3 in ultraplan §3
 Notes: Removed default body for `VilTool::spec` and explicitly implemented it in all 37 built-in tools. Added audit test.
 
 ## M3.1 ToolSpec richness — DONE
-Commit: $(git rev-parse HEAD)
+Commit: 3fb9cc9a9040ffcde7bdfd92d42d3c7ed303ce96
 Tests: cargo check -p vac_tools --tests
 Evidence: M3.1 in ultraplan §3
 Notes: Added `prepare_permission_matcher`, `interrupt_behavior`, `inputs_equivalent`, `search_read_classification` to `VilTool` trait with default implementations. Overrode them in `file_write`, `task_create`, `bash`, and `search` tools.
 
-## M3 Tool spec() explicit — DONE
+## M3.2 ToolResultEnvelope round-trip — DONE
 Commit: $(git rev-parse HEAD)
-Tests: cargo check -p vac_tools --tests
-Evidence: M3 in ultraplan §3
-Notes: Removed default body for `VilTool::spec` and explicitly implemented it in all 37 built-in tools. Added audit test.
-
-## M3.1 ToolSpec richness — DONE
-Commit: $(git rev-parse HEAD)
-Tests: cargo check -p vac_tools --tests
-Evidence: M3.1 in ultraplan §3
-Notes: Added `prepare_permission_matcher`, `interrupt_behavior`, `inputs_equivalent`, `search_read_classification` to `VilTool` trait with default implementations. Overrode them in `file_write`, `task_create`, `bash`, and `search` tools.
+Tests: cargo check --workspace --tests
+Evidence: M3.2 in ultraplan §3
+Notes: Changed `SubmitEvent::ToolResult` to hold `payload: ToolResultEnvelope` instead of raw strings. Updated `RuntimeUpdate::ToolResult` to pipe it through to the TUI. Modified TUI `ToolCallResult` to hold `envelope` and `render_tool_result` to use `envelope.summary` when present. Added `PartialEq` to `ToolResultEnvelope` and `ToolResultKind`.

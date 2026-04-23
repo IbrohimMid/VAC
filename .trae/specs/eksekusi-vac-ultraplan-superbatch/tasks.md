@@ -1,0 +1,34 @@
+# Tasks
+- [x] Task 1: Inisialisasi dan Persiapan
+  - [x] SubTask 1.1: Membaca `docs/ROADMAP.md`, `docs/ultraplan-vac-product.md`, `docs/adoption-score.md`, `docs/PRODUCT_SPEC.md`, `docs/architecture.md`, dan `CLAUDE.md` sebagai referensi utama.
+  - [x] SubTask 1.2: Mempersiapkan `.vac/agent-journal.md` untuk mencatat progres.
+- [x] Task 2: Implementasi Wave 1 (M1, M8, M10, M2, M2.1, M2.2, M9)
+  - [x] SubTask 2.1: M1 - Boot phase split + VAC_BOOT_PROFILE=1 profile table
+  - [x] SubTask 2.2: M8 - AppState flat-field census ≤ 20
+  - [x] SubTask 2.3: M10 - Ingest BM25 persistence
+  - [x] SubTask 2.4: M2 - Engine convergence (retire VacEngine::run_task_*)
+  - [x] SubTask 2.5: M2.1 - Budget gate + orphan permission tracking
+  - [x] SubTask 2.6: M2.2 - File history by submit ID
+  - [x] SubTask 2.7: M9 - Resume e2e
+- [ ] Task 3: Implementasi Wave 2 (M3, M3.1, M3.2, M5, M5.1, M4, M6, M6.1, M7.1, M7.2, M7.3)
+  - [ ] SubTask 3.1: M3, M3.1, M3.2 - VilTool spec override & ToolResultEnvelope
+  - [ ] SubTask 3.2: M5, M5.1 - MCP primary swap & transports
+  - [ ] SubTask 3.3: M4, M6, M6.1 - TrustGate & Bridge e2e remote
+  - [ ] SubTask 3.4: M7.1, M7.2, M7.3 - Consolidator pipeline & vil_memory retirement
+- [ ] Task 4: Implementasi Wave 3 (M11, M12, M13, P1, P2, P3)
+  - [ ] SubTask 4.1: M11 - Candle backend + TinyLlama GGUF
+  - [ ] SubTask 4.2: M12 - rust-analyzer via portable-pty
+  - [ ] SubTask 4.3: M13 - Autopilot cron
+  - [ ] SubTask 4.4: P1 - vac assistant
+  - [ ] SubTask 4.5: P2 - vac plan
+  - [ ] SubTask 4.6: P3 - TeamContext + SpeculationCache
+- [ ] Task 5: Finalisasi dan Validasi
+  - [ ] SubTask 5.1: Memastikan `docs/adoption-score.md` mencapai ≥ 99%.
+  - [ ] SubTask 5.2: Memastikan `cargo check --workspace --tests` lulus.
+  - [ ] SubTask 5.3: Memastikan `cargo nextest run --workspace` lulus.
+
+# Task Dependencies
+- [Task 2] depends on [Task 1]
+- [Task 3] depends on [Task 2]
+- [Task 4] depends on [Task 3]
+- [Task 5] depends on [Task 4]

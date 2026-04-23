@@ -188,7 +188,8 @@ pub async fn execute(project_root: PathBuf, opts: SessionRunOptions) -> anyhow::
                 SubmitEvent::ToolRequested { name, .. } => {
                     println!("[tool.request] {name}");
                 }
-                SubmitEvent::ToolResult { name, success, .. } => {
+                SubmitEvent::ToolResult { name, payload, .. } => {
+                    let success = payload.kind == vac_tool_core::ToolResultKind::Ok || payload.kind == vac_tool_core::ToolResultKind::Warning;
                     println!("[tool.result] {name} ok={success}");
                 }
                 SubmitEvent::Finished { usage } => {

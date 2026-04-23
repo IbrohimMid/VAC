@@ -103,6 +103,7 @@ pub(super) async fn handle_runtime_update(
             name,
             content,
             success,
+            envelope,
         } => {
             let status = if success {
                 ToolCallResultStatus::Success
@@ -127,9 +128,10 @@ pub(super) async fn handle_runtime_update(
             };
 
             let tool_result = ToolCallResult {
-                call: tool_call,
+                call: tool_call.clone(),
                 result: result_preview,
                 status,
+                envelope,
             };
             let _ = input_tx_inner
                 .send(InputEvent::ToolResult(tool_result))

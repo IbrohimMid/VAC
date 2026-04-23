@@ -82,8 +82,7 @@ pub enum SubmitEvent {
     ToolResult {
         id: String,
         name: String,
-        success: bool,
-        summary: String,
+        payload: vac_tool_core::ToolResultEnvelope,
     },
 
     /// Submit finished cleanly. `usage` carries final token/cost

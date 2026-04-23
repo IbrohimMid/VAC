@@ -298,14 +298,17 @@ fn submit_event_to_runtime_update(
         SubmitEvent::ToolResult {
             id,
             name,
-            success,
-            summary,
-        } => Some(RuntimeUpdate::ToolResult {
-            id,
-            name,
-            content: summary,
-            success,
-        }),
+            payload,
+        } => {
+            let success = payload.kind == vac_tool_core::ToolResultKind::Ok || payload.kind == vac_tool_core::ToolResultKind::Warning;
+            Some(RuntimeUpdate::ToolResult {
+                id,
+                name,
+                success,
+                content: payload.summary.clone(),
+                envelope: Some(payload),
+            })
+        }
         SubmitEvent::Aborted { reason } => Some(RuntimeUpdate::Failed(reason)),
         // Accepted/Compacted/SlashHandled/Finished are engine-layer
         // events without a RuntimeUpdate peer; drop.
