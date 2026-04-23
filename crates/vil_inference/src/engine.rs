@@ -142,9 +142,27 @@ pub struct InferenceEngine {
 
 #[allow(clippy::new_without_default)]
 impl InferenceEngine {
-    /// Construct an engine backed by the stub. Current default until a real
-    /// backend ships.
+    /// Construct an engine with the best available default backend:
+    /// Candle when the `candle` feature is enabled, Stub otherwise.
+    /// Previous callers got Stub unconditionally; post-M11 the feature
+    /// flag is the selector so enabling `--features candle` flips the
+    /// default without touching call sites.
     pub fn new() -> Self {
+        #[cfg(feature = "candle")]
+        {
+            return Self::with_candle();
+        }
+        #[cfg(not(feature = "candle"))]
+        {
+            Self {
+                backend: Arc::new(StubBackend),
+            }
+        }
+    }
+
+    /// Force the stub backend regardless of features. Handy for tests
+    /// that want the no-op contract even when `candle` is enabled.
+    pub fn stub() -> Self {
         Self {
             backend: Arc::new(StubBackend),
         }
@@ -155,6 +173,23 @@ impl InferenceEngine {
     /// without touching callers.
     pub fn with_backend(backend: Arc<dyn InferenceBackend>) -> Self {
         Self { backend }
+    }
+
+    /// Select a backend by name, honouring env override
+    /// `VAC_INFERENCE_BACKEND` when `name` is `None`. Unknown or
+    /// unavailable names fall back to the default. Intended for CLI
+    /// `--backend <kind>` and config wiring.
+    pub fn from_name(name: Option<&str>) -> Self {
+        let picked = name
+            .map(|s| s.to_string())
+            .or_else(|| std::env::var("VAC_INFERENCE_BACKEND").ok())
+            .map(|s| s.to_ascii_lowercase());
+        match picked.as_deref() {
+            Some("stub") => Self::stub(),
+            #[cfg(feature = "candle")]
+            Some("candle") => Self::with_candle(),
+            _ => Self::new(),
+        }
     }
 
     /// Convenience constructor for the Candle backend (B1 primary). Only
@@ -194,24 +229,44 @@ mod tests {
 
     #[tokio::test]
     async fn stub_backend_reports_its_kind() {
-        let engine = InferenceEngine::new();
+        let engine = InferenceEngine::stub();
         assert_eq!(engine.backend_kind(), BackendKind::Stub);
     }
 
     #[tokio::test]
     async fn stub_infer_is_not_yet_implemented() {
-        let engine = InferenceEngine::new();
+        let engine = InferenceEngine::stub();
         let err = engine.infer("hello", 16).await.unwrap_err();
         assert!(matches!(err, InferenceError::InferenceFailed(_)));
     }
 
     #[tokio::test]
     async fn load_missing_file_returns_not_found() {
-        let engine = InferenceEngine::new();
+        let engine = InferenceEngine::stub();
         let err = engine
             .load_gguf(Path::new("/does/not/exist.gguf"))
             .await
             .unwrap_err();
         assert!(matches!(err, InferenceError::ModelNotFound(_)));
+    }
+
+    #[tokio::test]
+    async fn from_name_stub_forces_stub() {
+        let engine = InferenceEngine::from_name(Some("stub"));
+        assert_eq!(engine.backend_kind(), BackendKind::Stub);
+    }
+
+    #[cfg(feature = "candle")]
+    #[tokio::test]
+    async fn default_new_is_candle_when_feature_on() {
+        let engine = InferenceEngine::new();
+        assert_eq!(engine.backend_kind(), BackendKind::Candle);
+    }
+
+    #[cfg(not(feature = "candle"))]
+    #[tokio::test]
+    async fn default_new_is_stub_when_feature_off() {
+        let engine = InferenceEngine::new();
+        assert_eq!(engine.backend_kind(), BackendKind::Stub);
     }
 }
