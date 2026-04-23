@@ -41,6 +41,10 @@ impl Default for SignalListTool {
 
 #[async_trait]
 impl VilTool for SignalListTool {
+    fn spec(&self) -> vac_tool_core::ToolSpec {
+        crate::registry::default_spec(self)
+    }
+
     fn name(&self) -> &str {
         "signal_list"
     }

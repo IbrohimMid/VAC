@@ -114,6 +114,10 @@ fn build_summary(violations: &[CanonicalViolation], source_label: &str) -> Strin
 
 #[async_trait]
 impl VilTool for CanonicalLintTool {
+    fn spec(&self) -> vac_tool_core::ToolSpec {
+        crate::registry::default_spec(self)
+    }
+
     fn name(&self) -> &str {
         "canonical_lint"
     }

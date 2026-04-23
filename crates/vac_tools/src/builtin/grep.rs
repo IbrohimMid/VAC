@@ -44,6 +44,10 @@ pub struct GrepTool;
 
 #[async_trait]
 impl crate::registry::VilTool for GrepTool {
+    fn spec(&self) -> vac_tool_core::ToolSpec {
+        crate::registry::default_spec(self)
+    }
+
     fn name(&self) -> &'static str {
         "grep"
     }

@@ -163,6 +163,10 @@ fn issue_to_repair(issue: &str) -> Option<PlannedRepair> {
 
 #[async_trait]
 impl VilTool for VilRepairTool {
+    fn spec(&self) -> vac_tool_core::ToolSpec {
+        crate::registry::default_spec(self)
+    }
+
     fn name(&self) -> &str {
         "vil_repair"
     }

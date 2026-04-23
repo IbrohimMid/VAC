@@ -107,6 +107,10 @@ fn sanitize_branch_dir(branch: &str) -> String {
 
 #[async_trait]
 impl VilTool for EnterWorktreeTool {
+    fn spec(&self) -> vac_tool_core::ToolSpec {
+        crate::registry::default_spec(self)
+    }
+
     fn name(&self) -> &str {
         "enter_worktree"
     }
@@ -265,6 +269,10 @@ impl Default for ExitWorktreeTool {
 
 #[async_trait]
 impl VilTool for ExitWorktreeTool {
+    fn spec(&self) -> vac_tool_core::ToolSpec {
+        crate::registry::default_spec(self)
+    }
+
     fn name(&self) -> &str {
         "exit_worktree"
     }

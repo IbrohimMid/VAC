@@ -22,6 +22,10 @@ pub struct GlobTool;
 
 #[async_trait]
 impl crate::registry::VilTool for GlobTool {
+    fn spec(&self) -> vac_tool_core::ToolSpec {
+        crate::registry::default_spec(self)
+    }
+
     fn name(&self) -> &'static str {
         "glob"
     }

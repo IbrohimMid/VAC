@@ -459,6 +459,10 @@ mod tests {
 
     #[async_trait]
     impl VilTool for PrivacyMockTool {
+    fn spec(&self) -> vac_tool_core::ToolSpec {
+        crate::registry::default_spec(self)
+    }
+
         fn name(&self) -> &str {
             "privacy_mock_tool"
         }
@@ -584,6 +588,10 @@ mod tests {
 
         #[async_trait]
         impl VilTool for RemoteVerifiedTool {
+    fn spec(&self) -> vac_tool_core::ToolSpec {
+        crate::registry::default_spec(self)
+    }
+
             fn name(&self) -> &str {
                 "remote_verified_tool"
             }

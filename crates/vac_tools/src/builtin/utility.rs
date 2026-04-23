@@ -42,6 +42,10 @@ impl Default for SleepTool {
 
 #[async_trait]
 impl VilTool for SleepTool {
+    fn spec(&self) -> vac_tool_core::ToolSpec {
+        crate::registry::default_spec(self)
+    }
+
     fn name(&self) -> &str {
         "sleep"
     }
@@ -122,6 +126,10 @@ impl Default for SendMessageTool {
 
 #[async_trait]
 impl VilTool for SendMessageTool {
+    fn spec(&self) -> vac_tool_core::ToolSpec {
+        crate::registry::default_spec(self)
+    }
+
     fn name(&self) -> &str {
         "send_message"
     }

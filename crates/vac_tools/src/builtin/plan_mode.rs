@@ -47,6 +47,10 @@ impl Default for EnterPlanModeTool {
 
 #[async_trait]
 impl VilTool for EnterPlanModeTool {
+    fn spec(&self) -> vac_tool_core::ToolSpec {
+        crate::registry::default_spec(self)
+    }
+
     fn name(&self) -> &str {
         "enter_plan_mode"
     }
@@ -134,6 +138,10 @@ impl Default for ExitPlanModeTool {
 
 #[async_trait]
 impl VilTool for ExitPlanModeTool {
+    fn spec(&self) -> vac_tool_core::ToolSpec {
+        crate::registry::default_spec(self)
+    }
+
     fn name(&self) -> &str {
         "exit_plan_mode"
     }

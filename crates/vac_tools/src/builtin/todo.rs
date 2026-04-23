@@ -39,6 +39,10 @@ pub struct TodoTool {
 
 #[async_trait]
 impl crate::registry::VilTool for TodoTool {
+    fn spec(&self) -> vac_tool_core::ToolSpec {
+        crate::registry::default_spec(self)
+    }
+
     fn name(&self) -> &'static str {
         "todo_write"
     }

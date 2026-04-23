@@ -41,6 +41,10 @@ impl Default for SequentialThinkTool {
 
 #[async_trait]
 impl VilTool for SequentialThinkTool {
+    fn spec(&self) -> vac_tool_core::ToolSpec {
+        crate::registry::default_spec(self)
+    }
+
     fn name(&self) -> &str {
         "sequential_think"
     }

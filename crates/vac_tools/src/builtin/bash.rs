@@ -61,6 +61,20 @@ impl BashTool {
 
 #[async_trait]
 impl VilTool for BashTool {
+    fn spec(&self) -> vac_tool_core::ToolSpec {
+        crate::registry::default_spec(self)
+    }
+
+    fn inputs_equivalent(&self, a: &serde_json::Value, b: &serde_json::Value) -> bool {
+        // Dedups identical command strings
+        let a_cmd = a.get("command").and_then(|v| v.as_str());
+        let b_cmd = b.get("command").and_then(|v| v.as_str());
+        match (a_cmd, b_cmd) {
+            (Some(a), Some(b)) => a == b,
+            _ => false,
+        }
+    }
+
     fn name(&self) -> &str {
         "bash"
     }

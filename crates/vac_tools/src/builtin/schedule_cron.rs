@@ -73,6 +73,10 @@ fn validate_cron(expr: &str) -> Result<(), String> {
 
 #[async_trait]
 impl VilTool for ScheduleCronTool {
+    fn spec(&self) -> vac_tool_core::ToolSpec {
+        crate::registry::default_spec(self)
+    }
+
     fn name(&self) -> &str {
         "schedule_cron"
     }

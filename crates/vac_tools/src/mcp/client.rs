@@ -448,6 +448,10 @@ struct McpProxyTool {
 
 #[async_trait]
 impl VilTool for McpProxyTool {
+    fn spec(&self) -> vac_tool_core::ToolSpec {
+        crate::registry::default_spec(self)
+    }
+
     fn name(&self) -> &str {
         &self.prefixed_name
     }

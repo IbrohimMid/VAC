@@ -335,6 +335,14 @@ impl SearchTool {
 
 #[async_trait]
 impl VilTool for SearchTool {
+    fn spec(&self) -> vac_tool_core::ToolSpec {
+        crate::registry::default_spec(self)
+    }
+
+    fn search_read_classification(&self, _args: &serde_json::Value) -> crate::registry::SearchReadKind {
+        crate::registry::SearchReadKind::Search
+    }
+
     fn name(&self) -> &str {
         "search"
     }

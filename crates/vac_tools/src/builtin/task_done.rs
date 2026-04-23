@@ -28,6 +28,10 @@ impl TaskDoneTool {
 
 #[async_trait]
 impl VilTool for TaskDoneTool {
+    fn spec(&self) -> vac_tool_core::ToolSpec {
+        crate::registry::default_spec(self)
+    }
+
     fn name(&self) -> &str {
         "task_done"
     }

@@ -61,6 +61,10 @@ fn score(name: &str, description: &str, query: &str) -> u32 {
 
 #[async_trait]
 impl VilTool for ToolSearchTool {
+    fn spec(&self) -> vac_tool_core::ToolSpec {
+        crate::registry::default_spec(self)
+    }
+
     fn name(&self) -> &str {
         "tool_search"
     }

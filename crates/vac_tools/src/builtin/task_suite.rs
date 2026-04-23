@@ -107,6 +107,14 @@ impl Default for TaskCreateTool {
 
 #[async_trait]
 impl VilTool for TaskCreateTool {
+    fn spec(&self) -> vac_tool_core::ToolSpec {
+        crate::registry::default_spec(self)
+    }
+
+    fn interrupt_behavior(&self) -> crate::registry::InterruptBehavior {
+        crate::registry::InterruptBehavior::Block
+    }
+
     fn name(&self) -> &str {
         "task_create"
     }
@@ -193,6 +201,10 @@ impl Default for TaskListTool {
 
 #[async_trait]
 impl VilTool for TaskListTool {
+    fn spec(&self) -> vac_tool_core::ToolSpec {
+        crate::registry::default_spec(self)
+    }
+
     fn name(&self) -> &str {
         "task_list"
     }
@@ -278,6 +290,10 @@ impl Default for TaskStopTool {
 
 #[async_trait]
 impl VilTool for TaskStopTool {
+    fn spec(&self) -> vac_tool_core::ToolSpec {
+        crate::registry::default_spec(self)
+    }
+
     fn name(&self) -> &str {
         "task_stop"
     }
@@ -340,6 +356,10 @@ impl Default for TaskOutputTool {
 
 #[async_trait]
 impl VilTool for TaskOutputTool {
+    fn spec(&self) -> vac_tool_core::ToolSpec {
+        crate::registry::default_spec(self)
+    }
+
     fn name(&self) -> &str {
         "task_output"
     }

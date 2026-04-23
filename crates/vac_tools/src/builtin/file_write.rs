@@ -32,6 +32,24 @@ impl FileWriteTool {
 
 #[async_trait]
 impl VilTool for FileWriteTool {
+    fn spec(&self) -> vac_tool_core::ToolSpec {
+        crate::registry::default_spec(self)
+    }
+
+    async fn prepare_permission_matcher(
+        &self,
+        args: &serde_json::Value,
+    ) -> Box<dyn Fn(&str) -> bool + Send + Sync> {
+        let path = args.get("path").and_then(|v| v.as_str()).map(|s| s.to_string());
+        Box::new(move |target| {
+            if let Some(p) = &path {
+                target.contains(p)
+            } else {
+                true
+            }
+        })
+    }
+
     fn name(&self) -> &str {
         "file_write"
     }

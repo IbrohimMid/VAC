@@ -23,6 +23,10 @@ pub struct FileEditTool;
 
 #[async_trait]
 impl crate::registry::VilTool for FileEditTool {
+    fn spec(&self) -> vac_tool_core::ToolSpec {
+        crate::registry::default_spec(self)
+    }
+
     fn name(&self) -> &'static str {
         "file_edit"
     }

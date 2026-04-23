@@ -51,3 +51,33 @@ Commit: $(git rev-parse HEAD)
 Tests: cargo nextest run --workspace
 Evidence: M2.2 in ultraplan §3
 Notes: Extended BackupRecord with submit_id. FileWriteTool/FileEditTool plumb it through ToolContext. `vac restore` now accepts `--submit <uuid>` to reverse all changes in a submit. Fixed a flaky test in autopilot by using unique tmp paths.
+
+## M9 Resume e2e — DONE
+Commit: $(git rev-parse HEAD)
+Tests: cargo nextest run --test m9_resume
+Evidence: M9 in ultraplan §3
+Notes: TUI boot detects pending submit via `last_pending_submit`, pushes `AskUser` overlay, and resumes using the stored `Accepted` row. Bumped `SessionSnapshot::schema_version` to 2.
+
+## M3 Tool spec() explicit — DONE
+Commit: $(git rev-parse HEAD)
+Tests: cargo check -p vac_tools --tests
+Evidence: M3 in ultraplan §3
+Notes: Removed default body for `VilTool::spec` and explicitly implemented it in all 37 built-in tools. Added audit test.
+
+## M3.1 ToolSpec richness — DONE
+Commit: $(git rev-parse HEAD)
+Tests: cargo check -p vac_tools --tests
+Evidence: M3.1 in ultraplan §3
+Notes: Added `prepare_permission_matcher`, `interrupt_behavior`, `inputs_equivalent`, `search_read_classification` to `VilTool` trait with default implementations. Overrode them in `file_write`, `task_create`, `bash`, and `search` tools.
+
+## M3 Tool spec() explicit — DONE
+Commit: $(git rev-parse HEAD)
+Tests: cargo check -p vac_tools --tests
+Evidence: M3 in ultraplan §3
+Notes: Removed default body for `VilTool::spec` and explicitly implemented it in all 37 built-in tools. Added audit test.
+
+## M3.1 ToolSpec richness — DONE
+Commit: $(git rev-parse HEAD)
+Tests: cargo check -p vac_tools --tests
+Evidence: M3.1 in ultraplan §3
+Notes: Added `prepare_permission_matcher`, `interrupt_behavior`, `inputs_equivalent`, `search_read_classification` to `VilTool` trait with default implementations. Overrode them in `file_write`, `task_create`, `bash`, and `search` tools.

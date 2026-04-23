@@ -48,6 +48,10 @@ impl Default for VilLspQueryTool {
 
 #[async_trait]
 impl VilTool for VilLspQueryTool {
+    fn spec(&self) -> vac_tool_core::ToolSpec {
+        crate::registry::default_spec(self)
+    }
+
     fn name(&self) -> &str {
         "vil_lsp_query"
     }
