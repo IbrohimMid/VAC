@@ -1,150 +1,109 @@
 # VAC Implementation Plan — Post-Donor-Audit
 
 **Generated**: 2026-04-23
-**Basis**: Deep-dive of Trae Agent (ByteDance), Stakpak Agent, and
-`yasasbanukaofficial/claude-code` (leaked Anthropic Claude Code source)
-+ honest audit of VAC workspace at commit `ca392a4`.
+**Basis**: Deep-dive of Trae Agent (ByteDance), Stakpak Agent, and the
+leaked `yasasbanukaofficial/claude-code` TypeScript skeleton, cross-
+checked with an independent architectural review + honest audit of the
+VAC workspace at commit `ca392a4`.
 
-## 0. Executive summary
+## 0. Executive posture
 
-VAC sits at ~95% against the **original** four-donor adoption goal. A
-deeper inspection of the Claude Code leak (43 tools, 20+ services, 101
-slash commands, dedicated `memdir/` subsystem, rich rate-limit UX)
-raises the bar: the **real** production-grade agent cockpit is bigger
-than the earlier audit assumed.
+VAC sits at ~95% against the **original** four-donor adoption goal.
+The leaked Claude Code skeleton raises the bar: it is not a "CLI with
+low friction" but a **terminal application platform** with deliberate
+bootstrap, a dedicated session engine, a formal tool contract, rich
+permission layers, typed MCP, session continuity, and background
+memory consolidation.
 
-This document turns that gap into a **51-commit, 10-phase** plan
-organised by strategic value. The plan is intentionally prioritised:
-the first ~22 commits close VAC's biggest architectural gaps; the rest
-is elective polish.
+The bar moves, so the plan moves. The **strategic shift** compared to
+the earlier plan: stop thinking in terms of individual features to
+add, start thinking in terms of **five new crate-level boundaries**
+that VAC needs to draw to stay coherent as it grows.
 
-## 1. Consolidated donor findings
+Closing this gap **does not** mean VAC becomes "Claude Code in Rust."
+VAC keeps its unique advantages — VIL-native semantics, Rust/Ratatui
+maturity, signal pipeline — and uses the Claude Code arch lessons as
+structural discipline, not feature copy.
 
-### 1.1 Trae Agent (Python, ByteDance research)
+## 1. What to adopt, adapt, or ignore
 
-| Pattern | Takeaway for VAC |
+### Adopt directly
+
+| Pattern | Source | Why |
+|---|---|---|
+| Bootstrap discipline — `boot_critical` vs `boot_deferred` | CC `main.tsx`, Stakpak lifecycle | Scales with subsystem growth; VAC already headed here |
+| Session/query engine as a first-class subsystem | CC `QueryEngine.ts` | Submit-message lifecycle, transcript, replay, compact all in one place |
+| Formal tool contract | CC `Tool.ts` | Tools as first-class product objects with schema + permission + render metadata |
+| Typed MCP config + connection lifecycle | CC `services/mcp/types.ts` | Transport-agnostic, scoped config, state machine |
+| Background memory consolidation | CC `autoDream/` | Time-gated, lock-protected, forked subagent |
+| Permission / trust / isolation | CC + Stakpak | Explicit session-scoped context with destructive/read-only classification |
+| Session continuity (transcript-before-query) | CC QueryEngine | Sessions survive process death mid-request |
+| Tool-first refactor of modes | CC (EnterPlanMode / EnterWorktree / ScheduleCron as tools) | Uniform dispatch, MCP-visible, traceable |
+
+### Adopt with adaptation
+
+| Pattern | Adaptation for VAC |
 |---|---|
-| `trae-cli run "task"` one-shot | Add `vac run <prompt>` that auto-trajectories and exits |
-| YAML config over TOML | Optional YAML loader, keep TOML as primary |
-| Docker isolation mode | Wire `vac_runtime::IsolationManager` to `--docker <image>` |
-| Trajectory-first default | Flip `trace.enable = true` for `vac run` |
-| Multi-provider abstraction (6 providers via config) | Formalise provider matrix test harness |
-| 200-step default iteration cap | Already matches VAC's approach; confirm parity |
+| Large app state shell | Keep root state in `vac_tui_runtime`, but split into harder domain boundaries (operator / review / vil / bridge / memory) |
+| Proactive / detached planning modes | Bind to VIL workflows, not generic assistant |
+| Plugins / skills as first-class | Tie to VIL semantic model + operator workflow |
+| Memdir memory layout | VIL-aware: workflow learnings, runtime anomalies, semantic patterns, review threads — not generic `MEMORY.md` |
 
-### 1.2 Stakpak Agent (Rust, Ratatui, production DevOps)
+### Ignore
 
-| Pattern | Takeaway for VAC |
+| Pattern | Reason |
 |---|---|
-| 2-file TOML (`config.toml` + `autopilot.toml`) | VAC already uses this pattern — no change |
-| Autopilot cron schedules | Extend `AutopilotConfig.schedules: Vec<ScheduleEntry>` + runner |
-| Bulk tool-call approval | `approve_batch(Vec<Idx>)` handler + checkbox UI |
-| Rulebook URI scheme `stakpak://org/path.md` | Add `vac://rulebook/<id>` resolver |
-| MCP proxy + mTLS | Optional feature, low priority |
-| `up/down` lifecycle for 24/7 daemon | VAC has `autopilot up` (now dry-run default) — keep |
-| `-c <checkpoint-id>` resume | Contract tests for existing `state.checkpoint_path` |
-| Real-time progress streaming | Wire build/test stdout → SignalBuffer |
-| Reversible file ops with auto-backup | Hook `FileEditTool` → `.vac/backups/<hash>.snap` + `vac restore` |
-| ACP (Zed editor integration) | New `vac_acp` crate, `vac acp serve` subcommand |
+| Buddy / Tamagotchi companion (`buddy/CompanionSprite.tsx`) | Playful persona misaligns with VIL-native operator positioning |
+| Undercover mode (`undercover.ts`) | Anthropic-internal public-OSS masking; not applicable |
+| Anthropic-specific internal build assumptions | Not applicable |
+| Product identity, codenames, terminology | Not applicable |
 
-### 1.3 Claude Code (TypeScript/Ink, leaked skeleton)
+## 2. Subsystem → VAC crate mapping (definitive)
 
-The biggest source of new findings. Categorised:
+| Claude Code subsystem | VAC home | Action |
+|---|---|---|
+| Bootstrap / startup shell | `vac_cli` + `vac_tui_runtime` | Adopt — split boot-critical vs deferred |
+| App state shell | `vac_tui_runtime` | Adopt with internal domain refactor |
+| Query / session engine | **new crate `vac_session_engine`** | Adopt — home at crate level, not in TUI |
+| Formal tool contract | `vac_tools` + **new crate `vac_tool_core`** | Adopt |
+| Permission / trust / isolation | `vac_runtime` + `vac_tui_runtime` + `vac_cli` | Adopt as principle |
+| MCP / bridge / remote control | **new crate `vac_mcp_core`** + **new crate `vac_bridge`** | Adopt bertahap |
+| Semantic review / diff | `vac_changeset` + `vac_tui_runtime` | Already correct; deepen |
+| Session continuity / resume | `vac_session_control` + `vac_trajectory` | Already correct; add engine on top |
+| Project bootstrap context | `vac_ingest` | Already correct; make VIL-aware |
+| Background memory consolidation | **new crate `vac_memory`** + `vac_trajectory` + `vil_context` + `vil_rag` | Adopt, VIL-domain-aware |
+| Local inference backend | `vil_inference` | Already correct; unblock stub |
+| Rust semantic analysis | `vac_tools::rust_analysis` | Already correct; unblock stub |
+| Autopilot / proactive modes | `vac_runtime` | Already correct; TUI is observer |
+| Companion / buddy | — | Ignore |
+| Undercover mode | — | Ignore |
 
-#### 1.3.1 Tool-first architecture
+### New crates summary
 
-Plan mode, git worktree, schedules, background tasks — all are
-**tools**, not TUI tabs or subcommands. Uniform dispatch protocol.
+Five crates VAC needs to add, in priority order:
 
-| Tool (CC has) | VAC equivalent today |
-|---|---|
-| `EnterPlanModeTool` / `ExitPlanModeTool` | `WorkbenchTab::Plan` overlay (tab-coupled) |
-| `EnterWorktreeTool` / `ExitWorktreeTool` | None |
-| `ScheduleCronTool` | `vac autopilot` subcommand |
-| `TaskCreateTool`, `TaskListTool`, `TaskStopTool`, `TaskOutputTool`, `TaskGetTool`, `TaskUpdateTool` (6 tools) | Task tray workbench tab |
-| `ToolSearchTool` | None |
-| `SleepTool`, `SendMessageTool`, `SyntheticOutputTool` | None |
-| `SkillTool` | Slash commands |
-| `AgentTool` (subagent spawn, 233 KB file) | `vil_swarm` primitive, no UI |
+1. **`vac_session_engine`** — submit lifecycle, transcript, replay, compact, prompt assembly, slash processing
+2. **`vac_tool_core`** — ToolSpec, ToolCapability, ToolPermissionClass, ToolResultEnvelope, ToolRenderHints
+3. **`vac_mcp_core`** — transport config, connection lifecycle, typed server state, scoped config resolution
+4. **`vac_bridge`** — remote session, permission callbacks, inbound/outbound events, companion surface
+5. **`vac_memory`** — consolidator, memory policies, lock/state, summary generation contract
 
-#### 1.3.2 Services directory
+Why this order: session engine gives everything else a spine; tool core formalizes action surface; MCP + bridge separate remote plumbing from UI; memory lands last because it depends on the first four.
 
-Cross-cutting concerns as named services with lifecycle, not baked into
-event loop:
+## 3. Strategic principle
 
-| CC service | Size | Purpose | VAC gap |
-|---|---|---|---|
-| `autoDream/` | 11 KB | Background memory consolidator (orient → gather → consolidate → prune) | ❌ |
-| `compact/` | — | Semantic context compaction | ⚠ `context_budget` only trims |
-| `extractMemories/` | — | Relevance-ranked memory fetch | ❌ |
-| `vcr.ts` | 12 KB | Session VCR with scrubbing | ⚠ Recorder exists, no UI |
-| `notifier.ts` | 4 KB | Desktop notifications | ❌ |
-| `preventSleep.ts` | 5 KB | OS wake-lock during long tasks | ❌ |
-| `tokenEstimation.ts` | 17 KB | Client-side token count pre-flight | ❌ |
-| `tips/` | — | Inline contextual tips | ❌ |
-| `PromptSuggestion/` | — | Auto-suggest next prompt | ❌ |
-| `claudeAiLimits` + `rateLimitMessages` + `mockRateLimits` | ~58 KB | Rich rate-limit UX | ❌ |
-| `policyLimits/` | — | Policy enforcement | ⚠ `policy_gate` partial |
-| `settingsSync/` + `teamMemorySync/` | — | Cloud sync | ❌ (nice-to-have) |
+> Jangan mulai dari UI gimmick atau feature permukaan. Mulailah dari
+> **session engine, tool contract, MCP core, dan memory consolidation
+> boundary**.
 
-#### 1.3.3 `memdir/` — memory as directory tree
+This is the most important single sentence in the plan. Every time a
+feature is being added, ask: "does this belong in one of the five new
+crates, or is it polluting a crate that shouldn't own it?"
 
-Claude Code treats memory on disk as first-class:
+## 4. Phased plan
 
-```
-memdir/
-  findRelevantMemories.ts   // tf-idf + recency ranking
-  memdir.ts                 // directory scanner
-  memoryAge.ts              // age-based decay
-  memoryScan.ts             // walks directory tree
-  memoryTypes.ts            // typed memory entries
-  paths.ts                  // active / archived / team
-  teamMemPaths.ts           // shared memory paths
-  teamMemPrompts.ts         // prompts extracting team mems
-```
-
-Rather than struct-fields inside a `MemoryStore`, memory is a folder.
-This enables: age-decay, external editing, team sharing, grep-ability.
-
-**VAC today**: `vil_memory` is struct-field based. Pivot opportunity.
-
-#### 1.3.4 Slash commands: 101 commands with `/help` discoverability
-
-VAC has ~30. Most notable CC-only commands worth adopting:
-`/rewind` (session scrubbing), `/compact` (context), `/plan`,
-`/diff`, `/memory`, `/ultraplan` (remote deep plan),
-`/ctx_viz` (context visualisation), `/sandbox-toggle`.
-
-#### 1.3.5 Keybinding engine
-
-`keybindings/` = 14 files with schema, resolver, template, validate,
-match, parser. VAC has `keybindings_loader` + `ChordKeymap` — roughly
-equivalent maturity. No major gap.
-
-## 2. Strategic posture
-
-VAC's unique identity should remain:
-
-- **VIL-native semantics** (VWFD diff, `vil dev` bridge, validation
-  pipeline) — Claude Code has no equivalent
-- **Rust/Ratatui** mature TUI — no Ink dependency
-- **Signal pipeline** (OMNI lineage) — Claude Code doesn't expose
-  scoring/distillation as first-class primitives
-
-Three Claude Code patterns are **strategic** (not just cosmetic):
-
-1. **Tool-first refactor**: plan/worktree/schedule/task as tools gives
-   uniform tracing, discoverability via `ToolSearchTool`, and MCP
-   dispatch for free.
-2. **`memdir/` restructure**: lets VIL knowledge auto-accrue per
-   project across sessions. Aligns with VAC's "VIL-native control
-   surface" positioning.
-3. **Services layer**: extract cross-cutting concerns (autoDream,
-   tokenEstimation, notifier) from event loop into named services —
-   keeps event loop focused, enables independent evolution.
-
-Everything else is polish.
-
-## 3. Phased plan
+Each phase is tied to a strategic priority. The earlier-plan's
+"Fase 1–9" structure is preserved but now anchored to crate boundaries.
 
 ### Fase 0 — Cleanup (3 commits, ~1 hour) — MUST-HAVE
 
@@ -156,160 +115,193 @@ Immediate wins from audit findings.
 | 0.2 | `vil_expr` Cargo description + smoke test | `vil_expr/Cargo.toml`, `vil_expr/tests/` |
 | 0.3 | Extract remaining flat field clusters (ScrollState, StartupFlagsState) | `app/types/mod.rs` — drop flat count 39 → ~25 |
 
-### Fase 1 — Tool-first refactor (8 commits, ~2–3 days) — MUST-HAVE
+### Fase 1 — `vac_tool_core` + tool-first refactor (9 commits, ~3 days) — MUST-HAVE
 
-Closes the biggest Claude Code gap. Uniform tool protocol.
+Formal tool contract first, because every subsequent phase calls tools.
 
 | # | Milestone | File |
 |---|---|---|
-| 1.1 | `EnterPlanModeTool` + `ExitPlanModeTool` | `vac_tools/src/builtin/plan_mode_{enter,exit}.rs` |
-| 1.2 | `EnterWorktreeTool` + `ExitWorktreeTool` (git worktree wrap) | `vac_tools/src/builtin/worktree_{enter,exit}.rs` |
-| 1.3 | `ScheduleCronTool` — creates entries in `AutopilotConfig.schedules` | `vac_tools/src/builtin/schedule_cron.rs` |
-| 1.4 | Task suite: `TaskCreateTool`, `TaskListTool`, `TaskStopTool`, `TaskOutputTool` | `vac_tools/src/builtin/task_*.rs` |
-| 1.5 | `ToolSearchTool` — fuzzy search own `ToolRegistry` | `vac_tools/src/builtin/tool_search.rs` |
-| 1.6 | `SleepTool` + `SendMessageTool` (small utilities) | `vac_tools/src/builtin/{sleep,send_message}.rs` |
-| 1.7 | Plan-mode state cutover — plan enter/exit now routes through tools | `handlers/plan.rs` |
-| 1.8 | Contract tests (5 tests: tool-based plan mode, tool-based worktree, schedule writes config, ToolSearch fuzzy rank, agent can find `signal_tail` via search) | `tests/tool_first.rs` |
+| 1.0 | **New crate `vac_tool_core`** — `ToolSpec`, `ToolCapability` (`read_only`, `destructive`, `concurrency_safe`, `requires_runtime`, `requires_vil_semantics`), `ToolPermissionClass`, `ToolResultEnvelope`, `ToolRenderHints` | `crates/vac_tool_core/` |
+| 1.1 | Migrate `vac_tools::VilTool` trait → consume `vac_tool_core` types | `crates/vac_tools/src/registry.rs` |
+| 1.2 | `EnterPlanModeTool` + `ExitPlanModeTool` | `vac_tools/src/builtin/plan_mode_{enter,exit}.rs` |
+| 1.3 | `EnterWorktreeTool` + `ExitWorktreeTool` | `vac_tools/src/builtin/worktree_{enter,exit}.rs` |
+| 1.4 | `ScheduleCronTool` — creates entries in `AutopilotConfig.schedules` | `vac_tools/src/builtin/schedule_cron.rs` |
+| 1.5 | Task suite: `TaskCreateTool`, `TaskListTool`, `TaskStopTool`, `TaskOutputTool` | `vac_tools/src/builtin/task_*.rs` |
+| 1.6 | `ToolSearchTool` — fuzzy search own `ToolRegistry` | `vac_tools/src/builtin/tool_search.rs` |
+| 1.7 | `SleepTool` + `SendMessageTool` utilities | `vac_tools/src/builtin/{sleep,send_message}.rs` |
+| 1.8 | Contract tests — 6 tests covering tool-first plan mode, worktree, schedule writes config, ToolSearch ranking, agent finds `signal_tail`, permission class check | `tests/tool_first.rs` |
 
-**Outcome**: builtin tools 25 → ~33. Plan/worktree/schedule uniformly
-dispatchable via MCP or CLI. `vil_swarm` orchestrator benefits
-immediately from `ToolSearch` for tool selection.
+**Outcome**: builtin tools 25 → ~33. Uniform contract. Plan/worktree/
+schedule dispatchable via MCP or CLI. `vac_tool_core` becomes stable
+surface for downstream engine.
 
-### Fase 2 — Services layer (7 commits, ~2–3 days) — SHOULD-HAVE
+### Fase 2 — `vac_session_engine` + engine split (8 commits, ~3 days) — MUST-HAVE
 
-New module `vac_core::services/` (or new crate `crates/vac_services/`)
-for named background services.
+Session engine becomes the spine. Everything else subscribes.
 
-| # | Milestone | Pattern source |
+| # | Milestone | File |
 |---|---|---|
-| 2.1 | `autoDream` — orient → gather → consolidate → prune; writes `.vac/memory/auto.md` every N sessions | CC |
-| 2.2 | `compact` — semantic context compaction (not just drop) | CC |
-| 2.3 | `extractMemories` — tf-idf + recency ranking for current task | CC |
-| 2.4 | `notifier` — `notify-rust` cross-platform desktop notifications (autopilot fail, long task done) | CC |
-| 2.5 | `preventSleep` — OS wake-lock (`caffeinate`/`xset`) during long agent turns | CC |
-| 2.6 | `tokenEstimation` — `tiktoken-rs` pre-flight count; warn banner on budget overflow | CC |
-| 2.7 | `promptSuggestion` — inline suggestions in input bar footer | CC |
+| 2.0 | **New crate `vac_session_engine`** — `SubmitContext`, `SubmitEvent`, `TranscriptWriter`, `SlashProcessor`, `CompactBoundary`, `UsageTracker` | `crates/vac_session_engine/` |
+| 2.1 | Extract submit-message lifecycle from `vac_tui_runtime/update.rs` → `vac_session_engine::submit_one` | — |
+| 2.2 | Transcript-before-query durability: write stub transcript entry before calling LLM | `vac_session_engine::transcript` |
+| 2.3 | Slash-command processing moved out of TUI → `vac_session_engine::slash` | — |
+| 2.4 | Compact boundary: semantic compaction hook at `context_budget` threshold | `vac_session_engine::compact` |
+| 2.5 | VIL semantic context injection hook — engine-level hook so CLI headless mode also gets VIL context | — |
+| 2.6 | CLI wire-up: `vac run` now drives `vac_session_engine` directly (no TUI) | `vac_cli/src/commands/run.rs` |
+| 2.7 | Contract tests: submit → transcript persists → kill mid-request → resume sees last state | `tests/session_engine_resume.rs` |
 
-### Fase 3 — Memdir restructure (5 commits, ~1–2 days) — MUST-HAVE
+**Outcome**: CLI headless + TUI interactive both drive the same engine.
+Sessions survive process death mid-request.
 
-VIL-native angle: project-specific knowledge auto-accrues per session.
+### Fase 3 — App shell internal refactor (5 commits, ~2 days) — MUST-HAVE
+
+Final AppState reshape based on Claude Code's `AppStateStore` pattern
+but with harder domain boundaries (don't recreate their state bloat).
+
+| # | Milestone | File |
+|---|---|---|
+| 3.1 | Create `OperatorState` grouping — focus, scroll, cursor, current model | `app/types/operator.rs` |
+| 3.2 | Create `BridgeState` placeholder (populated by Fase 5) | `app/types/bridge.rs` |
+| 3.3 | Flat fields → sub-struct: activity_scroll, spinner_frame, scroll, sessions_selected_idx | `app/types/mod.rs` |
+| 3.4 | AppState field count audit — target <20 flat, >25 sub-struct | — |
+| 3.5 | Contract test: `AppState::new` + structural invariants | — |
+
+### Fase 4 — `vac_memory` + memdir restructure (7 commits, ~2–3 days) — MUST-HAVE
+
+VIL-domain-aware memory consolidation. Biggest strategic differentiator.
+
+| # | Milestone | File |
+|---|---|---|
+| 4.0 | **New crate `vac_memory`** — consolidator, policies, lock/state, summary contract | `crates/vac_memory/` |
+| 4.1 | `MemoryScanner` — walks `.vac/memory/{active,archived,team}/<topic>.md`, parses YAML frontmatter, scores age + relevance | `vac_memory::scanner` |
+| 4.2 | `find_relevant(prompt, k) -> Vec<Memory>` — tf-idf + recency | `vac_memory::query` |
+| 4.3 | `Consolidator` — time-gated, session-count-gated, lock-protected, runs as `tokio::spawn` forked worker | `vac_memory::consolidator` |
+| 4.4 | VIL-domain summary policies: workflow learnings, runtime anomalies, VIL semantic patterns, unresolved review threads | `vac_memory::policy` |
+| 4.5 | `vil_memory` migration — struct-field `WorkingMemory`/`EpisodicMemory` → `vac_memory` consumer | — |
+| 4.6 | Consolidator completion summary → operator-visible banner | `vac_tui_runtime::banner` + `vac_memory::report` |
+
+**Outcome**: VIL knowledge auto-accrues per project. Memory survives
+sessions as directory tree, greppable + team-shareable.
+
+### Fase 5 — `vac_mcp_core` + `vac_bridge` (8 commits, ~3 days) — SHOULD-HAVE
+
+Bridge/MCP core separated from UI glue.
+
+| # | Milestone | File |
+|---|---|---|
+| 5.0 | **New crate `vac_mcp_core`** — `McpTransportKind`, `McpConfigScope`, `McpConnectionState` machine, scoped config resolution | `crates/vac_mcp_core/` |
+| 5.1 | Migrate `vac_tools::mcp` client → `vac_mcp_core` consumer | — |
+| 5.2 | Connection state machine: `connected` / `failed` / `needs_auth` / `pending` / `disabled` | `vac_mcp_core::state` |
+| 5.3 | **New crate `vac_bridge`** — remote session, permission callback layer, inbound/outbound events | `crates/vac_bridge/` |
+| 5.4 | ACP (Agent Client Protocol) server skeleton — `vac acp serve` subcommand | `vac_bridge::acp` |
+| 5.5 | Permission mediation: bridge request → operator prompt → response | `vac_bridge::permission` |
+| 5.6 | Startup glue: `vac_cli` / `vac_tui_runtime` just consume `vac_bridge` + `vac_mcp_core` | — |
+| 5.7 | Integration test: bridge request permission + operator approve round-trip | — |
+
+### Fase 6 — Stakpak production patterns (6 commits, ~2 days) — MUST-HAVE
 
 | # | Milestone | Scope |
 |---|---|---|
-| 3.1 | New crate `crates/vac_memdir/` | directory-based memory store |
-| 3.2 | `MemoryScanner` — walks `.vac/memory/{active,archived,team}/<topic>.md`, parses YAML frontmatter, scores age + relevance | mirrors `memdir/memoryScan.ts` |
-| 3.3 | `find_relevant(prompt, k) -> Vec<Memory>` | mirrors `memdir/findRelevantMemories.ts` |
-| 3.4 | `vil_memory` migration — existing `WorkingMemory`/`EpisodicMemory` now consume memdir; backward-compat shim | — |
-| 3.5 | `autoDream` (2.1) writes into memdir — closes the loop | — |
+| 6.1 | Autopilot cron profiles | `AutopilotConfig.schedules: Vec<ScheduleEntry>` + `vac_runtime::cron_runner` |
+| 6.2 | Bulk approval handler | `approve_batch(Vec<Idx>)` + checkbox list UI |
+| 6.3 | Rulebook URI scheme `vac://rulebook/<id>` | `vac_core::rulebook::uri_resolver` |
+| 6.4 | Auto-backup reversible edits | Hook `FileEditTool`/`FileWriteTool` → `.vac/backups/<hash>.snap`; `vac restore --backup <hash>` CLI |
+| 6.5 | Checkpoint resumption contract tests | 3 tests around `state.checkpoint_path` + resume flow |
+| 6.6 | Real-time build streaming | `BuildStreamer` wrapping `cargo build` stdout → SignalBuffer keyed `build:<job>` |
 
-### Fase 4 — Stakpak production patterns (6 commits, ~2 days) — MUST-HAVE
+### Fase 7 — Services layer + UX polish (9 commits, ~2–3 days) — SHOULD-HAVE
+
+Cross-cutting concerns as named services.
+
+| # | Milestone | Source |
+|---|---|---|
+| 7.1 | `autoDream`-equivalent consolidator (already in `vac_memory`; this wires to TUI visibility) | CC |
+| 7.2 | `notifier` — `notify-rust` cross-platform desktop notifications | CC |
+| 7.3 | `preventSleep` — OS wake-lock during long agent turns | CC |
+| 7.4 | `tokenEstimation` — `tiktoken-rs` pre-flight count + budget warn | CC |
+| 7.5 | `promptSuggestion` — inline suggestions in input bar footer | CC |
+| 7.6 | Rate-limit UX: `RateLimitState`, `rate_limit_messages.rs` (10-message bank), mock via env var | CC |
+| 7.7 | Streaming tokens footer with tok/s sparkline | CC + refinement |
+| 7.8 | Inline diff viewer polish (syntect + hunk fold) | CC |
+| 7.9 | `/rewind` command + session scrubbing UI | CC `vcr.ts` |
+
+### Fase 8 — Trae research ergonomics (4 commits, ~1 day) — NICE-TO-HAVE
 
 | # | Milestone | Scope |
 |---|---|---|
-| 4.1 | Autopilot cron profiles | `AutopilotConfig.schedules: Vec<ScheduleEntry>` + `vac_runtime::cron_runner` |
-| 4.2 | Bulk approval handler | `approve_batch(Vec<Idx>)` + checkbox list UI in Approvals tab |
-| 4.3 | Rulebook URI scheme `vac://rulebook/<id>` | `vac_core::rulebook::uri_resolver` |
-| 4.4 | Auto-backup reversible edits | Hook `FileEditTool`/`FileWriteTool` → `.vac/backups/<hash>.snap`; `vac restore --backup <hash>` CLI |
-| 4.5 | ACP server mode | New crate `vac_acp` exposing Agent Client Protocol over stdio |
-| 4.6 | Checkpoint resumption contract tests | 3 tests around `state.checkpoint_path` + resume flow |
+| 8.1 | `vac run "task"` one-shot subcommand | spawns engine directly (uses Fase 2 engine) |
+| 8.2 | `--docker <image>` flag | wires `IsolationManager::spawn_background` |
+| 8.3 | Trajectory-first default for `vac run` | auto-sets `trace.enable = true` |
+| 8.4 | Multi-provider test harness `tests/provider_matrix.rs` | mocked providers, all 6 code paths exercised |
 
-### Fase 5 — Trae research ergonomics (4 commits, ~1 day) — NICE-TO-HAVE
-
-| # | Milestone | Scope |
-|---|---|---|
-| 5.1 | `vac run "task"` one-shot subcommand | spawns agent, writes trajectory, exits |
-| 5.2 | `--docker <image>` flag | wires `IsolationManager::spawn_background` |
-| 5.3 | Trajectory-first default for `vac run` | auto-sets `trace.enable = true` |
-| 5.4 | Multi-provider test harness `tests/provider_matrix.rs` | mocked providers, all 6 code paths exercised |
-
-### Fase 6 — Rate-limit + token UX (4 commits, ~1 day) — SHOULD-HAVE
-
-| # | Milestone | Scope |
-|---|---|---|
-| 6.1 | `RateLimitState` in AppState + `services/rate_limit_messages.rs` | 4-tier: ok/warn/soft/hard |
-| 6.2 | Pre-flight token estimation + budget warning banner | wires Fase 2.6 into input submit path |
-| 6.3 | Mock rate-limit testing infra | `VAC_MOCK_RATE_LIMIT=<tier>` env flag |
-| 6.4 | Rate-limit friendly messages copy bank | 10 canned messages, rotation policy |
-
-### Fase 7 — Claude Code UX polish (5 commits, ~1–2 days) — SHOULD-HAVE
-
-| # | Milestone | Scope |
-|---|---|---|
-| 7.1 | `/help` slash command discoverability | fuzzy search on command names + descriptions |
-| 7.2 | Streaming tokens footer with tok/s sparkline | extends existing streaming scaffold |
-| 7.3 | Inline diff viewer polish (syntect highlight + hunk fold) | rewrite `workbench/review.rs` renderer |
-| 7.4 | `/rewind` command + session scrubbing UI | new overlay; sources from existing recorder |
-| 7.5 | `vac_remote` crate skeleton (RemoteSessionManager + WebSocket) | server impl follow-up |
-
-### Fase 8 — Unblock scaffold crates (5 commits, ~3–4 days) — NICE-TO-HAVE
+### Fase 9 — Unblock scaffold crates (5 commits, ~3–4 days) — NICE-TO-HAVE
 
 | # | Crate | MVP target |
 |---|---|---|
-| 8.1 | `vil_inference` | Candle backend loads GGUF, runs 1 prompt; remove `b"stub"` |
-| 8.2 | `vil_rag` HNSW | `instant-distance` index build + query; `IndexStore::flush` persists to redb |
-| 8.3 | `vac_tools/rust_analysis` | Real rust-analyzer binary via `portable-pty`; `initialize` + diagnostics |
-| 8.4 | `vil_validate` | 10 unit tests covering the 10 VIL passes |
-| 8.5 | `vac_ingest` ranking upgrade | tf-idf or BM25 over file paths |
+| 9.1 | `vil_inference` | Candle backend loads GGUF, runs 1 prompt; remove `b"stub"` |
+| 9.2 | `vil_rag` HNSW | `instant-distance` index build + query; `IndexStore::flush` persists to redb |
+| 9.3 | `vac_tools/rust_analysis` | Real rust-analyzer binary via `portable-pty`; `initialize` + diagnostics |
+| 9.4 | `vil_validate` | 10 unit tests covering the 10 VIL passes |
+| 9.5 | `vac_ingest` ranking upgrade | tf-idf or BM25 over file paths |
 
-### Fase 9 — Integration & docs (4 commits, ~1 day) — NICE-TO-HAVE
+### Fase 10 — Integration & docs (4 commits, ~1 day) — NICE-TO-HAVE
 
 | # | Item |
 |---|---|
-| 9.1 | End-to-end integration test `tests/vac_end_to_end.rs` |
-| 9.2 | Benchmark matrix `benches/suite.rs` — stable SLAs |
-| 9.3 | Deployment guide `docs/deployment.md` |
-| 9.4 | Architecture diagram (Mermaid) `docs/architecture.md` |
+| 10.1 | End-to-end integration test `tests/vac_end_to_end.rs` — boot → run task via mock LLM → assert trajectory + signal DB + memory consolidation |
+| 10.2 | Benchmark matrix `benches/suite.rs` — stable SLAs including engine submit latency |
+| 10.3 | Deployment guide `docs/deployment.md` |
+| 10.4 | Architecture diagram (Mermaid) `docs/architecture.md` — 31-crate layered view with the 5 new crates |
 
-## 4. Summary table
+## 5. Summary
 
-| Fase | Theme | Commits | Effort | Priority |
-|---|---|---|---|---|
-| 0 | Cleanup | 3 | 1 h | must-have |
-| 1 | Tool-first refactor | 8 | 2–3 d | must-have |
-| 2 | Services layer | 7 | 2–3 d | should-have |
-| 3 | Memdir restructure | 5 | 1–2 d | must-have |
-| 4 | Stakpak production | 6 | 2 d | must-have |
-| 5 | Trae ergonomics | 4 | 1 d | nice-to-have |
-| 6 | Rate-limit / token UX | 4 | 1 d | should-have |
-| 7 | Claude Code UX polish | 5 | 1–2 d | should-have |
-| 8 | Unblock scaffolds | 5 | 3–4 d | nice-to-have |
-| 9 | Integration + docs | 4 | 1 d | nice-to-have |
-| **Total** | | **51** | **~15–19 days** | |
+| Fase | Theme | Commits | Effort | Priority | New crate? |
+|---|---|---|---|---|---|
+| 0 | Cleanup | 3 | 1 h | must | — |
+| 1 | `vac_tool_core` + tool-first | 9 | 3 d | must | ✓ vac_tool_core |
+| 2 | `vac_session_engine` | 8 | 3 d | must | ✓ vac_session_engine |
+| 3 | App shell refactor | 5 | 2 d | must | — |
+| 4 | `vac_memory` + memdir | 7 | 2–3 d | must | ✓ vac_memory |
+| 5 | `vac_mcp_core` + `vac_bridge` | 8 | 3 d | should | ✓ vac_mcp_core + vac_bridge |
+| 6 | Stakpak production | 6 | 2 d | must | — |
+| 7 | Services + UX polish | 9 | 2–3 d | should | — |
+| 8 | Trae ergonomics | 4 | 1 d | nice | — |
+| 9 | Unblock scaffolds | 5 | 3–4 d | nice | — |
+| 10 | Integration + docs | 4 | 1 d | nice | — |
+| **Total** | | **68** | **~23–27 days** | | **5 new crates** |
 
-### Must-have slice (~22 commits, ~7–9 days)
+### Slice recommendations
 
-Fase 0 + 1 + 3 + 4. Closes every strategic gap.
+- **Foundation slice** (must-have only): Fase 0 + 1 + 2 + 3 + 4 + 6 = **38 commits, ~11–14 days**. Gets all five strategic crate boundaries in place (except bridge).
+- **Daily-driver slice** (must + should): adds 5 + 7 = **55 commits, ~16–20 days**. Production-ready + polished UX.
+- **Maximalist slice** (all): 68 commits, ~23–27 days.
 
-### Should-have slice (~38 commits, ~12–15 days)
+## 6. Expected end-state after foundation slice
 
-Adds Fase 2, 6, 7. Daily-driver polish.
+- **5 of the 5 strategic crates exist and are wired**: `vac_tool_core`,
+  `vac_session_engine`, `vac_memory` (bridge + mcp_core land in Fase 5
+  should-have).
+- **Builtin tools**: 25 → ~33. Plan/worktree/schedule as tools.
+- **AppState**: ~81 fields → ~45 with cleaner domain boundaries.
+- **Sessions**: survive mid-request process death via
+  transcript-before-query durability.
+- **Memory**: auto-accrues to `.vac/memory/` directory, VIL-aware
+  consolidation.
+- **Strategic positioning**: VAC is now structurally a "terminal
+  application platform" with clear boundaries, not a TUI that grew
+  too big.
 
-### Maximalist slice (51 commits, ~15–19 days)
+## 7. Decisions pending
 
-Adds Fase 5, 8, 9. Research ergonomics + scaffold unblock + full docs.
+1. **Slice choice**: foundation / daily-driver / maximalist?
+2. **Fase 5 timing**: if ACP / remote bridge has business urgency,
+   promote to must-have.
+3. **New-crate naming**: `vac_session_engine` or `vac_engine`?
+   `vac_tool_core` or `vac_tools_core`? Bikeshed briefly, then lock.
+4. **Fase 9 scaffolds**: `vil_inference` Candle is largest single item
+   — willing to invest 1–2 days, or ship as remain-stub?
 
-## 5. Expected end-state
-
-After the must-have + should-have slices (~38 commits):
-
-- **Builtin tools**: 25 → **~40** (close to Claude Code's 43)
-- **Background services**: 2 → **~9**
-- **Memory layer**: struct-fields → **directory scanner with age/relevance**
-- **Adoption against updated (post-leak) baseline**: ~95% → **~99%**
-- **Strategic positioning**: VIL-native control surface with tool-first
-  architecture, auto-accruing knowledge memdir, and rich UX polish —
-  a genuine hybrid of all four donors' best patterns without copying
-  any one of them wholesale.
-
-## 6. Decisions pending
-
-1. **Slice choice**: must-have / should-have / maximalist?
-2. **Fase 5 (Trae ergonomics)**: land or defer? One-shot `vac run`
-   overlaps with `vac interactive` — may be redundant.
-3. **Fase 8 scaffolds**: `vil_inference` Candle backend is the largest
-   single item — willing to invest 1–2 days, or ship as remain-stub?
-4. **Fase 4.5 (ACP server mode)**: land or defer? Zed integration is
-   valuable but not on critical path.
-
-Default recommendation: land **must-have + should-have** (38 commits,
-~12–15 days), defer nice-to-have until the bigger picture gels.
+Default recommendation: **foundation slice** (Fase 0–4 + 6, 38
+commits). Lands all five strategic crate boundaries that prevent
+sprawl + ships Stakpak production patterns. Defer Fase 5/7/8/9/10
+until foundation proves stable.
