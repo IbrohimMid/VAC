@@ -8,6 +8,11 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+/// Max bytes `thinkback` reads from the tail of a transcript. Large
+/// sessions can grow to hundreds of MB; tailing the last 2 MiB is
+/// plenty for a context-restoring glance.
+pub const THINKBACK_TAIL_BYTES: u64 = 2 * 1024 * 1024;
+
 pub async fn thinkback(project_root: PathBuf, limit: usize) -> anyhow::Result<()> {
     println!("── vac thinkback ─────────────────────────────");
     let sessions_dir = project_root.join(".vac").join("sessions");
@@ -16,7 +21,7 @@ pub async fn thinkback(project_root: PathBuf, limit: usize) -> anyhow::Result<()
         return Ok(());
     };
     println!("session: {}", newest.display());
-    let body = tokio::fs::read_to_string(&newest).await?;
+    let body = read_tail(&newest, THINKBACK_TAIL_BYTES).await?;
     let lines: Vec<&str> = body.lines().collect();
     let total = lines.len();
     let window = lines
@@ -25,11 +30,34 @@ pub async fn thinkback(project_root: PathBuf, limit: usize) -> anyhow::Result<()
         .take(limit.max(1))
         .copied()
         .collect::<Vec<&str>>();
-    println!("last {} of {} lines:", window.len(), total);
+    println!("last {} of {} lines in tail:", window.len(), total);
     for line in window.into_iter().rev() {
         println!("  {}", head(line, 240));
     }
     Ok(())
+}
+
+/// Read up to `max_bytes` from the end of `path`. Seeks to `len -
+/// max_bytes` and reads forward, so a multi-hundred-MB transcript
+/// doesn't allocate more than `max_bytes` in memory.
+async fn read_tail(path: &Path, max_bytes: u64) -> anyhow::Result<String> {
+    use tokio::io::{AsyncReadExt, AsyncSeekExt, SeekFrom};
+    let mut f = tokio::fs::File::open(path).await?;
+    let meta = f.metadata().await?;
+    let total = meta.len();
+    let start = total.saturating_sub(max_bytes);
+    f.seek(SeekFrom::Start(start)).await?;
+    let mut buf = Vec::with_capacity(max_bytes.min(total) as usize);
+    f.take(max_bytes).read_to_end(&mut buf).await?;
+    // Drop any leading partial line so the output doesn't begin
+    // mid-token when we landed inside a UTF-8 multibyte char.
+    let body = String::from_utf8_lossy(&buf).into_owned();
+    if start > 0 {
+        if let Some(nl) = body.find('\n') {
+            return Ok(body[nl + 1..].to_string());
+        }
+    }
+    Ok(body)
 }
 
 pub async fn ultraplan(_project_root: PathBuf, goal: String) -> anyhow::Result<()> {
@@ -136,7 +164,12 @@ async fn save_sandbox(path: &Path, cfg: &SandboxConfig) -> anyhow::Result<()> {
         tokio::fs::create_dir_all(parent).await?;
     }
     let raw = toml::to_string(cfg)?;
-    tokio::fs::write(path, raw).await?;
+    // Atomic write: a crash between write and rename leaves the
+    // previous sandbox.toml intact. Same-dir temp so rename is a
+    // single inode swap.
+    let tmp_path = path.with_extension("toml.tmp");
+    tokio::fs::write(&tmp_path, raw).await?;
+    tokio::fs::rename(&tmp_path, path).await?;
     Ok(())
 }
 
@@ -235,6 +268,44 @@ mod tests {
         tokio::time::sleep(std::time::Duration::from_millis(20)).await;
         tokio::fs::write(dir.join("new.jsonl"), "").await.unwrap();
         rewind(tmp.path().to_path_buf(), 5).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn read_tail_returns_full_body_when_file_fits() {
+        let tmp = tempfile::tempdir().unwrap();
+        let p = tmp.path().join("small.jsonl");
+        tokio::fs::write(&p, "one\ntwo\nthree\n").await.unwrap();
+        let out = read_tail(&p, 1024).await.unwrap();
+        assert_eq!(out, "one\ntwo\nthree\n");
+    }
+
+    #[tokio::test]
+    async fn read_tail_caps_bytes_for_huge_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        let p = tmp.path().join("big.jsonl");
+        // 4 MiB of `x`-lines; tail cap at 64 KiB.
+        let payload = "x\n".repeat(2_000_000);
+        tokio::fs::write(&p, payload).await.unwrap();
+        let out = read_tail(&p, 64 * 1024).await.unwrap();
+        // Allow up to 1 KiB of slack for partial-line trimming.
+        assert!(out.len() <= 64 * 1024);
+        assert!(out.ends_with("x\n"));
+    }
+
+    #[tokio::test]
+    async fn sandbox_save_is_atomic_and_leaves_no_tempfile() {
+        let tmp = tempfile::tempdir().unwrap();
+        let cfg_path = tmp.path().join(".vac/sandbox.toml");
+        sandbox_toggle(tmp.path().to_path_buf()).await.unwrap();
+        sandbox_toggle(tmp.path().to_path_buf()).await.unwrap();
+        // No leftover .toml.tmp sibling.
+        let parent = cfg_path.parent().unwrap();
+        let mut rd = tokio::fs::read_dir(parent).await.unwrap();
+        while let Some(entry) = rd.next_entry().await.unwrap() {
+            let name = entry.file_name();
+            let s = name.to_string_lossy();
+            assert!(!s.ends_with(".tmp"), "leftover temp: {s}");
+        }
     }
 
     #[tokio::test]

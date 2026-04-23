@@ -117,10 +117,13 @@ async fn count_sessions(dir: &std::path::Path) -> anyhow::Result<usize> {
 }
 
 async fn git_branch(root: &std::path::Path) -> Option<String> {
-    let out = std::process::Command::new("git")
+    // Async spawn so the CLI's tokio thread isn't pinned on git's
+    // fork+exec wait.
+    let out = tokio::process::Command::new("git")
         .args(["rev-parse", "--abbrev-ref", "HEAD"])
         .current_dir(root)
         .output()
+        .await
         .ok()?;
     if !out.status.success() {
         return None;

@@ -17,9 +17,9 @@
 //! - `vac perf-issue`        → list large files + slow-test markers.
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use serde::Serialize;
+use tokio::process::Command;
 
 /// How a review command renders. The CLI passes `--format json` for
 /// structured output.
@@ -410,10 +410,14 @@ pub(crate) fn scan_additions(
 }
 
 async fn run_git(root: &Path, args: &[&str]) -> Option<String> {
+    // Async process spawn: `std::process::Command` in an async fn
+    // would block the tokio executor thread for the full duration
+    // of git's run. The tokio equivalent yields around the wait.
     let out = Command::new("git")
         .args(args)
         .current_dir(root)
         .output()
+        .await
         .ok()?;
     if !out.status.success() {
         return None;
@@ -454,6 +458,11 @@ async fn git_last_commit_diff(root: &Path) -> String {
         .unwrap_or_default()
 }
 
+/// Slow-test / large-file walkers share this read cap so a symlink
+/// to `/dev/zero` — or a genuinely huge log file — can't stall the
+/// command. 2 MiB is plenty for grep-shaped heuristics.
+const MAX_WALK_READ_BYTES: u64 = 2 * 1024 * 1024;
+
 async fn find_large_files(root: &Path, min_bytes: u64) -> Vec<LargeFile> {
     use std::collections::VecDeque;
     let mut out = Vec::new();
@@ -475,12 +484,18 @@ async fn find_large_files(root: &Path, min_bytes: u64) -> Vec<LargeFile> {
             if should_skip(&p) {
                 continue;
             }
-            let Ok(meta) = entry.metadata().await else {
+            // symlink_metadata does NOT follow links. A `.vac/link →
+            // /proc` would otherwise trigger unbounded descent.
+            let Ok(meta) = tokio::fs::symlink_metadata(&p).await else {
                 continue;
             };
-            if meta.is_dir() {
+            let ft = meta.file_type();
+            if ft.is_symlink() {
+                continue; // never traverse or read symlinks in the walker
+            }
+            if ft.is_dir() {
                 queue.push_back(p);
-            } else if meta.is_file() && meta.len() >= min_bytes {
+            } else if ft.is_file() && meta.len() >= min_bytes {
                 out.push(LargeFile {
                     path: p,
                     bytes: meta.len(),
@@ -493,8 +508,6 @@ async fn find_large_files(root: &Path, min_bytes: u64) -> Vec<LargeFile> {
 }
 
 async fn find_slow_test_markers(root: &Path) -> Vec<PathBuf> {
-    // Same bounded walk: look for `.rs` files containing the
-    // `#[ignore]` attribute or a `// slow` marker.
     use std::collections::VecDeque;
     let mut out = Vec::new();
     let mut queue: VecDeque<PathBuf> = VecDeque::new();
@@ -514,12 +527,19 @@ async fn find_slow_test_markers(root: &Path) -> Vec<PathBuf> {
             if should_skip(&p) {
                 continue;
             }
-            let Ok(meta) = entry.metadata().await else {
+            let Ok(meta) = tokio::fs::symlink_metadata(&p).await else {
                 continue;
             };
-            if meta.is_dir() {
+            let ft = meta.file_type();
+            if ft.is_symlink() {
+                continue;
+            }
+            if ft.is_dir() {
                 queue.push_back(p);
-            } else if meta.is_file() && p.extension().and_then(|e| e.to_str()) == Some("rs") {
+            } else if ft.is_file()
+                && p.extension().and_then(|e| e.to_str()) == Some("rs")
+                && meta.len() <= MAX_WALK_READ_BYTES
+            {
                 if let Ok(content) = tokio::fs::read_to_string(&p).await {
                     if content.contains("#[ignore]") || content.contains("// slow") {
                         out.push(p);
@@ -638,6 +658,52 @@ mod tests {
         tokio::fs::write(&big, vec![0u8; 2 * 1024 * 1024]).await.unwrap();
         let out = find_large_files(root, 1 * 1024 * 1024).await;
         assert!(out.iter().any(|f| f.path == big));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn perf_walker_does_not_follow_symlinks() {
+        use std::os::unix::fs::symlink;
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        // Large real file inside root.
+        let real = root.join("real.bin");
+        tokio::fs::write(&real, vec![0u8; 2 * 1024 * 1024]).await.unwrap();
+        // Symlink inside root pointing at the SAME file — if the
+        // walker follows links, we'd see two hits and the symlink
+        // path would show up in the report.
+        let link = root.join("twin.bin");
+        symlink(&real, &link).unwrap();
+        let out = find_large_files(root, 1 * 1024 * 1024).await;
+        // Only the real file, never the symlink.
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].path, real);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn slow_walker_skips_symlinked_rs_file() {
+        use std::os::unix::fs::symlink;
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let real = root.join("lib.rs");
+        tokio::fs::write(&real, "#[ignore] fn x() {}").await.unwrap();
+        let link = root.join("link.rs");
+        symlink(&real, &link).unwrap();
+        let out = find_slow_test_markers(root).await;
+        assert_eq!(out, vec![real]);
+    }
+
+    #[tokio::test]
+    async fn slow_walker_skips_oversize_rs_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        // A 3 MiB .rs file is above the MAX_WALK_READ_BYTES cap —
+        // walker must not OOM / hang on it.
+        let big = tmp.path().join("huge.rs");
+        let payload = vec![b'a'; (MAX_WALK_READ_BYTES as usize) + 1024];
+        tokio::fs::write(&big, payload).await.unwrap();
+        let out = find_slow_test_markers(tmp.path()).await;
+        assert!(out.is_empty(), "oversize .rs must be skipped");
     }
 
     #[tokio::test]
