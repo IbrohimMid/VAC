@@ -1,0 +1,48 @@
+# R6 (blueprint) — doc link-check gate.
+#
+# Catches the C1 / F10 audit class of failures: docs that reference
+# CLI subcommands or files that don't exist. Runs on PRs touching
+# docs/, CHANGELOG.md, or README.md so the common case (typo in a
+# README link) fails before merge.
+#
+# Non-blocking today (continue-on-error: true) because some docs
+# reference external URLs that may throttle. Flip to a required
+# status after a burn-in period.
+
+name: Doc Links
+
+on:
+  pull_request:
+    paths:
+      - "docs/**"
+      - "CHANGELOG.md"
+      - "README.md"
+      - ".github/workflows/doc-links.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: doc-links-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lychee:
+    name: Link check (lychee)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run lychee
+        uses: lycheeverse/lychee-action@v2
+        continue-on-error: true
+        with:
+          # Skip example.com / localhost; require HTTPS-only reads.
+          args: >-
+            --verbose
+            --no-progress
+            --exclude-path target
+            --exclude-all-private
+            --max-concurrency 4
+            --timeout 20
+            docs/ CHANGELOG.md README.md
+          # Cache the result so subsequent runs inside the window
+          # don't re-hammer upstream.
+          fail: false
