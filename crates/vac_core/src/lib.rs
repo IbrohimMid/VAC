@@ -10,6 +10,7 @@ pub mod engine;
 pub mod error;
 pub mod lsp;
 pub mod policy_gate;
+pub mod policy_limits;
 pub mod prelude;
 pub mod profile;
 pub mod rulebook;
@@ -28,6 +29,10 @@ pub use config::{
 };
 pub use detector::{VilArchetype, VilProjectProfile};
 pub use engine::{EngineStatus, RuntimeUpdate, TaskHistoryEntry, VacEngine};
+pub use policy_limits::{
+    PolicyDecision, PolicyError, PolicyLimits, PolicySnapshot, PolicyTracker,
+    SubmitIntent, DEFAULT_POLICY_FILENAME, POLICY_ENV_VAR, POLICY_WINDOW_SECS,
+};
 pub use error::VacError;
 pub use policy_gate::{PolicyGateAction, PolicyGateDecision, PolicyGateMode};
 pub use profile::{ProfileName, ProfileOverride};
