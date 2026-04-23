@@ -235,6 +235,24 @@ pub fn handle_backend_event(
             state.push_activity(crate::app::ActivityKind::Status, "Agent state updated");
         }
         InputEvent::SetRuntimeJobs(jobs) => {
+            // L2 — per-job signal buffer: push a line for every observed
+            // job on each refresh, keyed by job id. Keeps a rolling
+            // transition log the MCP signal_tail tool can recall.
+            for job in &jobs {
+                let buf = state
+                    .runtime_signals
+                    .entry(job.id)
+                    .or_insert_with(|| {
+                        vac_signal::SignalBuffer::new(
+                            vac_signal::SignalStreamKind::RuntimeJob,
+                            200,
+                        )
+                    });
+                buf.push_line(format!(
+                    "{:?} kind={:?} retries={}",
+                    job.status, job.kind, job.retry_count
+                ));
+            }
             state.runtime.jobs = jobs;
             if state.runtime.selected_idx >= state.runtime.jobs.len() {
                 state.runtime.selected_idx = state.runtime.jobs.len().saturating_sub(1);

@@ -86,6 +86,7 @@ impl AppState {
             project_root: options.project_root,
             mcp_server_states: HashMap::new(),
             mcp_signals: HashMap::new(),
+            runtime_signals: HashMap::new(),
             session_loading: false,
             vil: VilState::default(),
             vwfd_inspector: crate::services::vwfd_inspector::VwfdInspectorState::default(),
@@ -444,6 +445,9 @@ impl AppState {
         }
         for (name, buf) in &self.mcp_signals {
             reg.register(format!("mcp:{name}"), buf);
+        }
+        for (id, buf) in &self.runtime_signals {
+            reg.register(format!("runtime:{id}"), buf);
         }
         reg
     }

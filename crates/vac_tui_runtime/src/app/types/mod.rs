@@ -188,6 +188,11 @@ pub struct AppState {
     /// Per-server signal buffers — status changes are pushed here so they
     /// flow through the signal pipeline (rewind + MCP retrieval tools).
     pub mcp_signals: HashMap<String, vac_signal::SignalBuffer>,
+    /// Rolling status log for runtime jobs — keyed by job id. One line
+    /// per observed status transition. Flows through signal_registry
+    /// as `runtime:<uuid>` so the signal_tail MCP tool + rewind pipeline
+    /// can recall it.
+    pub runtime_signals: HashMap<uuid::Uuid, vac_signal::SignalBuffer>,
     /// O1 — True from boot until the deferred session snapshot load
     /// completes (SessionSnapshotLoaded event). Drives the footer
     /// "restoring session..." placeholder.
