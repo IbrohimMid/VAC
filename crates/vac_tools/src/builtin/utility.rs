@@ -158,8 +158,28 @@ impl VilTool for SendMessageTool {
         let input: MessageInput = serde_json::from_value(args)
             .map_err(|e| ToolError::ExecutionFailed(format!("invalid arguments: {e}")))?;
 
+        // Bound content size to keep the append log from becoming an
+        // exfiltration channel or filling disk.
+        if input.content.len() > 16 * 1024 {
+            return Err(ToolError::ExecutionFailed(format!(
+                "content too long ({} > 16384 chars)",
+                input.content.len()
+            )));
+        }
+        // Reject newlines/control chars in topic — we inline it into
+        // the log format string; a newline would break log format.
+        if let Some(t) = &input.topic {
+            if t.len() > 64 || t.chars().any(|c| c.is_control()) {
+                return Err(ToolError::ExecutionFailed(
+                    "topic must be <=64 chars, no control characters".into(),
+                ));
+            }
+        }
+
         let dir = context.working_dir.join(".vac").join("messages");
-        let _ = std::fs::create_dir_all(&dir);
+        tokio::fs::create_dir_all(&dir)
+            .await
+            .map_err(|e| ToolError::ExecutionFailed(format!("mkdir: {e}")))?;
         let file = match input.channel {
             MessageChannel::SessionLog => {
                 dir.join(format!("{}.log", context.session_id))
@@ -174,13 +194,15 @@ impl VilTool for SendMessageTool {
         let topic = input.topic.as_deref().unwrap_or("-");
         let line = format!("[{ts}] [{topic}] {}\n", input.content);
 
-        use std::io::Write;
-        let mut f = std::fs::OpenOptions::new()
+        use tokio::io::AsyncWriteExt;
+        let mut f = tokio::fs::OpenOptions::new()
             .create(true)
             .append(true)
             .open(&file)
+            .await
             .map_err(|e| ToolError::ExecutionFailed(format!("open channel: {e}")))?;
         f.write_all(line.as_bytes())
+            .await
             .map_err(|e| ToolError::ExecutionFailed(format!("write: {e}")))?;
 
         Ok(serde_json::json!({
@@ -199,8 +221,10 @@ mod tests {
     use super::*;
     use crate::builtin::test_util::make_ctx;
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn sleep_caps_at_max() {
+        // tokio paused-time prevents this test from taking 60s wall-clock
+        // while still exercising the real clamp + sleep path.
         let tool = SleepTool::new();
         let ctx = make_ctx(std::env::temp_dir(), uuid::Uuid::new_v4());
         let out = tool

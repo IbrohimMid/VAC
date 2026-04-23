@@ -56,27 +56,30 @@ fn task_dir(ctx: &ToolContext, id: &str) -> std::path::PathBuf {
     ctx.working_dir.join(TASKS_DIR).join(id)
 }
 
-fn load_index(ctx: &ToolContext) -> Result<TaskIndex, ToolError> {
+async fn load_index(ctx: &ToolContext) -> Result<TaskIndex, ToolError> {
     let path = index_path(ctx);
-    if !path.exists() {
-        return Ok(TaskIndex::default());
+    match tokio::fs::read_to_string(&path).await {
+        Ok(content) => toml::from_str(&content)
+            .map_err(|e| ToolError::ExecutionFailed(format!("parse index: {e}"))),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(TaskIndex::default()),
+        Err(e) => Err(ToolError::ExecutionFailed(format!("read index: {e}"))),
     }
-    let content = std::fs::read_to_string(&path)
-        .map_err(|e| ToolError::ExecutionFailed(format!("read index: {e}")))?;
-    toml::from_str(&content).map_err(|e| ToolError::ExecutionFailed(format!("parse index: {e}")))
 }
 
-fn save_index(ctx: &ToolContext, idx: &TaskIndex) -> Result<(), ToolError> {
+async fn save_index(ctx: &ToolContext, idx: &TaskIndex) -> Result<(), ToolError> {
     let path = index_path(ctx);
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
+        tokio::fs::create_dir_all(parent)
+            .await
             .map_err(|e| ToolError::ExecutionFailed(format!("mkdir: {e}")))?;
     }
     let serialized = toml::to_string_pretty(idx)
         .map_err(|e| ToolError::ExecutionFailed(format!("serialize: {e}")))?;
-    std::fs::write(&path, serialized)
-        .map_err(|e| ToolError::ExecutionFailed(format!("write index: {e}")))
+    crate::builtin::worktree::atomic_write(&path, serialized.as_bytes()).await
 }
+
+const MAX_TITLE_LEN: usize = 256;
+const MAX_PROMPT_LEN: usize = 16 * 1024;
 
 // ── task_create ─────────────────────────────────────────────────────
 
@@ -135,8 +138,18 @@ impl VilTool for TaskCreateTool {
     ) -> Result<serde_json::Value, ToolError> {
         let input: CreateInput = serde_json::from_value(args)
             .map_err(|e| ToolError::ExecutionFailed(format!("invalid arguments: {e}")))?;
+        if input.title.is_empty() || input.title.len() > MAX_TITLE_LEN {
+            return Err(ToolError::ExecutionFailed(format!(
+                "title must be 1..={MAX_TITLE_LEN} chars"
+            )));
+        }
+        if input.prompt.is_empty() || input.prompt.len() > MAX_PROMPT_LEN {
+            return Err(ToolError::ExecutionFailed(format!(
+                "prompt must be 1..={MAX_PROMPT_LEN} chars"
+            )));
+        }
         let id = uuid::Uuid::new_v4().to_string();
-        let mut idx = load_index(context)?;
+        let mut idx = load_index(context).await?;
         idx.tasks.push(TaskEntry {
             id: id.clone(),
             title: input.title.clone(),
@@ -149,9 +162,11 @@ impl VilTool for TaskCreateTool {
             created_by_session: context.session_id.to_string(),
             rulebook: input.rulebook,
         });
-        save_index(context, &idx)?;
+        save_index(context, &idx).await?;
 
-        let _ = std::fs::create_dir_all(task_dir(context, &id));
+        tokio::fs::create_dir_all(task_dir(context, &id))
+            .await
+            .map_err(|e| ToolError::ExecutionFailed(format!("mkdir task: {e}")))?;
         Ok(serde_json::json!({
             "id": id,
             "title": input.title,
@@ -209,7 +224,7 @@ impl VilTool for TaskListTool {
             .get("state")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
-        let idx = load_index(context)?;
+        let idx = load_index(context).await?;
         let tasks: Vec<_> = idx
             .tasks
             .into_iter()
@@ -295,14 +310,14 @@ impl VilTool for TaskStopTool {
             .and_then(|v| v.as_str())
             .ok_or_else(|| ToolError::ExecutionFailed("missing id".into()))?
             .to_string();
-        let mut idx = load_index(context)?;
+        let mut idx = load_index(context).await?;
         let task = idx
             .tasks
             .iter_mut()
             .find(|t| t.id == id)
             .ok_or_else(|| ToolError::ExecutionFailed(format!("task {id} not found")))?;
         task.state = TaskState::Stopped;
-        save_index(context, &idx)?;
+        save_index(context, &idx).await?;
         Ok(serde_json::json!({ "id": id, "state": "stopped" }))
     }
 }
@@ -361,15 +376,19 @@ impl VilTool for TaskOutputTool {
         let n = args.get("n").and_then(|v| v.as_u64()).unwrap_or(50) as usize;
 
         let log_path = task_dir(context, &id).join("output.log");
-        if !log_path.exists() {
-            return Ok(serde_json::json!({
-                "id": id,
-                "lines": [],
-                "empty_reason": "no output yet",
-            }));
-        }
-        let content = std::fs::read_to_string(&log_path)
-            .map_err(|e| ToolError::ExecutionFailed(format!("read log: {e}")))?;
+        let content = match tokio::fs::read_to_string(&log_path).await {
+            Ok(c) => c,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(serde_json::json!({
+                    "id": id,
+                    "lines": [],
+                    "empty_reason": "no output yet",
+                }));
+            }
+            Err(e) => {
+                return Err(ToolError::ExecutionFailed(format!("read log: {e}")));
+            }
+        };
         let lines: Vec<&str> = content.lines().collect();
         let skip = lines.len().saturating_sub(n);
         let tail: Vec<String> = lines.iter().skip(skip).map(|s| s.to_string()).collect();

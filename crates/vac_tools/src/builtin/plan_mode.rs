@@ -83,9 +83,19 @@ impl VilTool for EnterPlanModeTool {
     ) -> Result<serde_json::Value, ToolError> {
         let input: EnterInput = serde_json::from_value(args)
             .map_err(|e| ToolError::ExecutionFailed(format!("invalid arguments: {e}")))?;
+        if let Some(r) = &input.reason {
+            if r.len() > 2000 {
+                return Err(ToolError::ExecutionFailed(format!(
+                    "reason too long ({} > 2000 chars)",
+                    r.len()
+                )));
+            }
+        }
         let lock_path = context.working_dir.join(LOCK_FILE);
         if let Some(parent) = lock_path.parent() {
-            let _ = std::fs::create_dir_all(parent);
+            tokio::fs::create_dir_all(parent)
+                .await
+                .map_err(|e| ToolError::ExecutionFailed(format!("create parent: {e}")))?;
         }
         let body = serde_json::json!({
             "entered_at_epoch_s": std::time::SystemTime::now()
@@ -95,12 +105,9 @@ impl VilTool for EnterPlanModeTool {
             "session_id": context.session_id.to_string(),
             "reason": input.reason,
         });
-        std::fs::write(
-            &lock_path,
-            serde_json::to_vec_pretty(&body)
-                .map_err(|e| ToolError::ExecutionFailed(e.to_string()))?,
-        )
-        .map_err(|e| ToolError::ExecutionFailed(format!("write lock: {e}")))?;
+        let bytes = serde_json::to_vec_pretty(&body)
+            .map_err(|e| ToolError::ExecutionFailed(e.to_string()))?;
+        crate::builtin::worktree::atomic_write(&lock_path, &bytes).await?;
 
         let out = TransitionOutput {
             mode: "plan",
@@ -157,7 +164,7 @@ impl VilTool for ExitPlanModeTool {
         context: &ToolContext,
     ) -> Result<serde_json::Value, ToolError> {
         let lock_path = context.working_dir.join(LOCK_FILE);
-        let removed = std::fs::remove_file(&lock_path).is_ok();
+        let removed = tokio::fs::remove_file(&lock_path).await.is_ok();
         let out = serde_json::json!({
             "mode": "execute",
             "lock_removed": removed,

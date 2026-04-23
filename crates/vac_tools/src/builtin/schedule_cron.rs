@@ -109,21 +109,40 @@ impl VilTool for ScheduleCronTool {
     ) -> Result<serde_json::Value, ToolError> {
         let input: Input = serde_json::from_value(args)
             .map_err(|e| ToolError::ExecutionFailed(format!("invalid arguments: {e}")))?;
+        if input.id.is_empty() || input.id.len() > 64 {
+            return Err(ToolError::ExecutionFailed(
+                "schedule id must be 1..=64 chars".into(),
+            ));
+        }
+        if !input
+            .id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+        {
+            return Err(ToolError::ExecutionFailed(
+                "schedule id must be [A-Za-z0-9_-]+".into(),
+            ));
+        }
+        if input.task.len() > 8192 {
+            return Err(ToolError::ExecutionFailed(
+                "task prompt too long (max 8192 chars)".into(),
+            ));
+        }
         validate_cron(&input.cron)
             .map_err(|e| ToolError::ExecutionFailed(format!("invalid cron: {e}")))?;
 
         let path = context.working_dir.join(SCHEDULES_FILE);
         if let Some(parent) = path.parent() {
-            let _ = std::fs::create_dir_all(parent);
+            tokio::fs::create_dir_all(parent)
+                .await
+                .map_err(|e| ToolError::ExecutionFailed(format!("create parent: {e}")))?;
         }
 
-        let mut doc: ScheduleDoc = if path.exists() {
-            let content = std::fs::read_to_string(&path)
-                .map_err(|e| ToolError::ExecutionFailed(format!("read schedules: {e}")))?;
-            toml::from_str(&content)
-                .map_err(|e| ToolError::ExecutionFailed(format!("parse schedules: {e}")))?
-        } else {
-            ScheduleDoc::default()
+        let mut doc: ScheduleDoc = match tokio::fs::read_to_string(&path).await {
+            Ok(content) => toml::from_str(&content)
+                .map_err(|e| ToolError::ExecutionFailed(format!("parse schedules: {e}")))?,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => ScheduleDoc::default(),
+            Err(e) => return Err(ToolError::ExecutionFailed(format!("read schedules: {e}"))),
         };
 
         if doc.schedules.iter().any(|s| s.id == input.id) {
@@ -148,8 +167,7 @@ impl VilTool for ScheduleCronTool {
 
         let serialized = toml::to_string_pretty(&doc)
             .map_err(|e| ToolError::ExecutionFailed(format!("serialize: {e}")))?;
-        std::fs::write(&path, serialized)
-            .map_err(|e| ToolError::ExecutionFailed(format!("write: {e}")))?;
+        crate::builtin::worktree::atomic_write(&path, serialized.as_bytes()).await?;
 
         let out = serde_json::json!({
             "id": input.id,
