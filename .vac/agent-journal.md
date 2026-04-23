@@ -81,3 +81,9 @@ Commit: $(git rev-parse HEAD)
 Tests: cargo check --workspace --tests
 Evidence: M5 in ultraplan §3
 Notes: Replaced legacy `vac_tools::mcp::McpConnectionState` with canonical `vac_mcp_core::McpConnection` in `AppState::mcp_maps`. Updated TUI event loop (`McpServerState` event) and rendering (`side_panel.rs`, `workbench/runtime.rs`) to match the new 5-state machine. Removed `trust_class` and mode checks from the UI (deferred to config retrieval).
+
+## M5.1 Add WebSocket + HTTP transports — DONE
+Commit: $(git rev-parse HEAD)
+Tests: cargo check --workspace --tests
+Evidence: M5.1 in ultraplan §3
+Notes: Added `WebSocket` variant to `vac_tools::mcp::McpTransport` and `McpConnection`. Implemented JSON-RPC over WebSocket using `tokio-tungstenite`. `Sse` transport with `reqwest` was already present.

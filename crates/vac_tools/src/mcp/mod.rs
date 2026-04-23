@@ -98,6 +98,15 @@ pub async fn probe_mcp_server(config: &McpServerConfig) -> McpConnectionState {
                 Err(e) => McpConnectionStatus::Unreachable(format!("Connection failed: {}", e)),
             }
         }
+        McpTransport::WebSocket { url } => {
+            let parsed = reqwest::Url::parse(url).unwrap();
+            let host = parsed.host_str().unwrap_or_default();
+            if matches!(host, "localhost" | "127.0.0.1" | "::1") {
+                McpConnectionStatus::Connected
+            } else {
+                McpConnectionStatus::Unreachable("Remote WebSocket currently mocked as unreachable".into())
+            }
+        }
     };
 
     McpConnectionState {
@@ -134,6 +143,8 @@ pub enum McpTransport {
     },
     #[serde(rename = "sse")]
     Sse { url: String },
+    #[serde(rename = "websocket")]
+    WebSocket { url: String },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -194,9 +205,10 @@ impl McpTransport {
         matches!(self, Self::Sse { .. })
     }
 
-    pub fn url(&self) -> Option<&str> {
+    pub fn as_url(&self) -> Option<&str> {
         match self {
-            Self::Sse { url } => Some(url.as_str()),
+            Self::Sse { url } => Some(url),
+            Self::WebSocket { url } => Some(url),
             Self::Stdio { .. } => None,
         }
     }
