@@ -35,6 +35,8 @@ async fn registers_all_builtin_tools() {
             "bash",
             "canonical_lint",
             "cargo",
+            "enter_plan_mode",
+            "exit_plan_mode",
             "file_edit",
             "file_read",
             "file_write",

@@ -8,6 +8,7 @@ pub mod git;
 pub mod glob;
 pub mod grep;
 pub mod knowledge;
+pub mod plan_mode;
 pub mod search;
 pub mod sequential_think;
 pub mod signal_list;
@@ -42,6 +43,8 @@ pub async fn register_builtin_tools(registry: &Arc<ToolRegistry>) -> Result<(), 
     registry.register(search::SearchTool::new()).await?;
     registry.register(signal_tail::SignalTailTool::new()).await?;
     registry.register(signal_list::SignalListTool::new()).await?;
+    registry.register(plan_mode::EnterPlanModeTool::new()).await?;
+    registry.register(plan_mode::ExitPlanModeTool::new()).await?;
     registry.register(task_done::TaskDoneTool::new()).await?;
     registry.register(todo::TodoTool::default()).await?;
     registry
