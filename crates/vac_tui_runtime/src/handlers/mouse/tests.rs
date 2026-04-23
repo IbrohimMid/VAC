@@ -185,7 +185,7 @@ fn mouse_click_on_sessions_row_selects_and_focuses() {
 
     let handled = dispatch_click(&mut state, &tx, 5, 18);
     assert!(handled, "sessions row click must dispatch");
-    assert_eq!(state.sessions_selected_idx, 1);
+    assert_eq!(state.operator.sessions_selected_idx, 1);
     assert_eq!(state.workbench_tab, WorkbenchTab::Sessions);
     assert_eq!(state.focus, WorkspaceFocus::Workbench);
 }

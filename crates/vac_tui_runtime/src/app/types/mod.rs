@@ -2,11 +2,9 @@
 
 use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
-use uuid::Uuid;
 
 use crate::services::Toast;
 use crate::services::textarea::TextArea;
-use crate::types::*;
 
 // Re-export all submodule types
 pub mod approvals;
@@ -21,6 +19,7 @@ pub mod file_picker;
 pub mod lsp_ui;
 pub mod scroll;
 pub mod message_ui;
+pub mod operator;
 pub mod paste;
 pub mod pins;
 pub mod quit;
@@ -52,6 +51,7 @@ pub use file_picker::FilePickerState;
 pub use lsp_ui::LspUiState;
 pub use scroll::ScrollState;
 pub use message_ui::MessageUiState;
+pub use operator::OperatorState;
 pub use paste::PasteState;
 pub use pins::PinsState;
 pub use quit::QuitState;
@@ -121,8 +121,9 @@ pub struct AppState {
     pub session_title: Option<String>,
     pub checkpoint_path: Option<PathBuf>,
 
-    // Model state
-    pub current_model: Option<Model>,
+    /// Operator-facing cursor/selection state (current model,
+    /// selected indices across overlays, open message-action popup).
+    pub operator: OperatorState,
 
     // Mouse capture
 
@@ -147,10 +148,6 @@ pub struct AppState {
     // Switchers (isolation, profile, rulebook, model)
     pub switchers: SwitchersState,
 
-    // Message Action Popup
-    pub message_action_popup_selected: usize,
-    pub message_action_target_id: Option<Uuid>,
-
     pub changeset_store: vac_changeset::ChangesetStore,
     pub modified_files: Vec<String>,
 
@@ -158,7 +155,6 @@ pub struct AppState {
     // Git-review domain state
     pub review: ReviewState,
 
-    pub sessions_selected_idx: usize,
     // Runtime / agent-scheduler domain state
     pub runtime: RuntimeState,
 
@@ -297,7 +293,6 @@ pub struct AppState {
 
     // ── Theme (PR-T5) ────────────────────────────────────────────────────────
     pub theme: crate::services::theme::Theme,
-    pub theme_picker_selected: usize,
 
     // ── Session Resume Overlay (PR-T8) ───────────────────────────────────────
     pub session_resume: SessionResumeState,

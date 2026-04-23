@@ -10,7 +10,7 @@ use crate::services::textarea::TextArea;
 use crate::types::*;
 
 use super::{
-    ActivityItem, ActivityKind, AppState, ApprovalsState, AskUserState, AtMentionState, BannerState, ChangesetUiState, CommandPaletteState, FileIndexState, FilePickerState, HelperCommand, LoadingStateManager, LspUiState, MessageUiState, PasteState, PinsState, QuitState, ScrollState, SessionResumeState, SidePanelState, StreamingState, SwitchersState, TaskTrayState, ViewFlagsState, VilDevState, WorkbenchChromeState,
+    ActivityItem, ActivityKind, AppState, ApprovalsState, AskUserState, AtMentionState, BannerState, ChangesetUiState, CommandPaletteState, FileIndexState, FilePickerState, HelperCommand, LoadingStateManager, LspUiState, MessageUiState, OperatorState, PasteState, PinsState, QuitState, ScrollState, SessionResumeState, SidePanelState, StreamingState, SwitchersState, TaskTrayState, ViewFlagsState, VilDevState, WorkbenchChromeState,
     Message, QueueMetrics, RenderMetrics, ReviewItem, ReviewItemStatus, ReviewState, RuntimeState,
     ShellState, StartupSnapshot, TokenUsage, VilLogEntry, VilState,
     WorkbenchTab, WorkspaceFocus,
@@ -55,7 +55,10 @@ impl AppState {
             sessions: Vec::new(),
             session_title: None,
             checkpoint_path: options.checkpoint_path,
-            current_model: options.model,
+            operator: OperatorState {
+                current_model: options.model,
+                ..OperatorState::default()
+            },
             approvals: ApprovalsState::default(),
             shell: ShellState::default(),
             streaming: StreamingState::default(),
@@ -63,13 +66,10 @@ impl AppState {
             command_palette: CommandPaletteState::default(),
             commands: Self::default_commands(),
             switchers: SwitchersState::default(),
-            message_action_popup_selected: 0,
-            message_action_target_id: None,
             changeset_store: vac_changeset::ChangesetStore::new(),
             modified_files: Vec::new(),
             workbench_tab: WorkbenchTab::Approvals,
             review: ReviewState::default(),
-            sessions_selected_idx: 0,
             runtime: RuntimeState::default(),
             activity: Vec::new(),
             toasts: Vec::new(),
@@ -109,7 +109,6 @@ impl AppState {
             overlay_manager: crate::overlay::OverlayManager::new(),
             task_tray: TaskTrayState::default(),
             theme: crate::services::theme::Theme::default(),
-            theme_picker_selected: 0,
             session_resume: SessionResumeState::default(),
             // Unit 9 (Wave 4.1) — VIL Issue Workstation
             // vil workbench fields are in vil: VilState::default()

@@ -8,7 +8,7 @@ pub fn open(ctx: &mut HandlerContext) -> HandlerResult {
     crate::overlay::open_overlay(ctx.state, crate::overlay::OverlayId::ModelSwitcher);
     ctx.state.switchers.model_filter.clear();
     let filtered = ctx.state.model_switcher_filtered();
-    ctx.state.switchers.model_selected = if let Some(current) = &ctx.state.current_model {
+    ctx.state.switchers.model_selected = if let Some(current) = &ctx.state.operator.current_model {
         filtered
             .iter()
             .position(|m| m.id == current.id)
@@ -55,7 +55,7 @@ pub fn submit_selected(ctx: &mut HandlerContext) -> HandlerResult {
     let filtered = ctx.state.model_switcher_filtered();
     if let Some(selected) = filtered.get(ctx.state.switchers.model_selected).cloned() {
         ctx.state.command_palette.recent_commands.add_model(selected.id.clone());
-        ctx.state.current_model = Some(selected.clone());
+        ctx.state.operator.current_model = Some(selected.clone());
         let _ = ctx
             .output_tx
             .try_send(OutputEvent::SwitchToModel(selected.clone()));

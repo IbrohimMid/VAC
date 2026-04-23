@@ -89,7 +89,7 @@ pub fn render_message_action_popup(f: &mut Frame, state: &AppState) {
     let mut item_lines: Vec<Line> = Vec::new();
 
     for (idx, action) in actions.iter().enumerate() {
-        let is_selected = idx == state.message_action_popup_selected;
+        let is_selected = idx == state.operator.message_action_popup_selected;
 
         let (highlight_word, rest_text) = match action {
             MessageAction::CopyMessage => ("Copy", " message text to clipboard"),
@@ -142,5 +142,5 @@ pub fn render_message_action_popup(f: &mut Frame, state: &AppState) {
 
 pub fn get_selected_action(state: &AppState) -> Option<MessageAction> {
     let actions = MessageAction::all();
-    actions.get(state.message_action_popup_selected).copied()
+    actions.get(state.operator.message_action_popup_selected).copied()
 }

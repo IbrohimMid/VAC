@@ -57,7 +57,7 @@ pub(super) fn render_header(f: &mut Frame, state: &mut AppState, area: Rect) {
         format!(
             "model {}",
             state
-                .current_model
+                .operator.current_model
                 .as_ref()
                 .map(|m| m.name.as_str())
                 .unwrap_or("-")

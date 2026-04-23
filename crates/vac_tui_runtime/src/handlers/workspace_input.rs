@@ -85,8 +85,8 @@ pub fn handle(state: &mut AppState, output_tx: &Sender<OutputEvent>, event: Inpu
         },
         InputEvent::MouseRightClick(_col, row) => {
             if let Some(msg_id) = message_at_row(state, row) {
-                state.message_action_popup_selected = 0;
-                state.message_action_target_id = Some(msg_id);
+                state.operator.message_action_popup_selected = 0;
+                state.operator.message_action_target_id = Some(msg_id);
                 crate::overlay::open_overlay(state, crate::overlay::OverlayId::MessageAction);
             }
         }

@@ -70,7 +70,7 @@ pub(crate) fn build_session_snapshot(
         .count();
 
     snapshot.active_model = state
-        .current_model
+        .operator.current_model
         .as_ref()
         .map(|model| model.name.clone())
         .or_else(|| state.startup.active_model.clone());
@@ -85,7 +85,7 @@ pub(crate) fn build_session_snapshot(
     snapshot.modified_files = state.modified_files.len();
     snapshot.tui_state.active_tab_idx =
         Some(crate::workbench::active_tab_index(&state.workbench_tab));
-    snapshot.tui_state.history_selection = Some(state.sessions_selected_idx);
+    snapshot.tui_state.history_selection = Some(state.operator.sessions_selected_idx);
     snapshot.tui_state.last_focus = Some(focus_to_label(state.focus).to_string());
     snapshot.tui_state.collapsed_sections = state
         .side_panel.section_collapsed
@@ -143,7 +143,7 @@ pub(crate) fn apply_session_snapshot(
         state.workbench_tab = crate::workbench::tab_from_index(idx);
     }
     if let Some(selection) = snapshot.tui_state.history_selection {
-        state.sessions_selected_idx = selection;
+        state.operator.sessions_selected_idx = selection;
     }
     if let Some(focus) = snapshot.tui_state.last_focus.as_deref() {
         state.focus = focus_from_label(focus);

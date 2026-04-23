@@ -66,7 +66,7 @@ fn handle_char(state: &mut AppState, output_tx: &Sender<OutputEvent>, c: char) {
         },
         WorkbenchTab::Sessions => {
             if c == 'r' {
-                if let Some(sel) = state.sessions.get(state.sessions_selected_idx).cloned() {
+                if let Some(sel) = state.sessions.get(state.operator.sessions_selected_idx).cloned() {
                     if sel.has_checkpoint {
                         let _ = output_tx.try_send(OutputEvent::ResumeSession(sel.id.clone()));
                         state.push_activity(
@@ -118,7 +118,7 @@ fn handle_up(state: &mut AppState, output_tx: &Sender<OutputEvent>) {
             state.approvals.approval_detail_scroll = 0;
         }
         WorkbenchTab::Sessions => {
-            state.sessions_selected_idx = state.sessions_selected_idx.saturating_sub(1);
+            state.operator.sessions_selected_idx = state.operator.sessions_selected_idx.saturating_sub(1);
         }
         WorkbenchTab::Agents => {
             state.runtime.agent_selected = state.runtime.agent_selected.saturating_sub(1);
@@ -153,8 +153,8 @@ fn handle_down(state: &mut AppState, output_tx: &Sender<OutputEvent>) {
             }
         }
         WorkbenchTab::Sessions => {
-            if state.sessions_selected_idx + 1 < state.sessions.len() {
-                state.sessions_selected_idx += 1;
+            if state.operator.sessions_selected_idx + 1 < state.sessions.len() {
+                state.operator.sessions_selected_idx += 1;
             }
         }
         WorkbenchTab::Agents => {
@@ -192,7 +192,7 @@ fn handle_submit(state: &mut AppState, output_tx: &Sender<OutputEvent>) {
             let _ = approval::approve_current(&mut ctx);
         }
         WorkbenchTab::Sessions => {
-            if let Some(sel) = state.sessions.get(state.sessions_selected_idx).cloned() {
+            if let Some(sel) = state.sessions.get(state.operator.sessions_selected_idx).cloned() {
                 let _ = output_tx.try_send(OutputEvent::SwitchToSession(sel.id));
                 state.push_activity(crate::app::ActivityKind::Session, "Switch session");
             }
@@ -210,7 +210,7 @@ fn handle_submit(state: &mut AppState, output_tx: &Sender<OutputEvent>) {
 
 /// Dispatch async session cleanup via OutputEvent (PR-W25-9).
 fn cleanup_session(state: &mut AppState, output_tx: &Sender<OutputEvent>) {
-    if let Some(sel) = state.sessions.get(state.sessions_selected_idx).cloned() {
+    if let Some(sel) = state.sessions.get(state.operator.sessions_selected_idx).cloned() {
         let _ = output_tx.try_send(OutputEvent::CleanupSession(sel.id));
         state.push_activity(crate::app::ActivityKind::Session, "Cleanup session");
     }

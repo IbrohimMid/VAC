@@ -216,7 +216,7 @@ pub fn on_task_completed(state: &mut AppState, result: vac_core::task::TaskResul
         .total_tokens
         .saturating_add(turn_tokens);
     state.context_usage_percent =
-        estimate_context_percent(state.current_model.as_ref(), turn_tokens);
+        estimate_context_percent(state.operator.current_model.as_ref(), turn_tokens);
 
     let mut content = result.summary.clone();
     let mut changeset_updated = false;

@@ -175,7 +175,7 @@ pub fn handle_backend_event(
             state.push_activity(crate::app::ActivityKind::Error, msg);
         }
         InputEvent::SetCurrentModel(model) => {
-            state.current_model = Some(model);
+            state.operator.current_model = Some(model);
         }
         InputEvent::AvailableModelsLoaded(models) => {
             state.switchers.available_models = models;
@@ -215,7 +215,7 @@ pub fn handle_backend_event(
         }
         InputEvent::SetSessions(sessions) => {
             state.sessions = sessions;
-            state.sessions_selected_idx = 0;
+            state.operator.sessions_selected_idx = 0;
             state.push_activity(crate::app::ActivityKind::Session, "Sessions updated");
         }
         InputEvent::SetSessionResumeList(entries) => {

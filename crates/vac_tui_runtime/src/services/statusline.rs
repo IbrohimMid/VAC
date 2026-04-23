@@ -9,7 +9,7 @@ use ratatui::{
 };
 
 pub(crate) fn model_label(state: &AppState) -> String {
-    match state.current_model.as_ref() {
+    match state.operator.current_model.as_ref() {
         Some(model) => model.name.clone(),
         None => match state.startup.default_model.as_ref() {
             Some(default) => format!("no active model selected (default: {default})"),

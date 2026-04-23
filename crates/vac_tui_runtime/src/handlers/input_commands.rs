@@ -436,7 +436,7 @@ fn dispatch_action(
             crate::overlay::open_overlay(state, crate::overlay::OverlayId::TaskTray);
         }
         ActionId::OpenThemePicker => {
-            state.theme_picker_selected = 0;
+            state.operator.theme_picker_selected = 0;
             crate::overlay::open_overlay(state, crate::overlay::OverlayId::ThemePicker);
         }
         ActionId::OpenSessionResume => {

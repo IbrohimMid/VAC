@@ -218,7 +218,7 @@ fn render_context_section(f: &mut Frame, state: &AppState, area: Rect, collapsed
     let mut lines = vec![header];
 
     let model_name = state
-        .current_model
+        .operator.current_model
         .as_ref()
         .map(|m| m.name.clone())
         .unwrap_or_else(|| "no active model selected".to_string());

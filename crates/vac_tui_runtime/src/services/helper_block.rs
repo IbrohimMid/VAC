@@ -30,7 +30,7 @@ pub fn welcome_messages(version: Option<&str>, state: &crate::app::AppState) -> 
     };
 
     // Phase 3: Show model recovery hint if no active model
-    let model_hint = if state.startup.active_model.is_none() && state.current_model.is_none() {
+    let model_hint = if state.startup.active_model.is_none() && state.operator.current_model.is_none() {
         "\n⚠ No active model configured. Use /model to select one."
     } else {
         ""

@@ -74,7 +74,7 @@ pub fn render_sessions_section(
         f.render_widget(Paragraph::new(""), scroll_area);
     } else {
         let selected_in_filtered = state
-            .sessions_selected_idx
+            .operator.sessions_selected_idx
             .min(total_filtered.saturating_sub(1));
 
         let max_scroll = total_filtered.saturating_sub(height);
@@ -116,7 +116,7 @@ pub fn render_sessions_section(
             };
 
             let text = format!(" {} . {}", formatted_datetime, session.title);
-            let is_selected = *original_idx == state.sessions_selected_idx;
+            let is_selected = *original_idx == state.operator.sessions_selected_idx;
 
             let style = if is_selected {
                 let fg = state

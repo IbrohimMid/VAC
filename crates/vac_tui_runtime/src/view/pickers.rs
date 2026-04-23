@@ -218,7 +218,7 @@ pub(super) fn render_theme_picker(f: &mut Frame, state: &mut AppState) {
                 },
                 preset.label()
             );
-            let style = if i == state.theme_picker_selected {
+            let style = if i == state.operator.theme_picker_selected {
                 state.theme.style(StyleKey::OverlaySelected)
             } else {
                 state.theme.style(StyleKey::Normal)

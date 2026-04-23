@@ -177,8 +177,8 @@ fn handle_global(
             true
         }
         InputEvent::ShowMessageActionPopup => {
-            state.message_action_popup_selected = 0;
-            state.message_action_target_id = state
+            state.operator.message_action_popup_selected = 0;
+            state.operator.message_action_target_id = state
                 .messages
                 .iter()
                 .rev()

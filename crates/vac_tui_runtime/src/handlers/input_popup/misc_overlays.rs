@@ -255,14 +255,14 @@ pub fn handle_theme_picker(state: &mut AppState, event: InputEvent) {
             crate::overlay::close_overlay(state, OverlayId::ThemePicker);
         }
         InputEvent::Up | InputEvent::ScrollUp => {
-            state.theme_picker_selected = state.theme_picker_selected.saturating_sub(1);
+            state.operator.theme_picker_selected = state.operator.theme_picker_selected.saturating_sub(1);
         }
         InputEvent::Down | InputEvent::ScrollDown => {
-            state.theme_picker_selected =
-                (state.theme_picker_selected + 1).min(count.saturating_sub(1));
+            state.operator.theme_picker_selected =
+                (state.operator.theme_picker_selected + 1).min(count.saturating_sub(1));
         }
         InputEvent::InputSubmitted => {
-            if let Some(&preset) = ThemePreset::ALL.get(state.theme_picker_selected) {
+            if let Some(&preset) = ThemePreset::ALL.get(state.operator.theme_picker_selected) {
                 state.theme = crate::services::theme::Theme::new(preset);
             }
             crate::overlay::close_overlay(state, OverlayId::ThemePicker);

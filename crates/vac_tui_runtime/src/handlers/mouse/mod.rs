@@ -149,7 +149,7 @@ pub fn dispatch_click(
     if let Some(idx) = sessions_hit
         && idx < state.sessions.len()
     {
-        state.sessions_selected_idx = idx;
+        state.operator.sessions_selected_idx = idx;
         state.focus = WorkspaceFocus::Workbench;
         state.workbench_tab = crate::app::WorkbenchTab::Sessions;
         return true;

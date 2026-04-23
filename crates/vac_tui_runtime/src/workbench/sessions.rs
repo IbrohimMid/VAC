@@ -29,7 +29,7 @@ impl WorkbenchTabView for SessionsTab {
             .iter()
             .enumerate()
             .map(|(idx, s)| {
-                let sel = idx == state.sessions_selected_idx;
+                let sel = idx == state.operator.sessions_selected_idx;
                 let style = if sel {
                     state
                         .theme
@@ -101,7 +101,7 @@ impl WorkbenchTabView for SessionsTab {
         }
 
         let mut lines: Vec<Line> = Vec::new();
-        if let Some(sel) = state.sessions.get(state.sessions_selected_idx) {
+        if let Some(sel) = state.sessions.get(state.operator.sessions_selected_idx) {
             lines.push(Line::from(vec![
                 Span::styled("Title: ", Style::default().add_modifier(Modifier::BOLD)),
                 Span::raw(sel.title.clone()),

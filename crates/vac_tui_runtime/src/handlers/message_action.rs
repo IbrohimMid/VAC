@@ -11,23 +11,23 @@ pub fn handle_event(ctx: &mut HandlerContext, event: InputEvent) -> HandlerResul
             crate::overlay::close_overlay(ctx.state, crate::overlay::OverlayId::MessageAction);
         }
         InputEvent::Up => {
-            if ctx.state.message_action_popup_selected > 0 {
-                ctx.state.message_action_popup_selected -= 1;
+            if ctx.state.operator.message_action_popup_selected > 0 {
+                ctx.state.operator.message_action_popup_selected -= 1;
             } else {
                 let num_actions = MessageAction::all().len();
-                ctx.state.message_action_popup_selected = num_actions.saturating_sub(1);
+                ctx.state.operator.message_action_popup_selected = num_actions.saturating_sub(1);
             }
         }
         InputEvent::Down => {
             let num_actions = MessageAction::all().len();
             if num_actions > 0 {
-                ctx.state.message_action_popup_selected =
-                    (ctx.state.message_action_popup_selected + 1) % num_actions;
+                ctx.state.operator.message_action_popup_selected =
+                    (ctx.state.operator.message_action_popup_selected + 1) % num_actions;
             }
         }
         InputEvent::InputSubmitted => {
             let actions = MessageAction::all();
-            if let Some(action) = actions.get(ctx.state.message_action_popup_selected) {
+            if let Some(action) = actions.get(ctx.state.operator.message_action_popup_selected) {
                 dispatch_action(ctx, *action);
             }
             crate::overlay::close_overlay(ctx.state, crate::overlay::OverlayId::MessageAction);
@@ -40,7 +40,7 @@ pub fn handle_event(ctx: &mut HandlerContext, event: InputEvent) -> HandlerResul
 fn dispatch_action(ctx: &mut HandlerContext, action: MessageAction) {
     match action {
         MessageAction::CopyMessage => {
-            if let Some(msg_id) = ctx.state.message_action_target_id {
+            if let Some(msg_id) = ctx.state.operator.message_action_target_id {
                 if let Some(msg) = ctx.state.messages.iter().find(|m| m.id == msg_id) {
                     if let Err(e) =
                         crate::services::clipboard_paste::copy_to_clipboard(&msg.content)
@@ -51,7 +51,7 @@ fn dispatch_action(ctx: &mut HandlerContext, action: MessageAction) {
             }
         }
         MessageAction::CopyCode => {
-            if let Some(msg_id) = ctx.state.message_action_target_id {
+            if let Some(msg_id) = ctx.state.operator.message_action_target_id {
                 if let Some(msg) = ctx.state.messages.iter().find(|m| m.id == msg_id) {
                     let mut code = String::new();
                     let mut in_block = false;
@@ -72,7 +72,7 @@ fn dispatch_action(ctx: &mut HandlerContext, action: MessageAction) {
             }
         }
         MessageAction::Regenerate => {
-            if let Some(msg_id) = ctx.state.message_action_target_id {
+            if let Some(msg_id) = ctx.state.operator.message_action_target_id {
                 if let Some(msg) = ctx.state.messages.iter().find(|m| m.id == msg_id) {
                     if msg.role == "user" {
                         ctx.state.input.clear();
@@ -85,7 +85,7 @@ fn dispatch_action(ctx: &mut HandlerContext, action: MessageAction) {
             }
         }
         MessageAction::RevertToMessage => {
-            if let Some(msg_id) = ctx.state.message_action_target_id {
+            if let Some(msg_id) = ctx.state.operator.message_action_target_id {
                 let _ = ctx.output_tx.try_send(OutputEvent::RevertToMessage(msg_id));
             }
         }

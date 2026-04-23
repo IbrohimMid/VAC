@@ -14,7 +14,7 @@ async fn session_snapshot_bridge_restores_tui_state() {
     let session_id = uuid::Uuid::new_v4();
 
     let mut state = make_state(root.clone(), session_id);
-    state.current_model = Some(Model {
+    state.operator.current_model = Some(Model {
         id: "claude-sonnet-4".to_string(),
         name: "claude-sonnet-4".to_string(),
         provider: "anthropic".to_string(),
@@ -28,7 +28,7 @@ async fn session_snapshot_bridge_restores_tui_state() {
     state.switchers.selected_rulebooks.insert("security".to_string());
     state.focus = crate::app::WorkspaceFocus::Workbench;
     state.workbench_tab = crate::app::WorkbenchTab::Runtime;
-    state.sessions_selected_idx = 3;
+    state.operator.sessions_selected_idx = 3;
     state
         .side_panel.section_collapsed
         .insert(crate::app::SidePanelSection::Runtime);
@@ -47,7 +47,7 @@ async fn session_snapshot_bridge_restores_tui_state() {
     apply_session_snapshot(&mut restored, &loaded);
 
     assert_eq!(
-        restored.current_model.as_ref().map(|m| m.name.as_str()),
+        restored.operator.current_model.as_ref().map(|m| m.name.as_str()),
         None
     );
     assert_eq!(
@@ -58,7 +58,7 @@ async fn session_snapshot_bridge_restores_tui_state() {
     assert!(restored.switchers.selected_rulebooks.contains("security"));
     assert_eq!(restored.focus, crate::app::WorkspaceFocus::Workbench);
     assert_eq!(restored.workbench_tab, crate::app::WorkbenchTab::Runtime);
-    assert_eq!(restored.sessions_selected_idx, 3);
+    assert_eq!(restored.operator.sessions_selected_idx, 3);
     assert!(
         restored
             .side_panel.section_collapsed
@@ -311,7 +311,7 @@ fn sessions_tab_r_resumes_checkpoint_for_selected_session() {
         snapshot_present: false,
         snapshot_stale: false,
     }];
-    state.sessions_selected_idx = 0;
+    state.operator.sessions_selected_idx = 0;
 
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::InputChanged('r'));
 
@@ -337,7 +337,7 @@ fn sessions_tab_r_toasts_when_no_checkpoint() {
         snapshot_present: false,
         snapshot_stale: false,
     }];
-    state.sessions_selected_idx = 0;
+    state.operator.sessions_selected_idx = 0;
 
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::InputChanged('r'));
 
