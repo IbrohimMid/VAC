@@ -213,13 +213,28 @@ impl PolicyTracker {
     /// Check an intent against the policy. Does NOT mutate — the
     /// caller follows up with `record_submit` on a successful
     /// allow, `record_tokens` after the LLM response.
+    ///
+    /// Zero-cap semantics: `max_submits_per_hour=0` blocks every
+    /// submit (legitimate freeze policy), `max_tokens_per_session=0`
+    /// blocks any submit that would consume > 0 tokens. Operators
+    /// who want "unlimited" must leave the field `None`, NOT `0`.
     pub async fn check(&self, intent: &SubmitIntent<'_>) -> PolicyDecision {
         // Denied-tool check short-circuits regardless of counters.
+        // Match is case-insensitive to mirror the MCP channel ACL
+        // (W4.2 audit fix) — `denied_tools=["Bash"]` rejects `bash`.
         if let Some(tool) = intent.tool {
-            if self.policy.denied_tools.iter().any(|t| t == tool) {
-                return PolicyDecision::Deny(format!(
+            let needle = tool.to_ascii_lowercase();
+            if self
+                .policy
+                .denied_tools
+                .iter()
+                .any(|t| t.to_ascii_lowercase() == needle)
+            {
+                let decision = PolicyDecision::Deny(format!(
                     "tool {tool} is denied by policy"
                 ));
+                trace_deny(&decision, "denied_tools");
+                return decision;
             }
         }
         let now = unix_secs(self.clock.now());
@@ -233,9 +248,11 @@ impl PolicyTracker {
                 .take_while(|t| now.saturating_sub(**t) < POLICY_WINDOW_SECS)
                 .count();
             if visible as u32 >= max {
-                return PolicyDecision::Deny(format!(
+                let decision = PolicyDecision::Deny(format!(
                     "max_submits_per_hour ({max}) exceeded"
                 ));
+                trace_deny(&decision, "max_submits_per_hour");
+                return decision;
             }
         }
         if let Some(max_tokens) = self.policy.max_tokens_per_session {
@@ -243,9 +260,11 @@ impl PolicyTracker {
                 .tokens_consumed
                 .saturating_add(intent.additional_tokens);
             if projected > max_tokens {
-                return PolicyDecision::Deny(format!(
+                let decision = PolicyDecision::Deny(format!(
                     "max_tokens_per_session ({max_tokens}) would be exceeded ({projected})"
                 ));
+                trace_deny(&decision, "max_tokens_per_session");
+                return decision;
             }
         }
         PolicyDecision::Allow
@@ -289,6 +308,20 @@ pub struct PolicySnapshot {
     pub submits_last_hour: u32,
     pub tokens_consumed: u64,
     pub policy: PolicyLimits,
+}
+
+/// Single place to emit a trace event when a policy check denies.
+/// Keeps the call sites terse and means operators can filter on
+/// `target=vac_core::policy_limits level=warn` to find every rejection.
+fn trace_deny(decision: &PolicyDecision, rule: &'static str) {
+    if let PolicyDecision::Deny(reason) = decision {
+        tracing::warn!(
+            target: "vac_core::policy_limits",
+            rule = rule,
+            reason = %reason,
+            "policy denied submit intent",
+        );
+    }
 }
 
 fn unix_secs(t: SystemTime) -> u64 {
@@ -396,6 +429,56 @@ mod tests {
             t.check(&intent(Some("grep"), 0)).await,
             PolicyDecision::Allow
         );
+    }
+
+    #[tokio::test]
+    async fn denied_tools_case_insensitive() {
+        // Post-audit: match the MCP channel ACL (W4.2) semantics.
+        let policy = PolicyLimits {
+            denied_tools: vec!["Bash".into()],
+            ..Default::default()
+        };
+        let t = PolicyTracker::new(policy);
+        // Policy spelled `Bash`; invocation arrives as `bash`.
+        match t.check(&intent(Some("bash"), 0)).await {
+            PolicyDecision::Deny(_) => {}
+            other => panic!("expected Deny, got {other:?}"),
+        }
+        // Explicit uppercase also denies.
+        match t.check(&intent(Some("BASH"), 0)).await {
+            PolicyDecision::Deny(_) => {}
+            other => panic!("expected Deny, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn zero_cap_submits_blocks_everything() {
+        // Documents the freeze-policy semantics — a typo or
+        // deliberate freeze of the tenant.
+        let policy = PolicyLimits {
+            max_submits_per_hour: Some(0),
+            ..Default::default()
+        };
+        let t = PolicyTracker::new(policy);
+        match t.check(&intent(None, 0)).await {
+            PolicyDecision::Deny(r) => assert!(r.contains("max_submits_per_hour")),
+            other => panic!("expected Deny, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn zero_cap_tokens_blocks_nonzero_intent() {
+        let policy = PolicyLimits {
+            max_tokens_per_session: Some(0),
+            ..Default::default()
+        };
+        let t = PolicyTracker::new(policy);
+        // Zero-token intent passes (trivially); positive denies.
+        assert_eq!(t.check(&intent(None, 0)).await, PolicyDecision::Allow);
+        match t.check(&intent(None, 1)).await {
+            PolicyDecision::Deny(r) => assert!(r.contains("max_tokens_per_session")),
+            other => panic!("expected Deny, got {other:?}"),
+        }
     }
 
     #[tokio::test]

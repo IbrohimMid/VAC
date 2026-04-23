@@ -158,8 +158,9 @@ impl RateLimitTracker {
 
     /// Record a 429 response. `retry_after` is the server-hinted
     /// sleep, or `None` when the response didn't include the header.
-    /// Returns the effective backoff (server hint + jitter, clamped
-    /// to `MAX_BACKOFF`).
+    /// Returns the effective backoff (server hint + jitter), with
+    /// the **final** sleep clamped to `MAX_BACKOFF` so a hostile
+    /// header plus jitter can never drift past the ceiling.
     pub async fn observe_429(
         &self,
         provider: &str,
@@ -168,11 +169,19 @@ impl RateLimitTracker {
         let base = retry_after.unwrap_or(DEFAULT_BACKOFF);
         let base = base.min(MAX_BACKOFF);
         let jitter = self.jitter_for(base);
-        let effective = base.saturating_add(jitter);
+        // Clamp AFTER adding jitter so the documented invariant —
+        // "effective backoff ≤ MAX_BACKOFF" — is actually held.
+        let effective = base.saturating_add(jitter).min(MAX_BACKOFF);
         let cooldown_until = self.clock.now() + effective;
         let mut guard = self.inner.lock().await;
         let entry = guard.entry(provider.to_string()).or_default();
         entry.cooldown_until = Some(cooldown_until);
+        tracing::debug!(
+            target: "vil_llm::rate_limit",
+            provider = provider,
+            backoff_ms = effective.as_millis() as u64,
+            "rate-limit cooldown applied",
+        );
         effective
     }
 
@@ -336,14 +345,20 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn backoff_is_clamped_to_max() {
+    async fn backoff_is_clamped_to_max_including_jitter() {
         let t = RateLimitTracker::new();
-        // Hostile header says "come back in a day" — we cap at
-        // MAX_BACKOFF before jittering.
-        let waited = t
-            .observe_429("openai", Some(Duration::from_secs(86400)))
-            .await;
-        assert!(waited <= MAX_BACKOFF + Duration::from_secs(30));
+        // Hostile header says "come back in a day" — post-audit we
+        // clamp the FINAL effective backoff to MAX_BACKOFF so jitter
+        // can't drift past it.
+        for _ in 0..50 {
+            let waited = t
+                .observe_429("openai", Some(Duration::from_secs(86400)))
+                .await;
+            assert!(
+                waited <= MAX_BACKOFF,
+                "effective backoff must be <= MAX_BACKOFF: {waited:?}",
+            );
+        }
     }
 
     #[tokio::test]
