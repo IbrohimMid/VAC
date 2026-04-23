@@ -71,6 +71,44 @@ pub struct RootObservables {
 pub const NOTIFICATION_RING_CAP: usize = 128;
 pub const BREADCRUMB_RING_CAP: usize = 256;
 
+/// Per-field length caps (chars, not bytes — keeps UTF-8 safe).
+/// Prevents a misbehaving subagent from OOMing the parent via a
+/// single giant notification / breadcrumb payload.
+pub const NOTIFICATION_MESSAGE_CAP: usize = 4 * 1024;
+pub const BREADCRUMB_FIELD_CAP: usize = 1 * 1024;
+pub const AGENT_IDENT_CAP: usize = 128;
+
+/// Truncate a string to `cap` chars, UTF-8-safe. Appends an ellipsis
+/// marker when truncation occurred AND there's room for it; for very
+/// small caps the marker is dropped so the returned string never
+/// exceeds `cap` chars.
+pub(crate) fn truncate_to_cap(s: &str, cap: usize) -> String {
+    if s.chars().count() <= cap {
+        return s.to_string();
+    }
+    const MARK: &str = "…[truncated]";
+    let mark_len = MARK.chars().count();
+    if cap <= mark_len {
+        // No room for the marker — return just the first `cap` chars.
+        return s.chars().take(cap).collect();
+    }
+    let keep = cap - mark_len;
+    let head: String = s.chars().take(keep).collect();
+    format!("{head}{MARK}")
+}
+
+/// Sanitise an identifier string — used for `agent`, `source`,
+/// `tool` fields where control chars would pollute transcripts and
+/// status renderings. Strips ASCII control chars (including `\n`,
+/// `\r`, `\t`) and caps length.
+pub(crate) fn sanitise_ident(s: &str, cap: usize) -> String {
+    let cleaned: String = s
+        .chars()
+        .filter(|c| !c.is_control())
+        .collect();
+    truncate_to_cap(&cleaned, cap)
+}
+
 /// Root handle. Clone is cheap — the `Arc` just bumps a refcount.
 #[derive(Debug, Clone)]
 pub struct AppStateRootHandle {
@@ -91,8 +129,23 @@ impl AppStateRootHandle {
     }
 
     /// Push a notification. Ring-buffered at `NOTIFICATION_RING_CAP`
-    /// so a runaway subagent can't OOM the root.
+    /// so a runaway subagent can't OOM the root. Fields are
+    /// sanitised + capped: `source` has control chars stripped and
+    /// is clipped to `AGENT_IDENT_CAP`; `message` is clipped to
+    /// `NOTIFICATION_MESSAGE_CAP` chars.
+    ///
+    /// `errors_seen` is a **lifetime** counter — it counts every
+    /// Error-level push, including ones later displaced from the
+    /// ring. This is intentional: operators want "how many errors
+    /// has this session ever seen", not "how many are currently on
+    /// screen".
     pub async fn push_notification(&self, n: RootNotification) {
+        let n = RootNotification {
+            source: sanitise_ident(&n.source, AGENT_IDENT_CAP),
+            level: n.level,
+            message: truncate_to_cap(&n.message, NOTIFICATION_MESSAGE_CAP),
+            ts_unix: n.ts_unix,
+        };
         let mut guard = self.inner.write().await;
         if matches!(n.level, NotificationLevel::Error) {
             guard.errors_seen = guard.errors_seen.saturating_add(1);
@@ -104,7 +157,15 @@ impl AppStateRootHandle {
     }
 
     /// Push a breadcrumb. Ring-buffered at `BREADCRUMB_RING_CAP`.
+    /// Field-level caps match `push_notification`: `agent` and
+    /// `tool` are sanitised identifiers; `summary` is length-capped.
     pub async fn push_breadcrumb(&self, b: AgentBreadcrumb) {
+        let b = AgentBreadcrumb {
+            agent: sanitise_ident(&b.agent, AGENT_IDENT_CAP),
+            tool: sanitise_ident(&b.tool, AGENT_IDENT_CAP),
+            summary: truncate_to_cap(&b.summary, BREADCRUMB_FIELD_CAP),
+            ts_unix: b.ts_unix,
+        };
         let mut guard = self.inner.write().await;
         guard.tool_counter = guard.tool_counter.saturating_add(1);
         if guard.breadcrumbs.len() >= BREADCRUMB_RING_CAP {
@@ -284,6 +345,91 @@ mod tests {
         let drained = h.drain_notifications().await;
         assert_eq!(drained.len(), 2);
         assert!(h.notifications().await.is_empty());
+    }
+
+    #[test]
+    fn truncate_helper_preserves_short_strings() {
+        assert_eq!(truncate_to_cap("hello", 10), "hello");
+    }
+
+    #[test]
+    fn truncate_helper_marks_overlong_strings() {
+        let long: String = "x".repeat(200);
+        let out = truncate_to_cap(&long, 32);
+        assert!(out.chars().count() <= 32);
+        assert!(out.contains("truncated"));
+    }
+
+    #[test]
+    fn truncate_helper_is_utf8_safe() {
+        let multibyte: String = "日".repeat(100);
+        let out = truncate_to_cap(&multibyte, 10);
+        assert!(out.chars().count() <= 10);
+    }
+
+    #[test]
+    fn sanitise_ident_strips_control_chars() {
+        let evil = "parent\nparent\0fake";
+        let out = sanitise_ident(evil, 64);
+        assert!(!out.contains('\n'));
+        assert!(!out.contains('\0'));
+        assert_eq!(out, "parentparentfake");
+    }
+
+    #[test]
+    fn sanitise_ident_caps_length() {
+        let long: String = "a".repeat(200);
+        let out = sanitise_ident(&long, 16);
+        assert!(out.chars().count() <= 16);
+    }
+
+    #[tokio::test]
+    async fn oversized_message_is_truncated_in_ring() {
+        let h = AppStateRootHandle::new();
+        let huge: String = "x".repeat(NOTIFICATION_MESSAGE_CAP * 4);
+        h.push_notification(RootNotification {
+            source: "x".into(),
+            level: NotificationLevel::Info,
+            message: huge,
+            ts_unix: 0,
+        })
+        .await;
+        let seen = h.notifications().await;
+        assert_eq!(seen.len(), 1);
+        let n_chars = seen[0].message.chars().count();
+        assert!(
+            n_chars <= NOTIFICATION_MESSAGE_CAP,
+            "message should be capped, got {n_chars}",
+        );
+    }
+
+    #[tokio::test]
+    async fn control_char_source_is_sanitised() {
+        let h = AppStateRootHandle::new();
+        h.push_notification(RootNotification {
+            source: "child\nspoof".into(),
+            level: NotificationLevel::Info,
+            message: "msg".into(),
+            ts_unix: 0,
+        })
+        .await;
+        let seen = h.notifications().await;
+        assert_eq!(seen[0].source, "childspoof");
+    }
+
+    #[tokio::test]
+    async fn oversized_breadcrumb_summary_is_truncated() {
+        let h = AppStateRootHandle::new();
+        let huge: String = "y".repeat(BREADCRUMB_FIELD_CAP * 4);
+        h.push_breadcrumb(AgentBreadcrumb {
+            agent: "a".into(),
+            tool: "t".into(),
+            summary: huge,
+            ts_unix: 0,
+        })
+        .await;
+        let seen = h.breadcrumbs().await;
+        assert!(seen[0].summary.chars().count() <= BREADCRUMB_FIELD_CAP);
     }
 
     #[tokio::test]

@@ -17,8 +17,6 @@
 //! depth. Everything else (UI-frame-local state) stays on the
 //! parent's AppState and is not cloned.
 
-use std::sync::Arc;
-
 use uuid::Uuid;
 
 use vac_session_engine::{
@@ -51,8 +49,13 @@ pub struct SubagentCoordinator {
 }
 
 impl SubagentCoordinator {
-    /// Topmost coordinator. Typical use: constructed once per TUI
-    /// session, cloned into children as they fork.
+    /// Topmost coordinator with a **fresh** root handle. Each call
+    /// creates a new tree, so subagents spawned from two separate
+    /// `root(...)` calls do NOT share state. When you want two
+    /// coordinators to share a single root, use [`with_handle`]
+    /// with one `AppStateRootHandle::new()` constructed up-front.
+    /// Typical use: constructed once per TUI session, cloned into
+    /// children as they fork.
     pub fn root(agent: impl Into<String>) -> Self {
         Self {
             root: AppStateRootHandle::new(),
@@ -198,10 +201,6 @@ impl std::fmt::Display for SubagentError {
 }
 
 impl std::error::Error for SubagentError {}
-
-// Silence unused-Arc warning when the module builds without tests.
-#[allow(dead_code)]
-fn _keep_arc_reference(_: Arc<u8>) {}
 
 #[cfg(test)]
 mod tests {
