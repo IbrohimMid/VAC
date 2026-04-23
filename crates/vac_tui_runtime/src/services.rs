@@ -43,6 +43,7 @@ pub mod rulebook_switcher;
 pub mod shortcuts_popup;
 pub mod side_panel;
 pub mod sparkline;
+pub mod speculation;
 pub mod statusline;
 pub mod syntax_highlighter;
 pub mod text_selection;

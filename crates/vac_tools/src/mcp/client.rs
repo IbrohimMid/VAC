@@ -197,6 +197,7 @@ impl McpClient {
                 trust_requirement: trust_requirement.clone(),
                 client_connection: self.connection.clone(),
                 request_id: self.request_id.clone(),
+                mcp_trust: self.config.effective_trust_class(),
             };
             info!(name = %prefixed_name, "Registering MCP proxy tool");
             self.registry.register(proxy).await?;
@@ -477,6 +478,9 @@ struct McpProxyTool {
     trust_requirement: String,
     client_connection: Arc<Mutex<Option<McpConnection>>>,
     request_id: Arc<Mutex<u64>>,
+    /// M4 — the MCP server's trust class. Read by the TrustGate
+    /// hook in `execute` before any bytes leave the client.
+    mcp_trust: McpTrustClass,
 }
 
 #[async_trait]
@@ -504,8 +508,34 @@ impl VilTool for McpProxyTool {
     async fn execute(
         &self,
         args: serde_json::Value,
-        _context: &ToolContext,
+        context: &ToolContext,
     ) -> Result<serde_json::Value, ToolError> {
+        // M4 — TrustGate consumer #2 (MCP client side). Every
+        // invocation of an MCP tool goes through the same gate
+        // `vac_tools::router` uses, so remote + local tools share
+        // one trust model.
+        let env_mode = crate::trust_gate::EnvironmentMode::from_label(
+            &context.environment_mode,
+        );
+        let spec = self.spec();
+        match crate::trust_gate::TrustGate::check_mcp_tool(
+            env_mode,
+            self.mcp_trust,
+            &spec,
+        ) {
+            crate::trust_gate::GateDecision::Allow => {}
+            crate::trust_gate::GateDecision::Deny(reason) => {
+                return Err(ToolError::PermissionDenied(format!(
+                    "mcp trust gate denied: {reason}",
+                )));
+            }
+            crate::trust_gate::GateDecision::NeedsApproval(reason) => {
+                return Err(ToolError::ApprovalRequired(format!(
+                    "mcp trust gate: {reason}",
+                )));
+            }
+        }
+
         let mut id_lock = self.request_id.lock().await;
         *id_lock += 1;
         let id = *id_lock;
