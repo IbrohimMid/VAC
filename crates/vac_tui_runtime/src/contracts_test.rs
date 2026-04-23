@@ -204,7 +204,7 @@ mod tests {
     fn workbench_tab_labels_count_matches_variants() {
         let state = crate::app::AppState::default();
         let labels = crate::workbench::tab_labels(&state);
-        assert_eq!(labels.len(), 8, "expected exactly 8 workbench tab labels");
+        assert_eq!(labels.len(), 9, "expected exactly 9 workbench tab labels");
     }
 
     #[test]
@@ -219,6 +219,7 @@ mod tests {
             WorkbenchTab::Plan,
             WorkbenchTab::Vil,
             WorkbenchTab::Vwfd,
+            WorkbenchTab::Signal,
         ];
         let indices: Vec<usize> = variants
             .iter()
@@ -227,10 +228,10 @@ mod tests {
         let unique: HashSet<usize> = indices.iter().copied().collect();
         assert_eq!(
             unique.len(),
-            8,
+            9,
             "each WorkbenchTab variant should map to a unique index"
         );
-        assert_eq!(*indices.iter().max().unwrap(), 7, "max index should be 7");
+        assert_eq!(*indices.iter().max().unwrap(), 8, "max index should be 8");
     }
 
     // ── ACTION_SPECS keybinding consistency ──────────────────────────────────
@@ -287,6 +288,7 @@ mod tests {
             WorkbenchTab::Plan,
             WorkbenchTab::Vil,
             WorkbenchTab::Vwfd,
+            WorkbenchTab::Signal,
         ];
         for tab in &variants {
             let idx = crate::workbench::active_tab_index(tab);

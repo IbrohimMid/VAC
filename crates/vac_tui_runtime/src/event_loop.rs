@@ -350,7 +350,7 @@ pub async fn run_tui(
         Duration::from_secs(boot_config.vil.checkpoint_interval_secs.max(30));
     let signal_rewind_path = if boot_config.signal.enable {
         let dir = project_root.join(".vac").join("signal");
-        let _ = std::fs::create_dir_all(&dir);
+        let _ = tokio::fs::create_dir_all(&dir).await;
         Some(dir.join(format!("{}.db", state.session_id)))
     } else {
         None
@@ -415,7 +415,7 @@ pub async fn run_tui(
                     "streams": summary_streams,
                 });
                 if let Ok(bytes) = serde_json::to_vec_pretty(&summary_doc) {
-                    let _ = std::fs::write(&summary_path, bytes);
+                    let _ = tokio::fs::write(&summary_path, bytes).await;
                 }
                 match vac_signal::rewind::RewindStore::open(db_path) {
                     Ok(mut store) => match reg.persist_to_rewind(&mut store) {

@@ -53,13 +53,13 @@ pub async fn decisions(
         None => {
             let traces_dir = project_root.join(".vac").join("traces");
             let mut newest: Option<(std::time::SystemTime, PathBuf)> = None;
-            if let Ok(entries) = std::fs::read_dir(&traces_dir) {
-                for entry in entries.flatten() {
+            if let Ok(mut rd) = tokio::fs::read_dir(&traces_dir).await {
+                while let Ok(Some(entry)) = rd.next_entry().await {
                     let p = entry.path();
                     if p.extension().and_then(|s| s.to_str()) != Some("json") {
                         continue;
                     }
-                    if let Ok(meta) = entry.metadata() {
+                    if let Ok(meta) = entry.metadata().await {
                         if let Ok(modified) = meta.modified() {
                             if newest
                                 .as_ref()
@@ -136,7 +136,7 @@ pub async fn eval(
         DecisionOutcome, DecisionRecord, DecisionStats, load_decisions_from_file, score_decisions,
     };
 
-    let trace_path = resolve_trace_path(&project_root, path)?;
+    let trace_path = resolve_trace_path(&project_root, path).await?;
     let records = load_decisions_from_file(&trace_path).await?;
     let stats = DecisionStats::from_records(&records);
     let outcome = DecisionOutcome { task_succeeded: succeeded, duration_ms };
@@ -194,7 +194,7 @@ pub async fn eval(
     Ok(())
 }
 
-fn resolve_trace_path(
+async fn resolve_trace_path(
     project_root: &std::path::Path,
     path: Option<PathBuf>,
 ) -> anyhow::Result<PathBuf> {
@@ -203,13 +203,13 @@ fn resolve_trace_path(
     }
     let traces_dir = project_root.join(".vac").join("traces");
     let mut newest: Option<(std::time::SystemTime, PathBuf)> = None;
-    if let Ok(entries) = std::fs::read_dir(&traces_dir) {
-        for entry in entries.flatten() {
+    if let Ok(mut rd) = tokio::fs::read_dir(&traces_dir).await {
+        while let Ok(Some(entry)) = rd.next_entry().await {
             let p = entry.path();
             if p.extension().and_then(|s| s.to_str()) != Some("json") {
                 continue;
             }
-            if let Ok(meta) = entry.metadata() {
+            if let Ok(meta) = entry.metadata().await {
                 if let Ok(modified) = meta.modified() {
                     if newest
                         .as_ref()

@@ -10,16 +10,16 @@ pub async fn dispatch(
     cmd: SignalCommand,
 ) -> anyhow::Result<()> {
     match cmd {
-        SignalCommand::List => list(project_root, format),
+        SignalCommand::List => list(project_root, format).await,
         SignalCommand::Tail { db_path, stream, n } => tail(db_path, stream, n, format),
     }
 }
 
-fn list(project_root: PathBuf, format: &str) -> anyhow::Result<()> {
+async fn list(project_root: PathBuf, format: &str) -> anyhow::Result<()> {
     let dir = project_root.join(".vac").join("signal");
     let mut entries: Vec<PathBuf> = Vec::new();
-    if let Ok(rd) = std::fs::read_dir(&dir) {
-        for entry in rd.flatten() {
+    if let Ok(mut rd) = tokio::fs::read_dir(&dir).await {
+        while let Ok(Some(entry)) = rd.next_entry().await {
             let p = entry.path();
             if p.extension().and_then(|s| s.to_str()) == Some("db") {
                 entries.push(p);
