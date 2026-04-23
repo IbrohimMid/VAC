@@ -75,3 +75,9 @@ Commit: $(git rev-parse HEAD)
 Tests: cargo check --workspace --tests
 Evidence: M3.2 in ultraplan §3
 Notes: Changed `SubmitEvent::ToolResult` to hold `payload: ToolResultEnvelope` instead of raw strings. Updated `RuntimeUpdate::ToolResult` to pipe it through to the TUI. Modified TUI `ToolCallResult` to hold `envelope` and `render_tool_result` to use `envelope.summary` when present. Added `PartialEq` to `ToolResultEnvelope` and `ToolResultKind`.
+
+## M5 MCP primary swap — DONE
+Commit: $(git rev-parse HEAD)
+Tests: cargo check --workspace --tests
+Evidence: M5 in ultraplan §3
+Notes: Replaced legacy `vac_tools::mcp::McpConnectionState` with canonical `vac_mcp_core::McpConnection` in `AppState::mcp_maps`. Updated TUI event loop (`McpServerState` event) and rendering (`side_panel.rs`, `workbench/runtime.rs`) to match the new 5-state machine. Removed `trust_class` and mode checks from the UI (deferred to config retrieval).

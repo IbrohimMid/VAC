@@ -59,10 +59,7 @@ pub fn render_side_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
         .execution.mcp_maps.server_states
         .values()
         .map(|s| {
-            if matches!(
-                s.status,
-                vac_tools::mcp::McpConnectionStatus::Unreachable(_)
-            ) {
+            if s.state == vac_mcp_core::McpConnectionState::Failed {
                 2
             } else {
                 1
@@ -358,7 +355,7 @@ fn render_mcp_section(f: &mut Frame, state: &mut AppState, area: Rect, collapsed
     let connected = state
         .execution.mcp_maps.server_states
         .values()
-        .filter(|s| s.is_connected())
+        .filter(|s| s.state == vac_mcp_core::McpConnectionState::Connected)
         .count();
     let total = state.execution.mcp_maps.server_states.len();
     let header = Line::from(Span::styled(
@@ -395,15 +392,12 @@ fn render_mcp_section(f: &mut Frame, state: &mut AppState, area: Rect, collapsed
                     Rect::new(area.x, row_y, area.width, 1),
                 ));
             }
-            row_offset += if matches!(
-                conn_state.status,
-                vac_tools::mcp::McpConnectionStatus::Unreachable(_)
-            ) {
+            row_offset += if conn_state.state == vac_mcp_core::McpConnectionState::Failed {
                 2
             } else {
                 1
             };
-            let (status, status_key) = if conn_state.is_connected() {
+            let (status, status_key) = if conn_state.state == vac_mcp_core::McpConnectionState::Connected {
                 ("✅", StyleKey::Success)
             } else {
                 ("❌", StyleKey::Error)
@@ -416,39 +410,17 @@ fn render_mcp_section(f: &mut Frame, state: &mut AppState, area: Rect, collapsed
                 Span::styled(name.clone(), state.core.theme.style(StyleKey::Warning)),
             ];
 
-            if let Some(trust) = &conn_state.trust_class {
-                let (trust_badge, trust_key) = match trust {
-                    vac_tools::mcp::McpTrustClass::LocalTrusted => ("[Local]", StyleKey::Success),
-                    vac_tools::mcp::McpTrustClass::RemoteVerified => {
-                        ("[Verified]", StyleKey::Warning)
-                    }
-                    vac_tools::mcp::McpTrustClass::RemoteUntrusted => {
-                        ("[Untrusted]", StyleKey::Error)
-                    }
-                };
-                line_spans.push(Span::raw(" "));
-                line_spans.push(Span::styled(trust_badge, state.core.theme.style(trust_key)));
-            }
+            // Removed trust badges for M5 since it moved to config
 
             let mut active_mode = state.layout.switchers.active_isolation_mode.clone();
             if active_mode.starts_with("isolated") {
                 active_mode = "isolated".to_string(); // Map isolated variants
             }
-            if !conn_state.allowed_in_modes.is_empty()
-                && !conn_state.allowed_in_modes.contains(&active_mode)
-            {
-                line_spans.push(Span::raw(" "));
-                line_spans.push(Span::styled(
-                    "⚠️ Mode Mismatch",
-                    state
-                        .core.theme
-                        .style(StyleKey::Error)
-                        .add_modifier(Modifier::BOLD),
-                ));
-            }
+            // Mode Mismatch check removed for M5 because it's now in the config, not connection state
 
             lines.push(Line::from(line_spans));
-            if let vac_tools::mcp::McpConnectionStatus::Unreachable(reason) = &conn_state.status {
+            if conn_state.state == vac_mcp_core::McpConnectionState::Failed {
+                let reason = &conn_state.reason;
                 lines.push(Line::from(vec![
                     Span::raw("      "),
                     Span::styled(reason.clone(), state.core.theme.style(StyleKey::Muted)),

@@ -57,6 +57,7 @@ vil_llm.workspace = true
 vil_metrics.workspace = true
 vil_validate = { version = "0.1.0", path = "../vil_validate" }
 vac_tool_core.workspace = true
+vac_mcp_core.workspace = true
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

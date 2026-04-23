@@ -14,8 +14,9 @@ pub(crate) fn spawn_mcp_probe(
     tokio::spawn(async move {
         for server in servers {
             let state = vac_tools::mcp::probe_mcp_server(&server).await;
+            let core_conn = state.to_core_connection(&server.name);
             let _ = input_tx
-                .send(InputEvent::McpServerState(server.name, state))
+                .send(InputEvent::McpServerState(server.name.clone(), core_conn))
                 .await;
         }
     });

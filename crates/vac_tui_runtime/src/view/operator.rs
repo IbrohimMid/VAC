@@ -211,7 +211,7 @@ pub(super) fn render_operator_panel(f: &mut Frame, state: &mut AppState, area: R
         let connected = state
             .execution.mcp_maps.server_states
             .values()
-            .filter(|s| s.is_connected())
+            .filter(|s| s.state == vac_mcp_core::McpConnectionState::Connected)
             .count();
         let total = state.execution.mcp_maps.server_states.len();
         let mcp_style = if connected == total {

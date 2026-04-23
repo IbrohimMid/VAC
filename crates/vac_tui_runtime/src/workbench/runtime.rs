@@ -193,7 +193,7 @@ impl WorkbenchTabView for RuntimeTab {
                 Style::default().add_modifier(Modifier::BOLD),
             )]));
             for (name, conn_state) in &state.execution.mcp_maps.server_states {
-                let (status, status_key) = if conn_state.is_connected() {
+                let (status, status_key) = if conn_state.state == vac_mcp_core::McpConnectionState::Connected {
                     ("✅ connected", StyleKey::Success)
                 } else {
                     ("❌ unreachable", StyleKey::Error)
@@ -204,11 +204,11 @@ impl WorkbenchTabView for RuntimeTab {
                     Span::raw(" "),
                     Span::styled(status, state.core.theme.style(status_key)),
                 ]));
-                if let vac_tools::mcp::McpConnectionStatus::Unreachable(reason) = &conn_state.status
-                {
+                if conn_state.state == vac_mcp_core::McpConnectionState::Failed {
+                    let reason = &conn_state.reason;
                     lines.push(Line::from(vec![
-                        Span::raw("    "),
-                        Span::styled(reason.clone(), state.core.theme.style(StyleKey::Muted)),
+                        Span::raw("    └─ "),
+                        Span::styled(reason.clone(), state.core.theme.style(StyleKey::Error)),
                     ]));
                 }
             }

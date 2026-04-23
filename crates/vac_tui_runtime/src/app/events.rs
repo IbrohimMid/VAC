@@ -37,7 +37,7 @@ pub enum InputEvent {
         name: String,
         error: String,
     },
-    McpServerState(String, vac_tools::mcp::McpConnectionState),
+    McpServerState(String, vac_mcp_core::McpConnection),
     ShowBanner(
         String,
         crate::services::banner::BannerStyle,

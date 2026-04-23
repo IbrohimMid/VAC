@@ -412,14 +412,8 @@ pub fn handle_backend_event(
             );
         }
         InputEvent::McpServerState(name, conn_state) => {
-            if matches!(
-                conn_state.status,
-                vac_tools::mcp::McpConnectionStatus::Unreachable(_)
-            ) {
-                let reason = match &conn_state.status {
-                    vac_tools::mcp::McpConnectionStatus::Unreachable(r) => r.clone(),
-                    _ => String::new(),
-                };
+            if conn_state.state == vac_mcp_core::McpConnectionState::Failed {
+                let reason = conn_state.reason.clone();
                 push_banner_direct(
                     state,
                     truncate_banner_text(
@@ -438,7 +432,7 @@ pub fn handle_backend_event(
                 .or_insert_with(|| {
                     vac_signal::SignalBuffer::new(vac_signal::SignalStreamKind::Mcp, 200)
                 });
-            buf.push_line(format!("status: {:?}", conn_state.status));
+            buf.push_line(format!("status: {:?}", conn_state.state));
             state.execution.mcp_maps.server_states.insert(name, conn_state);
         }
         InputEvent::VilStatusUpdated(snapshot) => {

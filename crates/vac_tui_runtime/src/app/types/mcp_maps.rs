@@ -10,7 +10,7 @@ use vac_signal::SignalBuffer;
 #[non_exhaustive]
 pub struct McpMapsState {
     /// Per-MCP-server status snapshot keyed by server name.
-    pub server_states: HashMap<String, vac_tools::mcp::McpConnectionState>,
+    pub server_states: HashMap<String, vac_mcp_core::McpConnection>,
     /// Per-server signal buffers — status-change lines land here so
     /// they flow through the signal pipeline (rewind store + MCP
     /// retrieval tools).
