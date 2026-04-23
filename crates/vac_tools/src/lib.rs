@@ -20,3 +20,4 @@ pub use error::ToolError;
 pub use privacy::PrivacyVault;
 pub use registry::{ToolDefinition, ToolRegistry, VilTool};
 pub use router::ToolRouter;
+pub mod trust_gate;

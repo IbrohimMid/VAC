@@ -21,6 +21,7 @@ blake3 = { workspace = true }
 notify = { workspace = true }
 vac_tools = { path = "../vac_tools" }
 vil_swarm = { path = "../vil_swarm" }
+vac_tool_core.workspace = true
 
 [dev-dependencies]
 tempfile = "3"

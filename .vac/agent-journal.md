@@ -87,3 +87,9 @@ Commit: $(git rev-parse HEAD)
 Tests: cargo check --workspace --tests
 Evidence: M5.1 in ultraplan §3
 Notes: Added `WebSocket` variant to `vac_tools::mcp::McpTransport` and `McpConnection`. Implemented JSON-RPC over WebSocket using `tokio-tungstenite`. `Sse` transport with `reqwest` was already present.
+
+## M4 TrustGate unified entry point — DONE
+Commit: $(git rev-parse HEAD)
+Tests: cargo check --workspace --tests
+Evidence: M4 in ultraplan §3
+Notes: Created `vac_tools::trust_gate::TrustGate` (re-exported in `vac_approvals::trust_gate`) as the unified entry point. Integrated `TrustGate::check_tool` into `vac_tools::ToolRouter` to override or respect legacy policy decisions based on environment constraints and MCP trust configurations.

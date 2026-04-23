@@ -52,6 +52,10 @@ pub fn list(project_root: &Path) -> Result<()> {
                 println!("    Transport: sse");
                 println!("    URL: {}", url);
             }
+            McpTransport::WebSocket { url } => {
+                println!("    Transport: websocket");
+                println!("    URL: {}", url);
+            }
         }
 
         if !server.env.is_empty() {

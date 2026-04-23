@@ -272,7 +272,26 @@ impl ToolRouter {
             return Err(ToolError::PermissionDenied(reason));
         }
 
-        let decision = self.policy.decide(tool_name, &args, context).await;
+        let decision = if let Some(definition) = self.registry.get_definition(tool_name).await {
+            let legacy_decision = self.policy.decide(tool_name, &args, context).await;
+            let spec = self.registry.get(tool_name).await.unwrap().spec();
+            let ctx = crate::trust_gate::TrustContext {
+                environment_mode: &context.environment_mode,
+                mcp_trust: None, // ToolRouter doesn't know if this tool is MCP yet
+            };
+            
+            let gate_decision = crate::trust_gate::TrustGate::check_tool(&ctx, &spec);
+            
+            match (gate_decision, legacy_decision) {
+                (crate::trust_gate::GateDecision::Deny(r), _) => PolicyDecision::Deny(r),
+                (_, PolicyDecision::Deny(r)) => PolicyDecision::Deny(r),
+                (crate::trust_gate::GateDecision::NeedsApproval(r), _) => PolicyDecision::NeedsApproval(r),
+                (_, PolicyDecision::NeedsApproval(r)) => PolicyDecision::NeedsApproval(r),
+                _ => PolicyDecision::Allow,
+            }
+        } else {
+            self.policy.decide(tool_name, &args, context).await
+        };
 
         match decision {
             PolicyDecision::Deny(reason) => {
