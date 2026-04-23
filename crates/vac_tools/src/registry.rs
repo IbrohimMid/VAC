@@ -307,6 +307,43 @@ impl ToolRegistry {
             .collect()
     }
 
+    /// W2.2 — Initial tool manifest sent to the model on turn 1.
+    /// Excludes tools whose `should_defer` is true — unless they
+    /// also set `always_load`. A deferred tool is fetched on demand
+    /// via [`load_deferred`].
+    ///
+    /// Order: `always_load` > `should_defer`. So a tool that declares
+    /// both stays in the initial set — the override is explicit.
+    pub async fn list_initial_specs(&self) -> Vec<vac_tool_core::ToolSpec> {
+        self.tools
+            .read()
+            .await
+            .values()
+            .filter(|t| !t.should_defer() || t.always_load())
+            .map(|t| t.spec())
+            .collect()
+    }
+
+    /// W2.2 — Names of every tool deferred from the initial manifest.
+    /// `ToolSearch` uses this to know which names it can resolve.
+    pub async fn list_deferred_names(&self) -> Vec<String> {
+        self.tools
+            .read()
+            .await
+            .values()
+            .filter(|t| t.should_defer() && !t.always_load())
+            .map(|t| t.name().to_string())
+            .collect()
+    }
+
+    /// W2.2 — Fetch a single tool's spec by name. Intended for the
+    /// on-demand deferred-tool path; returns `None` when the name is
+    /// not registered. Independent of the defer flag — caller is the
+    /// one deciding when to resolve.
+    pub async fn load_deferred(&self, name: &str) -> Option<vac_tool_core::ToolSpec> {
+        self.tools.read().await.get(name).map(|t| t.spec())
+    }
+
     /// W1.2 — Return only the specs whose capability is `read_only`.
     /// Used by the fork-speculation driver so a speculative sub-submit
     /// cannot accidentally call a mutating tool and pollute the
@@ -613,6 +650,87 @@ mod tests {
         assert!(!t.should_defer());
         assert!(!t.always_load());
         assert_eq!(t.max_result_size_chars(), 256 * 1024);
+    }
+
+    struct DeferProbe {
+        name: &'static str,
+        defer: bool,
+        always: bool,
+    }
+
+    #[async_trait]
+    impl VilTool for DeferProbe {
+        fn name(&self) -> &str { self.name }
+        fn description(&self) -> &str { self.name }
+        fn input_schema(&self) -> serde_json::Value { serde_json::json!({"type":"object"}) }
+        fn trust_requirement(&self) -> &str { "safe" }
+        fn risk_level(&self) -> &str { "low" }
+        fn spec(&self) -> vac_tool_core::ToolSpec {
+            make_spec(self.name, ToolCapability::default())
+        }
+        fn should_defer(&self) -> bool { self.defer }
+        fn always_load(&self) -> bool { self.always }
+        async fn execute(
+            &self,
+            _args: serde_json::Value,
+            _ctx: &ToolContext,
+        ) -> Result<serde_json::Value, ToolError> {
+            Ok(serde_json::json!({}))
+        }
+    }
+
+    async fn mk_mixed_registry() -> ToolRegistry {
+        let reg = ToolRegistry::new();
+        reg.register(DeferProbe { name: "eager", defer: false, always: false }).await.unwrap();
+        reg.register(DeferProbe { name: "Grep", defer: true, always: false }).await.unwrap();
+        reg.register(DeferProbe { name: "Glob", defer: true, always: false }).await.unwrap();
+        reg.register(DeferProbe { name: "CriticalSearch", defer: true, always: true }).await.unwrap();
+        reg
+    }
+
+    #[tokio::test]
+    async fn initial_specs_excludes_deferred() {
+        let reg = mk_mixed_registry().await;
+        let names: std::collections::HashSet<String> = reg
+            .list_initial_specs()
+            .await
+            .into_iter()
+            .map(|s| s.name)
+            .collect();
+        assert!(names.contains("eager"));
+        assert!(names.contains("CriticalSearch"), "always_load overrides defer");
+        assert!(!names.contains("Grep"));
+        assert!(!names.contains("Glob"));
+    }
+
+    #[tokio::test]
+    async fn deferred_names_lists_deferred_only() {
+        let reg = mk_mixed_registry().await;
+        let names: std::collections::HashSet<String> =
+            reg.list_deferred_names().await.into_iter().collect();
+        assert!(names.contains("Grep"));
+        assert!(names.contains("Glob"));
+        assert!(!names.contains("eager"));
+        assert!(
+            !names.contains("CriticalSearch"),
+            "always_load excludes from deferred set",
+        );
+    }
+
+    #[tokio::test]
+    async fn load_deferred_resolves_by_name() {
+        let reg = mk_mixed_registry().await;
+        let spec = reg.load_deferred("Grep").await.unwrap();
+        assert_eq!(spec.name, "Grep");
+        assert!(reg.load_deferred("does-not-exist").await.is_none());
+    }
+
+    #[tokio::test]
+    async fn load_deferred_works_for_non_deferred_too() {
+        // W2.2 plan spec: load_deferred is "independent of the defer
+        // flag". Caller decides when to resolve.
+        let reg = mk_mixed_registry().await;
+        assert!(reg.load_deferred("eager").await.is_some());
     }
 
     #[tokio::test]
