@@ -15,6 +15,7 @@ tracing = { workspace = true }
 regex = { workspace = true }
 chrono = { workspace = true }
 toml = { workspace = true }
+tokio = { workspace = true, features = ["process", "io-util", "sync", "rt", "macros", "time"] }
 
 # Optional rewind persistence (OMNI-inspired). Gated behind `rewind` feature
 # so default builds stay light; enable explicitly when SQLite-backed recall

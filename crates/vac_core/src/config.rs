@@ -682,6 +682,24 @@ impl RuntimeConfig {
     }
 }
 
+/// One scheduled autopilot task — cron expression + task description
+/// + optional profile override.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ScheduleEntry {
+    /// Unique id — used by `vac autopilot schedule remove <id>`.
+    pub id: String,
+    /// Cron expression in standard 5-field form ("m h dom mon dow").
+    pub cron: String,
+    /// Task description the autopilot should run when the cron fires.
+    pub task: String,
+    /// Optional profile override applied to the scheduled run.
+    #[serde(default)]
+    pub profile: Option<String>,
+    /// True to temporarily disable without removing.
+    #[serde(default)]
+    pub disabled: bool,
+}
+
 /// Autopilot daemon configuration (`autopilot.toml`)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AutopilotConfig {
@@ -694,6 +712,10 @@ pub struct AutopilotConfig {
     /// Operating mode: "monitor" | "auto"
     #[serde(default = "default_autopilot_mode")]
     pub mode: String,
+    /// Recurring task profiles driven by cron expressions. Empty by
+    /// default; populated via `vac autopilot schedule add`.
+    #[serde(default)]
+    pub schedules: Vec<ScheduleEntry>,
 }
 
 fn default_poll_interval() -> u64 {
@@ -712,6 +734,7 @@ impl Default for AutopilotConfig {
             poll_interval_secs: default_poll_interval(),
             max_concurrent: default_max_concurrent(),
             mode: default_autopilot_mode(),
+            schedules: Vec::new(),
         }
     }
 }

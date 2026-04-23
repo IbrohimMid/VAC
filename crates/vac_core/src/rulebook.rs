@@ -321,3 +321,135 @@ pub fn load_single(project_root: &Path) -> Option<ResolvedRuleContext> {
     }
     Some(ResolvedRuleContext::build(books, None))
 }
+
+// ── F6.3 — Rulebook URI resolver ──────────────────────────────────────────────
+
+/// Parsed `vac://rulebook/<id>` reference.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RulebookUri {
+    /// Rulebook id as referenced (`<id>`).
+    pub id: String,
+    /// Optional `#section` fragment (e.g. a constraint key).
+    pub section: Option<String>,
+}
+
+/// Errors from [`parse_rulebook_uri`].
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum RulebookUriError {
+    #[error("uri must start with 'vac://rulebook/'")]
+    WrongScheme,
+    #[error("rulebook id is empty")]
+    EmptyId,
+    #[error("rulebook id contains illegal character: {0:?}")]
+    IllegalIdChar(char),
+}
+
+const RULEBOOK_URI_PREFIX: &str = "vac://rulebook/";
+
+/// Parse a `vac://rulebook/<id>[#section]` URI. The id must match
+/// `[A-Za-z0-9._-]+`; fragments are arbitrary non-empty strings.
+pub fn parse_rulebook_uri(uri: &str) -> Result<RulebookUri, RulebookUriError> {
+    let rest = uri
+        .strip_prefix(RULEBOOK_URI_PREFIX)
+        .ok_or(RulebookUriError::WrongScheme)?;
+    let (id_part, section) = match rest.split_once('#') {
+        Some((id, frag)) if !frag.is_empty() => (id, Some(frag.to_string())),
+        Some((id, _)) => (id, None),
+        None => (rest, None),
+    };
+    if id_part.is_empty() {
+        return Err(RulebookUriError::EmptyId);
+    }
+    for ch in id_part.chars() {
+        if !(ch.is_ascii_alphanumeric() || matches!(ch, '.' | '_' | '-')) {
+            return Err(RulebookUriError::IllegalIdChar(ch));
+        }
+    }
+    Ok(RulebookUri {
+        id: id_part.to_string(),
+        section,
+    })
+}
+
+/// Resolve a `vac://rulebook/<id>` URI against a pool of loaded
+/// rulebooks. Returns `None` if no id matches. Section fragment is
+/// reported alongside the rulebook so callers can drill in.
+pub fn resolve_rulebook_uri<'a>(
+    uri: &str,
+    pool: &'a [Rulebook],
+) -> Result<Option<(&'a Rulebook, Option<String>)>, RulebookUriError> {
+    let parsed = parse_rulebook_uri(uri)?;
+    Ok(pool
+        .iter()
+        .find(|rb| rb.id == parsed.id)
+        .map(|rb| (rb, parsed.section)))
+}
+
+#[cfg(test)]
+mod uri_tests {
+    use super::*;
+
+    fn rb(id: &str) -> Rulebook {
+        Rulebook {
+            id: id.into(),
+            name: None,
+            scope: None,
+            priority: 0,
+            constraints: vec![],
+            conventions: vec![],
+            acceptance_gates: vec![],
+            policies: vec![],
+        }
+    }
+
+    #[test]
+    fn parses_plain_id() {
+        let p = parse_rulebook_uri("vac://rulebook/team.defaults").unwrap();
+        assert_eq!(p.id, "team.defaults");
+        assert!(p.section.is_none());
+    }
+
+    #[test]
+    fn parses_id_with_section() {
+        let p = parse_rulebook_uri("vac://rulebook/core#tests-must-pass").unwrap();
+        assert_eq!(p.id, "core");
+        assert_eq!(p.section.as_deref(), Some("tests-must-pass"));
+    }
+
+    #[test]
+    fn rejects_wrong_scheme() {
+        let e = parse_rulebook_uri("http://rulebook/x").unwrap_err();
+        assert!(matches!(e, RulebookUriError::WrongScheme));
+    }
+
+    #[test]
+    fn rejects_empty_id() {
+        let e = parse_rulebook_uri("vac://rulebook/").unwrap_err();
+        assert!(matches!(e, RulebookUriError::EmptyId));
+    }
+
+    #[test]
+    fn rejects_illegal_id_char() {
+        let e = parse_rulebook_uri("vac://rulebook/bad id").unwrap_err();
+        assert!(matches!(e, RulebookUriError::IllegalIdChar(' ')));
+    }
+
+    #[test]
+    fn resolve_finds_matching_rulebook() {
+        let pool = vec![rb("core"), rb("team")];
+        let (hit, section) = resolve_rulebook_uri("vac://rulebook/team#sop", &pool)
+            .unwrap()
+            .unwrap();
+        assert_eq!(hit.id, "team");
+        assert_eq!(section.as_deref(), Some("sop"));
+    }
+
+    #[test]
+    fn resolve_missing_returns_none() {
+        let pool = vec![rb("core")];
+        assert!(resolve_rulebook_uri("vac://rulebook/absent", &pool)
+            .unwrap()
+            .is_none());
+    }
+}

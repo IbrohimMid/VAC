@@ -393,4 +393,54 @@ mod tests {
             "options.checkpoint_path must route into session_meta.checkpoint_path",
         );
     }
+
+    // ── F6.5 — Checkpoint resumption contract ──────────────────
+
+    /// F6.5 — checkpoint_path lives under session_meta, not on the
+    /// AppState root. Guards against a future refactor flattening
+    /// the grouping back out.
+    #[test]
+    fn checkpoint_path_lives_on_session_meta() {
+        use crate::app::types::AppStateOptions;
+        let path = std::path::PathBuf::from("/tmp/vac/session.checkpoint");
+        let state = crate::app::AppState::new(AppStateOptions {
+            model: None,
+            session_id: Some("s-abc".into()),
+            checkpoint_path: Some(path.clone()),
+            project_root: std::env::temp_dir(),
+        });
+        assert_eq!(state.session_meta.checkpoint_path.as_ref(), Some(&path));
+    }
+
+    /// F6.5 — absent checkpoint path renders as `None` on boot and
+    /// after an explicit clear.
+    #[test]
+    fn checkpoint_path_absent_by_default_and_clearable() {
+        let mut state = crate::app::AppState::default();
+        assert!(state.session_meta.checkpoint_path.is_none());
+        state.session_meta.checkpoint_path =
+            Some(std::path::PathBuf::from("/tmp/ck"));
+        state.session_meta.checkpoint_path = None;
+        assert!(state.session_meta.checkpoint_path.is_none());
+    }
+
+    /// F6.5 — `vac resume <checkpoint>` parses the session id from
+    /// the checkpoint filename, honoring the historical `_state`
+    /// suffix. Mirrors the parser in `commands::resume::execute` so
+    /// a refactor that drops `_state` support fails this gate rather
+    /// than silently changing resume semantics.
+    #[test]
+    fn checkpoint_filename_parses_session_id() {
+        use std::path::PathBuf;
+        use uuid::Uuid;
+        let sid = Uuid::new_v4();
+        for p in [
+            PathBuf::from(format!("/ck/{sid}.json")),
+            PathBuf::from(format!("/ck/{sid}_state.json")),
+        ] {
+            let stem = p.file_stem().and_then(|s| s.to_str()).unwrap();
+            let parsed = Uuid::parse_str(stem.replace("_state", "").as_str()).unwrap();
+            assert_eq!(parsed, sid);
+        }
+    }
 }

@@ -1,6 +1,7 @@
 //! VAC Tools — Tool registry, execution router, MCP bridge, and sandbox.
 
 pub mod approvals;
+pub mod backup;
 pub mod builtin;
 pub mod error;
 pub mod journal;
