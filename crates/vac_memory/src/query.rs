@@ -12,6 +12,7 @@ use crate::memdir::{Memory, MemoryKind};
 
 /// Score triple returned alongside a memory hit.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct RelevanceScore {
     /// Raw tf-idf score over (title + topic + tags + body).
     pub tfidf: f32,

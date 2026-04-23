@@ -95,7 +95,10 @@ impl MemoryScanner {
         }
         let path = memdir::path_for(&self.root, mem.kind, &mem.frontmatter.topic);
         let contents = memdir::serialize(&mem.frontmatter, &mem.body)?;
-        let tmp = path.with_extension("md.tmp");
+        // Unique tmp name per (pid, nanos, nonce) so concurrent writers
+        // on the same topic never collide on the staging path. `rename`
+        // is the atomic step that resolves final ordering.
+        let tmp = path.with_extension(crate::consolidator::tmp_suffix());
         fs::write(&tmp, contents.as_bytes()).await?;
         fs::rename(&tmp, &path).await?;
         mem.path = path;

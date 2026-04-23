@@ -7,10 +7,26 @@
 //! auto-recovered, a live lock held by another pid fails fast.
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use tokio::fs;
 use tracing::{info, warn};
+
+/// Per-process nonce so concurrent writers (same pid, different tasks)
+/// never collide on a temp filename when renaming into place.
+fn next_nonce() -> u64 {
+    static N: AtomicU64 = AtomicU64::new(0);
+    N.fetch_add(1, Ordering::Relaxed)
+}
+
+/// Build a unique staging path suffix: `<pid>.<nanos>.<nonce>.tmp`.
+pub(crate) fn tmp_suffix() -> String {
+    let pid = std::process::id();
+    let nanos = chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0);
+    let nonce = next_nonce();
+    format!("{pid}.{nanos}.{nonce}.tmp")
+}
 
 use crate::error::{MemoryError, MemoryResult};
 use crate::policy::{ConsolidationInput, PolicySet};
@@ -44,6 +60,7 @@ impl Default for ConsolidatorConfig {
 /// Gate evaluation outcome — explains why the consolidator did or
 /// didn't run.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ConsolidatorGate {
     Run,
     SkippedCooldown,
@@ -111,47 +128,92 @@ impl Consolidator {
         }
     }
 
+    /// Diagnostic: does a non-stale lock exist owned by someone else?
+    /// Pure-read — does not reclaim. The authoritative acquire path
+    /// uses `create_new` O_EXCL and performs reclaim on its own.
     async fn lock_held_by_other(&self) -> MemoryResult<bool> {
         let path = self.lock_path();
-        match fs::read_to_string(&path).await {
-            Ok(s) => {
-                let meta = fs::metadata(&path).await?;
-                let age = std::time::SystemTime::now()
-                    .duration_since(meta.modified()?)
-                    .unwrap_or(Duration::ZERO);
-                if age >= self.config.stale_lock_after {
+        let body = match fs::read_to_string(&path).await {
+            Ok(s) => s,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+            Err(e) => return Err(e.into()),
+        };
+        if self.lock_file_is_stale(&path).await? {
+            return Ok(false);
+        }
+        let other_pid = body.trim().parse::<u32>().unwrap_or(0);
+        let me = std::process::id();
+        Ok(other_pid != 0 && other_pid != me)
+    }
+
+    /// Acquire the consolidator lockfile. Uses `create_new` (O_EXCL on
+    /// POSIX, CREATE_NEW on Windows) as the actual mutex — the TOCTOU
+    /// pattern of "check + write separately" is deliberately avoided.
+    /// A stale lockfile older than `stale_lock_after` is reclaimed and
+    /// the acquire retried exactly once.
+    async fn acquire_lock(&self) -> MemoryResult<LockGuard> {
+        self.scanner.ensure_layout().await?;
+        let path = self.lock_path();
+        match self.try_create_lock(&path).await {
+            Ok(g) => Ok(g),
+            Err(MemoryError::Locked(pid)) => {
+                // Check staleness and reclaim if old enough.
+                if self.lock_file_is_stale(&path).await? {
                     let _ = fs::remove_file(&path).await;
-                    return Ok(false);
+                    self.try_create_lock(&path).await
+                } else {
+                    Err(MemoryError::Locked(pid))
                 }
-                let other_pid = s.trim().parse::<u32>().unwrap_or(0);
-                let me = std::process::id();
-                Ok(other_pid != 0 && other_pid != me)
             }
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+            Err(e) => Err(e),
+        }
+    }
+
+    async fn try_create_lock(&self, path: &std::path::Path) -> MemoryResult<LockGuard> {
+        use std::io::ErrorKind;
+        let result = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(path)
+            .await;
+        match result {
+            Ok(mut f) => {
+                use tokio::io::AsyncWriteExt;
+                let body = std::process::id().to_string();
+                f.write_all(body.as_bytes()).await?;
+                f.flush().await?;
+                f.sync_data().await?;
+                Ok(LockGuard {
+                    path: path.to_path_buf(),
+                })
+            }
+            Err(e) if e.kind() == ErrorKind::AlreadyExists => {
+                let pid = fs::read_to_string(path)
+                    .await
+                    .ok()
+                    .and_then(|s| s.trim().parse::<u32>().ok())
+                    .unwrap_or(0);
+                Err(MemoryError::Locked(pid))
+            }
             Err(e) => Err(e.into()),
         }
     }
 
-    async fn acquire_lock(&self) -> MemoryResult<LockGuard> {
-        self.scanner.ensure_layout().await?;
-        let path = self.lock_path();
-        if self.lock_held_by_other().await? {
-            let pid = fs::read_to_string(&path)
-                .await
-                .ok()
-                .and_then(|s| s.trim().parse::<u32>().ok())
-                .unwrap_or(0);
-            return Err(MemoryError::Locked(pid));
-        }
-        let tmp = path.with_extension("lock.tmp");
-        fs::write(&tmp, std::process::id().to_string().as_bytes()).await?;
-        fs::rename(&tmp, &path).await?;
-        Ok(LockGuard { path })
+    async fn lock_file_is_stale(&self, path: &std::path::Path) -> MemoryResult<bool> {
+        let meta = match fs::metadata(path).await {
+            Ok(m) => m,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(true),
+            Err(e) => return Err(e.into()),
+        };
+        let age = std::time::SystemTime::now()
+            .duration_since(meta.modified()?)
+            .unwrap_or(Duration::ZERO);
+        Ok(age >= self.config.stale_lock_after)
     }
 
     async fn write_stamp(&self) -> MemoryResult<()> {
         let path = self.stamp_path();
-        let tmp = path.with_extension("stamp.tmp");
+        let tmp = path.with_extension(tmp_suffix());
         fs::write(&tmp, chrono::Utc::now().to_rfc3339().as_bytes()).await?;
         fs::rename(&tmp, &path).await?;
         Ok(())
@@ -173,12 +235,14 @@ impl Consolidator {
                 policies_fired: Vec::new(),
                 files_written: Vec::new(),
                 skipped_reason: Some(gate_reason(&gate)),
+                policies_failed: Vec::new(),
             });
         }
 
         let _guard = self.acquire_lock().await?;
         let mut fired = Vec::new();
         let mut written = Vec::new();
+        let mut failed: Vec<(String, String)> = Vec::new();
         for policy in policies.iter() {
             let proposals = match policy.propose(input).await {
                 Ok(p) => p,
@@ -189,6 +253,7 @@ impl Consolidator {
                         error = %e,
                         "policy failed; skipping",
                     );
+                    failed.push((policy.name().to_string(), e.to_string()));
                     continue;
                 }
             };
@@ -226,6 +291,7 @@ impl Consolidator {
             policies_fired: fired,
             files_written: written,
             skipped_reason: None,
+            policies_failed: failed,
         })
     }
 }
@@ -378,6 +444,91 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(gate, ConsolidatorGate::Run);
+    }
+
+    #[tokio::test]
+    async fn concurrent_acquire_yields_exactly_one_winner() {
+        // Two tasks race to acquire the same lock on the same scanner.
+        // With O_EXCL create_new as the primitive, exactly one must
+        // succeed; the other must see MemoryError::Locked.
+        let tmp = tempfile::tempdir().unwrap();
+        let scanner = MemoryScanner::new(tmp.path().to_path_buf());
+        scanner.ensure_layout().await.unwrap();
+        // Two distinct consolidator handles pointing at the same root.
+        let c1 = std::sync::Arc::new(Consolidator::new(scanner.clone(), config()));
+        let c2 = std::sync::Arc::new(Consolidator::new(scanner, config()));
+        let a = {
+            let c = c1.clone();
+            tokio::spawn(async move { c.acquire_lock().await })
+        };
+        let b = {
+            let c = c2.clone();
+            tokio::spawn(async move { c.acquire_lock().await })
+        };
+        let (ra, rb) = tokio::join!(a, b);
+        let ra = ra.unwrap();
+        let rb = rb.unwrap();
+        let winners = [ra.is_ok(), rb.is_ok()].iter().filter(|b| **b).count();
+        let losers = [&ra, &rb]
+            .iter()
+            .filter(|r| matches!(r, Err(MemoryError::Locked(_))))
+            .count();
+        // One task can lose on "already exists"; if both happen to run
+        // strictly serialized the second task still sees Locked because
+        // the first guard hasn't been dropped yet (both held until join).
+        assert_eq!(winners, 1, "exactly one lock winner (got {winners})");
+        assert_eq!(losers, 1, "exactly one Locked loser (got {losers})");
+    }
+
+    #[tokio::test]
+    async fn tmp_suffix_produces_distinct_paths() {
+        use std::collections::HashSet;
+        let mut set = HashSet::new();
+        for _ in 0..16 {
+            assert!(set.insert(super::tmp_suffix()), "duplicate tmp suffix");
+        }
+    }
+
+    #[tokio::test]
+    async fn policy_failure_surfaces_in_report() {
+        use crate::policy::{
+            ConsolidationInput, ConsolidationPolicy, ConsolidationProposal, PolicySet,
+        };
+        use async_trait::async_trait;
+
+        struct BoomPolicy;
+        #[async_trait]
+        impl ConsolidationPolicy for BoomPolicy {
+            fn name(&self) -> &str { "boom" }
+            fn description(&self) -> &str { "always fails" }
+            async fn propose(
+                &self,
+                _: &ConsolidationInput,
+            ) -> MemoryResult<Vec<ConsolidationProposal>> {
+                Err(MemoryError::Other("kaboom".into()))
+            }
+        }
+
+        let tmp = tempfile::tempdir().unwrap();
+        let scanner = MemoryScanner::new(tmp.path().to_path_buf());
+        scanner.ensure_layout().await.unwrap();
+        let c = Consolidator::new(scanner, config());
+        let mut policies = PolicySet::new();
+        policies.register(std::sync::Arc::new(BoomPolicy));
+        let rep = c
+            .run_once(
+                &policies,
+                &ConsolidationInput {
+                    raw_lines: vec!["learn: x".into()],
+                    session_count: 10,
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(rep.policies_failed.len(), 1);
+        assert_eq!(rep.policies_failed[0].0, "boom");
+        assert!(rep.policies_failed[0].1.contains("kaboom"));
+        assert!(rep.files_written.is_empty());
     }
 
     #[tokio::test]

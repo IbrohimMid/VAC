@@ -19,7 +19,15 @@ pub fn push_consolidation_banner(banner: &mut BannerState, report: &Consolidatio
     } else {
         BannerStyle::Success
     };
-    let msg = BannerMessage::new(report.banner_line(), style);
+    // BannerMessage::new derives its id from a hash of the text, so
+    // two consecutive runs with the same banner line (e.g. repeated
+    // "skipped — cooldown") collapse into one banner. Salt the id
+    // with the run's finish timestamp so every cycle pulses.
+    let mut msg = BannerMessage::new(report.banner_line(), style);
+    msg.id = format!(
+        "memory-consolidation-{}",
+        report.finished_at.timestamp_nanos_opt().unwrap_or(0),
+    );
     banner.queue.push(msg);
 }
 
@@ -44,6 +52,7 @@ mod tests {
                 })
                 .collect(),
             skipped_reason: None,
+            policies_failed: Vec::new(),
         }
     }
 

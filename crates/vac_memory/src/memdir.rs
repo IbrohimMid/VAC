@@ -101,17 +101,43 @@ impl Memory {
 
 /// Parse a memory file's raw contents into frontmatter + body.
 /// Expects the standard `---\n<yaml>\n---\n<body>` layout.
+///
+/// The closing delimiter must be an isolated `---` on its own line —
+/// i.e. preceded by `\n` and followed by `\n` or EOF. This prevents a
+/// markdown horizontal rule inside `body` from being mis-parsed as
+/// the frontmatter terminator.
 pub fn parse(content: &str) -> MemoryResult<(MemoryFrontmatter, String)> {
     let s = content.strip_prefix("---\n").ok_or_else(|| {
         MemoryError::Frontmatter("missing opening '---' delimiter".into())
     })?;
-    let end = s.find("\n---\n").or_else(|| s.find("\n---")).ok_or_else(|| {
+    // Scan for a line that is exactly "---" (no leading/trailing space).
+    let mut offset = 0usize;
+    let mut closing_line_start: Option<usize> = None;
+    let mut closing_line_end: Option<usize> = None;
+    for line in s.split_inclusive('\n') {
+        let line_len = line.len();
+        let trimmed = line.trim_end_matches(['\n', '\r']);
+        if trimmed == "---" {
+            closing_line_start = Some(offset);
+            closing_line_end = Some(offset + line_len);
+            break;
+        }
+        offset += line_len;
+    }
+    // Last-line-without-trailing-newline fallback (`---` at EOF).
+    if closing_line_start.is_none() && s.ends_with("\n---") {
+        let start = s.len() - 3;
+        closing_line_start = Some(start);
+        closing_line_end = Some(s.len());
+    }
+    let close_start = closing_line_start.ok_or_else(|| {
         MemoryError::Frontmatter("missing closing '---' delimiter".into())
     })?;
-    let yaml = &s[..end];
-    // Body starts after the delimiter; tolerate trailing \n or EOF.
-    let rest_from = end + "\n---".len();
-    let body_raw = &s[rest_from..];
+    let close_end = closing_line_end.unwrap_or(s.len());
+    // YAML is everything up to (but not including) the closing line.
+    // Strip the trailing `\n` that belongs to the line before `---`.
+    let yaml = s[..close_start].trim_end_matches('\n');
+    let body_raw = &s[close_end..];
     let body = body_raw.trim_start_matches('\n').to_string();
     let fm: MemoryFrontmatter = serde_yaml::from_str(yaml)?;
     Ok((fm, body))
@@ -155,6 +181,46 @@ mod tests {
     fn parse_rejects_missing_frontmatter() {
         let r = parse("hello no frontmatter");
         assert!(r.is_err());
+    }
+
+    #[test]
+    fn body_with_markdown_hr_survives_roundtrip() {
+        // A markdown horizontal rule inside the body must not be
+        // mistaken for the frontmatter terminator.
+        let fm = MemoryFrontmatter {
+            topic: "hr-body".into(),
+            title: None,
+            tags: vec![],
+            created_at: chrono::Utc::now(),
+            updated_at: None,
+            importance: 0.5,
+            source_policy: None,
+        };
+        let body = "before\n\n---\n\nafter the hr\n";
+        let raw = serialize(&fm, body).unwrap();
+        let (fm_back, body_back) = parse(&raw).unwrap();
+        assert_eq!(fm_back.topic, "hr-body");
+        assert!(body_back.contains("before"));
+        assert!(body_back.contains("after the hr"));
+        assert!(body_back.contains("---"));
+    }
+
+    #[test]
+    fn parse_handles_unicode_in_frontmatter_and_body() {
+        let fm = MemoryFrontmatter {
+            topic: "unicode".into(),
+            title: Some("プロファイル drift — 日本語".into()),
+            tags: vec!["日本語".into(), "émoji-✓".into()],
+            created_at: chrono::Utc::now(),
+            updated_at: None,
+            importance: 0.5,
+            source_policy: None,
+        };
+        let body = "日本語ボディー with — em-dash\n";
+        let raw = serialize(&fm, body).unwrap();
+        let (fm_back, body_back) = parse(&raw).unwrap();
+        assert_eq!(fm_back.tags, fm.tags);
+        assert_eq!(body_back, body);
     }
 
     #[test]

@@ -5,6 +5,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::memdir::MemoryKind;
 
+/// Data-carrying report — constructed by drivers + consolidator; NOT
+/// `#[non_exhaustive]` so external tests / bridges can build fixtures.
+/// When adding fields, update every call site rather than relying on
+/// wildcard construction.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConsolidationReport {
     pub started_at: chrono::DateTime<chrono::Utc>,
@@ -12,6 +16,11 @@ pub struct ConsolidationReport {
     pub policies_fired: Vec<String>,
     pub files_written: Vec<WrittenFile>,
     pub skipped_reason: Option<String>,
+    /// Policies that ran but returned an error (name, error string).
+    /// Surface distinct from `policies_fired` so operators can see
+    /// partial-failure cycles without digging into logs.
+    #[serde(default)]
+    pub policies_failed: Vec<(String, String)>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -28,7 +37,7 @@ impl ConsolidationReport {
         if let Some(r) = &self.skipped_reason {
             return format!("memory: skipped — {r}");
         }
-        match self.files_written.len() {
+        let core = match self.files_written.len() {
             0 => "memory: no new learnings".to_string(),
             1 => format!(
                 "memory: consolidated 1 file via {} policy",
@@ -38,6 +47,15 @@ impl ConsolidationReport {
                 "memory: consolidated {n} files across {} policies",
                 self.policies_fired.len()
             ),
+        };
+        if self.policies_failed.is_empty() {
+            core
+        } else {
+            format!(
+                "{core} ({} policy failure{})",
+                self.policies_failed.len(),
+                if self.policies_failed.len() == 1 { "" } else { "s" },
+            )
         }
     }
 
@@ -65,6 +83,7 @@ mod tests {
                 })
                 .collect(),
             skipped_reason: None,
+            policies_failed: Vec::new(),
         }
     }
 
@@ -81,5 +100,14 @@ mod tests {
         r.skipped_reason = Some("lock held".into());
         assert!(r.banner_line().contains("skipped"));
         assert!(r.was_skipped());
+    }
+
+    #[test]
+    fn banner_surfaces_partial_policy_failures() {
+        let mut r = rep(2, 2);
+        r.policies_failed = vec![("p_broken".into(), "io error".into())];
+        let line = r.banner_line();
+        assert!(line.contains("consolidated"));
+        assert!(line.contains("1 policy failure"));
     }
 }
