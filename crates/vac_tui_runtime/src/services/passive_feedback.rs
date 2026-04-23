@@ -110,11 +110,6 @@ pub async fn measure_tick_latency(
     (toasts, start.elapsed())
 }
 
-// Silence an unused-import lint on Arc when the module is built in
-// a context that doesn't pull the registry trait directly.
-#[allow(dead_code)]
-fn _keep_arc_available(_: Arc<u8>) {}
-
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;

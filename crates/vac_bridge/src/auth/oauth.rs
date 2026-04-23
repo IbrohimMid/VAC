@@ -84,11 +84,17 @@ impl PkceChallenge {
     /// Typically the authorization server does this; the helper is
     /// here so mock test harnesses (and the eventual in-process
     /// provider) can self-check.
+    ///
+    /// Uses constant-time byte comparison so a probing caller can't
+    /// use verify latency to infer prefix matches on the challenge.
     pub fn verify(&self, candidate: &str) -> bool {
         let Ok(rebuilt) = Self::from_verifier(candidate.to_string()) else {
             return false;
         };
-        rebuilt.challenge == self.challenge
+        crate::auth::jwt::constant_time_eq(
+            rebuilt.challenge.as_bytes(),
+            self.challenge.as_bytes(),
+        )
     }
 }
 
@@ -137,7 +143,21 @@ impl TokenCache {
         tokio::fs::create_dir_all(&self.root).await?;
         let path = self.path_for(&token.provider);
         let json = serde_json::to_vec_pretty(token)?;
-        tokio::fs::write(&path, json).await?;
+        // Atomic write: temp file in the same dir + rename. A crash
+        // mid-write leaves the old token intact, never a truncated
+        // mix of old + new bytes. Same-directory temp so `rename`
+        // is a single inode swap.
+        let tmp_path = self.root.join(format!("{}.tmp", token.provider));
+        tokio::fs::write(&tmp_path, &json).await?;
+        // On unix, restrict to owner-only so a shared host can't
+        // leak refresh tokens via `cat ~/other-user/.vac/auth/*`.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let perms = std::fs::Permissions::from_mode(0o600);
+            tokio::fs::set_permissions(&tmp_path, perms).await?;
+        }
+        tokio::fs::rename(&tmp_path, &path).await?;
         Ok(())
     }
 
@@ -289,6 +309,64 @@ mod tests {
         cache.save(&t).await.unwrap();
         cache.remove("x").await.unwrap();
         assert!(cache.load("x").await.unwrap().is_none());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn token_cache_file_is_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempfile::tempdir().unwrap();
+        let cache = TokenCache::new(tmp.path().to_path_buf());
+        let t = ProviderToken {
+            provider: "github".into(),
+            access_token: "sensitive".into(),
+            refresh_token: None,
+            expires_at_unix: 1_800_000_000,
+            scope: None,
+        };
+        cache.save(&t).await.unwrap();
+        let meta = tokio::fs::metadata(cache.path_for("github")).await.unwrap();
+        let mode = meta.permissions().mode() & 0o777;
+        assert_eq!(
+            mode, 0o600,
+            "token cache file must be 0600, got {mode:o}",
+        );
+    }
+
+    #[tokio::test]
+    async fn save_is_atomic_via_temp_rename() {
+        // Overwrite an existing token. If the implementation wrote
+        // in-place it would briefly truncate the file; with the
+        // temp+rename path there's no moment where the final path
+        // is missing or partial.
+        let tmp = tempfile::tempdir().unwrap();
+        let cache = TokenCache::new(tmp.path().to_path_buf());
+        let initial = ProviderToken {
+            provider: "x".into(),
+            access_token: "v1".into(),
+            refresh_token: None,
+            expires_at_unix: 1,
+            scope: None,
+        };
+        cache.save(&initial).await.unwrap();
+        // Second save replaces atomically.
+        let updated = ProviderToken {
+            access_token: "v2".into(),
+            ..initial.clone()
+        };
+        cache.save(&updated).await.unwrap();
+        let back = cache.load("x").await.unwrap().unwrap();
+        assert_eq!(back.access_token, "v2");
+        // No leftover .tmp file.
+        let mut rd = tokio::fs::read_dir(tmp.path()).await.unwrap();
+        while let Some(entry) = rd.next_entry().await.unwrap() {
+            let name = entry.file_name();
+            let s = name.to_string_lossy();
+            assert!(
+                !s.ends_with(".tmp"),
+                "leftover temp file: {s}",
+            );
+        }
     }
 
     #[cfg(unix)]

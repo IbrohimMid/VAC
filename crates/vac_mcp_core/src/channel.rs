@@ -57,55 +57,64 @@ impl ChannelAcl {
         Self::default()
     }
 
-    /// Merge two ACLs. The second wins on collisions; used when a
-    /// project-scope ACL overrides a user-scope default.
+    /// Merge two ACLs. Semantics:
+    ///
+    /// - `allow`: project (overlay) wins wholesale when non-empty.
+    ///   Rationale: stricter allow-list reflects tighter policy.
+    /// - `deny`: union, sorted + deduped. Stricter wins.
+    /// - `notify`: union, sorted + deduped. Hints compose.
+    ///
+    /// Output ordering is deterministic (sorted) so a merged ACL
+    /// serialises identically between runs — important for config
+    /// diffing and trajectory replay.
     pub fn merge(base: &Self, overlay: &Self) -> Self {
         let mut merged = base.clone();
         if !overlay.allow_channels.is_empty() {
             merged.allow_channels = overlay.allow_channels.clone();
         }
-        // Deny is the union — stricter wins.
-        let denies: HashSet<String> = merged
-            .deny_channels
-            .iter()
-            .chain(overlay.deny_channels.iter())
-            .cloned()
-            .collect();
-        merged.deny_channels = denies.into_iter().collect();
-        // Notify is union too — notify hints compose.
-        let notifies: HashSet<String> = merged
-            .notify_channels
-            .iter()
-            .chain(overlay.notify_channels.iter())
-            .cloned()
-            .collect();
-        merged.notify_channels = notifies.into_iter().collect();
+        merged.deny_channels =
+            union_sorted(&merged.deny_channels, &overlay.deny_channels);
+        merged.notify_channels =
+            union_sorted(&merged.notify_channels, &overlay.notify_channels);
         merged
     }
 
-    /// Decide for a concrete channel name. Channel strings should be
-    /// lowercase; the ACL does case-sensitive match so the caller is
-    /// responsible for normalisation.
+    /// Decide for a concrete channel name. Matching is
+    /// **case-insensitive** — MCP channel names are conventionally
+    /// lowercase but a server that advertises `"Sampling"` must
+    /// still hit `deny=["sampling"]`. The ACL normalises both sides
+    /// internally.
     pub fn check(&self, channel: &str) -> ChannelDecision {
-        if self.deny_channels.iter().any(|c| c == channel) {
+        let needle = channel.to_ascii_lowercase();
+        let any_match = |list: &[String]| {
+            list.iter().any(|c| c.to_ascii_lowercase() == needle)
+        };
+        if any_match(&self.deny_channels) {
             return ChannelDecision::Deny(format!(
                 "channel {channel} in deny list"
             ));
         }
-        if !self.allow_channels.is_empty()
-            && !self.allow_channels.iter().any(|c| c == channel)
-        {
+        if !self.allow_channels.is_empty() && !any_match(&self.allow_channels) {
             return ChannelDecision::Deny(format!(
                 "channel {channel} not in allow list"
             ));
         }
-        if self.notify_channels.iter().any(|c| c == channel) {
+        if any_match(&self.notify_channels) {
             return ChannelDecision::AllowWithNotify(format!(
                 "channel {channel} on notify list"
             ));
         }
         ChannelDecision::Allow
     }
+}
+
+fn union_sorted(a: &[String], b: &[String]) -> Vec<String> {
+    let mut set: HashSet<String> = HashSet::new();
+    set.extend(a.iter().cloned());
+    set.extend(b.iter().cloned());
+    let mut out: Vec<String> = set.into_iter().collect();
+    out.sort();
+    out
 }
 
 #[cfg(test)]
@@ -177,6 +186,32 @@ mod tests {
         let set: std::collections::HashSet<_> = m.deny_channels.iter().collect();
         assert!(set.contains(&"x".to_string()));
         assert!(set.contains(&"y".to_string()));
+    }
+
+    #[test]
+    fn merge_is_deterministic() {
+        // Same inputs produce the same serialised form every time.
+        let a = acl(&[], &["b", "c", "a"], &[]);
+        let b = acl(&[], &["e", "d"], &[]);
+        let m1 = ChannelAcl::merge(&a, &b);
+        let m2 = ChannelAcl::merge(&a, &b);
+        assert_eq!(serde_json::to_string(&m1).unwrap(), serde_json::to_string(&m2).unwrap());
+        // And outputs are sorted.
+        assert_eq!(m1.deny_channels, vec!["a", "b", "c", "d", "e"]);
+    }
+
+    #[test]
+    fn check_is_case_insensitive() {
+        let a = acl(&[], &["sampling"], &[]);
+        // Server advertises capitalised name.
+        match a.check("Sampling") {
+            ChannelDecision::Deny(_) => {}
+            other => panic!("case-insensitive deny must fire, got {other:?}"),
+        }
+        match a.check("SAMPLING") {
+            ChannelDecision::Deny(_) => {}
+            other => panic!("case-insensitive deny must fire, got {other:?}"),
+        }
     }
 
     #[test]

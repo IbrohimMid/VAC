@@ -68,10 +68,22 @@ impl StdioLspHost {
     /// Spawn the LSP server, run the `initialize` + `initialized`
     /// handshake, and return a host ready to accept requests. The
     /// caller may override the binary via the `VAC_LSP_SERVER` env
-    /// var (defaults to `rust-analyzer`).
+    /// var (defaults to `rust-analyzer`). Multi-language callers
+    /// should use [`spawn_with_binary`] instead — passing a binary
+    /// explicitly avoids racing on a process-wide env var.
     pub async fn spawn(project_root: PathBuf) -> AnalysisResult<Self> {
         let command =
             std::env::var("VAC_LSP_SERVER").unwrap_or_else(|_| "rust-analyzer".into());
+        Self::spawn_with_binary(project_root, command).await
+    }
+
+    /// Spawn a specific server binary. Used by
+    /// [`crate::rust_analysis::LspServerManager`] to route each file
+    /// extension to the right server without mutating process env.
+    pub async fn spawn_with_binary(
+        project_root: PathBuf,
+        command: String,
+    ) -> AnalysisResult<Self> {
         if !Self::is_available(&command) {
             return Err(AnalysisError::BackendUnavailable);
         }

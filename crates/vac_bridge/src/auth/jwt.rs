@@ -70,6 +70,21 @@ impl Claims {
     }
 }
 
+/// Length-independent constant-time byte comparison. For HS256 the
+/// sig length is always 32; the caller can treat a length mismatch
+/// as "bad signature" without leaking timing because mismatched
+/// lengths never touch the XOR loop.
+pub(crate) fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut diff: u8 = 0;
+    for (x, y) in a.iter().zip(b) {
+        diff |= x ^ y;
+    }
+    diff == 0
+}
+
 fn now_unix() -> i64 {
     use std::time::{SystemTime, UNIX_EPOCH};
     SystemTime::now()
@@ -201,7 +216,10 @@ pub fn verify(
     mac.update(signing_input.as_bytes());
     let want = mac.finalize().into_bytes();
     let got = URL_SAFE_NO_PAD.decode(sig_b64.as_bytes())?;
-    if got.as_slice() != want.as_slice() {
+    // Constant-time compare — short-circuit `!=` leaks timing on
+    // the prefix match, which over enough samples narrows the
+    // expected signature bit by bit.
+    if !constant_time_eq(got.as_slice(), want.as_slice()) {
         return Err(JwtError::BadSignature);
     }
     let payload_raw = URL_SAFE_NO_PAD.decode(payload_b64.as_bytes())?;
@@ -327,6 +345,33 @@ mod tests {
         let tok = format!("{h_b64}.{p_b64}.{s_b64}");
         let keys = keys_with("k1", b"s");
         matches!(verify(&keys, &tok, 0).unwrap_err(), JwtError::UnsupportedAlg(_));
+    }
+
+    #[test]
+    fn constant_time_eq_matches_semantics_of_eq() {
+        assert!(constant_time_eq(b"abc", b"abc"));
+        assert!(!constant_time_eq(b"abc", b"abd"));
+        assert!(!constant_time_eq(b"abc", b"ab"));
+        assert!(!constant_time_eq(b"", b"a"));
+        assert!(constant_time_eq(b"", b""));
+    }
+
+    #[test]
+    fn bit_flipped_signature_rejected() {
+        // Mint a real token then flip one byte of the signature —
+        // verify must report BadSignature regardless of which byte
+        // is flipped (exercises the ct compare).
+        let keys = keys_with("k1", b"abcdefghijklmnop");
+        let claims = Claims::new("u", "v").with_exp(9_000_000_000);
+        let tok = mint(&keys, "k1", &claims).unwrap();
+        let mut parts: Vec<String> = tok.split('.').map(str::to_string).collect();
+        // Corrupt the first base64 char of the signature in a way
+        // that keeps it a valid base64 char.
+        let sig = &mut parts[2];
+        let bytes = unsafe { sig.as_bytes_mut() };
+        bytes[0] = if bytes[0] == b'A' { b'B' } else { b'A' };
+        let bad = parts.join(".");
+        matches!(verify(&keys, &bad, 0).unwrap_err(), JwtError::BadSignature);
     }
 
     #[test]

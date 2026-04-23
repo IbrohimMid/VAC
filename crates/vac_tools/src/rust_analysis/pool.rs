@@ -93,18 +93,17 @@ impl LspServerManager {
             );
             return None;
         }
-        // Scope the server binary via env — spawn_stdio resolves
-        // `VAC_LSP_SERVER` so point it at the per-language choice.
-        // Temporarily setting a process-wide env is not thread-safe,
-        // so we honour the env only when it already names the
-        // desired binary; otherwise we proceed with the default.
-        // Callers that want strict per-language choice should set
-        // `VAC_LSP_SERVER` themselves before construction.
+        // W5.1 audit fix — route per-language by passing the binary
+        // name directly to the spawner. Earlier versions relied on
+        // `VAC_LSP_SERVER` env, which defeats the entire point of
+        // a multi-language pool (two concurrent callers for Rust and
+        // Python would race on the env var).
         let project_root = file
             .parent()
             .map(Path::to_path_buf)
             .unwrap_or_else(|| std::path::PathBuf::from("."));
-        let host = match StdioLspHost::spawn(project_root).await {
+        let host = match StdioLspHost::spawn_with_binary(project_root, binary).await
+        {
             Ok(h) => Arc::new(h) as Arc<dyn AnalysisHost>,
             Err(e) => {
                 tracing::warn!(
