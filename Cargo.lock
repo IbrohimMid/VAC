@@ -6136,6 +6136,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "vac_session_engine"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "uuid",
+ "vac_tool_core",
+]
+
+[[package]]
 name = "vac_shell"
 version = "0.1.0"
 dependencies = [
@@ -6195,6 +6211,7 @@ dependencies = [
  "tracing",
  "uuid",
  "vac_signal",
+ "vac_tool_core",
  "vil_context",
  "vil_ir",
  "vil_knowledge",
