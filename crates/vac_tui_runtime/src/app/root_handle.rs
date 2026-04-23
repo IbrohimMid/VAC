@@ -207,17 +207,6 @@ impl AppStateRootHandle {
         guard.notifications.drain(..).collect()
     }
 
-    /// Escape hatch for tests that want direct access.
-    #[cfg(test)]
-    pub(crate) async fn snapshot(&self) -> RootObservables {
-        let g = self.inner.read().await;
-        RootObservables {
-            notifications: g.notifications.clone(),
-            breadcrumbs: g.breadcrumbs.clone(),
-            tool_counter: g.tool_counter,
-            errors_seen: g.errors_seen,
-        }
-    }
 }
 
 #[cfg(test)]

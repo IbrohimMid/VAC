@@ -69,6 +69,7 @@ impl RemoteSessionAdapter {
 
     /// Wrap a pre-built `RemoteSession`. Convenience for in-process
     /// wiring where the caller controls both sides of the bridge.
+    #[allow(dead_code)] // kept as public API surface for future in-process bridges
     pub fn from_session(session: RemoteSession) -> Self {
         let handle = session.handle();
         let (_inbound_rx, outbound_rx) = session.split();
