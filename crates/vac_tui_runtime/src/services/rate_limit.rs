@@ -8,8 +8,6 @@
 //! An env-var mock (`VAC_MOCK_RATE_LIMIT=1`) flips the state machine
 //! into a forced-limit mode for screenshots + demos.
 
-use std::sync::OnceLock;
-
 /// 10-message bank. Rotated round-robin; dedup with BannerQueue at
 /// the call site if you don't want rapid-fire refreshes.
 pub const RATE_LIMIT_MESSAGES: &[&str] = &[
@@ -77,16 +75,18 @@ impl RateLimitState {
         !matches!(self.kind, RateLimitKind::None)
     }
 
-    /// Env-var mock: `VAC_MOCK_RATE_LIMIT=1` forces `Soft` on boot.
-    /// `VAC_MOCK_RATE_LIMIT=hard` forces `Hard`. Anything else =
-    /// `None`. Cached for the process lifetime.
+    /// Env-var mock: `VAC_MOCK_RATE_LIMIT=1` or `=soft` forces
+    /// `Soft`, `=hard` forces `Hard`, anything else maps to `None`.
+    /// Read on every call so that test harnesses can flip the env
+    /// between `RateLimitState::default()` invocations — caching the
+    /// first read in a `OnceLock` made tests in the same process
+    /// observe stale values.
     fn initial_kind_from_env() -> RateLimitKind {
-        static CACHED: OnceLock<RateLimitKind> = OnceLock::new();
-        *CACHED.get_or_init(|| match std::env::var("VAC_MOCK_RATE_LIMIT") {
+        match std::env::var("VAC_MOCK_RATE_LIMIT") {
             Ok(v) if v.eq_ignore_ascii_case("hard") => RateLimitKind::Hard,
             Ok(v) if v == "1" || v.eq_ignore_ascii_case("soft") => RateLimitKind::Soft,
             _ => RateLimitKind::None,
-        })
+        }
     }
 }
 
@@ -137,5 +137,20 @@ mod tests {
             message_idx: usize::MAX,
         };
         let _ = s.current_message(); // must not panic
+    }
+
+    #[test]
+    fn next_message_wraps_cleanly_at_usize_max() {
+        let mut s = RateLimitState {
+            kind: RateLimitKind::Soft,
+            retry_after_secs: None,
+            message_idx: usize::MAX,
+        };
+        let before = s.current_message();
+        let after = s.next_message();
+        // After wrapping_add(1) from usize::MAX we land on 0 →
+        // the first message in the bank.
+        assert_eq!(after, RATE_LIMIT_MESSAGES[0]);
+        assert_ne!(before, after);
     }
 }

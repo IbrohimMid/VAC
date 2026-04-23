@@ -5,7 +5,10 @@
 //! unicode bar graph in the footer. Deliberately tiny — no ratatui
 //! dep so it can be reused by CLI printers too.
 
-/// 8-step Unicode block bars, from empty to full.
+/// Nine Unicode block glyphs (empty → full) giving eight step levels
+/// between adjacent bars. `render()` scales samples into this range
+/// and the final `.min(BARS.len() - 1)` keeps indexing defensive
+/// against float rounding edge cases.
 const BARS: &[char] = &[' ', '▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
 
 /// Bounded ring buffer of recent samples with a convenience
@@ -126,6 +129,16 @@ mod tests {
         }
         // Oldest kept sample is 3; chronological order is 3,4,5.
         assert_eq!(s.samples(), vec![3, 4, 5]);
+    }
+
+    #[test]
+    fn single_sample_renders_as_one_full_bar() {
+        let mut s = Sparkline::with_capacity(4);
+        s.push(7);
+        let r = s.render();
+        assert_eq!(r.chars().count(), 1);
+        // A single sample is its own max → tallest glyph.
+        assert_eq!(r, "█");
     }
 
     #[test]

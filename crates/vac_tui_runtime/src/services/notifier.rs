@@ -88,21 +88,31 @@ impl CapturingNotifier {
     }
 
     pub fn snapshot(&self) -> Vec<Notification> {
-        self.inner.lock().ok().map(|v| v.clone()).unwrap_or_default()
+        // Recover on poison so a panicking producer doesn't silently
+        // hide every subsequent test assertion behind an empty Vec.
+        let guard = self
+            .inner
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        guard.clone()
     }
 
     pub fn clear(&self) {
-        if let Ok(mut v) = self.inner.lock() {
-            v.clear();
-        }
+        let mut guard = self
+            .inner
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        guard.clear();
     }
 }
 
 impl Notifier for CapturingNotifier {
     fn notify(&self, note: Notification) {
-        if let Ok(mut v) = self.inner.lock() {
-            v.push(note);
-        }
+        let mut guard = self
+            .inner
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        guard.push(note);
     }
 }
 
@@ -137,6 +147,40 @@ mod tests {
         assert_eq!(snap.len(), 2);
         assert_eq!(snap[0].title, "a");
         assert_eq!(snap[1].level, NotifyLevel::Error);
+    }
+
+    #[test]
+    fn capturing_notifier_recovers_from_lock_poison() {
+        // Simulate a producer that panics while holding the lock.
+        use std::sync::Arc;
+        let n = Arc::new(CapturingNotifier::new());
+        let n2 = n.clone();
+        let _ = std::thread::spawn(move || {
+            let _guard = n2.inner.lock().unwrap();
+            panic!("producer blew up under the lock");
+        })
+        .join();
+        // The mutex is now poisoned; snapshot must still return the
+        // recorded data (empty here) rather than silently hiding it
+        // behind an Ok path.
+        let snap = n.snapshot();
+        assert!(snap.is_empty());
+        // Subsequent notifies still succeed.
+        n.notify(Notification {
+            level: NotifyLevel::Info,
+            title: "post-poison".into(),
+            body: "still captured".into(),
+        });
+        assert_eq!(n.snapshot().len(), 1);
+    }
+
+    /// Compile-time assertion: `Box<dyn Notifier>` is `Send + Sync`
+    /// so drivers can carry it across spawn boundaries without
+    /// needing a `+ Send + Sync` suffix at every use site.
+    #[test]
+    fn notifier_trait_object_is_send_sync() {
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<Box<dyn Notifier>>();
     }
 
     #[test]

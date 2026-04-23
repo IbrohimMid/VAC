@@ -45,6 +45,12 @@ pub fn parse_rewind_command(input: &str) -> Result<RewindCommand, RewindParseErr
     let rest = trimmed
         .strip_prefix("/rewind")
         .ok_or(RewindParseError::NotRewind)?;
+    // Require a whitespace/EOF boundary after `/rewind` so
+    // `/rewindasdf` does not steal dispatch from a future
+    // `/rewindall`-style command.
+    if !rest.is_empty() && !rest.starts_with(char::is_whitespace) {
+        return Err(RewindParseError::NotRewind);
+    }
     let arg = rest.trim();
     if arg.is_empty() {
         return Ok(RewindCommand { steps: 1 });
@@ -117,6 +123,20 @@ mod tests {
         assert_eq!(
             parse_rewind_command("/help").unwrap_err(),
             RewindParseError::NotRewind
+        );
+    }
+
+    #[test]
+    fn rewind_requires_boundary_after_keyword() {
+        // `/rewindasdf` must not be interpreted as `/rewind asdf`.
+        assert_eq!(
+            parse_rewind_command("/rewindasdf").unwrap_err(),
+            RewindParseError::NotRewind,
+        );
+        // A bare `/rewind42` likewise is not parsed as `/rewind 42`.
+        assert_eq!(
+            parse_rewind_command("/rewind42").unwrap_err(),
+            RewindParseError::NotRewind,
         );
     }
 

@@ -75,7 +75,21 @@ impl PromptHistory {
             })
             .collect();
         scored.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
-        scored.into_iter().take(limit).map(|(_, _, p)| p.clone()).collect()
+        // Dedup non-consecutive duplicates. `record` already
+        // collapses consecutive repeats, but history like
+        // ["x", "y", "x"] surfaces "x" twice without this pass.
+        let mut seen = std::collections::HashSet::new();
+        scored
+            .into_iter()
+            .filter_map(|(_, _, p)| {
+                if seen.insert(p.clone()) {
+                    Some(p.clone())
+                } else {
+                    None
+                }
+            })
+            .take(limit)
+            .collect()
     }
 }
 
@@ -147,6 +161,19 @@ mod tests {
         }
         assert_eq!(h.suggest("item", 3).len(), 3);
         assert_eq!(h.suggest("item", 0).len(), 0);
+    }
+
+    #[test]
+    fn suggest_dedups_non_consecutive_duplicates() {
+        let mut h = PromptHistory::with_capacity(8);
+        h.record("x");
+        h.record("y");
+        h.record("x"); // non-consecutive repeat
+        let s = h.suggest("", 10);
+        assert_eq!(s.len(), 2, "got {s:?}");
+        // Most recent "x" wins and appears once.
+        assert_eq!(s[0], "x");
+        assert_eq!(s[1], "y");
     }
 
     #[test]

@@ -51,6 +51,10 @@ pub enum BudgetClass {
 
 impl BudgetClass {
     pub fn classify(estimate: TokenEstimate, context_window: u32) -> Self {
+        // Zero tokens is the trivial safe case regardless of window.
+        if estimate.tokens == 0 {
+            return Self::Safe;
+        }
         if context_window == 0 {
             return Self::Warn;
         }
@@ -111,6 +115,13 @@ mod tests {
     fn zero_context_window_degrades_to_warn() {
         let e = TokenEstimate::new("x");
         assert_eq!(BudgetClass::classify(e, 0), BudgetClass::Warn);
+    }
+
+    #[test]
+    fn zero_tokens_is_always_safe() {
+        let e = TokenEstimate::new("");
+        assert_eq!(BudgetClass::classify(e, 0), BudgetClass::Safe);
+        assert_eq!(BudgetClass::classify(e, 1_000), BudgetClass::Safe);
     }
 
     #[test]
