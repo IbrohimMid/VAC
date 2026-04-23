@@ -116,6 +116,28 @@ impl VilTool for BashTool {
         "dangerous"
     }
 
+    /// W2.4 — `bash` is the one tool whose safety is entirely
+    /// input-dependent. Delegate both classifications to the
+    /// `is_read_only_bash_command` policy so the fork-speculation
+    /// driver and concurrency scheduler see consistent answers.
+    fn is_input_read_only(&self, input: &serde_json::Value) -> bool {
+        input
+            .get("command")
+            .and_then(|c| c.as_str())
+            .map(crate::registry::is_read_only_bash_command)
+            .unwrap_or(false)
+    }
+
+    fn is_input_concurrency_safe(&self, input: &serde_json::Value) -> bool {
+        // A command is safe to parallelise only if it's observationally
+        // read-only AND has no shell control that could chain a write.
+        self.is_input_read_only(input)
+    }
+
+    fn is_input_destructive(&self, input: &serde_json::Value) -> bool {
+        !self.is_input_read_only(input)
+    }
+
     async fn execute(
         &self,
         args: serde_json::Value,

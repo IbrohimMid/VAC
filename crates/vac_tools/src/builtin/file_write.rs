@@ -93,6 +93,40 @@ impl VilTool for FileWriteTool {
         "needs_approval"
     }
 
+    /// W2.4 — File write is destructive only when it overwrites an
+    /// existing file. Append-mode with a brand-new path is mutating
+    /// but recoverable. Creating a new file is neither destructive
+    /// nor read-only.
+    ///
+    /// **Sync I/O note.** The trait method is synchronous (called
+    /// from permission gates that are themselves not async), so the
+    /// `exists()` check blocks on a single-syscall `stat`. This is
+    /// acceptable for permission dispatch — a few microseconds per
+    /// check — but callers that batch thousands of classifications
+    /// should wrap the invocation in `spawn_blocking`.
+    fn is_input_destructive(&self, input: &serde_json::Value) -> bool {
+        let Some(path) = input.get("path").and_then(|p| p.as_str()) else {
+            return true; // Missing path → assume worst case.
+        };
+        let append = input
+            .get("append")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let pb = std::path::PathBuf::from(path);
+        // Overwriting an existing file is destructive. Append extends
+        // so the prior content survives — not destructive even when
+        // the file exists.
+        pb.exists() && !append
+    }
+
+    fn is_input_concurrency_safe(&self, input: &serde_json::Value) -> bool {
+        // Two writes to different paths are fine; two writes to the
+        // same path are not. Without full input-matrix awareness we
+        // conservatively report non-safe so the scheduler serialises.
+        let _ = input;
+        false
+    }
+
     async fn execute(
         &self,
         args: serde_json::Value,

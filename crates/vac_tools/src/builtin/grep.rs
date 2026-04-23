@@ -81,6 +81,15 @@ impl crate::registry::VilTool for GrepTool {
         "safe"
     }
 
+    /// W2.4 — Grep's schema is large (8 optional parameters) and it's
+    /// only useful when the operator explicitly wants to search. Defer
+    /// loading so the initial tool manifest doesn't spend prompt
+    /// tokens on it; `ToolSearch` resolves it on first "find X"
+    /// request.
+    fn should_defer(&self) -> bool {
+        true
+    }
+
     async fn execute(
         &self,
         input: serde_json::Value,

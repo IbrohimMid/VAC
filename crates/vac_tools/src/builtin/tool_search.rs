@@ -92,6 +92,14 @@ impl VilTool for ToolSearchTool {
         "safe"
     }
 
+    /// W2.4 — ToolSearch MUST be on the initial manifest: it is the
+    /// only way the agent resolves any tool that declared
+    /// `should_defer = true`. `always_load = true` forces inclusion
+    /// even if a future revision marks this tool deferrable.
+    fn always_load(&self) -> bool {
+        true
+    }
+
     async fn execute(
         &self,
         args: serde_json::Value,

@@ -17,6 +17,7 @@
 //! `FileRead`) override `max_result_size_chars()` to `usize::MAX`.
 
 use std::path::{Path, PathBuf};
+use std::time::{Duration, SystemTime};
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -58,6 +59,18 @@ impl PreviewStub {
 ///
 /// `threshold == usize::MAX` disables spill entirely and returns
 /// the original unchanged.
+///
+/// **Spill files are not auto-cleaned.** Long-running projects should
+/// call [`prune_spill_dir`] on a cron (or at boot) to bound disk use.
+/// The path in the returned stub is absolute — cross-machine
+/// consumers (bridge, trajectory replay) must translate it relative
+/// to their own `.vac/tool-results/` before dereferencing.
+#[tracing::instrument(
+    target = "vac_tools::result_spill",
+    name = "maybe_spill",
+    skip_all,
+    fields(threshold, spilled = tracing::field::Empty, size_chars = tracing::field::Empty),
+)]
 pub async fn maybe_spill_result(
     payload: serde_json::Value,
     threshold: usize,
@@ -68,9 +81,21 @@ pub async fn maybe_spill_result(
     }
     let serialized = match serde_json::to_string(&payload) {
         Ok(s) => s,
-        Err(_) => return Ok(payload),
+        Err(e) => {
+            tracing::warn!(
+                target: "vac_tools::result_spill",
+                error = %e,
+                "payload serialize failed; returning unchanged",
+            );
+            return Ok(payload);
+        }
     };
-    if serialized.chars().count() <= threshold {
+    // Compute char count once — serde_json never inserts multi-byte
+    // chars so the count is stable. Reuse for both the threshold
+    // check and the stub's `original_size_chars` field.
+    let size_chars = serialized.chars().count();
+    tracing::Span::current().record("size_chars", size_chars);
+    if size_chars <= threshold {
         return Ok(payload);
     }
     tokio::fs::create_dir_all(spill_root).await?;
@@ -84,10 +109,52 @@ pub async fn maybe_spill_result(
     let stub = PreviewStub {
         kind: PreviewStub::KIND.into(),
         path,
-        original_size_chars: serialized.chars().count(),
+        original_size_chars: size_chars,
         head_preview,
     };
+    tracing::Span::current().record("spilled", true);
     Ok(serde_json::to_value(stub).unwrap_or(serde_json::Value::Null))
+}
+
+/// Remove spill files older than `older_than`. Returns the number of
+/// files removed. Non-spill files (anything that isn't `*.json` or
+/// that doesn't deserialize as `PreviewStub` content) are skipped
+/// defensively — the pruner is conservative so a misrouted file in
+/// the directory survives a sweep.
+pub async fn prune_spill_dir(
+    spill_root: &Path,
+    older_than: Duration,
+) -> std::io::Result<usize> {
+    if !spill_root.is_dir() {
+        return Ok(0);
+    }
+    let cutoff = SystemTime::now()
+        .checked_sub(older_than)
+        .unwrap_or(SystemTime::UNIX_EPOCH);
+    let mut rd = tokio::fs::read_dir(spill_root).await?;
+    let mut removed = 0usize;
+    while let Some(entry) = rd.next_entry().await? {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("json") {
+            continue;
+        }
+        let meta = match entry.metadata().await {
+            Ok(m) => m,
+            Err(_) => continue,
+        };
+        let modified = meta.modified().unwrap_or(SystemTime::UNIX_EPOCH);
+        if modified <= cutoff {
+            if tokio::fs::remove_file(&path).await.is_ok() {
+                removed += 1;
+            }
+        }
+    }
+    tracing::info!(
+        target: "vac_tools::result_spill",
+        removed,
+        "pruned spill dir",
+    );
+    Ok(removed)
 }
 
 #[cfg(test)]
@@ -152,6 +219,50 @@ mod tests {
         let v = serde_json::json!({"kind": "something-else", "x": 1});
         let out = maybe_spill_result(v.clone(), 1024, tmp.path()).await.unwrap();
         assert!(!PreviewStub::is_stub(&out), "non-spill payload is not a stub");
+    }
+
+    #[tokio::test]
+    async fn prune_removes_old_spill_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        let old_path = tmp.path().join("old.json");
+        tokio::fs::write(&old_path, "{}").await.unwrap();
+        // Let the fs clock tick past the eventual cutoff. 50 ms is
+        // plenty to guarantee mtime < now() on any reasonable kernel.
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        let new_path = tmp.path().join("new.json");
+        tokio::fs::write(&new_path, "{}").await.unwrap();
+        // Prune anything older than 20 ms. `old.json` is > 50 ms old
+        // by now; `new.json` is freshly written so it survives.
+        let n = prune_spill_dir(tmp.path(), Duration::from_millis(20))
+            .await
+            .unwrap();
+        assert_eq!(n, 1, "exactly one file should be pruned");
+        assert!(!old_path.exists(), "old spill removed");
+        assert!(new_path.exists(), "fresh spill kept");
+    }
+
+    #[tokio::test]
+    async fn prune_skips_non_json_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        let txt = tmp.path().join("stray.txt");
+        tokio::fs::write(&txt, "leave me alone").await.unwrap();
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        // Cutoff well before the stray's mtime — pruner would target
+        // it by age, but the extension gate skips it.
+        let n = prune_spill_dir(tmp.path(), Duration::from_millis(1))
+            .await
+            .unwrap();
+        assert_eq!(n, 0);
+        assert!(txt.exists(), "non-.json files must not be pruned");
+    }
+
+    #[tokio::test]
+    async fn prune_on_missing_dir_is_noop() {
+        let tmp = tempfile::tempdir().unwrap();
+        let n = prune_spill_dir(&tmp.path().join("nope"), Duration::from_secs(1))
+            .await
+            .unwrap();
+        assert_eq!(n, 0);
     }
 
     #[tokio::test]

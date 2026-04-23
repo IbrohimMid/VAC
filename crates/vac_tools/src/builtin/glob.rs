@@ -53,6 +53,13 @@ impl crate::registry::VilTool for GlobTool {
         "safe"
     }
 
+    /// W2.4 — Same reasoning as grep: defer loading so the initial
+    /// manifest stays lean. Pattern-matching over the tree is pulled
+    /// on-demand.
+    fn should_defer(&self) -> bool {
+        true
+    }
+
     async fn execute(
         &self,
         input: serde_json::Value,

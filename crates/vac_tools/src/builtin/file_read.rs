@@ -83,6 +83,13 @@ impl VilTool for FileReadTool {
         "safe"
     }
 
+    /// W2.4 — File content is already bounded by `max_bytes`. Disk-
+    /// spilling a read-file result creates a Read→persist→Read loop
+    /// with no useful outcome, so opt out of the threshold.
+    fn max_result_size_chars(&self) -> usize {
+        usize::MAX
+    }
+
     async fn execute(
         &self,
         args: serde_json::Value,
