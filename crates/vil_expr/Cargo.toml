@@ -1,9 +1,11 @@
 [package]
 name = "vil_expr"
-version = "0.1.0"
-edition = "2021"
-authors = ["Vastar Team <team@vastar.id>"]
-license = "MIT"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "VIL Expression parser + validator — live linting for VIL expressions in the composer and review surfaces"
 
 [dependencies]
 thiserror = { workspace = true }
@@ -11,3 +13,6 @@ serde = { workspace = true }
 
 [dev-dependencies]
 anyhow = { workspace = true }
+
+[lints]
+workspace = true
