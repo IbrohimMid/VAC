@@ -69,6 +69,77 @@ pub trait VilTool: Send + Sync {
         SearchReadKind::None
     }
 
+    // ── W2.1 — per-input capability overrides ──────────────────────────
+    //
+    // `ToolSpec.capability` carries the tool-level default. These
+    // methods let a tool narrow the verdict for a specific input
+    // (`BashTool("git log")` is concurrency-safe and non-destructive;
+    // `BashTool("git reset --hard")` is neither). Default implementations
+    // fall back to the spec so tools that don't care get the right
+    // answer for free.
+
+    /// Whether a specific invocation is safe to run in parallel with
+    /// other tool calls in the same submit. Per-input refinement of
+    /// `ToolSpec.capability.concurrency_safe`.
+    fn is_input_concurrency_safe(&self, _input: &serde_json::Value) -> bool {
+        self.spec().capability.concurrency_safe
+    }
+
+    /// Whether a specific invocation can destroy data (delete, force
+    /// overwrite, force-push). Per-input refinement of
+    /// `ToolSpec.capability.destructive`.
+    fn is_input_destructive(&self, _input: &serde_json::Value) -> bool {
+        self.spec().capability.destructive
+    }
+
+    /// Whether a specific invocation is read-only — useful for fork
+    /// speculation which must not mutate. Default derives from the
+    /// spec's `read_only` flag.
+    fn is_input_read_only(&self, _input: &serde_json::Value) -> bool {
+        self.spec().capability.read_only
+    }
+
+    /// Mutate a transcript-visible clone of the input before hooks /
+    /// observers see it. Must be idempotent — the API-bound original
+    /// is never mutated so prompt-cache reuse stays correct.
+    /// Default is no-op.
+    fn backfill_observable_input(&self, _input: &mut serde_json::Value) {}
+
+    // ── W2.2 — deferred tool loading ──────────────────────────────────
+    //
+    // `should_defer` = true means the tool is excluded from the
+    // initial tool manifest (saves prompt tokens) and only surfaces
+    // once `ToolSearch` resolves it. `always_load` forces inclusion
+    // even when `should_defer` is true — used for tools the agent
+    // must see on turn 1 regardless.
+
+    /// When `true`, this tool ships with `defer_loading` flag so its
+    /// full schema is only sent to the model after an explicit
+    /// `ToolSearch` resolve. Default: false.
+    fn should_defer(&self) -> bool {
+        false
+    }
+
+    /// When `true`, this tool's schema is always included in the
+    /// initial manifest even when `should_defer` would hide it.
+    /// Precedence: `always_load` > `should_defer`. Default: false.
+    fn always_load(&self) -> bool {
+        false
+    }
+
+    // ── W2.3 — oversized-result disk spill ────────────────────────────
+
+    /// Max size in characters of a tool result that is inlined in the
+    /// transcript + response. Results larger than this are persisted
+    /// to `.vac/tool-results/<id>.json` and the caller receives a
+    /// `PreviewStub` with the path and a small head-of-payload
+    /// sample. Override in tools whose output must never be persisted
+    /// (e.g. `FileRead` — circular Read→persist→Read loop risk).
+    /// `usize::MAX` disables the threshold entirely.
+    fn max_result_size_chars(&self) -> usize {
+        256 * 1024
+    }
+
     async fn execute(
         &self,
         args: serde_json::Value,
@@ -474,6 +545,74 @@ mod tests {
         assert!(is_read_only_bash_command("grep foo file | wc -l"));
         // Pipe containing a non-read-only bin fails.
         assert!(!is_read_only_bash_command("cat x | rm y"));
+    }
+
+    struct CapProbe {
+        read: bool,
+        dest: bool,
+        conc: bool,
+    }
+
+    #[async_trait]
+    impl VilTool for CapProbe {
+        fn name(&self) -> &str { "probe" }
+        fn description(&self) -> &str { "probe" }
+        fn input_schema(&self) -> serde_json::Value { serde_json::json!({"type":"object"}) }
+        fn trust_requirement(&self) -> &str { "safe" }
+        fn risk_level(&self) -> &str { "low" }
+        fn spec(&self) -> vac_tool_core::ToolSpec {
+            make_spec(
+                "probe",
+                ToolCapability {
+                    read_only: self.read,
+                    destructive: self.dest,
+                    concurrency_safe: self.conc,
+                    ..Default::default()
+                },
+            )
+        }
+        async fn execute(
+            &self,
+            _args: serde_json::Value,
+            _ctx: &ToolContext,
+        ) -> Result<serde_json::Value, ToolError> {
+            Ok(serde_json::json!({}))
+        }
+    }
+
+    #[test]
+    fn per_input_defaults_match_spec_defaults() {
+        let t = CapProbe { read: true, dest: false, conc: true };
+        let empty = serde_json::json!({});
+        assert!(t.is_input_read_only(&empty));
+        assert!(!t.is_input_destructive(&empty));
+        assert!(t.is_input_concurrency_safe(&empty));
+    }
+
+    #[test]
+    fn per_input_defaults_reflect_mutating_spec() {
+        let t = CapProbe { read: false, dest: true, conc: false };
+        let empty = serde_json::json!({});
+        assert!(!t.is_input_read_only(&empty));
+        assert!(t.is_input_destructive(&empty));
+        assert!(!t.is_input_concurrency_safe(&empty));
+    }
+
+    #[test]
+    fn backfill_observable_input_is_noop_by_default() {
+        let t = CapProbe { read: true, dest: false, conc: true };
+        let mut v = serde_json::json!({"a": 1});
+        let before = v.clone();
+        t.backfill_observable_input(&mut v);
+        assert_eq!(v, before, "default backfill must not mutate");
+    }
+
+    #[test]
+    fn defer_flags_default_false() {
+        let t = CapProbe { read: true, dest: false, conc: true };
+        assert!(!t.should_defer());
+        assert!(!t.always_load());
+        assert_eq!(t.max_result_size_chars(), 256 * 1024);
     }
 
     #[tokio::test]
