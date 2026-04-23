@@ -96,18 +96,20 @@ pub use workbench::{
 
 /// Main application state for TUI.
 ///
-/// **Field-count audit (F3.4).** Target after Fase 3: sub-struct
-/// groupings outnumber flat fields, so domain changes land in one
-/// file instead of scattering through the struct. Current grouping
-/// lives under `app/types/` and includes: `operator` (F3.1),
-/// `session_meta` (F3.3), `bridge` (F3.2 placeholder), `approvals`,
-/// `shell`, `streaming`, `runtime`, `vil`, `vil_dev`, `switchers`,
-/// `review`, `plan`, `ask_user`, `file_picker`, `file_index`,
-/// `command_palette`, `banner`, `paste`, `pins`, `lsp_ui`,
-/// `message_ui`, `task_tray`, `session_resume`, `workbench_chrome`,
-/// `changeset_ui`, `at_mention`, `side_panel`, `quit`, `scroll`,
-/// `view_flags`. Any new domain state should land as a sub-struct
-/// under `app/types/`, not as a new flat field here.
+/// **Field-grouping discipline (F3.4).** AppState is still transitional:
+/// ~30 sub-structs (defined under `app/types/`, e.g. `operator`,
+/// `session_meta`, `bridge`, `approvals`, `shell`, `streaming`,
+/// `runtime`, `vil`, `vil_dev`, `switchers`, `review`, `plan`,
+/// `file_picker`, `command_palette`, `lsp_ui`, `workbench_chrome`,
+/// `session_resume`, `task_tray`, `message_ui`, `ask_user`, `banner`,
+/// `paste`, `pins`, `changeset_ui`, `at_mention`, `side_panel`,
+/// `quit`, `scroll`, `view_flags`, `file_index`) coexist with ~40
+/// remaining flat fields that still need regrouping (billing/usage,
+/// mcp/signal maps, kitty/image caches, theme, etc.).
+///
+/// Rule going forward: **any new domain state lands as a sub-struct
+/// under `app/types/`, not as a new flat field here.** Flat fields
+/// above this line are grandfathered pending a follow-up Fase.
 pub struct AppState {
     pub startup: StartupSnapshot,
     /// True once StartupHydrated has been received — gates first real render.

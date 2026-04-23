@@ -132,7 +132,7 @@ async fn shortcuts_popup_executes_slash_commands_directly() {
     state
         .overlay_manager
         .push(vac_tui_runtime::overlay::OverlayId::Shortcuts, state.focus);
-    state.shortcuts_mode = ShortcutsPopupMode::Commands;
+    state.command_palette.shortcuts_mode = ShortcutsPopupMode::Commands;
     state.input.set_content("seed");
 
     let commands = shortcuts_popup::filter_commands("", &state);
@@ -145,7 +145,7 @@ async fn shortcuts_popup_executes_slash_commands_directly() {
             )
         })
         .expect("/model should be present in shortcuts popup");
-    state.shortcuts_scroll = model_idx;
+    state.command_palette.shortcuts_scroll = model_idx;
 
     let (output_tx, _output_rx) = mpsc::channel(8);
     input_core::handle_input_event(&mut state, &output_tx, InputEvent::InputSubmitted);
@@ -169,15 +169,15 @@ async fn shortcuts_popup_can_switch_tabs_without_closing() {
     state
         .overlay_manager
         .push(vac_tui_runtime::overlay::OverlayId::Shortcuts, state.focus);
-    state.shortcuts_mode = ShortcutsPopupMode::Commands;
-    state.command_palette_input = "stale filter".to_string();
+    state.command_palette.shortcuts_mode = ShortcutsPopupMode::Commands;
+    state.command_palette.input = "stale filter".to_string();
 
     let commands = shortcuts_popup::filter_commands("", &state);
     let sessions_idx = commands
         .iter()
         .position(|cmd| matches!(&cmd.action, CommandAction::OpenSessions))
         .expect("Resume Session command should be present");
-    state.shortcuts_scroll = sessions_idx;
+    state.command_palette.shortcuts_scroll = sessions_idx;
 
     let (output_tx, _output_rx) = mpsc::channel(8);
     input_core::handle_input_event(&mut state, &output_tx, InputEvent::InputSubmitted);
@@ -187,9 +187,9 @@ async fn shortcuts_popup_can_switch_tabs_without_closing() {
             .overlay_manager
             .is_active(vac_tui_runtime::overlay::OverlayId::Shortcuts)
     );
-    assert_eq!(state.shortcuts_mode, ShortcutsPopupMode::Sessions);
-    assert_eq!(state.shortcuts_scroll, 0);
-    assert!(state.command_palette_input.is_empty());
+    assert_eq!(state.command_palette.shortcuts_mode, ShortcutsPopupMode::Sessions);
+    assert_eq!(state.command_palette.shortcuts_scroll, 0);
+    assert!(state.command_palette.input.is_empty());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -248,7 +248,7 @@ async fn buffered_messages_flush_as_a_single_user_message() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn profile_switcher_request_on_open_and_submit_is_deterministic() {
     let mut state = AppState::default();
-    state.active_profile = "migration".to_string();
+    state.switchers.active_profile = "migration".to_string();
 
     let (output_tx, mut output_rx) = mpsc::channel(8);
 
@@ -265,7 +265,7 @@ async fn profile_switcher_request_on_open_and_submit_is_deterministic() {
             filtered.iter().any(|p| p == "migration"),
             "profile switcher should preselect from the active profile set"
         );
-        assert_eq!(filtered[ctx.state.profile_switcher_selected], "migration");
+        assert_eq!(filtered[ctx.state.switchers.profile_selected], "migration");
         profile_switcher::submit_selected(&mut ctx).unwrap();
     }
 
@@ -306,7 +306,7 @@ severity = "warn"
         checkpoint_path: None,
         project_root: root.to_path_buf(),
     });
-    state.selected_rulebooks.insert("workspace".to_string());
+    state.switchers.selected_rulebooks.insert("workspace".to_string());
 
     let (output_tx, mut output_rx) = mpsc::channel(8);
 
@@ -318,9 +318,9 @@ severity = "warn"
                 .overlay_manager
                 .is_active(vac_tui_runtime::overlay::OverlayId::RulebookSwitcher)
         );
-        assert_eq!(ctx.state.available_rulebooks.len(), 1);
-        assert_eq!(ctx.state.available_rulebooks[0].id, "workspace");
-        assert_eq!(ctx.state.rulebook_switcher_selected, 0);
+        assert_eq!(ctx.state.switchers.available_rulebooks.len(), 1);
+        assert_eq!(ctx.state.switchers.available_rulebooks[0].id, "workspace");
+        assert_eq!(ctx.state.switchers.rulebook_selected, 0);
         rulebook_switcher::submit_selected(&mut ctx).unwrap();
     }
 
@@ -385,7 +385,7 @@ async fn sessions_tab_cleans_selected_session_artifacts_and_refreshes() {
         snapshot_present: true,
         snapshot_stale: false,
     }];
-    state.sessions_selected_idx = 0;
+    state.operator.sessions_selected_idx = 0;
 
     let (tx, mut rx) = mpsc::channel(8);
     input_core::handle_input_event(&mut state, &tx, InputEvent::InputChanged('d'));
@@ -462,10 +462,10 @@ mod pr_t16_mouse_dispatch_e2e {
         state.focus = WorkspaceFocus::Input;
         state.workbench_tab = WorkbenchTab::Sessions;
         state
-            .review_file_row_regions
+            .workbench_chrome.review_file_row_regions
             .push(("src/lib.rs".to_string(), Rect::new(2, 5, 40, 1)));
         state
-            .review_file_row_regions
+            .workbench_chrome.review_file_row_regions
             .push(("src/main.rs".to_string(), Rect::new(2, 6, 40, 1)));
 
         let handled = dispatch_click(&mut state, &tx, 10, 6);
@@ -485,15 +485,15 @@ mod pr_t16_mouse_dispatch_e2e {
         state.focus = WorkspaceFocus::Input;
         state.workbench_tab = WorkbenchTab::Review;
         state
-            .approvals_row_regions
+            .workbench_chrome.approvals_row_regions
             .push((0, Rect::new(4, 8, 30, 1)));
         state
-            .approvals_row_regions
+            .workbench_chrome.approvals_row_regions
             .push((2, Rect::new(4, 10, 30, 1)));
 
         let handled = dispatch_click(&mut state, &tx, 5, 10);
         assert!(handled);
-        assert_eq!(state.approval_selected_idx, 2);
+        assert_eq!(state.approvals.approval_selected_idx, 2);
         assert_eq!(state.workbench_tab, WorkbenchTab::Approvals);
         assert_eq!(state.focus, WorkspaceFocus::Workbench);
     }
@@ -504,7 +504,7 @@ mod pr_t16_mouse_dispatch_e2e {
         state.focus = WorkspaceFocus::Input;
         state.workbench_tab = WorkbenchTab::Review;
         state
-            .vil_issue_row_regions
+            .workbench_chrome.vil_issue_row_regions
             .push((3, Rect::new(2, 12, 60, 1)));
 
         let handled = dispatch_click(&mut state, &tx, 5, 12);
@@ -519,7 +519,7 @@ mod pr_t16_mouse_dispatch_e2e {
         let (mut state, tx, _rx) = make_state();
         state.focus = WorkspaceFocus::Input;
         state.workbench_tab = WorkbenchTab::Plan;
-        state.workbench_body_region = Some(Rect::new(0, 5, 80, 20));
+        state.workbench_chrome.body_region = Some(Rect::new(0, 5, 80, 20));
 
         let handled = dispatch_click(&mut state, &tx, 40, 15);
         assert!(handled);
@@ -554,14 +554,14 @@ mod pr_t16_mouse_dispatch_e2e {
             make_session("beta"),
             make_session("gamma"),
         ];
-        state.sessions_selected_idx = 0;
-        state.sessions_row_regions.push((0, Rect::new(2, 5, 30, 1)));
-        state.sessions_row_regions.push((1, Rect::new(2, 6, 30, 1)));
-        state.sessions_row_regions.push((2, Rect::new(2, 7, 30, 1)));
+        state.operator.sessions_selected_idx = 0;
+        state.workbench_chrome.sessions_row_regions.push((0, Rect::new(2, 5, 30, 1)));
+        state.workbench_chrome.sessions_row_regions.push((1, Rect::new(2, 6, 30, 1)));
+        state.workbench_chrome.sessions_row_regions.push((2, Rect::new(2, 7, 30, 1)));
 
         let handled = dispatch_click(&mut state, &tx, 10, 7);
         assert!(handled, "click inside sessions row region must be consumed");
-        assert_eq!(state.sessions_selected_idx, 2);
+        assert_eq!(state.operator.sessions_selected_idx, 2);
         assert_eq!(state.workbench_tab, WorkbenchTab::Sessions);
         assert_eq!(state.focus, WorkspaceFocus::Workbench);
     }
@@ -575,14 +575,14 @@ mod pr_t16_mouse_dispatch_e2e {
         state.focus = WorkspaceFocus::Input;
         state.workbench_tab = WorkbenchTab::Review;
         state.sessions.clear();
-        state.sessions_row_regions.push((5, Rect::new(2, 5, 30, 1)));
+        state.workbench_chrome.sessions_row_regions.push((5, Rect::new(2, 5, 30, 1)));
 
         let handled = dispatch_click(&mut state, &tx, 10, 5);
         assert!(
             !handled,
             "stale sessions row region for missing session must be a no-op"
         );
-        assert_eq!(state.sessions_selected_idx, 0);
+        assert_eq!(state.operator.sessions_selected_idx, 0);
         assert_eq!(state.workbench_tab, WorkbenchTab::Review);
     }
 
@@ -591,9 +591,9 @@ mod pr_t16_mouse_dispatch_e2e {
         let (mut state, tx, _rx) = make_state();
         state.focus = WorkspaceFocus::Input;
         state
-            .review_file_row_regions
+            .workbench_chrome.review_file_row_regions
             .push(("a.rs".to_string(), Rect::new(0, 0, 10, 1)));
-        state.workbench_body_region = Some(Rect::new(0, 5, 20, 5));
+        state.workbench_chrome.body_region = Some(Rect::new(0, 5, 20, 5));
 
         let handled = dispatch_click(&mut state, &tx, 80, 40);
         assert!(!handled, "click outside every region must be a no-op");
@@ -650,8 +650,8 @@ mod pr_t15_hover_popup_e2e {
         let (mut state, tx, _rx) = make_state();
         state.focus = WorkspaceFocus::Workbench;
         state.workbench_tab = WorkbenchTab::Vil;
-        state.active_hover = Some(seeded_hover());
-        state.hover_popup_region = Some(Rect::new(20, 10, 40, 7));
+        state.lsp_ui.active_hover = Some(seeded_hover());
+        state.lsp_ui.hover_popup_region = Some(Rect::new(20, 10, 40, 7));
 
         // Click is well to the upper-left of the popup rect.
         let handled = dispatch_click(&mut state, &tx, 2, 2);
@@ -660,11 +660,11 @@ mod pr_t15_hover_popup_e2e {
             "click outside the popup must be consumed by the dismiss path"
         );
         assert!(
-            state.active_hover.is_none(),
+            state.lsp_ui.active_hover.is_none(),
             "active_hover must be cleared on outside click"
         );
         assert!(
-            state.hover_popup_region.is_none(),
+            state.lsp_ui.hover_popup_region.is_none(),
             "hover_popup_region must be cleared alongside active_hover"
         );
         // Dismiss itself must not change the active tab. (Whether focus
@@ -680,13 +680,13 @@ mod pr_t15_hover_popup_e2e {
         let (mut state, tx, _rx) = make_state();
         state.focus = WorkspaceFocus::Workbench;
         state.workbench_tab = WorkbenchTab::Vil;
-        state.active_hover = Some(seeded_hover());
-        state.hover_popup_region = None;
+        state.lsp_ui.active_hover = Some(seeded_hover());
+        state.lsp_ui.hover_popup_region = None;
 
         let handled = dispatch_click(&mut state, &tx, 30, 15);
         assert!(handled);
-        assert!(state.active_hover.is_none());
-        assert!(state.hover_popup_region.is_none());
+        assert!(state.lsp_ui.active_hover.is_none());
+        assert!(state.lsp_ui.hover_popup_region.is_none());
     }
 
     #[test]
@@ -698,8 +698,8 @@ mod pr_t15_hover_popup_e2e {
         let (mut state, tx, _rx) = make_state();
         state.focus = WorkspaceFocus::Workbench;
         state.workbench_tab = WorkbenchTab::Vil;
-        state.active_hover = Some(seeded_hover());
-        state.hover_popup_region = Some(Rect::new(20, 10, 40, 7));
+        state.lsp_ui.active_hover = Some(seeded_hover());
+        state.lsp_ui.hover_popup_region = Some(Rect::new(20, 10, 40, 7));
 
         // Click squarely inside the popup rect.
         let handled = dispatch_click(&mut state, &tx, 30, 13);
@@ -708,11 +708,11 @@ mod pr_t15_hover_popup_e2e {
             "inside-popup click falls through and, with no underlying region, is a no-op"
         );
         assert!(
-            state.active_hover.is_some(),
+            state.lsp_ui.active_hover.is_some(),
             "inside-popup click must NOT dismiss the hover"
         );
         assert_eq!(
-            state.hover_popup_region,
+            state.lsp_ui.hover_popup_region,
             Some(Rect::new(20, 10, 40, 7)),
             "hover_popup_region must be preserved across an inside click"
         );
@@ -726,10 +726,10 @@ mod pr_t15_hover_popup_e2e {
         let (mut state, tx, _rx) = make_state();
         state.focus = WorkspaceFocus::Input;
         state.workbench_tab = WorkbenchTab::Review;
-        state.active_hover = None;
-        state.hover_popup_region = None;
+        state.lsp_ui.active_hover = None;
+        state.lsp_ui.hover_popup_region = None;
         state
-            .vil_issue_row_regions
+            .workbench_chrome.vil_issue_row_regions
             .push((2, Rect::new(2, 12, 60, 1)));
 
         let handled = dispatch_click(&mut state, &tx, 5, 12);
@@ -781,16 +781,16 @@ mod pr_t15_hover_move_e2e {
         // "handled" so the runtime repaints the dismiss.
         let mut state = AppState::default();
         state.workbench_tab = WorkbenchTab::Vil;
-        state.active_hover = Some(seeded_hover());
-        state.hover_popup_region = Some(Rect::new(20, 10, 40, 7));
+        state.lsp_ui.active_hover = Some(seeded_hover());
+        state.lsp_ui.hover_popup_region = Some(Rect::new(20, 10, 40, 7));
 
         let changed = dispatch_hover(&mut state, 2, 2);
         assert!(
             changed,
             "off-region move must be reported as a state change"
         );
-        assert!(state.active_hover.is_none());
-        assert!(state.hover_popup_region.is_none());
+        assert!(state.lsp_ui.active_hover.is_none());
+        assert!(state.lsp_ui.hover_popup_region.is_none());
     }
 
     #[test]
@@ -800,13 +800,13 @@ mod pr_t15_hover_move_e2e {
         // repaint is needed.
         let mut state = AppState::default();
         state.workbench_tab = WorkbenchTab::Vil;
-        state.active_hover = Some(seeded_hover());
-        state.hover_popup_region = Some(Rect::new(20, 10, 40, 7));
+        state.lsp_ui.active_hover = Some(seeded_hover());
+        state.lsp_ui.hover_popup_region = Some(Rect::new(20, 10, 40, 7));
 
         let changed = dispatch_hover(&mut state, 30, 13);
         assert!(!changed, "hover over popup must be a no-op repaint-wise");
-        assert!(state.active_hover.is_some(), "hover must stay alive");
-        assert_eq!(state.hover_popup_region, Some(Rect::new(20, 10, 40, 7)));
+        assert!(state.lsp_ui.active_hover.is_some(), "hover must stay alive");
+        assert_eq!(state.lsp_ui.hover_popup_region, Some(Rect::new(20, 10, 40, 7)));
     }
 
     #[test]
@@ -816,20 +816,20 @@ mod pr_t15_hover_move_e2e {
         // to None (reported as a change); popup_region resets too.
         let mut state = AppState::default();
         state.workbench_tab = WorkbenchTab::Vil;
-        state.active_hover = Some(seeded_hover());
-        state.hover_popup_region = Some(Rect::new(20, 10, 40, 7));
+        state.lsp_ui.active_hover = Some(seeded_hover());
+        state.lsp_ui.hover_popup_region = Some(Rect::new(20, 10, 40, 7));
         state
-            .vil_issue_row_regions
+            .workbench_chrome.vil_issue_row_regions
             .push((0, Rect::new(2, 20, 60, 1)));
         assert!(
-            state.lsp_diagnostics.is_none(),
+            state.lsp_ui.lsp_diagnostics.is_none(),
             "precondition: no LSP snapshot seeded"
         );
 
         let changed = dispatch_hover(&mut state, 5, 20);
         assert!(changed, "stale hover must be cleared on empty-row hover");
-        assert!(state.active_hover.is_none());
-        assert!(state.hover_popup_region.is_none());
+        assert!(state.lsp_ui.active_hover.is_none());
+        assert!(state.lsp_ui.hover_popup_region.is_none());
     }
 
     #[test]
@@ -842,8 +842,8 @@ mod pr_t15_hover_move_e2e {
 
         let changed = dispatch_hover(&mut state, 50, 50);
         assert!(!changed);
-        assert!(state.active_hover.is_none());
-        assert!(state.hover_popup_region.is_none());
+        assert!(state.lsp_ui.active_hover.is_none());
+        assert!(state.lsp_ui.hover_popup_region.is_none());
     }
 
     #[test]
@@ -854,7 +854,7 @@ mod pr_t15_hover_move_e2e {
         let mut state = AppState::default();
         state.vil.workbench_selected = 1;
         state
-            .vil_issue_row_regions
+            .workbench_chrome.vil_issue_row_regions
             .push((3, Rect::new(2, 30, 60, 1)));
 
         let _ = dispatch_hover(&mut state, 5, 30);

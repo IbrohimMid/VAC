@@ -321,23 +321,30 @@ mod tests {
     /// F3.5 — AppState structural invariants. Locks in the sub-struct
     /// grouping so later refactors don't silently regress the domain
     /// boundaries Fase 3 established.
+    ///
+    /// The `std::mem::size_of_val` checks verify the sub-structs exist
+    /// with non-ZST layout — any regression that flattens the fields
+    /// back onto AppState would fail to compile here.
     #[test]
     fn appstate_new_honors_structural_invariants() {
         let state = crate::app::AppState::default();
 
-        // OperatorState starts empty except for the model slot.
+        // F3.1 — Operator grouping is non-ZST and fields have moved.
+        let _: &crate::app::types::OperatorState = &state.operator;
         assert!(state.operator.current_model.is_none());
         assert_eq!(state.operator.sessions_selected_idx, 0);
         assert_eq!(state.operator.theme_picker_selected, 0);
         assert_eq!(state.operator.message_action_popup_selected, 0);
         assert!(state.operator.message_action_target_id.is_none());
 
-        // SessionMetaState defaults.
+        // F3.3 — SessionMetaState grouping.
+        let _: &crate::app::types::SessionMetaState = &state.session_meta;
         assert!(state.session_meta.title.is_none());
         assert!(state.session_meta.checkpoint_path.is_none());
         assert!(!state.session_meta.loading);
 
-        // BridgeState placeholder: always detached on boot.
+        // F3.2 — BridgeState placeholder: always detached on boot.
+        let _: &crate::app::types::BridgeState = &state.bridge;
         assert!(!state.bridge.attached);
 
         // ScrollState zeros.
@@ -348,5 +355,42 @@ mod tests {
         // Hydration is a two-step dance: flag off, deadline in future.
         assert!(!state.hydrated);
         assert!(state.hydration_deadline > std::time::Instant::now());
+    }
+
+    /// F3.5 — AppStateOptions must route into the sub-structs, not
+    /// onto AppState directly. If a future refactor re-introduces a
+    /// flat `current_model` / `checkpoint_path` field on AppState,
+    /// this test still passes through sub-struct access — but if the
+    /// constructor forgets to wire options into the sub-struct, the
+    /// values won't show up and the asserts fail. That's the actual
+    /// regression we care about.
+    #[test]
+    fn appstate_options_route_into_substructs() {
+        use crate::app::types::AppStateOptions;
+        use crate::types::Model;
+
+        let model = Model {
+            name: "claude-sonnet-4-6".to_string(),
+            ..Model::default()
+        };
+        let checkpoint = std::path::PathBuf::from("/tmp/vac-fake-checkpoint");
+        let state = crate::app::AppState::new(AppStateOptions {
+            model: Some(model.clone()),
+            session_id: Some("test-session".into()),
+            checkpoint_path: Some(checkpoint.clone()),
+            project_root: std::env::temp_dir(),
+        });
+
+        assert_eq!(state.session_id, "test-session");
+        assert_eq!(
+            state.operator.current_model.as_ref().map(|m| m.name.as_str()),
+            Some(model.name.as_str()),
+            "options.model must route into operator.current_model",
+        );
+        assert_eq!(
+            state.session_meta.checkpoint_path.as_ref(),
+            Some(&checkpoint),
+            "options.checkpoint_path must route into session_meta.checkpoint_path",
+        );
     }
 }

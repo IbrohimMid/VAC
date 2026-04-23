@@ -7,6 +7,7 @@ use crate::types::Model;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Default)]
+#[non_exhaustive]
 pub struct OperatorState {
     /// Currently active model (if the operator picked one).
     pub current_model: Option<Model>,

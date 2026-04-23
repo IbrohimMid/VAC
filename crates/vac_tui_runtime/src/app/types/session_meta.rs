@@ -5,6 +5,7 @@
 use std::path::PathBuf;
 
 #[derive(Debug, Clone, Default)]
+#[non_exhaustive]
 pub struct SessionMetaState {
     /// Human-readable title shown in the header (derived from the first
     /// user prompt or set explicitly via /title).
