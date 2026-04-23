@@ -56,5 +56,12 @@ vil_validate = { version = "0.1.0", path = "../vil_validate" }
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
+[dev-dependencies]
+criterion = { workspace = true }
+
+[[bench]]
+name = "primary_action"
+harness = false
+
 [lints]
 workspace = true
