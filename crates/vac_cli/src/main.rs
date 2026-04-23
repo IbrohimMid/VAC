@@ -59,6 +59,11 @@ enum Commands {
         approve: bool,
         #[arg(short, long)]
         target: Vec<String>,
+        /// Engine path: `legacy` (VacEngine direct) or `session`
+        /// (vac_session_engine submit_one via VacEngineAdapter).
+        /// Defaults to legacy; env `VAC_ENGINE=session` flips it.
+        #[arg(long, value_name = "legacy|session")]
+        engine: Option<String>,
     },
     /// Interactive REPL mode
     #[command(next_help_heading = "Run")]
@@ -450,8 +455,19 @@ async fn main() -> anyhow::Result<()> {
             profile,
             approve,
             target,
+            engine,
         } => {
-            commands::run::execute(project_root, task, priority, profile, approve, target).await?;
+            let engine_mode = commands::run::EngineMode::resolve(engine.as_deref());
+            commands::run::execute(
+                project_root,
+                task,
+                priority,
+                profile,
+                approve,
+                target,
+                engine_mode,
+            )
+            .await?;
         }
         Commands::Interactive {
             resume,
