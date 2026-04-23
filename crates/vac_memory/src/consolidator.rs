@@ -101,6 +101,10 @@ impl Consolidator {
         &self.scanner
     }
 
+    pub fn config(&self) -> &ConsolidatorConfig {
+        &self.config
+    }
+
     fn lock_path(&self) -> PathBuf {
         self.scanner.root().join(".consolidator.lock")
     }
