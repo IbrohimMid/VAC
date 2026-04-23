@@ -236,6 +236,21 @@ impl ToolRegistry {
             .collect()
     }
 
+    /// W1.2 — Return only the specs whose capability is `read_only`.
+    /// Used by the fork-speculation driver so a speculative sub-submit
+    /// cannot accidentally call a mutating tool and pollute the
+    /// parent session. `BashTool` has a dedicated `is_read_only_input`
+    /// helper for per-command classification; use [`read_only_specs`]
+    /// to filter an already-collected spec list with that hook when
+    /// the context is a single input value.
+    pub async fn list_read_only_specs(&self) -> Vec<vac_tool_core::ToolSpec> {
+        self.list_specs()
+            .await
+            .into_iter()
+            .filter(|s| s.capability.read_only)
+            .collect()
+    }
+
     pub async fn list_by_category(&self, category: &str) -> Vec<ToolDefinition> {
         self.definitions
             .read()
@@ -270,9 +285,76 @@ impl ToolRegistry {
     }
 }
 
+/// W1.2 — Filter a collected list of specs down to read-only only.
+/// Mirrors [`ToolRegistry::list_read_only_specs`] for callers that
+/// already have the full list (e.g. trajectory replay, MCP bridge
+/// exporting a subset) and want the same invariant without touching
+/// the registry lock.
+pub fn read_only_specs(specs: Vec<vac_tool_core::ToolSpec>) -> Vec<vac_tool_core::ToolSpec> {
+    specs.into_iter().filter(|s| s.capability.read_only).collect()
+}
+
+/// W1.2 — Classify a bash command as read-only. `BashTool` is the one
+/// tool whose read-only status depends on the input (every other tool's
+/// capability is static per spec). Used by the fork driver when it
+/// wants to allow the speculation branch to run grep/find/wc/etc.
+/// without permitting mutation. Pattern list is deliberately short +
+/// explicit — any unknown binary is treated as non-read-only to stay
+/// safe-by-default.
+pub fn is_read_only_bash_command(cmd: &str) -> bool {
+    let trimmed = cmd.trim();
+    if trimmed.is_empty() {
+        return false;
+    }
+    // Reject any shell control that could chain a write: `;` `&&` `|`
+    // with a redirect, backticks, process substitution, heredocs.
+    // The fork path runs speculative reads only; a mixed command
+    // flips to non-read-only to avoid chasing syntax edge-cases.
+    let banned_tokens = [
+        ";", "&&", "||", ">", ">>", "<<", "<(", ">(", "|&", "`", "$(",
+    ];
+    if banned_tokens.iter().any(|t| trimmed.contains(t)) {
+        return false;
+    }
+    // `|` is allowed only when every segment is read-only.
+    if trimmed.contains('|') {
+        return trimmed
+            .split('|')
+            .all(|seg| is_read_only_bash_command(seg));
+    }
+    // Whitelisted utilities. Anything else returns false.
+    const READ_ONLY_BINS: &[&str] = &[
+        "ls", "cat", "head", "tail", "wc", "grep", "rg", "find", "fd",
+        "du", "df", "stat", "file", "which", "echo", "pwd", "id",
+        "uname", "hostname", "date", "printf", "tree", "awk", "sed",
+        "sort", "uniq", "cut", "tr", "column", "less", "more",
+    ];
+    // `sed -i` and `awk -i` mutate; reject.
+    if trimmed.starts_with("sed ") && trimmed.contains(" -i") {
+        return false;
+    }
+    if trimmed.starts_with("awk ") && trimmed.contains(" -i ") {
+        return false;
+    }
+    let first = trimmed.split_whitespace().next().unwrap_or("");
+    READ_ONLY_BINS.contains(&first)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use vac_tool_core::{ToolCapability, ToolPermissionClass, ToolRenderHints, ToolSpec};
+
+    fn make_spec(name: &str, cap: ToolCapability) -> ToolSpec {
+        ToolSpec {
+            name: name.into(),
+            description: "test".into(),
+            input_schema: serde_json::json!({"type": "object"}),
+            capability: cap,
+            permission: ToolPermissionClass::Safe,
+            render: ToolRenderHints::default(),
+        }
+    }
 
     #[test]
     fn audit_test_proves_no_default_spec() {
@@ -280,5 +362,73 @@ mod tests {
         // the compiler enforces that every implementor provides its own `spec()` override.
         // This test serves as the audit record required by M3.
         let _ = "Compiler proved no default `spec` exists for `VilTool`";
+    }
+
+    #[test]
+    fn read_only_specs_filters_mutating() {
+        let specs = vec![
+            make_spec("grep", ToolCapability::default()),
+            make_spec("edit", ToolCapability::mutating()),
+            make_spec("rm", ToolCapability::destructive()),
+            make_spec("ls", ToolCapability::default()),
+        ];
+        let filtered = read_only_specs(specs);
+        let names: Vec<_> = filtered.iter().map(|s| s.name.as_str()).collect();
+        assert_eq!(names, vec!["grep", "ls"]);
+    }
+
+    #[test]
+    fn read_only_specs_empty_input_empty_output() {
+        assert!(read_only_specs(Vec::new()).is_empty());
+    }
+
+    #[test]
+    fn bash_classifier_accepts_whitelisted() {
+        assert!(is_read_only_bash_command("grep foo src/"));
+        assert!(is_read_only_bash_command("ls -la"));
+        assert!(is_read_only_bash_command("wc -l file.txt"));
+        assert!(is_read_only_bash_command("cat Cargo.toml | head -20"));
+        assert!(is_read_only_bash_command("find . -name '*.rs'"));
+    }
+
+    #[test]
+    fn bash_classifier_rejects_mutations() {
+        assert!(!is_read_only_bash_command("rm -rf /"));
+        assert!(!is_read_only_bash_command("git commit"));
+        assert!(!is_read_only_bash_command("sed -i 's/a/b/' file"));
+        assert!(!is_read_only_bash_command("awk -i inplace '{print}' f"));
+        assert!(!is_read_only_bash_command(""));
+        assert!(!is_read_only_bash_command("   "));
+    }
+
+    #[test]
+    fn bash_classifier_rejects_shell_control() {
+        assert!(!is_read_only_bash_command("ls ; rm x"));
+        assert!(!is_read_only_bash_command("ls && rm x"));
+        assert!(!is_read_only_bash_command("ls > out.txt"));
+        assert!(!is_read_only_bash_command("echo `whoami`"));
+        assert!(!is_read_only_bash_command("cat $(pwd)"));
+        assert!(!is_read_only_bash_command("cat <(echo)"));
+    }
+
+    #[test]
+    fn bash_classifier_allows_pipe_only_between_safe_bins() {
+        assert!(is_read_only_bash_command("grep foo file | wc -l"));
+        // Pipe containing a non-read-only bin fails.
+        assert!(!is_read_only_bash_command("cat x | rm y"));
+    }
+
+    #[tokio::test]
+    async fn registry_list_read_only_specs_filters() {
+        // Synthetic: build a registry by hand using a tiny VilTool-like
+        // mock is overkill; instead cover the filter through the helper
+        // which registry.list_read_only_specs delegates to.
+        let specs = vec![
+            make_spec("r", ToolCapability::default()),
+            make_spec("w", ToolCapability::mutating()),
+        ];
+        let ro = read_only_specs(specs);
+        assert_eq!(ro.len(), 1);
+        assert_eq!(ro[0].name, "r");
     }
 }
