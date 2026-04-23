@@ -428,8 +428,38 @@ enum AutopilotAction {
     Down,
     /// Show autopilot status, mode, and log path
     Status,
+    /// Manage scheduled tasks
+    Schedule {
+        #[command(subcommand)]
+        action: ScheduleAction,
+    },
     #[command(hide = true)]
     Run,
+}
+
+#[derive(Subcommand)]
+pub enum ScheduleAction {
+    /// List all scheduled tasks
+    List,
+    /// Add a scheduled task
+    Add {
+        /// Schedule ID
+        id: String,
+        /// Cron expression
+        #[arg(long)]
+        cron: String,
+        /// Task description
+        #[arg(long)]
+        task: String,
+        /// Optional rulebook ID
+        #[arg(long)]
+        rulebook: Option<String>,
+    },
+    /// Remove a scheduled task
+    Remove {
+        /// Schedule ID to remove
+        id: String,
+    },
 }
 
 #[tokio::main]
@@ -627,6 +657,9 @@ async fn main() -> anyhow::Result<()> {
             AutopilotAction::Down => commands::autopilot::execute_down(project_root).await?,
             AutopilotAction::Status => {
                 commands::autopilot::execute_status(project_root, &cli.format).await?
+            }
+            AutopilotAction::Schedule { action } => {
+                commands::autopilot::execute_schedule(project_root, action).await?
             }
             AutopilotAction::Run => commands::autopilot::execute_run(project_root).await?,
         },

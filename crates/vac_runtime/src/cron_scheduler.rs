@@ -27,13 +27,32 @@ impl From<&vac_core::config::ScheduleEntry> for CronEntry {
 /// dropping entries marked `disabled`. Callers feed the result into
 /// `CronScheduler::new`.
 pub fn entries_from_autopilot(
+    project_root: &std::path::Path,
     cfg: &vac_core::config::AutopilotConfig,
 ) -> Vec<CronEntry> {
-    cfg.schedules
+    let mut entries: Vec<CronEntry> = cfg
+        .schedules
         .iter()
         .filter(|e| !e.disabled)
         .map(CronEntry::from)
-        .collect()
+        .collect();
+
+    let schedules_file = project_root.join(".vac/autopilot.schedules.toml");
+    if let Ok(content) = std::fs::read_to_string(&schedules_file) {
+        #[derive(Deserialize)]
+        struct ScheduleDoc {
+            #[serde(default)]
+            schedules: Vec<vac_core::config::ScheduleEntry>,
+        }
+        if let Ok(doc) = toml::from_str::<ScheduleDoc>(&content) {
+            for entry in doc.schedules {
+                if !entry.disabled {
+                    entries.push(CronEntry::from(&entry));
+                }
+            }
+        }
+    }
+    entries
 }
 
 #[cfg(test)]
@@ -61,11 +80,12 @@ mod bridge_tests {
 
     #[test]
     fn entries_from_autopilot_skips_disabled() {
+        let tmp = tempfile::tempdir().unwrap();
         let cfg = AutopilotConfig {
             schedules: vec![entry("a", false), entry("b", true), entry("c", false)],
             ..Default::default()
         };
-        let entries = entries_from_autopilot(&cfg);
+        let entries = entries_from_autopilot(tmp.path(), &cfg);
         assert_eq!(entries.len(), 2);
         assert!(entries.iter().any(|e| e.task == "task-a"));
         assert!(entries.iter().any(|e| e.task == "task-c"));

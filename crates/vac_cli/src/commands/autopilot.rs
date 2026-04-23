@@ -311,6 +311,80 @@ fn is_running(_pid: u32) -> bool {
     false
 }
 
+pub async fn execute_schedule(
+    project_root: PathBuf,
+    action: crate::ScheduleAction,
+) -> anyhow::Result<()> {
+    let schedules_file = project_root.join(".vac/autopilot.schedules.toml");
+
+    #[derive(serde::Deserialize, serde::Serialize, Default)]
+    struct ScheduleDoc {
+        #[serde(default)]
+        schedules: Vec<vac_core::config::ScheduleEntry>,
+    }
+
+    let mut doc: ScheduleDoc = match std::fs::read_to_string(&schedules_file) {
+        Ok(content) => toml::from_str(&content)?,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => ScheduleDoc::default(),
+        Err(e) => return Err(e.into()),
+    };
+
+    match action {
+        crate::ScheduleAction::List => {
+            if doc.schedules.is_empty() {
+                println!("No schedules configured.");
+            } else {
+                for s in &doc.schedules {
+                    println!("ID: {}", s.id);
+                    println!("  Cron: {}", s.cron);
+                    println!("  Task: {}", s.task);
+                    if let Some(r) = &s.profile {
+                        println!("  Profile: {}", r);
+                    }
+                    if s.disabled {
+                        println!("  [DISABLED]");
+                    }
+                    println!();
+                }
+            }
+        }
+        crate::ScheduleAction::Add { id, cron, task, rulebook } => {
+            if doc.schedules.iter().any(|s| s.id == id) {
+                anyhow::bail!("Schedule ID '{}' already exists", id);
+            }
+            // validate cron
+            let fields: Vec<&str> = cron.split_whitespace().collect();
+            if fields.len() != 5 && !cron.starts_with('@') {
+                anyhow::bail!("Invalid cron expression");
+            }
+            doc.schedules.push(vac_core::config::ScheduleEntry {
+                id: id.clone(),
+                cron: cron.clone(),
+                task: task.clone(),
+                profile: rulebook,
+                disabled: false,
+            });
+            let content = toml::to_string_pretty(&doc)?;
+            if let Some(parent) = schedules_file.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            std::fs::write(&schedules_file, content)?;
+            println!("Added schedule '{}'", id);
+        }
+        crate::ScheduleAction::Remove { id } => {
+            let len_before = doc.schedules.len();
+            doc.schedules.retain(|s| s.id != id);
+            if doc.schedules.len() == len_before {
+                anyhow::bail!("Schedule ID '{}' not found", id);
+            }
+            let content = toml::to_string_pretty(&doc)?;
+            std::fs::write(&schedules_file, content)?;
+            println!("Removed schedule '{}'", id);
+        }
+    }
+    Ok(())
+}
+
 #[cfg(unix)]
 fn kill_process(pid: u32) -> anyhow::Result<()> {
     unsafe {

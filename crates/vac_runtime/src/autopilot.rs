@@ -5,6 +5,7 @@ use std::sync::Arc;
 use chrono::Utc;
 use tokio::sync::Mutex;
 
+use crate::cron_scheduler::{CronScheduler, entries_from_autopilot};
 use crate::executor::{EnvironmentMode, OperatingMode, TaskExecutor};
 use crate::jobs::{Job, JobKind, JobStatus};
 use crate::queue::TaskQueue;
@@ -18,6 +19,7 @@ pub struct AutopilotController {
     config: vac_core::config::AutopilotConfig,
     state_path: PathBuf,
     engine: Option<Arc<Mutex<vac_core::VacEngine>>>,
+    cron_scheduler: Option<CronScheduler>,
 }
 
 impl AutopilotController {
@@ -35,6 +37,14 @@ impl AutopilotController {
         let queue = Arc::new(TaskQueue::with_storage(
             project_root.join(".vac/queue.json"),
         ));
+        
+        let entries = entries_from_autopilot(&project_root, &config);
+        let cron_scheduler = if !entries.is_empty() {
+            Some(CronScheduler::new(entries, queue.clone()))
+        } else {
+            None
+        };
+
         Ok(Self {
             state_path: project_root.join(".vac/autopilot.state"),
             project_root,
@@ -42,6 +52,7 @@ impl AutopilotController {
             executor,
             config,
             engine: None,
+            cron_scheduler,
         })
     }
 
@@ -53,6 +64,10 @@ impl AutopilotController {
         let task_intent_mode = self.executor.task_intent_mode.as_str().to_string();
         let environment_mode = self.executor.environment_mode.as_str().to_string();
         let execution_environment = self.executor.execution_environment;
+
+        if let Some(cron) = &self.cron_scheduler {
+            cron.start();
+        }
 
         loop {
             if *shutdown.borrow() {
