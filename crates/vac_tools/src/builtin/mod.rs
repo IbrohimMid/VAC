@@ -15,6 +15,7 @@ pub mod sequential_think;
 pub mod signal_list;
 pub mod signal_tail;
 pub mod task_suite;
+pub mod tool_search;
 pub mod worktree;
 #[cfg(test)]
 pub(crate) mod test_util;
@@ -55,6 +56,9 @@ pub async fn register_builtin_tools(registry: &Arc<ToolRegistry>) -> Result<(), 
     registry.register(task_suite::TaskListTool::new()).await?;
     registry.register(task_suite::TaskStopTool::new()).await?;
     registry.register(task_suite::TaskOutputTool::new()).await?;
+    registry
+        .register(tool_search::ToolSearchTool::new(registry.clone()))
+        .await?;
     registry.register(task_done::TaskDoneTool::new()).await?;
     registry.register(todo::TodoTool::default()).await?;
     registry

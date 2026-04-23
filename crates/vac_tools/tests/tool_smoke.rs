@@ -57,6 +57,7 @@ async fn registers_all_builtin_tools() {
             "task_output",
             "task_stop",
             "todo_write",
+            "tool_search",
             "vil_audit",
             "vil_diagnostics",
             "vil_ir_diff",
