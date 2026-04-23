@@ -2,6 +2,7 @@
 
 pub mod acp;
 pub mod auth;
+pub mod boot;
 pub mod bundle;
 pub mod config;
 pub mod detector;

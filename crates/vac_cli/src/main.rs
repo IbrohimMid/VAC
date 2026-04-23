@@ -4,6 +4,7 @@ mod commands;
 mod io;
 mod output;
 mod telemetry;
+pub mod boot;
 
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
@@ -425,25 +426,28 @@ enum AutopilotAction {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let cli = Cli::parse();
+    let cli = crate::boot::boot_profile().record("parse_args", crate::boot::BootPhase::Critical, || Cli::parse());
     let interactive_mode = matches!(&cli.command, Commands::Interactive { .. });
 
     if !interactive_mode {
-        telemetry::init(
-            cli.verbose,
-            &cli.log_format,
-            cli.otel_endpoint.as_deref(),
-            cli.metrics_addr.as_deref(),
-        )?;
+        crate::boot::boot_profile().record("telemetry_init", crate::boot::BootPhase::Critical, || {
+            telemetry::init(
+                cli.verbose,
+                &cli.log_format,
+                cli.otel_endpoint.as_deref(),
+                cli.metrics_addr.as_deref(),
+            )
+        })?;
     }
 
-    let project_root = cli.project.unwrap_or_else(|| {
+    let project_root = cli.project.clone().unwrap_or_else(|| {
         #[allow(clippy::expect_used)]
         std::env::current_dir().expect("Failed to get current directory")
     });
 
-    match cli.command {
-        Commands::Doctor {
+    let result = crate::boot::boot_profile().record_async("execute_command", crate::boot::BootPhase::Critical, async move {
+        match cli.command {
+            Commands::Doctor {
             strict,
             fix,
             interactive,
@@ -623,6 +627,10 @@ async fn main() -> anyhow::Result<()> {
     }
 
     Ok(())
+    }).await;
+
+    crate::boot::boot_profile().print_if_requested();
+    result
 }
 
 #[derive(Subcommand, Debug)]

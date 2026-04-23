@@ -74,12 +74,12 @@ pub async fn run_tui(
     // and the probe's short (200ms) deadline runs once per startup. The
     // helper is TTY-gated internally so non-interactive runs (pipes,
     // CI) short-circuit to `false` without emitting bytes.
-    let kitty_graphics_supported = {
+    let kitty_graphics_supported = vac_core::boot::boot_profile().record("boot_kitty_probe", vac_core::boot::BootPhase::Critical, || {
         let _s = tracing::info_span!("boot_kitty_probe").entered();
         crate::services::kitty_image::probe_terminal_kitty_support(
             crate::services::kitty_image::DEFAULT_PROBE_TIMEOUT,
         )
-    };
+    });
 
     execute!(
         std::io::stdout(),
@@ -138,10 +138,10 @@ pub async fn run_tui(
         state.startup.active_profile = Some(_current_profile_name.clone());
     }
     // Load config once; reused below for MCP probe + theme + vil dev.
-    let boot_config = {
+    let boot_config = vac_core::boot::boot_profile().record("boot_config_load", vac_core::boot::BootPhase::Critical, || {
         let _s = tracing::info_span!("boot_config_load").entered();
         vac_core::VacConfig::load_with_fallback(&project_root).unwrap_or_default()
-    };
+    });
     state.startup.mcp_server_count = boot_config.mcp_servers.as_ref().map_or(0, |s| s.len());
     // Provider status from auth_display_info
     state.startup.provider_status = match &state.billing.auth_display.0 {
@@ -149,8 +149,7 @@ pub async fn run_tui(
         None => "loading...".to_string(),
     };
 
-    // O1 — Snapshot load deferred to background task after input_tx
-    // is constructed (below). State flag drives footer spinner (O4).
+    // O1 — Snapshot load and other deferred work will run after first draw.
     state.session_meta.loading = true;
 
     // Add welcome messages
@@ -185,95 +184,14 @@ pub async fn run_tui(
     let (input_tx, mut internal_rx) = tokio::sync::mpsc::channel::<InputEvent>(100);
     state.input_tx = Some(input_tx.clone());
 
-    // O1 — Spawn deferred snapshot load now that input_tx is ready.
-    {
-        let project_root = project_root.clone();
-        let session_id = state.session_id.clone();
-        let input_tx_snap = input_tx.clone();
-        tokio::spawn(async move {
-            let snapshot = load_session_snapshot(&project_root, &session_id).await;
-            tracing::info!(loaded = snapshot.is_some(), "deferred_session_snapshot");
-            let _ = input_tx_snap
-                .send(InputEvent::SessionSnapshotLoaded(Box::new(snapshot)))
-                .await;
-        });
-    }
+    // Deferred initialization tasks will be run after first render.
 
-    // PR-T19 wiring: load `.vac/keybindings.toml` (if present), merge over
-    // compiled-in defaults, install the process-wide override keymap, and
-    // surface any parse/validation warnings as banner messages. A missing
-    // file is treated as "no overrides" and produces no warning.
-    {
-        let kb_path = project_root.join(".vac").join("keybindings.toml");
-        let outcome = crate::services::keybindings_loader::load_keybindings(&kb_path);
-        let effective = crate::services::keybindings_loader::resolve_effective(&outcome.overrides);
-        let keymap = crate::services::keybindings_runtime::ChordKeymap::from_effective(&effective);
-        // PR-T19 R1: collect diagnostic strings BEFORE the keymap is moved
-        // into the global OnceLock so we can also surface non-fatal issues
-        // (skipped non-reachable overrides + duplicate chord conflicts).
-        let mut diag_warnings: Vec<String> = outcome.warnings.clone();
-        for (chord, id) in keymap.skipped_bindings() {
-            diag_warnings.push(format!(
-                "keybindings.toml: `{chord}` for `{id:?}` is not reachable via a global chord and was ignored"
-            ));
-        }
-        for (chord, ids) in keymap.conflicts() {
-            let names = ids
-                .iter()
-                .map(|i| format!("{i:?}"))
-                .collect::<Vec<_>>()
-                .join(", ");
-            diag_warnings.push(format!(
-                "keybindings.toml: `{chord}` is bound to multiple actions ({names}); last wins"
-            ));
-        }
-        // `install_global_keymap` only succeeds on the first call; that's
-        // fine for the real TUI and harmless when tests run us repeatedly.
-        let _ = crate::services::keybindings_runtime::install_global_keymap(keymap);
-        if !diag_warnings.is_empty() {
-            let banner_tx = input_tx.clone();
-            tokio::spawn(async move {
-                for w in diag_warnings {
-                    let _ = banner_tx
-                        .send(InputEvent::ShowBanner(
-                            w,
-                            crate::services::banner::BannerStyle::Warning,
-                            crate::services::banner::BannerSeverity::Suggested,
-                        ))
-                        .await;
-                }
-            });
-        }
-
-        // PR-T19 R3: keep the global keymap in sync with
-        // `.vac/keybindings.toml` edits while the TUI is running. The
-        // watcher is tolerant of a missing file — it just polls mtime
-        // and reloads on change.
-        crate::services::keybindings_watcher::spawn_keybindings_watcher(kb_path, input_tx.clone());
-    }
-
-    // Probe MCP servers in background — reuse boot_config loaded above.
-    {
-        let _s = tracing::info_span!("boot_mcp_probe_spawn").entered();
-        if let Some(servers) = boot_config.mcp_servers {
-            spawn_mcp_probe(servers, input_tx.clone());
-        }
-    }
-
-    // PR-W25-2: hot-reload theme from `.vac/theme.toml` / `$VAC_THEME`.
-    if let Some(theme_path) = crate::services::theme_loader::resolve_theme_path() {
-        crate::services::theme_loader::watch_theme(theme_path, input_tx.clone());
-    }
-
-    // PR-T14: spawn `vil dev` bridge if configured in `.vac/config.toml`.
-    if let Some(dev_cmd) = boot_config.vil.dev_command.as_deref() {
-        let _s = tracing::info_span!("boot_vil_dev_spawn").entered();
-        crate::runner::vil_tasks::spawn_vil_dev_bridge(dev_cmd, &project_root, input_tx.clone());
-    }
-
-    // Spawn background task to detect VIL project profile
-    spawn_vil_profile_detect(project_root.clone(), input_tx.clone());
-
+    // Deferred initialization will be triggered after the first render
+    let mut deferred_init_done = false;
+    let deferred_input_tx = input_tx.clone();
+    let deferred_project_root = project_root.clone();
+    let deferred_boot_config = boot_config.clone();
+    let deferred_session_id = state.session_id.clone();
     let input_paused = Arc::new(AtomicBool::new(false));
     let input_paused_clone = input_paused.clone();
 
@@ -466,6 +384,75 @@ pub async fn run_tui(
         // Render — measure wall time and update RenderMetrics
         let render_start = std::time::Instant::now();
         terminal.draw(|f| view(f, &mut state))?;
+
+        if !deferred_init_done {
+            deferred_init_done = true;
+            let project_root = deferred_project_root.clone();
+            let session_id = deferred_session_id.clone();
+            let input_tx_snap = deferred_input_tx.clone();
+            let boot_config = deferred_boot_config.clone();
+
+            tokio::spawn(async move {
+                vac_core::boot::boot_profile().record_async("deferred_tasks", vac_core::boot::BootPhase::Deferred, async move {
+                    // Session snapshot load
+                    {
+                        let snapshot = load_session_snapshot(&project_root, &session_id).await;
+                        tracing::info!(loaded = snapshot.is_some(), "deferred_session_snapshot");
+                        let _ = input_tx_snap
+                            .send(InputEvent::SessionSnapshotLoaded(Box::new(snapshot)))
+                            .await;
+                    }
+
+                    // Keybindings
+                    {
+                        let kb_path = project_root.join(".vac").join("keybindings.toml");
+                        let outcome = crate::services::keybindings_loader::load_keybindings(&kb_path);
+                        let effective = crate::services::keybindings_loader::resolve_effective(&outcome.overrides);
+                        let keymap = crate::services::keybindings_runtime::ChordKeymap::from_effective(&effective);
+                        let mut diag_warnings: Vec<String> = outcome.warnings.clone();
+                        for (chord, id) in keymap.skipped_bindings() {
+                            diag_warnings.push(format!("keybindings.toml: `{chord}` for `{id:?}` is not reachable via a global chord and was ignored"));
+                        }
+                        for (chord, ids) in keymap.conflicts() {
+                            let names = ids.iter().map(|i| format!("{i:?}")).collect::<Vec<_>>().join(", ");
+                            diag_warnings.push(format!("keybindings.toml: `{chord}` is bound to multiple actions ({names}); last wins"));
+                        }
+                        let _ = crate::services::keybindings_runtime::install_global_keymap(keymap);
+                        if !diag_warnings.is_empty() {
+                            let banner_tx = input_tx_snap.clone();
+                            tokio::spawn(async move {
+                                for w in diag_warnings {
+                                    let _ = banner_tx.send(InputEvent::ShowBanner(
+                                        w,
+                                        crate::services::banner::BannerStyle::Warning,
+                                        crate::services::banner::BannerSeverity::Suggested,
+                                    )).await;
+                                }
+                            });
+                        }
+                        crate::services::keybindings_watcher::spawn_keybindings_watcher(kb_path, input_tx_snap.clone());
+                    }
+
+                    // MCP
+                    if let Some(servers) = boot_config.mcp_servers {
+                        spawn_mcp_probe(servers, input_tx_snap.clone());
+                    }
+
+                    // Theme
+                    if let Some(theme_path) = crate::services::theme_loader::resolve_theme_path() {
+                        crate::services::theme_loader::watch_theme(theme_path, input_tx_snap.clone());
+                    }
+
+                    // VIL dev
+                    if let Some(dev_cmd) = boot_config.vil.dev_command.as_deref() {
+                        crate::runner::vil_tasks::spawn_vil_dev_bridge(dev_cmd, &project_root, input_tx_snap.clone());
+                    }
+
+                    // VIL profile detect
+                    spawn_vil_profile_detect(project_root.clone(), input_tx_snap.clone());
+                }).await;
+            });
+        }
 
         // PR-T17 R8c — flush any queued native Kitty graphics emission
         // after ratatui finishes drawing. The workbench stores the
