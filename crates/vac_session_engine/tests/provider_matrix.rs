@@ -217,20 +217,96 @@ async fn matrix_path_6_slash_short_circuit_skips_provider() {
 /// transcript's last row must be either Finished or Aborted. The
 /// engine never leaves a session in the "Accepted but nothing after"
 /// pending state on a successful adapter return or a surfaced error.
+///
+/// Covers all six matrix paths: echo, chunked, big-usage, zero-usage,
+/// boom (error → Aborted), and slash short-circuit.
 #[tokio::test]
 async fn matrix_terminal_row_invariant_holds_across_all_providers() {
-    let adapters: Vec<(&str, &dyn LlmAdapter)> = vec![
-        ("echo", &EchoLikeAdapter),
-        ("big", &BigUsageAdapter),
-        ("zero", &ZeroUsageAdapter),
-        ("boom", &BoomAdapter),
+    let chunked = ChunkedAdapter::new();
+    let empty_slash = SlashProcessor::new();
+    let mut slash_with_noop = SlashProcessor::new();
+    slash_with_noop.register(Arc::new(NoopSlash));
+
+    // (name, adapter, input, slash)
+    let cases: Vec<(&str, &dyn LlmAdapter, &str, &SlashProcessor)> = vec![
+        ("echo", &EchoLikeAdapter, "x", &empty_slash),
+        ("chunked", &chunked, "stream", &empty_slash),
+        ("big", &BigUsageAdapter, "x", &empty_slash),
+        ("zero", &ZeroUsageAdapter, "x", &empty_slash),
+        ("boom", &BoomAdapter, "x", &empty_slash),
+        ("slash", &BoomAdapter, "/noop", &slash_with_noop),
     ];
-    for (name, a) in adapters {
-        let (kinds, _labels, _r) = drive(a, &SlashProcessor::new(), "x").await;
+    for (name, a, input, s) in cases {
+        let (kinds, _labels, _r) = drive(a, s, input).await;
         let last = *kinds.last().unwrap();
         assert!(
             matches!(last, TranscriptKind::Finished | TranscriptKind::Aborted),
-            "provider {name} left transcript in non-terminal kind {last:?}",
+            "case {name} left transcript in non-terminal kind {last:?}",
         );
     }
+}
+
+/// M2 — submit metadata (isolation.docker) must round-trip onto the
+/// `Accepted` transcript row so replay / eval harnesses can inspect
+/// the isolation intent without re-reading CLI argv.
+#[tokio::test]
+async fn matrix_docker_metadata_routes_into_accepted_row() {
+    let tmp = tempfile::tempdir().unwrap();
+    let writer = TranscriptWriter::new(tmp.path().to_path_buf());
+    let ctx = SubmitContext::new(Uuid::new_v4(), "do the thing").with_metadata(
+        serde_json::json!({
+            "isolation": { "docker": "alpine:3.19" },
+            "trajectory": true,
+        }),
+    );
+    let sid = ctx.session_id;
+    submit_one(
+        ctx,
+        &writer,
+        &SlashProcessor::new(),
+        &TrivialCompactBoundary::default(),
+        &UsageTracker::new(),
+        &EchoLikeAdapter,
+        CompactConfig::default(),
+        None,
+    )
+    .await
+    .unwrap();
+    let rows = writer.read(sid).await.unwrap();
+    let accepted = rows
+        .iter()
+        .find(|r| r.kind == TranscriptKind::Accepted)
+        .expect("accepted row");
+    assert_eq!(accepted.content["metadata"]["isolation"]["docker"], "alpine:3.19");
+    assert_eq!(accepted.content["metadata"]["trajectory"], true);
+}
+
+/// M3 — BigUsageAdapter reports 180k in / 20k out; the Finished row
+/// must carry those exact counters so budget-gate consumers don't
+/// silently undercount.
+#[tokio::test]
+async fn matrix_big_usage_is_recorded_on_finished_row() {
+    let tmp = tempfile::tempdir().unwrap();
+    let writer = TranscriptWriter::new(tmp.path().to_path_buf());
+    let ctx = SubmitContext::new(Uuid::new_v4(), "expensive");
+    let sid = ctx.session_id;
+    submit_one(
+        ctx,
+        &writer,
+        &SlashProcessor::new(),
+        &TrivialCompactBoundary::default(),
+        &UsageTracker::new(),
+        &BigUsageAdapter,
+        CompactConfig::default(),
+        None,
+    )
+    .await
+    .unwrap();
+    let rows = writer.read(sid).await.unwrap();
+    let finished = rows
+        .iter()
+        .find(|r| r.kind == TranscriptKind::Finished)
+        .expect("finished row");
+    assert_eq!(finished.content["usage"]["input_tokens"], 180_000);
+    assert_eq!(finished.content["usage"]["output_tokens"], 20_000);
 }

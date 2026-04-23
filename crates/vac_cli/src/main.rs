@@ -87,16 +87,20 @@ enum Commands {
     #[command(next_help_heading = "Run")]
     SessionRun {
         input: String,
-        /// Provider adapter to use. Today only `mock` (echo).
+        /// Provider adapter (today only `mock`/`echo`; real providers
+        /// land with the adapter registry).
         #[arg(long, default_value = "mock")]
         provider: String,
-        /// Disable trajectory (transcript JSONL) persistence. On by
+        /// Disable trajectory persistence. When set, the transcript
+        /// JSONL is routed to a tempdir and unlinked at end of run
+        /// instead of landing under `<root>/.vac/sessions/`. On by
         /// default for research-friendly replay.
         #[arg(long = "no-trajectory", default_value_t = false)]
         no_trajectory: bool,
-        /// Request the submit run inside a docker image. Currently
-        /// labelled pass-through (F8.2) — full IsolationManager wiring
-        /// lands when session-engine grows tool execution.
+        /// [preview] Record a docker image in submit metadata so
+        /// replay harnesses see the isolation intent. Tool execution
+        /// still runs on host until IsolationManager wires into
+        /// session-engine. Incompatible with --no-trajectory.
         #[arg(long, value_name = "IMAGE")]
         docker: Option<String>,
     },
