@@ -47,12 +47,58 @@ pub struct PlanStep {
     pub target: Option<PathBuf>,
 }
 
+/// Parse the adapter reply as a structured plan. Real remote planners
+/// are expected to reply with JSON matching `{"steps": [{"title": …,
+/// "detail": …, "target": …?}, …]}` (or a bare array). When parsing
+/// succeeds we use those steps verbatim; otherwise we fall back to
+/// the deterministic skeleton in `steps_from_reply`. Returning `None`
+/// on parse failure keeps the mock `EchoAdapter` path working.
+fn parse_structured_steps(reply_content: &str) -> Option<Vec<PlanStep>> {
+    let trimmed = reply_content.trim();
+    if trimmed.is_empty() || !(trimmed.starts_with('{') || trimmed.starts_with('[')) {
+        return None;
+    }
+
+    #[derive(Deserialize)]
+    struct RawStep {
+        title: String,
+        detail: Option<String>,
+        target: Option<PathBuf>,
+    }
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Envelope {
+        Wrapped { steps: Vec<RawStep> },
+        Bare(Vec<RawStep>),
+    }
+
+    let env: Envelope = serde_json::from_str(trimmed).ok()?;
+    let raw = match env {
+        Envelope::Wrapped { steps } => steps,
+        Envelope::Bare(s) => s,
+    };
+    if raw.is_empty() {
+        return None;
+    }
+    Some(
+        raw.into_iter()
+            .enumerate()
+            .map(|(i, r)| PlanStep {
+                id: (i as u32) + 1,
+                title: r.title,
+                detail: r.detail.unwrap_or_default(),
+                target: r.target,
+            })
+            .collect(),
+    )
+}
+
 /// Derive a step list from the adapter's reply content. For the
 /// mock `EchoAdapter` the reply is `"echo: <prompt>"`; we split it
 /// into a deterministic 3-step skeleton (investigate → draft →
 /// verify) so the output is a real plan, not a placeholder bullet
 /// list. A future real adapter can return structured JSON that
-/// bypasses this derivation.
+/// bypasses this derivation via `parse_structured_steps`.
 fn steps_from_reply(prompt: &str, reply_content: &str) -> Vec<PlanStep> {
     let subject = prompt.trim();
     vec![
@@ -174,7 +220,8 @@ pub async fn generate_plan(
         }
     }
 
-    let steps = steps_from_reply(&prompt, &reply_content);
+    let steps = parse_structured_steps(&reply_content)
+        .unwrap_or_else(|| steps_from_reply(&prompt, &reply_content));
     let transcript_path = writer.sessions_dir().join(format!("{plan_id}.jsonl"));
     let plan = PlanDocument {
         id: plan_id,
@@ -333,6 +380,39 @@ mod tests {
         execute_apply(tmp.path().to_path_buf(), plan.id.to_string())
             .await
             .unwrap();
+    }
+
+    #[test]
+    fn structured_steps_wrapped_parses() {
+        let reply = r#"{"steps":[{"title":"A","detail":"do a","target":"src/a.rs"},{"title":"B"}]}"#;
+        let steps = parse_structured_steps(reply).unwrap();
+        assert_eq!(steps.len(), 2);
+        assert_eq!(steps[0].id, 1);
+        assert_eq!(steps[0].title, "A");
+        assert_eq!(steps[0].target, Some(PathBuf::from("src/a.rs")));
+        assert_eq!(steps[1].id, 2);
+        assert_eq!(steps[1].detail, "");
+    }
+
+    #[test]
+    fn structured_steps_bare_array_parses() {
+        let reply = r#"[{"title":"One"},{"title":"Two"}]"#;
+        let steps = parse_structured_steps(reply).unwrap();
+        assert_eq!(steps.len(), 2);
+        assert_eq!(steps[1].title, "Two");
+    }
+
+    #[test]
+    fn structured_steps_non_json_returns_none() {
+        assert!(parse_structured_steps("echo: hello").is_none());
+        assert!(parse_structured_steps("").is_none());
+        assert!(parse_structured_steps("   ").is_none());
+    }
+
+    #[test]
+    fn structured_steps_empty_array_returns_none() {
+        assert!(parse_structured_steps("[]").is_none());
+        assert!(parse_structured_steps(r#"{"steps":[]}"#).is_none());
     }
 
     #[test]
