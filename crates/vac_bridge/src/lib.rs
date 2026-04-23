@@ -17,12 +17,16 @@
 //! to WebSocket / gRPC / loopback.
 
 pub mod acp;
+pub mod auth;
+pub mod capacity_wake;
 pub mod error;
 pub mod event;
 pub mod permission;
 pub mod session;
 
 pub use acp::{AcpHandshake, AcpServer};
+pub use auth::{jwt, oauth};
+pub use capacity_wake::{CapacityError, CapacityWake, DEFAULT_MAX_DEPTH};
 pub use error::{BridgeError, BridgeResult};
 pub use event::{InboundEvent, OutboundEvent};
 pub use permission::{

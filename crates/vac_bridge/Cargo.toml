@@ -16,6 +16,9 @@ thiserror = { workspace = true }
 tracing = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
+sha2 = { workspace = true }
+base64 = "0.22"
+hmac = "0.12"
 
 vac_mcp_core = { workspace = true }
 vac_session_engine = { workspace = true }
