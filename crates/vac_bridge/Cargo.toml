@@ -1,0 +1,28 @@
+[package]
+name = "vac_bridge"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "VAC Bridge — remote session glue, permission mediation, ACP (Agent Client Protocol) server skeleton. Consumes vac_mcp_core and vac_session_engine."
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["sync", "rt", "macros", "time"] }
+async-trait = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+
+vac_mcp_core = { workspace = true }
+vac_session_engine = { workspace = true }
+vac_tool_core = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full", "test-util"] }
+
+[lints]
+workspace = true

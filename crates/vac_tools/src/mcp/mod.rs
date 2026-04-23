@@ -2,6 +2,18 @@ pub mod client;
 pub mod presets;
 pub mod server;
 
+/// Re-export of the canonical transport/state types from
+/// `vac_mcp_core`. New consumers (vac_bridge, future vac_cli/vac_tui
+/// refactors) should bind these types rather than the legacy
+/// `McpConnectionState` in this module, which only captures a flat
+/// connected/unreachable state and is kept for existing callers.
+pub mod core {
+    pub use vac_mcp_core::{
+        McpConfigScope, McpConnection, McpConnectionState as CoreConnectionState,
+        McpCoreError, McpCoreResult, McpTransportKind, StateTransition,
+    };
+}
+
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 

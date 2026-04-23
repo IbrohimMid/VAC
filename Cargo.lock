@@ -5958,6 +5958,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "vac_bridge"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "uuid",
+ "vac_mcp_core",
+ "vac_session_engine",
+ "vac_tool_core",
+]
+
+[[package]]
 name = "vac_changeset"
 version = "0.1.0"
 dependencies = [
@@ -6097,6 +6114,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "vac_mcp_core"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tracing",
+]
+
+[[package]]
 name = "vac_memory"
 version = "0.1.0"
 dependencies = [
@@ -6227,6 +6255,7 @@ dependencies = [
  "toml 0.8.23",
  "tracing",
  "uuid",
+ "vac_mcp_core",
  "vac_signal",
  "vac_tool_core",
  "vil_context",

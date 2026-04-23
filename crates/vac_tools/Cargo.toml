@@ -16,6 +16,7 @@ vil_rag = { workspace = true }
 vil_context = { workspace = true }
 vac_signal = { workspace = true, features = ["rewind"] }
 vac_tool_core = { workspace = true }
+vac_mcp_core = { workspace = true }
 
 tokio = { workspace = true }
 serde = { workspace = true }
