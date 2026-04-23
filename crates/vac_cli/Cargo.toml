@@ -21,6 +21,7 @@ signal-rewind = ["vac_signal/rewind"]
 
 [dependencies]
 vac_core = { workspace = true }
+vac_bridge = { workspace = true }
 vil_llm = { workspace = true }
 vil_swarm = { workspace = true }
 vac_trace = { workspace = true }

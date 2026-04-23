@@ -14,6 +14,11 @@ use tokio::sync::oneshot;
 use uuid::Uuid;
 
 use crate::error::{BridgeError, BridgeResult};
+use crate::event::OutboundEvent;
+use std::collections::HashMap;
+use std::sync::Arc;
+use tokio::sync::mpsc;
+use tokio::sync::Mutex;
 
 /// One request to the operator. `summary` is a one-line description
 /// suitable for a modal footer.
@@ -70,6 +75,55 @@ impl StaticAllowMediator {
 impl PermissionMediator for StaticAllowMediator {
     async fn request(&self, _req: PermissionRequest) -> BridgeResult<PermissionDecision> {
         Ok(self.decision)
+    }
+}
+
+/// A real mediator that forwards permission requests over an outbound channel
+/// and waits for the response on a oneshot channel. It keeps a shared map of
+/// pending requests. The driver is responsible for routing `InboundEvent::PermissionResponse`
+/// to the corresponding `oneshot::Sender`.
+#[derive(Debug, Clone)]
+pub struct StdioPermissionMediator {
+    outbound_tx: mpsc::Sender<OutboundEvent>,
+    pending: Arc<Mutex<HashMap<Uuid, oneshot::Sender<PermissionDecision>>>>,
+}
+
+impl StdioPermissionMediator {
+    #[must_use]
+    pub fn new(
+        outbound_tx: mpsc::Sender<OutboundEvent>,
+        pending: Arc<Mutex<HashMap<Uuid, oneshot::Sender<PermissionDecision>>>>,
+    ) -> Self {
+        Self {
+            outbound_tx,
+            pending,
+        }
+    }
+}
+
+#[async_trait]
+impl PermissionMediator for StdioPermissionMediator {
+    async fn request(&self, req: PermissionRequest) -> BridgeResult<PermissionDecision> {
+        let (tx, rx) = oneshot::channel();
+        self.pending.lock().await.insert(req.id, tx);
+
+        let event = OutboundEvent::PermissionRequest {
+            request_id: req.id,
+            tool: req.tool.clone(),
+            summary: req.summary.clone(),
+        };
+
+        if self.outbound_tx.send(event).await.is_err() {
+            self.pending.lock().await.remove(&req.id);
+            return Err(BridgeError::Other(
+                "failed to send permission request: channel closed".into(),
+            ));
+        }
+
+        let decision = await_decision(rx, req.deadline_ms).await;
+        // Clean up map in case of timeout/drop
+        self.pending.lock().await.remove(&req.id);
+        decision
     }
 }
 
