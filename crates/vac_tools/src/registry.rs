@@ -389,7 +389,20 @@ impl ToolRegistry {
             .ok_or_else(|| ToolError::NotFound(name.to_string()))?;
 
         debug!("Executing tool: {}", name);
-        tool.execute(args, context).await
+        let threshold = tool.max_result_size_chars();
+        let raw = tool.execute(args, context).await?;
+        // W2.3 — spill oversized results. Root lives under the
+        // caller's working dir so each project owns its spill space.
+        let spill_root = context
+            .working_dir
+            .join(".vac")
+            .join("tool-results");
+        match crate::result_spill::maybe_spill_result(raw, threshold, &spill_root).await {
+            Ok(v) => Ok(v),
+            Err(e) => Err(ToolError::ExecutionFailed(format!(
+                "tool result spill failed: {e}"
+            ))),
+        }
     }
 }
 
@@ -731,6 +744,99 @@ mod tests {
         // flag". Caller decides when to resolve.
         let reg = mk_mixed_registry().await;
         assert!(reg.load_deferred("eager").await.is_some());
+    }
+
+    struct GiantOutputTool {
+        payload_chars: usize,
+        threshold: usize,
+    }
+
+    #[async_trait]
+    impl VilTool for GiantOutputTool {
+        fn name(&self) -> &str { "giant" }
+        fn description(&self) -> &str { "emits large payload" }
+        fn input_schema(&self) -> serde_json::Value {
+            serde_json::json!({"type": "object"})
+        }
+        fn trust_requirement(&self) -> &str { "safe" }
+        fn risk_level(&self) -> &str { "low" }
+        fn spec(&self) -> vac_tool_core::ToolSpec {
+            make_spec("giant", ToolCapability::default())
+        }
+        fn max_result_size_chars(&self) -> usize {
+            self.threshold
+        }
+        async fn execute(
+            &self,
+            _args: serde_json::Value,
+            _ctx: &ToolContext,
+        ) -> Result<serde_json::Value, ToolError> {
+            Ok(serde_json::json!({
+                "data": "y".repeat(self.payload_chars),
+            }))
+        }
+    }
+
+    #[tokio::test]
+    async fn registry_execute_spills_oversized_output() {
+        let reg = ToolRegistry::new();
+        reg.register(GiantOutputTool {
+            payload_chars: 10_000,
+            threshold: 1_000,
+        })
+        .await
+        .unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+        let ctx = ToolContext::new(tmp.path().to_path_buf());
+        let out = reg
+            .execute("giant", serde_json::json!({}), &ctx)
+            .await
+            .unwrap();
+        assert!(
+            crate::result_spill::PreviewStub::is_stub(&out),
+            "registry must route oversized output through spill"
+        );
+        let spill_dir = tmp.path().join(".vac/tool-results");
+        assert!(spill_dir.is_dir(), "spill dir must be created");
+    }
+
+    #[tokio::test]
+    async fn registry_execute_passes_through_small_output() {
+        let reg = ToolRegistry::new();
+        reg.register(GiantOutputTool {
+            payload_chars: 50,
+            threshold: 1_000,
+        })
+        .await
+        .unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+        let ctx = ToolContext::new(tmp.path().to_path_buf());
+        let out = reg
+            .execute("giant", serde_json::json!({}), &ctx)
+            .await
+            .unwrap();
+        assert!(!crate::result_spill::PreviewStub::is_stub(&out));
+    }
+
+    #[tokio::test]
+    async fn registry_execute_respects_usize_max_opt_out() {
+        let reg = ToolRegistry::new();
+        reg.register(GiantOutputTool {
+            payload_chars: 10_000,
+            threshold: usize::MAX,
+        })
+        .await
+        .unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+        let ctx = ToolContext::new(tmp.path().to_path_buf());
+        let out = reg
+            .execute("giant", serde_json::json!({}), &ctx)
+            .await
+            .unwrap();
+        assert!(
+            !crate::result_spill::PreviewStub::is_stub(&out),
+            "usize::MAX threshold must skip spill"
+        );
     }
 
     #[tokio::test]
