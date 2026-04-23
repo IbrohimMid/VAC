@@ -343,6 +343,23 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn load_dir_missing_gguf_returns_model_not_found() {
+        let tmp = std::env::temp_dir().join("vil_inference_candle_gguf_probe");
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).expect("create tmp dir");
+        // Provide tokenizer.json but no model.gguf — error must be
+        // specific enough for operators to know what's missing.
+        std::fs::write(tmp.join("tokenizer.json"), "{}").expect("write tokenizer stub");
+        let b = CandleBackend::new_cpu();
+        let err = b.load(&tmp).await.unwrap_err();
+        assert!(
+            matches!(err, InferenceError::ModelNotFound(ref m) if m.contains("model.gguf")),
+            "expected ModelNotFound mentioning model.gguf, got {err:?}"
+        );
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[tokio::test]
     async fn infer_without_load_surfaces_clear_error() {
         let b = CandleBackend::new_cpu();
         let err = b

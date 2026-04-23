@@ -53,3 +53,21 @@ async fn real_model_round_trip() {
         "expected at least one decoded token for non-zero max_tokens"
     );
 }
+
+/// Greedy argmax is deterministic by construction — same prompt, same
+/// model, same device ⇒ same tokens. This test catches regressions where
+/// a future sampling refactor leaks nondeterminism (e.g. reading an RNG
+/// on the hot path) into what should be a reproducible code path.
+#[tokio::test]
+#[ignore = "requires VAC_CANDLE_TEST_MODEL pointing at a real checkpoint"]
+async fn greedy_inference_is_deterministic() {
+    let Some(dir) = model_dir_from_env() else {
+        panic!("VAC_CANDLE_TEST_MODEL must be set when running this ignored test");
+    };
+    let backend = CandleBackend::new_cpu();
+    backend.load(&dir).await.expect("load model");
+    let req = InferenceRequest::new("The quick brown fox", 12);
+    let a = backend.infer(&req).await.expect("first infer");
+    let b = backend.infer(&req).await.expect("second infer");
+    assert_eq!(a, b, "greedy inference must be byte-equal across runs");
+}
