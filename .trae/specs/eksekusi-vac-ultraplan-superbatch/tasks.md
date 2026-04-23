@@ -15,17 +15,17 @@
   - [x] SubTask 3.2: M5, M5.1 - MCP primary swap & transports
   - [x] SubTask 3.3: M4, M6, M6.1 - TrustGate & Bridge e2e remote
   - [x] SubTask 3.4: M7.1, M7.2, M7.3 - Consolidator pipeline & vil_memory retirement
-- [ ] Task 4: Implementasi Wave 3 (M11, M12, M13, P1, P2, P3)
-  - [ ] SubTask 4.1: M11 - Candle backend + TinyLlama GGUF
-  - [ ] SubTask 4.2: M12 - rust-analyzer via portable-pty
-  - [ ] SubTask 4.3: M13 - Autopilot cron
-  - [ ] SubTask 4.4: P1 - vac assistant
-  - [ ] SubTask 4.5: P2 - vac plan
-  - [ ] SubTask 4.6: P3 - TeamContext + SpeculationCache
-- [ ] Task 5: Finalisasi dan Validasi
-  - [ ] SubTask 5.1: Memastikan `docs/adoption-score.md` mencapai ≥ 99%.
-  - [ ] SubTask 5.2: Memastikan `cargo check --workspace --tests` lulus.
-  - [ ] SubTask 5.3: Memastikan `cargo nextest run --workspace` lulus.
+- [x] Task 4: Implementasi Wave 3 (M11, M12, M13, P1, P2, P3)
+  - [x] SubTask 4.1: M11 - Candle backend + TinyLlama GGUF
+  - [x] SubTask 4.2: M12 - rust-analyzer via portable-pty
+  - [x] SubTask 4.3: M13 - Autopilot cron
+  - [x] SubTask 4.4: P1 - vac assistant
+  - [x] SubTask 4.5: P2 - vac plan
+  - [x] SubTask 4.6: P3 - TeamContext + SpeculationCache
+- [x] Task 5: Finalisasi dan Validasi
+  - [x] SubTask 5.1: Memastikan `docs/adoption-score.md` mencapai ≥ 99%.
+  - [x] SubTask 5.2: Memastikan `cargo check --workspace --tests` lulus.
+  - [x] SubTask 5.3: Memastikan `cargo nextest run --workspace` lulus.
 
 # Task Dependencies
 - [Task 2] depends on [Task 1]
