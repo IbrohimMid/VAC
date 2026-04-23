@@ -33,9 +33,11 @@
 
 pub mod host;
 pub mod pty_host;
+pub mod stdio_host;
 
 pub use host::{
     AnalysisHost, AnalysisRequest, AnalysisResponse, AnalysisError, AnalysisResult,
     StubAnalysisHost, Symbol,
 };
 pub use pty_host::PortablePtyHost;
+pub use stdio_host::StdioLspHost;
