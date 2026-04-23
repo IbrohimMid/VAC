@@ -85,6 +85,12 @@ enum Commands {
         #[command(subcommand)]
         action: AutopilotAction,
     },
+    /// Proactive assistant - scans signal pipelines for patterns and suggests tasks
+    #[command(next_help_heading = "Run")]
+    Assistant {
+        #[arg(long)]
+        session: Option<String>,
+    },
     /// Resume from checkpoint
     #[command(next_help_heading = "Run")]
     Resume { checkpoint: PathBuf },
@@ -517,6 +523,9 @@ async fn main() -> anyhow::Result<()> {
             record,
             replay,
         } => commands::interactive::execute(project_root, resume, record, replay).await?,
+        Commands::Assistant { session } => {
+            commands::assistant::execute(project_root, session).await?
+        }
         Commands::Resume { checkpoint } => {
             commands::resume::execute(project_root, checkpoint).await?
         }

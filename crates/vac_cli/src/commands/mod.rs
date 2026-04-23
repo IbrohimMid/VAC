@@ -1,4 +1,5 @@
 pub mod acp;
+pub mod assistant;
 pub mod auth;
 pub mod autopilot;
 pub mod config;

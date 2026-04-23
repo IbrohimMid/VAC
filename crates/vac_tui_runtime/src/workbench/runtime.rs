@@ -31,6 +31,7 @@ impl WorkbenchTabView for RuntimeTab {
         let mut cancelled = 0usize;
         for job in &state.execution.runtime.jobs {
             match &job.status {
+                vac_runtime::JobStatus::Suggested => queued += 1,
                 vac_runtime::JobStatus::Queued => queued += 1,
                 vac_runtime::JobStatus::Running => running += 1,
                 vac_runtime::JobStatus::Completed => completed += 1,
@@ -55,6 +56,9 @@ impl WorkbenchTabView for RuntimeTab {
                     Style::default()
                 };
                 let status = match &job.status {
+                    vac_runtime::JobStatus::Suggested => {
+                        Span::styled("S", state.core.theme.style(StyleKey::Muted))
+                    }
                     vac_runtime::JobStatus::Queued => {
                         Span::styled("Q", state.core.theme.style(StyleKey::Muted))
                     }
@@ -277,6 +281,7 @@ impl WorkbenchTabView for RuntimeTab {
             lines.push(Line::from(vec![
                 Span::styled("Status: ", Style::default().add_modifier(Modifier::BOLD)),
                 Span::raw(match &job.status {
+                    vac_runtime::JobStatus::Suggested => "Suggested".to_string(),
                     vac_runtime::JobStatus::Queued => "Queued".to_string(),
                     vac_runtime::JobStatus::Running => "Running".to_string(),
                     vac_runtime::JobStatus::Completed => "Completed".to_string(),

@@ -24,6 +24,7 @@ pub enum JobTrigger {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum JobStatus {
+    Suggested,
     Queued,
     Running,
     Completed,

@@ -158,6 +158,7 @@ pub(super) fn render_task_tray(f: &mut Frame, state: &mut AppState) {
         .enumerate()
         .map(|(i, job)| {
             let (status_sym, status_style) = match &job.status {
+                JobStatus::Suggested => ("? ", state.core.theme.style(StyleKey::Muted)),
                 JobStatus::Running => ("▶ ", state.core.theme.style(StyleKey::TaskRunning)),
                 JobStatus::Queued => ("⏳", state.core.theme.style(StyleKey::TaskQueued)),
                 JobStatus::Completed => ("✓ ", state.core.theme.style(StyleKey::TaskCompleted)),
