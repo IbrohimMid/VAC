@@ -16,6 +16,9 @@ pub enum McpCoreError {
     },
     #[error("other: {0}")]
     Other(String),
+    /// W4.1 — elicitation handler reported a protocol violation.
+    #[error("mcp protocol: {0}")]
+    Protocol(String),
 }
 
 pub type McpCoreResult<T> = std::result::Result<T, McpCoreError>;

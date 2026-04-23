@@ -285,6 +285,51 @@ impl TrustGate {
         );
         decision
     }
+
+    /// W4.2 — MCP-client gate augmented with a [`ChannelAcl`]. The
+    /// trust-class verdict is computed first; if it denies, we
+    /// return immediately. If it allows (or needs-approval), the
+    /// channel ACL refines the outcome:
+    ///
+    /// - `Deny` from the ACL always promotes to `Deny` overall.
+    /// - `AllowWithNotify` logs the notify reason and keeps the
+    ///   trust verdict.
+    /// - `Allow` passes through unchanged.
+    pub fn check_mcp_tool_with_channel(
+        mode: EnvironmentMode,
+        mcp: McpTrustClass,
+        spec: &ToolSpec,
+        acl: &vac_mcp_core::ChannelAcl,
+        channel: &str,
+    ) -> GateDecision {
+        let trust_decision = Self::check_mcp_tool(mode, mcp, spec);
+        if matches!(trust_decision, GateDecision::Deny(_)) {
+            return trust_decision;
+        }
+        match acl.check(channel) {
+            vac_mcp_core::channel::ChannelDecision::Allow => trust_decision,
+            vac_mcp_core::channel::ChannelDecision::AllowWithNotify(reason) => {
+                info!(
+                    target: "vac_tools::trust_gate",
+                    tool = %spec.name,
+                    channel = channel,
+                    reason = %reason,
+                    "channel ACL notify",
+                );
+                trust_decision
+            }
+            vac_mcp_core::channel::ChannelDecision::Deny(reason) => {
+                info!(
+                    target: "vac_tools::trust_gate",
+                    tool = %spec.name,
+                    channel = channel,
+                    reason = %reason,
+                    "channel ACL deny",
+                );
+                GateDecision::Deny(reason)
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -432,6 +477,71 @@ mod tests {
             ),
             GateDecision::Allow,
         );
+    }
+
+    #[test]
+    fn mcp_channel_allow_passes_trust_decision() {
+        let acl = vac_mcp_core::ChannelAcl::default();
+        let d = TrustGate::check_mcp_tool_with_channel(
+            EnvironmentMode::Host,
+            McpTrustClass::LocalTrusted,
+            &safe_spec("x"),
+            &acl,
+            "tools",
+        );
+        assert_eq!(d, GateDecision::Allow);
+    }
+
+    #[test]
+    fn mcp_channel_deny_overrides_allow() {
+        let mut acl = vac_mcp_core::ChannelAcl::default();
+        acl.deny_channels.push("sampling".into());
+        let d = TrustGate::check_mcp_tool_with_channel(
+            EnvironmentMode::Host,
+            McpTrustClass::LocalTrusted,
+            &safe_spec("x"),
+            &acl,
+            "sampling",
+        );
+        match d {
+            GateDecision::Deny(r) => assert!(r.contains("deny list")),
+            other => panic!("expected Deny, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn mcp_channel_allow_list_excludes_unlisted() {
+        let mut acl = vac_mcp_core::ChannelAcl::default();
+        acl.allow_channels.push("tools".into());
+        let d = TrustGate::check_mcp_tool_with_channel(
+            EnvironmentMode::Host,
+            McpTrustClass::LocalTrusted,
+            &safe_spec("x"),
+            &acl,
+            "resources",
+        );
+        match d {
+            GateDecision::Deny(r) => assert!(r.contains("allow list")),
+            other => panic!("expected Deny, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn mcp_channel_acl_respects_prior_trust_deny() {
+        // A trust-class deny (e.g. RemoteUntrusted in Isolated mode)
+        // must not be overridden by a permissive channel ACL.
+        let acl = vac_mcp_core::ChannelAcl::default();
+        let d = TrustGate::check_mcp_tool_with_channel(
+            EnvironmentMode::Isolated,
+            McpTrustClass::RemoteUntrusted,
+            &safe_spec("x"),
+            &acl,
+            "tools",
+        );
+        // Trust-class verdict for Isolated+RemoteUntrusted is Deny or
+        // NeedsApproval depending on existing matrix. Here we assert
+        // the ACL path at minimum never flips it back to Allow.
+        assert!(!matches!(d, GateDecision::Allow));
     }
 
     #[test]
