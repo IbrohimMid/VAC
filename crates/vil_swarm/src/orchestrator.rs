@@ -931,6 +931,30 @@ Rules:
                         }
                     }
 
+                    // N2 — Advisory strategy consult. Does not block;
+                    // just logs disagreement so operators can see when
+                    // the configured strategy diverges from the LLM.
+                    let recent_user: Vec<String> = state
+                        .messages
+                        .iter()
+                        .rev()
+                        .filter(|m| matches!(m.role, vil_llm::provider::Role::User))
+                        .take(3)
+                        .map(|m| m.content.clone())
+                        .collect();
+                    let tool_names: Vec<String> =
+                        all_calls.iter().map(|c| c.name.clone()).collect();
+                    // Budget + turn counts approximated from existing state:
+                    // total_tokens as "consumed"; active_tool_calls.len() as
+                    // "this turn". Advisory only; precision not critical.
+                    let _ = crate::strategy::advise(
+                        self.strategy.as_ref(),
+                        &recent_user,
+                        &tool_names,
+                        state.total_tokens,
+                        state.active_tool_calls.len() as u32,
+                    );
+
                     crate::tool_executor::execute_tools(
                         all_calls,
                         state,

@@ -112,6 +112,55 @@ pub fn strategy_from_name(name: &str) -> Box<dyn AgentStrategy> {
     }
 }
 
+/// Advisory consult at the tool-executor entry. Emits a `tracing::warn!`
+/// when the configured strategy disagrees with the LLM's chosen tool
+/// batch, but does not block or alter execution (strategies are
+/// advisory until enforcement-mode is a formal product decision).
+///
+/// - `tools_this_turn` is the count BEFORE this batch is added.
+/// - `available_tools` are the names the LLM just asked to invoke.
+pub fn advise(
+    strategy: &dyn AgentStrategy,
+    recent_user_messages: &[String],
+    available_tools: &[String],
+    budget_tokens: u64,
+    tools_this_turn: u32,
+) -> StrategyAction {
+    let ctx = StrategyContext {
+        recent_user_messages,
+        available_tools,
+        budget_tokens,
+        tool_calls_this_turn: tools_this_turn,
+    };
+    let verdict = strategy.choose_next(&ctx);
+    match &verdict {
+        StrategyAction::Finish => {
+            tracing::warn!(
+                strategy = strategy.name(),
+                tools_requested = available_tools.len(),
+                "strategy suggests Finish but LLM wants tool calls — proceeding advisory"
+            );
+        }
+        StrategyAction::AskUser(_) => {
+            tracing::warn!(
+                strategy = strategy.name(),
+                tools_requested = available_tools.len(),
+                "strategy suggests AskUser but LLM chose direct tool call — advisory only"
+            );
+        }
+        StrategyAction::ToolCall(name) => {
+            if !available_tools.iter().any(|t| t == name) {
+                tracing::info!(
+                    strategy = strategy.name(),
+                    suggested = %name,
+                    "strategy would have picked a different tool"
+                );
+            }
+        }
+    }
+    verdict
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
