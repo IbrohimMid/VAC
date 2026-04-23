@@ -16,7 +16,7 @@ pub(super) fn render_shell_popup(f: &mut Frame, state: &mut AppState) {
     let area = centered_rect(80, 55, f.area());
     f.render_widget(Clear, area);
 
-    let active_session = state.shell.session_store.active();
+    let active_session = state.execution.shell.session_store.active();
     let title = if let Some(session) = active_session {
         if let Some(shell) = &session.command {
             if session.waiting_for_input {
@@ -46,7 +46,7 @@ pub(super) fn render_shell_popup(f: &mut Frame, state: &mut AppState) {
     if lines.is_empty() {
         lines.push(Line::styled(
             "Shell session active. Type a command and press Enter to send input.",
-            state.theme.style(StyleKey::Muted),
+            state.core.theme.style(StyleKey::Muted),
         ));
     }
 
@@ -54,14 +54,14 @@ pub(super) fn render_shell_popup(f: &mut Frame, state: &mut AppState) {
         lines.push(Line::raw(""));
         lines.push(Line::styled(
             format!("Last error: {err}"),
-            state.theme.style(StyleKey::Error),
+            state.core.theme.style(StyleKey::Error),
         ));
     }
 
     lines.push(Line::raw(""));
     lines.push(Line::styled(
         "Ctrl+Z backgrounds | /shell-focus restores | /shell-kill terminates",
-        state.theme.style(StyleKey::Muted),
+        state.core.theme.style(StyleKey::Muted),
     ));
 
     let widget = Paragraph::new(lines)
@@ -72,7 +72,7 @@ pub(super) fn render_shell_popup(f: &mut Frame, state: &mut AppState) {
 
 pub(super) fn render_at_dropdown(f: &mut Frame, state: &mut AppState) {
     let area = f.area();
-    let count = state.at_mention.results.len().min(8) as u16;
+    let count = state.composer.at_mention.results.len().min(8) as u16;
     if count == 0 {
         return;
     }
@@ -91,16 +91,16 @@ pub(super) fn render_at_dropdown(f: &mut Frame, state: &mut AppState) {
     f.render_widget(Clear, rect);
 
     let items: Vec<ListItem> = state
-        .at_mention.results
+        .composer.at_mention.results
         .iter()
         .enumerate()
         .map(|(i, path)| {
             let selected = i
                 == state
-                    .at_mention.selected_idx
-                    .min(state.at_mention.results.len().saturating_sub(1));
+                    .composer.at_mention.selected_idx
+                    .min(state.composer.at_mention.results.len().saturating_sub(1));
             let style = if selected {
-                state.theme.style(StyleKey::ListSelected)
+                state.core.theme.style(StyleKey::ListSelected)
             } else {
                 Style::default()
             };
@@ -108,35 +108,35 @@ pub(super) fn render_at_dropdown(f: &mut Frame, state: &mut AppState) {
         })
         .collect();
 
-    let query_hint = if state.at_mention.query.is_empty() {
+    let query_hint = if state.composer.at_mention.query.is_empty() {
         "@".to_string()
     } else {
-        format!("@{}", state.at_mention.query)
+        format!("@{}", state.composer.at_mention.query)
     };
 
     let list = List::new(items).block(Block::default().borders(Borders::ALL).title(Span::styled(
         query_hint,
-        state.theme.style(StyleKey::Accent),
+        state.core.theme.style(StyleKey::Accent),
     )));
     f.render_widget(list, rect);
 }
 
 pub(super) fn render_footer(f: &mut Frame, state: &mut AppState, area: Rect) {
     // Reject reason prompt takes priority
-    if let Some(reason) = &state.approvals.reject_reason_input {
+    if let Some(reason) = &state.execution.approvals.reject_reason_input {
         let hints = vec![
             Span::styled(
                 "REJECT REASON ",
                 state
-                    .theme
+                    .core.theme
                     .style(StyleKey::Error)
                     .add_modifier(ratatui::style::Modifier::BOLD),
             ),
             Span::raw(reason.as_str()),
-            Span::styled("█", state.theme.style(StyleKey::Warning)),
+            Span::styled("█", state.core.theme.style(StyleKey::Warning)),
             Span::styled(
                 "  Enter: confirm  Esc: skip",
-                state.theme.style(StyleKey::Muted),
+                state.core.theme.style(StyleKey::Muted),
             ),
         ];
         let widget = Paragraph::new(Line::from(hints)).wrap(Wrap { trim: true });
@@ -144,19 +144,19 @@ pub(super) fn render_footer(f: &mut Frame, state: &mut AppState, area: Rect) {
         return;
     }
 
-    if state.at_mention.trigger_active {
+    if state.composer.at_mention.trigger_active {
         let hints = vec![
             Span::styled(
                 "@ FILE ",
                 state
-                    .theme
+                    .core.theme
                     .style(StyleKey::Accent)
                     .add_modifier(ratatui::style::Modifier::BOLD),
             ),
-            Span::styled(&state.at_mention.query, state.theme.style(StyleKey::Normal)),
+            Span::styled(&state.composer.at_mention.query, state.core.theme.style(StyleKey::Normal)),
             Span::styled(
                 "  ↑↓: select  Enter: insert  Esc: cancel",
-                state.theme.style(StyleKey::Muted),
+                state.core.theme.style(StyleKey::Muted),
             ),
         ];
         let widget = Paragraph::new(Line::from(hints)).wrap(Wrap { trim: true });
@@ -164,9 +164,9 @@ pub(super) fn render_footer(f: &mut Frame, state: &mut AppState, area: Rect) {
         return;
     }
 
-    if state.shell.session_store.popup_visible
+    if state.execution.shell.session_store.popup_visible
         && state
-            .shell
+            .execution.shell
             .session_store
             .active()
             .and_then(|session| session.command.as_ref())
@@ -176,13 +176,13 @@ pub(super) fn render_footer(f: &mut Frame, state: &mut AppState, area: Rect) {
             Span::styled(
                 "SHELL ",
                 state
-                    .theme
+                    .core.theme
                     .style(StyleKey::Accent)
                     .add_modifier(ratatui::style::Modifier::BOLD),
             ),
             Span::styled(
                 "  Ctrl+Z: background  Esc: close  Ctrl+C: kill",
-                state.theme.style(StyleKey::Muted),
+                state.core.theme.style(StyleKey::Muted),
             ),
         ];
         let widget = Paragraph::new(Line::from(hints)).wrap(Wrap { trim: true });
@@ -200,10 +200,10 @@ pub(super) fn render_footer(f: &mut Frame, state: &mut AppState, area: Rect) {
             hints.push(Span::raw("  "));
         }
         let key_str = spec.keybindings.join("/");
-        hints.push(Span::styled(key_str, state.theme.style(StyleKey::Accent)));
+        hints.push(Span::styled(key_str, state.core.theme.style(StyleKey::Accent)));
         hints.push(Span::styled(
             format!(": {}  ", spec.title.to_lowercase()),
-            state.theme.style(StyleKey::Muted),
+            state.core.theme.style(StyleKey::Muted),
         ));
     }
 
@@ -226,10 +226,10 @@ pub(crate) fn render_boot_skeleton(f: &mut Frame, state: &AppState) {
         .split(area);
 
     // Header
-    let version = &state.startup.version;
+    let version = &state.core.startup.version;
     let header = Paragraph::new(format!(" VAC v{version} — Starting…")).style(
         state
-            .theme
+            .core.theme
             .style(StyleKey::Accent)
             .add_modifier(ratatui::style::Modifier::BOLD),
     );
@@ -238,7 +238,7 @@ pub(crate) fn render_boot_skeleton(f: &mut Frame, state: &AppState) {
     // Subsystem progress lines
     let provider_line = format!(
         "  Provider    {}",
-        if state.startup.provider_status == "initializing" {
+        if state.core.startup.provider_status == "initializing" {
             "[ loading… ]"
         } else {
             "[ ready    ]"
@@ -246,15 +246,15 @@ pub(crate) fn render_boot_skeleton(f: &mut Frame, state: &AppState) {
     );
     let model_line = format!(
         "  Model       {}",
-        match state.startup.active_model.as_deref() {
+        match state.core.startup.active_model.as_deref() {
             Some(m) => format!("[ {m} ]"),
             None => "[ loading… ]".to_string(),
         }
     );
-    let session_line = format!("  Sessions    [ {} loaded ]", state.startup.session_count);
+    let session_line = format!("  Sessions    [ {} loaded ]", state.core.startup.session_count);
     let vil_line = format!(
         "  VIL engine  {}",
-        if state.startup.has_vil_engine {
+        if state.core.startup.has_vil_engine {
             "[ present  ]"
         } else {
             "[ absent   ]"
@@ -263,11 +263,11 @@ pub(crate) fn render_boot_skeleton(f: &mut Frame, state: &AppState) {
 
     let body = Paragraph::new([provider_line, model_line, session_line, vil_line].join("\n"))
         .block(Block::default().borders(Borders::NONE))
-        .style(state.theme.style(StyleKey::Muted));
+        .style(state.core.theme.style(StyleKey::Muted));
     f.render_widget(body, chunks[1]);
 
     // Footer hint
     let footer =
-        Paragraph::new(" Initializing subsystems…").style(state.theme.style(StyleKey::Muted));
+        Paragraph::new(" Initializing subsystems…").style(state.core.theme.style(StyleKey::Muted));
     f.render_widget(footer, chunks[2]);
 }

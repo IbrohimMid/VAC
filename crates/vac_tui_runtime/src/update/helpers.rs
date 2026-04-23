@@ -60,18 +60,18 @@ pub fn open_ask_user_popup(state: &mut AppState, tc: &crate::types::ToolCall) {
             std::collections::HashMap::new(),
         ),
     };
-    state.ask_user.question = question;
-    state.ask_user.options = options;
-    state.ask_user.selected = 0;
-    state.ask_user.input.clear();
-    state.ask_user.allow_free_text = allow_free_text;
-    state.ask_user.question_kind = kind;
-    state.ask_user.metadata = metadata;
-    state.ask_user.multi_selected.clear();
-    state.ask_user.filter.clear();
-    state.ask_user.search_active = false;
-    state.ask_user.scroll = 0;
-    state.ask_user.tool_call_id = Some(tc.id.clone());
+    state.layout.ask_user.question = question;
+    state.layout.ask_user.options = options;
+    state.layout.ask_user.selected = 0;
+    state.layout.ask_user.input.clear();
+    state.layout.ask_user.allow_free_text = allow_free_text;
+    state.layout.ask_user.question_kind = kind;
+    state.layout.ask_user.metadata = metadata;
+    state.layout.ask_user.multi_selected.clear();
+    state.layout.ask_user.filter.clear();
+    state.layout.ask_user.search_active = false;
+    state.layout.ask_user.scroll = 0;
+    state.layout.ask_user.tool_call_id = Some(tc.id.clone());
     crate::overlay::open_overlay(state, crate::overlay::OverlayId::AskUser);
     state.push_activity(
         crate::app::ActivityKind::Approval,
@@ -190,19 +190,19 @@ pub(crate) fn push_banner_direct(
     severity: crate::services::banner::BannerSeverity,
 ) {
     let msg = crate::services::banner::BannerMessage::new(text, style).with_severity(severity);
-    state.banner.queue.push(msg);
-    state.banner.message = state.banner.queue.current().cloned();
+    state.layout.banner.queue.push(msg);
+    state.layout.banner.message = state.layout.banner.queue.current().cloned();
 }
 
 pub(crate) fn policy_gate_allows_shell_command(state: &mut AppState, cmd: &str) -> bool {
-    let Ok(config) = vac_core::VacConfig::load_with_fallback(&state.project_root) else {
+    let Ok(config) = vac_core::VacConfig::load_with_fallback(&state.core.project_root) else {
         return true;
     };
     let Some(action) = vac_core::policy_gate::classify_shell_command(cmd) else {
         return true;
     };
     let decision =
-        vac_core::policy_gate::evaluate(&config.policy_gate, action, state.vil.last_score);
+        vac_core::policy_gate::evaluate(&config.policy_gate, action, state.vil_domain.vil.last_score);
     match decision {
         vac_core::policy_gate::PolicyGateDecision::Allow => true,
         vac_core::policy_gate::PolicyGateDecision::Warn(msg) => {

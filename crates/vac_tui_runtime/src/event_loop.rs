@@ -101,66 +101,66 @@ pub async fn run_tui(
         checkpoint_path: checkpoint_path.clone(),
         project_root: project_root.clone(),
     });
-    state.billing.auth_display = auth_display_info;
+    state.operator_config.billing.auth_display = auth_display_info;
     if let Some(project_context) = project_context {
         if let Some(title) = project_context.session_title {
-            state.session_meta.title = Some(title);
+            state.session.session_meta.title = Some(title);
         }
         if !project_context.file_index.is_empty() {
-            state.file_index.all_files = project_context.file_index;
-            state.file_index.search_results = state.file_index.all_files.iter().take(50).cloned().collect();
+            state.workspace.file_index.all_files = project_context.file_index;
+            state.workspace.file_index.search_results = state.workspace.file_index.all_files.iter().take(50).cloned().collect();
         }
         if !project_context.pending_changes.is_empty() {
-            state.modified_files = project_context.pending_changes;
+            state.workspace.modified_files = project_context.pending_changes;
         }
     }
 
     // Hydrate startup state
-    state.startup.has_vil_engine =
+    state.core.startup.has_vil_engine =
         vac_core::detector::VilProjectProfile::detect(&project_root).is_vil_project;
     // PR-T17: surface the Kitty probe outcome to renderers/views so image
     // call sites can dispatch via `render_image_or_fallback` without
     // re-probing.
-    state.startup.kitty_graphics = kitty_graphics_supported;
+    state.core.startup.kitty_graphics = kitty_graphics_supported;
     if let Some(rb) = &_rulebook_config {
         if let Some(inc) = &rb.include {
             if !inc.is_empty() {
-                state.startup.active_rulebook = Some(inc.join(", "));
-                state.startup.selected_rulebooks = inc.clone();
+                state.core.startup.active_rulebook = Some(inc.join(", "));
+                state.core.startup.selected_rulebooks = inc.clone();
             }
         }
     }
     // Hydrate model info from what's available at boot
-    state.startup.active_model = model.as_ref().map(|m| m.name.clone());
-    state.startup.default_model = model.as_ref().map(|m| m.id.clone());
+    state.core.startup.active_model = model.as_ref().map(|m| m.name.clone());
+    state.core.startup.default_model = model.as_ref().map(|m| m.id.clone());
     // Hydrate profile from run_tui parameter
     if !_current_profile_name.is_empty() {
-        state.startup.active_profile = Some(_current_profile_name.clone());
+        state.core.startup.active_profile = Some(_current_profile_name.clone());
     }
     // Load config once; reused below for MCP probe + theme + vil dev.
     let boot_config = vac_core::boot::boot_profile().record("boot_config_load", vac_core::boot::BootPhase::Critical, || {
         let _s = tracing::info_span!("boot_config_load").entered();
         vac_core::VacConfig::load_with_fallback(&project_root).unwrap_or_default()
     });
-    state.startup.mcp_server_count = boot_config.mcp_servers.as_ref().map_or(0, |s| s.len());
+    state.core.startup.mcp_server_count = boot_config.mcp_servers.as_ref().map_or(0, |s| s.len());
     // Provider status from auth_display_info
-    state.startup.provider_status = match &state.billing.auth_display.0 {
+    state.core.startup.provider_status = match &state.operator_config.billing.auth_display.0 {
         Some(provider) => format!("ready ({})", provider),
         None => "loading...".to_string(),
     };
 
     // O1 — Snapshot load and other deferred work will run after first draw.
-    state.session_meta.loading = true;
+    state.session.session_meta.loading = true;
 
     // Add welcome messages
     let welcome = welcome_messages(latest_version.as_deref(), &state);
-    state.messages.extend(welcome);
+    state.transcript.messages.extend(welcome);
 
     // Seed a persistent upgrade banner when an upstream version is available.
     if let Some(v) = latest_version.as_deref() {
         let current = env!("CARGO_PKG_VERSION");
         if v != current {
-            state.banner.message = Some(
+            state.layout.banner.message = Some(
                 crate::services::banner::BannerMessage::persistent_with_action(
                     format!(
                         "New VAC release available: {} (installed: {}). Run /upgrade to update.",
@@ -182,7 +182,7 @@ pub async fn run_tui(
 
     // Create input thread
     let (input_tx, mut internal_rx) = tokio::sync::mpsc::channel::<InputEvent>(100);
-    state.input_tx = Some(input_tx.clone());
+    state.core.input_tx = Some(input_tx.clone());
 
     // Deferred initialization tasks will be run after first render.
 
@@ -191,7 +191,7 @@ pub async fn run_tui(
     let deferred_input_tx = input_tx.clone();
     let deferred_project_root = project_root.clone();
     let deferred_boot_config = boot_config.clone();
-    let deferred_session_id = state.session_id.clone();
+    let deferred_session_id = state.session.session_id.clone();
     let input_paused = Arc::new(AtomicBool::new(false));
     let input_paused_clone = input_paused.clone();
 
@@ -269,7 +269,7 @@ pub async fn run_tui(
     let signal_rewind_path = if boot_config.signal.enable {
         let dir = project_root.join(".vac").join("signal");
         let _ = tokio::fs::create_dir_all(&dir).await;
-        Some(dir.join(format!("{}.db", state.session_id)))
+        Some(dir.join(format!("{}.db", state.session.session_id)))
     } else {
         None
     };
@@ -285,7 +285,7 @@ pub async fn run_tui(
             crate::controller::handle_backend_event(&mut state, &output_tx, event);
         }
 
-        if let Some(tx) = state.input_tx.clone() {
+        if let Some(tx) = state.core.input_tx.clone() {
             crate::update::flush_pending_user_messages_if_idle(&mut state, &tx, &output_tx);
         }
 
@@ -325,7 +325,7 @@ pub async fn run_tui(
                     .collect();
                 let summary_path = db_path.with_extension("summary.json");
                 let summary_doc = serde_json::json!({
-                    "session_id": state.session_id,
+                    "session_id": state.session.session_id,
                     "persisted_at_epoch_s": std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
                         .map(|d| d.as_secs())
@@ -348,27 +348,27 @@ pub async fn run_tui(
 
         // Update spinner
         spinner_interval.tick().await;
-        if state.loading || state.streaming.is_streaming {
-            state.view_flags.spinner_frame = (state.view_flags.spinner_frame + 1) % 10;
+        if state.core.loading || state.transcript.streaming.is_streaming {
+            state.core.view_flags.spinner_frame = (state.core.view_flags.spinner_frame + 1) % 10;
         }
 
         // Tick vil-expr linter — runs the actual lint if debounce window has elapsed (PR-T12.1).
         state
-            .vil_expr_lint
+            .composer.vil_expr_lint
             .tick(&vil_expr::SymbolTable::new(), std::time::Instant::now());
 
         // Hydration timeout: force hydration with fallback data if startup takes too long.
-        if !state.hydrated && std::time::Instant::now() >= state.hydration_deadline {
-            state.hydrated = true;
-            state.toasts.push(crate::services::Toast::warning(
+        if !state.core.hydrated && std::time::Instant::now() >= state.core.hydration_deadline {
+            state.core.hydrated = true;
+            state.layout.toasts.push(crate::services::Toast::warning(
                 "Startup data unavailable — running with defaults".to_string(),
                 std::time::Duration::from_secs(6),
             ));
         }
 
-        state.toasts.retain(|t| !t.is_expired());
-        if state.toasts.len() > 3 {
-            state.toasts.drain(0..state.toasts.len().saturating_sub(3));
+        state.layout.toasts.retain(|t| !t.is_expired());
+        if state.layout.toasts.len() > 3 {
+            state.layout.toasts.drain(0..state.layout.toasts.len().saturating_sub(3));
         }
 
         // PR-T17 / M1 — drain completed image-preview loads before the next
@@ -379,7 +379,7 @@ pub async fn run_tui(
         // empty (a single `try_recv` returning `Empty`), so it is safe to
         // run every iteration regardless of whether the review tab is
         // active.
-        state.image_render.preview_cache.drain_pending();
+        state.layout.image_render.preview_cache.drain_pending();
 
         // Render — measure wall time and update RenderMetrics
         let render_start = std::time::Instant::now();
@@ -465,13 +465,13 @@ pub async fn run_tui(
         // border glyphs.
         //
         // Defense-in-depth: the workbench populator only writes this
-        // field when `state.startup.kitty_graphics == true`, but we
+        // field when `state.core.startup.kitty_graphics == true`, but we
         // re-check the flag here so any future call site that populates
         // it without the guard cannot leak DCS bytes to a non-Kitty
         // terminal. The `.take()` still runs so a stale payload gets
         // drained instead of lingering across frames.
-        if let Some((rect, png_bytes)) = state.image_render.pending.take() {
-            if state.startup.kitty_graphics {
+        if let Some((rect, png_bytes)) = state.layout.image_render.pending.take() {
+            if state.core.startup.kitty_graphics {
                 // PR-T17 M3/L5 — dedup identical consecutive emissions.
                 // The review-tab populator re-queues the same (rect,
                 // bytes) every frame the preview is visible; without
@@ -483,7 +483,7 @@ pub async fn run_tui(
                 // the `None` branch below so re-entering the preview
                 // always re-emits on the first frame.
                 let next_hash = crate::services::kitty_image::hash_png_payload(&png_bytes);
-                let is_duplicate = state.image_render.last == Some((rect, next_hash));
+                let is_duplicate = state.layout.image_render.last == Some((rect, next_hash));
                 if !is_duplicate {
                     // `inner_col`/`inner_row` push one cell past the diff-pane
                     // border so the image overlays ASCII content, not the
@@ -500,7 +500,7 @@ pub async fn run_tui(
                         let mut stdout = std::io::stdout();
                         let _ = stdout.write_all(&payload);
                         let _ = stdout.flush();
-                        state.image_render.last = Some((rect, next_hash));
+                        state.layout.image_render.last = Some((rect, next_hash));
                     }
                 }
             }
@@ -510,22 +510,22 @@ pub async fn run_tui(
             // a preview becomes visible the first frame re-transmits the
             // full DCS payload — Kitty graphics may have been cleared by
             // an intervening screen redraw on some terminals/muxes.
-            state.image_render.last = None;
+            state.layout.image_render.last = None;
         }
 
         let render_us = render_start.elapsed().as_micros() as u64;
-        state.render_metrics.last_render_time_us = render_us;
+        state.core.render_metrics.last_render_time_us = render_us;
         // Exponential moving average (α ≈ 0.1)
-        state.render_metrics.ema_render_time_us = if state.render_metrics.ema_render_time_us == 0 {
+        state.core.render_metrics.ema_render_time_us = if state.core.render_metrics.ema_render_time_us == 0 {
             render_us
         } else {
-            (state.render_metrics.ema_render_time_us * 9 + render_us) / 10
+            (state.core.render_metrics.ema_render_time_us * 9 + render_us) / 10
         };
         if render_us > 16_000 {
             log::debug!(
                 "render over budget: {}µs (avg {}µs)",
                 render_us,
-                state.render_metrics.ema_render_time_us
+                state.core.render_metrics.ema_render_time_us
             );
         }
 
@@ -535,7 +535,7 @@ pub async fn run_tui(
         }
 
         // Check for quit
-        if state.quit.cancel_requested {
+        if state.core.quit.cancel_requested {
             persist_session_snapshot(&state).await;
             break;
         }

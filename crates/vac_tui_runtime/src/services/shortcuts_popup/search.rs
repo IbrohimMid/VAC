@@ -107,13 +107,13 @@ pub fn filter_commands(query: &str, state: &crate::app::AppState) -> Vec<Command
             _ => cmd.name.clone(),
         };
         let freq = state
-            .command_palette.recent_commands
+            .layout.command_palette.recent_commands
             .frequencies
             .get(&cmd_id)
             .copied()
             .unwrap_or(0);
         let recent_idx = state
-            .command_palette.recent_commands
+            .layout.command_palette.recent_commands
             .history
             .iter()
             .position(|h| h == &cmd_id)

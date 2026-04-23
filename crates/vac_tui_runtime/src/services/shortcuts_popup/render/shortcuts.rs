@@ -24,7 +24,7 @@ pub fn render_shortcuts_section(
     area: Rect,
 ) {
     // Render search input
-    let search_term = &state.command_palette.input;
+    let search_term = &state.layout.command_palette.input;
     let search_prompt = ">";
     let cursor = "|";
     let placeholder = "Type to filter (e.g. 'ctrl+')";
@@ -32,46 +32,46 @@ pub fn render_shortcuts_section(
     let search_spans = if search_term.is_empty() {
         vec![
             Span::raw(" "),
-            Span::styled(search_prompt, state.theme.style(StyleKey::AppTitle)),
+            Span::styled(search_prompt, state.core.theme.style(StyleKey::AppTitle)),
             Span::raw(" "),
-            Span::styled(cursor, state.theme.style(StyleKey::Accent)),
-            Span::styled(placeholder, state.theme.style(StyleKey::Muted)),
+            Span::styled(cursor, state.core.theme.style(StyleKey::Accent)),
+            Span::styled(placeholder, state.core.theme.style(StyleKey::Muted)),
             Span::raw(" "),
         ]
     } else {
         vec![
             Span::raw(" "),
-            Span::styled(search_prompt, state.theme.style(StyleKey::AppTitle)),
+            Span::styled(search_prompt, state.core.theme.style(StyleKey::AppTitle)),
             Span::raw(" "),
-            Span::styled(search_term, state.theme.style(StyleKey::Text)),
-            Span::styled(cursor, state.theme.style(StyleKey::Accent)),
+            Span::styled(search_term, state.core.theme.style(StyleKey::Text)),
+            Span::styled(cursor, state.core.theme.style(StyleKey::Accent)),
         ]
     };
 
     f.render_widget(
         Paragraph::new(Line::from(search_spans))
-            .block(Block::default().border_style(state.theme.style(StyleKey::Muted))),
+            .block(Block::default().border_style(state.core.theme.style(StyleKey::Muted))),
         search_area,
     );
 
     // Get shortcuts content (filtered or freshly built)
     let search_lower = search_term.to_lowercase();
     let all_lines = if search_term.is_empty() {
-        build_shortcuts_content(&state.theme, Some(area.width as usize))
+        build_shortcuts_content(&state.core.theme, Some(area.width as usize))
     } else {
         build_filtered_shortcuts(&search_lower, area, state)
     };
 
     let total_lines = all_lines.len();
     let height = content_area.height as usize;
-    let keybind_style = state.theme.style(StyleKey::KeybindBadge);
+    let keybind_style = state.core.theme.style(StyleKey::KeybindBadge);
     let shortcuts_count = count_shortcuts(&all_lines, search_term, keybind_style);
 
     // Calculate scroll position
     let max_scroll = total_lines.saturating_sub(height.saturating_sub(SCROLL_BUFFER_LINES));
 
-    state.command_palette.shortcuts_scroll = state.command_palette.shortcuts_scroll.min(max_scroll);
-    let scroll = state.command_palette.shortcuts_scroll;
+    state.layout.command_palette.shortcuts_scroll = state.layout.command_palette.shortcuts_scroll.min(max_scroll);
+    let scroll = state.layout.command_palette.shortcuts_scroll;
 
     // Add top arrow indicator if there are hidden items above
     let mut visible_lines = Vec::new();
@@ -113,7 +113,7 @@ pub fn render_shortcuts_section(
         ));
 
         if has_content_below {
-            indicator_spans.push(Span::styled(" ▼", state.theme.style(StyleKey::Muted)));
+            indicator_spans.push(Span::styled(" ▼", state.core.theme.style(StyleKey::Muted)));
         }
 
         let indicator_paragraph = Paragraph::new(Line::from(indicator_spans));
@@ -124,14 +124,14 @@ pub fn render_shortcuts_section(
 
     // Help text
     let help = Paragraph::new(Line::from(vec![
-        Span::styled(" ↑/↓", state.theme.style(StyleKey::Muted)),
-        Span::styled(" scroll", state.theme.style(StyleKey::Accent)),
+        Span::styled(" ↑/↓", state.core.theme.style(StyleKey::Muted)),
+        Span::styled(" scroll", state.core.theme.style(StyleKey::Accent)),
         Span::raw("  "),
-        Span::styled("tab", state.theme.style(StyleKey::Muted)),
-        Span::styled(" switch", state.theme.style(StyleKey::Accent)),
+        Span::styled("tab", state.core.theme.style(StyleKey::Muted)),
+        Span::styled(" switch", state.core.theme.style(StyleKey::Accent)),
         Span::raw("  "),
-        Span::styled("esc", state.theme.style(StyleKey::Muted)),
-        Span::styled(" close", state.theme.style(StyleKey::Accent)),
+        Span::styled("esc", state.core.theme.style(StyleKey::Muted)),
+        Span::styled(" close", state.core.theme.style(StyleKey::Accent)),
     ]));
 
     f.render_widget(help, help_area);
@@ -175,7 +175,7 @@ fn build_filtered_shortcuts(
     for category_name in &category_order {
         if let Some(category_shortcuts) = categories.get(category_name) {
             let category_style = state
-                .theme
+                .core.theme
                 .style(StyleKey::CategoryHeader)
                 .add_modifier(Modifier::BOLD);
             let category_width = area.width.saturating_sub(category_name.len() as u16 + 5) as usize;
@@ -183,7 +183,7 @@ fn build_filtered_shortcuts(
                 Span::styled(format!(" {} ", category_name), category_style),
                 Span::styled(
                     "─".repeat(category_width).to_string(),
-                    state.theme.style(StyleKey::Muted),
+                    state.core.theme.style(StyleKey::Muted),
                 ),
             ]));
 
@@ -195,11 +195,11 @@ fn build_filtered_shortcuts(
                     Span::styled(
                         key_formatted,
                         state
-                            .theme
+                            .core.theme
                             .style(StyleKey::KeybindBadge)
                             .add_modifier(Modifier::BOLD),
                     ),
-                    Span::styled(description_formatted, state.theme.style(StyleKey::Text)),
+                    Span::styled(description_formatted, state.core.theme.style(StyleKey::Text)),
                 ]));
             }
             lines.push(Line::from(""));

@@ -11,17 +11,17 @@ pub fn handle(state: &mut AppState, output_tx: &Sender<OutputEvent>, event: Inpu
     match event {
         InputEvent::InputChanged(c) => handle_char(state, output_tx, c),
         InputEvent::InputChangedNewline => {
-            if state.focus == WorkspaceFocus::Input {
-                state.input.newline();
+            if state.layout.focus == WorkspaceFocus::Input {
+                state.composer.input.newline();
                 notify_vil_expr_lint(state);
             }
         }
         InputEvent::InputBackspace => handle_backspace(state),
         InputEvent::InputDelete => {
-            if state.focus == WorkspaceFocus::Input {
-                state.input.delete();
+            if state.layout.focus == WorkspaceFocus::Input {
+                state.composer.input.delete();
                 if state
-                    .overlay_manager
+                    .layout.overlay_manager
                     .is_active(crate::overlay::OverlayId::HelperDropdown)
                 {
                     crate::services::helper_dropdown::filter_helpers_sync(state);
@@ -30,14 +30,14 @@ pub fn handle(state: &mut AppState, output_tx: &Sender<OutputEvent>, event: Inpu
             }
         }
         InputEvent::InputClear => {
-            if state.focus == WorkspaceFocus::Input {
-                let had_pastes = !state.paste.pending_pastes.is_empty();
-                let had_images = !state.pending_image_parts.is_empty();
-                state.input.clear();
-                state.paste.pending_pastes.clear();
-                state.pending_image_parts.clear();
+            if state.layout.focus == WorkspaceFocus::Input {
+                let had_pastes = !state.layout.paste.pending_pastes.is_empty();
+                let had_images = !state.composer.pending_image_parts.is_empty();
+                state.composer.input.clear();
+                state.layout.paste.pending_pastes.clear();
+                state.composer.pending_image_parts.clear();
                 if had_pastes || had_images {
-                    state.toasts.push(crate::services::Toast::info(
+                    state.layout.toasts.push(crate::services::Toast::info(
                         "Input and pending attachments cleared.".to_string(),
                     ));
                 }
@@ -48,45 +48,45 @@ pub fn handle(state: &mut AppState, output_tx: &Sender<OutputEvent>, event: Inpu
         InputEvent::HandlePaste(text) => handle_paste(state, text),
         InputEvent::HandleClipboardImagePaste => handle_image_paste(state),
         InputEvent::CursorLeft => {
-            if state.focus == WorkspaceFocus::Input {
-                state.input.move_cursor_left();
+            if state.layout.focus == WorkspaceFocus::Input {
+                state.composer.input.move_cursor_left();
             }
         }
         InputEvent::CursorRight => {
-            if state.focus == WorkspaceFocus::Input {
-                state.input.move_cursor_right();
+            if state.layout.focus == WorkspaceFocus::Input {
+                state.composer.input.move_cursor_right();
             }
         }
         InputEvent::InputCursorStart => {
-            if state.focus == WorkspaceFocus::Input {
-                state.input.move_cursor_start();
+            if state.layout.focus == WorkspaceFocus::Input {
+                state.composer.input.move_cursor_start();
             }
         }
         InputEvent::InputCursorEnd => {
-            if state.focus == WorkspaceFocus::Input {
-                state.input.move_cursor_end();
+            if state.layout.focus == WorkspaceFocus::Input {
+                state.composer.input.move_cursor_end();
             }
         }
         InputEvent::Up => handle_up(state, output_tx),
         InputEvent::Down => handle_down(state, output_tx),
-        InputEvent::ScrollUp => match state.focus {
-            WorkspaceFocus::Conversation => state.scroll.messages = state.scroll.messages.saturating_sub(1),
+        InputEvent::ScrollUp => match state.layout.focus {
+            WorkspaceFocus::Conversation => state.layout.scroll.messages = state.layout.scroll.messages.saturating_sub(1),
             WorkspaceFocus::Activity => {
-                state.scroll.activity = state.scroll.activity.saturating_add(1)
+                state.layout.scroll.activity = state.layout.scroll.activity.saturating_add(1)
             }
             _ => {}
         },
-        InputEvent::ScrollDown => match state.focus {
-            WorkspaceFocus::Conversation => state.scroll.messages = state.scroll.messages.saturating_add(1),
+        InputEvent::ScrollDown => match state.layout.focus {
+            WorkspaceFocus::Conversation => state.layout.scroll.messages = state.layout.scroll.messages.saturating_add(1),
             WorkspaceFocus::Activity => {
-                state.scroll.activity = state.scroll.activity.saturating_sub(1)
+                state.layout.scroll.activity = state.layout.scroll.activity.saturating_sub(1)
             }
             _ => {}
         },
         InputEvent::MouseRightClick(_col, row) => {
             if let Some(msg_id) = message_at_row(state, row) {
-                state.operator.message_action_popup_selected = 0;
-                state.operator.message_action_target_id = Some(msg_id);
+                state.operator_config.operator.message_action_popup_selected = 0;
+                state.operator_config.operator.message_action_target_id = Some(msg_id);
                 crate::overlay::open_overlay(state, crate::overlay::OverlayId::MessageAction);
             }
         }
@@ -95,49 +95,49 @@ pub fn handle(state: &mut AppState, output_tx: &Sender<OutputEvent>, event: Inpu
 }
 
 fn handle_char(state: &mut AppState, output_tx: &Sender<OutputEvent>, c: char) {
-    if state.focus == WorkspaceFocus::Input
-        && state.input.is_empty()
-        && !state.paste.pending_pastes.is_empty()
+    if state.layout.focus == WorkspaceFocus::Input
+        && state.composer.input.is_empty()
+        && !state.layout.paste.pending_pastes.is_empty()
         && handle_paste_tray_key(state, c)
     {
         return;
     }
 
-    if state.focus != WorkspaceFocus::Input {
+    if state.layout.focus != WorkspaceFocus::Input {
         return;
     }
 
-    if c == '/' && state.input.lines.join("").trim().is_empty() {
+    if c == '/' && state.composer.input.lines.join("").trim().is_empty() {
         crate::overlay::open_overlay(state, crate::overlay::OverlayId::HelperDropdown);
-        state.input.input(c);
+        state.composer.input.input(c);
         crate::services::helper_dropdown::filter_helpers_sync(state);
-        state.command_palette.helper_selected = 0;
-        state.command_palette.helper_scroll = 0;
+        state.layout.command_palette.helper_selected = 0;
+        state.layout.command_palette.helper_scroll = 0;
     } else if state
-        .overlay_manager
+        .layout.overlay_manager
         .is_active(crate::overlay::OverlayId::HelperDropdown)
     {
-        state.input.input(c);
+        state.composer.input.input(c);
         crate::services::helper_dropdown::filter_helpers_sync(state);
-        state.command_palette.helper_selected = 0;
-        state.command_palette.helper_scroll = 0;
-    } else if c == '@' && !state.at_mention.trigger_active {
+        state.layout.command_palette.helper_selected = 0;
+        state.layout.command_palette.helper_scroll = 0;
+    } else if c == '@' && !state.composer.at_mention.trigger_active {
         crate::overlay::open_overlay(state, crate::overlay::OverlayId::AtDropdown);
-        state.at_mention.query = String::new();
-        state.at_mention.selected_idx = 0;
-        if state.file_index.all_files.is_empty() {
-            state.file_index.all_files = crate::services::build_file_index(&state.project_root);
+        state.composer.at_mention.query = String::new();
+        state.composer.at_mention.selected_idx = 0;
+        if state.workspace.file_index.all_files.is_empty() {
+            state.workspace.file_index.all_files = crate::services::build_file_index(&state.core.project_root);
         }
-        state.at_mention.results = crate::services::fuzzy_search_files("", &state.file_index.all_files, 8);
-        state.input.input(c);
-    } else if state.at_mention.trigger_active {
-        state.at_mention.query.push(c);
-        state.at_mention.selected_idx = 0;
-        state.at_mention.results =
-            crate::services::fuzzy_search_files(&state.at_mention.query, &state.file_index.all_files, 8);
-        state.input.input(c);
+        state.composer.at_mention.results = crate::services::fuzzy_search_files("", &state.workspace.file_index.all_files, 8);
+        state.composer.input.input(c);
+    } else if state.composer.at_mention.trigger_active {
+        state.composer.at_mention.query.push(c);
+        state.composer.at_mention.selected_idx = 0;
+        state.composer.at_mention.results =
+            crate::services::fuzzy_search_files(&state.composer.at_mention.query, &state.workspace.file_index.all_files, 8);
+        state.composer.input.input(c);
     } else {
-        state.input.input(c);
+        state.composer.input.input(c);
     }
 
     let _ = output_tx; // suppress unused warning when no send is needed here
@@ -145,40 +145,40 @@ fn handle_char(state: &mut AppState, output_tx: &Sender<OutputEvent>, c: char) {
 }
 
 fn handle_backspace(state: &mut AppState) {
-    if state.focus != WorkspaceFocus::Input {
+    if state.layout.focus != WorkspaceFocus::Input {
         return;
     }
     if state
-        .overlay_manager
+        .layout.overlay_manager
         .is_active(crate::overlay::OverlayId::HelperDropdown)
     {
-        state.input.backspace();
+        state.composer.input.backspace();
         crate::services::helper_dropdown::filter_helpers_sync(state);
-        state.command_palette.helper_selected = 0;
-        state.command_palette.helper_scroll = 0;
-    } else if state.at_mention.trigger_active {
-        if state.at_mention.query.is_empty() {
-            state.at_mention.trigger_active = false;
-            state.at_mention.results.clear();
-            state.at_mention.selected_idx = 0;
+        state.layout.command_palette.helper_selected = 0;
+        state.layout.command_palette.helper_scroll = 0;
+    } else if state.composer.at_mention.trigger_active {
+        if state.composer.at_mention.query.is_empty() {
+            state.composer.at_mention.trigger_active = false;
+            state.composer.at_mention.results.clear();
+            state.composer.at_mention.selected_idx = 0;
         } else {
-            state.at_mention.query.pop();
-            state.at_mention.selected_idx = 0;
-            state.at_mention.results =
-                crate::services::fuzzy_search_files(&state.at_mention.query, &state.file_index.all_files, 8);
+            state.composer.at_mention.query.pop();
+            state.composer.at_mention.selected_idx = 0;
+            state.composer.at_mention.results =
+                crate::services::fuzzy_search_files(&state.composer.at_mention.query, &state.workspace.file_index.all_files, 8);
         }
-        state.input.backspace();
+        state.composer.input.backspace();
     } else {
-        state.input.backspace();
+        state.composer.input.backspace();
     }
     notify_vil_expr_lint(state);
 }
 
 fn handle_submit(state: &mut AppState, output_tx: &Sender<OutputEvent>) {
-    if state.focus == WorkspaceFocus::Input
-        && state.shell.session_store.popup_visible
+    if state.layout.focus == WorkspaceFocus::Input
+        && state.execution.shell.session_store.popup_visible
         && state
-            .shell
+            .execution.shell
             .session_store
             .active()
             .and_then(|s| s.command.as_ref())
@@ -188,32 +188,32 @@ fn handle_submit(state: &mut AppState, output_tx: &Sender<OutputEvent>) {
         return;
     }
 
-    if state.focus != WorkspaceFocus::Input || state.input.is_empty() {
+    if state.layout.focus != WorkspaceFocus::Input || state.composer.input.is_empty() {
         return;
     }
 
-    let msg = state.input.get_content();
-    state.input.clear();
+    let msg = state.composer.input.get_content();
+    state.composer.input.clear();
     notify_vil_expr_lint(state);
 
     // Prepend context chips to the message (PR-T7).
-    let chip_prefix: String = if !state.context_chips.is_empty() {
+    let chip_prefix: String = if !state.composer.context_chips.is_empty() {
         let mut prefix = String::new();
-        for chip in &state.context_chips {
+        for chip in &state.composer.context_chips {
             prefix.push_str(&format!(
                 "<context label=\"{}\">\n{}\n</context>\n\n",
                 chip.label, chip.content
             ));
         }
-        state.context_chips.clear();
-        state.context_chip_cursor = None;
+        state.composer.context_chips.clear();
+        state.composer.context_chip_cursor = None;
         prefix
     } else {
         String::new()
     };
 
     if msg.starts_with('/') {
-        state.command_palette.recent_commands.add_command(msg.clone());
+        state.layout.command_palette.recent_commands.add_command(msg.clone());
         let trimmed = msg.trim();
         let mut parts = trimmed.splitn(2, char::is_whitespace);
         let cmd_word = parts.next().unwrap_or(trimmed);
@@ -221,9 +221,9 @@ fn handle_submit(state: &mut AppState, output_tx: &Sender<OutputEvent>) {
 
         if !dispatch_builtin_command(state, output_tx, cmd_word, cmd_args) {
             let expanded = format!("{chip_prefix}{}", state.expand_pending_pastes(&msg));
-            let image_parts = std::mem::take(&mut state.pending_image_parts);
+            let image_parts = std::mem::take(&mut state.composer.pending_image_parts);
             state
-                .pending_user_messages
+                .transcript.pending_user_messages
                 .push_back(crate::app::PendingUserMessage::new(
                     expanded.clone(),
                     None,
@@ -233,9 +233,9 @@ fn handle_submit(state: &mut AppState, output_tx: &Sender<OutputEvent>) {
         }
     } else {
         let expanded = format!("{chip_prefix}{}", state.expand_pending_pastes(&msg));
-        let image_parts = std::mem::take(&mut state.pending_image_parts);
+        let image_parts = std::mem::take(&mut state.composer.pending_image_parts);
         state
-            .pending_user_messages
+            .transcript.pending_user_messages
             .push_back(crate::app::PendingUserMessage::new(
                 expanded.clone(),
                 None,
@@ -246,31 +246,31 @@ fn handle_submit(state: &mut AppState, output_tx: &Sender<OutputEvent>) {
 }
 
 fn handle_up(state: &mut AppState, output_tx: &Sender<OutputEvent>) {
-    match state.focus {
+    match state.layout.focus {
         WorkspaceFocus::Input => {
             if shell_handler::handle_shell_key(state, output_tx, &InputEvent::Up) {
-                state.input.move_cursor_end();
+                state.composer.input.move_cursor_end();
             } else {
-                state.input.move_cursor_up();
+                state.composer.input.move_cursor_up();
             }
         }
-        WorkspaceFocus::Conversation => state.scroll.messages = state.scroll.messages.saturating_sub(1),
-        WorkspaceFocus::Activity => state.scroll.activity = state.scroll.activity.saturating_add(1),
+        WorkspaceFocus::Conversation => state.layout.scroll.messages = state.layout.scroll.messages.saturating_sub(1),
+        WorkspaceFocus::Activity => state.layout.scroll.activity = state.layout.scroll.activity.saturating_add(1),
         WorkspaceFocus::Workbench => {} // handled by workbench_input
     }
 }
 
 fn handle_down(state: &mut AppState, output_tx: &Sender<OutputEvent>) {
-    match state.focus {
+    match state.layout.focus {
         WorkspaceFocus::Input => {
             if shell_handler::handle_shell_key(state, output_tx, &InputEvent::Down) {
-                state.input.move_cursor_end();
+                state.composer.input.move_cursor_end();
             } else {
-                state.input.move_cursor_down();
+                state.composer.input.move_cursor_down();
             }
         }
-        WorkspaceFocus::Conversation => state.scroll.messages = state.scroll.messages.saturating_add(1),
-        WorkspaceFocus::Activity => state.scroll.activity = state.scroll.activity.saturating_sub(1),
+        WorkspaceFocus::Conversation => state.layout.scroll.messages = state.layout.scroll.messages.saturating_add(1),
+        WorkspaceFocus::Activity => state.layout.scroll.activity = state.layout.scroll.activity.saturating_sub(1),
         WorkspaceFocus::Workbench => {} // handled by workbench_input
     }
 }
@@ -283,18 +283,18 @@ fn handle_paste(state: &mut AppState, text: String) {
     let paths = extract_file_paths_from_text(&text);
     if !paths.is_empty() {
         for path in paths {
-            state.input.insert_str(&path.to_string_lossy());
-            state.input.input(' ');
+            state.composer.input.insert_str(&path.to_string_lossy());
+            state.composer.input.input(' ');
         }
     } else if is_long_paste(&text) {
-        state.paste.paste_counter += 1;
-        let id = make_paste_id(state.paste.paste_counter);
+        state.layout.paste.paste_counter += 1;
+        let id = make_paste_id(state.layout.paste.paste_counter);
         let char_count = text.chars().count();
         let line_count = text.chars().filter(|c| *c == '\n').count() + 1;
         let placeholder = text_placeholder(&id, char_count, line_count);
-        state.input.insert_str(&placeholder);
-        state.input.input(' ');
-        state.paste.pending_pastes.push(PastedItem {
+        state.composer.input.insert_str(&placeholder);
+        state.composer.input.input(' ');
+        state.layout.paste.pending_pastes.push(PastedItem {
             id,
             placeholder,
             kind: PastedKind::Text {
@@ -306,9 +306,9 @@ fn handle_paste(state: &mut AppState, text: String) {
     } else {
         for c in text.chars() {
             if c == '\n' {
-                state.input.newline();
+                state.composer.input.newline();
             } else if c != '\r' {
-                state.input.input(c);
+                state.composer.input.input(c);
             }
         }
     }
@@ -317,9 +317,9 @@ fn handle_paste(state: &mut AppState, text: String) {
 
 /// Notify the vil-expr linter of an input buffer change (PR-T12.1).
 fn notify_vil_expr_lint(state: &mut AppState) {
-    let text = state.input.lines.join("\n");
+    let text = state.composer.input.lines.join("\n");
     state
-        .vil_expr_lint
+        .composer.vil_expr_lint
         .on_input_changed(&text, std::time::Instant::now());
 }
 
@@ -337,7 +337,7 @@ mod tests {
             checkpoint_path: None,
             project_root: dir.path().to_path_buf(),
         });
-        state.focus = WorkspaceFocus::Input;
+        state.layout.focus = WorkspaceFocus::Input;
         // Leak the tempdir so it outlives the state (test-only).
         std::mem::forget(dir);
         state
@@ -355,23 +355,23 @@ mod tests {
 
         // After typing, lint state should have a pending payload.
         assert_eq!(
-            state.vil_expr_lint.pending_payload.as_deref(),
+            state.composer.vil_expr_lint.pending_payload.as_deref(),
             Some("foo"),
             "expected pending payload 'foo' after typing 'vil-expr: foo'"
         );
         assert!(
-            state.vil_expr_lint.deadline.is_some(),
+            state.composer.vil_expr_lint.deadline.is_some(),
             "deadline should be set after input change"
         );
 
         // Clear input → lint state should reset.
-        state.input.clear();
+        state.composer.input.clear();
         notify_vil_expr_lint(&mut state);
         assert!(
-            state.vil_expr_lint.pending_payload.is_none(),
+            state.composer.vil_expr_lint.pending_payload.is_none(),
             "payload should be cleared when input has no vil-expr: prefix"
         );
-        assert!(state.vil_expr_lint.is_clean());
+        assert!(state.composer.vil_expr_lint.is_clean());
     }
 
     #[test]
@@ -387,29 +387,29 @@ mod tests {
 
         let now = Instant::now();
         // Override deadline to a known value for deterministic testing.
-        state.vil_expr_lint.deadline = Some(now + Duration::from_millis(200));
+        state.composer.vil_expr_lint.deadline = Some(now + Duration::from_millis(200));
 
         // Before debounce expires → tick should not fire.
         assert!(
             !state
-                .vil_expr_lint
+                .composer.vil_expr_lint
                 .tick(&symbols, now + Duration::from_millis(100)),
             "tick should NOT fire before debounce window"
         );
         assert!(
-            state.vil_expr_lint.issues().is_empty(),
+            state.composer.vil_expr_lint.issues().is_empty(),
             "issues should be empty before lint runs"
         );
 
         // After debounce expires → tick should fire and return true (= redraw needed).
         assert!(
             state
-                .vil_expr_lint
+                .composer.vil_expr_lint
                 .tick(&symbols, now + Duration::from_millis(300)),
             "tick should fire after debounce window — return true signals redraw"
         );
         assert!(
-            !state.vil_expr_lint.issues().is_empty(),
+            !state.composer.vil_expr_lint.issues().is_empty(),
             "after tick, issues should contain the unknown identifier error"
         );
     }
@@ -430,11 +430,11 @@ mod tests {
         // Should have a toast with the stub message.
         assert!(
             state
-                .toasts
+                .layout.toasts
                 .iter()
                 .any(|t| t.message.contains("type inference coming soon")),
             "Alt+H with active payload should show stub type-info toast, got: {:?}",
-            state.toasts.iter().map(|t| &t.message).collect::<Vec<_>>()
+            state.layout.toasts.iter().map(|t| &t.message).collect::<Vec<_>>()
         );
     }
 }
@@ -453,7 +453,7 @@ fn handle_image_paste(state: &mut AppState) {
                             bytes.len(),
                             MAX_IMAGE_BYTES
                         );
-                        state.input.insert_str("[image too large, max 10MB] ");
+                        state.composer.input.insert_str("[image too large, max 10MB] ");
                     } else {
                         use crate::services::clipboard_paste::{
                             PastedItem, PastedKind, image_placeholder, make_paste_id,
@@ -474,13 +474,13 @@ fn handle_image_paste(state: &mut AppState) {
                                 url: format!("data:{};base64,{}", media_type, b64),
                             }),
                         };
-                        state.pending_image_parts.push(part);
-                        state.paste.paste_counter += 1;
-                        let id = make_paste_id(state.paste.paste_counter);
+                        state.composer.pending_image_parts.push(part);
+                        state.layout.paste.paste_counter += 1;
+                        let id = make_paste_id(state.layout.paste.paste_counter);
                         let placeholder = image_placeholder(&id, info.width, info.height);
-                        state.input.insert_str(&placeholder);
-                        state.input.input(' ');
-                        state.paste.pending_pastes.push(PastedItem {
+                        state.composer.input.insert_str(&placeholder);
+                        state.composer.input.input(' ');
+                        state.layout.paste.pending_pastes.push(PastedItem {
                             id,
                             placeholder,
                             kind: PastedKind::Image {
@@ -491,8 +491,8 @@ fn handle_image_paste(state: &mut AppState) {
                         });
                     }
                 } else {
-                    state.input.insert_str(&path.to_string_lossy());
-                    state.input.input(' ');
+                    state.composer.input.insert_str(&path.to_string_lossy());
+                    state.composer.input.input(' ');
                 }
             }
             Err(e) => {

@@ -50,69 +50,69 @@ pub(crate) fn side_panel_section_from_label(label: &str) -> Option<SidePanelSect
 pub(crate) fn build_session_snapshot(
     state: &AppState,
 ) -> Option<vac_session_control::SessionSnapshot> {
-    let session_id = uuid::Uuid::parse_str(&state.session_id).ok()?;
+    let session_id = uuid::Uuid::parse_str(&state.session.session_id).ok()?;
     let mut snapshot =
-        vac_session_control::SessionSnapshot::new(session_id, state.project_root.clone());
+        vac_session_control::SessionSnapshot::new(session_id, state.core.project_root.clone());
     let todo_pending = state
-        .todos
+        .transcript.todos
         .iter()
         .filter(|todo| matches!(todo.status, vac_changeset::TodoStatus::Pending))
         .count();
     let todo_in_progress = state
-        .todos
+        .transcript.todos
         .iter()
         .filter(|todo| matches!(todo.status, vac_changeset::TodoStatus::InProgress))
         .count();
     let todo_done = state
-        .todos
+        .transcript.todos
         .iter()
         .filter(|todo| matches!(todo.status, vac_changeset::TodoStatus::Done))
         .count();
 
     snapshot.active_model = state
-        .operator.current_model
+        .operator_config.operator.current_model
         .as_ref()
         .map(|model| model.name.clone())
-        .or_else(|| state.startup.active_model.clone());
-    snapshot.active_profile = Some(state.switchers.active_profile.clone());
-    let mut selected_rulebooks: Vec<String> = state.switchers.selected_rulebooks.iter().cloned().collect();
+        .or_else(|| state.core.startup.active_model.clone());
+    snapshot.active_profile = Some(state.layout.switchers.active_profile.clone());
+    let mut selected_rulebooks: Vec<String> = state.layout.switchers.selected_rulebooks.iter().cloned().collect();
     selected_rulebooks.sort();
     snapshot.active_rulebooks = selected_rulebooks;
-    snapshot.task_count = state.todos.len();
+    snapshot.task_count = state.transcript.todos.len();
     snapshot.completed_tasks = todo_done;
     snapshot.failed_tasks = 0;
-    snapshot.total_tokens = state.billing.total_session.total_tokens;
-    snapshot.modified_files = state.modified_files.len();
+    snapshot.total_tokens = state.operator_config.billing.total_session.total_tokens;
+    snapshot.modified_files = state.workspace.modified_files.len();
     snapshot.tui_state.active_tab_idx =
-        Some(crate::workbench::active_tab_index(&state.workbench_tab));
-    snapshot.tui_state.history_selection = Some(state.operator.sessions_selected_idx);
-    snapshot.tui_state.last_focus = Some(focus_to_label(state.focus).to_string());
+        Some(crate::workbench::active_tab_index(&state.layout.workbench_tab));
+    snapshot.tui_state.history_selection = Some(state.operator_config.operator.sessions_selected_idx);
+    snapshot.tui_state.last_focus = Some(focus_to_label(state.layout.focus).to_string());
     snapshot.tui_state.collapsed_sections = state
-        .side_panel.section_collapsed
+        .layout.side_panel.section_collapsed
         .iter()
         .map(|section| side_panel_section_to_label(*section).to_string())
         .collect();
     snapshot
         .metadata
-        .insert("focus".into(), focus_to_label(state.focus).into());
+        .insert("focus".into(), focus_to_label(state.layout.focus).into());
     snapshot
         .metadata
-        .insert("active_profile".into(), state.switchers.active_profile.clone());
+        .insert("active_profile".into(), state.layout.switchers.active_profile.clone());
     snapshot.metadata.insert(
         "active_isolation_mode".into(),
-        state.switchers.active_isolation_mode.clone(),
+        state.layout.switchers.active_isolation_mode.clone(),
     );
     snapshot.metadata.insert(
         "provider_status".into(),
-        state.startup.provider_status.clone(),
+        state.core.startup.provider_status.clone(),
     );
     snapshot.metadata.insert(
         "pending_approvals".into(),
-        state.approvals.pending_approvals.len().to_string(),
+        state.execution.approvals.pending_approvals.len().to_string(),
     );
     snapshot.metadata.insert(
         "queue_depth".into(),
-        state.pending_user_messages.len().to_string(),
+        state.transcript.pending_user_messages.len().to_string(),
     );
     snapshot
         .metadata
@@ -130,36 +130,36 @@ pub(crate) fn apply_session_snapshot(
     state: &mut AppState,
     snapshot: &vac_session_control::SessionSnapshot,
 ) {
-    state.startup.active_model = snapshot.active_model.clone();
-    state.startup.active_profile = snapshot.active_profile.clone();
-    state.startup.selected_rulebooks = snapshot.active_rulebooks.clone();
-    state.switchers.selected_rulebooks = snapshot.active_rulebooks.iter().cloned().collect();
-    state.startup.active_rulebook = if snapshot.active_rulebooks.is_empty() {
+    state.core.startup.active_model = snapshot.active_model.clone();
+    state.core.startup.active_profile = snapshot.active_profile.clone();
+    state.core.startup.selected_rulebooks = snapshot.active_rulebooks.clone();
+    state.layout.switchers.selected_rulebooks = snapshot.active_rulebooks.iter().cloned().collect();
+    state.core.startup.active_rulebook = if snapshot.active_rulebooks.is_empty() {
         None
     } else {
         Some(snapshot.active_rulebooks.join(", "))
     };
     if let Some(idx) = snapshot.tui_state.active_tab_idx {
-        state.workbench_tab = crate::workbench::tab_from_index(idx);
+        state.layout.workbench_tab = crate::workbench::tab_from_index(idx);
     }
     if let Some(selection) = snapshot.tui_state.history_selection {
-        state.operator.sessions_selected_idx = selection;
+        state.operator_config.operator.sessions_selected_idx = selection;
     }
     if let Some(focus) = snapshot.tui_state.last_focus.as_deref() {
-        state.focus = focus_from_label(focus);
+        state.layout.focus = focus_from_label(focus);
     }
-    state.side_panel.section_collapsed = snapshot
+    state.layout.side_panel.section_collapsed = snapshot
         .tui_state
         .collapsed_sections
         .iter()
         .filter_map(|section| side_panel_section_from_label(section))
         .collect();
-    state.switchers.active_profile = snapshot
+    state.layout.switchers.active_profile = snapshot
         .active_profile
         .clone()
         .unwrap_or_else(|| "default".to_string());
     if let Some(provider_status) = snapshot.metadata.get("provider_status") {
-        state.startup.provider_status = provider_status.clone();
+        state.core.startup.provider_status = provider_status.clone();
     }
 }
 

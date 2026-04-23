@@ -15,7 +15,7 @@ pub struct RuntimeTab;
 
 impl WorkbenchTabView for RuntimeTab {
     fn tab_label(state: &AppState) -> String {
-        format!("Runtime ({})", state.runtime.jobs.len())
+        format!("Runtime ({})", state.execution.runtime.jobs.len())
     }
 
     fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
@@ -29,7 +29,7 @@ impl WorkbenchTabView for RuntimeTab {
         let mut completed = 0usize;
         let mut failed = 0usize;
         let mut cancelled = 0usize;
-        for job in &state.runtime.jobs {
+        for job in &state.execution.runtime.jobs {
             match &job.status {
                 vac_runtime::JobStatus::Queued => queued += 1,
                 vac_runtime::JobStatus::Running => running += 1,
@@ -40,15 +40,15 @@ impl WorkbenchTabView for RuntimeTab {
         }
 
         let items: Vec<ListItem> = state
-            .runtime
+            .execution.runtime
             .jobs
             .iter()
             .enumerate()
             .map(|(idx, job)| {
-                let selected = idx == state.runtime.selected_idx;
+                let selected = idx == state.execution.runtime.selected_idx;
                 let style = if selected {
                     state
-                        .theme
+                        .core.theme
                         .style(StyleKey::Warning)
                         .add_modifier(Modifier::BOLD)
                 } else {
@@ -56,19 +56,19 @@ impl WorkbenchTabView for RuntimeTab {
                 };
                 let status = match &job.status {
                     vac_runtime::JobStatus::Queued => {
-                        Span::styled("Q", state.theme.style(StyleKey::Muted))
+                        Span::styled("Q", state.core.theme.style(StyleKey::Muted))
                     }
                     vac_runtime::JobStatus::Running => {
-                        Span::styled("R", state.theme.style(StyleKey::Accent))
+                        Span::styled("R", state.core.theme.style(StyleKey::Accent))
                     }
                     vac_runtime::JobStatus::Completed => {
-                        Span::styled("C", state.theme.style(StyleKey::Success))
+                        Span::styled("C", state.core.theme.style(StyleKey::Success))
                     }
                     vac_runtime::JobStatus::Failed(_) => {
-                        Span::styled("F", state.theme.style(StyleKey::Error))
+                        Span::styled("F", state.core.theme.style(StyleKey::Error))
                     }
                     vac_runtime::JobStatus::Cancelled => {
-                        Span::styled("X", state.theme.style(StyleKey::Warning))
+                        Span::styled("X", state.core.theme.style(StyleKey::Warning))
                     }
                 };
                 ListItem::new(Line::from(vec![
@@ -76,7 +76,7 @@ impl WorkbenchTabView for RuntimeTab {
                     Span::raw(" "),
                     Span::styled(
                         job.id.to_string().chars().take(8).collect::<String>(),
-                        state.theme.style(StyleKey::Muted),
+                        state.core.theme.style(StyleKey::Muted),
                     ),
                     Span::raw(" "),
                     Span::styled(job.kind_name(), style),
@@ -90,25 +90,25 @@ impl WorkbenchTabView for RuntimeTab {
         let mut lines: Vec<Line> = Vec::new();
         lines.push(Line::from(vec![
             Span::styled("Jobs: ", Style::default().add_modifier(Modifier::BOLD)),
-            Span::styled(format!("Q {queued}"), state.theme.style(StyleKey::Muted)),
+            Span::styled(format!("Q {queued}"), state.core.theme.style(StyleKey::Muted)),
             Span::raw("  "),
-            Span::styled(format!("R {running}"), state.theme.style(StyleKey::Accent)),
+            Span::styled(format!("R {running}"), state.core.theme.style(StyleKey::Accent)),
             Span::raw("  "),
             Span::styled(
                 format!("C {completed}"),
-                state.theme.style(StyleKey::Success),
+                state.core.theme.style(StyleKey::Success),
             ),
             Span::raw("  "),
-            Span::styled(format!("F {failed}"), state.theme.style(StyleKey::Error)),
+            Span::styled(format!("F {failed}"), state.core.theme.style(StyleKey::Error)),
             Span::raw("  "),
             Span::styled(
                 format!("X {cancelled}"),
-                state.theme.style(StyleKey::Warning),
+                state.core.theme.style(StyleKey::Warning),
             ),
         ]));
         lines.push(Line::raw(""));
 
-        if let Some(snapshot) = &state.runtime.snapshot {
+        if let Some(snapshot) = &state.execution.runtime.snapshot {
             lines.push(Line::from(vec![
                 Span::styled("Autopilot: ", Style::default().add_modifier(Modifier::BOLD)),
                 Span::raw(snapshot.mode.clone()),
@@ -142,7 +142,7 @@ impl WorkbenchTabView for RuntimeTab {
                         "Last error: ",
                         Style::default().add_modifier(Modifier::BOLD),
                     ),
-                    Span::styled(err.clone(), state.theme.style(StyleKey::Error)),
+                    Span::styled(err.clone(), state.core.theme.style(StyleKey::Error)),
                 ]));
             }
             if let Some(job_id) = snapshot.current_job {
@@ -167,7 +167,7 @@ impl WorkbenchTabView for RuntimeTab {
                 vac_runtime::AutopilotState::WaitingApproval { tool_call_id } => {
                     lines.push(Line::from(vec![
                         Span::styled("Approval: ", Style::default().add_modifier(Modifier::BOLD)),
-                        Span::styled(tool_call_id.clone(), state.theme.style(StyleKey::Warning)),
+                        Span::styled(tool_call_id.clone(), state.core.theme.style(StyleKey::Warning)),
                     ]));
                 }
                 vac_runtime::AutopilotState::Backoff { until } => {
@@ -178,7 +178,7 @@ impl WorkbenchTabView for RuntimeTab {
                         ),
                         Span::styled(
                             until.format("%Y-%m-%d %H:%M:%S UTC").to_string(),
-                            state.theme.style(StyleKey::Warning),
+                            state.core.theme.style(StyleKey::Warning),
                         ),
                     ]));
                 }
@@ -187,12 +187,12 @@ impl WorkbenchTabView for RuntimeTab {
             lines.push(Line::raw(""));
         }
 
-        if !state.mcp_maps.server_states.is_empty() {
+        if !state.execution.mcp_maps.server_states.is_empty() {
             lines.push(Line::from(vec![Span::styled(
                 "MCP Servers:",
                 Style::default().add_modifier(Modifier::BOLD),
             )]));
-            for (name, conn_state) in &state.mcp_maps.server_states {
+            for (name, conn_state) in &state.execution.mcp_maps.server_states {
                 let (status, status_key) = if conn_state.is_connected() {
                     ("✅ connected", StyleKey::Success)
                 } else {
@@ -200,46 +200,46 @@ impl WorkbenchTabView for RuntimeTab {
                 };
                 lines.push(Line::from(vec![
                     Span::raw("  "),
-                    Span::styled(name.clone(), state.theme.style(StyleKey::Warning)),
+                    Span::styled(name.clone(), state.core.theme.style(StyleKey::Warning)),
                     Span::raw(" "),
-                    Span::styled(status, state.theme.style(status_key)),
+                    Span::styled(status, state.core.theme.style(status_key)),
                 ]));
                 if let vac_tools::mcp::McpConnectionStatus::Unreachable(reason) = &conn_state.status
                 {
                     lines.push(Line::from(vec![
                         Span::raw("    "),
-                        Span::styled(reason.clone(), state.theme.style(StyleKey::Muted)),
+                        Span::styled(reason.clone(), state.core.theme.style(StyleKey::Muted)),
                     ]));
                 }
             }
             lines.push(Line::raw(""));
         }
 
-        if let Some(projection) = &state.runtime.task_projection {
+        if let Some(projection) = &state.execution.runtime.task_projection {
             lines.push(Line::from(vec![Span::styled(
                 "Task Graph:",
                 Style::default().add_modifier(Modifier::BOLD),
             )]));
             lines.push(Line::from(vec![
-                Span::styled("  Nodes: ", state.theme.style(StyleKey::Muted)),
+                Span::styled("  Nodes: ", state.core.theme.style(StyleKey::Muted)),
                 Span::raw(projection.nodes.len().to_string()),
-                Span::styled("  Roots: ", state.theme.style(StyleKey::Muted)),
+                Span::styled("  Roots: ", state.core.theme.style(StyleKey::Muted)),
                 Span::raw(projection.root_ids.len().to_string()),
             ]));
             for node in projection.nodes.iter().take(5) {
                 let status_style = match &node.status {
-                    vac_core::engine::TaskNodeStatus::Pending => state.theme.style(StyleKey::Muted),
+                    vac_core::engine::TaskNodeStatus::Pending => state.core.theme.style(StyleKey::Muted),
                     vac_core::engine::TaskNodeStatus::Running => {
-                        state.theme.style(StyleKey::TaskRunning)
+                        state.core.theme.style(StyleKey::TaskRunning)
                     }
                     vac_core::engine::TaskNodeStatus::Completed => {
-                        state.theme.style(StyleKey::TaskCompleted)
+                        state.core.theme.style(StyleKey::TaskCompleted)
                     }
                     vac_core::engine::TaskNodeStatus::Failed(_) => {
-                        state.theme.style(StyleKey::TaskFailed)
+                        state.core.theme.style(StyleKey::TaskFailed)
                     }
                     vac_core::engine::TaskNodeStatus::Blocked => {
-                        state.theme.style(StyleKey::Warning)
+                        state.core.theme.style(StyleKey::Warning)
                     }
                 };
                 let status_label = match &node.status {
@@ -253,19 +253,19 @@ impl WorkbenchTabView for RuntimeTab {
                 lines.push(Line::from(vec![
                     Span::styled(format!("    [{}] ", status_label), status_style),
                     Span::raw(node.label.chars().take(24).collect::<String>()),
-                    Span::styled(approval.to_string(), state.theme.style(StyleKey::Warning)),
+                    Span::styled(approval.to_string(), state.core.theme.style(StyleKey::Warning)),
                 ]));
             }
             if projection.nodes.len() > 5 {
                 lines.push(Line::styled(
                     format!("    … and {} more", projection.nodes.len() - 5),
-                    state.theme.style(StyleKey::Muted),
+                    state.core.theme.style(StyleKey::Muted),
                 ));
             }
             lines.push(Line::raw(""));
         }
 
-        if let Some(job) = state.runtime.jobs.get(state.runtime.selected_idx) {
+        if let Some(job) = state.execution.runtime.jobs.get(state.execution.runtime.selected_idx) {
             lines.push(Line::from(vec![
                 Span::styled("Job: ", Style::default().add_modifier(Modifier::BOLD)),
                 Span::raw(job.id.to_string()),
@@ -301,7 +301,7 @@ impl WorkbenchTabView for RuntimeTab {
         } else {
             lines.push(Line::styled(
                 "No runtime jobs loaded yet. Press r to refresh the queue.",
-                state.theme.style(StyleKey::Muted),
+                state.core.theme.style(StyleKey::Muted),
             ));
         }
 
@@ -312,7 +312,7 @@ impl WorkbenchTabView for RuntimeTab {
                     .title("Runtime Detail"),
             )
             .wrap(Wrap { trim: false })
-            .scroll((state.runtime.detail_scroll as u16, 0));
+            .scroll((state.execution.runtime.detail_scroll as u16, 0));
         f.render_widget(detail, body[1]);
     }
 }

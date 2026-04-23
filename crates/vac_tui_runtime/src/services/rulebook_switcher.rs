@@ -18,8 +18,8 @@ pub fn render_rulebook_switcher(f: &mut Frame, state: &mut AppState) {
         .split(area);
 
     let input = Paragraph::new(Line::from(vec![
-        Span::styled("Filter ", state.theme.style(StyleKey::Muted)),
-        Span::raw(&state.switchers.rulebook_search),
+        Span::styled("Filter ", state.core.theme.style(StyleKey::Muted)),
+        Span::raw(&state.layout.switchers.rulebook_search),
     ]))
     .block(
         Block::default()
@@ -33,21 +33,21 @@ pub fn render_rulebook_switcher(f: &mut Frame, state: &mut AppState) {
         .iter()
         .enumerate()
         .map(|(i, r)| {
-            let style = if i == state.switchers.rulebook_selected {
-                state.theme.style(StyleKey::ListSelected)
+            let style = if i == state.layout.switchers.rulebook_selected {
+                state.core.theme.style(StyleKey::ListSelected)
             } else {
                 Style::default()
             };
-            let prefix = if state.switchers.selected_rulebooks.contains(&r.id) {
+            let prefix = if state.layout.switchers.selected_rulebooks.contains(&r.id) {
                 "[x] "
             } else {
                 "[ ] "
             };
             ListItem::new(Line::from(vec![
-                Span::styled(prefix, state.theme.style(StyleKey::Success)),
+                Span::styled(prefix, state.core.theme.style(StyleKey::Success)),
                 Span::styled(r.id.clone(), style),
                 Span::raw(" - "),
-                Span::styled(r.name.clone(), state.theme.style(StyleKey::Muted)),
+                Span::styled(r.name.clone(), state.core.theme.style(StyleKey::Muted)),
             ]))
         })
         .collect();
@@ -58,7 +58,7 @@ pub fn render_rulebook_switcher(f: &mut Frame, state: &mut AppState) {
                 .borders(Borders::ALL)
                 .title("Rulebooks (Space to toggle, Enter to confirm)"),
         )
-        .highlight_style(state.theme.style(StyleKey::ListSelected));
+        .highlight_style(state.core.theme.style(StyleKey::ListSelected));
     f.render_widget(list, chunks[1]);
 }
 

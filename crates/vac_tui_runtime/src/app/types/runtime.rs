@@ -3,7 +3,7 @@
 use chrono::{DateTime, Utc};
 use std::collections::VecDeque;
 
-/// Runtime / agent-scheduler domain state. Accessed via `app_state.runtime`.
+/// Runtime / agent-scheduler domain state. Accessed via `app_state.execution.runtime`.
 #[derive(Debug, Clone, Default)]
 pub struct RuntimeState {
     pub jobs: Vec<vac_runtime::Job>,
@@ -221,7 +221,7 @@ pub struct VilStatusSnapshot {
     pub ir_metadata_files: Vec<String>,
 }
 
-/// VIL-engine domain state. Accessed via `app_state.vil`.
+/// VIL-engine domain state. Accessed via `app_state.vil_domain.vil`.
 #[derive(Debug, Clone, Default)]
 pub struct VilState {
     pub status: VilStatusSnapshot,

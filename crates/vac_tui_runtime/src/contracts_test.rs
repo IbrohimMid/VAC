@@ -51,13 +51,13 @@ mod tests {
         let mut state = crate::app::AppState::default();
         assert!(
             !state
-                .overlay_manager
+                .layout.overlay_manager
                 .is_active(crate::overlay::OverlayId::CommandPalette)
         );
         crate::overlay::open_overlay(&mut state, crate::overlay::OverlayId::CommandPalette);
         assert!(
             state
-                .overlay_manager
+                .layout.overlay_manager
                 .is_active(crate::overlay::OverlayId::CommandPalette)
         );
     }
@@ -69,7 +69,7 @@ mod tests {
         crate::overlay::close_overlay(&mut state, crate::overlay::OverlayId::ModelSwitcher);
         assert!(
             !state
-                .overlay_manager
+                .layout.overlay_manager
                 .is_active(crate::overlay::OverlayId::ModelSwitcher)
         );
     }
@@ -80,7 +80,7 @@ mod tests {
         crate::overlay::open_overlay(&mut state, crate::overlay::OverlayId::CommandPalette);
         crate::overlay::open_overlay(&mut state, crate::overlay::OverlayId::Shortcuts);
         assert_eq!(
-            state.overlay_manager.topmost(),
+            state.layout.overlay_manager.topmost(),
             Some(crate::overlay::OverlayId::Shortcuts),
             "topmost should be the last pushed overlay"
         );
@@ -93,7 +93,7 @@ mod tests {
         crate::overlay::open_overlay(&mut state, crate::overlay::OverlayId::Shortcuts);
         crate::overlay::close_overlay(&mut state, crate::overlay::OverlayId::Shortcuts);
         assert_eq!(
-            state.overlay_manager.topmost(),
+            state.layout.overlay_manager.topmost(),
             Some(crate::overlay::OverlayId::CommandPalette),
             "CommandPalette should be topmost after Shortcuts is closed"
         );
@@ -124,7 +124,7 @@ mod tests {
         crate::overlay::open_overlay(&mut state, crate::overlay::OverlayId::Shortcuts);
         crate::overlay::close_all_overlays(&mut state);
         assert!(
-            !state.overlay_manager.any_active(),
+            !state.layout.overlay_manager.any_active(),
             "all overlays should be closed"
         );
     }
@@ -133,14 +133,14 @@ mod tests {
     fn overlay_focus_restored_on_stack_drain() {
         use crate::app::WorkspaceFocus;
         let mut state = crate::app::AppState::default();
-        state.focus = WorkspaceFocus::Conversation;
+        state.layout.focus = WorkspaceFocus::Conversation;
         crate::overlay::open_overlay(&mut state, crate::overlay::OverlayId::Shortcuts);
         // Focus may change while overlay is open — simulate that
-        state.focus = WorkspaceFocus::Input;
+        state.layout.focus = WorkspaceFocus::Input;
         crate::overlay::close_overlay(&mut state, crate::overlay::OverlayId::Shortcuts);
         // When stack drains, saved focus (Conversation) should be restored
         assert_eq!(
-            state.focus,
+            state.layout.focus,
             WorkspaceFocus::Conversation,
             "focus should be restored to pre-overlay value when stack drains"
         );
@@ -310,10 +310,10 @@ mod tests {
         let mut state = crate::app::AppState::default();
         let (tx, _rx) = mpsc::channel(16);
         crate::overlay::open_overlay(&mut state, crate::overlay::OverlayId::CommandPalette);
-        assert!(state.overlay_manager.any_active());
+        assert!(state.layout.overlay_manager.any_active());
         crate::handlers::input_core::handle_input_event(&mut state, &tx, InputEvent::HandleEsc);
         assert!(
-            !state.overlay_manager.any_active(),
+            !state.layout.overlay_manager.any_active(),
             "Esc should close the topmost overlay"
         );
     }
@@ -330,31 +330,31 @@ mod tests {
         let state = crate::app::AppState::default();
 
         // F3.1 — Operator grouping is non-ZST and fields have moved.
-        let _: &crate::app::types::OperatorState = &state.operator;
-        assert!(state.operator.current_model.is_none());
-        assert_eq!(state.operator.sessions_selected_idx, 0);
-        assert_eq!(state.operator.theme_picker_selected, 0);
-        assert_eq!(state.operator.message_action_popup_selected, 0);
-        assert!(state.operator.message_action_target_id.is_none());
+        let _: &crate::app::types::OperatorState = &state.operator_config.operator;
+        assert!(state.operator_config.operator.current_model.is_none());
+        assert_eq!(state.operator_config.operator.sessions_selected_idx, 0);
+        assert_eq!(state.operator_config.operator.theme_picker_selected, 0);
+        assert_eq!(state.operator_config.operator.message_action_popup_selected, 0);
+        assert!(state.operator_config.operator.message_action_target_id.is_none());
 
         // F3.3 — SessionMetaState grouping.
-        let _: &crate::app::types::SessionMetaState = &state.session_meta;
-        assert!(state.session_meta.title.is_none());
-        assert!(state.session_meta.checkpoint_path.is_none());
-        assert!(!state.session_meta.loading);
+        let _: &crate::app::types::SessionMetaState = &state.session.session_meta;
+        assert!(state.session.session_meta.title.is_none());
+        assert!(state.session.session_meta.checkpoint_path.is_none());
+        assert!(!state.session.session_meta.loading);
 
         // F3.2 — BridgeState placeholder: always detached on boot.
-        let _: &crate::app::types::BridgeState = &state.bridge;
-        assert!(!state.bridge.attached);
+        let _: &crate::app::types::BridgeState = &state.execution.bridge;
+        assert!(!state.execution.bridge.attached);
 
         // ScrollState zeros.
-        assert_eq!(state.scroll.messages, 0);
-        assert_eq!(state.scroll.activity, 0);
-        assert_eq!(state.scroll.cursor_position, 0);
+        assert_eq!(state.layout.scroll.messages, 0);
+        assert_eq!(state.layout.scroll.activity, 0);
+        assert_eq!(state.layout.scroll.cursor_position, 0);
 
         // Hydration is a two-step dance: flag off, deadline in future.
-        assert!(!state.hydrated);
-        assert!(state.hydration_deadline > std::time::Instant::now());
+        assert!(!state.core.hydrated);
+        assert!(state.core.hydration_deadline > std::time::Instant::now());
     }
 
     /// F3.5 — AppStateOptions must route into the sub-structs, not
@@ -381,14 +381,14 @@ mod tests {
             project_root: std::env::temp_dir(),
         });
 
-        assert_eq!(state.session_id, "test-session");
+        assert_eq!(state.session.session_id, "test-session");
         assert_eq!(
-            state.operator.current_model.as_ref().map(|m| m.name.as_str()),
+            state.operator_config.operator.current_model.as_ref().map(|m| m.name.as_str()),
             Some(model.name.as_str()),
             "options.model must route into operator.current_model",
         );
         assert_eq!(
-            state.session_meta.checkpoint_path.as_ref(),
+            state.session.session_meta.checkpoint_path.as_ref(),
             Some(&checkpoint),
             "options.checkpoint_path must route into session_meta.checkpoint_path",
         );
@@ -409,7 +409,7 @@ mod tests {
             checkpoint_path: Some(path.clone()),
             project_root: std::env::temp_dir(),
         });
-        assert_eq!(state.session_meta.checkpoint_path.as_ref(), Some(&path));
+        assert_eq!(state.session.session_meta.checkpoint_path.as_ref(), Some(&path));
     }
 
     /// F6.5 — absent checkpoint path renders as `None` on boot and
@@ -417,11 +417,11 @@ mod tests {
     #[test]
     fn checkpoint_path_absent_by_default_and_clearable() {
         let mut state = crate::app::AppState::default();
-        assert!(state.session_meta.checkpoint_path.is_none());
-        state.session_meta.checkpoint_path =
+        assert!(state.session.session_meta.checkpoint_path.is_none());
+        state.session.session_meta.checkpoint_path =
             Some(std::path::PathBuf::from("/tmp/ck"));
-        state.session_meta.checkpoint_path = None;
-        assert!(state.session_meta.checkpoint_path.is_none());
+        state.session.session_meta.checkpoint_path = None;
+        assert!(state.session.session_meta.checkpoint_path.is_none());
     }
 
     /// F6.5 — `vac resume <checkpoint>` parses the session id from
@@ -459,13 +459,13 @@ mod tests {
     #[test]
     fn service_wires_reachable_on_appstate() {
         let mut state = crate::app::AppState::default();
-        assert!(!state.rate_limit.is_active());
-        let before = state.rate_limit.current_message().to_string();
-        let after = state.rate_limit.next_message().to_string();
+        assert!(!state.transcript.rate_limit.is_active());
+        let before = state.transcript.rate_limit.current_message().to_string();
+        let after = state.transcript.rate_limit.next_message().to_string();
         assert_ne!(before, after);
-        assert!(state.prompt_history.is_empty());
-        state.prompt_history.record("refactor auth module");
-        let hits = state.prompt_history.suggest("refactor", 5);
+        assert!(state.composer.prompt_history.is_empty());
+        state.composer.prompt_history.record("refactor auth module");
+        let hits = state.composer.prompt_history.suggest("refactor", 5);
         assert_eq!(hits.len(), 1);
     }
 }

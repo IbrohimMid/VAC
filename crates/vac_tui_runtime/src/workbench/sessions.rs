@@ -15,7 +15,7 @@ pub struct SessionsTab;
 
 impl WorkbenchTabView for SessionsTab {
     fn tab_label(state: &AppState) -> String {
-        format!("Sessions ({})", state.sessions.len())
+        format!("Sessions ({})", state.session.sessions.len())
     }
 
     fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
@@ -25,14 +25,14 @@ impl WorkbenchTabView for SessionsTab {
             .split(area);
 
         let items: Vec<ListItem> = state
-            .sessions
+            .session.sessions
             .iter()
             .enumerate()
             .map(|(idx, s)| {
-                let sel = idx == state.operator.sessions_selected_idx;
+                let sel = idx == state.operator_config.operator.sessions_selected_idx;
                 let style = if sel {
                     state
-                        .theme
+                        .core.theme
                         .style(StyleKey::Warning)
                         .add_modifier(Modifier::BOLD)
                 } else {
@@ -59,16 +59,16 @@ impl WorkbenchTabView for SessionsTab {
                     StyleKey::Muted
                 };
                 ListItem::new(Line::from(vec![
-                    Span::styled(checkpoint_icon, state.theme.style(checkpoint_key)),
+                    Span::styled(checkpoint_icon, state.core.theme.style(checkpoint_key)),
                     Span::raw(" "),
-                    Span::styled(snapshot_icon, state.theme.style(snapshot_key)),
+                    Span::styled(snapshot_icon, state.core.theme.style(snapshot_key)),
                     Span::raw(" "),
-                    Span::styled(&s.last_activity, state.theme.style(StyleKey::Muted)),
+                    Span::styled(&s.last_activity, state.core.theme.style(StyleKey::Muted)),
                     Span::raw(" "),
                     Span::styled(&s.title, style),
                     Span::styled(
                         format!(" ({}t)", s.task_count),
-                        state.theme.style(StyleKey::Muted),
+                        state.core.theme.style(StyleKey::Muted),
                     ),
                 ]))
             })
@@ -77,7 +77,7 @@ impl WorkbenchTabView for SessionsTab {
         let list = List::new(items).block(
             Block::default()
                 .borders(Borders::ALL)
-                .title(format!("Sessions ({})", state.sessions.len())),
+                .title(format!("Sessions ({})", state.session.sessions.len())),
         );
         f.render_widget(list, body[0]);
 
@@ -85,15 +85,15 @@ impl WorkbenchTabView for SessionsTab {
         // matches the review / approvals / vil-issue mouse ergonomics.
         // The List widget draws inside `body[0]` minus a 1-cell border on
         // each side; clamp to at most the number of visible rows.
-        state.workbench_chrome.sessions_row_regions.clear();
+        state.layout.workbench_chrome.sessions_row_regions.clear();
         let inner_x = body[0].x.saturating_add(1);
         let inner_y = body[0].y.saturating_add(1);
         let inner_w = body[0].width.saturating_sub(2);
         let inner_h = body[0].height.saturating_sub(2);
         if inner_w > 0 && inner_h > 0 {
-            let max_rows = (inner_h as usize).min(state.sessions.len());
+            let max_rows = (inner_h as usize).min(state.session.sessions.len());
             for idx in 0..max_rows {
-                state.workbench_chrome.sessions_row_regions.push((
+                state.layout.workbench_chrome.sessions_row_regions.push((
                     idx,
                     Rect::new(inner_x, inner_y.saturating_add(idx as u16), inner_w, 1),
                 ));
@@ -101,7 +101,7 @@ impl WorkbenchTabView for SessionsTab {
         }
 
         let mut lines: Vec<Line> = Vec::new();
-        if let Some(sel) = state.sessions.get(state.operator.sessions_selected_idx) {
+        if let Some(sel) = state.session.sessions.get(state.operator_config.operator.sessions_selected_idx) {
             lines.push(Line::from(vec![
                 Span::styled("Title: ", Style::default().add_modifier(Modifier::BOLD)),
                 Span::raw(sel.title.clone()),
@@ -127,22 +127,22 @@ impl WorkbenchTabView for SessionsTab {
                     Style::default().add_modifier(Modifier::BOLD),
                 ),
                 if sel.has_checkpoint {
-                    Span::styled("available ●", state.theme.style(StyleKey::Success))
+                    Span::styled("available ●", state.core.theme.style(StyleKey::Success))
                 } else {
                     Span::styled(
                         "no checkpoint available ○",
-                        state.theme.style(StyleKey::Muted),
+                        state.core.theme.style(StyleKey::Muted),
                     )
                 },
             ]));
             lines.push(Line::from(vec![
                 Span::styled("Snapshot: ", Style::default().add_modifier(Modifier::BOLD)),
                 if sel.snapshot_stale {
-                    Span::styled("stale !", state.theme.style(StyleKey::Warning))
+                    Span::styled("stale !", state.core.theme.style(StyleKey::Warning))
                 } else if sel.snapshot_present {
-                    Span::styled("available ◆", state.theme.style(StyleKey::Accent))
+                    Span::styled("available ◆", state.core.theme.style(StyleKey::Accent))
                 } else {
-                    Span::styled("not saved ○", state.theme.style(StyleKey::Muted))
+                    Span::styled("not saved ○", state.core.theme.style(StyleKey::Muted))
                 },
             ]));
             if !sel.checkpoints.is_empty() {
@@ -154,19 +154,19 @@ impl WorkbenchTabView for SessionsTab {
                 for cp in sel.checkpoints.iter().take(4) {
                     lines.push(Line::from(vec![
                         Span::styled("  ", Style::default()),
-                        Span::raw(cp.clone()),
+                        Span::raw(cp.to_string()),
                     ]));
                 }
             }
             lines.push(Line::raw(""));
             lines.push(Line::styled(
                 "Enter: restore  r: resume checkpoint  d: cleanup artifacts",
-                state.theme.style(StyleKey::Muted),
+                state.core.theme.style(StyleKey::Muted),
             ));
         } else {
             lines.push(Line::styled(
                 "No sessions loaded yet. Run /sessions to open saved sessions.",
-                state.theme.style(StyleKey::Muted),
+                state.core.theme.style(StyleKey::Muted),
             ));
         }
 

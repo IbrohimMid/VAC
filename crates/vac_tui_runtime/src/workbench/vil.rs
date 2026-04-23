@@ -8,7 +8,7 @@ pub struct VilTab;
 
 impl WorkbenchTabView for VilTab {
     fn tab_label(state: &AppState) -> String {
-        format!("VIL ({})", state.vil.status.validation_issues.len())
+        format!("VIL ({})", state.vil_domain.vil.status.validation_issues.len())
     }
 
     fn render(f: &mut Frame, state: &mut AppState, area: Rect) {

@@ -15,7 +15,7 @@ pub struct ApprovalsTab;
 
 impl WorkbenchTabView for ApprovalsTab {
     fn tab_label(state: &AppState) -> String {
-        format!("Approvals ({})", state.approvals.pending_approvals.len())
+        format!("Approvals ({})", state.execution.approvals.pending_approvals.len())
     }
 
     fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
@@ -26,17 +26,17 @@ impl WorkbenchTabView for ApprovalsTab {
 
         // PR-T16 P1 — record per-row click regions for the pending-approvals
         // list. Inner area is `body[0]` minus its 1-char border.
-        state.workbench_chrome.approvals_row_regions.clear();
+        state.layout.workbench_chrome.approvals_row_regions.clear();
         if body[0].width > 2 && body[0].height > 2 {
             let inner_x = body[0].x + 1;
             let inner_y = body[0].y + 1;
             let inner_w = body[0].width - 2;
             let inner_h = body[0].height - 2;
-            for idx in 0..state.approvals.pending_approvals.len() {
+            for idx in 0..state.execution.approvals.pending_approvals.len() {
                 if idx as u16 >= inner_h {
                     break;
                 }
-                state.workbench_chrome.approvals_row_regions.push((
+                state.layout.workbench_chrome.approvals_row_regions.push((
                     idx,
                     ratatui::layout::Rect::new(inner_x, inner_y + idx as u16, inner_w, 1),
                 ));
@@ -44,14 +44,14 @@ impl WorkbenchTabView for ApprovalsTab {
         }
 
         let items: Vec<ListItem> = state
-            .approvals.pending_approvals
+            .execution.approvals.pending_approvals
             .iter()
             .enumerate()
             .map(|(idx, tc)| {
-                let selected = idx == state.approvals.approval_selected_idx;
+                let selected = idx == state.execution.approvals.approval_selected_idx;
                 let style = if selected {
                     state
-                        .theme
+                        .core.theme
                         .style(StyleKey::Warning)
                         .add_modifier(Modifier::BOLD)
                 } else {
@@ -59,7 +59,7 @@ impl WorkbenchTabView for ApprovalsTab {
                 };
                 let id_short = tc.id.chars().take(8).collect::<String>();
                 ListItem::new(Line::from(vec![
-                    Span::styled(id_short, state.theme.style(StyleKey::Muted)),
+                    Span::styled(id_short, state.core.theme.style(StyleKey::Muted)),
                     Span::raw(" "),
                     Span::styled(tc.function.name.clone(), style),
                 ]))
@@ -70,18 +70,18 @@ impl WorkbenchTabView for ApprovalsTab {
         f.render_widget(list, body[0]);
 
         let mut lines: Vec<Line> = Vec::new();
-        if let Some(tc) = state.approvals.pending_approvals.get(state.approvals.approval_selected_idx) {
+        if let Some(tc) = state.execution.approvals.pending_approvals.get(state.execution.approvals.approval_selected_idx) {
             lines.push(Line::from(vec![
                 Span::styled("Tool: ", Style::default().add_modifier(Modifier::BOLD)),
                 Span::styled(
                     tc.function.name.clone(),
-                    state.theme.style(StyleKey::Warning),
+                    state.core.theme.style(StyleKey::Warning),
                 ),
             ]));
             lines.push(Line::raw(""));
 
             if let Some(expl) = state
-            .approvals.approval_explanations
+            .execution.approvals.approval_explanations
                 .get(&tc.id)
                 .and_then(|v| v.clone())
             {
@@ -92,7 +92,7 @@ impl WorkbenchTabView for ApprovalsTab {
                 for l in expl.lines() {
                     lines.push(Line::styled(
                         l.to_string(),
-                        state.theme.style(StyleKey::Muted),
+                        state.core.theme.style(StyleKey::Muted),
                     ));
                 }
                 lines.push(Line::raw(""));
@@ -105,7 +105,7 @@ impl WorkbenchTabView for ApprovalsTab {
                     let old_str = v.get("old_string").and_then(|v| v.as_str()).unwrap_or("");
                     let new_str = v.get("new_string").and_then(|v| v.as_str()).unwrap_or("");
                     lines.extend(crate::services::file_diff::preview_file_diff(
-                        &state.theme,
+                        &state.core.theme,
                         file_path,
                         old_str,
                         new_str,
@@ -117,7 +117,7 @@ impl WorkbenchTabView for ApprovalsTab {
                     let file_path = v.get("file_path").and_then(|v| v.as_str()).unwrap_or("");
                     let content = v.get("content").and_then(|v| v.as_str()).unwrap_or("");
                     lines.extend(crate::services::file_diff::preview_file_diff(
-                        &state.theme,
+                        &state.core.theme,
                         file_path,
                         "",
                         content,
@@ -146,14 +146,14 @@ impl WorkbenchTabView for ApprovalsTab {
         } else {
             lines.push(Line::styled(
                 "No pending approvals. Tool requests will appear here when confirmation is needed.",
-                state.theme.style(StyleKey::Muted),
+                state.core.theme.style(StyleKey::Muted),
             ));
         }
 
         let detail = Paragraph::new(lines)
             .block(Block::default().borders(Borders::ALL).title("Detail"))
             .wrap(Wrap { trim: false })
-            .scroll((state.approvals.approval_detail_scroll as u16, 0));
+            .scroll((state.execution.approvals.approval_detail_scroll as u16, 0));
         f.render_widget(detail, body[1]);
     }
 }

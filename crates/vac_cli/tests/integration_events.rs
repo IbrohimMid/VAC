@@ -42,16 +42,16 @@ use support::{drain_output, effective, fresh_state, key, rect};
 #[test]
 fn mouse_dispatch_tab_click_is_pure_state_transition() {
     let (mut state, tx, mut rx) = fresh_state();
-    state.focus = WorkspaceFocus::Input;
-    state.workbench_tab = WorkbenchTab::Sessions;
+    state.layout.focus = WorkspaceFocus::Input;
+    state.layout.workbench_tab = WorkbenchTab::Sessions;
     state
-        .workbench_chrome.tab_regions
+        .layout.workbench_chrome.tab_regions
         .push((WorkbenchTab::Review, rect(0, 0, 10, 1)));
 
     let handled = dispatch_click(&mut state, &tx, 3, 0);
     assert!(handled, "tab-region click must be consumed");
-    assert_eq!(state.workbench_tab, WorkbenchTab::Review);
-    assert_eq!(state.focus, WorkspaceFocus::Workbench);
+    assert_eq!(state.layout.workbench_tab, WorkbenchTab::Review);
+    assert_eq!(state.layout.focus, WorkspaceFocus::Workbench);
 
     let emitted = drain_output(&mut rx);
     assert!(
@@ -63,11 +63,11 @@ fn mouse_dispatch_tab_click_is_pure_state_transition() {
 #[test]
 fn mouse_dispatch_ignores_click_outside_every_region() {
     let (mut state, tx, mut rx) = fresh_state();
-    state.focus = WorkspaceFocus::Input;
+    state.layout.focus = WorkspaceFocus::Input;
     // No regions seeded.
     let handled = dispatch_click(&mut state, &tx, 999, 999);
     assert!(!handled);
-    assert_eq!(state.focus, WorkspaceFocus::Input);
+    assert_eq!(state.layout.focus, WorkspaceFocus::Input);
     assert!(drain_output(&mut rx).is_empty());
 }
 

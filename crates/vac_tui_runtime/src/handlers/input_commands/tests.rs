@@ -13,16 +13,16 @@ fn slash_dispatch_matches_palette() {
         project_root: std::env::current_dir().unwrap(),
     });
     let builtin_commands: Vec<&str> = state
-        .commands
+        .layout.commands
         .iter()
         .filter(|c| c.source == crate::app::CommandSource::BuiltIn)
         .map(|c| c.command.as_str())
         .collect();
 
-    let mut unregistered = Vec::new();
+    let mut unregistered: Vec<&str> = Vec::new();
     for cmd in &builtin_commands {
         if spec_by_slash_alias(cmd).is_none() {
-            unregistered.push(*cmd);
+            unregistered.push(cmd);
         }
     }
     assert!(
@@ -40,14 +40,14 @@ fn unknown_slash_shows_suggestions() {
         checkpoint_path: None,
         project_root: std::env::current_dir().unwrap(),
     });
-    let before = state.messages.len();
+    let before = state.transcript.messages.len();
     // "/shelll" is one char off from "/shell" — should get a suggestion
     show_unknown_slash_suggestions(&mut state, "/shelll");
     assert!(
-        state.messages.len() > before,
+        state.transcript.messages.len() > before,
         "should add a suggestion message"
     );
-    let content = &state.messages.last().unwrap().content;
+    let content = &state.transcript.messages.last().unwrap().content;
     assert!(
         content.contains("/shell"),
         "suggestion should include /shell, got: {content}"
@@ -64,7 +64,7 @@ fn unknown_slash_prefix_matches() {
     });
     // "/she" is a prefix of "/shell" — should get a suggestion
     show_unknown_slash_suggestions(&mut state, "/she");
-    let content = &state.messages.last().unwrap().content;
+    let content = &state.transcript.messages.last().unwrap().content;
     assert!(
         content.contains("/shell"),
         "prefix match should suggest /shell, got: {content}"
@@ -80,7 +80,7 @@ fn truly_unknown_slash_shows_help_hint() {
         project_root: std::env::current_dir().unwrap(),
     });
     show_unknown_slash_suggestions(&mut state, "/xyzzy_nomatch_at_all");
-    let content = &state.messages.last().unwrap().content;
+    let content = &state.transcript.messages.last().unwrap().content;
     assert!(
         content.contains("/help"),
         "no match should suggest /help, got: {content}"

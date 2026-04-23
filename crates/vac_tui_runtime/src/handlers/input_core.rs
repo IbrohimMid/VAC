@@ -22,7 +22,7 @@ pub fn handle_input_event(
     event: InputEvent,
 ) {
     // Stage 1: Overlay router — topmost overlay captures everything.
-    if state.overlay_manager.any_active() {
+    if state.layout.overlay_manager.any_active() {
         input_popup::dispatch_popup_event(state, output_tx, event);
         return;
     }
@@ -33,7 +33,7 @@ pub fn handle_input_event(
     }
 
     // Stage 3 & 4: Focus-based routing.
-    if state.focus == WorkspaceFocus::Workbench {
+    if state.layout.focus == WorkspaceFocus::Workbench {
         workbench_input::handle(state, output_tx, event);
     } else {
         workspace_input::handle(state, output_tx, event);
@@ -48,45 +48,45 @@ fn handle_global(
 ) -> bool {
     match event {
         InputEvent::Tab => {
-            state.focus = state.focus.next();
+            state.layout.focus = state.layout.focus.next();
             true
         }
         InputEvent::WorkbenchNextTab => {
-            if state.focus != WorkspaceFocus::Workbench {
-                state.focus = WorkspaceFocus::Workbench;
+            if state.layout.focus != WorkspaceFocus::Workbench {
+                state.layout.focus = WorkspaceFocus::Workbench;
             }
-            state.workbench_tab = state.workbench_tab.next();
-            if state.workbench_tab == crate::app::WorkbenchTab::Agents {
+            state.layout.workbench_tab = state.layout.workbench_tab.next();
+            if state.layout.workbench_tab == crate::app::WorkbenchTab::Agents {
                 let _ = output_tx.try_send(OutputEvent::ListAgentTasks);
                 let _ = output_tx.try_send(OutputEvent::LoadAgentState);
-            } else if state.workbench_tab == crate::app::WorkbenchTab::Runtime {
+            } else if state.layout.workbench_tab == crate::app::WorkbenchTab::Runtime {
                 let _ = output_tx.try_send(OutputEvent::ListRuntimeJobs);
                 let _ = output_tx.try_send(OutputEvent::LoadRuntimeState);
             }
             true
         }
         InputEvent::AttemptQuit => {
-            if state.streaming.is_streaming {
+            if state.transcript.streaming.is_streaming {
                 // First Ctrl+C while streaming: cancel the stream, not the app.
                 let _ = output_tx.try_send(OutputEvent::CancelStream);
-                state.streaming.is_streaming = false;
-                state.streaming.start = None;
-                state.streaming.tokens = 0;
+                state.transcript.streaming.is_streaming = false;
+                state.transcript.streaming.start = None;
+                state.transcript.streaming.tokens = 0;
             } else {
                 // Outside streaming: require two presses within 2 s to quit.
                 let now = std::time::Instant::now();
                 let double = state
-                    .quit.first_press
+                    .core.quit.first_press
                     .map(|t| now.duration_since(t) < std::time::Duration::from_secs(2))
                     .unwrap_or(false);
                 if double {
-                    state.quit.cancel_requested = true;
-                    state.quit.press_count = 0;
-                    state.quit.first_press = None;
+                    state.core.quit.cancel_requested = true;
+                    state.core.quit.press_count = 0;
+                    state.core.quit.first_press = None;
                 } else {
-                    state.quit.press_count = 1;
-                    state.quit.first_press = Some(now);
-                    state.toasts.push(crate::services::Toast::info(
+                    state.core.quit.press_count = 1;
+                    state.core.quit.first_press = Some(now);
+                    state.layout.toasts.push(crate::services::Toast::info(
                         "Press Ctrl+C again within 2 s to quit",
                     ));
                 }
@@ -111,7 +111,7 @@ fn handle_global(
         }
         InputEvent::ShellKill => {
             shell_handler::kill(state);
-            if let Some(session) = state.shell.session_store.active_mut() {
+            if let Some(session) = state.execution.shell.session_store.active_mut() {
                 session.waiting_for_input = false;
             }
             true
@@ -137,8 +137,8 @@ fn handle_global(
             true
         }
         InputEvent::ShowCommandPalette => {
-            state.command_palette.input.clear();
-            state.command_palette.selected = 0;
+            state.layout.command_palette.input.clear();
+            state.layout.command_palette.selected = 0;
             crate::overlay::open_overlay(state, crate::overlay::OverlayId::CommandPalette);
             true
         }
@@ -167,7 +167,7 @@ fn handle_global(
             true
         }
         InputEvent::ShowIsolationSwitcher => {
-            state.switchers.isolation_selected = 0;
+            state.layout.switchers.isolation_selected = 0;
             crate::overlay::open_overlay(state, crate::overlay::OverlayId::IsolationSwitcher);
             true
         }
@@ -177,9 +177,9 @@ fn handle_global(
             true
         }
         InputEvent::ShowMessageActionPopup => {
-            state.operator.message_action_popup_selected = 0;
-            state.operator.message_action_target_id = state
-                .messages
+            state.operator_config.operator.message_action_popup_selected = 0;
+            state.operator_config.operator.message_action_target_id = state
+                .transcript.messages
                 .iter()
                 .rev()
                 .find(|m| m.role == "user")
@@ -190,24 +190,24 @@ fn handle_global(
         InputEvent::VilExprTypeHelp => {
             // PR-T12.1 stub: show a toast with type-info placeholder.
             // Full type inference deferred to Wave 4.
-            let msg = if state.vil_expr_lint.pending_payload.is_some() {
+            let msg = if state.composer.vil_expr_lint.pending_payload.is_some() {
                 "vil-expr type inference coming soon (PR-T12 stub)"
             } else {
                 "Alt+H: no vil-expr: payload detected"
             };
-            state.toasts.push(crate::services::Toast::info(msg));
+            state.layout.toasts.push(crate::services::Toast::info(msg));
             true
         }
         InputEvent::ToggleSidePanel => {
-            state.side_panel.visible = !state.side_panel.visible;
-            if !state.side_panel.visible {
-                state.side_panel.row_areas.clear();
+            state.layout.side_panel.visible = !state.layout.side_panel.visible;
+            if !state.layout.side_panel.visible {
+                state.layout.side_panel.row_areas.clear();
             }
             true
         }
         InputEvent::ToggleAutoApprove => {
-            state.view_flags.auto_approve = !state.view_flags.auto_approve;
-            let msg = if state.view_flags.auto_approve {
+            state.core.view_flags.auto_approve = !state.core.view_flags.auto_approve;
+            let msg = if state.core.view_flags.auto_approve {
                 "Permission Mode: AUTO-APPROVE (Low-risk tools will run without confirmation)"
             } else {
                 "Permission Mode: PROMPT (You will be prompted for tool execution)"
@@ -256,45 +256,45 @@ fn handle_global(
 ///   3. Streaming → cancel.
 ///   4. Review pane open → close.
 fn handle_esc(state: &mut AppState, output_tx: &Sender<OutputEvent>) {
-    if state.overlay_manager.any_active() {
-        if let Some(id) = state.overlay_manager.topmost() {
+    if state.layout.overlay_manager.any_active() {
+        if let Some(id) = state.layout.overlay_manager.topmost() {
             crate::overlay::close_overlay(state, id);
         }
-    } else if state.shell.session_store.popup_visible
+    } else if state.execution.shell.session_store.popup_visible
         && state
-            .shell
+            .execution.shell
             .session_store
             .active()
             .and_then(|s| s.command.as_ref())
             .is_some()
     {
         shell_handler::background(state);
-    } else if state.streaming.is_streaming {
+    } else if state.transcript.streaming.is_streaming {
         let _ = output_tx.try_send(OutputEvent::CancelStream);
-        state.streaming.is_streaming = false;
-    } else if state.focus == WorkspaceFocus::Workbench
-        && state.workbench_tab == crate::app::WorkbenchTab::Review
-        && state.review.open
+        state.transcript.streaming.is_streaming = false;
+    } else if state.layout.focus == WorkspaceFocus::Workbench
+        && state.layout.workbench_tab == crate::app::WorkbenchTab::Review
+        && state.workspace.review.open
     {
         crate::overlay::close_overlay(state, crate::overlay::OverlayId::ReviewPane);
-        state.review.diff = None;
+        state.workspace.review.diff = None;
     }
 }
 
 fn handle_ctrl_z(state: &mut AppState) {
     if state
-        .shell
+        .execution.shell
         .session_store
         .active()
         .and_then(|s| s.command.as_ref())
         .is_some()
     {
-        if state.shell.session_store.popup_visible {
+        if state.execution.shell.session_store.popup_visible {
             shell_handler::background(state);
         } else {
             shell_handler::foreground(state);
         }
-        if let Some(session) = state.shell.session_store.active_mut() {
+        if let Some(session) = state.execution.shell.session_store.active_mut() {
             session.history_idx = None;
         }
     }
@@ -307,25 +307,25 @@ fn handle_mouse_drag_start(
     row: u16,
 ) {
     let banner_active = state
-        .banner.message
+        .layout.banner.message
         .as_ref()
-        .is_some_and(|m| !m.is_expired());
+        .is_some_and(|m: &crate::services::banner::BannerMessage| !m.is_expired());
 
     if banner_active {
-        if let Some(rect) = state.banner.dismiss_region {
+        if let Some(rect) = state.layout.banner.dismiss_region {
             if col >= rect.x
                 && col < rect.x + rect.width
                 && row >= rect.y
                 && row < rect.y + rect.height
             {
-                state.banner.message = None;
-                state.banner.click_regions.clear();
-                state.banner.dismiss_region = None;
+                state.layout.banner.message = None;
+                state.layout.banner.click_regions.clear();
+                state.layout.banner.dismiss_region = None;
                 return;
             }
         }
         let mut banner_action: Option<String> = None;
-        for (action, rect) in &state.banner.click_regions {
+        for (action, rect) in &state.layout.banner.click_regions {
             if col >= rect.x
                 && col < rect.x + rect.width
                 && row >= rect.y
@@ -336,34 +336,34 @@ fn handle_mouse_drag_start(
             }
         }
         if let Some(action) = banner_action {
-            state.banner.message = None;
-            state.banner.click_regions.clear();
-            state.banner.dismiss_region = None;
+            state.layout.banner.message = None;
+            state.layout.banner.click_regions.clear();
+            state.layout.banner.dismiss_region = None;
             let _ = output_tx.try_send(OutputEvent::UserMessage(action, None, Vec::new(), None));
             return;
         }
-    } else if state.banner.message.is_some() {
-        state.banner.message = None;
-        state.banner.click_regions.clear();
-        state.banner.dismiss_region = None;
+    } else if state.layout.banner.message.is_some() {
+        state.layout.banner.message = None;
+        state.layout.banner.click_regions.clear();
+        state.layout.banner.dismiss_region = None;
     }
 
-    if state.side_panel.visible {
-        for (sec, rect) in &state.side_panel.header_areas {
+    if state.layout.side_panel.visible {
+        for (sec, rect) in &state.layout.side_panel.header_areas {
             if col >= rect.x
                 && col < rect.x + rect.width
                 && row >= rect.y
                 && row < rect.y + rect.height
             {
-                if state.side_panel.section_collapsed.contains(sec) {
-                    state.side_panel.section_collapsed.remove(sec);
+                if state.layout.side_panel.section_collapsed.contains(sec) {
+                    state.layout.side_panel.section_collapsed.remove(sec);
                 } else {
-                    state.side_panel.section_collapsed.insert(*sec);
+                    state.layout.side_panel.section_collapsed.insert(*sec);
                 }
                 return;
             }
         }
-        for (action, rect) in &state.side_panel.row_areas {
+        for (action, rect) in &state.layout.side_panel.row_areas {
             if col >= rect.x
                 && col < rect.x + rect.width
                 && row >= rect.y
@@ -378,14 +378,14 @@ fn handle_mouse_drag_start(
                             crate::app::ActivityKind::Mcp,
                             format!("MCP detail: {}", name),
                         );
-                        state.focus = WorkspaceFocus::Workbench;
-                        state.workbench_tab = crate::app::WorkbenchTab::Runtime;
+                        state.layout.focus = WorkspaceFocus::Workbench;
+                        state.layout.workbench_tab = crate::app::WorkbenchTab::Runtime;
                     }
                     crate::app::SidePanelRowAction::JumpToVilIssue(path) => {
-                        state.review.selected_path = Some(path);
-                        state.review.selected_idx = 0;
-                        state.focus = WorkspaceFocus::Workbench;
-                        state.workbench_tab = crate::app::WorkbenchTab::Review;
+                        state.workspace.review.selected_path = Some(path);
+                        state.workspace.review.selected_idx = 0;
+                        state.layout.focus = WorkspaceFocus::Workbench;
+                        state.layout.workbench_tab = crate::app::WorkbenchTab::Review;
                     }
                 }
                 return;
@@ -401,7 +401,7 @@ fn handle_mouse_drag_start(
     if row == 0 {
         let term_width = crossterm::terminal::size().map(|s| s.0).unwrap_or(80);
         if col > term_width.saturating_sub(40) {
-            state.side_panel.visible = !state.side_panel.visible;
+            state.layout.side_panel.visible = !state.layout.side_panel.visible;
         }
     } else {
         crate::services::text_selection::handle_drag_start(state, col, row);
@@ -428,22 +428,22 @@ mod tests {
     #[test]
     fn mouse_click_on_side_panel_header_toggles_section() {
         let (mut state, tx, _rx) = make_state_with_channel();
-        state.side_panel.visible = true;
+        state.layout.side_panel.visible = true;
         state
-            .side_panel.header_areas
+            .layout.side_panel.header_areas
             .insert(SidePanelSection::Sessions, Rect::new(1, 5, 20, 1));
 
         handle_input_event(&mut state, &tx, InputEvent::MouseDragStart(2, 5));
         assert!(
             state
-                .side_panel.section_collapsed
+                .layout.side_panel.section_collapsed
                 .contains(&SidePanelSection::Sessions)
         );
 
         handle_input_event(&mut state, &tx, InputEvent::MouseDragStart(2, 5));
         assert!(
             !state
-                .side_panel.section_collapsed
+                .layout.side_panel.section_collapsed
                 .contains(&SidePanelSection::Sessions)
         );
     }
@@ -451,8 +451,8 @@ mod tests {
     #[test]
     fn mouse_click_on_side_panel_session_row_emits_switch_session() {
         let (mut state, tx, mut rx) = make_state_with_channel();
-        state.side_panel.visible = true;
-        state.side_panel.row_areas.push((
+        state.layout.side_panel.visible = true;
+        state.layout.side_panel.row_areas.push((
             SidePanelRowAction::SwitchSession("session-42".to_string()),
             Rect::new(1, 8, 20, 1),
         ));
@@ -468,18 +468,18 @@ mod tests {
     #[test]
     fn mouse_click_on_side_panel_vil_issue_row_opens_review() {
         let (mut state, tx, _rx) = make_state_with_channel();
-        state.side_panel.visible = true;
-        state.focus = WorkspaceFocus::Input;
-        state.workbench_tab = WorkbenchTab::Runtime;
-        state.side_panel.row_areas.push((
+        state.layout.side_panel.visible = true;
+        state.layout.focus = WorkspaceFocus::Input;
+        state.layout.workbench_tab = WorkbenchTab::Runtime;
+        state.layout.side_panel.row_areas.push((
             SidePanelRowAction::JumpToVilIssue("src/lib.rs".to_string()),
             Rect::new(1, 9, 20, 1),
         ));
 
         handle_input_event(&mut state, &tx, InputEvent::MouseDragStart(3, 9));
 
-        assert_eq!(state.review.selected_path.as_deref(), Some("src/lib.rs"));
-        assert_eq!(state.workbench_tab, WorkbenchTab::Review);
-        assert_eq!(state.focus, WorkspaceFocus::Workbench);
+        assert_eq!(state.workspace.review.selected_path.as_deref(), Some("src/lib.rs"));
+        assert_eq!(state.layout.workbench_tab, WorkbenchTab::Review);
+        assert_eq!(state.layout.focus, WorkspaceFocus::Workbench);
     }
 }

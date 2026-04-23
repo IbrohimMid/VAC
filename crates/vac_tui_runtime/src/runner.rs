@@ -98,7 +98,7 @@ pub async fn run_vac_tui_with_io(
         file_index: context
             .file_index
             .iter()
-            .map(|path| path.to_string_lossy().to_string())
+            .map(|path: &std::path::PathBuf| path.to_string_lossy().to_string())
             .collect(),
         pending_changes: context.pending_changes.clone(),
     });

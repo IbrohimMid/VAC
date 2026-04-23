@@ -27,7 +27,7 @@ pub fn render_shortcuts_popup(f: &mut Frame, state: &mut crate::app::AppState) {
     // Create the main block with border and background
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_style(state.theme.style(StyleKey::OverlayBorder));
+        .border_style(state.core.theme.style(StyleKey::OverlayBorder));
 
     // Split area for title, tabs, and content - layout differs by mode
     let inner_area = Rect {
@@ -40,7 +40,7 @@ pub fn render_shortcuts_popup(f: &mut Frame, state: &mut crate::app::AppState) {
     // Render title inside the popup
     let title = " Command Palette";
     let title_style = state
-        .theme
+        .core.theme
         .style(StyleKey::AppTitle)
         .add_modifier(Modifier::BOLD);
     let title_line = Line::from(Span::styled(title, title_style));
@@ -48,24 +48,24 @@ pub fn render_shortcuts_popup(f: &mut Frame, state: &mut crate::app::AppState) {
 
     // Render tabs
     let tab_titles = vec![" Commands ", " Shortcuts ", " Sessions "];
-    let selected_tab = match state.command_palette.shortcuts_mode {
+    let selected_tab = match state.layout.command_palette.shortcuts_mode {
         ShortcutsPopupMode::Commands => 0,
         ShortcutsPopupMode::Shortcuts => 1,
         ShortcutsPopupMode::Sessions => 2,
     };
     let tabs = Tabs::new(tab_titles)
         .select(selected_tab)
-        .style(state.theme.style(StyleKey::Muted))
+        .style(state.core.theme.style(StyleKey::Muted))
         .highlight_style(
             state
-                .theme
+                .core.theme
                 .style(StyleKey::Accent)
                 .add_modifier(Modifier::BOLD),
         )
         .divider(" | ");
 
     // Render content based on mode with mode-specific layouts
-    match state.command_palette.shortcuts_mode {
+    match state.layout.command_palette.shortcuts_mode {
         ShortcutsPopupMode::Commands => {
             let chunks = Layout::default()
                 .direction(Direction::Vertical)

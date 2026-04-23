@@ -27,39 +27,39 @@ pub fn dispatch_click(
     // not also routed to row / tab / body targets underneath). A click
     // inside the popup falls through, so users can still interact with the
     // underlying surface on the next click after reading the detail.
-    if state.lsp_ui.active_hover.is_some() {
-        let outside = state.lsp_ui.hover_popup_region.is_none_or(|r| !hit(&r, col, row));
+    if state.layout.lsp_ui.active_hover.is_some() {
+        let outside = state.layout.lsp_ui.hover_popup_region.is_none_or(|r| !hit(&r, col, row));
         if outside {
-            state.lsp_ui.active_hover = None;
-            state.lsp_ui.hover_popup_region = None;
-            state.lsp_ui.active_hover_row_idx = None;
+            state.layout.lsp_ui.active_hover = None;
+            state.layout.lsp_ui.hover_popup_region = None;
+            state.layout.lsp_ui.active_hover_row_idx = None;
             return true;
         }
     }
 
     // Workbench tab strip.
     let tab_hit = state
-        .workbench_chrome.tab_regions
+        .layout.workbench_chrome.tab_regions
         .iter()
         .find(|(_, rect)| hit(rect, col, row))
         .map(|(tab, _)| *tab);
     if let Some(tab) = tab_hit {
-        state.workbench_tab = tab;
-        state.focus = WorkspaceFocus::Workbench;
+        state.layout.workbench_tab = tab;
+        state.layout.focus = WorkspaceFocus::Workbench;
         return true;
     }
 
     // Task tray overlay rows.
     if state
-        .overlay_manager
+        .layout.overlay_manager
         .is_active(crate::overlay::OverlayId::TaskTray)
     {
         let tray_hit = state
-            .workbench_chrome.task_tray_row_regions
+            .layout.workbench_chrome.task_tray_row_regions
             .iter()
             .position(|rect| hit(rect, col, row));
         if let Some(idx) = tray_hit {
-            state.task_tray.selected = idx;
+            state.execution.task_tray.selected = idx;
             return true;
         }
     }
@@ -67,7 +67,7 @@ pub fn dispatch_click(
     // PR-T16 P1 — Review pane file rows. Clicking a row selects that path
     // and focuses the workbench so the diff body becomes visible.
     let review_hit = state
-        .workbench_chrome.review_file_row_regions
+        .layout.workbench_chrome.review_file_row_regions
         .iter()
         .find(|(_, rect)| hit(rect, col, row))
         .map(|(path, _)| path.clone());
@@ -77,45 +77,45 @@ pub fn dispatch_click(
             .iter()
             .position(|p| *p == path)
             .unwrap_or(0);
-        state.review.selected_idx = idx;
-        state.review.selected_path = Some(path);
-        state.focus = WorkspaceFocus::Workbench;
-        state.workbench_tab = crate::app::WorkbenchTab::Review;
+        state.workspace.review.selected_idx = idx;
+        state.workspace.review.selected_path = Some(path);
+        state.layout.focus = WorkspaceFocus::Workbench;
+        state.layout.workbench_tab = crate::app::WorkbenchTab::Review;
         return true;
     }
 
     // PR-T16 P1 — Approvals pane rows.
     let approval_hit = state
-        .workbench_chrome.approvals_row_regions
+        .layout.workbench_chrome.approvals_row_regions
         .iter()
         .find(|(_, rect)| hit(rect, col, row))
         .map(|(idx, _)| *idx);
     if let Some(idx) = approval_hit {
-        state.approvals.approval_selected_idx = idx;
-        state.focus = WorkspaceFocus::Workbench;
-        state.workbench_tab = crate::app::WorkbenchTab::Approvals;
+        state.execution.approvals.approval_selected_idx = idx;
+        state.layout.focus = WorkspaceFocus::Workbench;
+        state.layout.workbench_tab = crate::app::WorkbenchTab::Approvals;
         return true;
     }
 
     // PR-T16 P1 — vil_workbench issue rows.
     let vil_hit = state
-        .workbench_chrome.vil_issue_row_regions
+        .layout.workbench_chrome.vil_issue_row_regions
         .iter()
         .find(|(_, rect)| hit(rect, col, row))
         .map(|(idx, _)| *idx);
     if let Some(idx) = vil_hit {
-        state.vil.workbench_selected = idx;
-        state.focus = WorkspaceFocus::Workbench;
-        state.workbench_tab = crate::app::WorkbenchTab::Vil;
+        state.vil_domain.vil.workbench_selected = idx;
+        state.layout.focus = WorkspaceFocus::Workbench;
+        state.layout.workbench_tab = crate::app::WorkbenchTab::Vil;
         // R7 / PR-T15 — try to anchor a hover popup at the clicked issue's
         // (file, line) position against the LSP snapshot. When any piece is
         // missing (no snapshot, issue has no file/line, no intersecting
         // diag), we clear any stale popup instead of surfacing a blank one.
-        state.lsp_ui.active_hover = (|| {
+        state.layout.lsp_ui.active_hover = (|| {
             let issue = crate::services::vil_workbench::selected_issue(state)?;
             let file = issue.file.as_ref()?;
             let line_1based = issue.line?;
-            let snap = state.lsp_ui.lsp_diagnostics.as_ref()?;
+            let snap = state.layout.lsp_ui.lsp_diagnostics.as_ref()?;
             let line0 = line_1based.saturating_sub(1);
             let line0_u32 = u32::try_from(line0).ok()?;
             crate::services::diagnostics_overlay::hover_detail_at(
@@ -125,10 +125,10 @@ pub fn dispatch_click(
             )
         })();
         // Renderer will refresh hover_popup_region on the next frame.
-        state.lsp_ui.hover_popup_region = None;
+        state.layout.lsp_ui.hover_popup_region = None;
         // R7b hot-path cache: click seeds the cache with the selected row
         // so a subsequent MouseMove on the same row short-circuits.
-        state.lsp_ui.active_hover_row_idx = if state.lsp_ui.active_hover.is_some() {
+        state.layout.lsp_ui.active_hover_row_idx = if state.layout.lsp_ui.active_hover.is_some() {
             Some(idx)
         } else {
             None
@@ -142,41 +142,41 @@ pub fn dispatch_click(
     // selected session still lives behind the keyboard shortcut ('r')
     // so a stray click cannot trigger a session switch.
     let sessions_hit = state
-        .workbench_chrome.sessions_row_regions
+        .layout.workbench_chrome.sessions_row_regions
         .iter()
         .find(|(_, rect)| hit(rect, col, row))
         .map(|(idx, _)| *idx);
     if let Some(idx) = sessions_hit
-        && idx < state.sessions.len()
+        && idx < state.session.sessions.len()
     {
-        state.operator.sessions_selected_idx = idx;
-        state.focus = WorkspaceFocus::Workbench;
-        state.workbench_tab = crate::app::WorkbenchTab::Sessions;
+        state.operator_config.operator.sessions_selected_idx = idx;
+        state.layout.focus = WorkspaceFocus::Workbench;
+        state.layout.workbench_tab = crate::app::WorkbenchTab::Sessions;
         return true;
     }
 
     // PR-T16 T5 — Side panel section header areas. Clicking a section
     // header toggles its collapse state, matching keyboard 'c' behaviour.
     let section_hit = state
-        .side_panel.header_areas
+        .layout.side_panel.header_areas
         .iter()
         .find(|(_, rect)| hit(rect, col, row))
         .map(|(section, _)| *section);
     if let Some(section) = section_hit {
-        if state.side_panel.section_collapsed.contains(&section) {
-            state.side_panel.section_collapsed.remove(&section);
+        if state.layout.side_panel.section_collapsed.contains(&section) {
+            state.layout.side_panel.section_collapsed.remove(&section);
         } else {
-            state.side_panel.section_collapsed.insert(section);
+            state.layout.side_panel.section_collapsed.insert(section);
         }
         return true;
     }
 
     // PR-T16 P1 — Workbench panel body (focus-grab fallback). Only fires if
     // no more-specific region matched above, so row clicks still win.
-    if let Some(rect) = state.workbench_chrome.body_region
+    if let Some(rect) = state.layout.workbench_chrome.body_region
         && hit(&rect, col, row)
     {
-        state.focus = WorkspaceFocus::Workbench;
+        state.layout.focus = WorkspaceFocus::Workbench;
         return true;
     }
 
@@ -199,7 +199,7 @@ pub fn dispatch_click(
 pub fn dispatch_hover(state: &mut AppState, col: u16, row: u16) -> bool {
     // 1. Over a VIL row?
     let row_idx = state
-        .workbench_chrome.vil_issue_row_regions
+        .layout.workbench_chrome.vil_issue_row_regions
         .iter()
         .find(|(_, rect)| hit(rect, col, row))
         .map(|(idx, _)| *idx);
@@ -215,7 +215,7 @@ pub fn dispatch_hover(state: &mut AppState, col: u16, row: u16) -> bool {
         // which clone strings) on every event. Now we record the last
         // probed row index on every probe, Some or None, so a sticky
         // pointer stays cheap regardless of diagnostic presence.
-        if state.lsp_ui.active_hover_row_idx == Some(idx) {
+        if state.layout.lsp_ui.active_hover_row_idx == Some(idx) {
             return false;
         }
 
@@ -223,7 +223,7 @@ pub fn dispatch_hover(state: &mut AppState, col: u16, row: u16) -> bool {
             let issue = crate::services::vil_workbench::issue_at_filtered_index(state, idx)?;
             let file = issue.file.as_ref()?;
             let line_1based = issue.line?;
-            let snap = state.lsp_ui.lsp_diagnostics.as_ref()?;
+            let snap = state.layout.lsp_ui.lsp_diagnostics.as_ref()?;
             let line0 = line_1based.saturating_sub(1);
             let line0_u32 = u32::try_from(line0).ok()?;
             crate::services::diagnostics_overlay::hover_detail_at(
@@ -233,20 +233,20 @@ pub fn dispatch_hover(state: &mut AppState, col: u16, row: u16) -> bool {
             )
         })();
 
-        let changed = new_hover != state.lsp_ui.active_hover;
-        state.lsp_ui.active_hover = new_hover;
+        let changed = new_hover != state.layout.lsp_ui.active_hover;
+        state.layout.lsp_ui.active_hover = new_hover;
         // Always record the probed row, even when the probe yielded None.
         // The short-circuit above depends on this invariant.
-        state.lsp_ui.active_hover_row_idx = Some(idx);
+        state.layout.lsp_ui.active_hover_row_idx = Some(idx);
         if changed {
             // Renderer will refresh hover_popup_region on the next frame.
-            state.lsp_ui.hover_popup_region = None;
+            state.layout.lsp_ui.hover_popup_region = None;
         }
         return changed;
     }
 
     // 2. Over the current popup? Keep it alive.
-    if let Some(rect) = state.lsp_ui.hover_popup_region
+    if let Some(rect) = state.layout.lsp_ui.hover_popup_region
         && hit(&rect, col, row)
     {
         return false;
@@ -259,12 +259,12 @@ pub fn dispatch_hover(state: &mut AppState, col: u16, row: u16) -> bool {
     // `active_hover_row_idx` on every probe, Some or None); otherwise
     // a stale row index could make the short-circuit fire on a
     // genuinely different region's first probe.
-    let had_popup = state.lsp_ui.active_hover.is_some() || state.lsp_ui.hover_popup_region.is_some();
-    let had_sticky_row = state.lsp_ui.active_hover_row_idx.is_some();
+    let had_popup = state.layout.lsp_ui.active_hover.is_some() || state.layout.lsp_ui.hover_popup_region.is_some();
+    let had_sticky_row = state.layout.lsp_ui.active_hover_row_idx.is_some();
     if had_popup || had_sticky_row {
-        state.lsp_ui.active_hover = None;
-        state.lsp_ui.hover_popup_region = None;
-        state.lsp_ui.active_hover_row_idx = None;
+        state.layout.lsp_ui.active_hover = None;
+        state.layout.lsp_ui.hover_popup_region = None;
+        state.layout.lsp_ui.active_hover_row_idx = None;
         // Only request a repaint when something *visible* changed.
         // Clearing a sticky-row cache that wasn't driving any popup is
         // purely internal bookkeeping and should not churn the frame.

@@ -151,23 +151,23 @@ impl OverlayManager {
 
 /// Open an overlay and update any associated non-bool domain state.
 pub fn open_overlay(state: &mut AppState, id: OverlayId) {
-    let focus = state.focus;
-    state.overlay_manager.push(id, focus);
+    let focus = state.layout.focus;
+    state.layout.overlay_manager.push(id, focus);
     sync_domain_state(state, id, true);
 }
 
 /// Close an overlay. Restores focus if the stack drains to empty.
 pub fn close_overlay(state: &mut AppState, id: OverlayId) {
-    if let Some(restored) = state.overlay_manager.pop(id) {
-        state.focus = restored;
+    if let Some(restored) = state.layout.overlay_manager.pop(id) {
+        state.layout.focus = restored;
     }
     sync_domain_state(state, id, false);
 }
 
 /// Close all overlays.
 pub fn close_all_overlays(state: &mut AppState) {
-    if let Some(restored) = state.overlay_manager.pop_all() {
-        state.focus = restored;
+    if let Some(restored) = state.layout.overlay_manager.pop_all() {
+        state.layout.focus = restored;
     }
     for id in RENDER_ORDER {
         sync_domain_state(state, *id, false);
@@ -177,26 +177,26 @@ pub fn close_all_overlays(state: &mut AppState) {
 /// Sync non-OverlayManager domain state that some overlays back with a bool or struct field.
 fn sync_domain_state(state: &mut AppState, id: OverlayId, value: bool) {
     match id {
-        OverlayId::PlanReview => state.plan.review_open = value,
-        OverlayId::ShellPopup => state.shell.session_store.popup_visible = value,
+        OverlayId::PlanReview => state.workspace.plan.review_open = value,
+        OverlayId::ShellPopup => state.execution.shell.session_store.popup_visible = value,
         OverlayId::AtDropdown => {
-            state.at_mention.trigger_active = value;
+            state.composer.at_mention.trigger_active = value;
             if !value {
-                state.at_mention.query.clear();
-                state.at_mention.results.clear();
-                state.at_mention.selected_idx = 0;
+                state.composer.at_mention.query.clear();
+                state.composer.at_mention.results.clear();
+                state.composer.at_mention.selected_idx = 0;
             }
         }
         OverlayId::RejectReason => {
             if value {
-                if state.approvals.reject_reason_input.is_none() {
-                    state.approvals.reject_reason_input = Some(String::new());
+                if state.execution.approvals.reject_reason_input.is_none() {
+                    state.execution.approvals.reject_reason_input = Some(String::new());
                 }
             } else {
-                state.approvals.reject_reason_input = None;
+                state.execution.approvals.reject_reason_input = None;
             }
         }
-        OverlayId::ReviewPane => state.review.open = value,
+        OverlayId::ReviewPane => state.workspace.review.open = value,
         // These overlays carry no additional domain state beyond the stack itself.
         OverlayId::CommandPalette
         | OverlayId::Shortcuts
@@ -219,7 +219,7 @@ fn sync_domain_state(state: &mut AppState, id: OverlayId, value: bool) {
 
 /// Render-order iterator of currently active overlays (for use in view.rs).
 pub fn active_render_ids(state: &AppState) -> impl Iterator<Item = OverlayId> + '_ {
-    state.overlay_manager.render_order()
+    state.layout.overlay_manager.render_order()
 }
 
 #[cfg(test)]
@@ -240,61 +240,61 @@ mod tests {
     #[test]
     fn sync_plan_review_open_on_open_overlay() {
         let mut state = make_state();
-        assert!(!state.plan.review_open);
+        assert!(!state.workspace.plan.review_open);
         open_overlay(&mut state, OverlayId::PlanReview);
-        assert!(state.overlay_manager.is_active(OverlayId::PlanReview));
-        assert!(state.plan.review_open);
+        assert!(state.layout.overlay_manager.is_active(OverlayId::PlanReview));
+        assert!(state.workspace.plan.review_open);
         close_overlay(&mut state, OverlayId::PlanReview);
-        assert!(!state.overlay_manager.is_active(OverlayId::PlanReview));
-        assert!(!state.plan.review_open);
+        assert!(!state.layout.overlay_manager.is_active(OverlayId::PlanReview));
+        assert!(!state.workspace.plan.review_open);
     }
 
     #[test]
     fn sync_shell_popup_visible_on_open_overlay() {
         let mut state = make_state();
-        assert!(!state.shell.session_store.popup_visible);
+        assert!(!state.execution.shell.session_store.popup_visible);
         open_overlay(&mut state, OverlayId::ShellPopup);
-        assert!(state.overlay_manager.is_active(OverlayId::ShellPopup));
-        assert!(state.shell.session_store.popup_visible);
+        assert!(state.layout.overlay_manager.is_active(OverlayId::ShellPopup));
+        assert!(state.execution.shell.session_store.popup_visible);
         close_overlay(&mut state, OverlayId::ShellPopup);
-        assert!(!state.overlay_manager.is_active(OverlayId::ShellPopup));
-        assert!(!state.shell.session_store.popup_visible);
+        assert!(!state.layout.overlay_manager.is_active(OverlayId::ShellPopup));
+        assert!(!state.execution.shell.session_store.popup_visible);
     }
 
     #[test]
     fn sync_at_trigger_active_on_open_overlay() {
         let mut state = make_state();
-        assert!(!state.at_mention.trigger_active);
+        assert!(!state.composer.at_mention.trigger_active);
         open_overlay(&mut state, OverlayId::AtDropdown);
-        assert!(state.overlay_manager.is_active(OverlayId::AtDropdown));
-        assert!(state.at_mention.trigger_active);
+        assert!(state.layout.overlay_manager.is_active(OverlayId::AtDropdown));
+        assert!(state.composer.at_mention.trigger_active);
         close_overlay(&mut state, OverlayId::AtDropdown);
-        assert!(!state.overlay_manager.is_active(OverlayId::AtDropdown));
-        assert!(!state.at_mention.trigger_active);
+        assert!(!state.layout.overlay_manager.is_active(OverlayId::AtDropdown));
+        assert!(!state.composer.at_mention.trigger_active);
     }
 
     #[test]
     fn sync_reject_reason_input_on_open_overlay() {
         let mut state = make_state();
-        assert!(state.approvals.reject_reason_input.is_none());
+        assert!(state.execution.approvals.reject_reason_input.is_none());
         open_overlay(&mut state, OverlayId::RejectReason);
-        assert!(state.overlay_manager.is_active(OverlayId::RejectReason));
-        assert!(state.approvals.reject_reason_input.is_some());
+        assert!(state.layout.overlay_manager.is_active(OverlayId::RejectReason));
+        assert!(state.execution.approvals.reject_reason_input.is_some());
         close_overlay(&mut state, OverlayId::RejectReason);
-        assert!(!state.overlay_manager.is_active(OverlayId::RejectReason));
-        assert!(state.approvals.reject_reason_input.is_none());
+        assert!(!state.layout.overlay_manager.is_active(OverlayId::RejectReason));
+        assert!(state.execution.approvals.reject_reason_input.is_none());
     }
 
     #[test]
     fn sync_review_open_on_open_overlay() {
         let mut state = make_state();
-        assert!(!state.review.open);
+        assert!(!state.workspace.review.open);
         open_overlay(&mut state, OverlayId::ReviewPane);
-        assert!(state.overlay_manager.is_active(OverlayId::ReviewPane));
-        assert!(state.review.open);
+        assert!(state.layout.overlay_manager.is_active(OverlayId::ReviewPane));
+        assert!(state.workspace.review.open);
         close_overlay(&mut state, OverlayId::ReviewPane);
-        assert!(!state.overlay_manager.is_active(OverlayId::ReviewPane));
-        assert!(!state.review.open);
+        assert!(!state.layout.overlay_manager.is_active(OverlayId::ReviewPane));
+        assert!(!state.workspace.review.open);
     }
 
     // ── Z-order / stack contract tests (D3) ─────────────────────────────

@@ -44,7 +44,7 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
         .collect();
     titles.push(format!("All ({})", issues.len()));
 
-    let selected_tab_idx = match state.vil.workbench_group_filter {
+    let selected_tab_idx = match state.vil_domain.vil.workbench_group_filter {
         Some(kind) => super::KIND_ORDER
             .iter()
             .position(|k| *k == kind)
@@ -58,14 +58,14 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
             Block::default().borders(Borders::ALL).title(Span::styled(
                 "Issue Groups",
                 state
-                    .theme
+                    .core.theme
                     .style(StyleKey::Warning)
                     .add_modifier(Modifier::BOLD),
             )),
         )
         .highlight_style(
             state
-                .theme
+                .core.theme
                 .style(StyleKey::Warning)
                 .add_modifier(Modifier::BOLD),
         );
@@ -82,16 +82,16 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
     // PR-T16 P1 — expose the full VIL tab body as a focus-grab click region,
     // so a click anywhere inside the tab brings the workbench into focus even
     // when it misses a specific row.
-    state.workbench_chrome.body_region = Some(area);
+    state.layout.workbench_chrome.body_region = Some(area);
     // R7 / PR-T15 — if a hover popup is active, anchor it against the issue
     // list rect so dismissal hit-testing matches what the user sees. The
     // popup must render AFTER the list so it paints on top, and it must be
     // clamped to the overall VIL tab area so it never overflows the tab.
-    let hover_to_draw = state.lsp_ui.active_hover.clone();
+    let hover_to_draw = state.layout.lsp_ui.active_hover.clone();
     if let Some(detail) = hover_to_draw {
         render_hover_popup(f, state, body[0], area, &detail);
     } else {
-        state.lsp_ui.hover_popup_region = None;
+        state.layout.lsp_ui.hover_popup_region = None;
     }
     let log_height = body[1].height.saturating_div(3).clamp(6, 12);
     let right = Layout::default()
@@ -106,7 +106,7 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
 }
 
 fn render_status_panel(f: &mut Frame, state: &AppState, area: Rect) {
-    let score = state.vil.status.validation_score;
+    let score = state.vil_domain.vil.status.validation_score;
     let score_label = if score >= 0.9 {
         "A"
     } else if score >= 0.7 {
@@ -116,23 +116,23 @@ fn render_status_panel(f: &mut Frame, state: &AppState, area: Rect) {
     };
 
     let score_style = if score >= 0.9 {
-        state.theme.style(StyleKey::ScoreGood)
+        state.core.theme.style(StyleKey::ScoreGood)
     } else if score >= 0.7 {
-        state.theme.style(StyleKey::ScoreOk)
+        state.core.theme.style(StyleKey::ScoreOk)
     } else {
-        state.theme.style(StyleKey::ScoreBad)
+        state.core.theme.style(StyleKey::ScoreBad)
     };
 
     let active_rulebook = state
-        .vil
+        .vil_domain.vil
         .status
         .active_rulebook
         .clone()
         .or_else(|| {
-            if state.switchers.selected_rulebooks.is_empty() {
+            if state.layout.switchers.selected_rulebooks.is_empty() {
                 None
             } else {
-                let mut v = state.switchers.selected_rulebooks.iter().cloned().collect::<Vec<_>>();
+                let mut v = state.layout.switchers.selected_rulebooks.iter().cloned().collect::<Vec<_>>();
                 v.sort();
                 Some(v.join(", "))
             }
@@ -140,9 +140,9 @@ fn render_status_panel(f: &mut Frame, state: &AppState, area: Rect) {
         .unwrap_or_else(|| "default".to_string());
 
     // Rulebook Matrix Conflict Detector
-    let has_conflict = state.switchers.selected_rulebooks.len() > 1
-        && (state.switchers.selected_rulebooks.contains("strict")
-            && state.switchers.selected_rulebooks.contains("legacy"));
+    let has_conflict = state.layout.switchers.selected_rulebooks.len() > 1
+        && (state.layout.switchers.selected_rulebooks.contains("strict")
+            && state.layout.switchers.selected_rulebooks.contains("legacy"));
 
     let rulebook_display = if has_conflict {
         format!("{} [! CONFLICT DETECTED]", active_rulebook)
@@ -151,10 +151,10 @@ fn render_status_panel(f: &mut Frame, state: &AppState, area: Rect) {
     };
 
     let trend = ascii_sparkline(
-        if state.vil.score_history.is_empty() {
+        if state.vil_domain.vil.score_history.is_empty() {
             std::slice::from_ref(&score)
         } else {
-            state.vil.score_history.as_slice()
+            state.vil_domain.vil.score_history.as_slice()
         },
         24,
     );
@@ -164,14 +164,14 @@ fn render_status_panel(f: &mut Frame, state: &AppState, area: Rect) {
         Span::styled(score_label, score_style),
         Span::styled(
             format!(" ({:.2})", score),
-            state.theme.style(StyleKey::Muted),
+            state.core.theme.style(StyleKey::Muted),
         ),
         Span::raw(" │ "),
         Span::styled("Trend: ", Style::default().add_modifier(Modifier::BOLD)),
-        Span::styled(trend, state.theme.style(StyleKey::Accent)),
+        Span::styled(trend, state.core.theme.style(StyleKey::Accent)),
         Span::raw(" │ "),
         Span::styled("Issues: ", Style::default().add_modifier(Modifier::BOLD)),
-        Span::raw(state.vil.status.validation_issues.len().to_string()),
+        Span::raw(state.vil_domain.vil.status.validation_issues.len().to_string()),
     ];
 
     header.push(Span::raw(" │ "));
@@ -179,10 +179,10 @@ fn render_status_panel(f: &mut Frame, state: &AppState, area: Rect) {
         "Semantic: ",
         Style::default().add_modifier(Modifier::BOLD),
     ));
-    header.push(if state.vil.status.semantic_mode {
-        Span::styled("On", state.theme.style(StyleKey::Success))
+    header.push(if state.vil_domain.vil.status.semantic_mode {
+        Span::styled("On", state.core.theme.style(StyleKey::Success))
     } else {
-        Span::styled("Off", state.theme.style(StyleKey::Muted))
+        Span::styled("Off", state.core.theme.style(StyleKey::Muted))
     });
 
     let mut meta = vec![
@@ -194,27 +194,27 @@ fn render_status_panel(f: &mut Frame, state: &AppState, area: Rect) {
             rulebook_display,
             if has_conflict {
                 state
-                    .theme
+                    .core.theme
                     .style(StyleKey::Error)
                     .add_modifier(Modifier::BOLD)
             } else {
-                state.theme.style(StyleKey::Accent)
+                state.core.theme.style(StyleKey::Accent)
             },
         ),
         Span::raw(" │ "),
         Span::styled("IR: ", Style::default().add_modifier(Modifier::BOLD)),
     ];
 
-    if state.vil.status.ir_generation_active {
+    if state.vil_domain.vil.status.ir_generation_active {
         meta.push(Span::styled(
-            format!("Active ({})", state.vil.status.ir_metadata_files.len()),
-            state.theme.style(StyleKey::Success),
+            format!("Active ({})", state.vil_domain.vil.status.ir_metadata_files.len()),
+            state.core.theme.style(StyleKey::Success),
         ));
     } else {
-        meta.push(Span::styled("Inactive", state.theme.style(StyleKey::Muted)));
+        meta.push(Span::styled("Inactive", state.core.theme.style(StyleKey::Muted)));
     }
 
-    if let Some(profile) = &state.vil.status.profile {
+    if let Some(profile) = &state.vil_domain.vil.status.profile {
         meta.push(Span::raw(" │ "));
         meta.push(Span::styled(
             "Archetype: ",
@@ -222,18 +222,18 @@ fn render_status_panel(f: &mut Frame, state: &AppState, area: Rect) {
         ));
         meta.push(Span::styled(
             format!("{}", profile.archetype),
-            state.theme.style(StyleKey::Accent),
+            state.core.theme.style(StyleKey::Accent),
         ));
     }
 
-    let deps_line = if let Some(profile) = &state.vil.status.profile {
+    let deps_line = if let Some(profile) = &state.vil_domain.vil.status.profile {
         let deps = compact_list(&profile.vil_deps, 5);
         let constructs = compact_list(&profile.detected_constructs, 6);
         Line::from(vec![
             Span::styled("Deps: ", Style::default().add_modifier(Modifier::BOLD)),
             Span::styled(
                 format!("{} ({})", deps, profile.vil_deps.len()),
-                state.theme.style(StyleKey::Normal),
+                state.core.theme.style(StyleKey::Normal),
             ),
             Span::raw(" │ "),
             Span::styled(
@@ -242,14 +242,14 @@ fn render_status_panel(f: &mut Frame, state: &AppState, area: Rect) {
             ),
             Span::styled(
                 format!("{} ({})", constructs, profile.detected_constructs.len()),
-                state.theme.style(StyleKey::Normal),
+                state.core.theme.style(StyleKey::Normal),
             ),
         ])
     } else {
         Line::styled(
             "Scanning profile...",
             state
-                .theme
+                .core.theme
                 .style(StyleKey::Muted)
                 .add_modifier(Modifier::ITALIC),
         )
@@ -261,7 +261,7 @@ fn render_status_panel(f: &mut Frame, state: &AppState, area: Rect) {
         recommendations
             .push("Recommendation: Run Batch Repair (Campaign Mode) to resolve structural drift.");
     }
-    if state.vil.status.validation_issues.len() > 10 {
+    if state.vil_domain.vil.status.validation_issues.len() > 10 {
         recommendations.push("Warning: High issue density. Review Rulebook Matrix for conflicts.");
     }
 
@@ -271,7 +271,7 @@ fn render_status_panel(f: &mut Frame, state: &AppState, area: Rect) {
         lines_to_render.push(Line::styled(
             recommendations.join(" | "),
             state
-                .theme
+                .core.theme
                 .style(StyleKey::Warning)
                 .add_modifier(Modifier::ITALIC),
         ));
@@ -281,7 +281,7 @@ fn render_status_panel(f: &mut Frame, state: &AppState, area: Rect) {
         Block::default().borders(Borders::ALL).title(Span::styled(
             "VIL Workstation - Rulebook Cockpit & Validation Heatmap",
             state
-                .theme
+                .core.theme
                 .style(StyleKey::Warning)
                 .add_modifier(Modifier::BOLD),
         )),
@@ -293,11 +293,11 @@ fn render_status_panel(f: &mut Frame, state: &AppState, area: Rect) {
 fn render_vil_log_panel(f: &mut Frame, state: &AppState, area: Rect) {
     let max = area.height.saturating_sub(2) as usize;
     let mut lines: Vec<Line> = Vec::new();
-    let entries: Vec<_> = state.vil.event_log.iter().rev().take(max.max(1)).collect();
+    let entries: Vec<_> = state.vil_domain.vil.event_log.iter().rev().take(max.max(1)).collect();
     for entry in entries.into_iter().rev() {
         let ts = entry.at.format("%H:%M:%S").to_string();
         lines.push(Line::from(vec![
-            Span::styled(ts, state.theme.style(StyleKey::Muted)),
+            Span::styled(ts, state.core.theme.style(StyleKey::Muted)),
             Span::raw(" "),
             Span::raw(entry.message.clone()),
         ]));
@@ -305,7 +305,7 @@ fn render_vil_log_panel(f: &mut Frame, state: &AppState, area: Rect) {
     if lines.is_empty() {
         lines.push(Line::styled(
             "no VIL events yet",
-            state.theme.style(StyleKey::Muted),
+            state.core.theme.style(StyleKey::Muted),
         ));
     }
     let widget = Paragraph::new(lines)
@@ -354,16 +354,16 @@ fn compact_list(items: &[String], max: usize) -> String {
 
 fn render_issue_list(f: &mut Frame, state: &mut AppState, area: Rect, view: &[&VilIssue]) {
     // PR-T16 P1 — reset issue-row regions at the start of each render.
-    state.workbench_chrome.vil_issue_row_regions.clear();
+    state.layout.workbench_chrome.vil_issue_row_regions.clear();
 
-    let empty_msg = if state.vil.status.validation_issues.is_empty() {
+    let empty_msg = if state.vil_domain.vil.status.validation_issues.is_empty() {
         "No validation issues. Run /vil-status or edit a watched file."
     } else {
         "No issues in the selected group."
     };
 
     if view.is_empty() {
-        let widget = Paragraph::new(Line::styled(empty_msg, state.theme.style(StyleKey::Muted)))
+        let widget = Paragraph::new(Line::styled(empty_msg, state.core.theme.style(StyleKey::Muted)))
             .block(Block::default().borders(Borders::ALL).title("Issues"))
             .wrap(Wrap { trim: true });
         f.render_widget(widget, area);
@@ -382,13 +382,13 @@ fn render_issue_list(f: &mut Frame, state: &mut AppState, area: Rect, view: &[&V
                 break;
             }
             state
-                .workbench_chrome.vil_issue_row_regions
+                .layout.workbench_chrome.vil_issue_row_regions
                 .push((idx, Rect::new(inner_x, inner_y + idx as u16, inner_w, 1)));
         }
     }
 
     let sel = state
-        .vil
+        .vil_domain.vil
         .workbench_selected
         .min(view.len().saturating_sub(1));
     let items: Vec<ListItem> = view
@@ -398,13 +398,13 @@ fn render_issue_list(f: &mut Frame, state: &mut AppState, area: Rect, view: &[&V
             let selected = idx == sel;
             let style = if selected {
                 state
-                    .theme
+                    .core.theme
                     .style(StyleKey::Warning)
                     .add_modifier(Modifier::BOLD)
             } else {
                 Style::default()
             };
-            let kind_style = kind_style(&state.theme, issue.kind);
+            let kind_style = kind_style(&state.core.theme, issue.kind);
             let kind_tag = format!("[{}]", issue.kind.label());
             let locator = match (&issue.file, issue.line) {
                 (Some(f), Some(l)) => format!(" {f}:{l}"),
@@ -420,7 +420,7 @@ fn render_issue_list(f: &mut Frame, state: &mut AppState, area: Rect, view: &[&V
             let (overlay_spans, gutter_mark): (
                 Vec<crate::services::diagnostics_overlay::DiagnosticSpan>,
                 Option<crate::services::diagnostics_overlay::GutterMark>,
-            ) = match (&issue.file, issue.line, state.lsp_ui.lsp_diagnostics.as_ref()) {
+            ) = match (&issue.file, issue.line, state.layout.lsp_ui.lsp_diagnostics.as_ref()) {
                 (Some(file), Some(line_1based), Some(snap)) => {
                     let line0 = (line_1based.saturating_sub(1)) as u32;
                     let width = message.chars().count() as u32;
@@ -434,9 +434,9 @@ fn render_issue_list(f: &mut Frame, state: &mut AppState, area: Rect, view: &[&V
             // R6 / PR-T15 — prepend a 2-col severity gutter cell so each row
             // surfaces its highest-severity diagnostic at a glance.
             let mut spans: Vec<Span> = vec![
-                render_gutter_cell(gutter_mark.as_ref(), Style::default(), &state.theme),
+                render_gutter_cell(gutter_mark.as_ref(), Style::default(), &state.core.theme),
                 Span::styled(kind_tag, kind_style),
-                Span::styled(locator, state.theme.style(StyleKey::Accent)),
+                Span::styled(locator, state.core.theme.style(StyleKey::Accent)),
                 Span::raw(" "),
             ];
             if overlay_spans.is_empty() {
@@ -445,7 +445,7 @@ fn render_issue_list(f: &mut Frame, state: &mut AppState, area: Rect, view: &[&V
                 // Promote the whole message to an overlayed Line, then flatten
                 // its spans into this row so the ListItem remains a single Line.
                 let overlayed =
-                    render_line_with_diagnostics(&message, &overlay_spans, style, &state.theme);
+                    render_line_with_diagnostics(&message, &overlay_spans, style, &state.core.theme);
                 for s in overlayed.spans.into_iter() {
                     spans.push(Span::styled(s.content.into_owned(), s.style));
                 }

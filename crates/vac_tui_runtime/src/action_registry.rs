@@ -67,7 +67,7 @@ pub static ACTION_SPECS: &[ActionSpec] = &[
         slash_aliases: &[],
         palette_visible: false,
         footer_visible: true,
-        availability: |s| s.streaming.is_streaming,
+        availability: |s| s.transcript.streaming.is_streaming,
         activity_message: None,
     },
     ActionSpec {
@@ -128,7 +128,7 @@ pub static ACTION_SPECS: &[ActionSpec] = &[
         slash_aliases: &[],
         palette_visible: false,
         footer_visible: true,
-        availability: |s| !s.approvals.pending_approvals.is_empty(),
+        availability: |s| !s.execution.approvals.pending_approvals.is_empty(),
         activity_message: None,
     },
     ActionSpec {
@@ -140,7 +140,7 @@ pub static ACTION_SPECS: &[ActionSpec] = &[
         slash_aliases: &[],
         palette_visible: false,
         footer_visible: true,
-        availability: |s| !s.approvals.pending_approvals.is_empty(),
+        availability: |s| !s.execution.approvals.pending_approvals.is_empty(),
         activity_message: None,
     },
     ActionSpec {
@@ -152,7 +152,7 @@ pub static ACTION_SPECS: &[ActionSpec] = &[
         slash_aliases: &[],
         palette_visible: false,
         footer_visible: true,
-        availability: |s| !s.approvals.pending_approvals.is_empty(),
+        availability: |s| !s.execution.approvals.pending_approvals.is_empty(),
         activity_message: None,
     },
     // Workbench — Review
@@ -264,7 +264,7 @@ pub static ACTION_SPECS: &[ActionSpec] = &[
         slash_aliases: &[],
         palette_visible: false,
         footer_visible: true,
-        availability: |s| s.plan.mode_active,
+        availability: |s| s.workspace.plan.mode_active,
         activity_message: None,
     },
     ActionSpec {
@@ -326,7 +326,7 @@ pub static ACTION_SPECS: &[ActionSpec] = &[
         slash_aliases: &[],
         palette_visible: false,
         footer_visible: true,
-        availability: |s| s.focus == crate::app::WorkspaceFocus::Workbench,
+        availability: |s| s.layout.focus == crate::app::WorkspaceFocus::Workbench,
         activity_message: None,
     },
     // Slash-command actions
@@ -532,7 +532,7 @@ pub static ACTION_SPECS: &[ActionSpec] = &[
         slash_aliases: &[],
         palette_visible: false,
         footer_visible: true,
-        availability: |s| s.overlay_manager.any_active(),
+        availability: |s| s.layout.overlay_manager.any_active(),
         activity_message: None,
     },
     // Wave 2 overlays

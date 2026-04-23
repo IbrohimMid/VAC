@@ -15,7 +15,7 @@ pub struct AgentsTab;
 
 impl WorkbenchTabView for AgentsTab {
     fn tab_label(state: &AppState) -> String {
-        format!("Agents ({})", state.runtime.agent_tasks.len())
+        format!("Agents ({})", state.execution.runtime.agent_tasks.len())
     }
 
     fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
@@ -29,7 +29,7 @@ impl WorkbenchTabView for AgentsTab {
         let mut completed = 0usize;
         let mut failed = 0usize;
         let mut cancelled = 0usize;
-        for task in &state.runtime.agent_tasks {
+        for task in &state.execution.runtime.agent_tasks {
             match &task.status {
                 vac_runtime::AgentTaskStatus::Queued => queued += 1,
                 vac_runtime::AgentTaskStatus::Running => running += 1,
@@ -40,15 +40,15 @@ impl WorkbenchTabView for AgentsTab {
         }
 
         let items: Vec<ListItem> = state
-            .runtime
+            .execution.runtime
             .agent_tasks
             .iter()
             .enumerate()
             .map(|(idx, task)| {
-                let selected = idx == state.runtime.agent_selected;
+                let selected = idx == state.execution.runtime.agent_selected;
                 let style = if selected {
                     state
-                        .theme
+                        .core.theme
                         .style(StyleKey::Warning)
                         .add_modifier(Modifier::BOLD)
                 } else {
@@ -56,25 +56,25 @@ impl WorkbenchTabView for AgentsTab {
                 };
                 let status = match &task.status {
                     vac_runtime::AgentTaskStatus::Queued => {
-                        Span::styled("Q", state.theme.style(StyleKey::Muted))
+                        Span::styled("Q", state.core.theme.style(StyleKey::Muted))
                     }
                     vac_runtime::AgentTaskStatus::Running => {
-                        Span::styled("R", state.theme.style(StyleKey::Accent))
+                        Span::styled("R", state.core.theme.style(StyleKey::Accent))
                     }
                     vac_runtime::AgentTaskStatus::Completed => {
-                        Span::styled("C", state.theme.style(StyleKey::Success))
+                        Span::styled("C", state.core.theme.style(StyleKey::Success))
                     }
                     vac_runtime::AgentTaskStatus::Failed(_) => {
-                        Span::styled("F", state.theme.style(StyleKey::Error))
+                        Span::styled("F", state.core.theme.style(StyleKey::Error))
                     }
                     vac_runtime::AgentTaskStatus::Cancelled => {
-                        Span::styled("X", state.theme.style(StyleKey::Warning))
+                        Span::styled("X", state.core.theme.style(StyleKey::Warning))
                     }
                 };
                 let role = Span::styled(
                     task.role.label(),
                     state
-                        .theme
+                        .core.theme
                         .style(StyleKey::AppTitle)
                         .add_modifier(Modifier::BOLD),
                 );
@@ -88,7 +88,7 @@ impl WorkbenchTabView for AgentsTab {
                     Span::raw(" "),
                     role,
                     Span::raw(" "),
-                    Span::styled(short_id, state.theme.style(StyleKey::Muted)),
+                    Span::styled(short_id, state.core.theme.style(StyleKey::Muted)),
                     Span::raw(" "),
                     Span::styled(desc, style),
                 ]))
@@ -101,25 +101,25 @@ impl WorkbenchTabView for AgentsTab {
         let mut lines: Vec<Line> = Vec::new();
         lines.push(Line::from(vec![
             Span::styled("Tasks: ", Style::default().add_modifier(Modifier::BOLD)),
-            Span::styled(format!("Q {queued}"), state.theme.style(StyleKey::Muted)),
+            Span::styled(format!("Q {queued}"), state.core.theme.style(StyleKey::Muted)),
             Span::raw("  "),
-            Span::styled(format!("R {running}"), state.theme.style(StyleKey::Accent)),
+            Span::styled(format!("R {running}"), state.core.theme.style(StyleKey::Accent)),
             Span::raw("  "),
             Span::styled(
                 format!("C {completed}"),
-                state.theme.style(StyleKey::Success),
+                state.core.theme.style(StyleKey::Success),
             ),
             Span::raw("  "),
-            Span::styled(format!("F {failed}"), state.theme.style(StyleKey::Error)),
+            Span::styled(format!("F {failed}"), state.core.theme.style(StyleKey::Error)),
             Span::raw("  "),
             Span::styled(
                 format!("X {cancelled}"),
-                state.theme.style(StyleKey::Warning),
+                state.core.theme.style(StyleKey::Warning),
             ),
         ]));
         lines.push(Line::raw(""));
 
-        if let Some(snapshot) = &state.runtime.agent_snapshot {
+        if let Some(snapshot) = &state.execution.runtime.agent_snapshot {
             lines.push(Line::styled(
                 "Workers:",
                 Style::default().add_modifier(Modifier::BOLD),
@@ -128,27 +128,27 @@ impl WorkbenchTabView for AgentsTab {
                 let role = Span::styled(
                     w.role.label(),
                     state
-                        .theme
+                        .core.theme
                         .style(StyleKey::AppTitle)
                         .add_modifier(Modifier::BOLD),
                 );
                 let status = match &w.status {
                     vac_runtime::AgentWorkerStatus::Idle => {
-                        Span::styled("idle", state.theme.style(StyleKey::Muted))
+                        Span::styled("idle", state.core.theme.style(StyleKey::Muted))
                     }
                     vac_runtime::AgentWorkerStatus::Running { task_id, .. } => Span::styled(
                         format!(
                             "running {}",
                             task_id.to_string().chars().take(8).collect::<String>()
                         ),
-                        state.theme.style(StyleKey::Accent),
+                        state.core.theme.style(StyleKey::Accent),
                     ),
                 };
                 lines.push(Line::from(vec![
                     Span::raw("  "),
                     role,
                     Span::raw(" "),
-                    Span::styled(w.worker_id.clone(), state.theme.style(StyleKey::Muted)),
+                    Span::styled(w.worker_id.clone(), state.core.theme.style(StyleKey::Muted)),
                     Span::raw(" "),
                     status,
                 ]));
@@ -159,7 +159,7 @@ impl WorkbenchTabView for AgentsTab {
                     }
                     lines.push(Line::from(vec![
                         Span::raw("    "),
-                        Span::styled(o, state.theme.style(StyleKey::Muted)),
+                        Span::styled(o, state.core.theme.style(StyleKey::Muted)),
                     ]));
                 }
             }
@@ -177,22 +177,22 @@ impl WorkbenchTabView for AgentsTab {
         } else {
             lines.push(Line::styled(
                 "No agent scheduler state found.",
-                state.theme.style(StyleKey::Muted),
+                state.core.theme.style(StyleKey::Muted),
             ));
             lines.push(Line::raw(""));
         }
 
-        if let Some(task) = state.runtime.agent_tasks.get(state.runtime.agent_selected) {
+        if let Some(task) = state.execution.runtime.agent_tasks.get(state.execution.runtime.agent_selected) {
             lines.push(Line::styled(
                 "Selected:",
                 Style::default().add_modifier(Modifier::BOLD),
             ));
             lines.push(Line::from(vec![
-                Span::styled("ID: ", state.theme.style(StyleKey::Muted)),
+                Span::styled("ID: ", state.core.theme.style(StyleKey::Muted)),
                 Span::raw(task.id.to_string()),
             ]));
             lines.push(Line::from(vec![
-                Span::styled("Role: ", state.theme.style(StyleKey::Muted)),
+                Span::styled("Role: ", state.core.theme.style(StyleKey::Muted)),
                 Span::raw(task.role.label()),
             ]));
             let status = match &task.status {
@@ -203,31 +203,31 @@ impl WorkbenchTabView for AgentsTab {
                 vac_runtime::AgentTaskStatus::Cancelled => "Cancelled".to_string(),
             };
             lines.push(Line::from(vec![
-                Span::styled("Status: ", state.theme.style(StyleKey::Muted)),
+                Span::styled("Status: ", state.core.theme.style(StyleKey::Muted)),
                 Span::raw(status),
             ]));
             if let Some(out) = &task.output_summary {
                 lines.push(Line::from(vec![
-                    Span::styled("Output: ", state.theme.style(StyleKey::Muted)),
+                    Span::styled("Output: ", state.core.theme.style(StyleKey::Muted)),
                     Span::raw(out.clone()),
                 ]));
             }
             lines.push(Line::raw(""));
             lines.push(Line::styled(
                 "j/k: navigate  r: refresh",
-                state.theme.style(StyleKey::Muted),
+                state.core.theme.style(StyleKey::Muted),
             ));
         } else {
             lines.push(Line::styled(
                 "No tasks enqueued.",
-                state.theme.style(StyleKey::Muted),
+                state.core.theme.style(StyleKey::Muted),
             ));
         }
 
         let detail = Paragraph::new(lines)
             .block(Block::default().borders(Borders::ALL).title("Agents"))
             .wrap(Wrap { trim: true })
-            .scroll((state.runtime.agent_detail_scroll as u16, 0));
+            .scroll((state.execution.runtime.agent_detail_scroll as u16, 0));
         f.render_widget(detail, body[1]);
     }
 }

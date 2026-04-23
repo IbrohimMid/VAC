@@ -15,9 +15,9 @@ use ratatui::{
 use vac_changeset::FileState;
 
 pub fn filtered_paths(state: &AppState) -> Vec<String> {
-    let query = state.file_index.changes_search.to_lowercase();
+    let query = state.workspace.file_index.changes_search.to_lowercase();
     state
-        .changeset_store
+        .workspace.changeset_store
         .entries()
         .iter()
         .filter(|e| query.is_empty() || e.path.to_lowercase().contains(&query))
@@ -38,7 +38,7 @@ pub fn render_file_changes_popup(f: &mut Frame, state: &AppState) {
 
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_style(state.theme.style(StyleKey::Accent));
+        .border_style(state.core.theme.style(StyleKey::Accent));
     f.render_widget(block, area);
 
     let inner = Rect {
@@ -58,8 +58,8 @@ pub fn render_file_changes_popup(f: &mut Frame, state: &AppState) {
         ])
         .split(inner);
 
-    let all_entries: Vec<_> = state.changeset_store.entries().iter().collect();
-    let query = state.file_index.changes_search.to_lowercase();
+    let all_entries: Vec<_> = state.workspace.changeset_store.entries().iter().collect();
+    let query = state.workspace.file_index.changes_search.to_lowercase();
     let filtered: Vec<_> = all_entries
         .iter()
         .filter(|e| query.is_empty() || e.path.to_lowercase().contains(&query))
@@ -80,38 +80,38 @@ pub fn render_file_changes_popup(f: &mut Frame, state: &AppState) {
         Span::styled(
             left,
             state
-                .theme
+                .core.theme
                 .style(StyleKey::Warning)
                 .add_modifier(Modifier::BOLD),
         ),
         Span::raw(" ".repeat(spacing)),
-        Span::styled(count_text, state.theme.style(StyleKey::Accent)),
+        Span::styled(count_text, state.core.theme.style(StyleKey::Accent)),
         Span::raw(" "),
     ];
     f.render_widget(Paragraph::new(Line::from(title_spans)), chunks[0]);
 
     // Search
-    let search_spans = if state.file_index.changes_search.is_empty() {
+    let search_spans = if state.workspace.file_index.changes_search.is_empty() {
         vec![
             Span::raw(" "),
-            Span::styled(">", state.theme.style(StyleKey::AppTitle)),
+            Span::styled(">", state.core.theme.style(StyleKey::AppTitle)),
             Span::raw(" "),
-            Span::styled("|", state.theme.style(StyleKey::Accent)),
-            Span::styled("Type to filter", state.theme.style(StyleKey::Muted)),
+            Span::styled("|", state.core.theme.style(StyleKey::Accent)),
+            Span::styled("Type to filter", state.core.theme.style(StyleKey::Muted)),
         ]
     } else {
         vec![
             Span::raw(" "),
-            Span::styled(">", state.theme.style(StyleKey::AppTitle)),
+            Span::styled(">", state.core.theme.style(StyleKey::AppTitle)),
             Span::raw(" "),
             Span::styled(
-                state.file_index.changes_search.clone(),
+                state.workspace.file_index.changes_search.clone(),
                 state
-                    .theme
+                    .core.theme
                     .style(StyleKey::Text)
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::styled("|", state.theme.style(StyleKey::Accent)),
+            Span::styled("|", state.core.theme.style(StyleKey::Accent)),
         ]
     };
     f.render_widget(
@@ -126,7 +126,7 @@ pub fn render_file_changes_popup(f: &mut Frame, state: &AppState) {
     // List
     let height = chunks[2].height as usize;
     let total = filtered.len();
-    let scroll = state.file_index.changes_scroll;
+    let scroll = state.workspace.file_index.changes_scroll;
     let mut lines: Vec<Line> = Vec::new();
 
     for i in 0..height {
@@ -135,10 +135,10 @@ pub fn render_file_changes_popup(f: &mut Frame, state: &AppState) {
             break;
         }
         let entry = filtered[idx];
-        let is_selected = idx == state.file_index.changes_selected;
+        let is_selected = idx == state.workspace.file_index.changes_selected;
         let bg_color = if is_selected {
             state
-                .theme
+                .core.theme
                 .style(StyleKey::HighlightBg)
                 .bg
                 .unwrap_or(C::Reset)
@@ -147,22 +147,22 @@ pub fn render_file_changes_popup(f: &mut Frame, state: &AppState) {
         };
 
         let (label, label_style) = match entry.state {
-            FileState::Created => ("[+]", state.theme.style(StyleKey::DiffAdded)),
-            FileState::Modified => ("[~]", state.theme.style(StyleKey::Warning)),
-            FileState::Removed => ("[-]", state.theme.style(StyleKey::DiffRemoved)),
-            FileState::Reverted => ("[✓]", state.theme.style(StyleKey::Accent)),
-            FileState::FailedRestore => ("[✗]", state.theme.style(StyleKey::Error)),
+            FileState::Created => ("[+]", state.core.theme.style(StyleKey::DiffAdded)),
+            FileState::Modified => ("[~]", state.core.theme.style(StyleKey::Warning)),
+            FileState::Removed => ("[-]", state.core.theme.style(StyleKey::DiffRemoved)),
+            FileState::Reverted => ("[✓]", state.core.theme.style(StyleKey::Accent)),
+            FileState::FailedRestore => ("[✗]", state.core.theme.style(StyleKey::Error)),
         };
 
         let name_style = match entry.state {
             FileState::Reverted | FileState::Removed | FileState::FailedRestore => state
-                .theme
+                .core.theme
                 .style(StyleKey::Muted)
                 .add_modifier(Modifier::CROSSED_OUT)
                 .bg(bg_color),
             _ => {
                 let s = if is_selected {
-                    state.theme.style(StyleKey::HighlightFg)
+                    state.core.theme.style(StyleKey::HighlightFg)
                 } else {
                     Style::default()
                 };
@@ -182,12 +182,12 @@ pub fn render_file_changes_popup(f: &mut Frame, state: &AppState) {
     // Footer
     let footer = vec![
         Span::raw(" "),
-        Span::styled("↑/↓", state.theme.style(StyleKey::Accent)),
-        Span::styled(": Navigate  ", state.theme.style(StyleKey::Muted)),
-        Span::styled("Ctrl+X", state.theme.style(StyleKey::Accent)),
-        Span::styled(": Revert  ", state.theme.style(StyleKey::Muted)),
-        Span::styled("Esc", state.theme.style(StyleKey::Accent)),
-        Span::styled(": Close", state.theme.style(StyleKey::Muted)),
+        Span::styled("↑/↓", state.core.theme.style(StyleKey::Accent)),
+        Span::styled(": Navigate  ", state.core.theme.style(StyleKey::Muted)),
+        Span::styled("Ctrl+X", state.core.theme.style(StyleKey::Accent)),
+        Span::styled(": Revert  ", state.core.theme.style(StyleKey::Muted)),
+        Span::styled("Esc", state.core.theme.style(StyleKey::Accent)),
+        Span::styled(": Close", state.core.theme.style(StyleKey::Muted)),
     ];
     f.render_widget(Paragraph::new(Line::from(footer)), chunks[3]);
 }

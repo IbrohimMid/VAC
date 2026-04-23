@@ -20,7 +20,7 @@ pub(super) fn render_file_picker(f: &mut Frame, state: &mut AppState) {
         .constraints([Constraint::Length(3), Constraint::Min(1)])
         .split(area);
 
-    let cwd_label = state.file_picker.cwd.to_string_lossy().to_string();
+    let cwd_label = state.workspace.file_picker.cwd.to_string_lossy().to_string();
     let title = format!(
         " Files  {}  (Space=select  Tab=enter  Bsp=up  Enter=confirm  Esc) ",
         cwd_label
@@ -28,10 +28,10 @@ pub(super) fn render_file_picker(f: &mut Frame, state: &mut AppState) {
     let search_block = Block::default()
         .title(title.as_str())
         .borders(Borders::ALL)
-        .border_style(state.theme.style(StyleKey::OverlayBorder));
-    let search_para = Paragraph::new(state.file_picker.query.as_str())
+        .border_style(state.core.theme.style(StyleKey::OverlayBorder));
+    let search_para = Paragraph::new(state.workspace.file_picker.query.as_str())
         .block(search_block)
-        .style(state.theme.style(StyleKey::InputFg));
+        .style(state.core.theme.style(StyleKey::InputFg));
     f.render_widget(search_para, chunks[0]);
 
     let split = Layout::default()
@@ -41,22 +41,22 @@ pub(super) fn render_file_picker(f: &mut Frame, state: &mut AppState) {
 
     let list_block = Block::default()
         .borders(Borders::ALL)
-        .border_style(state.theme.style(StyleKey::BorderNormal));
+        .border_style(state.core.theme.style(StyleKey::BorderNormal));
     let list_inner = list_block.inner(split[0]);
     f.render_widget(list_block, split[0]);
 
     let items: Vec<ListItem> = state
-        .file_picker.results
+        .workspace.file_picker.results
         .iter()
         .enumerate()
         .map(|(i, path)| {
             let name = path
                 .file_name()
-                .and_then(|n| n.to_str())
+                .and_then(|n: &std::ffi::OsStr| n.to_str())
                 .unwrap_or("?")
                 .to_string();
             let is_dir = path.is_dir();
-            let selected = state.file_picker.multi_selected.contains(&i);
+            let selected = state.workspace.file_picker.multi_selected.contains(&i);
             let prefix = if selected {
                 "[✓] "
             } else if is_dir {
@@ -65,12 +65,12 @@ pub(super) fn render_file_picker(f: &mut Frame, state: &mut AppState) {
                 "    "
             };
             let label = format!("{prefix}{name}");
-            let style = if i == state.file_picker.selected {
-                state.theme.style(StyleKey::OverlaySelected)
+            let style = if i == state.workspace.file_picker.selected {
+                state.core.theme.style(StyleKey::OverlaySelected)
             } else if is_dir {
-                state.theme.style(StyleKey::Accent)
+                state.core.theme.style(StyleKey::Accent)
             } else {
-                state.theme.style(StyleKey::Normal)
+                state.core.theme.style(StyleKey::Normal)
             };
             ListItem::new(Line::styled(label, style))
         })
@@ -81,30 +81,30 @@ pub(super) fn render_file_picker(f: &mut Frame, state: &mut AppState) {
     let preview_block = Block::default()
         .title(" Preview ")
         .borders(Borders::ALL)
-        .border_style(state.theme.style(StyleKey::BorderNormal));
+        .border_style(state.core.theme.style(StyleKey::BorderNormal));
     let preview_inner = preview_block.inner(split[1]);
     f.render_widget(preview_block, split[1]);
     let preview_text = state
-        .file_picker.preview
+        .workspace.file_picker.preview
         .as_deref()
         .unwrap_or("(select a file to preview)");
     let preview_para = Paragraph::new(preview_text)
         .wrap(Wrap { trim: false })
-        .style(state.theme.style(StyleKey::CodeFg));
+        .style(state.core.theme.style(StyleKey::CodeFg));
     f.render_widget(preview_para, preview_inner);
 }
 
 pub fn render_context_chips(f: &mut Frame, state: &AppState, area: Rect) {
-    if state.context_chips.is_empty() {
+    if state.composer.context_chips.is_empty() {
         return;
     }
     let mut spans: Vec<Span> = Vec::new();
-    for (i, chip) in state.context_chips.iter().enumerate() {
-        let is_focused = state.context_chip_cursor == Some(i);
+    for (i, chip) in state.composer.context_chips.iter().enumerate() {
+        let is_focused = state.composer.context_chip_cursor == Some(i);
         let style = if is_focused {
-            state.theme.style(StyleKey::OverlaySelected)
+            state.core.theme.style(StyleKey::OverlaySelected)
         } else {
-            state.theme.style(StyleKey::Accent)
+            state.core.theme.style(StyleKey::Accent)
         };
         spans.push(Span::styled(format!(" @{} ", chip.label), style));
         spans.push(Span::raw(" "));
@@ -117,15 +117,15 @@ pub(super) fn render_task_tray(f: &mut Frame, state: &mut AppState) {
     use vac_runtime::jobs::JobStatus;
     let area = f.area();
     let width = 52u16.min(area.width.saturating_sub(2));
-    let jobs: Vec<_> = if state.task_tray.filter_active_only {
+    let jobs: Vec<_> = if state.execution.task_tray.filter_active_only {
         state
-            .runtime
+            .execution.runtime
             .jobs
             .iter()
             .filter(|j| matches!(j.status, JobStatus::Running | JobStatus::Queued))
             .collect()
     } else {
-        state.runtime.jobs.iter().collect()
+        state.execution.runtime.jobs.iter().collect()
     };
     let height = (jobs.len() as u16 + 4)
         .min(area.height.saturating_sub(2))
@@ -140,7 +140,7 @@ pub(super) fn render_task_tray(f: &mut Frame, state: &mut AppState) {
     };
     f.render_widget(Clear, rect);
 
-    let filter_label = if state.task_tray.filter_active_only {
+    let filter_label = if state.execution.task_tray.filter_active_only {
         " [active] "
     } else {
         " [all] "
@@ -149,7 +149,7 @@ pub(super) fn render_task_tray(f: &mut Frame, state: &mut AppState) {
     let block = Block::default()
         .title(title.as_str())
         .borders(Borders::ALL)
-        .border_style(state.theme.style(StyleKey::OverlayBorder));
+        .border_style(state.core.theme.style(StyleKey::OverlayBorder));
     let inner = block.inner(rect);
     f.render_widget(block, rect);
 
@@ -158,15 +158,15 @@ pub(super) fn render_task_tray(f: &mut Frame, state: &mut AppState) {
         .enumerate()
         .map(|(i, job)| {
             let (status_sym, status_style) = match &job.status {
-                JobStatus::Running => ("▶ ", state.theme.style(StyleKey::TaskRunning)),
-                JobStatus::Queued => ("⏳", state.theme.style(StyleKey::TaskQueued)),
-                JobStatus::Completed => ("✓ ", state.theme.style(StyleKey::TaskCompleted)),
-                JobStatus::Failed(_) => ("✗ ", state.theme.style(StyleKey::TaskFailed)),
-                JobStatus::Cancelled => ("— ", state.theme.style(StyleKey::Muted)),
+                JobStatus::Running => ("▶ ", state.core.theme.style(StyleKey::TaskRunning)),
+                JobStatus::Queued => ("⏳", state.core.theme.style(StyleKey::TaskQueued)),
+                JobStatus::Completed => ("✓ ", state.core.theme.style(StyleKey::TaskCompleted)),
+                JobStatus::Failed(_) => ("✗ ", state.core.theme.style(StyleKey::TaskFailed)),
+                JobStatus::Cancelled => ("— ", state.core.theme.style(StyleKey::Muted)),
             };
             let label = format!("{status_sym}{:?}", job.kind);
-            let line = if i == state.task_tray.selected {
-                Line::styled(label, state.theme.style(StyleKey::OverlaySelected))
+            let line = if i == state.execution.task_tray.selected {
+                Line::styled(label, state.core.theme.style(StyleKey::OverlaySelected))
             } else {
                 Line::from(vec![Span::styled(label, status_style)])
             };
@@ -178,13 +178,13 @@ pub(super) fn render_task_tray(f: &mut Frame, state: &mut AppState) {
     f.render_widget(list, inner);
 
     // PR-T16 — track per-row click regions for the mouse dispatcher.
-    state.workbench_chrome.task_tray_row_regions.clear();
+    state.layout.workbench_chrome.task_tray_row_regions.clear();
     for i in 0..jobs.len() {
         let row_y = inner.y.saturating_add(i as u16);
         if row_y >= inner.y.saturating_add(inner.height) {
             break;
         }
-        state.workbench_chrome.task_tray_row_regions.push(Rect {
+        state.layout.workbench_chrome.task_tray_row_regions.push(Rect {
             x: inner.x,
             y: row_y,
             width: inner.width,
@@ -201,7 +201,7 @@ pub(super) fn render_theme_picker(f: &mut Frame, state: &mut AppState) {
     let block = Block::default()
         .title(" Theme Picker  (↑↓ select  Enter apply  Esc cancel) ")
         .borders(Borders::ALL)
-        .border_style(state.theme.style(StyleKey::OverlayBorder));
+        .border_style(state.core.theme.style(StyleKey::OverlayBorder));
     let inner = block.inner(area);
     f.render_widget(block, area);
 
@@ -211,17 +211,17 @@ pub(super) fn render_theme_picker(f: &mut Frame, state: &mut AppState) {
         .map(|(i, preset)| {
             let label = format!(
                 " {}{}",
-                if state.theme.preset == *preset {
+                if state.core.theme.preset == *preset {
                     "● "
                 } else {
                     "  "
                 },
                 preset.label()
             );
-            let style = if i == state.operator.theme_picker_selected {
-                state.theme.style(StyleKey::OverlaySelected)
+            let style = if i == state.operator_config.operator.theme_picker_selected {
+                state.core.theme.style(StyleKey::OverlaySelected)
             } else {
-                state.theme.style(StyleKey::Normal)
+                state.core.theme.style(StyleKey::Normal)
             };
             ListItem::new(Line::styled(label, style))
         })
@@ -239,15 +239,15 @@ pub(super) fn render_session_resume(f: &mut Frame, state: &mut AppState) {
         .constraints([Constraint::Length(3), Constraint::Min(1)])
         .split(area);
 
-    let date_hint = match state.session_resume.date_filter_days {
+    let date_hint = match state.layout.session_resume.date_filter_days {
         None => "all time",
         Some(7) => "last 7d",
         Some(30) => "last 30d",
         Some(90) => "last 90d",
         Some(_) => "custom",
     };
-    let filtered_count = state.session_resume.filtered_indices.len();
-    let total_count = state.session_resume.list.len();
+    let filtered_count = state.layout.session_resume.filtered_indices.len();
+    let total_count = state.layout.session_resume.list.len();
     let title = format!(
         " Resume Session  [{date_hint}]  {filtered_count}/{total_count}  (Tab=date  ↑↓=nav  Enter=open  Esc) "
     );
@@ -255,26 +255,26 @@ pub(super) fn render_session_resume(f: &mut Frame, state: &mut AppState) {
     let search_block = Block::default()
         .title(title.as_str())
         .borders(Borders::ALL)
-        .border_style(state.theme.style(StyleKey::OverlayBorder));
-    let search_input = Paragraph::new(state.session_resume.query.as_str())
+        .border_style(state.core.theme.style(StyleKey::OverlayBorder));
+    let search_input = Paragraph::new(state.layout.session_resume.query.as_str())
         .block(search_block)
-        .style(state.theme.style(StyleKey::InputFg));
+        .style(state.core.theme.style(StyleKey::InputFg));
     f.render_widget(search_input, chunks[0]);
 
     let list_block = Block::default()
         .borders(Borders::ALL)
-        .border_style(state.theme.style(StyleKey::BorderNormal));
+        .border_style(state.core.theme.style(StyleKey::BorderNormal));
     let inner = list_block.inner(chunks[1]);
     f.render_widget(list_block, chunks[1]);
 
-    let selected = state.session_resume.selected;
-    let indices = state.session_resume.filtered_indices.clone();
+    let selected = state.layout.session_resume.selected;
+    let indices = state.layout.session_resume.filtered_indices.clone();
     let items: Vec<ListItem> = indices
         .iter()
         .enumerate()
         .filter_map(|(display_i, &list_i)| {
             state
-                .session_resume.list
+                .layout.session_resume.list
                 .get(list_i)
                 .map(|e| (display_i, e))
         })
@@ -297,9 +297,9 @@ pub(super) fn render_session_resume(f: &mut Frame, state: &mut AppState) {
                     .collect::<String>(),
             );
             let style = if i == selected {
-                state.theme.style(StyleKey::OverlaySelected)
+                state.core.theme.style(StyleKey::OverlaySelected)
             } else {
-                state.theme.style(StyleKey::Normal)
+                state.core.theme.style(StyleKey::Normal)
             };
             ListItem::new(Line::styled(label, style))
         })

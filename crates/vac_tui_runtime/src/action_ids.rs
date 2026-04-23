@@ -132,15 +132,15 @@ pub enum ActionContext {
 
 impl ActionContext {
     pub fn from_app_state(state: &crate::app::AppState) -> Self {
-        if state.overlay_manager.any_active() {
+        if state.layout.overlay_manager.any_active() {
             return ActionContext::OverlayActive;
         }
 
-        match state.focus {
+        match state.layout.focus {
             WorkspaceFocus::Input => ActionContext::InputFocus,
             WorkspaceFocus::Conversation => ActionContext::ConversationFocus,
             WorkspaceFocus::Activity => ActionContext::ActivityFocus,
-            WorkspaceFocus::Workbench => match state.workbench_tab {
+            WorkspaceFocus::Workbench => match state.layout.workbench_tab {
                 WorkbenchTab::Approvals => ActionContext::WorkbenchApprovals,
                 WorkbenchTab::Review => ActionContext::WorkbenchReview,
                 WorkbenchTab::Sessions => ActionContext::WorkbenchSessions,

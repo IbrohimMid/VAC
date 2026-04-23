@@ -113,7 +113,7 @@ impl ShellSessionStore {
     }
 }
 
-/// Shell-session domain state. Accessed via `app_state.shell`.
+/// Shell-session domain state. Accessed via `app_state.execution.shell`.
 #[derive(Debug, Clone, Default)]
 pub struct ShellState {
     pub session_store: ShellSessionStore,

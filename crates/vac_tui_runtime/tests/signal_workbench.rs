@@ -24,7 +24,7 @@ fn contract_label_reflects_stream_count() {
     // Default state registers vil_dev (+ 0 shell, 0 mcp, 0 runtime) = 1.
     assert_eq!(SignalTab::tab_label(&state), "Signal (1)");
 
-    state.shell.session_store.push_new("shell-a".to_string());
+    state.execution.shell.session_store.push_new("shell-a".to_string());
     // Registry now has vil_dev + 1 shell = 2.
     assert_eq!(SignalTab::tab_label(&state), "Signal (2)");
 }
@@ -45,9 +45,9 @@ fn contract_render_does_not_panic_on_empty_state() {
 #[test]
 fn contract_render_with_mixed_streams() {
     let mut state = AppState::default();
-    state.vil_dev.output.push_line("WARN: slow");
-    state.vil_dev.output.push_line("Error: boom");
-    state.shell.session_store.push_new("shell-1".to_string());
+    state.vil_domain.vil_dev.output.push_line("WARN: slow");
+    state.vil_domain.vil_dev.output.push_line("Error: boom");
+    state.execution.shell.session_store.push_new("shell-1".to_string());
     let backend = TestBackend::new(120, 30);
     let mut terminal = Terminal::new(backend).unwrap();
     terminal

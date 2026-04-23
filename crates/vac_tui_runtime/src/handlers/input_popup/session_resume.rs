@@ -12,52 +12,52 @@ pub(super) fn handle_session_resume(
     match event {
         InputEvent::HandleEsc => {
             crate::overlay::close_overlay(state, OverlayId::SessionResume);
-            state.session_resume.query.clear();
-            state.session_resume.filtered_indices.clear();
+            state.layout.session_resume.query.clear();
+            state.layout.session_resume.filtered_indices.clear();
         }
         InputEvent::Up | InputEvent::ScrollUp => {
-            state.session_resume.selected = state.session_resume.selected.saturating_sub(1);
+            state.layout.session_resume.selected = state.layout.session_resume.selected.saturating_sub(1);
         }
         InputEvent::Down | InputEvent::ScrollDown => {
-            let count = state.session_resume.filtered_indices.len();
-            state.session_resume.selected =
-                (state.session_resume.selected + 1).min(count.saturating_sub(1));
+            let count = state.layout.session_resume.filtered_indices.len();
+            state.layout.session_resume.selected =
+                (state.layout.session_resume.selected + 1).min(count.saturating_sub(1));
         }
         InputEvent::InputChanged(ch) => {
-            state.session_resume.query.push(ch);
-            state.session_resume.selected = 0;
+            state.layout.session_resume.query.push(ch);
+            state.layout.session_resume.selected = 0;
             refresh_session_resume_filtered(state);
         }
         InputEvent::InputBackspace => {
-            state.session_resume.query.pop();
-            state.session_resume.selected = 0;
+            state.layout.session_resume.query.pop();
+            state.layout.session_resume.selected = 0;
             refresh_session_resume_filtered(state);
         }
         InputEvent::Tab => {
             // Cycle date filter: all → 7d → 30d → 90d → all
-            state.session_resume.date_filter_days = match state.session_resume.date_filter_days {
+            state.layout.session_resume.date_filter_days = match state.layout.session_resume.date_filter_days {
                 None => Some(7),
                 Some(7) => Some(30),
                 Some(30) => Some(90),
                 Some(_) => None,
             };
-            state.session_resume.selected = 0;
+            state.layout.session_resume.selected = 0;
             refresh_session_resume_filtered(state);
         }
         InputEvent::InputSubmitted => {
             let idx = state
-                .session_resume.filtered_indices
-                .get(state.session_resume.selected)
+                .layout.session_resume.filtered_indices
+                .get(state.layout.session_resume.selected)
                 .copied();
             if let Some(i) = idx {
-                if let Some(entry) = state.session_resume.list.get(i) {
+                if let Some(entry) = state.layout.session_resume.list.get(i) {
                     let id = entry.session_id;
                     let _ = output_tx.try_send(OutputEvent::ResumeSession(id.to_string()));
                 }
             }
             crate::overlay::close_overlay(state, OverlayId::SessionResume);
-            state.session_resume.query.clear();
-            state.session_resume.filtered_indices.clear();
+            state.layout.session_resume.query.clear();
+            state.layout.session_resume.filtered_indices.clear();
         }
         _ => {}
     }
@@ -72,26 +72,26 @@ pub(crate) fn refresh_session_resume_filtered(state: &mut AppState) {
     };
 
     let cutoff = state
-        .session_resume.date_filter_days
+        .layout.session_resume.date_filter_days
         .map(|days| chrono::Utc::now() - chrono::Duration::days(days as i64));
 
-    let q = state.session_resume.query.trim();
+    let q = state.layout.session_resume.query.trim();
 
     if q.is_empty() {
         // No query — return all entries passing date filter, sorted newest first
         let mut indices: Vec<usize> = state
-            .session_resume.list
+            .layout.session_resume.list
             .iter()
             .enumerate()
             .filter(|(_, e)| cutoff.is_none_or(|c| e.last_active > c))
             .map(|(i, _)| i)
             .collect();
         indices.sort_by(|&a, &b| {
-            state.session_resume.list[b]
+            state.layout.session_resume.list[b]
                 .last_active
-                .cmp(&state.session_resume.list[a].last_active)
+                .cmp(&state.layout.session_resume.list[a].last_active)
         });
-        state.session_resume.filtered_indices = indices;
+        state.layout.session_resume.filtered_indices = indices;
         return;
     }
 
@@ -105,7 +105,7 @@ pub(crate) fn refresh_session_resume_filtered(state: &mut AppState) {
     let mut utf32buf = Vec::new();
 
     let mut scored: Vec<(u32, usize)> = state
-        .session_resume.list
+        .layout.session_resume.list
         .iter()
         .enumerate()
         .filter(|(_, e)| cutoff.is_none_or(|c| e.last_active > c))
@@ -122,11 +122,11 @@ pub(crate) fn refresh_session_resume_filtered(state: &mut AppState) {
     // Sort descending by score, then descending by last_active for ties
     scored.sort_by(|a, b| {
         b.0.cmp(&a.0).then_with(|| {
-            state.session_resume.list[b.1]
+            state.layout.session_resume.list[b.1]
                 .last_active
-                .cmp(&state.session_resume.list[a.1].last_active)
+                .cmp(&state.layout.session_resume.list[a.1].last_active)
         })
     });
 
-    state.session_resume.filtered_indices = scored.into_iter().map(|(_, i)| i).collect();
+    state.layout.session_resume.filtered_indices = scored.into_iter().map(|(_, i)| i).collect();
 }

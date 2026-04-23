@@ -16,11 +16,11 @@ use super::operator::render_activity_panel;
 use super::operator::render_operator_panel;
 
 pub(super) fn render_workspace(f: &mut Frame, state: &mut AppState, area: Rect) {
-    let main_area = if state.side_panel.visible {
+    let main_area = if state.layout.side_panel.visible {
         let h_chunks = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([
-                Constraint::Length(state.side_panel.width),
+                Constraint::Length(state.layout.side_panel.width),
                 Constraint::Min(0),
             ])
             .split(area);
@@ -65,17 +65,17 @@ pub(super) fn render_workbench_panel(f: &mut Frame, state: &mut AppState, area: 
         .constraints([Constraint::Length(2), Constraint::Min(1)])
         .split(area);
 
-    let idx = crate::workbench::active_tab_index(&state.workbench_tab);
+    let idx = crate::workbench::active_tab_index(&state.layout.workbench_tab);
     let labels = crate::workbench::tab_labels(state);
     let tabs = Tabs::new(labels.clone())
         .select(idx)
         .block(Block::default().borders(Borders::ALL).title(Span::styled(
             "Workbench",
-            focus_style(state.focus == WorkspaceFocus::Workbench, &state.theme),
+            focus_style(state.layout.focus == WorkspaceFocus::Workbench, &state.core.theme),
         )))
         .highlight_style(
             state
-                .theme
+                .core.theme
                 .style(crate::services::theme::StyleKey::ListSelected),
         );
     f.render_widget(tabs, chunks[0]);
@@ -83,7 +83,7 @@ pub(super) fn render_workbench_panel(f: &mut Frame, state: &mut AppState, area: 
     // PR-T16 — record per-tab click regions for the mouse dispatcher.
     // Layout mirrors ratatui::Tabs rendering: each label is drawn inside the
     // bordered block on the first inner row, separated by `" │ "` (3 cols).
-    state.workbench_chrome.tab_regions.clear();
+    state.layout.workbench_chrome.tab_regions.clear();
     if chunks[0].height >= 3 && chunks[0].width >= 3 {
         let inner_y = chunks[0].y + 1;
         let inner_x_start = chunks[0].x + 1;
@@ -98,7 +98,7 @@ pub(super) fn render_workbench_panel(f: &mut Frame, state: &mut AppState, area: 
             let rect_w = w.min(avail);
             let rect = ratatui::layout::Rect::new(x, inner_y, rect_w, 1);
             state
-                .workbench_chrome.tab_regions
+                .layout.workbench_chrome.tab_regions
                 .push((crate::workbench::tab_from_index(i), rect));
             x = x.saturating_add(w + 3); // " │ " separator between tabs
         }

@@ -8,47 +8,47 @@ use crate::app::{AppState, InputEvent};
 /// Handle a key event when the plan review overlay is visible.
 /// Returns `true` if the event was consumed.
 pub fn handle_plan_review_key(state: &mut AppState, event: &InputEvent) -> bool {
-    if !state.plan.review_open {
+    if !state.workspace.plan.review_open {
         return false;
     }
 
-    let body = crate::services::plan::extract_plan_body(&state.plan.draft).to_string();
+    let body = crate::services::plan::extract_plan_body(&state.workspace.plan.draft).to_string();
     let line_count = body.lines().count();
 
     match event {
         InputEvent::HandleEsc => {
-            state.plan.review_open = false;
+            state.workspace.plan.review_open = false;
         }
         InputEvent::Up | InputEvent::ScrollUp => {
-            state.plan.review_selected = state.plan.review_selected.saturating_sub(1);
-            if state.plan.review_selected < state.plan.review_scroll {
-                state.plan.review_scroll = state.plan.review_selected;
+            state.workspace.plan.review_selected = state.workspace.plan.review_selected.saturating_sub(1);
+            if state.workspace.plan.review_selected < state.workspace.plan.review_scroll {
+                state.workspace.plan.review_scroll = state.workspace.plan.review_selected;
             }
         }
         InputEvent::Down | InputEvent::ScrollDown => {
-            if line_count > 0 && state.plan.review_selected + 1 < line_count {
-                state.plan.review_selected += 1;
+            if line_count > 0 && state.workspace.plan.review_selected + 1 < line_count {
+                state.workspace.plan.review_selected += 1;
             }
         }
         InputEvent::PageUp => {
-            state.plan.review_scroll = state.plan.review_scroll.saturating_sub(10);
-            state.plan.review_selected = state.plan.review_selected.saturating_sub(10);
+            state.workspace.plan.review_scroll = state.workspace.plan.review_scroll.saturating_sub(10);
+            state.workspace.plan.review_selected = state.workspace.plan.review_selected.saturating_sub(10);
         }
         InputEvent::PageDown => {
             let max_scroll = line_count.saturating_sub(1);
-            state.plan.review_scroll = state.plan.review_scroll.saturating_add(10).min(max_scroll);
+            state.workspace.plan.review_scroll = state.workspace.plan.review_scroll.saturating_add(10).min(max_scroll);
             if line_count > 0 {
-                state.plan.review_selected = (state.plan.review_selected + 10).min(line_count - 1);
+                state.workspace.plan.review_selected = (state.workspace.plan.review_selected + 10).min(line_count - 1);
             }
         }
         InputEvent::InputChanged('a') => {
             write_plan_status(state, crate::services::plan::PlanStatus::Approved);
-            state.plan.review_open = false;
+            state.workspace.plan.review_open = false;
             state.add_assistant_message("Plan approved.".to_string());
         }
         InputEvent::InputChanged('r') => {
             write_plan_status(state, crate::services::plan::PlanStatus::Drafting);
-            state.plan.review_open = false;
+            state.workspace.plan.review_open = false;
             state.add_assistant_message("Plan marked for revision.".to_string());
         }
         _ => {
@@ -61,9 +61,9 @@ pub fn handle_plan_review_key(state: &mut AppState, event: &InputEvent) -> bool 
 /// Rewrite plan.md with a new status, guarding against concurrent external edits.
 pub fn write_plan_status(state: &mut AppState, new_status: crate::services::plan::PlanStatus) {
     use crate::services::plan;
-    let on_disk = std::fs::read_to_string(plan::plan_file_path(&state.project_root)).ok();
+    let on_disk = std::fs::read_to_string(plan::plan_file_path(&state.core.project_root)).ok();
     if let Some(disk_content) = on_disk.as_ref() {
-        if plan::compute_plan_hash(disk_content) != plan::compute_plan_hash(&state.plan.draft) {
+        if plan::compute_plan_hash(disk_content) != plan::compute_plan_hash(&state.workspace.plan.draft) {
             state.add_assistant_message(
                 "Plan file changed on disk since it was loaded. Reload with /plan-review first."
                     .to_string(),
@@ -71,7 +71,7 @@ pub fn write_plan_status(state: &mut AppState, new_status: crate::services::plan
             return;
         }
     }
-    let Some(meta) = state.plan.metadata.as_mut() else {
+    let Some(meta) = state.workspace.plan.metadata.as_mut() else {
         state.add_assistant_message("No plan metadata loaded.".to_string());
         return;
     };
@@ -82,13 +82,13 @@ pub fn write_plan_status(state: &mut AppState, new_status: crate::services::plan
         state.add_assistant_message("Failed to serialize plan metadata.".to_string());
         return;
     };
-    let body = plan::extract_plan_body(&state.plan.draft).to_string();
+    let body = plan::extract_plan_body(&state.workspace.plan.draft).to_string();
     let new_content = format!("---\n{}---\n\n{}", fm, body);
-    if let Err(e) = plan::write_plan_file(&state.project_root, &new_content) {
+    if let Err(e) = plan::write_plan_file(&state.core.project_root, &new_content) {
         state.add_assistant_message(format!("Failed to write plan: {}", e));
         return;
     }
-    state.plan.draft = new_content;
+    state.workspace.plan.draft = new_content;
 }
 
 /// Open plan.md in $EDITOR, suspending the TUI.
@@ -102,13 +102,13 @@ pub fn open_editor(state: &mut AppState) {
         },
     };
 
-    let project_root = state.project_root.clone();
+    let project_root = state.core.project_root.clone();
     let plan_path = crate::services::plan::plan_file_path(&project_root);
 
     // Seed a minimal template if no plan file exists yet.
     if !plan_path.exists() {
         let title = state
-            .session_meta.title
+            .session.session_meta.title
             .clone()
             .unwrap_or_else(|| "Session Plan".to_string());
         let tmpl = crate::services::plan::new_plan_template(&title);
@@ -154,8 +154,8 @@ pub fn open_editor(state: &mut AppState) {
 
     // Reload plan after editor closes.
     if let Some((meta, content)) = crate::services::plan::read_plan_file(&project_root) {
-        state.plan.metadata = Some(meta);
-        state.plan.draft = content;
+        state.workspace.plan.metadata = Some(meta);
+        state.workspace.plan.draft = content;
         state.add_assistant_message("Plan updated from editor.".to_string());
     } else {
         state.add_assistant_message(

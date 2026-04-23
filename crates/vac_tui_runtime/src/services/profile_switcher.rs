@@ -18,8 +18,8 @@ pub fn render_profile_switcher(f: &mut Frame, state: &mut AppState) {
         .split(area);
 
     let input = Paragraph::new(Line::from(vec![
-        Span::styled("Filter ", state.theme.style(StyleKey::Muted)),
-        Span::raw(&state.switchers.profile_search),
+        Span::styled("Filter ", state.core.theme.style(StyleKey::Muted)),
+        Span::raw(&state.layout.switchers.profile_search),
     ]))
     .block(
         Block::default()
@@ -33,18 +33,18 @@ pub fn render_profile_switcher(f: &mut Frame, state: &mut AppState) {
         .iter()
         .enumerate()
         .map(|(i, p)| {
-            let style = if i == state.switchers.profile_selected {
-                state.theme.style(StyleKey::ListSelected)
+            let style = if i == state.layout.switchers.profile_selected {
+                state.core.theme.style(StyleKey::ListSelected)
             } else {
                 Style::default()
             };
-            let prefix = if p == &state.switchers.active_profile {
+            let prefix = if p == &state.layout.switchers.active_profile {
                 "* "
             } else {
                 "  "
             };
             ListItem::new(Line::from(vec![
-                Span::styled(prefix, state.theme.style(StyleKey::Success)),
+                Span::styled(prefix, state.core.theme.style(StyleKey::Success)),
                 Span::styled(p.clone(), style),
             ]))
         })
@@ -52,7 +52,7 @@ pub fn render_profile_switcher(f: &mut Frame, state: &mut AppState) {
 
     let list = List::new(items)
         .block(Block::default().borders(Borders::ALL).title("Profiles"))
-        .highlight_style(state.theme.style(StyleKey::ListSelected));
+        .highlight_style(state.core.theme.style(StyleKey::ListSelected));
     f.render_widget(list, chunks[1]);
 }
 

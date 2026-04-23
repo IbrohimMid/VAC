@@ -61,5 +61,5 @@ fn push_activity_ring_under_100ms_for_10k_pushes() {
         "10k push_activity took {}ms (budget: 100ms)",
         elapsed.as_millis()
     );
-    assert!(state.activity.len() <= 500);
+    assert!(state.execution.activity.len() <= 500);
 }

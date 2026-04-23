@@ -13,22 +13,22 @@ pub fn render_isolation_switcher(f: &mut Frame, state: &mut AppState) {
     f.render_widget(Clear, area);
 
     let items: Vec<ListItem> = state
-        .switchers.isolation_modes
+        .layout.switchers.isolation_modes
         .iter()
         .enumerate()
         .map(|(i, p)| {
-            let style = if i == state.switchers.isolation_selected {
-                state.theme.style(StyleKey::ListSelected)
+            let style = if i == state.layout.switchers.isolation_selected {
+                state.core.theme.style(StyleKey::ListSelected)
             } else {
                 Style::default()
             };
-            let prefix = if p == &state.switchers.active_isolation_mode {
+            let prefix = if p == &state.layout.switchers.active_isolation_mode {
                 "* "
             } else {
                 "  "
             };
             ListItem::new(Line::from(vec![
-                Span::styled(prefix, state.theme.style(StyleKey::Success)),
+                Span::styled(prefix, state.core.theme.style(StyleKey::Success)),
                 Span::styled(p.clone(), style),
             ]))
         })
@@ -40,7 +40,7 @@ pub fn render_isolation_switcher(f: &mut Frame, state: &mut AppState) {
                 .borders(Borders::ALL)
                 .title("Isolation Environment"),
         )
-        .highlight_style(state.theme.style(StyleKey::ListSelected));
+        .highlight_style(state.core.theme.style(StyleKey::ListSelected));
     f.render_widget(list, area);
 }
 

@@ -14,7 +14,7 @@ pub fn render_side_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
 
     let block = Block::default()
         .borders(Borders::LEFT)
-        .border_style(state.theme.style(StyleKey::Muted));
+        .border_style(state.core.theme.style(StyleKey::Muted));
     let inner_area = block.inner(area);
     f.render_widget(block, area);
 
@@ -26,25 +26,25 @@ pub fn render_side_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
     };
 
     let context_collapsed = state
-        .side_panel.section_collapsed
+        .layout.side_panel.section_collapsed
         .contains(&SidePanelSection::Context);
     let runtime_collapsed = state
-        .side_panel.section_collapsed
+        .layout.side_panel.section_collapsed
         .contains(&SidePanelSection::Runtime);
     let mcp_collapsed = state
-        .side_panel.section_collapsed
+        .layout.side_panel.section_collapsed
         .contains(&SidePanelSection::Mcp);
     let sessions_collapsed = state
-        .side_panel.section_collapsed
+        .layout.side_panel.section_collapsed
         .contains(&SidePanelSection::Sessions);
     let usage_collapsed = state
-        .side_panel.section_collapsed
+        .layout.side_panel.section_collapsed
         .contains(&SidePanelSection::Usage);
 
     let collapsed_height = 1;
-    let context_extra = (!state.pins.files.is_empty()) as u16
-        + (!state.pins.diffs.is_empty()) as u16
-        + (!state.pins.diagnostics.is_empty()) as u16;
+    let context_extra = (!state.layout.pins.files.is_empty()) as u16
+        + (!state.layout.pins.diffs.is_empty()) as u16
+        + (!state.layout.pins.diagnostics.is_empty()) as u16;
     let context_height = if context_collapsed {
         collapsed_height
     } else {
@@ -56,7 +56,7 @@ pub fn render_side_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
         6
     };
     let mcp_lines = state
-        .mcp_maps.server_states
+        .execution.mcp_maps.server_states
         .values()
         .map(|s| {
             if matches!(
@@ -79,9 +79,9 @@ pub fn render_side_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
     } else {
         8
     };
-    let usage_visible = state.billing.current_message.total_tokens > 0
-        || state.billing.total_session.total_tokens > 0
-        || state.billing.context_usage_percent > 0.0;
+    let usage_visible = state.operator_config.billing.current_message.total_tokens > 0
+        || state.operator_config.billing.total_session.total_tokens > 0
+        || state.operator_config.billing.context_usage_percent > 0.0;
     let usage_height = if !usage_visible {
         0
     } else if usage_collapsed {
@@ -90,9 +90,9 @@ pub fn render_side_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
         4
     };
     // Changeset and Todos are summary-only (1 line each); full detail is in workbench tabs.
-    let changeset_count = state.changeset_store.active_entries().len();
+    let changeset_count = state.workspace.changeset_store.active_entries().len();
     let changeset_height: u16 = if changeset_count > 0 { 1 } else { 0 };
-    let todos_visible = !state.todos.is_empty();
+    let todos_visible = !state.transcript.todos.is_empty();
     let todos_height: u16 = if todos_visible { 1 } else { 0 };
 
     let chunks = Layout::default()
@@ -109,8 +109,8 @@ pub fn render_side_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
         ])
         .split(padded_area);
 
-    state.side_panel.header_areas.clear();
-    state.side_panel.row_areas.clear();
+    state.layout.side_panel.header_areas.clear();
+    state.layout.side_panel.row_areas.clear();
     let mut sections: Vec<(SidePanelSection, Rect)> = vec![(SidePanelSection::Context, chunks[0])];
     if usage_visible {
         sections.push((SidePanelSection::Usage, chunks[1]));
@@ -126,7 +126,7 @@ pub fn render_side_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
     }
     for (sec, mut rect) in sections {
         rect.height = 1;
-        state.side_panel.header_areas.insert(sec, rect);
+        state.layout.side_panel.header_areas.insert(sec, rect);
     }
 
     render_context_section(f, state, chunks[0], context_collapsed);
@@ -147,17 +147,17 @@ pub fn render_side_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
 fn render_todos_summary(f: &mut Frame, state: &AppState, area: Rect) {
     use vac_changeset::TodoStatus;
     let pending = state
-        .todos
+        .transcript.todos
         .iter()
         .filter(|t| t.status != TodoStatus::Done)
         .count();
-    let done = state.todos.len().saturating_sub(pending);
+    let done = state.transcript.todos.len().saturating_sub(pending);
     let line = Line::from(vec![
         Span::styled(
-            format!("  ▸ Todos ({}/{}) ", done, state.todos.len()),
+            format!("  ▸ Todos ({}/{}) ", done, state.transcript.todos.len()),
             Style::default().add_modifier(Modifier::BOLD),
         ),
-        Span::styled("— Workbench", state.theme.style(StyleKey::Muted)),
+        Span::styled("— Workbench", state.core.theme.style(StyleKey::Muted)),
     ]);
     f.render_widget(Paragraph::new(vec![line]), area);
 }
@@ -174,29 +174,29 @@ fn render_usage_section(f: &mut Frame, state: &AppState, area: Rect, collapsed: 
         return;
     }
 
-    let pct = state.billing.context_usage_percent.clamp(0.0, 100.0);
+    let pct = state.operator_config.billing.context_usage_percent.clamp(0.0, 100.0);
     let pct_style = if pct >= 80.0 {
-        state.theme.style(StyleKey::Error)
+        state.core.theme.style(StyleKey::Error)
     } else if pct >= 50.0 {
-        state.theme.style(StyleKey::Warning)
+        state.core.theme.style(StyleKey::Warning)
     } else {
-        state.theme.style(StyleKey::Success)
+        state.core.theme.style(StyleKey::Success)
     };
     let lines = vec![
         header,
         Line::from(vec![
-            Span::styled("    Turn: ", state.theme.style(StyleKey::Muted)),
+            Span::styled("    Turn: ", state.core.theme.style(StyleKey::Muted)),
             Span::raw(format!(
                 "{} in / {} out",
-                state.billing.current_message.input_tokens, state.billing.current_message.output_tokens
+                state.operator_config.billing.current_message.input_tokens, state.operator_config.billing.current_message.output_tokens
             )),
         ]),
         Line::from(vec![
-            Span::styled("    Session: ", state.theme.style(StyleKey::Muted)),
-            Span::raw(format!("{} tokens", state.billing.total_session.total_tokens)),
+            Span::styled("    Session: ", state.core.theme.style(StyleKey::Muted)),
+            Span::raw(format!("{} tokens", state.operator_config.billing.total_session.total_tokens)),
         ]),
         Line::from(vec![
-            Span::styled("    Context: ", state.theme.style(StyleKey::Muted)),
+            Span::styled("    Context: ", state.core.theme.style(StyleKey::Muted)),
             Span::styled(format!("{:.0}%", pct), pct_style),
         ]),
     ];
@@ -218,70 +218,70 @@ fn render_context_section(f: &mut Frame, state: &AppState, area: Rect, collapsed
     let mut lines = vec![header];
 
     let model_name = state
-        .operator.current_model
+        .operator_config.operator.current_model
         .as_ref()
         .map(|m| m.name.clone())
         .unwrap_or_else(|| "no active model selected".to_string());
     lines.push(Line::from(vec![
-        Span::styled("    Model: ", state.theme.style(StyleKey::Muted)),
+        Span::styled("    Model: ", state.core.theme.style(StyleKey::Muted)),
         Span::raw(model_name),
     ]));
 
-    let session = state.session_id.chars().take(8).collect::<String>();
+    let session = state.session.session_id.chars().take(8).collect::<String>();
     lines.push(Line::from(vec![
-        Span::styled("    Session: ", state.theme.style(StyleKey::Muted)),
+        Span::styled("    Session: ", state.core.theme.style(StyleKey::Muted)),
         Span::raw(session),
     ]));
 
-    let auto = if state.view_flags.auto_approve {
+    let auto = if state.core.view_flags.auto_approve {
         "Enabled"
     } else {
         "Disabled"
     };
-    let auto_style = if state.view_flags.auto_approve {
-        state.theme.style(StyleKey::Error)
+    let auto_style = if state.core.view_flags.auto_approve {
+        state.core.theme.style(StyleKey::Error)
     } else {
-        state.theme.style(StyleKey::Success)
+        state.core.theme.style(StyleKey::Success)
     };
     lines.push(Line::from(vec![
-        Span::styled("    Auto-Approve: ", state.theme.style(StyleKey::Muted)),
+        Span::styled("    Auto-Approve: ", state.core.theme.style(StyleKey::Muted)),
         Span::styled(auto, auto_style),
     ]));
 
     if let Some(ident) = state
-        .billing.auth_display
+        .operator_config.billing.auth_display
         .0
         .as_ref()
-        .or(state.billing.auth_display.1.as_ref())
+        .or(state.operator_config.billing.auth_display.1.as_ref())
     {
         lines.push(Line::from(vec![
-            Span::styled("    Auth: ", state.theme.style(StyleKey::Muted)),
-            Span::raw(ident.clone()),
+            Span::styled("    Auth: ", state.core.theme.style(StyleKey::Muted)),
+            Span::raw(ident.to_string()),
         ]));
     }
 
-    if !state.pins.files.is_empty() {
+    if !state.layout.pins.files.is_empty() {
         lines.push(Line::from(vec![
-            Span::styled("    Files: ", state.theme.style(StyleKey::Muted)),
-            Span::raw(compact_items(&state.pins.files, 2)),
+            Span::styled("    Files: ", state.core.theme.style(StyleKey::Muted)),
+            Span::raw(compact_items(&state.layout.pins.files, 2)),
         ]));
     }
-    if !state.pins.diffs.is_empty() {
+    if !state.layout.pins.diffs.is_empty() {
         lines.push(Line::from(vec![
-            Span::styled("    Diffs: ", state.theme.style(StyleKey::Muted)),
-            Span::raw(compact_items(&state.pins.diffs, 2)),
+            Span::styled("    Diffs: ", state.core.theme.style(StyleKey::Muted)),
+            Span::raw(compact_items(&state.layout.pins.diffs, 2)),
         ]));
     }
-    if !state.pins.diagnostics.is_empty() {
+    if !state.layout.pins.diagnostics.is_empty() {
         lines.push(Line::from(vec![
-            Span::styled("    Diagnostics: ", state.theme.style(StyleKey::Muted)),
-            Span::raw(compact_items(&state.pins.diagnostics, 2)),
+            Span::styled("    Diagnostics: ", state.core.theme.style(StyleKey::Muted)),
+            Span::raw(compact_items(&state.layout.pins.diagnostics, 2)),
         ]));
-    } else if state.pins.files.is_empty() && state.pins.diffs.is_empty() {
+    } else if state.layout.pins.files.is_empty() && state.layout.pins.diffs.is_empty() {
         lines.push(Line::styled(
             "    No pinned context yet. Use /context pin <file> to add one.",
             state
-                .theme
+                .core.theme
                 .style(StyleKey::Muted)
                 .add_modifier(Modifier::ITALIC),
         ));
@@ -313,21 +313,21 @@ fn render_sessions_section(f: &mut Frame, state: &mut AppState, area: Rect, coll
 
     let mut lines = vec![header];
 
-    if state.sessions.is_empty() {
+    if state.session.sessions.is_empty() {
         lines.push(Line::styled(
             "    No sessions loaded yet. Run /sessions to open saved sessions.",
             state
-                .theme
+                .core.theme
                 .style(StyleKey::Muted)
                 .add_modifier(Modifier::ITALIC),
         ));
     } else {
-        for (i, session) in state.sessions.iter().take(5).enumerate() {
-            let is_active = session.id == state.session_id;
+        for (i, session) in state.session.sessions.iter().take(5).enumerate() {
+            let is_active = session.id == state.session.session_id;
             let row_style = if is_active {
-                state.theme.style(StyleKey::Warning)
+                state.core.theme.style(StyleKey::Warning)
             } else {
-                state.theme.style(StyleKey::Muted)
+                state.core.theme.style(StyleKey::Muted)
             };
             let title = if session.title.is_empty() {
                 "Untitled"
@@ -342,7 +342,7 @@ fn render_sessions_section(f: &mut Frame, state: &mut AppState, area: Rect, coll
             // Track row rect for click handling (header is row 0, sessions start at row 1)
             let row_y = area.y + 1 + i as u16;
             if row_y < area.y + area.height {
-                state.side_panel.row_areas.push((
+                state.layout.side_panel.row_areas.push((
                     crate::app::SidePanelRowAction::SwitchSession(session.id.clone()),
                     Rect::new(area.x, row_y, area.width, 1),
                 ));
@@ -356,11 +356,11 @@ fn render_sessions_section(f: &mut Frame, state: &mut AppState, area: Rect, coll
 fn render_mcp_section(f: &mut Frame, state: &mut AppState, area: Rect, collapsed: bool) {
     let collapse_indicator = if collapsed { "▸" } else { "▾" };
     let connected = state
-        .mcp_maps.server_states
+        .execution.mcp_maps.server_states
         .values()
         .filter(|s| s.is_connected())
         .count();
-    let total = state.mcp_maps.server_states.len();
+    let total = state.execution.mcp_maps.server_states.len();
     let header = Line::from(Span::styled(
         format!(
             "  {} MCP Servers ({}/{})",
@@ -380,17 +380,17 @@ fn render_mcp_section(f: &mut Frame, state: &mut AppState, area: Rect, collapsed
         lines.push(Line::styled(
             "    No MCP servers configured.",
             state
-                .theme
+                .core.theme
                 .style(StyleKey::Muted)
                 .add_modifier(Modifier::ITALIC),
         ));
     } else {
         let mut row_offset = 1u16; // header is row 0
-        for (name, conn_state) in &state.mcp_maps.server_states {
+        for (name, conn_state) in &state.execution.mcp_maps.server_states {
             // Track row for click
             let row_y = area.y + row_offset;
             if row_y < area.y + area.height {
-                state.side_panel.row_areas.push((
+                state.layout.side_panel.row_areas.push((
                     crate::app::SidePanelRowAction::ShowMcpDetail(name.clone()),
                     Rect::new(area.x, row_y, area.width, 1),
                 ));
@@ -411,9 +411,9 @@ fn render_mcp_section(f: &mut Frame, state: &mut AppState, area: Rect, collapsed
 
             let mut line_spans = vec![
                 Span::raw("    "),
-                Span::styled(status, state.theme.style(status_key)),
+                Span::styled(status, state.core.theme.style(status_key)),
                 Span::raw(" "),
-                Span::styled(name.clone(), state.theme.style(StyleKey::Warning)),
+                Span::styled(name.clone(), state.core.theme.style(StyleKey::Warning)),
             ];
 
             if let Some(trust) = &conn_state.trust_class {
@@ -427,10 +427,10 @@ fn render_mcp_section(f: &mut Frame, state: &mut AppState, area: Rect, collapsed
                     }
                 };
                 line_spans.push(Span::raw(" "));
-                line_spans.push(Span::styled(trust_badge, state.theme.style(trust_key)));
+                line_spans.push(Span::styled(trust_badge, state.core.theme.style(trust_key)));
             }
 
-            let mut active_mode = state.switchers.active_isolation_mode.clone();
+            let mut active_mode = state.layout.switchers.active_isolation_mode.clone();
             if active_mode.starts_with("isolated") {
                 active_mode = "isolated".to_string(); // Map isolated variants
             }
@@ -441,7 +441,7 @@ fn render_mcp_section(f: &mut Frame, state: &mut AppState, area: Rect, collapsed
                 line_spans.push(Span::styled(
                     "⚠️ Mode Mismatch",
                     state
-                        .theme
+                        .core.theme
                         .style(StyleKey::Error)
                         .add_modifier(Modifier::BOLD),
                 ));
@@ -451,7 +451,7 @@ fn render_mcp_section(f: &mut Frame, state: &mut AppState, area: Rect, collapsed
             if let vac_tools::mcp::McpConnectionStatus::Unreachable(reason) = &conn_state.status {
                 lines.push(Line::from(vec![
                     Span::raw("      "),
-                    Span::styled(reason.clone(), state.theme.style(StyleKey::Muted)),
+                    Span::styled(reason.clone(), state.core.theme.style(StyleKey::Muted)),
                 ]));
             }
         }
@@ -478,7 +478,7 @@ fn render_runtime_section(f: &mut Frame, state: &AppState, area: Rect, collapsed
     let mut running = 0;
     let mut completed = 0;
     let mut failed = 0;
-    for job in &state.runtime.jobs {
+    for job in &state.execution.runtime.jobs {
         match &job.status {
             vac_runtime::JobStatus::Queued => queued += 1,
             vac_runtime::JobStatus::Running => running += 1,
@@ -489,19 +489,19 @@ fn render_runtime_section(f: &mut Frame, state: &AppState, area: Rect, collapsed
     }
 
     lines.push(Line::from(vec![
-        Span::styled("    Queued: ", state.theme.style(StyleKey::Muted)),
+        Span::styled("    Queued: ", state.core.theme.style(StyleKey::Muted)),
         Span::raw(queued.to_string()),
     ]));
     lines.push(Line::from(vec![
-        Span::styled("    Running: ", state.theme.style(StyleKey::Muted)),
+        Span::styled("    Running: ", state.core.theme.style(StyleKey::Muted)),
         Span::raw(running.to_string()),
     ]));
     lines.push(Line::from(vec![
-        Span::styled("    Completed: ", state.theme.style(StyleKey::Muted)),
+        Span::styled("    Completed: ", state.core.theme.style(StyleKey::Muted)),
         Span::raw(completed.to_string()),
     ]));
     lines.push(Line::from(vec![
-        Span::styled("    Failed: ", state.theme.style(StyleKey::Muted)),
+        Span::styled("    Failed: ", state.core.theme.style(StyleKey::Muted)),
         Span::raw(failed.to_string()),
     ]));
 
@@ -509,13 +509,13 @@ fn render_runtime_section(f: &mut Frame, state: &AppState, area: Rect, collapsed
 }
 
 fn render_changeset_summary(f: &mut Frame, state: &AppState, area: Rect) {
-    let count = state.changeset_store.active_entries().len();
+    let count = state.workspace.changeset_store.active_entries().len();
     let line = Line::from(vec![
         Span::styled(
             format!("  ▸ Changeset ({}) ", count),
             Style::default().add_modifier(Modifier::BOLD),
         ),
-        Span::styled("— Workbench", state.theme.style(StyleKey::Muted)),
+        Span::styled("— Workbench", state.core.theme.style(StyleKey::Muted)),
     ]);
     f.render_widget(Paragraph::new(vec![line]), area);
 }

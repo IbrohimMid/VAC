@@ -16,27 +16,27 @@ pub struct PlanTab;
 
 impl WorkbenchTabView for PlanTab {
     fn tab_label(state: &AppState) -> String {
-        match &state.plan.metadata {
+        match &state.workspace.plan.metadata {
             Some(m) => format!("Plan [{}]", m.status),
             None => "Plan".to_string(),
         }
     }
 
     fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
-        let body_text = if state.plan.draft.is_empty() {
+        let body_text = if state.workspace.plan.draft.is_empty() {
             "No plan loaded yet. Run /plan to create one or /plan-review to inspect an existing plan.".to_string()
         } else {
-            crate::services::plan::extract_plan_body(&state.plan.draft).to_string()
+            crate::services::plan::extract_plan_body(&state.workspace.plan.draft).to_string()
         };
 
         let mut lines: Vec<Line> = Vec::new();
-        if let Some(meta) = &state.plan.metadata {
+        if let Some(meta) = &state.workspace.plan.metadata {
             lines.push(Line::from(vec![
-                Span::styled("Title: ", state.theme.style(StyleKey::Muted)),
+                Span::styled("Title: ", state.core.theme.style(StyleKey::Muted)),
                 Span::styled(
                     meta.title.clone(),
                     state
-                        .theme
+                        .core.theme
                         .style(StyleKey::Warning)
                         .add_modifier(Modifier::BOLD),
                 ),
@@ -49,11 +49,11 @@ impl WorkbenchTabView for PlanTab {
                 crate::services::plan::PlanStatus::Approved => ("approved", StyleKey::Success),
             };
             lines.push(Line::from(vec![
-                Span::styled("Status: ", state.theme.style(StyleKey::Muted)),
-                Span::styled(status_label.to_string(), state.theme.style(status_key)),
+                Span::styled("Status: ", state.core.theme.style(StyleKey::Muted)),
+                Span::styled(status_label.to_string(), state.core.theme.style(status_key)),
                 Span::styled(
                     format!("  v{}", meta.version),
-                    state.theme.style(StyleKey::Muted),
+                    state.core.theme.style(StyleKey::Muted),
                 ),
             ]));
             lines.push(Line::raw(""));
@@ -64,10 +64,10 @@ impl WorkbenchTabView for PlanTab {
         lines.push(Line::raw(""));
         lines.push(Line::from(Span::styled(
             "  e: edit in $EDITOR | a: approve | r: request changes | /plan-review: overlay",
-            state.theme.style(StyleKey::Muted),
+            state.core.theme.style(StyleKey::Muted),
         )));
 
-        let focus_style = focus_style(state.focus == WorkspaceFocus::Workbench, &state.theme);
+        let focus_style = focus_style(state.layout.focus == WorkspaceFocus::Workbench, &state.core.theme);
 
         let para = Paragraph::new(lines)
             .block(

@@ -54,7 +54,7 @@ impl WorkbenchTab {
     }
 }
 
-/// Git-review domain state. Accessed via `app_state.review`.
+/// Git-review domain state. Accessed via `app_state.workspace.review`.
 #[derive(Debug, Clone, Default)]
 pub struct ReviewState {
     pub open: bool,
@@ -91,7 +91,7 @@ pub struct ReviewDiffState {
     pub last_error: Option<String>,
 }
 
-/// Plan-mode domain state. Accessed via `app_state.plan`.
+/// Plan-mode domain state. Accessed via `app_state.workspace.plan`.
 #[derive(Debug, Clone, Default)]
 pub struct PlanState {
     pub mode_active: bool,

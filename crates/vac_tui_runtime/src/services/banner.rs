@@ -232,7 +232,7 @@ fn fxhash(s: &str) -> u64 {
 }
 
 pub fn banner_height(state: &AppState) -> u16 {
-    match &state.banner.message {
+    match &state.layout.banner.message {
         Some(msg) if !msg.is_expired() => BANNER_VISIBLE_HEIGHT,
         _ => 0,
     }
@@ -272,18 +272,18 @@ fn find_slash_commands(text: &str) -> Vec<(usize, String)> {
 }
 
 pub fn render_banner(f: &mut Frame, area: Rect, state: &mut AppState) {
-    if let Some(msg) = &state.banner.message
+    if let Some(msg) = &state.layout.banner.message
         && msg.is_expired()
     {
-        state.banner.message = None;
+        state.layout.banner.message = None;
     }
 
-    let Some(msg) = &state.banner.message else {
+    let Some(msg) = &state.layout.banner.message else {
         return;
     };
 
-    let border_style = state.theme.style(msg.style.style_key());
-    let accent_style = state.theme.style(StyleKey::Accent);
+    let border_style = state.core.theme.style(msg.style.style_key());
+    let accent_style = state.core.theme.style(StyleKey::Accent);
 
     let block = Block::default()
         .borders(Borders::ALL)
@@ -344,7 +344,7 @@ pub fn render_banner(f: &mut Frame, area: Rect, state: &mut AppState) {
     spans.push(Span::styled(
         dismiss_label.to_string(),
         state
-            .theme
+            .core.theme
             .style(msg.style.style_key())
             .add_modifier(Modifier::DIM),
     ));
@@ -352,7 +352,7 @@ pub fn render_banner(f: &mut Frame, area: Rect, state: &mut AppState) {
     let dismiss_width: u16 = 5;
     let dismiss_x = area.x + area.width.saturating_sub(2 + dismiss_width);
     let dismiss_y = area.y;
-    state.banner.dismiss_region = Some(Rect::new(
+    state.layout.banner.dismiss_region = Some(Rect::new(
         dismiss_x,
         dismiss_y,
         dismiss_width + 2,
@@ -364,7 +364,7 @@ pub fn render_banner(f: &mut Frame, area: Rect, state: &mut AppState) {
         .alignment(Alignment::Left);
 
     f.render_widget(paragraph, area);
-    state.banner.click_regions = click_regions;
+    state.layout.banner.click_regions = click_regions;
 }
 
 #[cfg(test)]

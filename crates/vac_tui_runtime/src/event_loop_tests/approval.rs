@@ -34,30 +34,30 @@ async fn ask_user_filter_and_shortcuts_update_state_and_send_structured_result()
     open_ask_user_popup(&mut state, &tc);
     assert!(
         state
-            .overlay_manager
+            .layout.overlay_manager
             .is_active(crate::overlay::OverlayId::AskUser)
     );
     assert_eq!(
-        state.ask_user.question_kind,
+        state.layout.ask_user.question_kind,
         crate::services::ask_user::AskUserQuestionKind::MultiSelect
     );
-    assert_eq!(state.ask_user.metadata.get("source").unwrap(), "test");
+    assert_eq!(state.layout.ask_user.metadata.get("source").unwrap(), "test");
 
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::Tab);
-    assert!(state.ask_user.search_active);
+    assert!(state.layout.ask_user.search_active);
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::InputChanged('b'));
-    assert_eq!(state.ask_user.filter, "b");
-    assert_eq!(state.ask_user.selected, 1);
+    assert_eq!(state.layout.ask_user.filter, "b");
+    assert_eq!(state.layout.ask_user.selected, 1);
 
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::Tab);
-    assert!(!state.ask_user.search_active);
+    assert!(!state.layout.ask_user.search_active);
 
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::InputCursorStart);
-    assert!(state.ask_user.multi_selected.contains(&1));
-    assert_eq!(state.ask_user.multi_selected.len(), 1);
+    assert!(state.layout.ask_user.multi_selected.contains(&1));
+    assert_eq!(state.layout.ask_user.multi_selected.len(), 1);
 
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::InputClear);
-    assert!(state.ask_user.multi_selected.is_empty());
+    assert!(state.layout.ask_user.multi_selected.is_empty());
 
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::InputSubmitted);
     let ev = rx.recv().await.unwrap();
@@ -107,10 +107,10 @@ async fn approval_queue_accepts_selected_and_emits_output_event() {
         InputEvent::ShowConfirmationDialogWithExplanation(tc2.clone(), Some("y".to_string())),
     );
 
-    assert_eq!(state.approvals.pending_approvals.len(), 2);
-    assert_eq!(state.approvals.approval_selected_idx, 1);
-    assert_eq!(state.focus, crate::app::WorkspaceFocus::Workbench);
-    assert_eq!(state.workbench_tab, crate::app::WorkbenchTab::Approvals);
+    assert_eq!(state.execution.approvals.pending_approvals.len(), 2);
+    assert_eq!(state.execution.approvals.approval_selected_idx, 1);
+    assert_eq!(state.layout.focus, crate::app::WorkspaceFocus::Workbench);
+    assert_eq!(state.layout.workbench_tab, crate::app::WorkbenchTab::Approvals);
 
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::InputChanged('a'));
     let ev = rx.recv().await.unwrap();
@@ -119,9 +119,9 @@ async fn approval_queue_accepts_selected_and_emits_output_event() {
         _ => panic!("unexpected event"),
     }
 
-    assert_eq!(state.approvals.pending_approvals.len(), 1);
-    assert_eq!(state.approvals.pending_approvals[0].id, "tc-1");
-    assert!(state.approvals.approved_tools.iter().any(|t| t.id == "tc-2"));
+    assert_eq!(state.execution.approvals.pending_approvals.len(), 1);
+    assert_eq!(state.execution.approvals.pending_approvals[0].id, "tc-1");
+    assert!(state.execution.approvals.approved_tools.iter().any(|t| t.id == "tc-2"));
 }
 
 #[tokio::test]
@@ -155,8 +155,8 @@ async fn approval_queue_rejects_selected_and_emits_output_event() {
         _ => panic!("unexpected event"),
     }
 
-    assert!(state.approvals.pending_approvals.is_empty());
-    assert!(state.approvals.rejected_tools.iter().any(|t| t.id == "tc-1"));
+    assert!(state.execution.approvals.pending_approvals.is_empty());
+    assert!(state.execution.approvals.rejected_tools.iter().any(|t| t.id == "tc-1"));
 }
 
 #[tokio::test]
@@ -166,7 +166,7 @@ async fn global_approval_hotkey_ctrl_m_approves_current() {
     let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
 
     // Add pending approval
-    state.approvals.pending_approvals.push(ToolCall {
+    state.execution.approvals.pending_approvals.push(ToolCall {
         id: "tc-1".to_string(),
         r#type: "function".to_string(),
         function: FunctionCall {
@@ -180,9 +180,9 @@ async fn global_approval_hotkey_ctrl_m_approves_current() {
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::AutoApproveCurrentTool);
 
     // Verify approval processed
-    assert_eq!(state.approvals.pending_approvals.len(), 0);
-    assert_eq!(state.approvals.approved_tools.len(), 1);
-    assert_eq!(state.approvals.approved_tools[0].id, "tc-1");
+    assert_eq!(state.execution.approvals.pending_approvals.len(), 0);
+    assert_eq!(state.execution.approvals.approved_tools.len(), 1);
+    assert_eq!(state.execution.approvals.approved_tools[0].id, "tc-1");
 
     // Verify output event sent
     let output = rx.try_recv().unwrap();
@@ -196,7 +196,7 @@ async fn global_approval_hotkey_ctrl_shift_m_rejects_current() {
     let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
 
     // Add pending approval
-    state.approvals.pending_approvals.push(ToolCall {
+    state.execution.approvals.pending_approvals.push(ToolCall {
         id: "tc-2".to_string(),
         r#type: "function".to_string(),
         function: FunctionCall {
@@ -210,16 +210,16 @@ async fn global_approval_hotkey_ctrl_shift_m_rejects_current() {
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::RejectCurrentTool);
 
     // Reason prompt should be active
-    assert!(state.approvals.reject_reason_input.is_some());
-    assert_eq!(state.approvals.pending_approvals.len(), 1); // not yet rejected
+    assert!(state.execution.approvals.reject_reason_input.is_some());
+    assert_eq!(state.execution.approvals.pending_approvals.len(), 1); // not yet rejected
 
     // Confirm with Enter (no reason typed)
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::InputSubmitted);
 
     // Verify rejection processed
-    assert_eq!(state.approvals.pending_approvals.len(), 0);
-    assert_eq!(state.approvals.rejected_tools.len(), 1);
-    assert_eq!(state.approvals.rejected_tools[0].id, "tc-2");
+    assert_eq!(state.execution.approvals.pending_approvals.len(), 0);
+    assert_eq!(state.execution.approvals.rejected_tools.len(), 1);
+    assert_eq!(state.execution.approvals.rejected_tools[0].id, "tc-2");
 
     // Verify output event sent
     let output = rx.try_recv().unwrap();
@@ -233,15 +233,15 @@ async fn global_approval_hotkeys_safe_when_no_pending() {
     let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
 
     // No pending approvals
-    assert_eq!(state.approvals.pending_approvals.len(), 0);
+    assert_eq!(state.execution.approvals.pending_approvals.len(), 0);
 
     // Trigger hotkeys - should not panic
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::AutoApproveCurrentTool);
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::RejectCurrentTool);
 
     // State unchanged
-    assert_eq!(state.approvals.approved_tools.len(), 0);
-    assert_eq!(state.approvals.rejected_tools.len(), 0);
+    assert_eq!(state.execution.approvals.approved_tools.len(), 0);
+    assert_eq!(state.execution.approvals.rejected_tools.len(), 0);
 }
 
 #[test]
@@ -250,7 +250,7 @@ fn footer_approval_bar_shows_when_pending_approvals() {
     let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
 
     // Add pending approval
-    state.approvals.pending_approvals.push(ToolCall {
+    state.execution.approvals.pending_approvals.push(ToolCall {
         id: "tc-1".to_string(),
         r#type: "function".to_string(),
         function: FunctionCall {
@@ -261,8 +261,8 @@ fn footer_approval_bar_shows_when_pending_approvals() {
     });
 
     // Footer should show approval bar (verified by view rendering logic)
-    assert!(!state.approvals.pending_approvals.is_empty());
-    assert_eq!(state.approvals.approval_selected_idx, 0);
+    assert!(!state.execution.approvals.pending_approvals.is_empty());
+    assert_eq!(state.execution.approvals.approval_selected_idx, 0);
 }
 
 #[test]
@@ -271,7 +271,7 @@ fn footer_approval_bar_hidden_when_no_pending() {
     let state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
 
     // No pending approvals
-    assert!(state.approvals.pending_approvals.is_empty());
+    assert!(state.execution.approvals.pending_approvals.is_empty());
     // Footer should show normal hints (verified by view rendering logic)
 }
 
@@ -282,7 +282,7 @@ fn footer_approval_bar_shows_correct_index() {
 
     // Add multiple pending approvals
     for i in 0..3 {
-        state.approvals.pending_approvals.push(ToolCall {
+        state.execution.approvals.pending_approvals.push(ToolCall {
             id: format!("tc-{}", i),
             r#type: "function".to_string(),
             function: FunctionCall {
@@ -294,11 +294,11 @@ fn footer_approval_bar_shows_correct_index() {
     }
 
     // Select second approval
-    state.approvals.approval_selected_idx = 1;
+    state.execution.approvals.approval_selected_idx = 1;
 
     // Verify index
-    assert_eq!(state.approvals.approval_selected_idx, 1);
-    assert_eq!(state.approvals.pending_approvals.len(), 3);
+    assert_eq!(state.execution.approvals.approval_selected_idx, 1);
+    assert_eq!(state.execution.approvals.pending_approvals.len(), 3);
 }
 
 #[tokio::test]
@@ -306,7 +306,7 @@ async fn approve_current_routes_via_handler() {
     let dir = tempfile::tempdir().unwrap();
     let (tx, mut rx) = tokio::sync::mpsc::channel(4);
     let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
-    state.approvals.pending_approvals.push(ToolCall {
+    state.execution.approvals.pending_approvals.push(ToolCall {
         id: "tc-h".to_string(),
         r#type: "function".to_string(),
         function: FunctionCall {
@@ -316,8 +316,8 @@ async fn approve_current_routes_via_handler() {
         metadata: None,
     });
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::AutoApproveCurrentTool);
-    assert_eq!(state.approvals.pending_approvals.len(), 0);
-    assert_eq!(state.approvals.approved_tools.len(), 1);
+    assert_eq!(state.execution.approvals.pending_approvals.len(), 0);
+    assert_eq!(state.execution.approvals.approved_tools.len(), 1);
     assert!(matches!(rx.try_recv().unwrap(), OutputEvent::AcceptTool(_)));
 }
 
@@ -326,7 +326,7 @@ async fn reject_current_routes_via_handler() {
     let dir = tempfile::tempdir().unwrap();
     let (tx, mut rx) = tokio::sync::mpsc::channel(4);
     let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
-    state.approvals.pending_approvals.push(ToolCall {
+    state.execution.approvals.pending_approvals.push(ToolCall {
         id: "tc-r".to_string(),
         r#type: "function".to_string(),
         function: FunctionCall {
@@ -337,11 +337,11 @@ async fn reject_current_routes_via_handler() {
     });
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::RejectCurrentTool);
     // Reason prompt active - not yet rejected
-    assert!(state.approvals.reject_reason_input.is_some());
+    assert!(state.execution.approvals.reject_reason_input.is_some());
     // Confirm with Enter
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::InputSubmitted);
-    assert_eq!(state.approvals.pending_approvals.len(), 0);
-    assert_eq!(state.approvals.rejected_tools.len(), 1);
+    assert_eq!(state.execution.approvals.pending_approvals.len(), 0);
+    assert_eq!(state.execution.approvals.rejected_tools.len(), 1);
     assert!(matches!(
         rx.try_recv().unwrap(),
         OutputEvent::RejectTool(_, _, _)
@@ -354,7 +354,7 @@ async fn approve_all_clears_all_pending() {
     let (tx, mut rx) = tokio::sync::mpsc::channel(8);
     let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
     for i in 0..3 {
-        state.approvals.pending_approvals.push(ToolCall {
+        state.execution.approvals.pending_approvals.push(ToolCall {
             id: format!("tc-{}", i),
             r#type: "function".to_string(),
             function: FunctionCall {
@@ -365,8 +365,8 @@ async fn approve_all_clears_all_pending() {
         });
     }
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::ApproveAll);
-    assert_eq!(state.approvals.pending_approvals.len(), 0);
-    assert_eq!(state.approvals.approved_tools.len(), 3);
+    assert_eq!(state.execution.approvals.pending_approvals.len(), 0);
+    assert_eq!(state.execution.approvals.approved_tools.len(), 3);
     // 3 AcceptTool events emitted
     for _ in 0..3 {
         assert!(matches!(rx.try_recv().unwrap(), OutputEvent::AcceptTool(_)));
@@ -379,7 +379,7 @@ async fn reject_all_clears_all_pending_immediately() {
     let (tx, mut rx) = tokio::sync::mpsc::channel(8);
     let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
     for i in 0..3 {
-        state.approvals.pending_approvals.push(ToolCall {
+        state.execution.approvals.pending_approvals.push(ToolCall {
             id: format!("tc-{}", i),
             r#type: "function".to_string(),
             function: FunctionCall {
@@ -390,8 +390,8 @@ async fn reject_all_clears_all_pending_immediately() {
         });
     }
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::RejectAll);
-    assert_eq!(state.approvals.pending_approvals.len(), 0);
-    assert_eq!(state.approvals.rejected_tools.len(), 3);
+    assert_eq!(state.execution.approvals.pending_approvals.len(), 0);
+    assert_eq!(state.execution.approvals.rejected_tools.len(), 3);
     for _ in 0..3 {
         assert!(matches!(
             rx.try_recv().unwrap(),
@@ -405,7 +405,7 @@ async fn reject_current_shows_reason_prompt_then_confirms() {
     let dir = tempfile::tempdir().unwrap();
     let (tx, mut rx) = tokio::sync::mpsc::channel(4);
     let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
-    state.approvals.pending_approvals.push(ToolCall {
+    state.execution.approvals.pending_approvals.push(ToolCall {
         id: "tc-reason".to_string(),
         r#type: "function".to_string(),
         function: FunctionCall {
@@ -417,20 +417,20 @@ async fn reject_current_shows_reason_prompt_then_confirms() {
 
     // Trigger reject - shows prompt
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::RejectCurrentTool);
-    assert!(state.approvals.reject_reason_input.is_some());
-    assert_eq!(state.approvals.pending_approvals.len(), 1); // not yet rejected
+    assert!(state.execution.approvals.reject_reason_input.is_some());
+    assert_eq!(state.execution.approvals.pending_approvals.len(), 1); // not yet rejected
 
     // Type reason
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::InputChanged('t'));
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::InputChanged('o'));
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::InputChanged('o'));
-    assert_eq!(state.approvals.reject_reason_input.as_deref(), Some("too"));
+    assert_eq!(state.execution.approvals.reject_reason_input.as_deref(), Some("too"));
 
     // Confirm
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::InputSubmitted);
-    assert!(state.approvals.reject_reason_input.is_none());
-    assert_eq!(state.approvals.pending_approvals.len(), 0);
-    assert_eq!(state.approvals.rejected_tools.len(), 1);
+    assert!(state.execution.approvals.reject_reason_input.is_none());
+    assert_eq!(state.execution.approvals.pending_approvals.len(), 0);
+    assert_eq!(state.execution.approvals.rejected_tools.len(), 1);
 
     // Reason passed in event
     if let OutputEvent::RejectTool(_, _, reason) = rx.try_recv().unwrap() {
@@ -445,7 +445,7 @@ async fn reject_reason_esc_rejects_without_reason() {
     let dir = tempfile::tempdir().unwrap();
     let (tx, mut rx) = tokio::sync::mpsc::channel(4);
     let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
-    state.approvals.pending_approvals.push(ToolCall {
+    state.execution.approvals.pending_approvals.push(ToolCall {
         id: "tc-esc".to_string(),
         r#type: "function".to_string(),
         function: FunctionCall {
@@ -456,12 +456,12 @@ async fn reject_reason_esc_rejects_without_reason() {
     });
 
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::RejectCurrentTool);
-    assert!(state.approvals.reject_reason_input.is_some());
+    assert!(state.execution.approvals.reject_reason_input.is_some());
 
     // Esc = skip reason, reject without reason
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::HandleEsc);
-    assert!(state.approvals.reject_reason_input.is_none());
-    assert_eq!(state.approvals.pending_approvals.len(), 0);
+    assert!(state.execution.approvals.reject_reason_input.is_none());
+    assert_eq!(state.execution.approvals.pending_approvals.len(), 0);
 
     if let OutputEvent::RejectTool(_, _, reason) = rx.try_recv().unwrap() {
         assert_eq!(reason, None);

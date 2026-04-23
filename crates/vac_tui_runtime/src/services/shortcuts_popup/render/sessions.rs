@@ -17,7 +17,7 @@ pub fn render_sessions_section(
     scroll_area: Rect,
     help_area: Rect,
 ) {
-    let search_term = &state.command_palette.input;
+    let search_term = &state.layout.command_palette.input;
     let search_prompt = ">";
     let cursor = "|";
     let placeholder = "Type to filter sessions";
@@ -25,24 +25,24 @@ pub fn render_sessions_section(
     let search_spans = if search_term.is_empty() {
         vec![
             Span::raw(" "),
-            Span::styled(search_prompt, state.theme.style(StyleKey::AppTitle)),
+            Span::styled(search_prompt, state.core.theme.style(StyleKey::AppTitle)),
             Span::raw(" "),
-            Span::styled(cursor, state.theme.style(StyleKey::Accent)),
-            Span::styled(placeholder, state.theme.style(StyleKey::Muted)),
+            Span::styled(cursor, state.core.theme.style(StyleKey::Accent)),
+            Span::styled(placeholder, state.core.theme.style(StyleKey::Muted)),
         ]
     } else {
         vec![
             Span::raw(" "),
-            Span::styled(search_prompt, state.theme.style(StyleKey::AppTitle)),
+            Span::styled(search_prompt, state.core.theme.style(StyleKey::AppTitle)),
             Span::raw(" "),
             Span::styled(
                 search_term.clone(),
                 state
-                    .theme
+                    .core.theme
                     .style(StyleKey::Text)
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::styled(cursor, state.theme.style(StyleKey::Accent)),
+            Span::styled(cursor, state.core.theme.style(StyleKey::Accent)),
         ]
     };
 
@@ -51,7 +51,7 @@ pub fn render_sessions_section(
     // Filter sessions by search term
     let search_lower = search_term.to_lowercase();
     let filtered_sessions: Vec<(usize, &crate::app::SessionInfo)> = state
-        .sessions
+        .session.sessions
         .iter()
         .enumerate()
         .filter(|(_, s)| search_term.is_empty() || s.title.to_lowercase().contains(&search_lower))
@@ -61,20 +61,20 @@ pub fn render_sessions_section(
     let height = content_area.height as usize;
 
     if filtered_sessions.is_empty() {
-        let empty_message = if state.sessions.is_empty() {
+        let empty_message = if state.session.sessions.is_empty() {
             " No sessions available"
         } else {
             " No sessions match your search"
         };
         let empty_widget = Paragraph::new(Line::from(vec![Span::styled(
             empty_message,
-            state.theme.style(StyleKey::Muted),
+            state.core.theme.style(StyleKey::Muted),
         )]));
         f.render_widget(empty_widget, content_area);
         f.render_widget(Paragraph::new(""), scroll_area);
     } else {
         let selected_in_filtered = state
-            .operator.sessions_selected_idx
+            .operator_config.operator.sessions_selected_idx
             .min(total_filtered.saturating_sub(1));
 
         let max_scroll = total_filtered.saturating_sub(height);
@@ -94,7 +94,7 @@ pub fn render_sessions_section(
         if has_content_above {
             visible_lines.push(Line::from(vec![Span::styled(
                 " ▲",
-                state.theme.style(StyleKey::Muted),
+                state.core.theme.style(StyleKey::Muted),
             )]));
         }
 
@@ -116,16 +116,16 @@ pub fn render_sessions_section(
             };
 
             let text = format!(" {} . {}", formatted_datetime, session.title);
-            let is_selected = *original_idx == state.operator.sessions_selected_idx;
+            let is_selected = *original_idx == state.operator_config.operator.sessions_selected_idx;
 
             let style = if is_selected {
                 let fg = state
-                    .theme
+                    .core.theme
                     .style(StyleKey::HighlightFg)
                     .fg
                     .unwrap_or(C::Reset);
                 let bg = state
-                    .theme
+                    .core.theme
                     .style(StyleKey::HighlightBg)
                     .fg
                     .unwrap_or(C::Reset);
@@ -149,7 +149,7 @@ pub fn render_sessions_section(
             ));
 
             if has_content_below {
-                indicator_spans.push(Span::styled(" ▼", state.theme.style(StyleKey::Muted)));
+                indicator_spans.push(Span::styled(" ▼", state.core.theme.style(StyleKey::Muted)));
             }
 
             let indicator_paragraph = Paragraph::new(Line::from(indicator_spans));
@@ -158,17 +158,17 @@ pub fn render_sessions_section(
     }
 
     let help = Paragraph::new(Line::from(vec![
-        Span::styled(" ↑/↓", state.theme.style(StyleKey::Muted)),
-        Span::styled(" navigate", state.theme.style(StyleKey::Accent)),
+        Span::styled(" ↑/↓", state.core.theme.style(StyleKey::Muted)),
+        Span::styled(" navigate", state.core.theme.style(StyleKey::Accent)),
         Span::raw("  "),
-        Span::styled("enter", state.theme.style(StyleKey::Muted)),
-        Span::styled(" select", state.theme.style(StyleKey::Accent)),
+        Span::styled("enter", state.core.theme.style(StyleKey::Muted)),
+        Span::styled(" select", state.core.theme.style(StyleKey::Accent)),
         Span::raw("  "),
-        Span::styled("tab", state.theme.style(StyleKey::Muted)),
-        Span::styled(" switch", state.theme.style(StyleKey::Accent)),
+        Span::styled("tab", state.core.theme.style(StyleKey::Muted)),
+        Span::styled(" switch", state.core.theme.style(StyleKey::Accent)),
         Span::raw("  "),
-        Span::styled("esc", state.theme.style(StyleKey::Muted)),
-        Span::styled(" close", state.theme.style(StyleKey::Accent)),
+        Span::styled("esc", state.core.theme.style(StyleKey::Muted)),
+        Span::styled(" close", state.core.theme.style(StyleKey::Accent)),
     ]));
 
     f.render_widget(help, help_area);

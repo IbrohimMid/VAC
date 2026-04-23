@@ -21,8 +21,8 @@ pub(super) fn render_model_switcher(f: &mut Frame, state: &mut AppState) {
         .split(area);
 
     let input = Paragraph::new(Line::from(vec![
-        Span::styled("Filter ", state.theme.style(StyleKey::Muted)),
-        Span::raw(&state.switchers.model_filter),
+        Span::styled("Filter ", state.core.theme.style(StyleKey::Muted)),
+        Span::raw(&state.layout.switchers.model_filter),
     ]))
     .block(
         Block::default()
@@ -36,15 +36,15 @@ pub(super) fn render_model_switcher(f: &mut Frame, state: &mut AppState) {
         .iter()
         .enumerate()
         .map(|(i, m)| {
-            let style = if i == state.switchers.model_selected {
-                state.theme.style(StyleKey::ListSelected)
+            let style = if i == state.layout.switchers.model_selected {
+                state.core.theme.style(StyleKey::ListSelected)
             } else {
                 Style::default()
             };
             ListItem::new(Line::from(vec![
                 Span::styled(
                     format!("{}  ", m.provider),
-                    state.theme.style(StyleKey::Muted),
+                    state.core.theme.style(StyleKey::Muted),
                 ),
                 Span::styled(m.name.clone(), style),
             ]))
@@ -53,7 +53,7 @@ pub(super) fn render_model_switcher(f: &mut Frame, state: &mut AppState) {
 
     let list = List::new(items)
         .block(Block::default().borders(Borders::ALL).title("Models"))
-        .highlight_style(state.theme.style(StyleKey::ListSelected));
+        .highlight_style(state.core.theme.style(StyleKey::ListSelected));
     f.render_widget(list, chunks[1]);
 }
 
@@ -67,19 +67,19 @@ pub(super) fn render_file_search(f: &mut Frame, state: &mut AppState) {
         .split(area);
 
     let input = Paragraph::new(Line::from(vec![
-        Span::styled("Query ", state.theme.style(StyleKey::Muted)),
-        Span::raw(&state.file_index.search_query),
+        Span::styled("Query ", state.core.theme.style(StyleKey::Muted)),
+        Span::raw(&state.workspace.file_index.search_query),
     ]))
     .block(Block::default().borders(Borders::ALL).title("File Search"));
     f.render_widget(input, chunks[0]);
 
     let items: Vec<ListItem> = state
-        .file_index.search_results
+        .workspace.file_index.search_results
         .iter()
         .enumerate()
         .map(|(i, path)| {
-            let style = if i == state.file_index.search_selected_idx {
-                state.theme.style(StyleKey::ListSelected)
+            let style = if i == state.workspace.file_index.search_selected_idx {
+                state.core.theme.style(StyleKey::ListSelected)
             } else {
                 Style::default()
             };
@@ -89,7 +89,7 @@ pub(super) fn render_file_search(f: &mut Frame, state: &mut AppState) {
 
     let list = List::new(items)
         .block(Block::default().borders(Borders::ALL).title("Files"))
-        .highlight_style(state.theme.style(StyleKey::ListSelected));
+        .highlight_style(state.core.theme.style(StyleKey::ListSelected));
     f.render_widget(list, chunks[1]);
 }
 
@@ -102,13 +102,13 @@ pub(super) fn render_changeset(f: &mut Frame, state: &mut AppState) {
         .constraints([Constraint::Percentage(35), Constraint::Percentage(65)])
         .split(area);
 
-    let entries = state.changeset_store.entries();
+    let entries = state.workspace.changeset_store.entries();
     let items: Vec<ListItem> = entries
         .iter()
         .enumerate()
         .map(|(i, entry)| {
-            let style = if i == state.changeset_ui.selected_idx {
-                state.theme.style(StyleKey::ListSelected)
+            let style = if i == state.workspace.changeset_ui.selected_idx {
+                state.core.theme.style(StyleKey::ListSelected)
             } else {
                 Style::default()
             };
@@ -120,11 +120,11 @@ pub(super) fn render_changeset(f: &mut Frame, state: &mut AppState) {
                 vac_changeset::FileState::FailedRestore => "[✗]",
             };
             let indicator_style = match entry.state {
-                vac_changeset::FileState::Created => state.theme.style(StyleKey::Success),
-                vac_changeset::FileState::Modified => state.theme.style(StyleKey::Warning),
-                vac_changeset::FileState::Removed => state.theme.style(StyleKey::Error),
-                vac_changeset::FileState::Reverted => state.theme.style(StyleKey::Accent),
-                vac_changeset::FileState::FailedRestore => state.theme.style(StyleKey::Error),
+                vac_changeset::FileState::Created => state.core.theme.style(StyleKey::Success),
+                vac_changeset::FileState::Modified => state.core.theme.style(StyleKey::Warning),
+                vac_changeset::FileState::Removed => state.core.theme.style(StyleKey::Error),
+                vac_changeset::FileState::Reverted => state.core.theme.style(StyleKey::Accent),
+                vac_changeset::FileState::FailedRestore => state.core.theme.style(StyleKey::Error),
             };
             ListItem::new(Line::from(vec![
                 Span::styled(indicator, indicator_style),
@@ -136,23 +136,23 @@ pub(super) fn render_changeset(f: &mut Frame, state: &mut AppState) {
 
     let list = List::new(items)
         .block(Block::default().borders(Borders::ALL).title("Changeset"))
-        .highlight_style(state.theme.style(StyleKey::ListSelected));
+        .highlight_style(state.core.theme.style(StyleKey::ListSelected));
     f.render_widget(list, body[0]);
 
     let width = body[1].width.saturating_sub(2) as usize;
     let mut lines: Vec<Line> = Vec::new();
-    if let Some(diff) = &state.changeset_ui.diff {
+    if let Some(diff) = &state.workspace.changeset_ui.diff {
         if let Some(err) = &diff.last_error {
             lines.push(Line::styled(
                 err.clone(),
                 state
-                    .theme
+                    .core.theme
                     .style(StyleKey::Error)
                     .add_modifier(ratatui::style::Modifier::BOLD),
             ));
         } else if let (Some(old), Some(new)) = (&diff.old_content, &diff.new_content) {
             lines.extend(crate::services::preview_file_diff(
-                &state.theme,
+                &state.core.theme,
                 &diff.path,
                 old,
                 new,
@@ -161,25 +161,25 @@ pub(super) fn render_changeset(f: &mut Frame, state: &mut AppState) {
         } else {
             lines.push(Line::styled(
                 "No diff available",
-                state.theme.style(StyleKey::Muted),
+                state.core.theme.style(StyleKey::Muted),
             ));
         }
     } else {
         lines.push(Line::styled(
             "Select a file to preview diff",
-            state.theme.style(StyleKey::Muted),
+            state.core.theme.style(StyleKey::Muted),
         ));
     }
 
     let detail = Paragraph::new(lines)
         .block(Block::default().borders(Borders::ALL).title("Preview"))
         .wrap(Wrap { trim: false })
-        .scroll((state.changeset_ui.diff_scroll as u16, 0));
+        .scroll((state.workspace.changeset_ui.diff_scroll as u16, 0));
     f.render_widget(detail, body[1]);
 }
 
 pub(super) fn render_toast(f: &mut Frame, state: &mut AppState) {
-    let Some(toast) = state.toasts.last() else {
+    let Some(toast) = state.layout.toasts.last() else {
         return;
     };
 
@@ -192,10 +192,10 @@ pub(super) fn render_toast(f: &mut Frame, state: &mut AppState) {
     let y = area.y + 1;
 
     let toast_style = match toast.style {
-        ToastStyle::Success => state.theme.style(StyleKey::ToastSuccess),
-        ToastStyle::Error => state.theme.style(StyleKey::ToastError),
-        ToastStyle::Warning => state.theme.style(StyleKey::ToastWarning),
-        ToastStyle::Info => state.theme.style(StyleKey::ToastInfo),
+        ToastStyle::Success => state.core.theme.style(StyleKey::ToastSuccess),
+        ToastStyle::Error => state.core.theme.style(StyleKey::ToastError),
+        ToastStyle::Warning => state.core.theme.style(StyleKey::ToastWarning),
+        ToastStyle::Info => state.core.theme.style(StyleKey::ToastInfo),
     };
 
     let rect = Rect {
@@ -223,8 +223,8 @@ pub(super) fn render_command_palette(f: &mut Frame, state: &mut AppState) {
 
     // Input
     let input = Paragraph::new(Line::from(vec![
-        Span::styled("/", state.theme.style(StyleKey::Warning)),
-        Span::raw(&state.command_palette.input),
+        Span::styled("/", state.core.theme.style(StyleKey::Warning)),
+        Span::raw(&state.layout.command_palette.input),
     ]))
     .block(Block::default().borders(Borders::ALL).title("Command"));
     f.render_widget(input, chunks[0]);
@@ -235,15 +235,15 @@ pub(super) fn render_command_palette(f: &mut Frame, state: &mut AppState) {
         .iter()
         .enumerate()
         .map(|(i, cmd)| {
-            let style = if i == state.command_palette.selected {
-                state.theme.style(StyleKey::ListSelected)
+            let style = if i == state.layout.command_palette.selected {
+                state.core.theme.style(StyleKey::ListSelected)
             } else {
                 Style::default()
             };
             ListItem::new(Line::from(vec![
                 Span::styled(&cmd.command, style),
                 Span::raw(" - "),
-                Span::styled(&cmd.description, state.theme.style(StyleKey::Muted)),
+                Span::styled(&cmd.description, state.core.theme.style(StyleKey::Muted)),
             ]))
         })
         .collect();

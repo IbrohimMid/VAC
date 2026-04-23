@@ -9,9 +9,9 @@ use ratatui::{
 };
 
 pub(crate) fn model_label(state: &AppState) -> String {
-    match state.operator.current_model.as_ref() {
+    match state.operator_config.operator.current_model.as_ref() {
         Some(model) => model.name.clone(),
-        None => match state.startup.default_model.as_ref() {
+        None => match state.core.startup.default_model.as_ref() {
             Some(default) => format!("no active model selected (default: {default})"),
             None => "no active model selected".to_string(),
         },
@@ -19,7 +19,7 @@ pub(crate) fn model_label(state: &AppState) -> String {
 }
 
 pub fn render_statusline(f: &mut Frame, state: &AppState, area: Rect) {
-    let mode_str = match state.focus {
+    let mode_str = match state.layout.focus {
         crate::app::WorkspaceFocus::Input => "INPUT",
         crate::app::WorkspaceFocus::Conversation => "CONVERSATION",
         crate::app::WorkspaceFocus::Activity => "ACTIVITY",
@@ -28,58 +28,58 @@ pub fn render_statusline(f: &mut Frame, state: &AppState, area: Rect) {
 
     let model_str = model_label(state);
 
-    let tokens = state.billing.total_session.total_tokens;
+    let tokens = state.operator_config.billing.total_session.total_tokens;
 
     let mut text = vec![
         Span::styled(
             format!(" {} ", mode_str),
             state
-                .theme
+                .core.theme
                 .style(StyleKey::OverlaySelected)
                 .add_modifier(Modifier::BOLD),
         ),
         Span::raw(" | "),
         Span::styled(
             format!("Model: {}", model_str),
-            state.theme.style(StyleKey::Accent),
+            state.core.theme.style(StyleKey::Accent),
         ),
         Span::raw(" | "),
         Span::styled(
             format!("Tokens: {}", tokens),
-            state.theme.style(StyleKey::Success),
+            state.core.theme.style(StyleKey::Success),
         ),
         Span::raw(" | "),
         Span::styled(
-            if state.view_flags.auto_approve {
+            if state.core.view_flags.auto_approve {
                 "AUTO-APPROVE"
             } else {
                 "MANUAL"
             },
-            if state.view_flags.auto_approve {
-                state.theme.style(StyleKey::Error)
+            if state.core.view_flags.auto_approve {
+                state.core.theme.style(StyleKey::Error)
             } else {
-                state.theme.style(StyleKey::Success)
+                state.core.theme.style(StyleKey::Success)
             },
         ),
     ];
 
-    if let Some(score) = state.lsp_ui.validation_score {
+    if let Some(score) = state.layout.lsp_ui.validation_score {
         text.push(Span::raw(" | "));
         text.push(Span::styled(
             format!("Valid: {:.1}%", score * 100.0),
             if score >= 0.8 {
-                state.theme.style(StyleKey::Success)
+                state.core.theme.style(StyleKey::Success)
             } else if score >= 0.5 {
-                state.theme.style(StyleKey::Warning)
+                state.core.theme.style(StyleKey::Warning)
             } else {
-                state.theme.style(StyleKey::Error)
+                state.core.theme.style(StyleKey::Error)
             },
         ));
     }
 
     // Phase 3: Show provider/auth status from startup snapshot
     {
-        let provider_status = &state.startup.provider_status;
+        let provider_status = &state.core.startup.provider_status;
         let (provider_label, provider_key) = if provider_status.starts_with("ready") {
             (provider_status.as_str(), StyleKey::Success)
         } else if provider_status == "initializing" || provider_status == "loading..." {
@@ -90,21 +90,21 @@ pub fn render_statusline(f: &mut Frame, state: &AppState, area: Rect) {
         text.push(Span::raw(" | "));
         text.push(Span::styled(
             format!("Provider: {}", provider_label),
-            state.theme.style(provider_key),
+            state.core.theme.style(provider_key),
         ));
     }
-    if state.startup.mcp_server_count > 0 {
+    if state.core.startup.mcp_server_count > 0 {
         text.push(Span::raw(" | "));
         text.push(Span::styled(
-            format!("MCP: {}", state.startup.mcp_server_count),
-            state.theme.style(StyleKey::Accent),
+            format!("MCP: {}", state.core.startup.mcp_server_count),
+            state.core.theme.style(StyleKey::Accent),
         ));
     }
 
-    if state.lsp_ui.lsp_available {
+    if state.layout.lsp_ui.lsp_available {
         text.push(Span::raw(" | "));
-        text.push(Span::styled("LSP", state.theme.style(StyleKey::Accent)));
-        if let Some(diag) = &state.lsp_ui.lsp_diagnostics {
+        text.push(Span::styled("LSP", state.core.theme.style(StyleKey::Accent)));
+        if let Some(diag) = &state.layout.lsp_ui.lsp_diagnostics {
             let errs = diag.total_errors;
             let warns = diag.total_warnings;
             if errs > 0 || warns > 0 {
@@ -146,7 +146,7 @@ mod tests {
     #[test]
     fn model_label_reports_missing_active_model_with_default_hint() {
         let mut state = AppState::default();
-        state.startup.default_model = Some("claude-4".to_string());
+        state.core.startup.default_model = Some("claude-4".to_string());
 
         assert_eq!(
             model_label(&state),

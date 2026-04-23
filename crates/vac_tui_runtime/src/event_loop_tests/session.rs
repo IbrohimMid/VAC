@@ -14,7 +14,7 @@ async fn session_snapshot_bridge_restores_tui_state() {
     let session_id = uuid::Uuid::new_v4();
 
     let mut state = make_state(root.clone(), session_id);
-    state.operator.current_model = Some(Model {
+    state.operator_config.operator.current_model = Some(Model {
         id: "claude-sonnet-4".to_string(),
         name: "claude-sonnet-4".to_string(),
         provider: "anthropic".to_string(),
@@ -24,22 +24,22 @@ async fn session_snapshot_bridge_restores_tui_state() {
         context_window: 200000,
         cost_class: "premium".to_string(),
     });
-    state.switchers.active_profile = "strict-vil".to_string();
-    state.switchers.selected_rulebooks.insert("security".to_string());
-    state.focus = crate::app::WorkspaceFocus::Workbench;
-    state.workbench_tab = crate::app::WorkbenchTab::Runtime;
-    state.operator.sessions_selected_idx = 3;
+    state.layout.switchers.active_profile = "strict-vil".to_string();
+    state.layout.switchers.selected_rulebooks.insert("security".to_string());
+    state.layout.focus = crate::app::WorkspaceFocus::Workbench;
+    state.layout.workbench_tab = crate::app::WorkbenchTab::Runtime;
+    state.operator_config.operator.sessions_selected_idx = 3;
     state
-        .side_panel.section_collapsed
+        .layout.side_panel.section_collapsed
         .insert(crate::app::SidePanelSection::Runtime);
-    state.billing.total_session.total_tokens = 2048;
-    state.modified_files = vec!["src/main.rs".to_string()];
+    state.operator_config.billing.total_session.total_tokens = 2048;
+    state.workspace.modified_files = vec!["src/main.rs".to_string()];
 
     let snapshot = build_session_snapshot(&state).unwrap();
     vac_session_control::save_snapshot_async(snapshot)
         .await
         .unwrap();
-    let loaded = load_session_snapshot(&root, &state.session_id)
+    let loaded = load_session_snapshot(&root, &state.session.session_id)
         .await
         .unwrap();
 
@@ -47,31 +47,31 @@ async fn session_snapshot_bridge_restores_tui_state() {
     apply_session_snapshot(&mut restored, &loaded);
 
     assert_eq!(
-        restored.operator.current_model.as_ref().map(|m| m.name.as_str()),
+        restored.operator_config.operator.current_model.as_ref().map(|m| m.name.as_str()),
         None
     );
     assert_eq!(
-        restored.startup.active_model.as_deref(),
+        restored.core.startup.active_model.as_deref(),
         Some("claude-sonnet-4")
     );
-    assert_eq!(restored.switchers.active_profile, "strict-vil");
-    assert!(restored.switchers.selected_rulebooks.contains("security"));
-    assert_eq!(restored.focus, crate::app::WorkspaceFocus::Workbench);
-    assert_eq!(restored.workbench_tab, crate::app::WorkbenchTab::Runtime);
-    assert_eq!(restored.operator.sessions_selected_idx, 3);
+    assert_eq!(restored.layout.switchers.active_profile, "strict-vil");
+    assert!(restored.layout.switchers.selected_rulebooks.contains("security"));
+    assert_eq!(restored.layout.focus, crate::app::WorkspaceFocus::Workbench);
+    assert_eq!(restored.layout.workbench_tab, crate::app::WorkbenchTab::Runtime);
+    assert_eq!(restored.operator_config.operator.sessions_selected_idx, 3);
     assert!(
         restored
-            .side_panel.section_collapsed
+            .layout.side_panel.section_collapsed
             .contains(&crate::app::SidePanelSection::Runtime)
     );
-    assert_eq!(restored.billing.total_session.total_tokens, 0);
-    assert_eq!(restored.startup.provider_status, "initializing");
+    assert_eq!(restored.operator_config.billing.total_session.total_tokens, 0);
+    assert_eq!(restored.core.startup.provider_status, "initializing");
     assert_eq!(
-        restored.startup.active_rulebook.as_deref(),
+        restored.core.startup.active_rulebook.as_deref(),
         Some("security")
     );
     assert_eq!(
-        restored.startup.active_profile.as_deref(),
+        restored.core.startup.active_profile.as_deref(),
         Some("strict-vil")
     );
     assert_eq!(
@@ -98,8 +98,8 @@ async fn session_restore_clears_popup_state() {
     crate::overlay::open_overlay(&mut state, crate::overlay::OverlayId::ModelSwitcher);
     crate::overlay::open_overlay(&mut state, crate::overlay::OverlayId::FileSearch);
     crate::overlay::open_overlay(&mut state, crate::overlay::OverlayId::Changeset);
-    state.switchers.model_filter = "test".to_string();
-    state.file_index.search_query = "query".to_string();
+    state.layout.switchers.model_filter = "test".to_string();
+    state.workspace.file_index.search_query = "query".to_string();
 
     // Trigger session restore
     crate::controller::handle_backend_event(
@@ -115,21 +115,21 @@ async fn session_restore_clears_popup_state() {
     // Verify all popup states cleared
     assert!(
         !state
-            .overlay_manager
+            .layout.overlay_manager
             .is_active(crate::overlay::OverlayId::ModelSwitcher)
     );
     assert!(
         !state
-            .overlay_manager
+            .layout.overlay_manager
             .is_active(crate::overlay::OverlayId::FileSearch)
     );
     assert!(
         !state
-            .overlay_manager
+            .layout.overlay_manager
             .is_active(crate::overlay::OverlayId::Changeset)
     );
-    assert!(state.switchers.model_filter.is_empty());
-    assert!(state.file_index.search_query.is_empty());
+    assert!(state.layout.switchers.model_filter.is_empty());
+    assert!(state.workspace.file_index.search_query.is_empty());
 }
 
 #[tokio::test]
@@ -140,12 +140,12 @@ async fn session_restore_clears_changeset_store() {
 
     // Add changeset entries
     state
-        .changeset_store
+        .workspace.changeset_store
         .file_created("a.rs".to_string(), "agent".to_string());
     state
-        .changeset_store
+        .workspace.changeset_store
         .file_modified("b.rs".to_string(), "agent".to_string(), true);
-    assert_eq!(state.changeset_store.entries().len(), 2);
+    assert_eq!(state.workspace.changeset_store.entries().len(), 2);
 
     // Trigger session restore
     crate::controller::handle_backend_event(
@@ -159,7 +159,7 @@ async fn session_restore_clears_changeset_store() {
     );
 
     // Verify changeset cleared
-    assert_eq!(state.changeset_store.entries().len(), 0);
+    assert_eq!(state.workspace.changeset_store.entries().len(), 0);
 }
 
 #[tokio::test]
@@ -169,7 +169,7 @@ async fn session_restore_clears_approval_state() {
     let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
 
     // Add approval state
-    state.approvals.pending_approvals.push(crate::ToolCall {
+    state.execution.approvals.pending_approvals.push(crate::ToolCall {
         id: "tc-1".to_string(),
         r#type: "function".to_string(),
         function: crate::FunctionCall {
@@ -178,7 +178,7 @@ async fn session_restore_clears_approval_state() {
         },
         metadata: None,
     });
-    state.approvals.approved_tools.push(crate::ToolCall {
+    state.execution.approvals.approved_tools.push(crate::ToolCall {
         id: "tc-2".to_string(),
         r#type: "function".to_string(),
         function: crate::FunctionCall {
@@ -200,9 +200,9 @@ async fn session_restore_clears_approval_state() {
     );
 
     // Verify approval state cleared
-    assert_eq!(state.approvals.pending_approvals.len(), 0);
-    assert_eq!(state.approvals.approved_tools.len(), 0);
-    assert_eq!(state.approvals.rejected_tools.len(), 0);
+    assert_eq!(state.execution.approvals.pending_approvals.len(), 0);
+    assert_eq!(state.execution.approvals.approved_tools.len(), 0);
+    assert_eq!(state.execution.approvals.rejected_tools.len(), 0);
 }
 
 #[test]
@@ -212,10 +212,10 @@ fn session_restore_clears_store_and_syncs_derived() {
     let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
 
     state
-        .changeset_store
+        .workspace.changeset_store
         .file_modified("a.rs".to_string(), "agent".to_string(), true);
-    state.modified_files = state.changeset_store.modified_files();
-    assert_eq!(state.modified_files.len(), 1);
+    state.workspace.modified_files = state.workspace.changeset_store.modified_files();
+    assert_eq!(state.workspace.modified_files.len(), 1);
 
     crate::controller::handle_backend_event(
         &mut state,
@@ -228,9 +228,9 @@ fn session_restore_clears_store_and_syncs_derived() {
     );
 
     // Both store and derived view must be empty
-    assert_eq!(state.changeset_store.active_entries().len(), 0);
-    assert_eq!(state.modified_files.len(), 0);
-    assert_eq!(state.modified_files, state.changeset_store.modified_files());
+    assert_eq!(state.workspace.changeset_store.active_entries().len(), 0);
+    assert_eq!(state.workspace.modified_files.len(), 0);
+    assert_eq!(state.workspace.modified_files, state.workspace.changeset_store.modified_files());
 }
 
 #[test]
@@ -285,12 +285,12 @@ fn set_sessions_event_populates_enriched_fields() {
 
     crate::controller::handle_backend_event(&mut state, &tx, InputEvent::SetSessions(sessions));
 
-    assert_eq!(state.sessions.len(), 2);
-    assert_eq!(state.sessions[0].task_count, 3);
-    assert!(!state.sessions[0].has_checkpoint);
-    assert_eq!(state.sessions[1].task_count, 7);
-    assert!(state.sessions[1].has_checkpoint);
-    assert_eq!(state.sessions[1].checkpoints.len(), 1);
+    assert_eq!(state.session.sessions.len(), 2);
+    assert_eq!(state.session.sessions[0].task_count, 3);
+    assert!(!state.session.sessions[0].has_checkpoint);
+    assert_eq!(state.session.sessions[1].task_count, 7);
+    assert!(state.session.sessions[1].has_checkpoint);
+    assert_eq!(state.session.sessions[1].checkpoints.len(), 1);
 }
 
 #[test]
@@ -298,9 +298,9 @@ fn sessions_tab_r_resumes_checkpoint_for_selected_session() {
     let dir = tempfile::tempdir().unwrap();
     let (tx, mut rx) = tokio::sync::mpsc::channel(4);
     let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
-    state.focus = crate::app::WorkspaceFocus::Workbench;
-    state.workbench_tab = crate::app::WorkbenchTab::Sessions;
-    state.sessions = vec![crate::app::SessionInfo {
+    state.layout.focus = crate::app::WorkspaceFocus::Workbench;
+    state.layout.workbench_tab = crate::app::WorkbenchTab::Sessions;
+    state.session.sessions = vec![crate::app::SessionInfo {
         id: "sess-abc".to_string(),
         title: "Session abc".to_string(),
         updated_at: "2026-04-16T09:00:00Z".to_string(),
@@ -311,7 +311,7 @@ fn sessions_tab_r_resumes_checkpoint_for_selected_session() {
         snapshot_present: false,
         snapshot_stale: false,
     }];
-    state.operator.sessions_selected_idx = 0;
+    state.operator_config.operator.sessions_selected_idx = 0;
 
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::InputChanged('r'));
 
@@ -324,9 +324,9 @@ fn sessions_tab_r_toasts_when_no_checkpoint() {
     let dir = tempfile::tempdir().unwrap();
     let (tx, _rx) = tokio::sync::mpsc::channel(4);
     let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
-    state.focus = crate::app::WorkspaceFocus::Workbench;
-    state.workbench_tab = crate::app::WorkbenchTab::Sessions;
-    state.sessions = vec![crate::app::SessionInfo {
+    state.layout.focus = crate::app::WorkspaceFocus::Workbench;
+    state.layout.workbench_tab = crate::app::WorkbenchTab::Sessions;
+    state.session.sessions = vec![crate::app::SessionInfo {
         id: "sess-xyz".to_string(),
         title: "Session xyz".to_string(),
         updated_at: "2026-04-16T09:00:00Z".to_string(),
@@ -337,12 +337,12 @@ fn sessions_tab_r_toasts_when_no_checkpoint() {
         snapshot_present: false,
         snapshot_stale: false,
     }];
-    state.operator.sessions_selected_idx = 0;
+    state.operator_config.operator.sessions_selected_idx = 0;
 
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::InputChanged('r'));
 
-    assert!(!state.toasts.is_empty());
-    assert!(state.toasts[0].message.contains("No checkpoint"));
+    assert!(!state.layout.toasts.is_empty());
+    assert!(state.layout.toasts[0].message.contains("No checkpoint"));
 }
 
 #[test]
@@ -355,7 +355,7 @@ fn session_resume_fuzzy_orders_by_score() {
     let mut state = make_state(std::env::current_dir().unwrap(), Uuid::new_v4());
 
     let now = Utc::now();
-    state.session_resume.list = vec![
+    state.layout.session_resume.list = vec![
         SessionResumeEntry {
             session_id: Uuid::new_v4(),
             title: "refactor auth module".to_string(),
@@ -387,17 +387,17 @@ fn session_resume_fuzzy_orders_by_score() {
 
     // Query "auth" — should match "refactor auth module" and "auth token validation"
     // but not "fix login bug"
-    state.session_resume.query = "auth".to_string();
+    state.layout.session_resume.query = "auth".to_string();
     refresh_session_resume_filtered(&mut state);
 
     assert!(
-        !state.session_resume.filtered_indices.is_empty(),
+        !state.layout.session_resume.filtered_indices.is_empty(),
         "fuzzy search should return results for 'auth'"
     );
     // "fix login bug" should not appear (no 'auth' anywhere)
-    for &idx in &state.session_resume.filtered_indices {
+    for &idx in &state.layout.session_resume.filtered_indices {
         assert_ne!(
-            state.session_resume.list[idx].title, "fix login bug",
+            state.layout.session_resume.list[idx].title, "fix login bug",
             "non-matching entry should be excluded"
         );
     }
@@ -418,7 +418,7 @@ fn session_resume_ctrl_r_keyboard_nav() {
     let id_a = Uuid::new_v4();
     let id_b = Uuid::new_v4();
     let id_c = Uuid::new_v4();
-    state.session_resume.list = vec![
+    state.layout.session_resume.list = vec![
         SessionResumeEntry {
             session_id: id_a,
             title: "session alpha".to_string(),
@@ -452,31 +452,31 @@ fn session_resume_ctrl_r_keyboard_nav() {
     refresh_session_resume_filtered(&mut state);
 
     // Initially shows all 3, sorted newest first (alpha, beta, gamma)
-    assert_eq!(state.session_resume.filtered_indices.len(), 3);
-    assert_eq!(state.session_resume.selected, 0);
+    assert_eq!(state.layout.session_resume.filtered_indices.len(), 3);
+    assert_eq!(state.layout.session_resume.selected, 0);
 
     // Down twice — select index 2 (gamma)
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::Down);
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::Down);
-    assert_eq!(state.session_resume.selected, 2);
+    assert_eq!(state.layout.session_resume.selected, 2);
 
     // Type query "beta" — should filter to 1 result, reset selection to 0
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::InputChanged('b'));
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::InputChanged('e'));
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::InputChanged('t'));
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::InputChanged('a'));
-    assert_eq!(state.session_resume.selected, 0);
-    assert_eq!(state.session_resume.filtered_indices.len(), 1);
-    let matched_idx = state.session_resume.filtered_indices[0];
-    assert_eq!(state.session_resume.list[matched_idx].session_id, id_b);
+    assert_eq!(state.layout.session_resume.selected, 0);
+    assert_eq!(state.layout.session_resume.filtered_indices.len(), 1);
+    let matched_idx = state.layout.session_resume.filtered_indices[0];
+    assert_eq!(state.layout.session_resume.list[matched_idx].session_id, id_b);
 
     // Backspace clears 'a' — "bet" still matches beta
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::InputBackspace);
-    assert!(!state.session_resume.filtered_indices.is_empty());
+    assert!(!state.layout.session_resume.filtered_indices.is_empty());
 
     // Esc closes overlay and clears query
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::HandleEsc);
-    assert!(!state.overlay_manager.is_active(OverlayId::SessionResume));
-    assert!(state.session_resume.query.is_empty());
-    assert!(state.session_resume.filtered_indices.is_empty());
+    assert!(!state.layout.overlay_manager.is_active(OverlayId::SessionResume));
+    assert!(state.layout.session_resume.query.is_empty());
+    assert!(state.layout.session_resume.filtered_indices.is_empty());
 }

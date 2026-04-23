@@ -11,15 +11,15 @@ pub(super) fn handle_file_search(
     output_tx: &Sender<OutputEvent>,
     event: InputEvent,
 ) {
-    if state.file_index.all_files.is_empty() {
-        state.file_index.all_files = crate::services::build_file_index(&state.project_root);
+    if state.workspace.file_index.all_files.is_empty() {
+        state.workspace.file_index.all_files = crate::services::build_file_index(&state.core.project_root);
     }
-    if state.file_index.search_results.is_empty() {
-        let q = state.file_index.search_query.clone();
-        let results = crate::services::fuzzy_search_files(&q, &state.file_index.all_files, 50);
+    if state.workspace.file_index.search_results.is_empty() {
+        let q = state.workspace.file_index.search_query.clone();
+        let results = crate::services::fuzzy_search_files(&q, &state.workspace.file_index.all_files, 50);
         let max = results.len().saturating_sub(1);
-        state.file_index.search_results = results;
-        state.file_index.search_selected_idx = state.file_index.search_selected_idx.min(max);
+        state.workspace.file_index.search_results = results;
+        state.workspace.file_index.search_selected_idx = state.workspace.file_index.search_selected_idx.min(max);
     }
     let mut ctx = HandlerContext::new(state, output_tx);
     match event {
@@ -27,12 +27,12 @@ pub(super) fn handle_file_search(
             let _ = file_search::close(&mut ctx);
         }
         InputEvent::InputChanged(c) => {
-            let mut q = ctx.state.file_index.search_query.clone();
+            let mut q = ctx.state.workspace.file_index.search_query.clone();
             q.push(c);
             let _ = file_search::update_query(&mut ctx, q);
         }
         InputEvent::InputBackspace => {
-            let mut q = ctx.state.file_index.search_query.clone();
+            let mut q = ctx.state.workspace.file_index.search_query.clone();
             q.pop();
             let _ = file_search::update_query(&mut ctx, q);
         }
@@ -57,83 +57,83 @@ pub(super) fn handle_file_picker(
     match event {
         InputEvent::HandleEsc => {
             crate::overlay::close_overlay(state, OverlayId::FilePicker);
-            state.file_picker.multi_selected.clear();
-            state.file_picker.query.clear();
+            state.workspace.file_picker.multi_selected.clear();
+            state.workspace.file_picker.query.clear();
         }
         InputEvent::Up | InputEvent::ScrollUp => {
-            state.file_picker.selected = state.file_picker.selected.saturating_sub(1);
+            state.workspace.file_picker.selected = state.workspace.file_picker.selected.saturating_sub(1);
             update_file_picker_preview(state);
         }
         InputEvent::Down | InputEvent::ScrollDown => {
-            let len = state.file_picker.results.len();
+            let len = state.workspace.file_picker.results.len();
             if len > 0 {
-                state.file_picker.selected =
-                    (state.file_picker.selected + 1).min(len.saturating_sub(1));
+                state.workspace.file_picker.selected =
+                    (state.workspace.file_picker.selected + 1).min(len.saturating_sub(1));
                 update_file_picker_preview(state);
             }
         }
         // Space toggles multi-selection
         InputEvent::InputChanged(' ') => {
-            let idx = state.file_picker.selected;
-            if state.file_picker.multi_selected.contains(&idx) {
-                state.file_picker.multi_selected.remove(&idx);
+            let idx = state.workspace.file_picker.selected;
+            if state.workspace.file_picker.multi_selected.contains(&idx) {
+                state.workspace.file_picker.multi_selected.remove(&idx);
             } else if state
-                .file_picker.results
+                .workspace.file_picker.results
                 .get(idx)
                 .map(|p| p.is_file())
                 .unwrap_or(false)
             {
-                state.file_picker.multi_selected.insert(idx);
+                state.workspace.file_picker.multi_selected.insert(idx);
             }
         }
         // Tab: navigate into directory
         InputEvent::Tab => {
             if let Some(path) = state
-                .file_picker.results
-                .get(state.file_picker.selected)
+                .workspace.file_picker.results
+                .get(state.workspace.file_picker.selected)
                 .cloned()
             {
                 if path.is_dir() {
-                    state.file_picker.cwd = path;
-                    state.file_picker.selected = 0;
-                    state.file_picker.multi_selected.clear();
+                    state.workspace.file_picker.cwd = path;
+                    state.workspace.file_picker.selected = 0;
+                    state.workspace.file_picker.multi_selected.clear();
                     refresh_file_picker_results(state);
                 }
             }
         }
         // Backspace on empty query: go up a dir
         InputEvent::InputBackspace => {
-            if state.file_picker.query.is_empty() {
-                if let Some(parent) = state.file_picker.cwd.parent().map(|p| p.to_path_buf()) {
-                    state.file_picker.cwd = parent;
-                    state.file_picker.selected = 0;
+            if state.workspace.file_picker.query.is_empty() {
+                if let Some(parent) = state.workspace.file_picker.cwd.parent().map(|p| p.to_path_buf()) {
+                    state.workspace.file_picker.cwd = parent;
+                    state.workspace.file_picker.selected = 0;
                     refresh_file_picker_results(state);
                 }
             } else {
-                state.file_picker.query.pop();
-                state.file_picker.selected = 0;
+                state.workspace.file_picker.query.pop();
+                state.workspace.file_picker.selected = 0;
                 refresh_file_picker_results(state);
             }
         }
         InputEvent::InputChanged(ch) => {
-            state.file_picker.query.push(ch);
-            state.file_picker.selected = 0;
+            state.workspace.file_picker.query.push(ch);
+            state.workspace.file_picker.selected = 0;
             refresh_file_picker_results(state);
         }
         InputEvent::InputSubmitted => {
-            let selected: Vec<std::path::PathBuf> = if state.file_picker.multi_selected.is_empty() {
+            let selected: Vec<std::path::PathBuf> = if state.workspace.file_picker.multi_selected.is_empty() {
                 state
-                    .file_picker.results
-                    .get(state.file_picker.selected)
+                    .workspace.file_picker.results
+                    .get(state.workspace.file_picker.selected)
                     .filter(|p| p.is_file())
                     .cloned()
                     .into_iter()
                     .collect()
             } else {
-                let mut sel: Vec<_> = state.file_picker.multi_selected.iter().copied().collect();
+                let mut sel: Vec<_> = state.workspace.file_picker.multi_selected.iter().copied().collect();
                 sel.sort();
                 sel.into_iter()
-                    .filter_map(|i| state.file_picker.results.get(i))
+                    .filter_map(|i| state.workspace.file_picker.results.get(i))
                     .filter(|p| p.is_file())
                     .cloned()
                     .collect()
@@ -142,8 +142,8 @@ pub(super) fn handle_file_picker(
                 let _ = output_tx.try_send(OutputEvent::FilesAttached(selected));
             }
             crate::overlay::close_overlay(state, OverlayId::FilePicker);
-            state.file_picker.multi_selected.clear();
-            state.file_picker.query.clear();
+            state.workspace.file_picker.multi_selected.clear();
+            state.workspace.file_picker.query.clear();
         }
         _ => {}
     }
@@ -154,9 +154,9 @@ pub fn refresh_file_picker_results_pub(state: &mut AppState) {
 }
 
 fn refresh_file_picker_results(state: &mut AppState) {
-    let query = state.file_picker.query.to_lowercase();
-    let type_filter = state.file_picker.type_filter.clone();
-    let cwd = state.file_picker.cwd.clone();
+    let query = state.workspace.file_picker.query.to_lowercase();
+    let type_filter = state.workspace.file_picker.type_filter.clone();
+    let cwd = state.workspace.file_picker.cwd.clone();
 
     let mut results: Vec<std::path::PathBuf> = std::fs::read_dir(&cwd)
         .into_iter()
@@ -195,16 +195,16 @@ fn refresh_file_picker_results(state: &mut AppState) {
             _ => a.file_name().cmp(&b.file_name()),
         }
     });
-    state.file_picker.results = results;
+    state.workspace.file_picker.results = results;
     update_file_picker_preview(state);
 }
 
 fn update_file_picker_preview(state: &mut AppState) {
     let preview = state
-        .file_picker.results
-        .get(state.file_picker.selected)
+        .workspace.file_picker.results
+        .get(state.workspace.file_picker.selected)
         .filter(|p| p.is_file())
         .and_then(|p| std::fs::read_to_string(p).ok())
         .map(|content| content.lines().take(40).collect::<Vec<_>>().join("\n"));
-    state.file_picker.preview = preview;
+    state.workspace.file_picker.preview = preview;
 }

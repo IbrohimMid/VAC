@@ -22,15 +22,15 @@ const VAC_LOGO: &str = r#"
 
 /// Generate welcome messages for TUI
 pub fn welcome_messages(version: Option<&str>, state: &crate::app::AppState) -> Vec<Message> {
-    let version_str = version.unwrap_or(&state.startup.version);
-    let permission_mode = if state.view_flags.auto_approve {
+    let version_str = version.unwrap_or(&state.core.startup.version);
+    let permission_mode = if state.core.view_flags.auto_approve {
         "AUTO-APPROVE (tool requests run without confirmation)"
     } else {
         "PROMPT (tool requests require confirmation)"
     };
 
     // Phase 3: Show model recovery hint if no active model
-    let model_hint = if state.startup.active_model.is_none() && state.operator.current_model.is_none() {
+    let model_hint = if state.core.startup.active_model.is_none() && state.operator_config.operator.current_model.is_none() {
         "\n⚠ No active model configured. Use /model to select one."
     } else {
         ""

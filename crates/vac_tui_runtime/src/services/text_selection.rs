@@ -12,18 +12,18 @@ use ratatui::text::{Line, Span};
 
 /// Handle mouse drag start - begins text selection in message area
 pub fn handle_drag_start(state: &mut AppState, col: u16, row: u16) {
-    let message_area_height = state.message_ui.message_area_height as usize;
-    let row_in_message_area = (row as usize).saturating_sub(state.message_ui.message_area_y as usize);
+    let message_area_height = state.layout.message_ui.message_area_height as usize;
+    let row_in_message_area = (row as usize).saturating_sub(state.layout.message_ui.message_area_y as usize);
 
-    if row < state.message_ui.message_area_y || row_in_message_area >= message_area_height {
-        state.selection_state = SelectionState::default();
+    if row < state.layout.message_ui.message_area_y || row_in_message_area >= message_area_height {
+        state.composer.selection_state = SelectionState::default();
         return;
     }
 
-    let absolute_line = state.scroll.messages + row_in_message_area.saturating_sub(1); // -1 for border
+    let absolute_line = state.layout.scroll.messages + row_in_message_area.saturating_sub(1); // -1 for border
     let rel_col = col.saturating_sub(1); // -1 for border
 
-    state.selection_state = SelectionState {
+    state.composer.selection_state = SelectionState {
         active: true,
         start_line: Some(absolute_line),
         start_col: Some(rel_col),
@@ -34,41 +34,41 @@ pub fn handle_drag_start(state: &mut AppState, col: u16, row: u16) {
 
 /// Handle mouse drag - updates selection in message area
 pub fn handle_drag(state: &mut AppState, col: u16, row: u16) {
-    if !state.selection_state.active {
+    if !state.composer.selection_state.active {
         return;
     }
 
-    let message_area_height = state.message_ui.message_area_height as usize;
-    let row_in_message_area = (row as usize).saturating_sub(state.message_ui.message_area_y as usize);
+    let message_area_height = state.layout.message_ui.message_area_height as usize;
+    let row_in_message_area = (row as usize).saturating_sub(state.layout.message_ui.message_area_y as usize);
     let clamped_row = row_in_message_area.min(message_area_height.saturating_sub(2)); // -2 for borders
 
-    let absolute_line = state.scroll.messages + clamped_row.saturating_sub(1);
+    let absolute_line = state.layout.scroll.messages + clamped_row.saturating_sub(1);
     let rel_col = col.saturating_sub(1);
 
-    state.selection_state.end_line = Some(absolute_line);
-    state.selection_state.end_col = Some(rel_col);
+    state.composer.selection_state.end_line = Some(absolute_line);
+    state.composer.selection_state.end_col = Some(rel_col);
 }
 
 /// Handle mouse drag end - copies to clipboard
 pub fn handle_drag_end(state: &mut AppState, col: u16, row: u16) {
-    if !state.selection_state.active {
+    if !state.composer.selection_state.active {
         return;
     }
 
     handle_drag(state, col, row);
 
     let is_just_click = match (
-        &state.selection_state.start_line,
-        &state.selection_state.start_col,
-        &state.selection_state.end_line,
-        &state.selection_state.end_col,
+        &state.composer.selection_state.start_line,
+        &state.composer.selection_state.start_col,
+        &state.composer.selection_state.end_line,
+        &state.composer.selection_state.end_col,
     ) {
         (Some(sl), Some(sc), Some(el), Some(ec)) => sl == el && sc == ec,
         _ => false,
     };
 
     if is_just_click {
-        state.selection_state = SelectionState::default();
+        state.composer.selection_state = SelectionState::default();
         return;
     }
 
@@ -308,28 +308,28 @@ fn extract_selected_text_from_lines(selection: &SelectionState, cached_lines: &[
 
 /// Extract selected text from the assembled lines cache (main message area)
 pub fn extract_selected_text(state: &AppState) -> String {
-    if !state.selection_state.active {
+    if !state.composer.selection_state.active {
         return String::new();
     }
 
-    let Some((_, _, cached_lines)) = &state.message_ui.assembled_lines_cache else {
+    let Some((_, _, cached_lines)) = &state.layout.message_ui.assembled_lines_cache else {
         return String::new();
     };
 
-    extract_selected_text_from_lines(&state.selection_state, cached_lines)
+    extract_selected_text_from_lines(&state.composer.selection_state, cached_lines)
 }
 
 /// Extract selected text from the collapsed message lines cache (fullscreen popup)
 pub fn extract_selected_text_from_collapsed(state: &AppState) -> String {
-    if !state.selection_state.active {
+    if !state.composer.selection_state.active {
         return String::new();
     }
 
-    let Some((_, _, cached_lines)) = &state.message_ui.collapsed_message_lines_cache else {
+    let Some((_, _, cached_lines)) = &state.layout.message_ui.collapsed_message_lines_cache else {
         return String::new();
     };
 
-    extract_selected_text_from_lines(&state.selection_state, cached_lines)
+    extract_selected_text_from_lines(&state.composer.selection_state, cached_lines)
 }
 
 /// Calculate display width of a line

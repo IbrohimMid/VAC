@@ -37,7 +37,7 @@ impl MessageAction {
 
 pub fn render_message_action_popup(f: &mut Frame, state: &AppState) {
     if !state
-        .overlay_manager
+        .layout.overlay_manager
         .is_active(crate::overlay::OverlayId::MessageAction)
     {
         return;
@@ -56,7 +56,7 @@ pub fn render_message_action_popup(f: &mut Frame, state: &AppState) {
 
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_style(state.theme.style(StyleKey::BorderFocused));
+        .border_style(state.core.theme.style(StyleKey::BorderFocused));
 
     f.render_widget(block, area);
 
@@ -79,7 +79,7 @@ pub fn render_message_action_popup(f: &mut Frame, state: &AppState) {
     let title = Paragraph::new(Line::from(vec![Span::styled(
         " Message Action",
         state
-            .theme
+            .core.theme
             .style(StyleKey::Warning)
             .add_modifier(Modifier::BOLD),
     )]));
@@ -89,7 +89,7 @@ pub fn render_message_action_popup(f: &mut Frame, state: &AppState) {
     let mut item_lines: Vec<Line> = Vec::new();
 
     for (idx, action) in actions.iter().enumerate() {
-        let is_selected = idx == state.operator.message_action_popup_selected;
+        let is_selected = idx == state.operator_config.operator.message_action_popup_selected;
 
         let (highlight_word, rest_text) = match action {
             MessageAction::CopyMessage => ("Copy", " message text to clipboard"),
@@ -114,22 +114,22 @@ pub fn render_message_action_popup(f: &mut Frame, state: &AppState) {
 
         let line = if is_selected {
             Line::from(vec![
-                Span::styled("  ", state.theme.style(StyleKey::ToastInfo)),
+                Span::styled("  ", state.core.theme.style(StyleKey::ToastInfo)),
                 Span::styled(
                     highlight_word,
                     state
-                        .theme
+                        .core.theme
                         .style(StyleKey::OverlaySelected)
                         .add_modifier(Modifier::BOLD),
                 ),
-                Span::styled(rest_text, state.theme.style(StyleKey::ToastInfo)),
-                Span::styled(" ".repeat(padding), state.theme.style(StyleKey::ToastInfo)),
+                Span::styled(rest_text, state.core.theme.style(StyleKey::ToastInfo)),
+                Span::styled(" ".repeat(padding), state.core.theme.style(StyleKey::ToastInfo)),
             ])
         } else {
             Line::from(vec![
                 Span::raw("  "),
                 Span::styled(highlight_word, Style::default()),
-                Span::styled(rest_text, state.theme.style(StyleKey::Muted)),
+                Span::styled(rest_text, state.core.theme.style(StyleKey::Muted)),
             ])
         };
 
@@ -142,5 +142,5 @@ pub fn render_message_action_popup(f: &mut Frame, state: &AppState) {
 
 pub fn get_selected_action(state: &AppState) -> Option<MessageAction> {
     let actions = MessageAction::all();
-    actions.get(state.operator.message_action_popup_selected).copied()
+    actions.get(state.operator_config.operator.message_action_popup_selected).copied()
 }

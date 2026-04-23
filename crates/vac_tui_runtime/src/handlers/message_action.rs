@@ -11,23 +11,23 @@ pub fn handle_event(ctx: &mut HandlerContext, event: InputEvent) -> HandlerResul
             crate::overlay::close_overlay(ctx.state, crate::overlay::OverlayId::MessageAction);
         }
         InputEvent::Up => {
-            if ctx.state.operator.message_action_popup_selected > 0 {
-                ctx.state.operator.message_action_popup_selected -= 1;
+            if ctx.state.operator_config.operator.message_action_popup_selected > 0 {
+                ctx.state.operator_config.operator.message_action_popup_selected -= 1;
             } else {
                 let num_actions = MessageAction::all().len();
-                ctx.state.operator.message_action_popup_selected = num_actions.saturating_sub(1);
+                ctx.state.operator_config.operator.message_action_popup_selected = num_actions.saturating_sub(1);
             }
         }
         InputEvent::Down => {
             let num_actions = MessageAction::all().len();
             if num_actions > 0 {
-                ctx.state.operator.message_action_popup_selected =
-                    (ctx.state.operator.message_action_popup_selected + 1) % num_actions;
+                ctx.state.operator_config.operator.message_action_popup_selected =
+                    (ctx.state.operator_config.operator.message_action_popup_selected + 1) % num_actions;
             }
         }
         InputEvent::InputSubmitted => {
             let actions = MessageAction::all();
-            if let Some(action) = actions.get(ctx.state.operator.message_action_popup_selected) {
+            if let Some(action) = actions.get(ctx.state.operator_config.operator.message_action_popup_selected) {
                 dispatch_action(ctx, *action);
             }
             crate::overlay::close_overlay(ctx.state, crate::overlay::OverlayId::MessageAction);
@@ -40,8 +40,8 @@ pub fn handle_event(ctx: &mut HandlerContext, event: InputEvent) -> HandlerResul
 fn dispatch_action(ctx: &mut HandlerContext, action: MessageAction) {
     match action {
         MessageAction::CopyMessage => {
-            if let Some(msg_id) = ctx.state.operator.message_action_target_id {
-                if let Some(msg) = ctx.state.messages.iter().find(|m| m.id == msg_id) {
+            if let Some(msg_id) = ctx.state.operator_config.operator.message_action_target_id {
+                if let Some(msg) = ctx.state.transcript.messages.iter().find(|m| m.id == msg_id) {
                     if let Err(e) =
                         crate::services::clipboard_paste::copy_to_clipboard(&msg.content)
                     {
@@ -51,8 +51,8 @@ fn dispatch_action(ctx: &mut HandlerContext, action: MessageAction) {
             }
         }
         MessageAction::CopyCode => {
-            if let Some(msg_id) = ctx.state.operator.message_action_target_id {
-                if let Some(msg) = ctx.state.messages.iter().find(|m| m.id == msg_id) {
+            if let Some(msg_id) = ctx.state.operator_config.operator.message_action_target_id {
+                if let Some(msg) = ctx.state.transcript.messages.iter().find(|m| m.id == msg_id) {
                     let mut code = String::new();
                     let mut in_block = false;
                     for line in msg.content.lines() {
@@ -72,20 +72,20 @@ fn dispatch_action(ctx: &mut HandlerContext, action: MessageAction) {
             }
         }
         MessageAction::Regenerate => {
-            if let Some(msg_id) = ctx.state.operator.message_action_target_id {
-                if let Some(msg) = ctx.state.messages.iter().find(|m| m.id == msg_id) {
+            if let Some(msg_id) = ctx.state.operator_config.operator.message_action_target_id {
+                if let Some(msg) = ctx.state.transcript.messages.iter().find(|m| m.id == msg_id) {
                     if msg.role == "user" {
-                        ctx.state.input.clear();
+                        ctx.state.composer.input.clear();
                         for line in msg.content.lines() {
-                            ctx.state.input.insert_str(line);
-                            ctx.state.input.newline();
+                            ctx.state.composer.input.insert_str(line);
+                            ctx.state.composer.input.newline();
                         }
                     }
                 }
             }
         }
         MessageAction::RevertToMessage => {
-            if let Some(msg_id) = ctx.state.operator.message_action_target_id {
+            if let Some(msg_id) = ctx.state.operator_config.operator.message_action_target_id {
                 let _ = ctx.output_tx.try_send(OutputEvent::RevertToMessage(msg_id));
             }
         }
@@ -101,7 +101,7 @@ fn dispatch_action(ctx: &mut HandlerContext, action: MessageAction) {
             invoke_tool(ctx, "vil_plumbing", args);
         }
         MessageAction::AuditZeroCopy => {
-            let files: Vec<String> = ctx.state.modified_files.clone();
+            let files: Vec<String> = ctx.state.workspace.modified_files.clone();
             let args = serde_json::json!({ "files": files, "pass_filter": "zero_copy" });
             invoke_tool(ctx, "vil_audit", args);
         }
@@ -125,7 +125,7 @@ fn invoke_tool(ctx: &mut HandlerContext, tool_name: &str, args: serde_json::Valu
 /// Get the first modified file from the changeset, or a fallback.
 fn first_modified_file(ctx: &HandlerContext) -> String {
     ctx.state
-        .modified_files
+        .workspace.modified_files
         .first()
         .cloned()
         .unwrap_or_else(|| "src/main.rs".to_string())

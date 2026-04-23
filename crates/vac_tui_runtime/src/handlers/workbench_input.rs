@@ -1,5 +1,5 @@
 //! Workbench tab input handlers — dispatched from the main router when
-//! `state.focus == WorkspaceFocus::Workbench`.
+//! `state.layout.focus == WorkspaceFocus::Workbench`.
 
 use crate::app::AppState;
 use crate::app::{InputEvent, OutputEvent, WorkbenchTab};
@@ -18,7 +18,7 @@ pub fn handle(state: &mut AppState, output_tx: &Sender<OutputEvent>, event: Inpu
 }
 
 fn handle_char(state: &mut AppState, output_tx: &Sender<OutputEvent>, c: char) {
-    match state.workbench_tab {
+    match state.layout.workbench_tab {
         WorkbenchTab::Approvals => match c {
             'a' => {
                 let mut ctx = HandlerContext::new(state, output_tx);
@@ -66,7 +66,7 @@ fn handle_char(state: &mut AppState, output_tx: &Sender<OutputEvent>, c: char) {
         },
         WorkbenchTab::Sessions => {
             if c == 'r' {
-                if let Some(sel) = state.sessions.get(state.operator.sessions_selected_idx).cloned() {
+                if let Some(sel) = state.session.sessions.get(state.operator_config.operator.sessions_selected_idx).cloned() {
                     if sel.has_checkpoint {
                         let _ = output_tx.try_send(OutputEvent::ResumeSession(sel.id.clone()));
                         state.push_activity(
@@ -74,7 +74,7 @@ fn handle_char(state: &mut AppState, output_tx: &Sender<OutputEvent>, c: char) {
                             format!("Resuming checkpoint: {}", &sel.id[..8.min(sel.id.len())]),
                         );
                     } else {
-                        state.toasts.push(crate::services::Toast::info(
+                        state.layout.toasts.push(crate::services::Toast::info(
                             "No checkpoint available for this session".to_string(),
                         ));
                     }
@@ -95,12 +95,12 @@ fn handle_char(state: &mut AppState, output_tx: &Sender<OutputEvent>, c: char) {
                 let _ = output_tx.try_send(OutputEvent::LoadRuntimeState);
             }
             'c' => {
-                if let Some(job) = state.runtime.jobs.get(state.runtime.selected_idx) {
+                if let Some(job) = state.execution.runtime.jobs.get(state.execution.runtime.selected_idx) {
                     let _ = output_tx.try_send(OutputEvent::CancelRuntimeJob(job.id));
                 }
             }
             't' => {
-                if let Some(job) = state.runtime.jobs.get(state.runtime.selected_idx) {
+                if let Some(job) = state.execution.runtime.jobs.get(state.execution.runtime.selected_idx) {
                     let _ = output_tx.try_send(OutputEvent::RetryRuntimeJob(job.id));
                 }
             }
@@ -112,21 +112,21 @@ fn handle_char(state: &mut AppState, output_tx: &Sender<OutputEvent>, c: char) {
 }
 
 fn handle_up(state: &mut AppState, output_tx: &Sender<OutputEvent>) {
-    match state.workbench_tab {
+    match state.layout.workbench_tab {
         WorkbenchTab::Approvals => {
-            state.approvals.approval_selected_idx = state.approvals.approval_selected_idx.saturating_sub(1);
-            state.approvals.approval_detail_scroll = 0;
+            state.execution.approvals.approval_selected_idx = state.execution.approvals.approval_selected_idx.saturating_sub(1);
+            state.execution.approvals.approval_detail_scroll = 0;
         }
         WorkbenchTab::Sessions => {
-            state.operator.sessions_selected_idx = state.operator.sessions_selected_idx.saturating_sub(1);
+            state.operator_config.operator.sessions_selected_idx = state.operator_config.operator.sessions_selected_idx.saturating_sub(1);
         }
         WorkbenchTab::Agents => {
-            state.runtime.agent_selected = state.runtime.agent_selected.saturating_sub(1);
-            state.runtime.agent_detail_scroll = 0;
+            state.execution.runtime.agent_selected = state.execution.runtime.agent_selected.saturating_sub(1);
+            state.execution.runtime.agent_detail_scroll = 0;
         }
         WorkbenchTab::Runtime => {
-            state.runtime.selected_idx = state.runtime.selected_idx.saturating_sub(1);
-            state.runtime.detail_scroll = 0;
+            state.execution.runtime.selected_idx = state.execution.runtime.selected_idx.saturating_sub(1);
+            state.execution.runtime.detail_scroll = 0;
         }
         WorkbenchTab::Review => {
             let mut ctx = HandlerContext::new(state, output_tx);
@@ -138,35 +138,35 @@ fn handle_up(state: &mut AppState, output_tx: &Sender<OutputEvent>) {
             let _ = vil_workbench::select_prev(&mut ctx);
         }
         WorkbenchTab::Vwfd => {
-            state.vwfd_inspector.select_prev();
+            state.vil_domain.vwfd_inspector.select_prev();
         }
         WorkbenchTab::Signal => {}
     }
 }
 
 fn handle_down(state: &mut AppState, output_tx: &Sender<OutputEvent>) {
-    match state.workbench_tab {
+    match state.layout.workbench_tab {
         WorkbenchTab::Approvals => {
-            if state.approvals.approval_selected_idx + 1 < state.approvals.pending_approvals.len() {
-                state.approvals.approval_selected_idx += 1;
-                state.approvals.approval_detail_scroll = 0;
+            if state.execution.approvals.approval_selected_idx + 1 < state.execution.approvals.pending_approvals.len() {
+                state.execution.approvals.approval_selected_idx += 1;
+                state.execution.approvals.approval_detail_scroll = 0;
             }
         }
         WorkbenchTab::Sessions => {
-            if state.operator.sessions_selected_idx + 1 < state.sessions.len() {
-                state.operator.sessions_selected_idx += 1;
+            if state.operator_config.operator.sessions_selected_idx + 1 < state.session.sessions.len() {
+                state.operator_config.operator.sessions_selected_idx += 1;
             }
         }
         WorkbenchTab::Agents => {
-            if state.runtime.agent_selected + 1 < state.runtime.agent_tasks.len() {
-                state.runtime.agent_selected += 1;
-                state.runtime.agent_detail_scroll = 0;
+            if state.execution.runtime.agent_selected + 1 < state.execution.runtime.agent_tasks.len() {
+                state.execution.runtime.agent_selected += 1;
+                state.execution.runtime.agent_detail_scroll = 0;
             }
         }
         WorkbenchTab::Runtime => {
-            if state.runtime.selected_idx + 1 < state.runtime.jobs.len() {
-                state.runtime.selected_idx += 1;
-                state.runtime.detail_scroll = 0;
+            if state.execution.runtime.selected_idx + 1 < state.execution.runtime.jobs.len() {
+                state.execution.runtime.selected_idx += 1;
+                state.execution.runtime.detail_scroll = 0;
             }
         }
         WorkbenchTab::Review => {
@@ -179,27 +179,27 @@ fn handle_down(state: &mut AppState, output_tx: &Sender<OutputEvent>) {
             let _ = vil_workbench::select_next(&mut ctx);
         }
         WorkbenchTab::Vwfd => {
-            state.vwfd_inspector.select_next();
+            state.vil_domain.vwfd_inspector.select_next();
         }
         WorkbenchTab::Signal => {}
     }
 }
 
 fn handle_submit(state: &mut AppState, output_tx: &Sender<OutputEvent>) {
-    match state.workbench_tab {
+    match state.layout.workbench_tab {
         WorkbenchTab::Approvals => {
             let mut ctx = HandlerContext::new(state, output_tx);
             let _ = approval::approve_current(&mut ctx);
         }
         WorkbenchTab::Sessions => {
-            if let Some(sel) = state.sessions.get(state.operator.sessions_selected_idx).cloned() {
+            if let Some(sel) = state.session.sessions.get(state.operator_config.operator.sessions_selected_idx).cloned() {
                 let _ = output_tx.try_send(OutputEvent::SwitchToSession(sel.id));
                 state.push_activity(crate::app::ActivityKind::Session, "Switch session");
             }
         }
         // T11: Enter on VWFD inspector → jump to source file in editor
         WorkbenchTab::Vwfd => {
-            if let Some((path, line)) = state.vwfd_inspector.selected_source_location() {
+            if let Some((path, line)) = state.vil_domain.vwfd_inspector.selected_source_location() {
                 let mut ctx = HandlerContext::new(state, output_tx);
                 let _ = vil_workbench::open_file_in_editor(&mut ctx, &path, line);
             }
@@ -210,7 +210,7 @@ fn handle_submit(state: &mut AppState, output_tx: &Sender<OutputEvent>) {
 
 /// Dispatch async session cleanup via OutputEvent (PR-W25-9).
 fn cleanup_session(state: &mut AppState, output_tx: &Sender<OutputEvent>) {
-    if let Some(sel) = state.sessions.get(state.operator.sessions_selected_idx).cloned() {
+    if let Some(sel) = state.session.sessions.get(state.operator_config.operator.sessions_selected_idx).cloned() {
         let _ = output_tx.try_send(OutputEvent::CleanupSession(sel.id));
         state.push_activity(crate::app::ActivityKind::Session, "Cleanup session");
     }

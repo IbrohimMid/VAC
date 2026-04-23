@@ -11,8 +11,8 @@ use ratatui::{
 };
 
 pub(super) fn render_messages(f: &mut Frame, state: &mut AppState, area: Rect) {
-    state.message_ui.message_area_y = area.y;
-    state.message_ui.message_area_height = area.height;
+    state.layout.message_ui.message_area_y = area.y;
+    state.layout.message_ui.message_area_height = area.height;
 
     use crate::app::types::RenderedMessageCache;
     use crate::services::message::render_tool_call_pending;
@@ -26,13 +26,13 @@ pub(super) fn render_messages(f: &mut Frame, state: &mut AppState, area: Rect) {
     let mut misses = 0;
 
     // Prune cache to a max size (e.g. 100) to act as LRU-ish
-    if state.message_ui.per_message_cache.len() > 200 {
+    if state.layout.message_ui.per_message_cache.len() > 200 {
         // Just clear it if it gets too big for now
-        state.message_ui.per_message_cache.clear();
+        state.layout.message_ui.per_message_cache.clear();
     }
 
-    state.message_ui.line_to_message_map.clear();
-    for msg in &state.messages {
+    state.layout.message_ui.line_to_message_map.clear();
+    for msg in &state.transcript.messages {
         use std::collections::hash_map::DefaultHasher;
         use std::hash::{Hash, Hasher};
 
@@ -41,14 +41,14 @@ pub(super) fn render_messages(f: &mut Frame, state: &mut AppState, area: Rect) {
         msg.role.hash(&mut hasher);
         let content_hash = hasher.finish();
 
-        if let Some(cached) = state.message_ui.per_message_cache.get(&msg.id) {
+        if let Some(cached) = state.layout.message_ui.per_message_cache.get(&msg.id) {
             if cached.content_hash == content_hash && cached.width == width {
                 hits += 1;
                 let n = cached.rendered_lines.len();
                 lines.extend(cached.rendered_lines.iter().cloned());
                 lines.push(Line::raw(""));
                 for _ in 0..=n {
-                    state.message_ui.line_to_message_map.push(msg.id);
+                    state.layout.message_ui.line_to_message_map.push(msg.id);
                 }
                 continue;
             }
@@ -69,7 +69,7 @@ pub(super) fn render_messages(f: &mut Frame, state: &mut AppState, area: Rect) {
         }
 
         let n = msg_lines.len();
-        state.message_ui.per_message_cache.insert(
+        state.layout.message_ui.per_message_cache.insert(
             msg.id,
             RenderedMessageCache {
                 content_hash,
@@ -81,26 +81,26 @@ pub(super) fn render_messages(f: &mut Frame, state: &mut AppState, area: Rect) {
         lines.extend(msg_lines);
         lines.push(Line::raw("")); // spacing between messages
         for _ in 0..=n {
-            state.message_ui.line_to_message_map.push(msg.id);
+            state.layout.message_ui.line_to_message_map.push(msg.id);
         }
     }
 
-    state.render_metrics.cache_hits += hits;
-    state.render_metrics.cache_misses += misses;
+    state.core.render_metrics.cache_hits += hits;
+    state.core.render_metrics.cache_misses += misses;
 
     // Render pending tool calls from state
-    for tc in &state.approvals.pending_tool_calls {
+    for tc in &state.execution.approvals.pending_tool_calls {
         lines.extend(render_tool_call_pending(tc));
     }
 
     // Cache the lines for text selection
-    state.message_ui.assembled_lines_cache = Some((state.messages.clone(), width, lines.clone()));
+    state.layout.message_ui.assembled_lines_cache = Some((state.transcript.messages.clone(), width, lines.clone()));
 
     // Apply text selection highlight
     let highlighted_lines = crate::services::text_selection::apply_selection_highlight(
         lines,
-        &state.selection_state,
-        state.scroll.messages,
+        &state.composer.selection_state,
+        state.layout.scroll.messages,
     );
 
     let widget = Paragraph::new(highlighted_lines)
@@ -109,10 +109,10 @@ pub(super) fn render_messages(f: &mut Frame, state: &mut AppState, area: Rect) {
                 .borders(Borders::ALL)
                 .title(ratatui::text::Span::styled(
                     "Conversation",
-                    focus_style(state.focus == WorkspaceFocus::Conversation, &state.theme),
+                    focus_style(state.layout.focus == WorkspaceFocus::Conversation, &state.core.theme),
                 )),
         )
         .wrap(Wrap { trim: false })
-        .scroll((state.scroll.messages as u16, 0));
+        .scroll((state.layout.scroll.messages as u16, 0));
     f.render_widget(widget, area);
 }

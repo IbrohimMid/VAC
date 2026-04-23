@@ -27,7 +27,7 @@ pub const KIND_ORDER: &[VilIssueKind] = &[
 
 /// Group all issues from state.
 pub fn classify_issues(state: &AppState) -> Vec<&VilIssue> {
-    state.vil.status.validation_issues.iter().collect()
+    state.vil_domain.vil.status.validation_issues.iter().collect()
 }
 
 /// Count issues per kind.
@@ -41,7 +41,7 @@ pub fn group_counts(issues: &[&VilIssue]) -> std::collections::HashMap<VilIssueK
 
 /// Apply the state's active filter to the issue list.
 pub fn filtered<'a>(state: &AppState, issues: &'a [&VilIssue]) -> Vec<&'a VilIssue> {
-    match state.vil.workbench_group_filter {
+    match state.vil_domain.vil.workbench_group_filter {
         Some(kind) => issues.iter().filter(|i| i.kind == kind).copied().collect(),
         None => issues.to_vec(),
     }
@@ -87,7 +87,7 @@ pub fn detect_rulebook_conflicts(active_rulebooks: &[String]) -> Vec<(String, St
 pub fn selected_issue(state: &AppState) -> Option<VilIssue> {
     let issues = classify_issues(state);
     let view = filtered(state, &issues);
-    view.get(state.vil.workbench_selected).map(|i| (*i).clone())
+    view.get(state.vil_domain.vil.workbench_selected).map(|i| (*i).clone())
 }
 
 /// Return the issue at the given filtered index, if any. Used by hover
@@ -112,7 +112,7 @@ mod tests {
             checkpoint_path: None,
             project_root: std::env::current_dir().unwrap_or_default(),
         });
-        s.vil.status.validation_issues = issues.into_iter().map(VilIssue::from_raw).collect();
+        s.vil_domain.vil.status.validation_issues = issues.into_iter().map(VilIssue::from_raw).collect();
         s
     }
 
@@ -175,12 +175,12 @@ mod tests {
             "Struct 'B' manually implements 'VilMessage'".into(),
             "Handler 'c' owned-bytes type 'Vec<u8>'".into(),
         ]);
-        state.vil.workbench_group_filter = None;
+        state.vil_domain.vil.workbench_group_filter = None;
         {
             let all = classify_issues(&state);
             assert_eq!(filtered(&state, &all).len(), 3);
         }
-        state.vil.workbench_group_filter = Some(VilIssueKind::ZeroCopy);
+        state.vil_domain.vil.workbench_group_filter = Some(VilIssueKind::ZeroCopy);
         {
             let all = classify_issues(&state);
             let view = filtered(&state, &all);

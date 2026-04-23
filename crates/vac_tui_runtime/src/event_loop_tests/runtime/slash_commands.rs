@@ -11,10 +11,10 @@ fn slash_semantics_fix_and_explain_send_prompt_with_args() {
     let (tx, _rx) = tokio::sync::mpsc::channel(4);
     let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
 
-    state.input.set_content("/fix cargo clippy");
+    state.composer.input.set_content("/fix cargo clippy");
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::InputSubmitted);
     let msg = state
-        .pending_user_messages
+        .transcript.pending_user_messages
         .pop_front()
         .expect("/fix should enqueue a pending message");
     assert!(
@@ -29,11 +29,11 @@ fn slash_semantics_fix_and_explain_send_prompt_with_args() {
     );
 
     state
-        .input
+        .composer.input
         .set_content("/explain crates/vac_cli/src/tui/event_loop.rs");
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::InputSubmitted);
     let msg = state
-        .pending_user_messages
+        .transcript.pending_user_messages
         .pop_front()
         .expect("/explain should enqueue a pending message");
     assert!(
@@ -56,13 +56,13 @@ fn slash_review_opens_workstation_instead_of_sending_literal() {
     let (tx, _rx) = tokio::sync::mpsc::channel(4);
     let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
     state
-        .changeset_store
+        .workspace.changeset_store
         .file_modified("a.txt".to_string(), "agent".to_string(), false);
-    state.modified_files = state.changeset_store.modified_files();
-    state.input.set_content("/review");
+    state.workspace.modified_files = state.workspace.changeset_store.modified_files();
+    state.composer.input.set_content("/review");
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::InputSubmitted);
-    assert!(state.review.open);
-    assert_eq!(state.workbench_tab, crate::app::WorkbenchTab::Review);
+    assert!(state.workspace.review.open);
+    assert_eq!(state.layout.workbench_tab, crate::app::WorkbenchTab::Review);
 }
 
 #[tokio::test]
@@ -72,7 +72,7 @@ async fn slash_command_model_exists_in_commands() {
     let state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
 
     // Verify /model command exists
-    let commands = state.commands;
+    let commands = state.layout.commands;
     assert!(commands.iter().any(|c| c.command == "/model"));
 }
 
@@ -83,7 +83,7 @@ async fn slash_command_files_exists_in_commands() {
     let state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
 
     // Verify /files command exists
-    let commands = state.commands;
+    let commands = state.layout.commands;
     assert!(commands.iter().any(|c| c.command == "/files"));
 }
 
@@ -94,7 +94,7 @@ async fn slash_command_changes_exists_in_commands() {
     let state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
 
     // Verify /changes command exists
-    let commands = state.commands;
+    let commands = state.layout.commands;
     assert!(commands.iter().any(|c| c.command == "/changes"));
 }
 
@@ -104,17 +104,17 @@ fn command_palette_filters_commands_correctly() {
     let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
 
     // Empty filter shows all commands
-    state.command_palette.input = "".to_string();
+    state.layout.command_palette.input = "".to_string();
     let all = state.filtered_commands();
     assert!(!all.is_empty());
 
     // Filter by prefix
-    state.command_palette.input = "/model".to_string();
+    state.layout.command_palette.input = "/model".to_string();
     let filtered = state.filtered_commands();
     assert!(filtered.iter().any(|c| c.command == "/model"));
 
     // Non-matching filter
-    state.command_palette.input = "/nonexistent".to_string();
+    state.layout.command_palette.input = "/nonexistent".to_string();
     let empty = state.filtered_commands();
     assert!(empty.is_empty());
 }
@@ -124,16 +124,16 @@ fn command_palette_selection_stays_within_bounds() {
     let dir = tempfile::tempdir().unwrap();
     let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
 
-    state.command_palette.input = "".to_string();
+    state.layout.command_palette.input = "".to_string();
     let commands = state.filtered_commands();
 
     // Selection should not exceed command count
     if !commands.is_empty() {
-        state.command_palette.selected = 0;
-        assert_eq!(state.command_palette.selected, 0);
+        state.layout.command_palette.selected = 0;
+        assert_eq!(state.layout.command_palette.selected, 0);
 
-        state.command_palette.selected = commands.len() - 1;
-        assert_eq!(state.command_palette.selected, commands.len() - 1);
+        state.layout.command_palette.selected = commands.len() - 1;
+        assert_eq!(state.layout.command_palette.selected, commands.len() - 1);
     }
 }
 
@@ -149,16 +149,16 @@ async fn command_palette_dispatch_does_not_send_literal_slash() {
     if let Some(cmd) = filtered.iter().find(|c| c.command == "/review") {
         // Simulate command execution
         state.add_user_message(cmd.command.clone());
-        state.review.open = true;
+        state.workspace.review.open = true;
         crate::overlay::open_overlay(&mut state, crate::overlay::OverlayId::ReviewPane);
         crate::overlay::close_overlay(&mut state, crate::overlay::OverlayId::CommandPalette);
     }
 
     // Verify review opened, not sent as literal message
-    assert!(state.review.open);
+    assert!(state.workspace.review.open);
     assert!(
         !state
-            .overlay_manager
+            .layout.overlay_manager
             .is_active(crate::overlay::OverlayId::CommandPalette)
     );
 
@@ -171,16 +171,16 @@ async fn slash_model_dispatch_opens_model_switcher_via_handler() {
     let dir = tempfile::tempdir().unwrap();
     let (tx, _rx) = tokio::sync::mpsc::channel(4);
     let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
-    state.input.set_content("/model");
+    state.composer.input.set_content("/model");
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::InputSubmitted);
     assert!(
         state
-            .overlay_manager
+            .layout.overlay_manager
             .is_active(crate::overlay::OverlayId::ModelSwitcher)
     );
     assert!(
         !state
-            .overlay_manager
+            .layout.overlay_manager
             .is_active(crate::overlay::OverlayId::FileSearch)
     );
 }
@@ -190,16 +190,16 @@ async fn slash_files_dispatch_opens_file_search_via_handler() {
     let dir = tempfile::tempdir().unwrap();
     let (tx, _rx) = tokio::sync::mpsc::channel(4);
     let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
-    state.input.set_content("/files");
+    state.composer.input.set_content("/files");
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::InputSubmitted);
     assert!(
         state
-            .overlay_manager
+            .layout.overlay_manager
             .is_active(crate::overlay::OverlayId::FileSearch)
     );
     assert!(
         !state
-            .overlay_manager
+            .layout.overlay_manager
             .is_active(crate::overlay::OverlayId::ModelSwitcher)
     );
 }
@@ -209,11 +209,11 @@ async fn slash_changes_dispatch_opens_changeset_via_handler() {
     let dir = tempfile::tempdir().unwrap();
     let (tx, _rx) = tokio::sync::mpsc::channel(4);
     let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
-    state.input.set_content("/changes");
+    state.composer.input.set_content("/changes");
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::InputSubmitted);
     assert!(
         state
-            .overlay_manager
+            .layout.overlay_manager
             .is_active(crate::overlay::OverlayId::Changeset)
     );
 }
@@ -223,8 +223,8 @@ async fn slash_review_dispatch_opens_review_via_handler() {
     let dir = tempfile::tempdir().unwrap();
     let (tx, _rx) = tokio::sync::mpsc::channel(4);
     let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
-    state.input.set_content("/review");
+    state.composer.input.set_content("/review");
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::InputSubmitted);
-    assert!(state.review.open);
-    assert_eq!(state.workbench_tab, crate::app::WorkbenchTab::Review);
+    assert!(state.workspace.review.open);
+    assert_eq!(state.layout.workbench_tab, crate::app::WorkbenchTab::Review);
 }

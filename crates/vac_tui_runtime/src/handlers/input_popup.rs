@@ -29,7 +29,7 @@ pub fn dispatch_popup_event(
     output_tx: &Sender<OutputEvent>,
     event: InputEvent,
 ) -> bool {
-    match state.overlay_manager.topmost() {
+    match state.layout.overlay_manager.topmost() {
         Some(OverlayId::RejectReason) => {
             handle_reject_reason(state, output_tx, event);
             true
@@ -129,8 +129,8 @@ fn handle_reject_reason(state: &mut AppState, output_tx: &Sender<OutputEvent>, e
             let _ = approval::confirm_reject_current(&mut ctx);
         }
         InputEvent::HandleEsc => {
-            ctx.state.approvals.reject_reason_input = None;
-            ctx.state.overlay_manager.pop(OverlayId::RejectReason);
+            ctx.state.execution.approvals.reject_reason_input = None;
+            ctx.state.layout.overlay_manager.pop(OverlayId::RejectReason);
             let _ = approval::reject_current(&mut ctx);
         }
         InputEvent::InputChanged(c) => {
@@ -154,12 +154,12 @@ fn handle_profile_switcher(
             let _ = profile_switcher::close(&mut ctx);
         }
         InputEvent::InputChanged(c) => {
-            let mut f = ctx.state.switchers.profile_search.clone();
+            let mut f = ctx.state.layout.switchers.profile_search.clone();
             f.push(c);
             let _ = profile_switcher::update_filter(&mut ctx, f);
         }
         InputEvent::InputBackspace => {
-            let mut f = ctx.state.switchers.profile_search.clone();
+            let mut f = ctx.state.layout.switchers.profile_search.clone();
             f.pop();
             let _ = profile_switcher::update_filter(&mut ctx, f);
         }
@@ -190,13 +190,13 @@ fn handle_rulebook_switcher(
             if c == ' ' {
                 let _ = rulebook_switcher::toggle_selected(&mut ctx);
             } else {
-                let mut f = ctx.state.switchers.rulebook_search.clone();
+                let mut f = ctx.state.layout.switchers.rulebook_search.clone();
                 f.push(c);
                 let _ = rulebook_switcher::update_filter(&mut ctx, f);
             }
         }
         InputEvent::InputBackspace => {
-            let mut f = ctx.state.switchers.rulebook_search.clone();
+            let mut f = ctx.state.layout.switchers.rulebook_search.clone();
             f.pop();
             let _ = rulebook_switcher::update_filter(&mut ctx, f);
         }

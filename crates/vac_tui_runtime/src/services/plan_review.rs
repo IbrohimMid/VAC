@@ -26,7 +26,7 @@ pub fn render_plan_review(f: &mut Frame, state: &AppState) {
     f.render_widget(
         Block::default()
             .borders(Borders::ALL)
-            .border_style(state.theme.style(StyleKey::Accent)),
+            .border_style(state.core.theme.style(StyleKey::Accent)),
         area,
     );
 
@@ -52,7 +52,7 @@ pub fn render_plan_review(f: &mut Frame, state: &AppState) {
 }
 
 fn render_title(f: &mut Frame, state: &AppState, area: Rect) {
-    let (title, status, version) = match &state.plan.metadata {
+    let (title, status, version) = match &state.workspace.plan.metadata {
         Some(m) => (m.title.clone(), m.status, m.version),
         None => ("Untitled Plan".to_string(), PlanStatus::Drafting, 1),
     };
@@ -63,33 +63,33 @@ fn render_title(f: &mut Frame, state: &AppState, area: Rect) {
         PlanStatus::Approved => ("APPROVED", StyleKey::Success),
     };
 
-    let comment_count = state.plan.comments.len();
+    let comment_count = state.workspace.plan.comments.len();
     let line1 = Line::from(vec![
-        Span::styled("  Plan: ", state.theme.style(StyleKey::Muted)),
+        Span::styled("  Plan: ", state.core.theme.style(StyleKey::Muted)),
         Span::styled(
             title,
             state
-                .theme
+                .core.theme
                 .style(StyleKey::Warning)
                 .add_modifier(Modifier::BOLD),
         ),
         Span::raw("  "),
-        Span::styled(format!("v{}", version), state.theme.style(StyleKey::Muted)),
+        Span::styled(format!("v{}", version), state.core.theme.style(StyleKey::Muted)),
         Span::raw("  "),
         Span::styled(
             status_label,
-            state.theme.style(status_key).add_modifier(Modifier::BOLD),
+            state.core.theme.style(status_key).add_modifier(Modifier::BOLD),
         ),
     ]);
 
     let line2 = Line::from(vec![
         Span::styled(
             format!("  {} lines  ", count_body_lines(state)),
-            state.theme.style(StyleKey::Muted),
+            state.core.theme.style(StyleKey::Muted),
         ),
         Span::styled(
             format!("{} comments", comment_count),
-            state.theme.style(StyleKey::Muted),
+            state.core.theme.style(StyleKey::Muted),
         ),
     ]);
 
@@ -97,24 +97,24 @@ fn render_title(f: &mut Frame, state: &AppState, area: Rect) {
 }
 
 fn render_body(f: &mut Frame, state: &AppState, area: Rect) {
-    let body = crate::services::plan::extract_plan_body(&state.plan.draft);
+    let body = crate::services::plan::extract_plan_body(&state.workspace.plan.draft);
     let lines_iter = body.lines();
     let mut lines: Vec<Line> = Vec::new();
     for (i, line_str) in lines_iter.enumerate() {
-        let is_selected = i == state.plan.review_selected;
+        let is_selected = i == state.workspace.plan.review_selected;
         let num_style = if is_selected {
             state
-                .theme
+                .core.theme
                 .style(StyleKey::Warning)
                 .add_modifier(Modifier::BOLD)
         } else {
-            state.theme.style(StyleKey::Muted)
+            state.core.theme.style(StyleKey::Muted)
         };
         let body_style = if is_selected {
             state
-                .theme
+                .core.theme
                 .style(StyleKey::HighlightBg)
-                .patch(state.theme.style(StyleKey::HighlightFg))
+                .patch(state.core.theme.style(StyleKey::HighlightFg))
         } else {
             Style::default()
         };
@@ -126,13 +126,13 @@ fn render_body(f: &mut Frame, state: &AppState, area: Rect) {
 
     let para = Paragraph::new(lines)
         .wrap(Wrap { trim: false })
-        .scroll((state.plan.review_scroll as u16, 0));
+        .scroll((state.workspace.plan.review_scroll as u16, 0));
     f.render_widget(para, area);
 }
 
 fn render_footer(f: &mut Frame, state: &AppState, area: Rect) {
-    let accent = state.theme.style(StyleKey::Accent);
-    let muted = state.theme.style(StyleKey::Muted);
+    let accent = state.core.theme.style(StyleKey::Accent);
+    let muted = state.core.theme.style(StyleKey::Muted);
     let footer = Line::from(vec![
         Span::raw(" "),
         Span::styled("↑/↓", accent),
@@ -150,7 +150,7 @@ fn render_footer(f: &mut Frame, state: &AppState, area: Rect) {
 }
 
 fn count_body_lines(state: &AppState) -> usize {
-    crate::services::plan::extract_plan_body(&state.plan.draft)
+    crate::services::plan::extract_plan_body(&state.workspace.plan.draft)
         .lines()
         .count()
 }

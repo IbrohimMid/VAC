@@ -14,7 +14,7 @@ pub fn on_set_runtime_state(
     snapshot: Option<vac_runtime::AutopilotStateFile>,
 ) {
     // Detect significant state changes for activity logging
-    let prev_state = state.runtime.snapshot.as_ref().map(|s| &s.state);
+    let prev_state = state.execution.runtime.snapshot.as_ref().map(|s| &s.state);
     let new_state = snapshot.as_ref().map(|s| &s.state);
 
     if let (Some(prev), Some(new)) = (prev_state, new_state) {
@@ -25,7 +25,7 @@ pub fn on_set_runtime_state(
                         crate::app::ActivityKind::Approval,
                         format!("Runtime waiting for approval: {}", &tool_call_id[..8]),
                     );
-                    state.toasts.push(crate::services::Toast::info(format!(
+                    state.layout.toasts.push(crate::services::Toast::info(format!(
                         "Runtime waiting for approval: {}",
                         &tool_call_id[..8]
                     )));
@@ -37,7 +37,7 @@ pub fn on_set_runtime_state(
                         crate::app::ActivityKind::Status,
                         format!("Runtime entered backoff until {}", until.format("%H:%M:%S")),
                     );
-                    state.toasts.push(crate::services::Toast::info(format!(
+                    state.layout.toasts.push(crate::services::Toast::info(format!(
                         "Runtime backoff until {}",
                         until.format("%H:%M:%S")
                     )));
@@ -49,7 +49,7 @@ pub fn on_set_runtime_state(
 
     // Detect execution environment changes
     if let Some(new_snapshot) = &snapshot {
-        if let Some(prev_snapshot) = &state.runtime.snapshot {
+        if let Some(prev_snapshot) = &state.execution.runtime.snapshot {
             if prev_snapshot.execution_environment != new_snapshot.execution_environment {
                 let env_name = match new_snapshot.execution_environment {
                     vac_core::ExecutionEnvironment::Host => "host",
@@ -60,7 +60,7 @@ pub fn on_set_runtime_state(
                     crate::app::ActivityKind::Status,
                     format!("Execution environment switched to {}", env_name),
                 );
-                state.toasts.push(crate::services::Toast::info(format!(
+                state.layout.toasts.push(crate::services::Toast::info(format!(
                     "Switched to {} environment",
                     env_name
                 )));
@@ -68,15 +68,15 @@ pub fn on_set_runtime_state(
         }
     }
 
-    state.runtime.snapshot = snapshot;
+    state.execution.runtime.snapshot = snapshot;
 }
 
 /// `InputEvent::ChangesetUpdated` — kick off a background VIL validation pass
 /// over the current changeset and report the result via `VilStatusUpdated`.
 pub fn on_changeset_updated(state: &mut AppState) {
-    let files = state.changeset_store.modified_files();
-    let project_root = state.project_root.clone();
-    if let Some(tx) = state.input_tx.clone() {
+    let files = state.workspace.changeset_store.modified_files();
+    let project_root = state.core.project_root.clone();
+    if let Some(tx) = state.core.input_tx.clone() {
         tokio::spawn(async move {
             if let Ok(pipeline) = vil_ir::IrPipeline::new_async(&project_root).await {
                 if let Ok(report) = vil_validate::validate_changes(&pipeline, &files) {
@@ -141,82 +141,82 @@ pub fn on_session_restored(
     title: String,
     messages: Vec<crate::app::Message>,
 ) {
-    state.session_id = id;
-    state.session_meta.title = Some(title);
-    state.messages = messages;
-    state.loading = false;
+    state.session.session_id = id;
+    state.session.session_meta.title = Some(title);
+    state.transcript.messages = messages;
+    state.core.loading = false;
 
     // Clear transient UI state to prevent leakage between sessions
-    state.approvals.pending_approvals.clear();
-    state.approvals.pending_tool_calls.clear();
-    state.approvals.approved_tools.clear();
-    state.approvals.rejected_tools.clear();
-    state.approvals.approval_explanations.clear();
-    state.approvals.approval_selected_idx = 0;
-    state.approvals.approval_detail_scroll = 0;
-    state.approvals.reject_reason_input = None;
-    state.at_mention.trigger_active = false;
-    state.at_mention.query.clear();
-    state.at_mention.results.clear();
-    state.streaming.is_streaming = false;
-    state.streaming.message_id = None;
-    state.scroll.messages = 0;
-    state.input.clear();
-    state.review.open = false;
-    state.review.filter.clear();
-    state.review.diff = None;
-    state.review.selected_idx = 0;
-    state.review.selected_path = None;
-    state.shell = crate::app::ShellState::default();
-    state.runtime.jobs.clear();
-    state.runtime.selected_idx = 0;
-    state.runtime.filter.clear();
-    state.runtime.detail_scroll = 0;
-    state.runtime.snapshot = None;
-    state.activity.clear();
-    state.scroll.activity = 0;
-    state.toasts.clear();
+    state.execution.approvals.pending_approvals.clear();
+    state.execution.approvals.pending_tool_calls.clear();
+    state.execution.approvals.approved_tools.clear();
+    state.execution.approvals.rejected_tools.clear();
+    state.execution.approvals.approval_explanations.clear();
+    state.execution.approvals.approval_selected_idx = 0;
+    state.execution.approvals.approval_detail_scroll = 0;
+    state.execution.approvals.reject_reason_input = None;
+    state.composer.at_mention.trigger_active = false;
+    state.composer.at_mention.query.clear();
+    state.composer.at_mention.results.clear();
+    state.transcript.streaming.is_streaming = false;
+    state.transcript.streaming.message_id = None;
+    state.layout.scroll.messages = 0;
+    state.composer.input.clear();
+    state.workspace.review.open = false;
+    state.workspace.review.filter.clear();
+    state.workspace.review.diff = None;
+    state.workspace.review.selected_idx = 0;
+    state.workspace.review.selected_path = None;
+    state.execution.shell = crate::app::ShellState::default();
+    state.execution.runtime.jobs.clear();
+    state.execution.runtime.selected_idx = 0;
+    state.execution.runtime.filter.clear();
+    state.execution.runtime.detail_scroll = 0;
+    state.execution.runtime.snapshot = None;
+    state.execution.activity.clear();
+    state.layout.scroll.activity = 0;
+    state.layout.toasts.clear();
     crate::overlay::close_overlay(state, crate::overlay::OverlayId::ModelSwitcher);
-    state.switchers.model_filter.clear();
-    state.switchers.model_selected = 0;
+    state.layout.switchers.model_filter.clear();
+    state.layout.switchers.model_selected = 0;
     crate::overlay::close_overlay(state, crate::overlay::OverlayId::FileSearch);
-    state.file_index.search_query.clear();
-    state.file_index.search_selected_idx = 0;
-    state.file_index.search_results.clear();
+    state.workspace.file_index.search_query.clear();
+    state.workspace.file_index.search_selected_idx = 0;
+    state.workspace.file_index.search_results.clear();
     crate::overlay::close_overlay(state, crate::overlay::OverlayId::Changeset);
-    state.changeset_ui.selected_idx = 0;
-    state.changeset_ui.diff_scroll = 0;
-    state.changeset_ui.selected_path = None;
-    state.changeset_store.clear();
-    state.modified_files = state.changeset_store.modified_files(); // derived: empty after clear
-    state.changeset_ui.diff = None;
-    state.vil.score_history.clear();
-    state.vil.event_log.clear();
-    state.vil.last_score = None;
-    state.workbench_tab = crate::app::WorkbenchTab::Approvals;
-    state.focus = crate::app::WorkspaceFocus::Input;
+    state.workspace.changeset_ui.selected_idx = 0;
+    state.workspace.changeset_ui.diff_scroll = 0;
+    state.workspace.changeset_ui.selected_path = None;
+    state.workspace.changeset_store.clear();
+    state.workspace.modified_files = state.workspace.changeset_store.modified_files(); // derived: empty after clear
+    state.workspace.changeset_ui.diff = None;
+    state.vil_domain.vil.score_history.clear();
+    state.vil_domain.vil.event_log.clear();
+    state.vil_domain.vil.last_score = None;
+    state.layout.workbench_tab = crate::app::WorkbenchTab::Approvals;
+    state.layout.focus = crate::app::WorkspaceFocus::Input;
     state.push_activity(crate::app::ActivityKind::Session, "Session restored");
 }
 
 /// `InputEvent::TaskCompleted` — record token usage, surface modified/created
 /// files to the changeset store, and refresh any open review panes.
 pub fn on_task_completed(state: &mut AppState, result: vac_core::task::TaskResult) {
-    state.vil.last_score = result.validation_score;
+    state.vil_domain.vil.last_score = result.validation_score;
     // Real usage wiring: `vac_core::task::TaskResult.total_tokens_used`
     // is the authoritative producer. We record this turn's total, add
     // to session running total, and derive a coarse context %.
     let turn_tokens = result.total_tokens_used;
-    state.billing.current_message = crate::app::TokenUsage {
+    state.operator_config.billing.current_message = crate::app::TokenUsage {
         input_tokens: 0,
         output_tokens: 0,
         total_tokens: turn_tokens,
     };
-    state.billing.total_session.total_tokens = state
-        .billing.total_session
+    state.operator_config.billing.total_session.total_tokens = state
+        .operator_config.billing.total_session
         .total_tokens
         .saturating_add(turn_tokens);
-    state.billing.context_usage_percent =
-        estimate_context_percent(state.operator.current_model.as_ref(), turn_tokens);
+    state.operator_config.billing.context_usage_percent =
+        estimate_context_percent(state.operator_config.operator.current_model.as_ref(), turn_tokens);
 
     let mut content = result.summary.clone();
     let mut changeset_updated = false;
@@ -225,7 +225,7 @@ pub fn on_task_completed(state: &mut AppState, result: vac_core::task::TaskResul
         for file in &result.modified_files {
             content.push_str(&format!("- `{}`\n", file));
             state
-                .changeset_store
+                .workspace.changeset_store
                 .file_modified(file.clone(), "agent".to_string(), true);
             changeset_updated = true;
         }
@@ -235,36 +235,36 @@ pub fn on_task_completed(state: &mut AppState, result: vac_core::task::TaskResul
         for file in &result.created_files {
             content.push_str(&format!("- `{}`\n", file));
             state
-                .changeset_store
+                .workspace.changeset_store
                 .file_created(file.clone(), "agent".to_string());
             changeset_updated = true;
         }
     }
     // Sync derived view from store (single source of truth)
-    state.modified_files = state.changeset_store.modified_files();
+    state.workspace.modified_files = state.workspace.changeset_store.modified_files();
 
     if changeset_updated {
-        if let Some(tx) = state.input_tx.clone() {
+        if let Some(tx) = state.core.input_tx.clone() {
             let _ = tx.try_send(InputEvent::ChangesetUpdated);
         }
     }
 
-    if state.review.open {
-        state.review.generation = state.review.generation.saturating_add(1);
+    if state.workspace.review.open {
+        state.workspace.review.generation = state.workspace.review.generation.saturating_add(1);
         state.review_sync_items();
         state.review_normalize_selection();
     }
     state.add_assistant_message(content);
-    state.loading = false;
-    state.streaming.is_streaming = false;
+    state.core.loading = false;
+    state.transcript.streaming.is_streaming = false;
     state.push_activity(crate::app::ActivityKind::Status, "Task completed");
 }
 
 /// `InputEvent::ToolResult` — reconcile pending/approved pools, surface error
 /// banners, and route VIL-flavoured tool logs.
 pub fn on_tool_result(state: &mut AppState, result: crate::types::ToolCallResult) {
-    state.approvals.pending_tool_calls.retain(|c| c.id != result.call.id);
-    state.approvals.approved_tools.retain(|c| c.id != result.call.id);
+    state.execution.approvals.pending_tool_calls.retain(|c| c.id != result.call.id);
+    state.execution.approvals.approved_tools.retain(|c| c.id != result.call.id);
     if result.status == crate::types::ToolCallResultStatus::Error {
         if let Some((style, severity)) = classify_critical_banner(&result.result) {
             push_banner_direct(

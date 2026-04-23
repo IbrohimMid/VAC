@@ -23,7 +23,7 @@ pub use pickers::render_context_chips;
 
 /// Main view function — layout orchestrator that calls sub-render functions
 pub fn view(f: &mut Frame, state: &mut AppState) {
-    if !state.hydrated {
+    if !state.core.hydrated {
         popups::render_boot_skeleton(f, state);
         return;
     }
@@ -43,109 +43,109 @@ pub fn view(f: &mut Frame, state: &mut AppState) {
     if banner_h > 0 {
         crate::services::banner::render_banner(f, chunks[1], state);
     } else {
-        state.banner.click_regions.clear();
-        state.banner.dismiss_region = None;
+        state.layout.banner.click_regions.clear();
+        state.layout.banner.dismiss_region = None;
     }
     workbench::render_workspace(f, state, chunks[2]);
     crate::services::statusline::render_statusline(f, state, chunks[3]);
     popups::render_footer(f, state, chunks[4]);
 
     if state
-        .overlay_manager
+        .layout.overlay_manager
         .is_active(crate::overlay::OverlayId::CommandPalette)
     {
         overlays::render_command_palette(f, state);
     }
 
     if state
-        .overlay_manager
+        .layout.overlay_manager
         .is_active(crate::overlay::OverlayId::Shortcuts)
     {
         overlays::render_shortcuts(f, state);
     }
 
     if state
-        .overlay_manager
+        .layout.overlay_manager
         .is_active(crate::overlay::OverlayId::IsolationSwitcher)
     {
         crate::services::isolation_switcher::render_isolation_switcher(f, state);
     }
 
     if state
-        .overlay_manager
+        .layout.overlay_manager
         .is_active(crate::overlay::OverlayId::ProfileSwitcher)
     {
         crate::services::profile_switcher::render_profile_switcher(f, state);
     }
 
     if state
-        .overlay_manager
+        .layout.overlay_manager
         .is_active(crate::overlay::OverlayId::RulebookSwitcher)
     {
         crate::services::rulebook_switcher::render_rulebook_switcher(f, state);
     }
 
     if state
-        .overlay_manager
+        .layout.overlay_manager
         .is_active(crate::overlay::OverlayId::MessageAction)
     {
         crate::services::message_action_popup::render_message_action_popup(f, state);
     }
 
     if state
-        .overlay_manager
+        .layout.overlay_manager
         .is_active(crate::overlay::OverlayId::ModelSwitcher)
     {
         overlays::render_model_switcher(f, state);
     }
 
     if state
-        .overlay_manager
+        .layout.overlay_manager
         .is_active(crate::overlay::OverlayId::FileSearch)
     {
         overlays::render_file_search(f, state);
     }
 
     if state
-        .overlay_manager
+        .layout.overlay_manager
         .is_active(crate::overlay::OverlayId::Changeset)
     {
         overlays::render_changeset(f, state);
     }
 
     if state
-        .overlay_manager
+        .layout.overlay_manager
         .is_active(crate::overlay::OverlayId::FileChanges)
     {
         crate::services::file_changes_popup::render_file_changes_popup(f, state);
     }
 
-    if state.plan.review_open {
+    if state.workspace.plan.review_open {
         crate::services::plan_review::render_plan_review(f, state);
     }
 
     if state
-        .overlay_manager
+        .layout.overlay_manager
         .is_active(crate::overlay::OverlayId::AskUser)
     {
         crate::services::ask_user::render_ask_user_popup(f, state);
     }
 
-    if state.shell.session_store.popup_visible {
+    if state.execution.shell.session_store.popup_visible {
         popups::render_shell_popup(f, state);
     }
 
-    if !state.toasts.is_empty() {
+    if !state.layout.toasts.is_empty() {
         overlays::render_toast(f, state);
     }
 
     if state
-        .overlay_manager
+        .layout.overlay_manager
         .is_active(crate::overlay::OverlayId::HelperDropdown)
     {
         let area = f.area();
         let width = (area.width / 2).max(40).min(area.width.saturating_sub(2));
-        let count = state.command_palette.filtered_helpers.len().min(5) as u16;
+        let count = state.layout.command_palette.filtered_helpers.len().min(5) as u16;
         let height = count + 2; // + borders or arrows
         let x = area.x + 1;
         let y = area.y + area.height.saturating_sub(height + 2); // above footer
@@ -158,30 +158,30 @@ pub fn view(f: &mut Frame, state: &mut AppState) {
         };
         f.render_widget(ratatui::widgets::Clear, rect);
         crate::services::helper_dropdown::render_file_search_dropdown(f, state, rect);
-    } else if state.at_mention.trigger_active && !state.at_mention.results.is_empty() {
+    } else if state.composer.at_mention.trigger_active && !state.composer.at_mention.results.is_empty() {
         popups::render_at_dropdown(f, state);
     }
 
     if state
-        .overlay_manager
+        .layout.overlay_manager
         .is_active(crate::overlay::OverlayId::FilePicker)
     {
         pickers::render_file_picker(f, state);
     }
     if state
-        .overlay_manager
+        .layout.overlay_manager
         .is_active(crate::overlay::OverlayId::TaskTray)
     {
         pickers::render_task_tray(f, state);
     }
     if state
-        .overlay_manager
+        .layout.overlay_manager
         .is_active(crate::overlay::OverlayId::ThemePicker)
     {
         pickers::render_theme_picker(f, state);
     }
     if state
-        .overlay_manager
+        .layout.overlay_manager
         .is_active(crate::overlay::OverlayId::SessionResume)
     {
         pickers::render_session_resume(f, state);
@@ -232,7 +232,7 @@ mod tests {
             project_root: std::env::current_dir().unwrap(),
         });
 
-        state.approvals.pending_approvals.push(crate::ToolCall {
+        state.execution.approvals.pending_approvals.push(crate::ToolCall {
             id: "tc-1".to_string(),
             r#type: "function".to_string(),
             function: crate::FunctionCall {
@@ -241,7 +241,7 @@ mod tests {
             },
             metadata: None,
         });
-        state.switchers.available_models.push(crate::Model {
+        state.layout.switchers.available_models.push(crate::Model {
             id: "kilo-auto/free".to_string(),
             name: "kilo-auto/free".to_string(),
             provider: "anthropic".to_string(),
@@ -250,12 +250,12 @@ mod tests {
         });
         open_overlay(&mut state, OverlayId::ModelSwitcher);
         open_overlay(&mut state, OverlayId::FileSearch);
-        state.file_index.search_results = vec!["src/main.rs".to_string()];
+        state.workspace.file_index.search_results = vec!["src/main.rs".to_string()];
         open_overlay(&mut state, OverlayId::Changeset);
         state
-            .changeset_store
+            .workspace.changeset_store
             .file_modified("src/main.rs".to_string(), "agent".to_string(), false);
-        state.modified_files = state.changeset_store.modified_files();
+        state.workspace.modified_files = state.workspace.changeset_store.modified_files();
 
         terminal.draw(|f| view(f, &mut state)).unwrap();
     }
@@ -271,10 +271,10 @@ mod tests {
             checkpoint_path: None,
             project_root: std::env::current_dir().unwrap(),
         });
-        state.hydrated = true;
-        state.side_panel.visible = true;
-        state.pins.files.push("src/lib.rs".to_string());
-        state.pins.diagnostics.push("src/main.rs".to_string());
+        state.core.hydrated = true;
+        state.layout.side_panel.visible = true;
+        state.layout.pins.files.push("src/lib.rs".to_string());
+        state.layout.pins.diagnostics.push("src/main.rs".to_string());
 
         terminal.draw(|f| view(f, &mut state)).unwrap();
         let rendered = render_to_string(&terminal);
@@ -290,32 +290,32 @@ mod tests {
             checkpoint_path: None,
             project_root: std::env::current_dir().unwrap(),
         });
-        state.hydrated = true;
-        state.workbench_tab = WorkbenchTab::Approvals;
+        state.core.hydrated = true;
+        state.layout.workbench_tab = WorkbenchTab::Approvals;
 
         let rendered = render_state_to_string(&mut state);
         let rendered = normalized_rendered(&rendered);
         assert!(rendered.contains("no active model selected"));
         assert!(rendered.contains("No pending approvals"));
 
-        state.side_panel.visible = true;
+        state.layout.side_panel.visible = true;
         let rendered = render_state_to_string(&mut state);
         let rendered = normalized_rendered(&rendered);
         assert!(rendered.contains("No pinned context yet"));
         assert!(rendered.contains("No sessions loaded yet"));
         assert!(rendered.contains("No MCP servers configured"));
 
-        state.workbench_tab = WorkbenchTab::Sessions;
+        state.layout.workbench_tab = WorkbenchTab::Sessions;
         let rendered = render_state_to_string(&mut state);
         let rendered = normalized_rendered(&rendered);
         assert!(rendered.contains("No sessions loaded yet"));
 
-        state.workbench_tab = WorkbenchTab::Runtime;
+        state.layout.workbench_tab = WorkbenchTab::Runtime;
         let rendered = render_state_to_string(&mut state);
         let rendered = normalized_rendered(&rendered);
         assert!(rendered.contains("No runtime jobs loaded yet"));
 
-        state.workbench_tab = WorkbenchTab::Plan;
+        state.layout.workbench_tab = WorkbenchTab::Plan;
         let rendered = render_state_to_string(&mut state);
         let rendered = normalized_rendered(&rendered);
         assert!(rendered.contains("No plan loaded yet"));
@@ -332,7 +332,7 @@ mod tests {
             project_root: std::env::current_dir().unwrap(),
         });
         // hydrated starts as false
-        assert!(!state.hydrated);
+        assert!(!state.core.hydrated);
         terminal.draw(|f| view(f, &mut state)).unwrap();
         let rendered = render_to_string(&terminal);
         assert!(rendered.contains("Starting"), "boot skeleton must render");
@@ -350,7 +350,7 @@ mod tests {
             checkpoint_path: None,
             project_root: std::env::current_dir().unwrap(),
         });
-        state.hydrated = true;
+        state.core.hydrated = true;
         let rendered = render_state_to_string(&mut state);
         assert!(!rendered.contains("vunknown"), "vunknown must not appear");
         assert!(

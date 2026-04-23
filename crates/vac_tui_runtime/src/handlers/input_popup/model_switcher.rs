@@ -16,12 +16,12 @@ pub(super) fn handle_model_switcher(
             let _ = model_switcher::close(&mut ctx);
         }
         InputEvent::InputChanged(c) => {
-            let mut f = ctx.state.switchers.model_filter.clone();
+            let mut f = ctx.state.layout.switchers.model_filter.clone();
             f.push(c);
             let _ = model_switcher::update_filter(&mut ctx, f);
         }
         InputEvent::InputBackspace => {
-            let mut f = ctx.state.switchers.model_filter.clone();
+            let mut f = ctx.state.layout.switchers.model_filter.clone();
             f.pop();
             let _ = model_switcher::update_filter(&mut ctx, f);
         }

@@ -76,20 +76,20 @@ async fn test_shell_state_cleanup() {
 
     let mut state = AppState::default();
 
-    assert!(state.shell.session_store.active().is_none());
-    assert!(!state.shell.session_store.popup_visible);
+    assert!(state.execution.shell.session_store.active().is_none());
+    assert!(!state.execution.shell.session_store.popup_visible);
 
-    let idx = state.shell.session_store.push_new("shell-1".to_string());
-    state.shell.session_store.popup_visible = true;
-    let session = &mut state.shell.session_store.sessions[idx];
+    let idx = state.execution.shell.session_store.push_new("shell-1".to_string());
+    state.execution.shell.session_store.popup_visible = true;
+    let session = &mut state.execution.shell.session_store.sessions[idx];
     session.output = "test output".to_string();
     session.waiting_for_input = true;
     session.backgrounded = true;
     session.exit_code = Some(1);
     session.last_error = Some("boom".to_string());
 
-    state.shell.session_store.popup_visible = false;
-    let session = &mut state.shell.session_store.sessions[idx];
+    state.execution.shell.session_store.popup_visible = false;
+    let session = &mut state.execution.shell.session_store.sessions[idx];
     session.command = None;
     session.output.clear();
     session.waiting_for_input = false;
@@ -97,9 +97,9 @@ async fn test_shell_state_cleanup() {
     session.exit_code = None;
     session.last_error = None;
 
-    let session = state.shell.session_store.active().unwrap();
+    let session = state.execution.shell.session_store.active().unwrap();
     assert!(session.command.is_none());
-    assert!(!state.shell.session_store.popup_visible);
+    assert!(!state.execution.shell.session_store.popup_visible);
     assert!(session.output.is_empty());
     assert!(!session.waiting_for_input);
     assert!(!session.backgrounded);

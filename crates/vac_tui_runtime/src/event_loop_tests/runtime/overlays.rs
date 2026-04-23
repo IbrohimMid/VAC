@@ -36,17 +36,17 @@ fn counter_consistency_header_tab_popup() {
     let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
 
     state
-        .changeset_store
+        .workspace.changeset_store
         .file_modified("x.rs".to_string(), "agent".to_string(), true);
     state
-        .changeset_store
+        .workspace.changeset_store
         .file_created("y.rs".to_string(), "agent".to_string());
     state
-        .changeset_store
+        .workspace.changeset_store
         .file_modified("z.rs".to_string(), "agent".to_string(), true);
-    state.changeset_store.revert_success("z.rs"); // reverted: not active
+    state.workspace.changeset_store.revert_success("z.rs"); // reverted: not active
 
-    let active = state.changeset_store.active_entries().len();
+    let active = state.workspace.changeset_store.active_entries().len();
     // All three surfaces must read the same count
     assert_eq!(active, 2); // x.rs + y.rs; z.rs is reverted
     // review_filtered_paths also driven by active_entries
@@ -74,8 +74,8 @@ fn task_completed_does_not_dual_write() {
     crate::controller::handle_backend_event(&mut state, &tx, InputEvent::TaskCompleted(result));
 
     // modified_files must equal store's derived view - no independent writes
-    assert_eq!(state.modified_files, state.changeset_store.modified_files());
-    assert_eq!(state.changeset_store.active_entries().len(), 2);
+    assert_eq!(state.workspace.modified_files, state.workspace.changeset_store.modified_files());
+    assert_eq!(state.workspace.changeset_store.active_entries().len(), 2);
 }
 
 #[test]
@@ -86,10 +86,10 @@ fn show_model_switcher_event_routes_via_handler() {
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::ShowModelSwitcher);
     assert!(
         state
-            .overlay_manager
+            .layout.overlay_manager
             .is_active(crate::overlay::OverlayId::ModelSwitcher)
     );
-    assert!(state.switchers.model_filter.is_empty());
+    assert!(state.layout.switchers.model_filter.is_empty());
 }
 
 #[test]
@@ -100,10 +100,10 @@ fn show_file_search_event_routes_via_handler() {
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::ShowFileSearch);
     assert!(
         state
-            .overlay_manager
+            .layout.overlay_manager
             .is_active(crate::overlay::OverlayId::FileSearch)
     );
-    assert!(state.file_index.search_query.is_empty());
+    assert!(state.workspace.file_index.search_query.is_empty());
 }
 
 #[test]
@@ -114,7 +114,7 @@ fn show_changeset_event_routes_via_handler() {
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::ShowChangeset);
     assert!(
         state
-            .overlay_manager
+            .layout.overlay_manager
             .is_active(crate::overlay::OverlayId::Changeset)
     );
 }
@@ -124,12 +124,12 @@ async fn runtime_tab_requests_refresh_on_cycle() {
     let dir = tempfile::tempdir().unwrap();
     let (tx, mut rx) = tokio::sync::mpsc::channel(4);
     let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
-    state.focus = crate::app::WorkspaceFocus::Workbench;
-    state.workbench_tab = crate::app::WorkbenchTab::Sessions;
+    state.layout.focus = crate::app::WorkspaceFocus::Workbench;
+    state.layout.workbench_tab = crate::app::WorkbenchTab::Sessions;
 
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::WorkbenchNextTab);
 
-    assert_eq!(state.workbench_tab, crate::app::WorkbenchTab::Agents);
+    assert_eq!(state.layout.workbench_tab, crate::app::WorkbenchTab::Agents);
     assert!(matches!(
         rx.recv().await.unwrap(),
         OutputEvent::ListAgentTasks
@@ -141,7 +141,7 @@ async fn runtime_tab_requests_refresh_on_cycle() {
 
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::WorkbenchNextTab);
 
-    assert_eq!(state.workbench_tab, crate::app::WorkbenchTab::Runtime);
+    assert_eq!(state.layout.workbench_tab, crate::app::WorkbenchTab::Runtime);
     assert!(matches!(
         rx.recv().await.unwrap(),
         OutputEvent::ListRuntimeJobs

@@ -26,28 +26,28 @@ pub fn render_commands_section(
     let cursor = "|";
     let placeholder = "Type to filter";
 
-    let search_spans = if state.command_palette.input.is_empty() {
+    let search_spans = if state.layout.command_palette.input.is_empty() {
         vec![
             Span::raw(" "), // Small space before
-            Span::styled(search_prompt, state.theme.style(StyleKey::AppTitle)),
+            Span::styled(search_prompt, state.core.theme.style(StyleKey::AppTitle)),
             Span::raw(" "),
-            Span::styled(cursor, state.theme.style(StyleKey::Accent)),
-            Span::styled(placeholder, state.theme.style(StyleKey::Muted)),
+            Span::styled(cursor, state.core.theme.style(StyleKey::Accent)),
+            Span::styled(placeholder, state.core.theme.style(StyleKey::Muted)),
             Span::raw(" "), // Small space after
         ]
     } else {
         vec![
             Span::raw(" "), // Small space before
-            Span::styled(search_prompt, state.theme.style(StyleKey::AppTitle)),
+            Span::styled(search_prompt, state.core.theme.style(StyleKey::AppTitle)),
             Span::raw(" "),
             Span::styled(
-                &state.command_palette.input,
+                &state.layout.command_palette.input,
                 state
-                    .theme
+                    .core.theme
                     .style(StyleKey::Text)
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::styled(cursor, state.theme.style(StyleKey::Accent)),
+            Span::styled(cursor, state.core.theme.style(StyleKey::Accent)),
             Span::raw(" "), // Small space after
         ]
     };
@@ -61,16 +61,16 @@ pub fn render_commands_section(
     f.render_widget(search_paragraph, search_area);
 
     // Get filtered commands
-    let filtered_commands = filter_commands(&state.command_palette.input, state);
+    let filtered_commands = filter_commands(&state.layout.command_palette.input, state);
     let total_commands = filtered_commands.len();
     let height = content_area.height as usize;
 
     // Calculate scroll position
     let max_scroll = total_commands.saturating_sub(height.saturating_sub(SCROLL_BUFFER_LINES));
-    let scroll = if state.command_palette.scroll > max_scroll {
+    let scroll = if state.layout.command_palette.scroll > max_scroll {
         max_scroll
     } else {
-        state.command_palette.scroll
+        state.layout.command_palette.scroll
     };
 
     // Add top arrow indicator if there are hidden items above
@@ -86,10 +86,10 @@ pub fn render_commands_section(
         if line_index < total_commands {
             let command = &filtered_commands[line_index];
             let available_width = area.width as usize - 2; // Account for borders
-            let is_selected = line_index == state.command_palette.selected;
+            let is_selected = line_index == state.layout.command_palette.selected;
             let bg_color = if is_selected {
                 state
-                    .theme
+                    .core.theme
                     .style(StyleKey::HighlightBg)
                     .fg
                     .unwrap_or(C::Reset)
@@ -98,12 +98,12 @@ pub fn render_commands_section(
             };
             let text_color = if is_selected {
                 state
-                    .theme
+                    .core.theme
                     .style(StyleKey::HighlightFg)
                     .fg
                     .unwrap_or(C::Reset)
             } else {
-                state.theme.style(StyleKey::Text).fg.unwrap_or(C::Reset)
+                state.core.theme.style(StyleKey::Text).fg.unwrap_or(C::Reset)
             };
 
             let name_formatted = format!(
@@ -115,12 +115,12 @@ pub fn render_commands_section(
 
             let shortcut_fg = if is_selected {
                 state
-                    .theme
+                    .core.theme
                     .style(StyleKey::HighlightFg)
                     .fg
                     .unwrap_or(C::Reset)
             } else {
-                state.theme.style(StyleKey::Muted).fg.unwrap_or(C::Reset)
+                state.core.theme.style(StyleKey::Muted).fg.unwrap_or(C::Reset)
             };
 
             let spans = vec![
@@ -157,7 +157,7 @@ pub fn render_commands_section(
         ));
 
         if has_content_below {
-            indicator_spans.push(Span::styled(" ▼", state.theme.style(StyleKey::Muted)));
+            indicator_spans.push(Span::styled(" ▼", state.core.theme.style(StyleKey::Muted)));
         }
 
         let indicator_paragraph = Paragraph::new(Line::from(indicator_spans));
@@ -168,17 +168,17 @@ pub fn render_commands_section(
 
     // Help text
     let help = Paragraph::new(Line::from(vec![
-        Span::styled(" ↑/↓", state.theme.style(StyleKey::Muted)),
-        Span::styled(" navigate", state.theme.style(StyleKey::Accent)),
+        Span::styled(" ↑/↓", state.core.theme.style(StyleKey::Muted)),
+        Span::styled(" navigate", state.core.theme.style(StyleKey::Accent)),
         Span::raw("  "),
-        Span::styled("enter", state.theme.style(StyleKey::Muted)),
-        Span::styled(" select", state.theme.style(StyleKey::Accent)),
+        Span::styled("enter", state.core.theme.style(StyleKey::Muted)),
+        Span::styled(" select", state.core.theme.style(StyleKey::Accent)),
         Span::raw("  "),
-        Span::styled("tab", state.theme.style(StyleKey::Muted)),
-        Span::styled(" switch", state.theme.style(StyleKey::Accent)),
+        Span::styled("tab", state.core.theme.style(StyleKey::Muted)),
+        Span::styled(" switch", state.core.theme.style(StyleKey::Accent)),
         Span::raw("  "),
-        Span::styled("esc", state.theme.style(StyleKey::Muted)),
-        Span::styled(" close", state.theme.style(StyleKey::Accent)),
+        Span::styled("esc", state.core.theme.style(StyleKey::Muted)),
+        Span::styled(" close", state.core.theme.style(StyleKey::Accent)),
     ]));
 
     f.render_widget(help, help_area);

@@ -37,10 +37,10 @@ pub fn render_hover_popup(
     detail: &HoverDetail,
 ) {
     let severity_style = match detail.severity {
-        LspSeverity::Error => state.theme.style(StyleKey::Error),
-        LspSeverity::Warning => state.theme.style(StyleKey::Warning),
-        LspSeverity::Information => state.theme.style(StyleKey::Accent),
-        LspSeverity::Hint => state.theme.style(StyleKey::Muted),
+        LspSeverity::Error => state.core.theme.style(StyleKey::Error),
+        LspSeverity::Warning => state.core.theme.style(StyleKey::Warning),
+        LspSeverity::Information => state.core.theme.style(StyleKey::Accent),
+        LspSeverity::Hint => state.core.theme.style(StyleKey::Muted),
     };
 
     let mut lines: Vec<Line> = Vec::new();
@@ -60,7 +60,7 @@ pub fn render_hover_popup(
     if let Some(src) = &detail.source {
         lines.push(Line::from(Span::styled(
             src.clone(),
-            state.theme.style(StyleKey::Muted),
+            state.core.theme.style(StyleKey::Muted),
         )));
     }
 
@@ -96,7 +96,7 @@ pub fn render_hover_popup(
         popup_h.min(clamp_area.height),
     );
 
-    state.lsp_ui.hover_popup_region = Some(popup_rect);
+    state.layout.lsp_ui.hover_popup_region = Some(popup_rect);
 
     f.render_widget(Clear, popup_rect);
     let para = Paragraph::new(lines)
@@ -118,7 +118,7 @@ pub fn render_lineage_panel(f: &mut Frame, state: &AppState, area: Rect, view: &
     if view.is_empty() {
         let widget = Paragraph::new(Line::styled(
             "Select an issue to see details",
-            state.theme.style(StyleKey::Muted),
+            state.core.theme.style(StyleKey::Muted),
         ))
         .block(Block::default().borders(Borders::ALL).title("Details"))
         .wrap(Wrap { trim: true });
@@ -126,7 +126,7 @@ pub fn render_lineage_panel(f: &mut Frame, state: &AppState, area: Rect, view: &
         return;
     }
 
-    let sel = state.vil.workbench_selected.min(view.len() - 1);
+    let sel = state.vil_domain.vil.workbench_selected.min(view.len() - 1);
     let issue = view[sel];
 
     let chunks = Layout::default()
@@ -140,25 +140,25 @@ pub fn render_lineage_panel(f: &mut Frame, state: &AppState, area: Rect, view: &
             Span::styled("Kind: ", Style::default().add_modifier(Modifier::BOLD)),
             Span::styled(
                 issue.kind.label().to_string(),
-                kind_style(&state.theme, issue.kind),
+                kind_style(&state.core.theme, issue.kind),
             ),
         ]),
         Line::from(vec![
             Span::styled("Source: ", Style::default().add_modifier(Modifier::BOLD)),
-            Span::styled(issue.source.clone(), state.theme.style(StyleKey::Muted)),
+            Span::styled(issue.source.clone(), state.core.theme.style(StyleKey::Muted)),
         ]),
     ];
     if let (Some(f), Some(l)) = (&issue.file, issue.line) {
         meta_lines.push(Line::from(vec![
             Span::styled("Location: ", Style::default().add_modifier(Modifier::BOLD)),
-            Span::styled(format!("{}:{}", f, l), state.theme.style(StyleKey::Accent)),
+            Span::styled(format!("{}:{}", f, l), state.core.theme.style(StyleKey::Accent)),
         ]));
     }
     if issue.inferred {
         meta_lines.push(Line::from(Span::styled(
             "[inferred]",
             state
-                .theme
+                .core.theme
                 .style(StyleKey::Muted)
                 .add_modifier(Modifier::ITALIC),
         )));
@@ -173,7 +173,7 @@ pub fn render_lineage_panel(f: &mut Frame, state: &AppState, area: Rect, view: &
         let mut lines = vec![Line::from(Span::styled(
             "Repair suggestion:",
             state
-                .theme
+                .core.theme
                 .style(StyleKey::Success)
                 .add_modifier(Modifier::BOLD),
         ))];

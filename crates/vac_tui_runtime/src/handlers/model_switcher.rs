@@ -6,9 +6,9 @@ use crate::app::OutputEvent;
 /// Open model switcher popup.
 pub fn open(ctx: &mut HandlerContext) -> HandlerResult {
     crate::overlay::open_overlay(ctx.state, crate::overlay::OverlayId::ModelSwitcher);
-    ctx.state.switchers.model_filter.clear();
+    ctx.state.layout.switchers.model_filter.clear();
     let filtered = ctx.state.model_switcher_filtered();
-    ctx.state.switchers.model_selected = if let Some(current) = &ctx.state.operator.current_model {
+    ctx.state.layout.switchers.model_selected = if let Some(current) = &ctx.state.operator_config.operator.current_model {
         filtered
             .iter()
             .position(|m| m.id == current.id)
@@ -22,15 +22,15 @@ pub fn open(ctx: &mut HandlerContext) -> HandlerResult {
 /// Close model switcher popup.
 pub fn close(ctx: &mut HandlerContext) -> HandlerResult {
     crate::overlay::close_overlay(ctx.state, crate::overlay::OverlayId::ModelSwitcher);
-    ctx.state.switchers.model_filter.clear();
-    ctx.state.switchers.model_selected = 0;
+    ctx.state.layout.switchers.model_filter.clear();
+    ctx.state.layout.switchers.model_selected = 0;
     Ok(())
 }
 
 /// Update filter and refresh results.
 pub fn update_filter(ctx: &mut HandlerContext, filter: String) -> HandlerResult {
-    ctx.state.switchers.model_filter = filter;
-    ctx.state.switchers.model_selected = 0;
+    ctx.state.layout.switchers.model_filter = filter;
+    ctx.state.layout.switchers.model_selected = 0;
     Ok(())
 }
 
@@ -38,24 +38,24 @@ pub fn update_filter(ctx: &mut HandlerContext, filter: String) -> HandlerResult 
 pub fn select_next(ctx: &mut HandlerContext) -> HandlerResult {
     let filtered = ctx.state.model_switcher_filtered();
     if !filtered.is_empty() {
-        ctx.state.switchers.model_selected =
-            (ctx.state.switchers.model_selected + 1).min(filtered.len().saturating_sub(1));
+        ctx.state.layout.switchers.model_selected =
+            (ctx.state.layout.switchers.model_selected + 1).min(filtered.len().saturating_sub(1));
     }
     Ok(())
 }
 
 /// Select previous model.
 pub fn select_prev(ctx: &mut HandlerContext) -> HandlerResult {
-    ctx.state.switchers.model_selected = ctx.state.switchers.model_selected.saturating_sub(1);
+    ctx.state.layout.switchers.model_selected = ctx.state.layout.switchers.model_selected.saturating_sub(1);
     Ok(())
 }
 
 /// Submit selected model.
 pub fn submit_selected(ctx: &mut HandlerContext) -> HandlerResult {
     let filtered = ctx.state.model_switcher_filtered();
-    if let Some(selected) = filtered.get(ctx.state.switchers.model_selected).cloned() {
-        ctx.state.command_palette.recent_commands.add_model(selected.id.clone());
-        ctx.state.operator.current_model = Some(selected.clone());
+    if let Some(selected) = filtered.get(ctx.state.layout.switchers.model_selected).cloned() {
+        ctx.state.layout.command_palette.recent_commands.add_model(selected.id.clone());
+        ctx.state.operator_config.operator.current_model = Some(selected.clone());
         let _ = ctx
             .output_tx
             .try_send(OutputEvent::SwitchToModel(selected.clone()));
@@ -98,10 +98,10 @@ mod tests {
         assert!(open(&mut ctx).is_ok());
         assert!(
             ctx.state
-                .overlay_manager
+                .layout.overlay_manager
                 .is_active(crate::overlay::OverlayId::ModelSwitcher)
         );
-        assert_eq!(ctx.state.switchers.model_selected, 0);
+        assert_eq!(ctx.state.layout.switchers.model_selected, 0);
     }
 
     #[test]
@@ -110,15 +110,15 @@ mod tests {
         let mut ctx = HandlerContext::new(&mut state, &tx);
 
         crate::overlay::open_overlay(ctx.state, crate::overlay::OverlayId::ModelSwitcher);
-        ctx.state.switchers.model_filter = "test".to_string();
+        ctx.state.layout.switchers.model_filter = "test".to_string();
 
         assert!(close(&mut ctx).is_ok());
         assert!(
             !ctx.state
-                .overlay_manager
+                .layout.overlay_manager
                 .is_active(crate::overlay::OverlayId::ModelSwitcher)
         );
-        assert!(ctx.state.switchers.model_filter.is_empty());
+        assert!(ctx.state.layout.switchers.model_filter.is_empty());
     }
 
     #[test]
@@ -127,7 +127,7 @@ mod tests {
         let mut ctx = HandlerContext::new(&mut state, &tx);
 
         assert!(update_filter(&mut ctx, "gpt".to_string()).is_ok());
-        assert_eq!(ctx.state.switchers.model_filter, "gpt");
-        assert_eq!(ctx.state.switchers.model_selected, 0);
+        assert_eq!(ctx.state.layout.switchers.model_filter, "gpt");
+        assert_eq!(ctx.state.layout.switchers.model_selected, 0);
     }
 }

@@ -83,7 +83,7 @@ pub fn tab_from_index(index: usize) -> WorkbenchTab {
 
 /// Dispatches rendering to the currently active tab.
 pub fn render_active_tab(f: &mut Frame, state: &mut AppState, area: Rect) {
-    match state.workbench_tab {
+    match state.layout.workbench_tab {
         WorkbenchTab::Approvals => ApprovalsTab::render(f, state, area),
         WorkbenchTab::Review => ReviewTab::render(f, state, area),
         WorkbenchTab::Sessions => SessionsTab::render(f, state, area),

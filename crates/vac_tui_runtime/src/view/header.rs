@@ -17,37 +17,37 @@ pub(super) fn render_header(f: &mut Frame, state: &mut AppState, area: Rect) {
         spans.push(Span::styled(
             "[ISOLATED] ",
             state
-                .theme
+                .core.theme
                 .style(StyleKey::Warning)
                 .add_modifier(Modifier::BOLD),
         ));
     }
 
-    spans.push(Span::styled("VAC", state.theme.style(StyleKey::AppTitle)));
+    spans.push(Span::styled("VAC", state.core.theme.style(StyleKey::AppTitle)));
     spans.push(Span::raw("  "));
     spans.push(Span::styled(
-        format!("session {}", &state.session_id[..8]),
-        state.theme.style(StyleKey::Muted),
+        format!("session {}", &state.session.session_id[..8]),
+        state.core.theme.style(StyleKey::Muted),
     ));
-    if let Some(title) = &state.session_meta.title {
+    if let Some(title) = &state.session.session_meta.title {
         spans.push(Span::raw("  "));
         spans.push(Span::styled(
             title.clone(),
-            state.theme.style(StyleKey::Accent),
+            state.core.theme.style(StyleKey::Accent),
         ));
     }
 
     spans.push(Span::raw(" | "));
     spans.push(Span::styled(
-        format!("env:{}", state.switchers.active_isolation_mode),
-        state.theme.style(StyleKey::Accent),
+        format!("env:{}", state.layout.switchers.active_isolation_mode),
+        state.core.theme.style(StyleKey::Accent),
     ));
 
     spans.push(Span::raw(" | "));
     spans.push(Span::styled(
-        format!("prof:{}", state.switchers.active_profile),
+        format!("prof:{}", state.layout.switchers.active_profile),
         state
-            .theme
+            .core.theme
             .style(StyleKey::Warning)
             .add_modifier(Modifier::BOLD),
     ));
@@ -57,35 +57,35 @@ pub(super) fn render_header(f: &mut Frame, state: &mut AppState, area: Rect) {
         format!(
             "model {}",
             state
-                .operator.current_model
+                .operator_config.operator.current_model
                 .as_ref()
                 .map(|m| m.name.as_str())
                 .unwrap_or("-")
         ),
-        state.theme.style(StyleKey::Muted),
+        state.core.theme.style(StyleKey::Muted),
     ));
     spans.push(Span::raw("  "));
     spans.push(Span::styled(
-        if state.view_flags.auto_approve {
+        if state.core.view_flags.auto_approve {
             "perm AUTO"
         } else {
             "perm MANUAL"
         },
-        if state.view_flags.auto_approve {
+        if state.core.view_flags.auto_approve {
             state
-                .theme
+                .core.theme
                 .style(StyleKey::Error)
                 .add_modifier(Modifier::BOLD)
         } else {
             state
-                .theme
+                .core.theme
                 .style(StyleKey::Success)
                 .add_modifier(Modifier::BOLD)
         },
     ));
 
     // VIL Status Badge
-    let score = state.vil.status.validation_score;
+    let score = state.vil_domain.vil.status.validation_score;
     let score_label = if score >= 0.9 {
         "A"
     } else if score >= 0.7 {
@@ -94,11 +94,11 @@ pub(super) fn render_header(f: &mut Frame, state: &mut AppState, area: Rect) {
         "C"
     };
     let badge_style = if score >= 0.9 {
-        state.theme.style(StyleKey::Success)
+        state.core.theme.style(StyleKey::Success)
     } else if score >= 0.7 {
-        state.theme.style(StyleKey::Warning)
+        state.core.theme.style(StyleKey::Warning)
     } else {
-        state.theme.style(StyleKey::Error)
+        state.core.theme.style(StyleKey::Error)
     };
 
     spans.push(Span::raw("  "));
@@ -109,13 +109,13 @@ pub(super) fn render_header(f: &mut Frame, state: &mut AppState, area: Rect) {
 
     spans.push(Span::raw("  "));
     spans.push(Span::styled(
-        format!("approvals {}", state.approvals.pending_approvals.len()),
-        state.theme.style(StyleKey::Warning),
+        format!("approvals {}", state.execution.approvals.pending_approvals.len()),
+        state.core.theme.style(StyleKey::Warning),
     ));
     spans.push(Span::raw("  "));
     spans.push(Span::styled(
-        format!("review {}", state.changeset_store.active_entries().len()),
-        state.theme.style(StyleKey::Accent),
+        format!("review {}", state.workspace.changeset_store.active_entries().len()),
+        state.core.theme.style(StyleKey::Accent),
     ));
 
     let widget = Paragraph::new(Line::from(spans));
