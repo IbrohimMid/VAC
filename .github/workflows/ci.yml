@@ -84,8 +84,13 @@ jobs:
           key: ${{ runner.os }}-cargo-test-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-test-
 
-      - name: cargo test
-        run: cargo test --workspace
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@nextest
+
+      - name: cargo nextest run
+        # Project policy forbids `cargo test` (hook-blocked locally);
+        # nextest matches the developer workflow and is ~3x faster.
+        run: cargo nextest run --workspace
 
   security:
     name: Security Audits
@@ -203,5 +208,8 @@ jobs:
           key: ${{ runner.os }}-cargo-smoke-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-smoke-
 
-      - name: cargo smoke test
-        run: cargo test -p vil_llm --test provider_smoke_matrix -- --exact ${{ matrix.test }} --nocapture
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@nextest
+
+      - name: cargo nextest smoke run
+        run: cargo nextest run -p vil_llm --test provider_smoke_matrix -E 'test(=${{ matrix.test }})' --no-capture
