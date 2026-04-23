@@ -6039,6 +6039,7 @@ dependencies = [
  "vac_changeset",
  "vac_core",
  "vac_ingest",
+ "vac_memory",
  "vac_runtime",
  "vac_session_control",
  "vac_session_engine",
