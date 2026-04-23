@@ -8,11 +8,12 @@
 //! for the apply path to consume. `vac plan apply <id>` reads back the
 //! JSON sidecar and stages each step as a changeset entry.
 //!
-//! Default adapter is `EchoAdapter` (mock). When a real remote
-//! endpoint is wired, `--remote <uri>` selects it via
-//! `vac_bridge::RemoteSession`. The remote path is deliberately
-//! skeleton-only today — the local mock path covers the plan file
-//! contract end-to-end.
+//! Default adapter is `EchoAdapter` (mock). `--remote <uri>` routes
+//! through `plan_remote::RemoteSessionAdapter`, which wraps a
+//! `vac_bridge::RemoteSession` and drives a subprocess over stdio.
+//! Only `stdio://<bin>` is implemented today — `ws://` / `http://`
+//! return an explicit unsupported-transport error so the mock path
+//! is never a silent fallback.
 
 use std::path::PathBuf;
 
@@ -195,23 +196,41 @@ pub async fn generate_plan(
     let slash = SlashProcessor::new();
     let compact = TrivialCompactBoundary::default();
     let usage = UsageTracker::new();
-    let adapter = EchoAdapter;
 
-    // Collect the adapter reply content via the event channel so the
-    // plan body is derived from real submit output, not a hard-coded
-    // placeholder.
+    // Route to the bridge-backed adapter when `--remote` is set.
+    // Unsupported schemes (ws://, http://) surface as an error so the
+    // mock path never silently swallows a real remote request.
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
-    let _snap = submit_one(
-        ctx,
-        &writer,
-        &slash,
-        &compact,
-        &usage,
-        &adapter,
-        CompactConfig::default(),
-        Some(tx),
-    )
-    .await?;
+    let _snap = if let Some(uri) = &remote {
+        let remote_adapter =
+            crate::commands::plan_remote::RemoteSessionAdapter::spawn_stdio(uri)
+                .await
+                .map_err(|e| anyhow::anyhow!("remote planner: {e}"))?;
+        submit_one(
+            ctx,
+            &writer,
+            &slash,
+            &compact,
+            &usage,
+            &remote_adapter,
+            CompactConfig::default(),
+            Some(tx),
+        )
+        .await?
+    } else {
+        let adapter = EchoAdapter;
+        submit_one(
+            ctx,
+            &writer,
+            &slash,
+            &compact,
+            &usage,
+            &adapter,
+            CompactConfig::default(),
+            Some(tx),
+        )
+        .await?
+    };
 
     let mut reply_content = String::new();
     while let Ok(ev) = rx.try_recv() {

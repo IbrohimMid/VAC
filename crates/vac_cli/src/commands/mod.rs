@@ -13,6 +13,7 @@ pub mod isolation;
 pub mod mcp;
 pub mod migrate;
 pub mod plan;
+pub mod plan_remote;
 pub mod restore;
 pub mod resume;
 pub mod rulebook;
