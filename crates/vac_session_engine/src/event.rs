@@ -41,6 +41,7 @@ impl SubmitContext {
 /// every driver sees the same stream.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum SubmitEvent {
     /// Submit accepted and stub transcript entry has been persisted.
     /// Downstream tools or the LLM have not been contacted yet. This

@@ -11,7 +11,7 @@ use vac_session_engine::{
 };
 
 pub async fn execute(project_root: PathBuf, input: String) -> anyhow::Result<()> {
-    let writer = TranscriptWriter::new(project_root.clone());
+    let writer = TranscriptWriter::new(project_root);
     let slash = SlashProcessor::new();
     let compact = TrivialCompactBoundary::default();
     let usage = UsageTracker::new();
@@ -23,6 +23,9 @@ pub async fn execute(project_root: PathBuf, input: String) -> anyhow::Result<()>
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
     let render = tokio::spawn(async move {
         while let Some(ev) = rx.recv().await {
+            // Non-exhaustive match: SubmitEvent may gain variants over
+            // time. Fall through with the event's label rather than
+            // failing to compile.
             match ev {
                 SubmitEvent::Accepted { entry_id } => {
                     println!("[accepted] {entry_id}");
@@ -54,6 +57,9 @@ pub async fn execute(project_root: PathBuf, input: String) -> anyhow::Result<()>
                 SubmitEvent::Aborted { reason } => {
                     println!("[aborted] {reason}");
                 }
+                other => {
+                    println!("[{}]", other.label());
+                }
             }
         }
     });
@@ -69,7 +75,9 @@ pub async fn execute(project_root: PathBuf, input: String) -> anyhow::Result<()>
         Some(tx),
     )
     .await?;
-    let _ = render.await;
+    if let Err(e) = render.await {
+        tracing::warn!(target: "vac_cli::session", "event renderer join error: {e}");
+    }
 
     println!(
         "\nsession: {sid}\ntranscript: {}",

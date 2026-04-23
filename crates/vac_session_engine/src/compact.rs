@@ -13,6 +13,7 @@ use crate::error::EngineResult;
 
 /// Recommendation returned by a [`CompactBoundary`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub enum CompactHint {
     /// No action needed; pass messages through.
     Keep,

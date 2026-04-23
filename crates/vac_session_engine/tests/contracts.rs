@@ -13,9 +13,10 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use uuid::Uuid;
 use vac_session_engine::{
-    CompactConfig, EngineResult, LlmAdapter, LlmRequest, LlmResponse, SlashCommand,
-    SlashProcessor, SubmitContext, SubmitEvent, TranscriptKind, TranscriptWriter,
-    TrivialCompactBoundary, UsageTracker, submit_one,
+    CompactBoundary, CompactConfig, CompactHint, CompactInput, EngineError, EngineResult,
+    LlmAdapter, LlmRequest, LlmResponse, SlashCommand, SlashProcessor, SubmitContext,
+    SubmitEvent, TranscriptKind, TranscriptWriter, TrivialCompactBoundary, UsageTracker,
+    submit_one,
 };
 
 /// LLM adapter that records whether it was called and asserts the
@@ -211,4 +212,123 @@ async fn event_stream_and_transcript_match_for_llm_path() {
     let rows = writer.read(sid).await.unwrap();
     assert_eq!(rows.first().map(|r| r.kind), Some(TranscriptKind::Accepted));
     assert_eq!(rows.last().map(|r| r.kind), Some(TranscriptKind::Finished));
+}
+
+/// Compact boundary that always requests a drop — lets us verify the
+/// Compacted event + CompactBoundary row actually fire via submit_one.
+struct AlwaysDrop;
+#[async_trait]
+impl CompactBoundary for AlwaysDrop {
+    async fn decide(&self, _input: &CompactInput) -> EngineResult<CompactHint> {
+        Ok(CompactHint::DropOldest { n: 3 })
+    }
+}
+
+#[tokio::test]
+async fn compact_boundary_fires_through_submit_one() {
+    let tmp = tempfile::tempdir().unwrap();
+    let writer = TranscriptWriter::new(tmp.path().to_path_buf());
+    let ctx = SubmitContext::new(Uuid::new_v4(), "hi");
+    let sid = ctx.session_id;
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    submit_one(
+        ctx,
+        &writer,
+        &SlashProcessor::new(),
+        &AlwaysDrop,
+        &UsageTracker::new(),
+        &vac_session_engine::EchoAdapter,
+        CompactConfig {
+            message_count: 10,
+            approx_tokens: 0,
+            context_window_tokens: 200_000,
+        },
+        Some(tx),
+    )
+    .await
+    .unwrap();
+
+    let mut events = Vec::new();
+    while let Ok(ev) = rx.try_recv() {
+        events.push(ev);
+    }
+    assert!(
+        events
+            .iter()
+            .any(|e| matches!(e, SubmitEvent::Compacted { dropped: 3, .. })),
+        "Compacted event missing: {events:?}",
+    );
+    let rows = writer.read(sid).await.unwrap();
+    assert!(rows.iter().any(|r| r.kind == TranscriptKind::CompactBoundary));
+}
+
+/// Adapter that always fails — used to exercise the Aborted path.
+struct FailingAdapter;
+#[async_trait]
+impl LlmAdapter for FailingAdapter {
+    async fn complete(&self, _req: LlmRequest) -> EngineResult<LlmResponse> {
+        Err(EngineError::Other("boom".into()))
+    }
+}
+
+#[tokio::test]
+async fn aborted_path_writes_row_and_event_and_propagates_error() {
+    let tmp = tempfile::tempdir().unwrap();
+    let writer = TranscriptWriter::new(tmp.path().to_path_buf());
+    let ctx = SubmitContext::new(Uuid::new_v4(), "hi");
+    let sid = ctx.session_id;
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    let err = submit_one(
+        ctx,
+        &writer,
+        &SlashProcessor::new(),
+        &TrivialCompactBoundary::default(),
+        &UsageTracker::new(),
+        &FailingAdapter,
+        CompactConfig::default(),
+        Some(tx),
+    )
+    .await
+    .unwrap_err();
+    assert!(format!("{err}").contains("boom"));
+
+    let mut labels = Vec::new();
+    while let Ok(ev) = rx.try_recv() {
+        labels.push(ev.label());
+    }
+    assert_eq!(labels.first().copied(), Some("accepted"));
+    assert_eq!(labels.last().copied(), Some("aborted"));
+
+    let rows = writer.read(sid).await.unwrap();
+    assert_eq!(rows.first().map(|r| r.kind), Some(TranscriptKind::Accepted));
+    assert_eq!(rows.last().map(|r| r.kind), Some(TranscriptKind::Aborted));
+}
+
+/// Adapter that returns error AFTER the LlmRequest row has been
+/// written — verifies Aborted still fires (post-Accepted invariant).
+#[tokio::test]
+async fn llm_error_after_request_row_still_writes_aborted() {
+    let tmp = tempfile::tempdir().unwrap();
+    let writer = TranscriptWriter::new(tmp.path().to_path_buf());
+    let ctx = SubmitContext::new(Uuid::new_v4(), "hi");
+    let sid = ctx.session_id;
+    submit_one(
+        ctx,
+        &writer,
+        &SlashProcessor::new(),
+        &TrivialCompactBoundary::default(),
+        &UsageTracker::new(),
+        &FailingAdapter,
+        CompactConfig::default(),
+        None,
+    )
+    .await
+    .unwrap_err();
+    let rows = writer.read(sid).await.unwrap();
+    let kinds: Vec<_> = rows.iter().map(|r| r.kind).collect();
+    // Accepted → LlmRequest → Aborted (no LlmResponse).
+    assert_eq!(kinds[0], TranscriptKind::Accepted);
+    assert!(kinds.contains(&TranscriptKind::LlmRequest));
+    assert!(!kinds.contains(&TranscriptKind::LlmResponse));
+    assert_eq!(*kinds.last().unwrap(), TranscriptKind::Aborted);
 }

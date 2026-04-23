@@ -1,6 +1,7 @@
 use thiserror::Error;
 
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum EngineError {
     #[error("transcript i/o: {0}")]
     Transcript(String),

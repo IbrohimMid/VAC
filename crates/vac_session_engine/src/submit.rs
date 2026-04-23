@@ -44,8 +44,144 @@ impl Default for CompactConfig {
 
 fn emit(ch: &Option<mpsc::UnboundedSender<SubmitEvent>>, ev: SubmitEvent) {
     if let Some(tx) = ch {
-        let _ = tx.send(ev);
+        if let Err(e) = tx.send(ev) {
+            tracing::trace!(target: "vac_session_engine", "event receiver dropped: {e}");
+        }
     }
+}
+
+/// Post-Accepted body. Extracted so `submit_one` can wrap any error
+/// with a best-effort `Aborted` transcript row + `Aborted` event — the
+/// contract is: once `Accepted` is durable, every terminal path must
+/// end in either `Finished` or `Aborted`.
+#[allow(clippy::too_many_arguments)]
+async fn submit_after_accepted(
+    submit: &SubmitContext,
+    handle: &crate::transcript::TranscriptHandle,
+    transcript: &TranscriptWriter,
+    slash: &SlashProcessor,
+    compact: &dyn CompactBoundary,
+    usage: &UsageTracker,
+    llm: &dyn LlmAdapter,
+    compact_cfg: &CompactConfig,
+    events: &Option<mpsc::UnboundedSender<SubmitEvent>>,
+) -> EngineResult<UsageSnapshot> {
+    // Slash short-circuit.
+    if let Some(inv) = slash.detect(&submit.input) {
+        if let Some(result) = slash.dispatch(&inv).await? {
+            let row = TranscriptEntry::new(
+                submit.session_id,
+                TranscriptKind::Slash,
+                serde_json::json!({
+                    "command": inv.command,
+                    "args": inv.args,
+                    "summary": result.summary,
+                    "payload": result.payload,
+                }),
+            );
+            transcript.append(handle, &row).await?;
+            emit(
+                events,
+                SubmitEvent::SlashHandled {
+                    command: inv.command.clone(),
+                    payload: result.payload.clone(),
+                },
+            );
+            let snap = usage.snapshot();
+            let finished = TranscriptEntry::new(
+                submit.session_id,
+                TranscriptKind::Finished,
+                serde_json::json!({ "via": "slash", "usage": snap }),
+            );
+            transcript.append(handle, &finished).await?;
+            emit(events, SubmitEvent::Finished { usage: snap });
+            return Ok(snap);
+        }
+        // Unknown slash → fall through to LLM path.
+    }
+
+    // Compact boundary.
+    let hint = compact
+        .decide(&CompactInput {
+            message_count: compact_cfg.message_count,
+            approx_tokens: compact_cfg.approx_tokens,
+            context_window_tokens: compact_cfg.context_window_tokens,
+        })
+        .await?;
+    let compact_payload = match &hint {
+        CompactHint::Keep => None,
+        CompactHint::DropOldest { n } if *n == 0 => None,
+        CompactHint::Summarise { n, .. } if *n == 0 => None,
+        CompactHint::DropOldest { n } => Some((
+            compact_cfg.message_count.saturating_sub(*n),
+            *n,
+            serde_json::json!({ "kind": "drop_oldest", "n": n }),
+        )),
+        CompactHint::Summarise { n, summary } => Some((
+            compact_cfg.message_count.saturating_sub(*n).saturating_add(1),
+            *n,
+            serde_json::json!({ "kind": "summarise", "n": n, "summary": summary }),
+        )),
+    };
+    if let Some((kept, dropped, payload)) = compact_payload {
+        let row = TranscriptEntry::new(
+            submit.session_id,
+            TranscriptKind::CompactBoundary,
+            payload,
+        );
+        transcript.append(handle, &row).await?;
+        emit(events, SubmitEvent::Compacted { kept, dropped });
+    }
+
+    // LLM round-trip.
+    let req = LlmRequest {
+        prompt: submit.input.clone(),
+        context: Vec::new(),
+    };
+    let req_row = TranscriptEntry::new(
+        submit.session_id,
+        TranscriptKind::LlmRequest,
+        serde_json::json!({ "prompt": req.prompt }),
+    );
+    transcript.append(handle, &req_row).await?;
+
+    let resp = llm.complete(req).await?;
+    emit(
+        events,
+        SubmitEvent::LlmRequested {
+            provider: resp.provider.clone(),
+            model: resp.model.clone(),
+        },
+    );
+    usage.add_input_tokens(resp.input_tokens);
+    usage.add_output_tokens(resp.output_tokens);
+    emit(
+        events,
+        SubmitEvent::LlmChunk {
+            text: resp.content.clone(),
+        },
+    );
+    let resp_row = TranscriptEntry::new(
+        submit.session_id,
+        TranscriptKind::LlmResponse,
+        serde_json::json!({
+            "provider": resp.provider,
+            "model": resp.model,
+            "content": resp.content,
+            "input_tokens": resp.input_tokens,
+            "output_tokens": resp.output_tokens,
+        }),
+    );
+    transcript.append(handle, &resp_row).await?;
+    let snap = usage.snapshot();
+    let finished = TranscriptEntry::new(
+        submit.session_id,
+        TranscriptKind::Finished,
+        serde_json::json!({ "via": "llm", "usage": snap }),
+    );
+    transcript.append(handle, &finished).await?;
+    emit(events, SubmitEvent::Finished { usage: snap });
+    Ok(snap)
 }
 
 /// Drive a single submit. Returns the final usage snapshot.
@@ -76,133 +212,39 @@ pub async fn submit_one(
     transcript.append(&handle, &accepted).await?;
     emit(&events, SubmitEvent::Accepted { entry_id: accepted_id });
 
-    // 2. Slash short-circuit.
-    if let Some(inv) = slash.detect(&submit.input) {
-        match slash.dispatch(&inv).await? {
-            Some(result) => {
-                let row = TranscriptEntry::new(
-                    submit.session_id,
-                    TranscriptKind::Slash,
-                    serde_json::json!({
-                        "command": inv.command,
-                        "args": inv.args,
-                        "summary": result.summary,
-                        "payload": result.payload,
-                    }),
-                );
-                transcript.append(&handle, &row).await?;
-                emit(
-                    &events,
-                    SubmitEvent::SlashHandled {
-                        command: inv.command.clone(),
-                        payload: result.payload.clone(),
-                    },
-                );
-                let snap = usage.snapshot();
-                let finished = TranscriptEntry::new(
-                    submit.session_id,
-                    TranscriptKind::Finished,
-                    serde_json::json!({ "via": "slash", "usage": snap }),
-                );
-                transcript.append(&handle, &finished).await?;
-                emit(&events, SubmitEvent::Finished { usage: snap });
-                return Ok(snap);
-            }
-            None => {
-                // Unknown slash — fall through, treat as regular prompt.
-            }
-        }
-    }
-
-    // 3. Compact boundary.
-    let hint = compact
-        .decide(&CompactInput {
-            message_count: compact_cfg.message_count,
-            approx_tokens: compact_cfg.approx_tokens,
-            context_window_tokens: compact_cfg.context_window_tokens,
-        })
-        .await?;
-    if let Some((kept, dropped, payload)) = match &hint {
-        CompactHint::Keep => None,
-        CompactHint::DropOldest { n } => Some((
-            compact_cfg.message_count.saturating_sub(*n),
-            *n,
-            serde_json::json!({ "kind": "drop_oldest", "n": n }),
-        )),
-        CompactHint::Summarise { n, summary } => Some((
-            compact_cfg.message_count.saturating_sub(*n).saturating_add(1),
-            *n,
-            serde_json::json!({ "kind": "summarise", "n": n, "summary": summary }),
-        )),
-    } {
-        let row = TranscriptEntry::new(
-            submit.session_id,
-            TranscriptKind::CompactBoundary,
-            payload,
-        );
-        transcript.append(&handle, &row).await?;
-        emit(&events, SubmitEvent::Compacted { kept, dropped });
-    }
-
-    // 4. LLM round-trip.
-    let req = LlmRequest {
-        prompt: submit.input.clone(),
-        context: Vec::new(),
-    };
-    let req_row = TranscriptEntry::new(
-        submit.session_id,
-        TranscriptKind::LlmRequest,
-        serde_json::json!({ "prompt": req.prompt }),
-    );
-    transcript.append(&handle, &req_row).await?;
-
-    match llm.complete(req).await {
-        Ok(resp) => {
-            emit(
-                &events,
-                SubmitEvent::LlmRequested {
-                    provider: resp.provider.clone(),
-                    model: resp.model.clone(),
-                },
-            );
-            usage.add_input_tokens(resp.input_tokens);
-            usage.add_output_tokens(resp.output_tokens);
-            emit(
-                &events,
-                SubmitEvent::LlmChunk {
-                    text: resp.content.clone(),
-                },
-            );
-            let resp_row = TranscriptEntry::new(
-                submit.session_id,
-                TranscriptKind::LlmResponse,
-                serde_json::json!({
-                    "provider": resp.provider,
-                    "model": resp.model,
-                    "content": resp.content,
-                    "input_tokens": resp.input_tokens,
-                    "output_tokens": resp.output_tokens,
-                }),
-            );
-            transcript.append(&handle, &resp_row).await?;
-            let snap = usage.snapshot();
-            let finished = TranscriptEntry::new(
-                submit.session_id,
-                TranscriptKind::Finished,
-                serde_json::json!({ "via": "llm", "usage": snap }),
-            );
-            transcript.append(&handle, &finished).await?;
-            emit(&events, SubmitEvent::Finished { usage: snap });
-            Ok(snap)
-        }
+    // 2. Everything after Accepted must end in Finished or Aborted.
+    // Wrap the body so any `?` error path still gets a best-effort
+    // Aborted row + event before propagating the error up.
+    match submit_after_accepted(
+        &submit,
+        &handle,
+        transcript,
+        slash,
+        compact,
+        usage,
+        llm,
+        &compact_cfg,
+        &events,
+    )
+    .await
+    {
+        Ok(snap) => Ok(snap),
         Err(e) => {
             let reason = e.to_string();
+            // Best-effort: if the transcript itself is the thing that
+            // failed, this append will fail too. Log and continue so
+            // the original error is what surfaces to the caller.
             let aborted = TranscriptEntry::new(
                 submit.session_id,
                 TranscriptKind::Aborted,
                 serde_json::json!({ "reason": reason }),
             );
-            transcript.append(&handle, &aborted).await?;
+            if let Err(append_err) = transcript.append(&handle, &aborted).await {
+                tracing::warn!(
+                    target: "vac_session_engine",
+                    "aborted row append failed after submit error: {append_err}",
+                );
+            }
             emit(
                 &events,
                 SubmitEvent::Aborted {
@@ -213,6 +255,12 @@ pub async fn submit_one(
         }
     }
 }
+
+// Helper wires args through; real work lives above in
+// submit_after_accepted. `usage` is passed separately because it is
+// accumulated into the Finished row.
+#[allow(dead_code)]
+async fn _doc_helper_signature_matches() {}
 
 #[cfg(test)]
 mod tests {
