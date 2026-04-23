@@ -149,6 +149,9 @@ impl ActionContext {
                 WorkbenchTab::Plan => ActionContext::WorkbenchPlan,
                 WorkbenchTab::Vil => ActionContext::WorkbenchVil,
                 WorkbenchTab::Vwfd => ActionContext::WorkbenchVwfd,
+                // Signal tab reuses the generic Workbench action context
+                // until dedicated bindings are required.
+                WorkbenchTab::Signal => ActionContext::WorkbenchRuntime,
             },
         }
     }

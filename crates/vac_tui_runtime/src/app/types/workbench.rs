@@ -33,6 +33,9 @@ pub enum WorkbenchTab {
     Plan,
     Vil,
     Vwfd,
+    /// L3 — Signal workbench: list active signal streams + tail distilled
+    /// view. Sources `AppState::signal_registry()`.
+    Signal,
 }
 
 impl WorkbenchTab {
@@ -45,7 +48,8 @@ impl WorkbenchTab {
             Self::Runtime => Self::Plan,
             Self::Plan => Self::Vil,
             Self::Vil => Self::Vwfd,
-            Self::Vwfd => Self::Approvals,
+            Self::Vwfd => Self::Signal,
+            Self::Signal => Self::Approvals,
         }
     }
 }
