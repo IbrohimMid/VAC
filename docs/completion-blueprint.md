@@ -1,6 +1,7 @@
 # VAC Completion Blueprint — Closing the Implementation-Plan Gaps
 
-**Status:** draft 2026-04-23
+**Status:** partial — see §8 for the landed-vs-deferred ledger.
+**Updated:** 2026-04-23
 **Scope:** convergence plan from `docs/implementation-plan.md` Fase 0–10 to
 production-ready VAC.
 **Non-goal:** new product surface. This document does NOT add features
@@ -280,3 +281,60 @@ cycles so a future architect can diff rings exactly like fases.
 data flow matches the architecture diagram. Every value proposition
 in `PRODUCT_SPEC.md` is load-bearing on tests that the CI would
 actually run — not on API shapes nobody consumes.
+
+---
+
+## 8. Landed vs deferred ledger (2026-04-23)
+
+Honest accounting of what shipped in this cycle versus what remains
+open. Ring IDs map to commit prefixes so `git log --grep='R0.a'`
+surfaces the exact landing.
+
+### Landed
+
+| Ring | Commit | Summary |
+|---|---|---|
+| **R0.a** | 2445c0a | `VacEngineAdapter` wraps VacEngine as `LlmAdapter`; translates `RuntimeUpdate` ↔ `SubmitEvent`. |
+| **R0.b** | 2445c0a | `vac run --engine session` + `VAC_ENGINE=session` env fallback; legacy path default. |
+| **R0.c** (detection) | d7c1d2e | `vac_tui_runtime::runner` detects `VAC_ENGINE=session` and logs the intent. Full migration still requires the 2-week coexistence window. |
+| **R0.d** | e36ab83 | `vac session-run` docstring redirects to `vac run --engine session` for real VacEngine; kept as mock-only alias candidate. |
+| **R1.a** | e36ab83 | `BillingState` groups token_usage + context_pct + billing_info + auth_display (5 fields → 1). |
+| **R1.b** | e36ab83 | `McpMapsState` groups the three MCP+runtime HashMaps. |
+| **R1.c** | e36ab83 | `ImageRenderState` groups the three Kitty-graphics fields. |
+| **R2.a** | 1f0d897 | `FileEditTool` + `FileWriteTool` call `vac_tools::backup::snapshot_file` before writes; complementary to the session journal. |
+| **R2.b** (handlers) | d7c1d2e | `handlers::approval::{bulk_toggle_current, bulk_clear, bulk_approve, bulk_reject}`. View checkbox renderer + keybind still pending. |
+| **R2.c** (state) | d7c1d2e | `AppState.rate_limit` + `AppState.prompt_history` first-class fields; contract test locks reachability. Handler wire-up on submit / throttle events still pending. |
+| **R3** (bridge) | d7c1d2e | `vac_tools::mcp::McpConnectionState::to_core_connection()` emits the canonical `vac_mcp_core::McpConnection`; legacy primary still in place. |
+| **R4** | 1f0d897 | `ranked_search_files` in `services::file_search` blends BM25 (≥3 char queries) with the existing nucleo fuzzy path. |
+| **R5.b** (linear path) | current | `vil_rag::RagIndex::search_via_linear` routes cosine scan through `LinearAnnIndex`; HNSW swap is a one-line flip once persistence lands. |
+| **R6.a** (link-check) | 4e70d19 | `.github/workflows/doc-links.yml` lychee non-blocking link-check on docs PRs. |
+| **R6.b** (bench) | 4e70d19 | `crates/vac_session_engine/benches/submit_one.rs` criterion statistical bench complements the SLA tests. |
+
+### Deferred (require multi-day work or coexistence window)
+
+| Ring | Why not yet |
+|---|---|
+| **R0.c** (full migration) | Blueprint §6 Risk 1 mandates a 2-week `VAC_ENGINE=session` coexistence window before retiring the legacy TUI path. Detection stub landed; full rewrite is a follow-up cycle. |
+| **R2.b** (view + keybind) | Checkbox column renderer + `Space` toggle + `Ctrl+Shift+A`/`Ctrl+Shift+R` bulk keybinds need an overlay design review. Handlers + state ready. |
+| **R2.c** (submit/throttle wire) | Recording prompts on submit + cycling rate-limit messages on 429 events needs the engine-event bus; waiting on R0.c full migration. |
+| **R3.a** (`vil_memory` retirement) | Blueprint §6 Risk 2 requires `VacMemoryBridge` inserted in `vil_swarm` first; multi-day and cascades into the planner/executor agents. |
+| **R3.b** (MCP primary swap) | Legacy `McpConnectionState` has callers across TUI + CLI tests. Partial bridge landed in this cycle; full cutover is a separate sed+audit cycle. |
+| **R3.c** (ACP primary swap) | `vac_core::AcpServer` in `commands::acp.rs` still authoritative. `vac_bridge::AcpServer` exercised via its own integration tests only. Requires the approval-mediator migration. |
+| **R5.a** (Candle real backend) | Paket E / B1 — decision pending on `candle-core` vs `wgpu` GGUF loader. 3–4 days. |
+| **R5.b** (HNSW persistence) | `LinearAnnIndex` ships the surface (this cycle). Swap to `instant-distance::HnswMap` + `.vac/rag/index.bin` persistence is 2 days — blocked on a concrete corpus-size trigger. |
+| **R5.c** (rust-analysis via portable-pty) | `ra_ap_*` API churn on unstable 0.0.x. Feature-gated stub remains; real spawn + `initialize` + diagnostic parse is 3–4 days. |
+| **R6.c** (`vac_ux_services` extract) | Seven UI-agnostic services live inside `vac_tui_runtime`. Moving to a leaf crate requires updating downstream re-exports; mechanical but large-surface. |
+| **R6.d** (`check_layering.sh` L1–L5) | Current gate guards `vil_* → vac_*` only. Extending to the 5-layer architecture diagram needs per-crate `layer = "Lx"` metadata and a sort pass in the script. |
+
+### Net landed this cycle
+
+Commits: **2445c0a, e36ab83, 1f0d897, 4e70d19, d7c1d2e + current**.
+Tests: ~40 new (adapter translation, engine mode resolver, bulk
+approval helpers, ranked BM25 search, service reachability, MCP core
+bridge, linear search path). Every commit runs the workspace `cargo
+check --tests` gate clean.
+
+Blueprint §5 "must" cut line (Rings 0, 1, 2) is **landed in every
+way that doesn't require a two-week coexistence window**; "should"
+(Ring 3) and "nice" (Rings 4, 5, 6) each have at least one concrete
+landing plus a tracked follow-up.

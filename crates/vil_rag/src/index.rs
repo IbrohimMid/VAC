@@ -109,6 +109,57 @@ impl RagIndex {
         Ok(results)
     }
 
+    /// R5.b (blueprint) — alternative search path that routes the
+    /// cosine scan through `LinearAnnIndex`. Result shape is the
+    /// same as `search`; swapping backends (LinearAnnIndex →
+    /// `HnswIndex` once the corpus crosses 10 k docs) is a
+    /// one-line flip inside this function. Callers that want the
+    /// ANN-backed path opt in explicitly so today's callers stay
+    /// on the default HashMap scan until persistence lands.
+    pub async fn search_via_linear(
+        &self,
+        query: &str,
+        top_k: usize,
+    ) -> RagResult<Vec<SearchResult>> {
+        use crate::ann::Embedding;
+        use crate::linear::LinearAnnIndex;
+
+        let model_guard = self.model.read().await;
+        let model = model_guard
+            .as_ref()
+            .ok_or_else(|| RagError::Search("Model not initialized".to_string()))?;
+        let query_embedding = Embedding::new(model.embed(query)?);
+
+        let docs = self.documents.read().await;
+        let mut linear = LinearAnnIndex::new();
+        let mut preview_by_id: std::collections::HashMap<String, (String, String)> =
+            std::collections::HashMap::new();
+        for doc in docs.values() {
+            preview_by_id.insert(
+                doc.id.clone(),
+                (doc.path.clone(), doc.content_preview.clone()),
+            );
+            linear.add(doc.id.clone(), Embedding::new(doc.embedding.clone()))?;
+        }
+        let hits = linear.search(&query_embedding, top_k)?;
+        Ok(hits
+            .into_iter()
+            .filter_map(|n| {
+                preview_by_id.get(&n.document_id).map(|(path, preview)| {
+                    SearchResult {
+                        document_id: n.document_id.clone(),
+                        path: path.clone(),
+                        // Linear index returns cosine *distance*;
+                        // convert to the similarity score the
+                        // `SearchResult` contract expects.
+                        score: (1.0 - n.score) as f64,
+                        content_preview: preview.clone(),
+                    }
+                })
+            })
+            .collect())
+    }
+
     pub fn document_count(&self) -> usize {
         self.doc_count.load(Ordering::Relaxed)
     }
