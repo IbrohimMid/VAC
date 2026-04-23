@@ -104,7 +104,7 @@ pub async fn run_tui(
     state.auth_display_info = auth_display_info;
     if let Some(project_context) = project_context {
         if let Some(title) = project_context.session_title {
-            state.session_title = Some(title);
+            state.session_meta.title = Some(title);
         }
         if !project_context.file_index.is_empty() {
             state.file_index.all_files = project_context.file_index;
@@ -151,7 +151,7 @@ pub async fn run_tui(
 
     // O1 — Snapshot load deferred to background task after input_tx
     // is constructed (below). State flag drives footer spinner (O4).
-    state.session_loading = true;
+    state.session_meta.loading = true;
 
     // Add welcome messages
     let welcome = welcome_messages(latest_version.as_deref(), &state);

@@ -108,7 +108,7 @@ pub fn open_editor(state: &mut AppState) {
     // Seed a minimal template if no plan file exists yet.
     if !plan_path.exists() {
         let title = state
-            .session_title
+            .session_meta.title
             .clone()
             .unwrap_or_else(|| "Session Plan".to_string());
         let tmpl = crate::services::plan::new_plan_template(&title);

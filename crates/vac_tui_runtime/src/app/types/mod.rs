@@ -12,12 +12,14 @@ pub mod ask_user;
 pub mod at_mention;
 pub mod banner;
 pub mod billing;
+pub mod bridge;
 pub mod changeset_ui;
 pub mod command_palette;
 pub mod file_index;
 pub mod file_picker;
 pub mod lsp_ui;
 pub mod scroll;
+pub mod session_meta;
 pub mod message_ui;
 pub mod operator;
 pub mod paste;
@@ -44,12 +46,14 @@ pub use approvals::ApprovalsState;
 pub use ask_user::AskUserState;
 pub use at_mention::AtMentionState;
 pub use banner::BannerState;
+pub use bridge::BridgeState;
 pub use changeset_ui::ChangesetUiState;
 pub use command_palette::CommandPaletteState;
 pub use file_index::FileIndexState;
 pub use file_picker::FilePickerState;
 pub use lsp_ui::LspUiState;
 pub use scroll::ScrollState;
+pub use session_meta::SessionMetaState;
 pub use message_ui::MessageUiState;
 pub use operator::OperatorState;
 pub use paste::PasteState;
@@ -90,7 +94,20 @@ pub use workbench::{
     WorkspaceFocus,
 };
 
-/// Main application state for TUI
+/// Main application state for TUI.
+///
+/// **Field-count audit (F3.4).** Target after Fase 3: sub-struct
+/// groupings outnumber flat fields, so domain changes land in one
+/// file instead of scattering through the struct. Current grouping
+/// lives under `app/types/` and includes: `operator` (F3.1),
+/// `session_meta` (F3.3), `bridge` (F3.2 placeholder), `approvals`,
+/// `shell`, `streaming`, `runtime`, `vil`, `vil_dev`, `switchers`,
+/// `review`, `plan`, `ask_user`, `file_picker`, `file_index`,
+/// `command_palette`, `banner`, `paste`, `pins`, `lsp_ui`,
+/// `message_ui`, `task_tray`, `session_resume`, `workbench_chrome`,
+/// `changeset_ui`, `at_mention`, `side_panel`, `quit`, `scroll`,
+/// `view_flags`. Any new domain state should land as a sub-struct
+/// under `app/types/`, not as a new flat field here.
 pub struct AppState {
     pub startup: StartupSnapshot,
     /// True once StartupHydrated has been received — gates first real render.
@@ -118,8 +135,8 @@ pub struct AppState {
     // Session state
     pub session_id: String,
     pub sessions: Vec<SessionInfo>,
-    pub session_title: Option<String>,
-    pub checkpoint_path: Option<PathBuf>,
+    /// Grouped session metadata (title, checkpoint path, load flag).
+    pub session_meta: SessionMetaState,
 
     /// Operator-facing cursor/selection state (current model,
     /// selected indices across overlays, open message-action popup).
@@ -191,11 +208,6 @@ pub struct AppState {
     /// as `runtime:<uuid>` so the signal_tail MCP tool + rewind pipeline
     /// can recall it.
     pub runtime_signals: HashMap<uuid::Uuid, vac_signal::SignalBuffer>,
-    /// O1 — True from boot until the deferred session snapshot load
-    /// completes (SessionSnapshotLoaded event). Drives the footer
-    /// "restoring session..." placeholder.
-    pub session_loading: bool,
-
     // VIL domain state
     pub vil: VilState,
 
@@ -321,4 +333,8 @@ pub struct AppState {
 
     /// Queue metrics for I/O reliability tracking (Phase 4).
     pub queue_metrics: QueueMetrics,
+
+    /// Remote bridge session state — populated by `vac_bridge` in
+    /// Fase 5. Present as a stable slot now so drivers can bind.
+    pub bridge: BridgeState,
 }

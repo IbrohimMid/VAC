@@ -317,4 +317,36 @@ mod tests {
             "Esc should close the topmost overlay"
         );
     }
+
+    /// F3.5 — AppState structural invariants. Locks in the sub-struct
+    /// grouping so later refactors don't silently regress the domain
+    /// boundaries Fase 3 established.
+    #[test]
+    fn appstate_new_honors_structural_invariants() {
+        let state = crate::app::AppState::default();
+
+        // OperatorState starts empty except for the model slot.
+        assert!(state.operator.current_model.is_none());
+        assert_eq!(state.operator.sessions_selected_idx, 0);
+        assert_eq!(state.operator.theme_picker_selected, 0);
+        assert_eq!(state.operator.message_action_popup_selected, 0);
+        assert!(state.operator.message_action_target_id.is_none());
+
+        // SessionMetaState defaults.
+        assert!(state.session_meta.title.is_none());
+        assert!(state.session_meta.checkpoint_path.is_none());
+        assert!(!state.session_meta.loading);
+
+        // BridgeState placeholder: always detached on boot.
+        assert!(!state.bridge.attached);
+
+        // ScrollState zeros.
+        assert_eq!(state.scroll.messages, 0);
+        assert_eq!(state.scroll.activity, 0);
+        assert_eq!(state.scroll.cursor_position, 0);
+
+        // Hydration is a two-step dance: flag off, deadline in future.
+        assert!(!state.hydrated);
+        assert!(state.hydration_deadline > std::time::Instant::now());
+    }
 }

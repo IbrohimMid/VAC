@@ -142,7 +142,7 @@ pub fn on_session_restored(
     messages: Vec<crate::app::Message>,
 ) {
     state.session_id = id;
-    state.session_title = Some(title);
+    state.session_meta.title = Some(title);
     state.messages = messages;
     state.loading = false;
 

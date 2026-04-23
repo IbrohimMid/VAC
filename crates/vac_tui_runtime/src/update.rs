@@ -481,7 +481,7 @@ pub fn handle_backend_event(
             if let Some(snapshot) = boxed.as_ref() {
                 crate::session_snapshot::apply_session_snapshot(state, snapshot);
             }
-            state.session_loading = false;
+            state.session_meta.loading = false;
         }
         InputEvent::ShowConfirmationDialog(tc) => {
             if tc.function.name == crate::services::ask_user::ASK_USER_TOOL_NAME {

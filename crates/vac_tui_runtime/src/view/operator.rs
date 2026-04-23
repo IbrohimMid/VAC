@@ -16,7 +16,7 @@ pub(super) fn render_operator_panel(f: &mut Frame, state: &mut AppState, area: R
     // window between boot and SessionSnapshotLoaded (typically <10ms
     // for cold FS cache, <1ms warm). Higher priority than `thinking`
     // so operators don't see conflicting indicators.
-    if state.session_loading {
+    if state.session_meta.loading {
         let spinner = match state.view_flags.spinner_frame % 4 {
             0 => "⠋",
             1 => "⠙",

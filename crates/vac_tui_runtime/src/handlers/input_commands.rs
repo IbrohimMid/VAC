@@ -372,7 +372,7 @@ fn dispatch_action(
                 state.plan.draft = content;
             } else {
                 let title = state
-                    .session_title
+                    .session_meta.title
                     .clone()
                     .unwrap_or_else(|| "Session Plan".to_string());
                 let tmpl = crate::services::plan::new_plan_template(&title);

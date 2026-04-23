@@ -29,7 +29,7 @@ pub(super) fn render_header(f: &mut Frame, state: &mut AppState, area: Rect) {
         format!("session {}", &state.session_id[..8]),
         state.theme.style(StyleKey::Muted),
     ));
-    if let Some(title) = &state.session_title {
+    if let Some(title) = &state.session_meta.title {
         spans.push(Span::raw("  "));
         spans.push(Span::styled(
             title.clone(),

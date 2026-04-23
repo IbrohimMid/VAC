@@ -53,8 +53,11 @@ impl AppState {
                 .session_id
                 .unwrap_or_else(|| Uuid::new_v4().to_string()),
             sessions: Vec::new(),
-            session_title: None,
-            checkpoint_path: options.checkpoint_path,
+            session_meta: super::SessionMetaState {
+                title: None,
+                checkpoint_path: options.checkpoint_path,
+                loading: false,
+            },
             operator: OperatorState {
                 current_model: options.model,
                 ..OperatorState::default()
@@ -83,7 +86,6 @@ impl AppState {
             mcp_server_states: HashMap::new(),
             mcp_signals: HashMap::new(),
             runtime_signals: HashMap::new(),
-            session_loading: false,
             vil: VilState::default(),
             vwfd_inspector: crate::services::vwfd_inspector::VwfdInspectorState::default(),
             vil_expr_lint: crate::services::vil_expr_lint::LintState::new(),
@@ -120,6 +122,7 @@ impl AppState {
             queue_metrics: QueueMetrics::default(),
             // T14: vil dev runner state
             vil_dev: VilDevState::default(),
+            bridge: super::BridgeState::default(),
         }
     }
 
