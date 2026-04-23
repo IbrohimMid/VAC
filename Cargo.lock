@@ -6447,6 +6447,7 @@ dependencies = [
  "vac_session_engine",
  "vac_shell",
  "vac_signal",
+ "vac_skill",
  "vac_tool_core",
  "vac_tools",
  "vil_expr",

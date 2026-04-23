@@ -43,6 +43,8 @@ pub mod rulebook_switcher;
 pub mod shortcuts_popup;
 pub mod side_panel;
 pub mod sparkline;
+pub mod auto_dream;
+pub mod away_summary;
 pub mod passive_feedback;
 pub mod review_source;
 pub mod speculation;
