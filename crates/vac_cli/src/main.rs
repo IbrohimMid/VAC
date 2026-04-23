@@ -81,9 +81,25 @@ enum Commands {
     /// Resume from checkpoint
     #[command(next_help_heading = "Run")]
     Resume { checkpoint: PathBuf },
-    /// Drive one submit through vac_session_engine (echo adapter)
+    /// Drive one submit through vac_session_engine (Trae-style
+    /// one-shot: trajectory-first, provider-pluggable, isolation
+    /// opt-in)
     #[command(next_help_heading = "Run")]
-    SessionRun { input: String },
+    SessionRun {
+        input: String,
+        /// Provider adapter to use. Today only `mock` (echo).
+        #[arg(long, default_value = "mock")]
+        provider: String,
+        /// Disable trajectory (transcript JSONL) persistence. On by
+        /// default for research-friendly replay.
+        #[arg(long = "no-trajectory", default_value_t = false)]
+        no_trajectory: bool,
+        /// Request the submit run inside a docker image. Currently
+        /// labelled pass-through (F8.2) — full IsolationManager wiring
+        /// lands when session-engine grows tool execution.
+        #[arg(long, value_name = "IMAGE")]
+        docker: Option<String>,
+    },
 
     // ----- Config -----
     /// Manage configuration
@@ -441,8 +457,23 @@ async fn main() -> anyhow::Result<()> {
         Commands::Resume { checkpoint } => {
             commands::resume::execute(project_root, checkpoint).await?
         }
-        Commands::SessionRun { input } => {
-            commands::session::execute(project_root, input).await?
+        Commands::SessionRun {
+            input,
+            provider,
+            no_trajectory,
+            docker,
+        } => {
+            let provider_kind =
+                commands::session::ProviderKind::parse(&provider).map_err(|e| {
+                    anyhow::anyhow!("invalid --provider: {e}")
+                })?;
+            let opts = commands::session::SessionRunOptions {
+                input,
+                provider: provider_kind,
+                trajectory: !no_trajectory,
+                docker_image: docker,
+            };
+            commands::session::execute(project_root, opts).await?
         }
         Commands::Restore { file } => commands::restore::execute(project_root, file).await?,
         Commands::Status => commands::status::execute(project_root, &cli.format).await?,
