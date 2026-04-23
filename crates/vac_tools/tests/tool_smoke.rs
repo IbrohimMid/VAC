@@ -46,6 +46,7 @@ async fn registers_all_builtin_tools() {
             "glob",
             "grep",
             "run_skill",
+            "schedule_cron",
             "search",
             "sequential_think",
             "signal_list",

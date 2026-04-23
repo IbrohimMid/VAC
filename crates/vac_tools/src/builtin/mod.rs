@@ -9,6 +9,7 @@ pub mod glob;
 pub mod grep;
 pub mod knowledge;
 pub mod plan_mode;
+pub mod schedule_cron;
 pub mod search;
 pub mod sequential_think;
 pub mod signal_list;
@@ -48,6 +49,7 @@ pub async fn register_builtin_tools(registry: &Arc<ToolRegistry>) -> Result<(), 
     registry.register(plan_mode::ExitPlanModeTool::new()).await?;
     registry.register(worktree::EnterWorktreeTool::new()).await?;
     registry.register(worktree::ExitWorktreeTool::new()).await?;
+    registry.register(schedule_cron::ScheduleCronTool::new()).await?;
     registry.register(task_done::TaskDoneTool::new()).await?;
     registry.register(todo::TodoTool::default()).await?;
     registry
