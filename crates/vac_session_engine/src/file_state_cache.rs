@@ -122,7 +122,6 @@ impl FileStateCache {
             inherited: self.entries.clone(),
             added: HashMap::new(),
             overlay_dir,
-            tick: self.tick,
         }
     }
 
@@ -145,10 +144,11 @@ pub struct ForkedCache {
     /// these but must not mutate — all mutations go to `added`.
     inherited: HashMap<PathBuf, FileStateEntry>,
     /// Entries observed during the fork. Merge-back installs these
-    /// into the parent cache.
+    /// into the parent cache. `last_touched` is reassigned by parent
+    /// on merge so fork tick namespace never leaks — that's why we
+    /// don't track a fork-local tick here.
     added: HashMap<PathBuf, FileStateEntry>,
     pub overlay_dir: PathBuf,
-    tick: u64,
 }
 
 impl ForkedCache {
@@ -157,10 +157,10 @@ impl ForkedCache {
         self.added.get(path).or_else(|| self.inherited.get(path))
     }
 
-    /// Record a fork-scope observation.
-    pub fn record(&mut self, path: PathBuf, mut entry: FileStateEntry) {
-        self.tick = self.tick.saturating_add(1);
-        entry.last_touched = self.tick;
+    /// Record a fork-scope observation. `last_touched` is deliberately
+    /// left at the entry's default — the parent's `record()` during
+    /// `merge` reassigns it against the parent's tick.
+    pub fn record(&mut self, path: PathBuf, entry: FileStateEntry) {
         self.added.insert(path, entry);
     }
 

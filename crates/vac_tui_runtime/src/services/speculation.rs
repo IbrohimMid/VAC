@@ -177,21 +177,66 @@ impl ForkSpeculationDriver {
     /// can fall back. The prediction's `context` encodes each observed
     /// read as `@<path>` → short hint — the composer renders those
     /// as warm-context chips.
+    ///
+    /// Fork errors are not fatal — they are traced at `warn` level
+    /// against `vac_tui_runtime::speculation::fork` so operators can
+    /// correlate quiet cache misses with overrun budgets or adapter
+    /// failures. The async-safe `OverlayGuard::new` keeps this path
+    /// on the tokio runtime — no sync filesystem in the hot path.
+    #[tracing::instrument(
+        target = "vac_tui_runtime::speculation",
+        name = "fork.speculate",
+        skip_all,
+        fields(reads_hint = reads_hint.len()),
+    )]
     pub async fn speculate(
         &self,
         next_likely_prompt: &str,
         reads_hint: Vec<PathBuf>,
     ) -> Option<Prediction> {
-        std::fs::create_dir_all(&self.overlay_root).ok()?;
+        if let Err(e) = tokio::fs::create_dir_all(&self.overlay_root).await {
+            tracing::warn!(
+                target: "vac_tui_runtime::speculation",
+                error = %e,
+                root = %self.overlay_root.display(),
+                "fork overlay root unreachable; falling back",
+            );
+            return None;
+        }
         let overlay_dir = self.overlay_root.join(Uuid::new_v4().to_string());
-        let _guard = OverlayGuard::new(overlay_dir.clone()).ok()?;
+        let guard = match OverlayGuard::new(overlay_dir.clone()).await {
+            Ok(g) => g,
+            Err(e) => {
+                tracing::warn!(
+                    target: "vac_tui_runtime::speculation",
+                    error = %e,
+                    dir = %overlay_dir.display(),
+                    "overlay create failed; falling back",
+                );
+                return None;
+            }
+        };
         let params = CacheSafeParams::new(self.parent_session, overlay_dir);
-        let outcome = self
+        let outcome = match self
             .runner
             .speculate(&params, next_likely_prompt, reads_hint, self.budget.clone())
             .await
-            .ok()?;
+        {
+            Ok(o) => o,
+            Err(e) => {
+                tracing::warn!(
+                    target: "vac_tui_runtime::speculation",
+                    error = %e,
+                    "fork speculation aborted; falling back",
+                );
+                // Async cleanup so the Drop sync-rm doesn't fire on
+                // the runtime thread.
+                guard.cleanup_async().await;
+                return None;
+            }
+        };
         if outcome.reads.is_empty() {
+            guard.cleanup_async().await;
             return None;
         }
         let mut ctx = HashMap::new();
@@ -209,6 +254,7 @@ impl ForkSpeculationDriver {
                 "warm-read from fork speculation".into(),
             );
         }
+        guard.cleanup_async().await;
         Some(Prediction {
             prompt: next_likely_prompt.to_string(),
             context: ctx,
@@ -322,16 +368,13 @@ mod tests {
             .speculate("p", vec![PathBuf::from("a.rs")])
             .await;
         // Overlay root should exist but be empty — each per-fork
-        // subdir was RAII-cleaned.
-        let entries: Vec<_> = std::fs::read_dir(tmp.path())
-            .unwrap()
-            .filter_map(|e| e.ok())
-            .collect();
-        assert!(
-            entries.is_empty(),
-            "overlay subdirs must be GC'd on drop, found {}",
-            entries.len()
-        );
+        // subdir was RAII-cleaned (and cleanup_async on success path).
+        let mut rd = tokio::fs::read_dir(tmp.path()).await.unwrap();
+        let mut count = 0usize;
+        while let Some(_e) = rd.next_entry().await.unwrap() {
+            count += 1;
+        }
+        assert_eq!(count, 0, "overlay subdirs must be GC'd, found {count}");
     }
 
     #[tokio::test]

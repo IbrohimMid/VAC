@@ -322,21 +322,46 @@ pub fn is_read_only_bash_command(cmd: &str) -> bool {
             .split('|')
             .all(|seg| is_read_only_bash_command(seg));
     }
+    let first = trimmed.split_whitespace().next().unwrap_or("");
+    // Per-tool hazards that the whitelist alone won't catch. Ordering
+    // matters — these checks run before the whitelist filter.
+    if first == "find" {
+        // `find` is a search utility but its action args can mutate:
+        // -exec / -execdir / -ok / -okdir / -delete all write.
+        const FIND_MUTATING_ACTIONS: &[&str] =
+            &["-exec", "-execdir", "-ok", "-okdir", "-delete"];
+        for token in trimmed.split_whitespace() {
+            if FIND_MUTATING_ACTIONS.contains(&token) {
+                return false;
+            }
+        }
+    }
+    if first == "git" {
+        // Only the read-only `git` subcommands pass. Anything else
+        // (commit, push, reset, stash, …) mutates.
+        const GIT_READ_ONLY_SUBS: &[&str] = &[
+            "log", "diff", "status", "show", "blame", "branch",
+            "remote", "tag", "describe", "rev-parse", "rev-list",
+            "ls-files", "ls-tree", "cat-file", "shortlog", "reflog",
+        ];
+        let sub = trimmed.split_whitespace().nth(1).unwrap_or("");
+        return GIT_READ_ONLY_SUBS.contains(&sub);
+    }
+    // `sed -i` and `awk -i` mutate; reject.
+    if first == "sed" && trimmed.contains(" -i") {
+        return false;
+    }
+    if first == "awk" && trimmed.contains(" -i ") {
+        return false;
+    }
     // Whitelisted utilities. Anything else returns false.
     const READ_ONLY_BINS: &[&str] = &[
         "ls", "cat", "head", "tail", "wc", "grep", "rg", "find", "fd",
         "du", "df", "stat", "file", "which", "echo", "pwd", "id",
         "uname", "hostname", "date", "printf", "tree", "awk", "sed",
-        "sort", "uniq", "cut", "tr", "column", "less", "more",
+        "sort", "uniq", "cut", "tr", "column", "less", "more", "git",
+        "ps", "env", "history", "jobs", "whoami",
     ];
-    // `sed -i` and `awk -i` mutate; reject.
-    if trimmed.starts_with("sed ") && trimmed.contains(" -i") {
-        return false;
-    }
-    if trimmed.starts_with("awk ") && trimmed.contains(" -i ") {
-        return false;
-    }
-    let first = trimmed.split_whitespace().next().unwrap_or("");
     READ_ONLY_BINS.contains(&first)
 }
 
@@ -399,6 +424,39 @@ mod tests {
         assert!(!is_read_only_bash_command("awk -i inplace '{print}' f"));
         assert!(!is_read_only_bash_command(""));
         assert!(!is_read_only_bash_command("   "));
+    }
+
+    #[test]
+    fn bash_classifier_rejects_find_mutating_actions() {
+        // Security regression: earlier versions whitelisted `find`
+        // wholesale, allowing `-exec rm`, `-delete`, etc.
+        assert!(!is_read_only_bash_command("find . -name '*.tmp' -delete"));
+        assert!(!is_read_only_bash_command("find . -exec rm {} +"));
+        assert!(!is_read_only_bash_command("find . -execdir rm {} \\;"));
+        assert!(!is_read_only_bash_command("find . -ok rm {} \\;"));
+        assert!(!is_read_only_bash_command("find . -okdir rm {} \\;"));
+        // Pure search still passes.
+        assert!(is_read_only_bash_command("find . -name '*.rs'"));
+        assert!(is_read_only_bash_command("find src -type f"));
+    }
+
+    #[test]
+    fn bash_classifier_allows_only_read_only_git_subcommands() {
+        assert!(is_read_only_bash_command("git log --oneline -5"));
+        assert!(is_read_only_bash_command("git diff HEAD"));
+        assert!(is_read_only_bash_command("git status"));
+        assert!(is_read_only_bash_command("git show HEAD"));
+        assert!(is_read_only_bash_command("git blame src/lib.rs"));
+        assert!(is_read_only_bash_command("git rev-parse HEAD"));
+        // Mutators rejected.
+        assert!(!is_read_only_bash_command("git commit -m x"));
+        assert!(!is_read_only_bash_command("git push"));
+        assert!(!is_read_only_bash_command("git reset --hard"));
+        assert!(!is_read_only_bash_command("git stash"));
+        assert!(!is_read_only_bash_command("git add ."));
+        // `git` with no subcommand is rejected (would print help
+        // but nothing useful for fork speculation).
+        assert!(!is_read_only_bash_command("git"));
     }
 
     #[test]

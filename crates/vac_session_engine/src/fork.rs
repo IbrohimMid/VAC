@@ -100,12 +100,29 @@ pub struct ForkResult {
 /// RAII guard for the overlay directory. Drop GCs the dir — the driver
 /// can call `accept()` to consume the guard without deletion when the
 /// parent wants to keep the overlay for merge.
+///
+/// **Drop path uses sync I/O** (`std::fs::remove_dir_all`). This is an
+/// intentional tradeoff: `Drop` can't be `async`, and routing cleanup
+/// through a background `spawn_blocking` would make test teardown
+/// non-deterministic. The overlay tree is bounded (read-only fork
+/// output), so the sync rm is cheap. Callers that need strict async
+/// purity should call [`OverlayGuard::cleanup_async`] before drop.
 pub struct OverlayGuard {
     path: Option<PathBuf>,
 }
 
 impl OverlayGuard {
-    pub fn new(path: PathBuf) -> std::io::Result<Self> {
+    /// Async-safe constructor. Use this from `async fn` contexts —
+    /// [`OverlayGuard::new_sync`] is kept for unit tests and
+    /// non-async callers.
+    pub async fn new(path: PathBuf) -> std::io::Result<Self> {
+        tokio::fs::create_dir_all(&path).await?;
+        Ok(Self { path: Some(path) })
+    }
+
+    /// Sync constructor. Only safe outside a tokio runtime or from
+    /// blocking-pool code.
+    pub fn new_sync(path: PathBuf) -> std::io::Result<Self> {
         std::fs::create_dir_all(&path)?;
         Ok(Self { path: Some(path) })
     }
@@ -120,10 +137,22 @@ impl OverlayGuard {
     pub fn accept(mut self) -> PathBuf {
         self.path.take().expect("overlay already accepted")
     }
+
+    /// Async cleanup — drop the overlay now, don't wait for Drop.
+    /// Callers that care about async purity should invoke this before
+    /// the guard leaves scope.
+    pub async fn cleanup_async(mut self) {
+        if let Some(p) = self.path.take() {
+            let _ = tokio::fs::remove_dir_all(&p).await;
+        }
+    }
 }
 
 impl Drop for OverlayGuard {
     fn drop(&mut self) {
+        // Sync rm only runs when `cleanup_async` wasn't called — see
+        // type-level doc for the rationale. Empty-path branch handles
+        // post-`accept`/`cleanup_async` guards.
         if let Some(p) = self.path.take() {
             let _ = std::fs::remove_dir_all(&p);
         }
@@ -161,6 +190,16 @@ impl ForkedAgentRunner {
     /// `reads_hint` seeds the result's `reads` vec — the driver uses
     /// this to pre-warm the cache with files the prompt references,
     /// without requiring a full tool-call cycle in every unit test.
+    #[tracing::instrument(
+        target = "vac_session_engine::fork",
+        name = "speculate",
+        skip_all,
+        fields(
+            parent = %params.parent_session,
+            reads = reads_hint.len(),
+            max_tokens = budget.max_tokens,
+        ),
+    )]
     pub async fn speculate(
         &self,
         params: &CacheSafeParams,
@@ -169,19 +208,26 @@ impl ForkedAgentRunner {
         budget: ForkBudget,
     ) -> EngineResult<ForkResult> {
         let start = Instant::now();
-        {
-            let mut n = self.total_forks.lock().await;
-            *n = n.saturating_add(1);
-        }
 
         // Overlay must exist before we do any work; missing dir is
         // treated as a setup error so the caller sees a typed failure
-        // instead of a cryptic ENOENT later.
-        if !params.overlay_dir.is_dir() {
+        // instead of a cryptic ENOENT later. `tokio::fs::metadata`
+        // keeps the probe off the hot async path's blocking budget.
+        //
+        // Validation MUST run before the telemetry counter bumps —
+        // otherwise misconfigured callers pollute the fork rate.
+        let meta = tokio::fs::metadata(&params.overlay_dir).await;
+        let is_dir = meta.map(|m| m.is_dir()).unwrap_or(false);
+        if !is_dir {
             return Err(EngineError::Other(format!(
                 "fork: overlay_dir does not exist: {}",
                 params.overlay_dir.display()
             )));
+        }
+
+        {
+            let mut n = self.total_forks.lock().await;
+            *n = n.saturating_add(1);
         }
 
         let turns_cap = budget.effective_turns();
@@ -278,7 +324,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let path = tmp.path().join("overlay");
         {
-            let _guard = OverlayGuard::new(path.clone()).unwrap();
+            let _guard = OverlayGuard::new(path.clone()).await.unwrap();
             assert!(path.is_dir());
         }
         assert!(!path.exists(), "overlay should be GC'd on drop");
@@ -288,7 +334,7 @@ mod tests {
     async fn overlay_guard_accept_preserves_dir() {
         let tmp = tempfile::tempdir().unwrap();
         let path = tmp.path().join("overlay");
-        let guard = OverlayGuard::new(path.clone()).unwrap();
+        let guard = OverlayGuard::new(path.clone()).await.unwrap();
         let kept = guard.accept();
         assert_eq!(kept, path);
         assert!(path.is_dir(), "accept() must preserve the dir");
@@ -365,6 +411,69 @@ mod tests {
                 .await;
         }
         assert_eq!(runner.total_forks().await, 3);
+    }
+
+    #[tokio::test]
+    async fn turn_cap_exits_when_adapter_stays_quiet() {
+        // Adapter returns empty content → runner keeps looping
+        // until it hits `budget.effective_turns()`. This is the
+        // branch the "MVP exit on first non-empty content" path
+        // bypasses, and it's what the plan's MAX_SPECULATION_TURNS
+        // acceptance asserts.
+        struct QuietAdapter;
+        #[async_trait]
+        impl LlmAdapter for QuietAdapter {
+            async fn complete(&self, _req: LlmRequest) -> EngineResult<LlmResponse> {
+                Ok(LlmResponse {
+                    provider: "test".into(),
+                    model: "quiet".into(),
+                    content: String::new(),
+                    input_tokens: 0,
+                    output_tokens: 0,
+                })
+            }
+        }
+        let runner = ForkedAgentRunner::new(Arc::new(QuietAdapter));
+        let tmp = tmp_overlay();
+        let params = CacheSafeParams::new(Uuid::new_v4(), tmp.path().to_path_buf());
+        let budget = ForkBudget {
+            max_turns: 3,
+            max_duration: Duration::from_secs(5),
+            ..ForkBudget::default()
+        };
+        let out = runner
+            .speculate(&params, "p", Vec::new(), budget)
+            .await
+            .unwrap();
+        assert_eq!(out.turns, 3, "turn cap must bite when content is empty");
+        assert_eq!(out.tool_calls, 0, "no tool calls when content never arrives");
+    }
+
+    #[tokio::test]
+    async fn setup_error_does_not_increment_counter() {
+        let adapter = Arc::new(CountingAdapter::default());
+        let runner = ForkedAgentRunner::new(adapter);
+        let tmp = tempfile::tempdir().unwrap();
+        let missing = tmp.path().join("does-not-exist");
+        let params = CacheSafeParams::new(Uuid::new_v4(), missing);
+        let _ = runner
+            .speculate(&params, "p", Vec::new(), ForkBudget::default())
+            .await;
+        assert_eq!(
+            runner.total_forks().await,
+            0,
+            "failed setup must not bump fork counter"
+        );
+    }
+
+    #[tokio::test]
+    async fn cleanup_async_removes_overlay() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("overlay");
+        let guard = OverlayGuard::new(path.clone()).await.unwrap();
+        assert!(path.is_dir());
+        guard.cleanup_async().await;
+        assert!(!path.exists(), "cleanup_async must remove the overlay");
     }
 
     #[tokio::test]
