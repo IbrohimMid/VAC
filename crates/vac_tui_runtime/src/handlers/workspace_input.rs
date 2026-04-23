@@ -126,7 +126,7 @@ fn handle_char(state: &mut AppState, output_tx: &Sender<OutputEvent>, c: char) {
         state.composer.at_mention.query = String::new();
         state.composer.at_mention.selected_idx = 0;
         if state.workspace.file_index.all_files.is_empty() {
-            state.workspace.file_index.all_files = crate::services::build_file_index(&state.core.project_root);
+            // Wait for file index background load
         }
         state.composer.at_mention.results = crate::services::fuzzy_search_files("", &state.workspace.file_index.all_files, 8);
         state.composer.input.input(c);

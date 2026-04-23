@@ -450,6 +450,24 @@ pub async fn run_tui(
 
                     // VIL profile detect
                     spawn_vil_profile_detect(project_root.clone(), input_tx_snap.clone());
+
+                    // File index load
+                    {
+                        let project_root = project_root.clone();
+                        let input_tx_snap = input_tx_snap.clone();
+                        tokio::spawn(async move {
+                            let files = crate::services::build_file_index(&project_root);
+                            let index_path = project_root.join(".vac").join("bm25.index");
+                            let bm25_index = if index_path.exists() {
+                                vac_ingest::Bm25Index::read_from_file(&index_path).ok().map(std::sync::Arc::new)
+                            } else {
+                                None
+                            };
+                            let _ = input_tx_snap
+                                .send(crate::app::events::InputEvent::FileIndexReady(files, bm25_index))
+                                .await;
+                        });
+                    }
                 }).await;
             });
         }

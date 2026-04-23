@@ -28,7 +28,7 @@ pub enum InputEvent {
     SetRuntimeJobs(Vec<vac_runtime::Job>),
     SetRuntimeState(Option<vac_runtime::AutopilotStateFile>),
     SetTaskGraphProjection(Option<vac_core::engine::TaskGraphProjection>),
-    FileIndexReady(Vec<String>),
+    FileIndexReady(Vec<String>, Option<std::sync::Arc<vac_ingest::Bm25Index>>),
     McpConnected {
         name: String,
         tools: usize,
@@ -200,7 +200,7 @@ impl InputEvent {
                 | InputEvent::SetRuntimeJobs(_)
                 | InputEvent::SetRuntimeState(_)
                 | InputEvent::SetTaskGraphProjection(_)
-                | InputEvent::FileIndexReady(_)
+                | InputEvent::FileIndexReady(..)
                 | InputEvent::ShellStarted(_)
                 | InputEvent::ShellOutput(_, _)
                 | InputEvent::ShellError(_, _)

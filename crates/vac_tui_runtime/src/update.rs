@@ -267,11 +267,12 @@ pub fn handle_backend_event(
                 "Task graph projection updated",
             );
         }
-        InputEvent::FileIndexReady(files) => {
+        InputEvent::FileIndexReady(files, bm25_index) => {
             state.workspace.file_index.all_files = files;
+            state.workspace.file_index.bm25_index = bm25_index;
             state.workspace.file_index.search_results = state.workspace.file_index.all_files.iter().take(50).cloned().collect();
             state.layout.toasts.push(crate::services::Toast::success(
-                "File index ready".to_string(),
+                "File index ready".to_string()
             ));
         }
         InputEvent::ShellStarted(shell) => {

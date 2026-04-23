@@ -1,7 +1,7 @@
 //! File search handler for fuzzy file navigation.
 
 use super::{HandlerContext, HandlerResult};
-use crate::services::{Toast, build_file_index, fuzzy_search_files};
+use crate::services::{Toast, build_file_index, ranked_search_files};
 
 /// Open file search popup.
 pub fn open(ctx: &mut HandlerContext) -> HandlerResult {
@@ -10,8 +10,14 @@ pub fn open(ctx: &mut HandlerContext) -> HandlerResult {
             let root = ctx.state.core.project_root.clone();
             tokio::spawn(async move {
                 let files = build_file_index(&root);
+                let index_path = root.join(".vac").join("bm25.index");
+                let bm25_index = if index_path.exists() {
+                    vac_ingest::Bm25Index::read_from_file(&index_path).ok().map(std::sync::Arc::new)
+                } else {
+                    None
+                };
                 let _ = tx
-                    .send(crate::app::events::InputEvent::FileIndexReady(files))
+                    .send(crate::app::events::InputEvent::FileIndexReady(files, bm25_index))
                     .await;
             });
             ctx.state
@@ -43,7 +49,12 @@ pub fn update_query(ctx: &mut HandlerContext, query: String) -> HandlerResult {
     if query.is_empty() {
         ctx.state.workspace.file_index.search_results.clear();
     } else {
-        ctx.state.workspace.file_index.search_results = fuzzy_search_files(&query, &ctx.state.workspace.file_index.all_files, 50);
+        ctx.state.workspace.file_index.search_results = ranked_search_files(
+            &query, 
+            &ctx.state.workspace.file_index.all_files, 
+            50,
+            ctx.state.workspace.file_index.bm25_index.as_deref()
+        );
     }
     ctx.state.workspace.file_index.search_selected_idx = 0;
     Ok(())

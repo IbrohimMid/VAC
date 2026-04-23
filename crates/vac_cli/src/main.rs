@@ -278,6 +278,9 @@ enum Commands {
         /// File path to restore (relative to project root)
         file: PathBuf,
     },
+    /// Build persistent BM25 index of the workspace for fast search
+    #[command(next_help_heading = "System")]
+    Ingest,
 }
 
 #[derive(Subcommand)]
@@ -623,6 +626,9 @@ async fn main() -> anyhow::Result<()> {
         },
         Commands::Migrate => {
             commands::migrate::execute(project_root).await?;
+        }
+        Commands::Ingest => {
+            commands::ingest::execute(project_root).await?;
         }
     }
 

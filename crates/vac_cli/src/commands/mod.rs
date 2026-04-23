@@ -6,6 +6,7 @@ pub mod doctor;
 pub mod engine_adapter;
 pub mod export;
 pub mod import;
+pub mod ingest;
 pub mod init;
 pub mod interactive;
 pub mod isolation;

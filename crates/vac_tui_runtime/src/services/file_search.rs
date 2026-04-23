@@ -82,13 +82,20 @@ pub fn ranked_search_files(
     query: &str,
     files: &[String],
     max_matches: usize,
+    bm25_index: Option<&vac_ingest::Bm25Index>,
 ) -> Vec<String> {
     let q = query.trim();
     if q.len() < 3 {
         return fuzzy_search_files(query, files, max_matches);
     }
-    let bm_paths: Vec<PathBuf> = files.iter().map(PathBuf::from).collect();
-    let bm = rank_paths(&bm_paths, q, max_matches, Bm25Params::default());
+    
+    let bm = if let Some(index) = bm25_index {
+        index.rank(q, max_matches, Bm25Params::default())
+    } else {
+        let bm_paths: Vec<PathBuf> = files.iter().map(PathBuf::from).collect();
+        rank_paths(&bm_paths, q, max_matches, Bm25Params::default())
+    };
+
     let mut out: Vec<String> = bm
         .into_iter()
         .map(|r| r.path.to_string_lossy().to_string())
@@ -175,13 +182,13 @@ mod ranked_tests {
     #[test]
     fn short_query_falls_back_to_fuzzy() {
         // <3 chars: path through nucleo, not BM25.
-        let out = ranked_search_files("au", &corpus(), 5);
+        let out = ranked_search_files("au", &corpus(), 5, None);
         assert!(!out.is_empty());
     }
 
     #[test]
     fn bm25_wins_on_token_relevance() {
-        let out = ranked_search_files("auth", &corpus(), 10);
+        let out = ranked_search_files("auth", &corpus(), 10, None);
         // Every auth path shows up; header/database deprioritized.
         assert!(out.iter().any(|p| p.contains("auth/mod.rs")));
         assert!(out.iter().any(|p| p.contains("auth/session.rs")));
@@ -192,7 +199,7 @@ mod ranked_tests {
     fn ranked_backfills_from_fuzzy_when_bm25_underfills() {
         // Query that BM25 can match on ≤ 1 path, but fuzzy matches
         // more. Backfill must honor `max_matches`.
-        let out = ranked_search_files("users", &corpus(), 3);
+        let out = ranked_search_files("users", &corpus(), 3, None);
         assert!(out.iter().any(|p| p.contains("users.rs")));
         assert!(out.len() <= 3);
     }

@@ -11,15 +11,19 @@ pub(super) fn handle_file_search(
     output_tx: &Sender<OutputEvent>,
     event: InputEvent,
 ) {
-    if state.workspace.file_index.all_files.is_empty() {
-        state.workspace.file_index.all_files = crate::services::build_file_index(&state.core.project_root);
-    }
     if state.workspace.file_index.search_results.is_empty() {
         let q = state.workspace.file_index.search_query.clone();
-        let results = crate::services::fuzzy_search_files(&q, &state.workspace.file_index.all_files, 50);
+        let results = crate::services::ranked_search_files(
+            &q, 
+            &state.workspace.file_index.all_files, 
+            50,
+            state.workspace.file_index.bm25_index.as_deref()
+        );
         let max = results.len().saturating_sub(1);
         state.workspace.file_index.search_results = results;
-        state.workspace.file_index.search_selected_idx = state.workspace.file_index.search_selected_idx.min(max);
+        if state.workspace.file_index.search_selected_idx > max {
+            state.workspace.file_index.search_selected_idx = max;
+        }
     }
     let mut ctx = HandlerContext::new(state, output_tx);
     match event {

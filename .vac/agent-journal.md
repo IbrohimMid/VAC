@@ -23,7 +23,13 @@ Evidence: M1 in ultraplan §3
 Notes: Implemented BootProfile, wrapped startup tasks into Critical and Deferred blocks.
 
 ## M8 App shell ≤ 20 flat — DONE
-Commit: (to be added)
+Commit: 8031843a3370e610d3dfb7f7db86cb0add9150f6
 Tests: cargo check --all-targets
 Evidence: M8 AppState flat-field census ≤ 20
 Notes: Refactored `AppState` into 9 domains (core, layout, composer, transcript, session, workspace, vil_domain, execution, operator_config). Replaced all accessors across `vac_tui_runtime` and tests.
+
+## M10 Ingest BM25 persistence — DONE
+Commit: (to be added)
+Tests: cargo check -p vac_ingest -p vac_cli -p vac_tui_runtime --tests
+Evidence: Ingest command reads/writes `~/.vac/bm25.index` instead of memory-only.
+Notes: Created `vac ingest` command, binary serialisation for `Bm25Index`, and integrated `FileIndexReady` with `bm25_index` Option in `vac_tui_runtime`.

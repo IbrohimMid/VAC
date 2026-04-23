@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use tracing::warn;
 
-pub use bm25::{Bm25Params, RankedPath, rank_paths};
+pub use bm25::{Bm25Index, Bm25Params, RankedPath, rank_paths};
 pub use index::build_file_index;
 pub use pending::collect_pending_changes;
 pub use root::detect_project_root;
