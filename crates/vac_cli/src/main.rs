@@ -208,6 +208,90 @@ enum Commands {
     /// the agent invokes via `SkillTool`.
     #[command(next_help_heading = "Tools & Skills", subcommand)]
     Skills(SkillsCommand),
+
+    // ── W8 commands ────────────────────────────────────────────────
+    /// Quick pre-commit snapshot of local state. Branch, uncommitted
+    /// file count, last commit, next-action hint.
+    #[command(next_help_heading = "Review")]
+    Advisor {
+        #[arg(long, default_value = "text")]
+        format: String,
+    },
+    /// Lint the unstaged diff for common auto-fixable rules (TODO,
+    /// leftover println, `.unwrap()` in prod, dbg!).
+    #[command(next_help_heading = "Review")]
+    AutofixPr {
+        #[arg(long, default_value = "text")]
+        format: String,
+    },
+    /// Scan the last commit for code smells (panic, unreachable,
+    /// expect-in-prod, hard-exit).
+    #[command(next_help_heading = "Review")]
+    Bughunter {
+        #[arg(long, default_value = "text")]
+        format: String,
+    },
+    /// Scan the staged diff for secret-shaped strings.
+    #[command(next_help_heading = "Review", name = "security-review")]
+    SecurityReview {
+        #[arg(long, default_value = "text")]
+        format: String,
+    },
+    /// Surface large files + slow-test markers for the perf backlog.
+    #[command(next_help_heading = "Review", name = "perf-issue")]
+    PerfIssue {
+        #[arg(long, default_value = "text")]
+        format: String,
+    },
+
+    /// Print install steps for the VAC GitHub App.
+    #[command(next_help_heading = "Integrations", name = "install-github-app")]
+    InstallGithubApp,
+    /// Print install steps for the VAC Slack App.
+    #[command(next_help_heading = "Integrations", name = "install-slack-app")]
+    InstallSlackApp,
+    /// Scan `.vac/plugins/` for operator-dropped plugins.
+    #[command(next_help_heading = "Integrations", name = "reload-plugins")]
+    ReloadPlugins,
+    /// Quick session switcher — lists recent resume candidates.
+    #[command(next_help_heading = "Integrations")]
+    Teleport,
+
+    /// Dump the last tool-call line from the newest transcript.
+    #[command(next_help_heading = "Diagnostics", name = "debug-tool-call")]
+    DebugToolCall,
+    /// Heap / RSS snapshot of the current process.
+    #[command(next_help_heading = "Diagnostics")]
+    Heapdump,
+    /// One-line statusline preview — branch, session count, cwd.
+    #[command(next_help_heading = "Diagnostics")]
+    Statusline,
+    /// Delight.
+    #[command(next_help_heading = "Diagnostics", name = "good-claude")]
+    GoodClaude,
+
+    /// Tail the most recent session transcript.
+    #[command(next_help_heading = "Plan & Memory")]
+    Thinkback {
+        #[arg(long, default_value_t = 20)]
+        limit: usize,
+    },
+    /// Print a plan skeleton for a goal (offline; `vac plan --remote`
+    /// is the LLM-backed version).
+    #[command(next_help_heading = "Plan & Memory")]
+    Ultraplan {
+        goal: String,
+    },
+    /// Cycle `environment_mode` through host → isolated → restricted-
+    /// offline → trusted-networked → host.
+    #[command(next_help_heading = "Plan & Memory", name = "sandbox-toggle")]
+    SandboxToggle,
+    /// Show session resume candidates newest-first.
+    #[command(next_help_heading = "Plan & Memory")]
+    Rewind {
+        #[arg(long, default_value_t = 10)]
+        limit: usize,
+    },
     /// Observe recent trajectory artifacts
     #[command(next_help_heading = "Trace & Export")]
     Observe {
@@ -579,6 +663,77 @@ async fn main() -> anyhow::Result<()> {
             SkillsCommand::List => commands::skills::execute_list().await?,
             SkillsCommand::Show { name } => commands::skills::execute_show(name).await?,
         },
+
+        // ── W8 dispatch ───────────────────────────────────────────
+        Commands::Advisor { format } => {
+            commands::review::advisor(
+                project_root,
+                commands::review::ReviewFormat::from_str(&format),
+            )
+            .await?
+        }
+        Commands::AutofixPr { format } => {
+            commands::review::autofix_pr(
+                project_root,
+                commands::review::ReviewFormat::from_str(&format),
+            )
+            .await?
+        }
+        Commands::Bughunter { format } => {
+            commands::review::bughunter(
+                project_root,
+                commands::review::ReviewFormat::from_str(&format),
+            )
+            .await?
+        }
+        Commands::SecurityReview { format } => {
+            commands::review::security_review(
+                project_root,
+                commands::review::ReviewFormat::from_str(&format),
+            )
+            .await?
+        }
+        Commands::PerfIssue { format } => {
+            commands::review::perf_issue(
+                project_root,
+                commands::review::ReviewFormat::from_str(&format),
+            )
+            .await?
+        }
+        Commands::InstallGithubApp => {
+            commands::integrations::install_github_app(project_root).await?
+        }
+        Commands::InstallSlackApp => {
+            commands::integrations::install_slack_app(project_root).await?
+        }
+        Commands::ReloadPlugins => {
+            commands::integrations::reload_plugins(project_root).await?
+        }
+        Commands::Teleport => {
+            commands::integrations::teleport(project_root).await?
+        }
+        Commands::DebugToolCall => {
+            commands::diagnostics::debug_tool_call(project_root).await?
+        }
+        Commands::Heapdump => commands::diagnostics::heapdump(project_root).await?,
+        Commands::Statusline => {
+            commands::diagnostics::statusline(project_root).await?
+        }
+        Commands::GoodClaude => {
+            commands::diagnostics::good_claude(project_root).await?
+        }
+        Commands::Thinkback { limit } => {
+            commands::plan_memory::thinkback(project_root, limit).await?
+        }
+        Commands::Ultraplan { goal } => {
+            commands::plan_memory::ultraplan(project_root, goal).await?
+        }
+        Commands::SandboxToggle => {
+            commands::plan_memory::sandbox_toggle(project_root).await?
+        }
+        Commands::Rewind { limit } => {
+            commands::plan_memory::rewind(project_root, limit).await?
+        }
         Commands::Observe { limit } => {
             commands::trajectory::observe(project_root, &cli.format, limit).await?
         }
