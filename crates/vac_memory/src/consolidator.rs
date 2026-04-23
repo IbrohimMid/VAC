@@ -11,7 +11,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use tokio::fs;
-use tracing::{info, warn};
+use tracing::{info, instrument, warn};
 
 /// Per-process nonce so concurrent writers (same pid, different tasks)
 /// never collide on a temp filename when renaming into place.
@@ -242,12 +242,19 @@ impl Consolidator {
 
     /// Run one consolidation cycle. Returns a report even when gates
     /// fire (the report's `skipped_reason` explains).
+    #[instrument(target = "vac_memory::consolidator", skip_all, name = "orient")]
     pub async fn orient(&self) -> MemoryResult<OrientedContext> {
         // Read MEMORY.md index or scan active memories
         let active_memories = self.scanner.scan_kind(crate::memdir::MemoryKind::Active).await?;
+        info!(
+            target: "vac_memory::consolidator",
+            active = active_memories.len(),
+            "orient phase",
+        );
         Ok(OrientedContext { active_memories })
     }
 
+    #[instrument(target = "vac_memory::consolidator", skip_all, name = "gather")]
     pub async fn gather(&self, input: &ConsolidationInput, _oriented: &OrientedContext) -> MemoryResult<GatheredContext> {
         // Scan recent transcripts. For now, we just pass the input through.
         Ok(GatheredContext {
@@ -256,6 +263,7 @@ impl Consolidator {
         })
     }
 
+    #[instrument(target = "vac_memory::consolidator", skip_all, name = "consolidate", fields(policies = policies.iter().count()))]
     pub async fn consolidate(
         &self,
         policies: &PolicySet,
@@ -303,11 +311,13 @@ impl Consolidator {
         Ok(ConsolidatedContext { written, fired, failed })
     }
 
+    #[instrument(target = "vac_memory::consolidator", skip_all, name = "prune")]
     pub async fn prune(&self, _oriented: &OrientedContext) -> MemoryResult<usize> {
         // For now, no pruning implemented. Just return 0.
         Ok(0)
     }
 
+    #[instrument(target = "vac_memory::consolidator", skip_all, name = "run_phases")]
     pub async fn run_phases(
         &self,
         policies: &PolicySet,

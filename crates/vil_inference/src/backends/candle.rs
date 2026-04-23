@@ -276,6 +276,12 @@ impl InferenceBackend for CandleBackend {
         })
     }
 
+    #[tracing::instrument(
+        target = "vil_inference::candle",
+        name = "infer",
+        skip_all,
+        fields(max_tokens = request.max_tokens, prompt_len = request.prompt.len()),
+    )]
     async fn infer(&self, request: &InferenceRequest) -> InferenceResult<String> {
         let state = Arc::clone(&self.state);
         let req = request.clone();

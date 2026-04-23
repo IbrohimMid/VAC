@@ -200,6 +200,12 @@ async fn submit_after_accepted(
 
 /// Drive a single submit. Returns the final usage snapshot.
 #[allow(clippy::too_many_arguments)]
+#[tracing::instrument(
+    target = "vac_session_engine",
+    name = "submit_one",
+    skip_all,
+    fields(session_id = %submit.session_id, input_len = submit.input.len()),
+)]
 pub async fn submit_one(
     submit: SubmitContext,
     transcript: &TranscriptWriter,
