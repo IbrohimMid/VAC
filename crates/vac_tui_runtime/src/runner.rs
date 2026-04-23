@@ -281,6 +281,50 @@ pub async fn run_vac_tui_with_io(
                     handle_list_sessions(&engine_clone, &runtime_project_root, &input_tx_clone)
                         .await;
                 }
+                OutputEvent::SendToolResult(result, _, _) => {
+                    if result.call.id == "m9_resume_prompt" {
+                        let sid = {
+                            let eng = engine_clone.lock().await;
+                            eng.session().read().await.id
+                        };
+                        if result.result.contains("\"yes\"") {
+                            let mut task_prompt = String::new();
+                            let writer = vac_session_engine::TranscriptWriter::new(runtime_project_root.clone());
+                            if let Ok(rows) = writer.read(sid).await {
+                                if let Some(accepted) = rows.iter().find(|r| r.kind == vac_session_engine::TranscriptKind::Accepted) {
+                                    if let Some(prompt) = accepted.content.as_str() {
+                                        task_prompt = prompt.to_string();
+                                    } else if let Some(prompt) = accepted.content.get("prompt").and_then(|v| v.as_str()) {
+                                        task_prompt = prompt.to_string();
+                                    }
+                                }
+                            }
+                            if task_prompt.is_empty() {
+                                task_prompt = "Resume crashed task".to_string();
+                            }
+                            crate::runner::message_tasks::handle_user_message(
+                                runtime_project_root.clone(),
+                                engine_clone.clone(),
+                                input_tx_clone.clone(),
+                                active_update_tx_clone.clone(),
+                                task_prompt,
+                                vec![],
+                            ).await;
+                        } else {
+                            let writer = vac_session_engine::TranscriptWriter::new(runtime_project_root.clone());
+                            let aborted = vac_session_engine::TranscriptEntry::new(
+                                sid,
+                                vac_session_engine::TranscriptKind::Aborted,
+                                serde_json::json!({ "reason": "operator-declined resume", "kind": "cancelled" }),
+                            );
+                            if let Ok(handle) = writer.open(sid).await {
+                                let _ = writer.append(&handle, &aborted).await;
+                            }
+                        }
+                    } else {
+                        // Normally handled by the agent engine
+                    }
+                }
                 _ => {}
             }
         }

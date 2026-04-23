@@ -8,7 +8,7 @@ use tokio::fs;
 use uuid::Uuid;
 
 /// Current schema version for session snapshots.
-pub const CURRENT_SCHEMA_VERSION: u32 = 1;
+pub const CURRENT_SCHEMA_VERSION: u32 = 2;
 
 /// Errors from session control operations.
 #[derive(Debug, thiserror::Error)]
@@ -171,9 +171,14 @@ pub fn migrate_snapshot(mut snapshot: SessionSnapshot) -> Result<SessionSnapshot
                     .insert("migrated_from".into(), "v0".into());
             }
             snapshot.schema_version = 1;
+            migrate_snapshot(snapshot)
+        }
+        1 => {
+            // v1 → v2: M9 bump
+            snapshot.schema_version = 2;
             Ok(snapshot)
         }
-        1 => Ok(snapshot),
+        2 => Ok(snapshot),
         v => Err(SessionControlError::UnsupportedSchema {
             found: v,
             supported: CURRENT_SCHEMA_VERSION,

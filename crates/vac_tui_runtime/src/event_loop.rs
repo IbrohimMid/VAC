@@ -173,6 +173,40 @@ pub async fn run_tui(
         }
     }
 
+    // M9: Detect pending submit and prompt
+    if let Ok(sid) = uuid::Uuid::parse_str(&state.session.session_id) {
+        let writer = vac_session_engine::TranscriptWriter::new(project_root.clone());
+        if let Ok(Some(entry_id)) = writer.last_pending_submit(sid).await {
+            let mut hours_ago = 0;
+            if let Ok(rows) = writer.read(sid).await {
+                if let Some(accepted) = rows.iter().find(|r| r.id == entry_id) {
+                    let diff = chrono::Utc::now() - accepted.timestamp;
+                    hours_ago = diff.num_hours();
+                }
+            }
+
+            state.layout.ask_user.question = Some(format!("Session crashed mid-submit ({} hours ago). Resume?", hours_ago));
+            state.layout.ask_user.question_kind = crate::services::ask_user::AskUserQuestionKind::SingleSelect;
+            state.layout.ask_user.options = vec![
+                crate::services::ask_user::AskUserOption {
+                    id: "yes".to_string(),
+                    label: "Yes".to_string(),
+                    description: Some(format!("Resume submit {}", entry_id)),
+                    metadata: std::collections::HashMap::from([("entry_id".to_string(), entry_id.to_string())]),
+                },
+                crate::services::ask_user::AskUserOption {
+                    id: "no".to_string(),
+                    label: "No".to_string(),
+                    description: Some("Cancel and append Aborted row".to_string()),
+                    metadata: std::collections::HashMap::new(),
+                },
+            ];
+            state.layout.ask_user.selected = 0;
+            state.layout.ask_user.tool_call_id = Some("m9_resume_prompt".to_string());
+            crate::overlay::open_overlay(&mut state, crate::overlay::OverlayId::AskUser);
+        }
+    }
+
     // Request session restore if checkpoint exists
     if let Some(path) = &checkpoint_path {
         if let Some(session_id) = path.file_name().and_then(|n| n.to_str()) {

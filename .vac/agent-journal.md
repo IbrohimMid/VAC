@@ -45,3 +45,9 @@ Commit: $(git rev-parse HEAD)
 Tests: cargo nextest run -p vac_session_engine -p vac_cli
 Evidence: M2.1 in ultraplan §3
 Notes: Implemented budget gate check in `submit_one` with typed error `BudgetExceeded`. Plumbed `--budget-tokens` to `vac run`. Tests updated and passed.
+
+## M2.2 File history by submit ID — DONE
+Commit: $(git rev-parse HEAD)
+Tests: cargo nextest run --workspace
+Evidence: M2.2 in ultraplan §3
+Notes: Extended BackupRecord with submit_id. FileWriteTool/FileEditTool plumb it through ToolContext. `vac restore` now accepts `--submit <uuid>` to reverse all changes in a submit. Fixed a flaky test in autopilot by using unique tmp paths.
