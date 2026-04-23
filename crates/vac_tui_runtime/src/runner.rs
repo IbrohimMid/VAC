@@ -28,6 +28,7 @@ mod runtime_tasks;
 mod session_tasks;
 mod shell_dispatch;
 mod startup;
+pub mod subagent;
 pub(crate) mod vil_tasks;
 
 #[cfg(test)]
