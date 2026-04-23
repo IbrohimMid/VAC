@@ -17,6 +17,7 @@ pub fn make_ctx(working_dir: PathBuf, session_id: Uuid) -> ToolContext {
         working_dir,
         env_vars: std::collections::HashMap::new(),
         session_id,
+        submit_id: None,
         shm: None,
         agent_zone: AgentZone::ParentAgent,
         environment_mode: "host".to_string(),

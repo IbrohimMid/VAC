@@ -42,6 +42,8 @@ pub struct BackupRecord {
     pub taken_at: chrono::DateTime<chrono::Utc>,
     /// Size of the snapshotted bytes.
     pub size_bytes: u64,
+    /// The submit_id during which this backup was taken.
+    pub submit_id: Option<uuid::Uuid>,
 }
 
 fn hash_prefix(bytes: &[u8]) -> String {
@@ -119,6 +121,7 @@ fn meta_path(project_root: &Path, id: &str) -> PathBuf {
 pub async fn snapshot_file(
     project_root: &Path,
     path: &Path,
+    submit_id: Option<uuid::Uuid>,
 ) -> Result<BackupRecord, ToolError> {
     let dir = backups_dir(project_root);
     fs::create_dir_all(&dir)
@@ -153,6 +156,7 @@ pub async fn snapshot_file(
             original_path: canonical.clone(),
             taken_at: chrono::Utc::now(),
             size_bytes: bytes.len() as u64,
+            submit_id,
         };
         let meta_bytes = serde_json::to_vec_pretty(&record)
             .map_err(|e| ToolError::ExecutionFailed(format!("meta serialize: {e}")))?;
@@ -214,6 +218,14 @@ pub async fn list_backups(project_root: &Path) -> Result<Vec<BackupRecord>, Tool
     Ok(out)
 }
 
+/// M2.2 — Return all backups matching the given submit_id
+pub async fn list_for_submit(project_root: &Path, submit_id: uuid::Uuid) -> Result<Vec<BackupRecord>, ToolError> {
+    let all = list_backups(project_root).await?;
+    let mut out: Vec<_> = all.into_iter().filter(|r| r.submit_id == Some(submit_id)).collect();
+    out.sort_by(|a, b| b.taken_at.cmp(&a.taken_at));
+    Ok(out)
+}
+
 /// Restore the bytes recorded under `id` to their original path.
 /// Returns the record that was restored. If the snapshot records an
 /// empty file and the current path exists, the current file is
@@ -267,7 +279,7 @@ mod tests {
         let root = tmp.path();
         let file = root.join("work.txt");
         fs::write(&file, b"original contents").await.unwrap();
-        let rec = snapshot_file(root, &file).await.unwrap();
+        let rec = snapshot_file(root, &file, None).await.unwrap();
         fs::write(&file, b"mutated by tool").await.unwrap();
         restore_backup(root, &rec.id).await.unwrap();
         let back = fs::read(&file).await.unwrap();
@@ -279,7 +291,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
         let ghost = root.join("ghost.txt");
-        let rec = snapshot_file(root, &ghost).await.unwrap();
+        let rec = snapshot_file(root, &ghost, None).await.unwrap();
         assert_eq!(rec.size_bytes, 0);
         // Simulate a create-new edit.
         fs::write(&ghost, b"created by tool").await.unwrap();
@@ -300,8 +312,8 @@ mod tests {
         let b = root.join("b.txt");
         fs::write(&a, b"same").await.unwrap();
         fs::write(&b, b"same").await.unwrap();
-        let r1 = snapshot_file(root, &a).await.unwrap();
-        let r2 = snapshot_file(root, &b).await.unwrap();
+        let r1 = snapshot_file(root, &a, None).await.unwrap();
+        let r2 = snapshot_file(root, &b, None).await.unwrap();
         assert_ne!(r1.id, r2.id, "distinct paths must get distinct ids");
         assert!(r1.original_path.ends_with("a.txt"));
         assert!(r2.original_path.ends_with("b.txt"));
@@ -313,8 +325,8 @@ mod tests {
         let root = tmp.path();
         let a = root.join("a.txt");
         fs::write(&a, b"hello").await.unwrap();
-        let r1 = snapshot_file(root, &a).await.unwrap();
-        let r2 = snapshot_file(root, &a).await.unwrap();
+        let r1 = snapshot_file(root, &a, None).await.unwrap();
+        let r2 = snapshot_file(root, &a, None).await.unwrap();
         assert_eq!(r1.id, r2.id);
         assert_eq!(r1.taken_at, r2.taken_at, "dedup preserves first timestamp");
     }
@@ -325,7 +337,7 @@ mod tests {
         let root = tmp.path();
         let a = root.join("rel.txt");
         fs::write(&a, b"x").await.unwrap();
-        let rec = snapshot_file(root, std::path::Path::new("rel.txt"))
+        let rec = snapshot_file(root, std::path::Path::new("rel.txt"), None)
             .await
             .unwrap();
         // original_path is now absolute regardless of caller input.
@@ -339,10 +351,10 @@ mod tests {
         let f1 = root.join("one.txt");
         let f2 = root.join("two.txt");
         fs::write(&f1, b"first").await.unwrap();
-        snapshot_file(root, &f1).await.unwrap();
+        snapshot_file(root, &f1, None).await.unwrap();
         tokio::time::sleep(std::time::Duration::from_millis(10)).await;
         fs::write(&f2, b"second").await.unwrap();
-        snapshot_file(root, &f2).await.unwrap();
+        snapshot_file(root, &f2, None).await.unwrap();
         let all = list_backups(root).await.unwrap();
         assert_eq!(all.len(), 2);
         assert!(all[0].taken_at >= all[1].taken_at);

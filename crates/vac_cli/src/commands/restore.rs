@@ -7,7 +7,24 @@
 use std::path::PathBuf;
 use vac_core::session::Session;
 
-pub async fn execute(project_root: PathBuf, file: PathBuf) -> anyhow::Result<()> {
+pub async fn execute(
+    project_root: PathBuf,
+    file: Option<PathBuf>,
+    submit: Option<uuid::Uuid>,
+) -> anyhow::Result<()> {
+    if let Some(submit_id) = submit {
+        let backups = vac_tools::backup::list_for_submit(&project_root, submit_id).await?;
+        if backups.is_empty() {
+            anyhow::bail!("No backups found for submit_id {}", submit_id);
+        }
+        for b in backups {
+            vac_tools::backup::restore_backup(&project_root, &b.id).await?;
+            println!("✓ Restored '{}' from submit {}", b.original_path.display(), submit_id);
+        }
+        return Ok(());
+    }
+
+    let file = file.unwrap();
     let session = Session::load_latest(&project_root)?
         .ok_or_else(|| anyhow::anyhow!("No active session. Run `vac init` first."))?;
 

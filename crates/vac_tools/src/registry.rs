@@ -73,6 +73,7 @@ pub struct ToolContext {
     pub working_dir: std::path::PathBuf,
     pub env_vars: HashMap<String, String>,
     pub session_id: uuid::Uuid,
+    pub submit_id: Option<uuid::Uuid>,
     pub shm: Option<Arc<ShmArena>>,
     pub agent_zone: AgentZone,
     pub environment_mode: String,
@@ -96,6 +97,7 @@ impl ToolContext {
             working_dir,
             env_vars: std::env::vars().collect(),
             session_id: uuid::Uuid::new_v4(),
+            submit_id: None,
             shm: None,
             agent_zone: AgentZone::ParentAgent,
             environment_mode: std::env::var("VAC_ENVIRONMENT_MODE")
@@ -106,6 +108,11 @@ impl ToolContext {
 
     pub fn with_session_id(mut self, session_id: uuid::Uuid) -> Self {
         self.session_id = session_id;
+        self
+    }
+
+    pub fn with_submit_id(mut self, submit_id: uuid::Uuid) -> Self {
+        self.submit_id = Some(submit_id);
         self
     }
 

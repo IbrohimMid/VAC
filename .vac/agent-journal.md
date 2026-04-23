@@ -39,3 +39,9 @@ Commit: $(git rev-parse HEAD)
 Tests: cargo nextest run --workspace
 Evidence: M2 in ultraplan §3
 Notes: Removed EngineMode::Legacy, fixed compilation errors and e2e test usages of vac autopilot up.
+
+## M2.1 Budget gate + orphan track — DONE
+Commit: $(git rev-parse HEAD)
+Tests: cargo nextest run -p vac_session_engine -p vac_cli
+Evidence: M2.1 in ultraplan §3
+Notes: Implemented budget gate check in `submit_one` with typed error `BudgetExceeded`. Plumbed `--budget-tokens` to `vac run`. Tests updated and passed.

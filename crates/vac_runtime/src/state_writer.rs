@@ -17,7 +17,9 @@ pub fn write_state_atomic_sync(path: &PathBuf, state: &AutopilotStateFile) -> st
     let json = serde_json::to_string_pretty(state)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
 
-    let tmp_path = path.with_extension("state.tmp");
+    let nonce = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().subsec_nanos();
+    let pid = std::process::id();
+    let tmp_path = path.with_extension(format!("state.tmp.{pid}.{nonce}"));
     let mut f = std::fs::File::create(&tmp_path)?;
     f.write_all(json.as_bytes())?;
     f.sync_all()?;

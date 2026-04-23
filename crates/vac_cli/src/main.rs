@@ -270,11 +270,15 @@ enum Commands {
         #[command(subcommand)]
         action: RuntimeAction,
     },
-    /// Restore file to pre-agent state from snapshot journal
+    /// Restore a file or an entire submit from backup
     #[command(next_help_heading = "VIL Tooling")]
     Restore {
-        /// File path to restore (relative to project root)
-        file: PathBuf,
+        /// File to restore
+        #[arg(required_unless_present = "submit")]
+        file: Option<PathBuf>,
+        /// Reverses every file touched in that submit
+        #[arg(long)]
+        submit: Option<uuid::Uuid>,
     },
     /// Build persistent BM25 index of the workspace for fast search
     #[command(next_help_heading = "System")]
@@ -499,7 +503,7 @@ async fn main() -> anyhow::Result<()> {
             };
             commands::session::execute(project_root, opts).await?
         }
-        Commands::Restore { file } => commands::restore::execute(project_root, file).await?,
+        Commands::Restore { file, submit } => commands::restore::execute(project_root, file, submit).await?,
         Commands::Status => commands::status::execute(project_root, &cli.format).await?,
         Commands::Signal(cmd) => commands::signal::dispatch(project_root, &cli.format, cmd).await?,
         Commands::Observe { limit } => {

@@ -119,7 +119,7 @@ impl VilTool for FileWriteTool {
             // R2.a — content-addressable backup for `vac restore`.
             // Best-effort: on failure we log + continue so the tool
             // call isn't blocked by a snapshot problem.
-            if let Err(e) = crate::backup::snapshot_file(&context.working_dir, &path).await {
+            if let Err(e) = crate::backup::snapshot_file(&context.working_dir, &path, context.submit_id).await {
                 tracing::warn!(
                     target: "vac_tools::backup",
                     path = %path.display(),

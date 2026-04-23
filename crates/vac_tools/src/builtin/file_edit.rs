@@ -79,7 +79,7 @@ impl crate::registry::VilTool for FileEditTool {
             context.session_id,
             &input.file_path,
         );
-        if let Err(e) = crate::backup::snapshot_file(&context.working_dir, &path).await {
+        if let Err(e) = crate::backup::snapshot_file(&context.working_dir, &path, context.submit_id).await {
             tracing::warn!(
                 target: "vac_tools::backup",
                 path = %path.display(),
