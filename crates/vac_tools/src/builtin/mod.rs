@@ -13,6 +13,7 @@ pub mod search;
 pub mod sequential_think;
 pub mod signal_list;
 pub mod signal_tail;
+pub mod worktree;
 #[cfg(test)]
 pub(crate) mod test_util;
 pub mod skill_runner;
@@ -45,6 +46,8 @@ pub async fn register_builtin_tools(registry: &Arc<ToolRegistry>) -> Result<(), 
     registry.register(signal_list::SignalListTool::new()).await?;
     registry.register(plan_mode::EnterPlanModeTool::new()).await?;
     registry.register(plan_mode::ExitPlanModeTool::new()).await?;
+    registry.register(worktree::EnterWorktreeTool::new()).await?;
+    registry.register(worktree::ExitWorktreeTool::new()).await?;
     registry.register(task_done::TaskDoneTool::new()).await?;
     registry.register(todo::TodoTool::default()).await?;
     registry
