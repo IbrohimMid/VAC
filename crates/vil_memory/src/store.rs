@@ -1,11 +1,11 @@
-use crate::episodic::EpisodicMemory;
 use crate::error::MemoryResult;
-use crate::semantic::SemanticMemory;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::info;
+
+use vac_memory::{MemoryScanner, memdir::{MemoryKind, MemoryFrontmatter, Memory}};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MemoryEntry {
@@ -26,10 +26,7 @@ pub enum MemoryType {
 
 pub struct MemoryStore {
     working_memory: Arc<RwLock<WorkingMemory>>,
-    // Arc (not Arc<RwLock>) because episodic/semantic use interior RwLock on
-    // their redb Database; no outer lock needed.
-    episodic: Arc<EpisodicMemory>,
-    semantic: Arc<SemanticMemory>,
+    scanner: Arc<MemoryScanner>,
     #[allow(dead_code)]
     config: MemoryConfig,
 }
@@ -45,7 +42,7 @@ impl Default for MemoryConfig {
         let db_path = dirs_next::data_local_dir()
             .unwrap_or_else(|| PathBuf::from("."))
             .join("vac")
-            .join("memory.db");
+            .join("memory");
         Self {
             working_capacity: 100,
             db_path,
@@ -58,13 +55,12 @@ impl MemoryStore {
         info!("Initializing memory store with config: {:?}", config);
 
         let working_memory = Arc::new(RwLock::new(WorkingMemory::new(config.working_capacity)));
-        let episodic = Arc::new(EpisodicMemory::new(&config.db_path).await?);
-        let semantic = Arc::new(SemanticMemory::new(&config.db_path).await?);
+        let scanner = Arc::new(MemoryScanner::new(config.db_path.clone()));
+        scanner.ensure_layout().await.map_err(|e| crate::error::MemoryError::Storage(e.to_string()))?;
 
         Ok(Self {
             working_memory,
-            episodic,
-            semantic,
+            scanner,
             config,
         })
     }
@@ -75,11 +71,23 @@ impl MemoryStore {
                 let mut working = self.working_memory.write().await;
                 working.add(entry);
             }
-            MemoryType::Episodic => {
-                self.episodic.store_episode(entry).await?;
-            }
-            MemoryType::Semantic => {
-                self.semantic.store_fact(entry).await?;
+            MemoryType::Episodic | MemoryType::Semantic => {
+                let kind = if entry.memory_type == MemoryType::Episodic { MemoryKind::Active } else { MemoryKind::Team };
+                let mem = Memory {
+                    kind,
+                    path: PathBuf::new(),
+                    frontmatter: MemoryFrontmatter {
+                        topic: format!("vil-{}", entry.id),
+                        title: None,
+                        tags: vec![],
+                        created_at: entry.timestamp,
+                        updated_at: None,
+                        importance: entry.importance,
+                        source_policy: Some("vil_memory_bridge".to_string()),
+                    },
+                    body: entry.content,
+                };
+                self.scanner.write(mem).await.map_err(|e| crate::error::MemoryError::Storage(e.to_string()))?;
             }
         }
         Ok(())
@@ -95,89 +103,156 @@ impl MemoryStore {
                 let working = self.working_memory.read().await;
                 Ok(working.search(query))
             }
-            Some(MemoryType::Episodic) => self.episodic.retrieve_episodes(query, 10).await,
-            Some(MemoryType::Semantic) => self.semantic.retrieve_facts(query, 10).await,
+            Some(MemoryType::Episodic) | Some(MemoryType::Semantic) => {
+                self.search_vac_memory(query, memory_type).await
+            }
             None => {
-                let mut results = Vec::new();
-
-                let working = self.working_memory.read().await;
-                results.extend(working.search(query));
-
-                results.extend(self.episodic.retrieve_episodes(query, 5).await?);
-                results.extend(self.semantic.retrieve_facts(query, 5).await?);
-
+                let working = {
+                    let w = self.working_memory.read().await;
+                    w.search(query)
+                };
+                let mut results = working;
+                results.extend(self.search_vac_memory(query, None).await?);
+                results.sort_by(|a, b| b.importance.partial_cmp(&a.importance).unwrap_or(std::cmp::Ordering::Equal));
+                results.truncate(10);
                 Ok(results)
             }
         }
     }
 
-    /// Demote the least-important working memory entries to episodic storage
-    /// and remove them from working memory.
-    pub async fn consolidate(&self) -> MemoryResult<()> {
-        let to_consolidate = {
-            let working = self.working_memory.read().await;
-            working.get_low_priority_entries(10)
-        };
-
-        let ids: Vec<String> = to_consolidate.iter().map(|e| e.id.clone()).collect();
-
-        for entry in to_consolidate {
-            self.episodic.store_episode(entry).await?;
+    async fn search_vac_memory(&self, query: &str, mt: Option<MemoryType>) -> MemoryResult<Vec<MemoryEntry>> {
+        let mems = self.scanner.scan_all().await.unwrap_or_default();
+        let query_lower = query.to_lowercase();
+        let mut results = Vec::new();
+        for m in mems {
+            let matches_type = match mt {
+                Some(MemoryType::Episodic) => m.kind == MemoryKind::Active,
+                Some(MemoryType::Semantic) => m.kind == MemoryKind::Team,
+                Some(MemoryType::Working) => false,
+                None => true,
+            };
+            if !matches_type { continue; }
+            if m.body.to_lowercase().contains(&query_lower) || m.frontmatter.topic.to_lowercase().contains(&query_lower) {
+                results.push(MemoryEntry {
+                    id: m.frontmatter.topic,
+                    content: m.body,
+                    memory_type: if m.kind == MemoryKind::Team { MemoryType::Semantic } else { MemoryType::Episodic },
+                    timestamp: m.frontmatter.created_at,
+                    importance: m.frontmatter.importance,
+                    access_count: 0,
+                });
+            }
         }
+        results.sort_by(|a, b| b.importance.partial_cmp(&a.importance).unwrap_or(std::cmp::Ordering::Equal));
+        results.truncate(10);
+        Ok(results)
+    }
 
-        // Remove consolidated entries from working memory.
+    pub async fn update_importance(&self, id: &str, importance: f32) -> MemoryResult<()> {
+        // Find it in working memory
         {
             let mut working = self.working_memory.write().await;
-            working.entries.retain(|e| !ids.contains(&e.id));
+            if let Some(entry) = working.entries.iter_mut().find(|e| e.id == id) {
+                entry.importance = importance;
+                return Ok(());
+            }
         }
+        // In vac_memory, we'd need to load, mutate frontmatter, and save.
+        // For simplicity, we just do a linear scan and rewrite.
+        let mems = self.scanner.scan_all().await.unwrap_or_default();
+        for mut m in mems {
+            if m.frontmatter.topic == id {
+                m.frontmatter.importance = importance;
+                self.scanner.write(m).await.map_err(|e| crate::error::MemoryError::Storage(e.to_string()))?;
+                return Ok(());
+            }
+        }
+        Ok(())
+    }
 
+    pub async fn record_access(&self, id: &str) -> MemoryResult<()> {
+        // Just increment in working memory
+        {
+            let mut working = self.working_memory.write().await;
+            if let Some(entry) = working.entries.iter_mut().find(|e| e.id == id) {
+                entry.access_count += 1;
+            }
+        }
+        Ok(())
+    }
+
+    pub async fn clear(&self) -> MemoryResult<()> {
+        {
+            let mut working = self.working_memory.write().await;
+            working.entries.clear();
+        }
+        // vac_memory cannot be cleared this easily safely, but we can delete the directory.
+        let _ = tokio::fs::remove_dir_all(&self.config.db_path).await;
+        self.scanner.ensure_layout().await.map_err(|e| crate::error::MemoryError::Storage(e.to_string()))?;
         Ok(())
     }
 }
 
-struct WorkingMemory {
-    entries: Vec<MemoryEntry>,
+pub struct WorkingMemory {
+    entries: std::collections::VecDeque<MemoryEntry>,
     capacity: usize,
 }
 
 impl WorkingMemory {
-    fn new(capacity: usize) -> Self {
+    pub fn new(capacity: usize) -> Self {
         Self {
-            entries: Vec::new(),
+            entries: std::collections::VecDeque::with_capacity(capacity),
             capacity,
         }
     }
 
-    fn add(&mut self, entry: MemoryEntry) {
+    pub fn add(&mut self, entry: MemoryEntry) {
         if self.entries.len() >= self.capacity {
-            // Evict the entry with the lowest importance to make room.
-            // Sort ascending so index 0 = lowest importance, then remove it.
-            self.entries.sort_by(|a, b| {
-                a.importance
-                    .partial_cmp(&b.importance)
-                    .unwrap_or(std::cmp::Ordering::Equal)
-            });
-            self.entries.remove(0);
+            // Find lowest importance or oldest
+            let mut lowest_idx = 0;
+            let mut lowest_score = f32::MAX;
+            
+            for (i, e) in self.entries.iter().enumerate() {
+                let score = e.importance + (e.access_count as f32 * 0.1);
+                if score < lowest_score {
+                    lowest_score = score;
+                    lowest_idx = i;
+                }
+            }
+            self.entries.remove(lowest_idx);
         }
-        self.entries.push(entry);
+        self.entries.push_back(entry);
     }
 
-    fn search(&self, query: &str) -> Vec<MemoryEntry> {
+    pub fn search(&self, query: &str) -> Vec<MemoryEntry> {
+        let query = query.to_lowercase();
         self.entries
             .iter()
-            .filter(|e| e.content.to_lowercase().contains(&query.to_lowercase()))
+            .filter(|e| e.content.to_lowercase().contains(&query))
             .cloned()
             .collect()
     }
 
-    fn get_low_priority_entries(&self, count: usize) -> Vec<MemoryEntry> {
-        let mut sorted = self.entries.clone();
-        sorted.sort_by(|a, b| {
-            a.importance
-                .partial_cmp(&b.importance)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
-        sorted.into_iter().take(count).collect()
+    pub fn update_importance(&mut self, id: &str, importance: f32) -> bool {
+        if let Some(entry) = self.entries.iter_mut().find(|e| e.id == id) {
+            entry.importance = importance;
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn record_access(&mut self, id: &str) -> bool {
+        if let Some(entry) = self.entries.iter_mut().find(|e| e.id == id) {
+            entry.access_count += 1;
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn clear(&mut self) {
+        self.entries.clear();
     }
 }
 
