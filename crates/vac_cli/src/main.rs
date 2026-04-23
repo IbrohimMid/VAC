@@ -63,6 +63,9 @@ enum Commands {
         /// Token budget for this submit
         #[arg(long)]
         budget_tokens: Option<u64>,
+        /// Local inference backend
+        #[arg(long)]
+        backend: Option<String>,
     },
     /// Interactive REPL mode
     #[command(next_help_heading = "Run")]
@@ -81,6 +84,27 @@ enum Commands {
     Autopilot {
         #[command(subcommand)]
         action: AutopilotAction,
+    },
+    /// Proactive assistant - scans signal pipelines for patterns and suggests tasks
+    #[command(next_help_heading = "Run")]
+    Assistant {
+        #[arg(long)]
+        session: Option<String>,
+    },
+    /// Remote deep planner - offloads long planning sessions to remote model
+    #[command(next_help_heading = "Run")]
+    Plan {
+        /// The planning prompt
+        prompt: String,
+        /// Remote endpoint URI
+        #[arg(long)]
+        remote: Option<String>,
+    },
+    /// Apply a generated plan
+    #[command(next_help_heading = "Run")]
+    PlanApply {
+        /// Plan ID to apply
+        plan_id: String,
     },
     /// Resume from checkpoint
     #[command(next_help_heading = "Run")]
@@ -425,8 +449,38 @@ enum AutopilotAction {
     Down,
     /// Show autopilot status, mode, and log path
     Status,
+    /// Manage scheduled tasks
+    Schedule {
+        #[command(subcommand)]
+        action: ScheduleAction,
+    },
     #[command(hide = true)]
     Run,
+}
+
+#[derive(Subcommand)]
+pub enum ScheduleAction {
+    /// List all scheduled tasks
+    List,
+    /// Add a scheduled task
+    Add {
+        /// Schedule ID
+        id: String,
+        /// Cron expression
+        #[arg(long)]
+        cron: String,
+        /// Task description
+        #[arg(long)]
+        task: String,
+        /// Optional rulebook ID
+        #[arg(long)]
+        rulebook: Option<String>,
+    },
+    /// Remove a scheduled task
+    Remove {
+        /// Schedule ID to remove
+        id: String,
+    },
 }
 
 #[tokio::main]
@@ -465,6 +519,7 @@ async fn main() -> anyhow::Result<()> {
             approve,
             target,
             budget_tokens,
+            backend,
         } => {
             commands::run::execute(
                 project_root,
@@ -474,6 +529,7 @@ async fn main() -> anyhow::Result<()> {
                 approve,
                 target,
                 budget_tokens,
+                backend,
             )
             .await?;
         }
@@ -482,6 +538,15 @@ async fn main() -> anyhow::Result<()> {
             record,
             replay,
         } => commands::interactive::execute(project_root, resume, record, replay).await?,
+        Commands::Assistant { session } => {
+            commands::assistant::execute(project_root, session).await?
+        }
+        Commands::Plan { prompt, remote } => {
+            commands::plan::execute(project_root, prompt, remote).await?
+        }
+        Commands::PlanApply { plan_id } => {
+            commands::plan::execute_apply(project_root, plan_id).await?
+        }
         Commands::Resume { checkpoint } => {
             commands::resume::execute(project_root, checkpoint).await?
         }
@@ -622,6 +687,9 @@ async fn main() -> anyhow::Result<()> {
             AutopilotAction::Down => commands::autopilot::execute_down(project_root).await?,
             AutopilotAction::Status => {
                 commands::autopilot::execute_status(project_root, &cli.format).await?
+            }
+            AutopilotAction::Schedule { action } => {
+                commands::autopilot::execute_schedule(project_root, action).await?
             }
             AutopilotAction::Run => commands::autopilot::execute_run(project_root).await?,
         },

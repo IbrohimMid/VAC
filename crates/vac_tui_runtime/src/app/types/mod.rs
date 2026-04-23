@@ -29,6 +29,8 @@ pub mod session_resume;
 pub mod side_panel;
 pub mod streaming;
 pub mod task_tray;
+pub mod team;
+pub mod speculation;
 pub mod switchers;
 pub mod view_flags;
 pub mod vil_dev;
@@ -65,6 +67,8 @@ pub use session_resume::SessionResumeState;
 pub use side_panel::SidePanelState;
 pub use streaming::StreamingState;
 pub use task_tray::TaskTrayState;
+pub use team::TeamContext;
+pub use speculation::SpeculationCache;
 pub use switchers::SwitchersState;
 pub use view_flags::ViewFlagsState;
 pub use vil_dev::VilDevState;
@@ -268,4 +272,6 @@ pub struct AppState {
     pub vil_domain: VilDomainState,
     pub execution: ExecutionState,
     pub operator_config: OperatorConfigState,
+    pub team: TeamContext,
+    pub speculation: SpeculationCache,
 }

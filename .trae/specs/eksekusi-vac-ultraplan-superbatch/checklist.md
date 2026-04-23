@@ -1,8 +1,8 @@
 - [x] Dokumentasi referensi utama telah dibaca dan dipahami
 - [x] File jurnal `.vac/agent-journal.md` dibuat dan diperbarui sesuai format
 - [x] Seluruh milestone pada Wave 1 berhasil diimplementasikan dan dites
-- [ ] Seluruh milestone pada Wave 2 berhasil diimplementasikan dan dites
-- [ ] Seluruh milestone pada Wave 3 berhasil diimplementasikan dan dites
-- [ ] Dokumen `docs/adoption-score.md` mencerminkan skor ≥ 99%
-- [ ] Tidak ada error saat menjalankan `cargo check --workspace --tests`
-- [ ] Seluruh pengujian dengan `cargo nextest run --workspace` berhasil lulus
+- [x] Seluruh milestone pada Wave 2 berhasil diimplementasikan dan dites
+- [x] Seluruh milestone pada Wave 3 berhasil diimplementasikan dan dites
+- [x] Dokumen `docs/adoption-score.md` mencerminkan skor ≥ 99%
+- [x] Tidak ada error saat menjalankan `cargo check --workspace --tests`
+- [x] Seluruh pengujian dengan `cargo nextest run --workspace` berhasil lulus

@@ -1,4 +1,5 @@
 pub mod acp;
+pub mod assistant;
 pub mod auth;
 pub mod autopilot;
 pub mod config;
@@ -11,6 +12,7 @@ pub mod interactive;
 pub mod isolation;
 pub mod mcp;
 pub mod migrate;
+pub mod plan;
 pub mod restore;
 pub mod resume;
 pub mod rulebook;

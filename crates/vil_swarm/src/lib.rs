@@ -7,6 +7,7 @@ pub mod agent;
 pub mod checkpoint;
 pub mod context_budget;
 pub mod context_crawler;
+pub mod planner;
 pub mod error;
 pub mod events;
 pub mod hooks;

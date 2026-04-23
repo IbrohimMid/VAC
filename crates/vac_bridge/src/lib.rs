@@ -26,6 +26,6 @@ pub use acp::{AcpHandshake, AcpServer};
 pub use error::{BridgeError, BridgeResult};
 pub use event::{InboundEvent, OutboundEvent};
 pub use permission::{
-    PermissionDecision, PermissionMediator, PermissionRequest, StaticAllowMediator,
+    PermissionDecision, PermissionMediator, PermissionRequest, StaticAllowMediator, StdioPermissionMediator,
 };
 pub use session::{RemoteSession, RemoteSessionHandle, SessionAttachState};

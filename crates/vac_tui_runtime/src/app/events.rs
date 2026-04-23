@@ -17,6 +17,7 @@ pub enum InputEvent {
     ToolResult(ToolCallResult),
     StartLoadingOperation(LoadingOperation),
     EndLoadingOperation(LoadingOperation),
+    SpeculationReady(String, std::collections::HashMap<String, String>),
     Error(String),
     SetCurrentModel(Model),
     AvailableModelsLoaded(Vec<Model>),
@@ -188,6 +189,7 @@ impl InputEvent {
                 | InputEvent::AddUserMessage(_)
                 | InputEvent::StartLoadingOperation(_)
                 | InputEvent::EndLoadingOperation(_)
+                | InputEvent::SpeculationReady(_, _)
                 | InputEvent::Error(_)
                 | InputEvent::RunToolCall(_)
                 | InputEvent::ToolResult(_)

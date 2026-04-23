@@ -111,6 +111,7 @@ pub async fn execute_jobs(project_root: PathBuf, format: &str) -> anyhow::Result
                 vac_runtime::JobStatus::Completed => "Completed",
                 vac_runtime::JobStatus::Failed(_) => "Failed",
                 vac_runtime::JobStatus::Cancelled => "Cancelled",
+                vac_runtime::JobStatus::Suggested => "Suggested",
             };
             let kind_str = match &job.kind {
                 vac_runtime::JobKind::RunTask { description } => {
@@ -183,6 +184,7 @@ pub async fn execute_inspect(
                 vac_runtime::JobStatus::Completed => "Completed".to_string(),
                 vac_runtime::JobStatus::Failed(e) => format!("Failed: {}", e),
                 vac_runtime::JobStatus::Cancelled => "Cancelled".to_string(),
+                vac_runtime::JobStatus::Suggested => "Suggested".to_string(),
             };
 
             let kind_str = match &job.kind {

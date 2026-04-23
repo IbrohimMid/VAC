@@ -30,6 +30,7 @@ pub mod vil_lsp_query;
 pub mod vil_plumbing;
 pub mod vil_repair;
 pub mod vil_status;
+pub mod rust_analysis;
 
 use crate::ToolError;
 use crate::registry::ToolRegistry;
@@ -93,6 +94,14 @@ pub async fn register_builtin_tools(registry: &Arc<ToolRegistry>) -> Result<(), 
             registry.clone(),
         ))
         .await?;
+
+    let host = std::sync::Arc::new(crate::rust_analysis::PortablePtyHost::new().unwrap_or_else(|_| {
+        tracing::warn!("Failed to initialize PortablePtyHost, falling back to StubAnalysisHost");
+        // We can't return StubAnalysisHost here because the types differ, but wait, both implement AnalysisHost.
+        panic!("Failed to initialize PortablePtyHost");
+    }));
+    registry.register(rust_analysis::RustSymbolLookup::new(host.clone())).await?;
+    registry.register(rust_analysis::RustDiagnostics::new(host)).await?;
 
     Ok(())
 }

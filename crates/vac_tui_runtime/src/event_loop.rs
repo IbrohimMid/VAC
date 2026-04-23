@@ -37,6 +37,9 @@ pub struct RulebookConfig {
 
 /// Run the TUI
 #[allow(clippy::too_many_arguments)]
+use crate::services::memory_consolidator::run_and_banner;
+use vac_memory::{Consolidator, ConsolidatorConfig, MemoryScanner, policy::builtin_policy_set, policy::ConsolidationInput};
+
 pub async fn run_tui(
     mut input_rx: Receiver<InputEvent>,
     output_tx: Sender<OutputEvent>,
@@ -101,6 +104,12 @@ pub async fn run_tui(
         checkpoint_path: checkpoint_path.clone(),
         project_root: project_root.clone(),
     });
+
+    let scanner = MemoryScanner::new(project_root.join(".vac").join("memory"));
+    let consolidator = Consolidator::new(scanner, ConsolidatorConfig::default());
+    let policies = builtin_policy_set();
+    let mut last_consolidation_check = Instant::now();
+    let mut session_count_since_consolidation = 0;
     state.operator_config.billing.auth_display = auth_display_info;
     if let Some(project_context) = project_context {
         if let Some(title) = project_context.session_title {
@@ -316,7 +325,30 @@ pub async fn run_tui(
 
         // Handle backend events
         while let Ok(event) = input_rx.try_recv() {
+            let is_task_completed = matches!(event, InputEvent::TaskCompleted { .. });
             crate::controller::handle_backend_event(&mut state, &output_tx, event);
+
+            if is_task_completed {
+                session_count_since_consolidation += 1;
+                if session_count_since_consolidation >= consolidator.config().min_session_count {
+                    let mut input = ConsolidationInput {
+                        raw_lines: Vec::new(),
+                        session_count: session_count_since_consolidation,
+                    };
+                    let reg = state.signal_registry();
+                    for id in reg.ids() {
+                        if let Some(buf) = reg.get(id) {
+                            input.raw_lines.extend(buf.tail(100).into_iter().map(String::from));
+                        }
+                    }
+                    if let Ok(rep) = run_and_banner(&consolidator, &policies, &input, &mut state.layout.banner).await {
+                        if !rep.was_skipped() {
+                            session_count_since_consolidation = 0;
+                            last_consolidation_check = Instant::now();
+                        }
+                    }
+                }
+            }
         }
 
         if let Some(tx) = state.core.input_tx.clone() {
@@ -390,6 +422,27 @@ pub async fn run_tui(
         state
             .composer.vil_expr_lint
             .tick(&vil_expr::SymbolTable::new(), std::time::Instant::now());
+
+        // Cron consolidation trigger
+        if last_consolidation_check.elapsed() >= consolidator.config().min_interval {
+            let mut input = ConsolidationInput {
+                raw_lines: Vec::new(),
+                session_count: session_count_since_consolidation,
+            };
+            let reg = state.signal_registry();
+            for id in reg.ids() {
+                if let Some(buf) = reg.get(id) {
+                    input.raw_lines.extend(buf.tail(100).into_iter().map(String::from));
+                }
+            }
+            if let Ok(rep) = run_and_banner(&consolidator, &policies, &input, &mut state.layout.banner).await {
+                if !rep.was_skipped() {
+                    session_count_since_consolidation = 0;
+                }
+            }
+            // Always reset the timer to avoid spinning, even if skipped (e.g. not enough sessions)
+            last_consolidation_check = Instant::now();
+        }
 
         // Hydration timeout: force hydration with fallback data if startup takes too long.
         if !state.core.hydrated && std::time::Instant::now() >= state.core.hydration_deadline {
@@ -589,6 +642,20 @@ pub async fn run_tui(
         // Check for quit
         if state.core.quit.cancel_requested {
             persist_session_snapshot(&state).await;
+            
+            // Session close consolidation trigger
+            let mut input = ConsolidationInput {
+                raw_lines: Vec::new(),
+                session_count: session_count_since_consolidation,
+            };
+            let reg = state.signal_registry();
+            for id in reg.ids() {
+                if let Some(buf) = reg.get(id) {
+                    input.raw_lines.extend(buf.tail(100).into_iter().map(String::from));
+                }
+            }
+            let _ = run_and_banner(&consolidator, &policies, &input, &mut state.layout.banner).await;
+
             break;
         }
     }

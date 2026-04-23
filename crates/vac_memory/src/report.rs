@@ -5,6 +5,14 @@ use serde::{Deserialize, Serialize};
 
 use crate::memdir::MemoryKind;
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ConsolidatorPhase {
+    Orient,
+    Gather,
+    Consolidate,
+    Prune,
+}
+
 /// Data-carrying report — constructed by drivers + consolidator; NOT
 /// `#[non_exhaustive]` so external tests / bridges can build fixtures.
 /// When adding fields, update every call site rather than relying on
@@ -21,6 +29,10 @@ pub struct ConsolidationReport {
     /// partial-failure cycles without digging into logs.
     #[serde(default)]
     pub policies_failed: Vec<(String, String)>,
+    #[serde(default)]
+    pub phases_fired: Vec<ConsolidatorPhase>,
+    #[serde(default)]
+    pub pruned: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -84,6 +96,13 @@ mod tests {
                 .collect(),
             skipped_reason: None,
             policies_failed: Vec::new(),
+            phases_fired: vec![
+                ConsolidatorPhase::Orient,
+                ConsolidatorPhase::Gather,
+                ConsolidatorPhase::Consolidate,
+                ConsolidatorPhase::Prune,
+            ],
+            pruned: 0,
         }
     }
 

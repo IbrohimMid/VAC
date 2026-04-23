@@ -22,6 +22,7 @@ vac_session_engine = { workspace = true }
 vac_tool_core = { workspace = true }
 
 [dev-dependencies]
+tempfile = "3.10"
 tokio = { workspace = true, features = ["full", "test-util"] }
 
 [lints]

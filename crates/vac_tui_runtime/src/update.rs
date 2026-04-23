@@ -155,6 +155,10 @@ pub fn handle_backend_event(
                 format!("Done: {op_label}"),
             );
         }
+        InputEvent::SpeculationReady(prompt, context) => {
+            state.speculation.predicted_submit = Some(prompt);
+            state.speculation.precomputed_context = context;
+        }
         InputEvent::Error(msg) => {
             if let Some((style, severity)) = classify_critical_banner(&msg) {
                 push_banner_direct(state, truncate_banner_text(&msg, 140), style, severity);

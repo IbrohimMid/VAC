@@ -46,6 +46,7 @@ vac_core.workspace = true
 vac_signal = { workspace = true, features = ["rewind"] }
 vac_memory = { workspace = true }
 vac_ingest = { workspace = true }
+vil_swarm = { workspace = true }
 vac_session_control = { version = "0.1.0", path = "../vac_session_control" }
 vac_runtime = { version = "0.1.0", path = "../vac_runtime" }
 vac_shell = { version = "0.1.0", path = "../vac_shell" }

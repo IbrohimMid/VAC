@@ -30,7 +30,36 @@ pub async fn execute(
     approve: bool,
     targets: Vec<String>,
     budget_tokens: Option<u64>,
+    backend: Option<String>,
 ) -> anyhow::Result<()> {
+    if let Some(b) = backend {
+        if b == "candle" {
+            #[cfg(feature = "candle")]
+            {
+                use vil_inference::engine::InferenceBackend;
+                use vil_inference::engine::InferenceRequest;
+                let candle_backend = vil_inference::backends::CandleBackend::new_cpu();
+                // We need to load a model. For the integration test, we can use VAC_CANDLE_TEST_MODEL
+                // or just load from a default path. The test will probably set VAC_CANDLE_TEST_MODEL.
+                let model_dir = std::env::var_os("VAC_CANDLE_TEST_MODEL")
+                    .map(PathBuf::from)
+                    .unwrap_or_else(|| PathBuf::from("."));
+                
+                candle_backend.load(&model_dir).await?;
+                let request = InferenceRequest::new(&task_description, 10);
+                let out = candle_backend.infer(&request).await?;
+                println!("{}", out);
+                return Ok(());
+            }
+            #[cfg(not(feature = "candle"))]
+            {
+                anyhow::bail!("Candle backend requires the 'candle' feature");
+            }
+        } else {
+            anyhow::bail!("Unsupported backend: {}", b);
+        }
+    }
+
     let mut engine = vac_core::VacEngine::new(project_root.clone()).await?;
 
     if approve {

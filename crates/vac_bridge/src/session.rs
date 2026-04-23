@@ -105,6 +105,11 @@ impl RemoteSession {
     pub async fn next_outbound(&mut self) -> Option<OutboundEvent> {
         self.outbound_rx.recv().await
     }
+
+    /// Splits the session into its constituent inbound and outbound receivers.
+    pub fn split(self) -> (mpsc::Receiver<InboundEvent>, mpsc::Receiver<OutboundEvent>) {
+        (self.inbound_rx, self.outbound_rx)
+    }
 }
 
 #[cfg(test)]

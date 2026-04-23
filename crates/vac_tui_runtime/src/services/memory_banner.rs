@@ -53,6 +53,8 @@ mod tests {
                 .collect(),
             skipped_reason: None,
             policies_failed: Vec::new(),
+            phases_fired: vec![],
+            pruned: 0,
         }
     }
 
