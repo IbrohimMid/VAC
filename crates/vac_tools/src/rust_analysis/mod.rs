@@ -31,7 +31,9 @@
 //! real backend is decided. Callers in-crate can opt in via
 //! `vac_tools::rust_analysis::*`.
 
+pub mod diagnostics;
 pub mod host;
+pub mod pool;
 pub mod pty_host;
 pub mod stdio_host;
 
@@ -39,5 +41,9 @@ pub use host::{
     AnalysisHost, AnalysisRequest, AnalysisResponse, AnalysisError, AnalysisResult,
     StubAnalysisHost, Symbol,
 };
+pub use diagnostics::{
+    Diagnostic, DiagnosticRegistry, DiagnosticSeverity, LspDiagnosticRegistry,
+};
+pub use pool::{server_for_extension, LspServerManager};
 pub use pty_host::PortablePtyHost;
 pub use stdio_host::StdioLspHost;
