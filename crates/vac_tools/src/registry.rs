@@ -26,6 +26,34 @@ pub trait VilTool: Send + Sync {
     fn trust_requirement(&self) -> &str;
     fn risk_level(&self) -> &str;
 
+    /// F1.1 — Return the formal `vac_tool_core::ToolSpec` for this
+    /// tool. Default impl synthesizes a spec from the legacy
+    /// `name/description/input_schema/trust_requirement` fields so
+    /// every existing tool automatically gets a spec without a
+    /// breaking change. Tools that need fine-grained capability or
+    /// render hints override this.
+    fn spec(&self) -> vac_tool_core::ToolSpec {
+        let permission = match self.trust_requirement() {
+            "safe" => vac_tool_core::ToolPermissionClass::Safe,
+            "ask_once" => vac_tool_core::ToolPermissionClass::AskOnce,
+            "privileged" => vac_tool_core::ToolPermissionClass::Privileged,
+            _ => vac_tool_core::ToolPermissionClass::AskEveryCall,
+        };
+        let capability = match self.risk_level() {
+            "safe" => vac_tool_core::ToolCapability::default(),
+            "destructive" => vac_tool_core::ToolCapability::destructive(),
+            _ => vac_tool_core::ToolCapability::mutating(),
+        };
+        vac_tool_core::ToolSpec {
+            name: self.name().to_string(),
+            description: self.description().to_string(),
+            input_schema: self.input_schema(),
+            capability,
+            permission,
+            render: vac_tool_core::ToolRenderHints::default(),
+        }
+    }
+
     async fn execute(
         &self,
         args: serde_json::Value,
@@ -149,6 +177,19 @@ impl ToolRegistry {
 
     pub async fn list(&self) -> Vec<ToolDefinition> {
         self.definitions.read().await.values().cloned().collect()
+    }
+
+    /// F1.1 — Return every registered tool's formal `ToolSpec`.
+    /// Source of truth for `ToolSearchTool` + downstream consumers
+    /// (session engine, bridge) that need the full contract, not just
+    /// the legacy `ToolDefinition` shape.
+    pub async fn list_specs(&self) -> Vec<vac_tool_core::ToolSpec> {
+        self.tools
+            .read()
+            .await
+            .values()
+            .map(|t| t.spec())
+            .collect()
     }
 
     pub async fn list_by_category(&self, category: &str) -> Vec<ToolDefinition> {

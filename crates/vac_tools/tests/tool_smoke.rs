@@ -44,6 +44,8 @@ async fn registers_all_builtin_tools() {
             "run_skill",
             "search",
             "sequential_think",
+            "signal_list",
+            "signal_tail",
             "task_done",
             "todo_write",
             "vil_audit",
