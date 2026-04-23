@@ -11,7 +11,7 @@ use vac_core::config::AutopilotConfig;
 const PID_FILE: &str = ".vac/autopilot.pid";
 const LOG_FILE: &str = ".vac/autopilot.log";
 
-pub async fn execute_up(project_root: PathBuf) -> anyhow::Result<()> {
+pub async fn execute_up(project_root: PathBuf, execute: bool) -> anyhow::Result<()> {
     let pid_path = project_root.join(PID_FILE);
     if pid_path.exists() {
         let pid: u32 = std::fs::read_to_string(&pid_path)?.trim().parse()?;
@@ -25,6 +25,22 @@ pub async fn execute_up(project_root: PathBuf) -> anyhow::Result<()> {
 
     let config = AutopilotConfig::load(&project_root)?;
     let vac_config = vac_core::VacConfig::load_with_fallback(&project_root)?;
+
+    // M1 — Dry-run by default (Stakpak-discipline). Require explicit
+    // --execute to spawn the background daemon. Plan-only output is
+    // scannable (≤7 lines) so operators can verify intent before
+    // committing to 24/7 autonomous execution.
+    if !execute {
+        println!("Autopilot plan (dry-run; re-run with --execute to spawn):");
+        println!("  Mode:    {}", config.mode);
+        println!("  Env:     {}", vac_config.runtime.environment_mode);
+        println!("  Exec:    {:?}", vac_config.runtime.execution_environment);
+        println!("  Poll:    {}s", config.poll_interval_secs);
+        println!("  PID:     (not written)");
+        println!("  Log:     {}", project_root.join(LOG_FILE).display());
+        return Ok(());
+    }
+
     let exe = std::env::current_exe()?;
     std::fs::create_dir_all(project_root.join(".vac"))?;
     let log_path = project_root.join(LOG_FILE);

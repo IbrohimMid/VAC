@@ -379,8 +379,14 @@ enum McpAction {
 
 #[derive(Subcommand)]
 enum AutopilotAction {
-    /// Start autopilot daemon (spawns background runtime, writes PID + event log)
-    Up,
+    /// Start autopilot daemon. Requires --execute to confirm intent;
+    /// otherwise does a dry-run (config sanity-check, no process spawn).
+    Up {
+        /// Actually spawn the background daemon. Without this flag,
+        /// `up` only validates config + prints the plan.
+        #[arg(long, default_value_t = false)]
+        execute: bool,
+    },
     /// Stop autopilot daemon gracefully via SIGTERM
     Down,
     /// Show autopilot status, mode, and log path
@@ -545,7 +551,9 @@ async fn main() -> anyhow::Result<()> {
             McpAction::Status => commands::mcp::status(&project_root).await?,
         },
         Commands::Autopilot { action } => match action {
-            AutopilotAction::Up => commands::autopilot::execute_up(project_root).await?,
+            AutopilotAction::Up { execute } => {
+                commands::autopilot::execute_up(project_root, execute).await?
+            }
             AutopilotAction::Down => commands::autopilot::execute_down(project_root).await?,
             AutopilotAction::Status => {
                 commands::autopilot::execute_status(project_root, &cli.format).await?
