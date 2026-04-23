@@ -15,6 +15,7 @@ pub mod resume;
 pub mod rulebook;
 pub mod run;
 pub mod runtime;
+pub mod session;
 pub mod signal;
 pub mod status;
 pub mod trajectory;

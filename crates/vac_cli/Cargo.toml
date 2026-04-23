@@ -30,6 +30,7 @@ vac_runtime = { workspace = true }
 vac_ingest = { workspace = true }
 vac_trajectory = { workspace = true }
 vac_signal = { workspace = true }
+vac_session_engine = { workspace = true }
 vil_ir = { workspace = true }
 vil_validate = { workspace = true }
 vil_vwfd = { workspace = true }

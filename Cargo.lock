@@ -6024,6 +6024,7 @@ dependencies = [
  "vac_ingest",
  "vac_runtime",
  "vac_session_control",
+ "vac_session_engine",
  "vac_shell",
  "vac_signal",
  "vac_tools",

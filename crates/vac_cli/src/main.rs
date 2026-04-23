@@ -81,6 +81,9 @@ enum Commands {
     /// Resume from checkpoint
     #[command(next_help_heading = "Run")]
     Resume { checkpoint: PathBuf },
+    /// Drive one submit through vac_session_engine (echo adapter)
+    #[command(next_help_heading = "Run")]
+    SessionRun { input: String },
 
     // ----- Config -----
     /// Manage configuration
@@ -437,6 +440,9 @@ async fn main() -> anyhow::Result<()> {
         } => commands::interactive::execute(project_root, resume, record, replay).await?,
         Commands::Resume { checkpoint } => {
             commands::resume::execute(project_root, checkpoint).await?
+        }
+        Commands::SessionRun { input } => {
+            commands::session::execute(project_root, input).await?
         }
         Commands::Restore { file } => commands::restore::execute(project_root, file).await?,
         Commands::Status => commands::status::execute(project_root, &cli.format).await?,
