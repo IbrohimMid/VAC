@@ -194,6 +194,32 @@ impl Bm25Index {
     }
 }
 
+/// Staleness check for persisted indexes. Returns `true` when the
+/// cache file is at least as new as every source path (and all paths
+/// still exist). The caller is expected to rebuild + `write_to_file`
+/// when this returns `false`. Missing cache → `false`. Missing source
+/// → `false` (a deleted file is a corpus change).
+pub fn is_cache_fresh(cache_path: &Path, sources: &[PathBuf]) -> bool {
+    let Ok(cache_meta) = std::fs::metadata(cache_path) else {
+        return false;
+    };
+    let Ok(cache_mtime) = cache_meta.modified() else {
+        return false;
+    };
+    for src in sources {
+        let Ok(src_meta) = std::fs::metadata(src) else {
+            return false;
+        };
+        let Ok(src_mtime) = src_meta.modified() else {
+            return false;
+        };
+        if src_mtime > cache_mtime {
+            return false;
+        }
+    }
+    true
+}
+
 pub fn rank_paths(
     paths: &[PathBuf],
     query: &str,
@@ -280,6 +306,45 @@ mod tests {
         let out = rank_paths(&corpus, "auth", 10, Bm25Params::default());
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].path, p("src/auth/mod.rs"));
+    }
+
+    #[test]
+    fn cache_fresh_when_sources_older() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src = tmp.path().join("a.rs");
+        std::fs::write(&src, "x").unwrap();
+        // Ensure source mtime is captured before cache.
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        let cache = tmp.path().join("bm25.bin");
+        std::fs::write(&cache, "y").unwrap();
+        assert!(is_cache_fresh(&cache, &[src]));
+    }
+
+    #[test]
+    fn cache_stale_when_source_newer() {
+        let tmp = tempfile::tempdir().unwrap();
+        let cache = tmp.path().join("bm25.bin");
+        std::fs::write(&cache, "y").unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        let src = tmp.path().join("a.rs");
+        std::fs::write(&src, "x").unwrap();
+        assert!(!is_cache_fresh(&cache, &[src]));
+    }
+
+    #[test]
+    fn cache_stale_when_cache_missing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src = tmp.path().join("a.rs");
+        std::fs::write(&src, "x").unwrap();
+        assert!(!is_cache_fresh(&tmp.path().join("nope.bin"), &[src]));
+    }
+
+    #[test]
+    fn cache_stale_when_source_deleted() {
+        let tmp = tempfile::tempdir().unwrap();
+        let cache = tmp.path().join("bm25.bin");
+        std::fs::write(&cache, "y").unwrap();
+        assert!(!is_cache_fresh(&cache, &[tmp.path().join("gone.rs")]));
     }
 
     #[test]
