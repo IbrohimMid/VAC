@@ -30,7 +30,7 @@ pub(crate) fn tmp_suffix() -> String {
 
 use crate::error::{MemoryError, MemoryResult};
 use crate::policy::{ConsolidationInput, PolicySet};
-use crate::report::{ConsolidationReport, WrittenFile};
+use crate::report::{ConsolidationReport, ConsolidatorPhase, WrittenFile};
 use crate::scanner::MemoryScanner;
 
 /// Policy knobs. Construct via [`Default`] for the sensible defaults.
@@ -73,6 +73,23 @@ pub enum ConsolidatorGate {
 pub struct Consolidator {
     scanner: MemoryScanner,
     config: ConsolidatorConfig,
+}
+
+#[derive(Debug, Clone)]
+pub struct OrientedContext {
+    pub active_memories: Vec<crate::memdir::Memory>,
+}
+
+#[derive(Debug, Clone)]
+pub struct GatheredContext {
+    pub input: ConsolidationInput,
+    pub index_lines: Vec<String>,
+}
+
+pub struct ConsolidatedContext {
+    pub written: Vec<WrittenFile>,
+    pub fired: Vec<String>,
+    pub failed: Vec<(String, String)>,
 }
 
 impl Consolidator {
@@ -221,30 +238,30 @@ impl Consolidator {
 
     /// Run one consolidation cycle. Returns a report even when gates
     /// fire (the report's `skipped_reason` explains).
-    pub async fn run_once(
+    pub async fn orient(&self) -> MemoryResult<OrientedContext> {
+        // Read MEMORY.md index or scan active memories
+        let active_memories = self.scanner.scan_kind(crate::memdir::MemoryKind::Active).await?;
+        Ok(OrientedContext { active_memories })
+    }
+
+    pub async fn gather(&self, input: &ConsolidationInput, _oriented: &OrientedContext) -> MemoryResult<GatheredContext> {
+        // Scan recent transcripts. For now, we just pass the input through.
+        Ok(GatheredContext {
+            input: input.clone(),
+            index_lines: Vec::new(),
+        })
+    }
+
+    pub async fn consolidate(
         &self,
         policies: &PolicySet,
-        input: &ConsolidationInput,
-    ) -> MemoryResult<ConsolidationReport> {
-        let started_at = chrono::Utc::now();
-        let gate = self.evaluate_gate(input).await?;
-        if gate != ConsolidatorGate::Run {
-            return Ok(ConsolidationReport {
-                started_at,
-                finished_at: chrono::Utc::now(),
-                policies_fired: Vec::new(),
-                files_written: Vec::new(),
-                skipped_reason: Some(gate_reason(&gate)),
-                policies_failed: Vec::new(),
-            });
-        }
-
-        let _guard = self.acquire_lock().await?;
+        gathered: &GatheredContext,
+    ) -> MemoryResult<ConsolidatedContext> {
         let mut fired = Vec::new();
         let mut written = Vec::new();
         let mut failed: Vec<(String, String)> = Vec::new();
         for policy in policies.iter() {
-            let proposals = match policy.propose(input).await {
+            let proposals = match policy.propose(&gathered.input).await {
                 Ok(p) => p,
                 Err(e) => {
                     warn!(
@@ -261,6 +278,7 @@ impl Consolidator {
                 continue;
             }
             fired.push(policy.name().to_string());
+
             for prop in proposals {
                 let mem = crate::memdir::Memory {
                     kind: prop.kind,
@@ -278,20 +296,61 @@ impl Consolidator {
                 });
             }
         }
+        Ok(ConsolidatedContext { written, fired, failed })
+    }
+
+    pub async fn prune(&self, _oriented: &OrientedContext) -> MemoryResult<usize> {
+        // For now, no pruning implemented. Just return 0.
+        Ok(0)
+    }
+
+    pub async fn run_phases(
+        &self,
+        policies: &PolicySet,
+        input: &ConsolidationInput,
+    ) -> MemoryResult<ConsolidationReport> {
+        let started_at = chrono::Utc::now();
+        let gate = self.evaluate_gate(input).await?;
+        if gate != ConsolidatorGate::Run {
+            return Ok(ConsolidationReport {
+                started_at,
+                finished_at: chrono::Utc::now(),
+                policies_fired: Vec::new(),
+                files_written: Vec::new(),
+                skipped_reason: Some(gate_reason(&gate)),
+                policies_failed: Vec::new(),
+                phases_fired: Vec::new(),
+                pruned: 0,
+            });
+        }
+
+        let _guard = self.acquire_lock().await?;
+        let oriented = self.orient().await?;
+        let gathered = self.gather(input, &oriented).await?;
+        let consolidated = self.consolidate(policies, &gathered).await?;
+        let pruned = self.prune(&oriented).await?;
+
         self.write_stamp().await?;
         info!(
             target: "vac_memory",
-            policies = fired.len(),
-            files = written.len(),
+            policies = consolidated.fired.len(),
+            files = consolidated.written.len(),
             "consolidator cycle complete",
         );
         Ok(ConsolidationReport {
             started_at,
             finished_at: chrono::Utc::now(),
-            policies_fired: fired,
-            files_written: written,
+            policies_fired: consolidated.fired,
+            files_written: consolidated.written,
             skipped_reason: None,
-            policies_failed: failed,
+            policies_failed: consolidated.failed,
+            phases_fired: vec![
+                ConsolidatorPhase::Orient,
+                ConsolidatorPhase::Gather,
+                ConsolidatorPhase::Consolidate,
+                ConsolidatorPhase::Prune,
+            ],
+            pruned,
         })
     }
 }
@@ -353,7 +412,7 @@ mod tests {
             ],
             session_count: 10,
         };
-        let rep = c.run_once(&builtin_policy_set(), &input).await.unwrap();
+        let rep = c.run_phases(&builtin_policy_set(), &input).await.unwrap();
         assert!(!rep.was_skipped());
         assert!(!rep.files_written.is_empty());
         assert!(rep.policies_fired.len() >= 2);
@@ -373,9 +432,9 @@ mod tests {
             raw_lines: vec!["learn: x".into()],
             session_count: 10,
         };
-        let first = c.run_once(&builtin_policy_set(), &input).await.unwrap();
+        let first = c.run_phases(&builtin_policy_set(), &input).await.unwrap();
         assert!(!first.was_skipped());
-        let second = c.run_once(&builtin_policy_set(), &input).await.unwrap();
+        let second = c.run_phases(&builtin_policy_set(), &input).await.unwrap();
         assert!(second.was_skipped());
         assert!(second.skipped_reason.unwrap().contains("cooldown"));
     }
@@ -389,7 +448,7 @@ mod tests {
         cfg.min_session_count = 5;
         let c = Consolidator::new(scanner, cfg);
         let rep = c
-            .run_once(
+            .run_phases(
                 &builtin_policy_set(),
                 &ConsolidationInput {
                     raw_lines: vec!["learn: x".into()],
@@ -516,7 +575,7 @@ mod tests {
         let mut policies = PolicySet::new();
         policies.register(std::sync::Arc::new(BoomPolicy));
         let rep = c
-            .run_once(
+            .run_phases(
                 &policies,
                 &ConsolidationInput {
                     raw_lines: vec!["learn: x".into()],

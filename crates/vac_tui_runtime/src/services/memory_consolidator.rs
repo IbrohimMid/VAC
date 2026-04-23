@@ -39,7 +39,7 @@ pub async fn run_and_banner(
     input: &ConsolidationInput,
     banner: &mut BannerState,
 ) -> MemoryResult<ConsolidationReport> {
-    let report = consolidator.run_once(policies, input).await?;
+    let report = consolidator.run_phases(policies, input).await?;
     push_consolidation_banner(banner, &report);
     Ok(report)
 }

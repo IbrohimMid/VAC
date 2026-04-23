@@ -107,7 +107,7 @@ async fn vac_end_to_end_boot_through_consolidation() {
         session_count: 5,
     };
     let report = consolidator
-        .run_once(&builtin_policy_set(), &input)
+        .run_phases(&builtin_policy_set(), &input)
         .await
         .expect("consolidator cycle");
     assert!(
