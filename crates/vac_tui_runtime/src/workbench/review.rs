@@ -133,7 +133,7 @@ impl WorkbenchTabView for ReviewTab {
         // That function does synchronous disk I/O + PNG header decode, so
         // invoking it from inside `terminal.draw` stalled the tokio
         // runtime until the read completed. The render path is now pure:
-        // it looks the absolute path up in `state.image_preview_cache`
+        // it looks the absolute path up in `state.image_render.preview_cache`
         // and either renders the cached result, renders a deterministic
         // error line, or renders a "Loading…" placeholder while asking
         // the cache to schedule a background load. The load itself runs
@@ -159,7 +159,7 @@ impl WorkbenchTabView for ReviewTab {
                 let inner_w = body[1].width.saturating_sub(2).max(4);
                 let inner_h = body[1].height.saturating_sub(2).max(3);
                 use crate::services::image_preview_cache::ImagePreviewCacheEntry;
-                match state.image_preview_cache.get(&abs_path).cloned() {
+                match state.image_render.preview_cache.get(&abs_path).cloned() {
                     Some(ImagePreviewCacheEntry::Ready(Ok(preview))) => {
                         let label = format!("{} ({}x{})", path, preview.width, preview.height);
                         let lines: Vec<Line> = crate::services::kitty_image::render_ascii_fallback(
@@ -181,7 +181,7 @@ impl WorkbenchTabView for ReviewTab {
                         // Schedule the load on first sight; subsequent
                         // frames observe `Loading` and short-circuit the
                         // spawn inside `request_load`.
-                        state.image_preview_cache.request_load(abs_path.clone());
+                        state.image_render.preview_cache.request_load(abs_path.clone());
                         let label = format!("{} (loading…)", path);
                         let lines: Vec<Line> = crate::services::kitty_image::render_ascii_fallback(
                             inner_w, inner_h, &label,
@@ -294,7 +294,7 @@ impl WorkbenchTabView for ReviewTab {
         if state.startup.kitty_graphics {
             if let Some(bytes) = image_preview_bytes {
                 if !bytes.is_empty() {
-                    state.pending_kitty_emission = Some((body[1], bytes));
+                    state.image_render.pending = Some((body[1], bytes));
                 }
             }
         }

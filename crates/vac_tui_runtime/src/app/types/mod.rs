@@ -35,6 +35,8 @@ pub mod vil_dev;
 pub mod workbench_ui;
 pub mod commands;
 pub mod helpers;
+pub mod image_render;
+pub mod mcp_maps;
 pub mod messages;
 pub mod rendering;
 pub mod runtime;
@@ -68,9 +70,11 @@ pub use view_flags::ViewFlagsState;
 pub use vil_dev::VilDevState;
 pub use workbench_ui::WorkbenchChromeState;
 pub use billing::{
-    BillingInfo, LoadingOperation, LoadingStateManager, SessionInfo, ShortcutsPopupMode,
-    TokenUsage, ToolCallStatus,
+    BillingInfo, BillingState, LoadingOperation, LoadingStateManager, SessionInfo,
+    ShortcutsPopupMode, TokenUsage, ToolCallStatus,
 };
+pub use image_render::ImageRenderState;
+pub use mcp_maps::McpMapsState;
 pub use commands::{
     CommandSource, ExistingPlanPrompt, HelperCommand, PendingUserMessage, PlanComment,
 };
@@ -201,15 +205,8 @@ pub struct AppState {
     pub project_root: PathBuf,
 
     // MCP
-    pub mcp_server_states: HashMap<String, vac_tools::mcp::McpConnectionState>,
-    /// Per-server signal buffers — status changes are pushed here so they
-    /// flow through the signal pipeline (rewind + MCP retrieval tools).
-    pub mcp_signals: HashMap<String, vac_signal::SignalBuffer>,
-    /// Rolling status log for runtime jobs — keyed by job id. One line
-    /// per observed status transition. Flows through signal_registry
-    /// as `runtime:<uuid>` so the signal_tail MCP tool + rewind pipeline
-    /// can recall it.
-    pub runtime_signals: HashMap<uuid::Uuid, vac_signal::SignalBuffer>,
+    /// R1.b — grouped MCP + runtime signal maps.
+    pub mcp_maps: McpMapsState,
     // VIL domain state
     pub vil: VilState,
 
@@ -235,38 +232,9 @@ pub struct AppState {
     // PR-T16 — mouse click regions for workbench tabs and task tray rows.
     // Populated during view render, consumed by `handlers::mouse::dispatch_click`.
     pub workbench_chrome: WorkbenchChromeState,
-    // PR-T16 P1 — per-surface click regions (review file list, approvals rows,
-    // VIL issue rows, generic workbench body focus grab). Populated each render;
-    // consumed by `handlers::mouse::dispatch_click`.
-    /// PR-T17 / R8c — pending native Kitty graphics emission for the current
-    /// frame. Populated by surface renderers (e.g. the review-tab image
-    /// preview) when the probed terminal supports Kitty graphics
-    /// (`startup.kitty_graphics == true`). The event loop flushes this
-    /// payload to stdout *after* `terminal.draw()` completes, positioning the
-    /// cursor at the target rect so the image overlays the ratatui
-    /// placeholder. Ratatui itself never sees these bytes. Cleared every
-    /// frame by the flush step so stale sequences cannot survive a tab
-    /// switch.
-    pub pending_kitty_emission: Option<(ratatui::layout::Rect, Vec<u8>)>,
-    /// PR-T17 M3/L5 — dedup cache for the post-frame Kitty flush. Stores
-    /// the `(rect, content_hash)` of the most recently emitted image. When
-    /// the next frame queues an identical `(rect, hash)` the flush step
-    /// skips the DCS write entirely, because Kitty graphics persist on the
-    /// terminal's graphics plane until the cells are reused. This avoids
-    /// re-transmitting megabytes of base64 per frame during an idle
-    /// preview. Reset to `None` whenever a frame has no pending emission
-    /// (e.g. tab switched away, preview dismissed) so that re-entering the
-    /// preview always forces a fresh emission.
-    pub last_kitty_emission: Option<(ratatui::layout::Rect, u64)>,
-    /// PR-T17 / M1 — off-render-path cache for image previews. The render
-    /// loop used to call `review_preview::prepare_image_preview` directly
-    /// inside `terminal.draw`, which meant a blocking disk read + PNG
-    /// header decode stalled the tokio runtime for the full duration of
-    /// the preview load. The cache now owns the blocking work: the render
-    /// path only reads cache state (Loading / Ready), and a short-lived OS
-    /// thread delivers the result through an internal channel that the
-    /// event loop drains once per iteration before the next draw.
-    pub image_preview_cache: crate::services::image_preview_cache::ImagePreviewCache,
+    /// R1.c — Kitty-graphics render state: pending emission, dedup
+    /// cache, off-path preview cache. See `image_render.rs`.
+    pub image_render: ImageRenderState,
 
     // Paste ledger (long text + image tray)
     pub paste: PasteState,
@@ -276,12 +244,8 @@ pub struct AppState {
     // Todos extracted from <todo>…</todo> blocks in assistant messages
     pub todos: Vec<vac_changeset::TodoItem>,
 
-    // Token usage + context pressure + identity
-    pub current_message_usage: TokenUsage,
-    pub total_session_usage: TokenUsage,
-    pub context_usage_percent: f32,
-    pub billing_info: Option<BillingInfo>,
-    pub auth_display_info: (Option<String>, Option<String>, Option<String>),
+    /// R1.a — token usage, context pressure, billing plan, identity.
+    pub billing: BillingState,
 
     // Revert anchors: line_to_message_map is populated during render and
     // consumed by message_at_row. pending_revert_index stages a confirmation

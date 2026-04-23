@@ -101,7 +101,7 @@ pub async fn run_tui(
         checkpoint_path: checkpoint_path.clone(),
         project_root: project_root.clone(),
     });
-    state.auth_display_info = auth_display_info;
+    state.billing.auth_display = auth_display_info;
     if let Some(project_context) = project_context {
         if let Some(title) = project_context.session_title {
             state.session_meta.title = Some(title);
@@ -144,7 +144,7 @@ pub async fn run_tui(
     };
     state.startup.mcp_server_count = boot_config.mcp_servers.as_ref().map_or(0, |s| s.len());
     // Provider status from auth_display_info
-    state.startup.provider_status = match &state.auth_display_info.0 {
+    state.startup.provider_status = match &state.billing.auth_display.0 {
         Some(provider) => format!("ready ({})", provider),
         None => "loading...".to_string(),
     };
@@ -461,7 +461,7 @@ pub async fn run_tui(
         // empty (a single `try_recv` returning `Empty`), so it is safe to
         // run every iteration regardless of whether the review tab is
         // active.
-        state.image_preview_cache.drain_pending();
+        state.image_render.preview_cache.drain_pending();
 
         // Render — measure wall time and update RenderMetrics
         let render_start = std::time::Instant::now();
@@ -483,7 +483,7 @@ pub async fn run_tui(
         // it without the guard cannot leak DCS bytes to a non-Kitty
         // terminal. The `.take()` still runs so a stale payload gets
         // drained instead of lingering across frames.
-        if let Some((rect, png_bytes)) = state.pending_kitty_emission.take() {
+        if let Some((rect, png_bytes)) = state.image_render.pending.take() {
             if state.startup.kitty_graphics {
                 // PR-T17 M3/L5 — dedup identical consecutive emissions.
                 // The review-tab populator re-queues the same (rect,
@@ -496,7 +496,7 @@ pub async fn run_tui(
                 // the `None` branch below so re-entering the preview
                 // always re-emits on the first frame.
                 let next_hash = crate::services::kitty_image::hash_png_payload(&png_bytes);
-                let is_duplicate = state.last_kitty_emission == Some((rect, next_hash));
+                let is_duplicate = state.image_render.last == Some((rect, next_hash));
                 if !is_duplicate {
                     // `inner_col`/`inner_row` push one cell past the diff-pane
                     // border so the image overlays ASCII content, not the
@@ -513,7 +513,7 @@ pub async fn run_tui(
                         let mut stdout = std::io::stdout();
                         let _ = stdout.write_all(&payload);
                         let _ = stdout.flush();
-                        state.last_kitty_emission = Some((rect, next_hash));
+                        state.image_render.last = Some((rect, next_hash));
                     }
                 }
             }
@@ -523,7 +523,7 @@ pub async fn run_tui(
             // a preview becomes visible the first frame re-transmits the
             // full DCS payload — Kitty graphics may have been cleared by
             // an intervening screen redraw on some terminals/muxes.
-            state.last_kitty_emission = None;
+            state.image_render.last = None;
         }
 
         let render_us = render_start.elapsed().as_micros() as u64;

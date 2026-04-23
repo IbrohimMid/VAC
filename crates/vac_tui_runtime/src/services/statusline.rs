@@ -28,7 +28,7 @@ pub fn render_statusline(f: &mut Frame, state: &AppState, area: Rect) {
 
     let model_str = model_label(state);
 
-    let tokens = state.total_session_usage.total_tokens;
+    let tokens = state.billing.total_session.total_tokens;
 
     let mut text = vec![
         Span::styled(

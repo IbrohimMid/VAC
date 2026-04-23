@@ -83,25 +83,17 @@ impl AppState {
             at_mention: AtMentionState::default(),
             changeset_ui: ChangesetUiState::default(),
             project_root: options.project_root,
-            mcp_server_states: HashMap::new(),
-            mcp_signals: HashMap::new(),
-            runtime_signals: HashMap::new(),
+            mcp_maps: super::McpMapsState::default(),
             vil: VilState::default(),
             vwfd_inspector: crate::services::vwfd_inspector::VwfdInspectorState::default(),
             vil_expr_lint: crate::services::vil_expr_lint::LintState::new(),
             pending_image_parts: vec![],
             banner: BannerState::default(),
             workbench_chrome: WorkbenchChromeState::default(),
-            pending_kitty_emission: None,
-            last_kitty_emission: None,
-            image_preview_cache: crate::services::image_preview_cache::ImagePreviewCache::new(),
+            image_render: super::ImageRenderState::default(),
             paste: PasteState::default(),
             todos: Vec::new(),
-            current_message_usage: TokenUsage::default(),
-            total_session_usage: TokenUsage::default(),
-            context_usage_percent: 0.0,
-            billing_info: None,
-            auth_display_info: (None, None, None),
+            billing: super::BillingState::default(),
             plan: super::PlanState::default(),
             ask_user: AskUserState::default(),
             selection_state: crate::services::text_selection::SelectionState::default(),
@@ -440,10 +432,10 @@ impl AppState {
         for (idx, session) in self.shell.session_store.sessions.iter().enumerate() {
             reg.register(format!("shell:{idx}:{}", session.id), &session.output_signal);
         }
-        for (name, buf) in &self.mcp_signals {
+        for (name, buf) in &self.mcp_maps.server_signals {
             reg.register(format!("mcp:{name}"), buf);
         }
-        for (id, buf) in &self.runtime_signals {
+        for (id, buf) in &self.mcp_maps.runtime_signals {
             reg.register(format!("runtime:{id}"), buf);
         }
         reg

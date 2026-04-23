@@ -13,6 +13,19 @@ pub struct BillingInfo {
     pub tier: Option<String>,
 }
 
+/// R1.a — token/context/billing/auth grouping pulled out of AppState.
+/// `auth_display` is a (identity, plan, credits) tuple mirroring the
+/// header's three-slot layout.
+#[derive(Debug, Clone, Default)]
+#[non_exhaustive]
+pub struct BillingState {
+    pub current_message: TokenUsage,
+    pub total_session: TokenUsage,
+    pub context_usage_percent: f32,
+    pub billing_info: Option<BillingInfo>,
+    pub auth_display: (Option<String>, Option<String>, Option<String>),
+}
+
 #[derive(Debug, Clone)]
 pub struct SessionInfo {
     pub title: String,

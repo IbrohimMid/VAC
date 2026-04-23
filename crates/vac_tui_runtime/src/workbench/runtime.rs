@@ -187,12 +187,12 @@ impl WorkbenchTabView for RuntimeTab {
             lines.push(Line::raw(""));
         }
 
-        if !state.mcp_server_states.is_empty() {
+        if !state.mcp_maps.server_states.is_empty() {
             lines.push(Line::from(vec![Span::styled(
                 "MCP Servers:",
                 Style::default().add_modifier(Modifier::BOLD),
             )]));
-            for (name, conn_state) in &state.mcp_server_states {
+            for (name, conn_state) in &state.mcp_maps.server_states {
                 let (status, status_key) = if conn_state.is_connected() {
                     ("✅ connected", StyleKey::Success)
                 } else {

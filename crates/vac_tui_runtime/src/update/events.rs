@@ -206,16 +206,16 @@ pub fn on_task_completed(state: &mut AppState, result: vac_core::task::TaskResul
     // is the authoritative producer. We record this turn's total, add
     // to session running total, and derive a coarse context %.
     let turn_tokens = result.total_tokens_used;
-    state.current_message_usage = crate::app::TokenUsage {
+    state.billing.current_message = crate::app::TokenUsage {
         input_tokens: 0,
         output_tokens: 0,
         total_tokens: turn_tokens,
     };
-    state.total_session_usage.total_tokens = state
-        .total_session_usage
+    state.billing.total_session.total_tokens = state
+        .billing.total_session
         .total_tokens
         .saturating_add(turn_tokens);
-    state.context_usage_percent =
+    state.billing.context_usage_percent =
         estimate_context_percent(state.operator.current_model.as_ref(), turn_tokens);
 
     let mut content = result.summary.clone();

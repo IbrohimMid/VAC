@@ -207,13 +207,13 @@ pub(super) fn render_operator_panel(f: &mut Frame, state: &mut AppState, area: R
         }
     }
 
-    if !state.mcp_server_states.is_empty() {
+    if !state.mcp_maps.server_states.is_empty() {
         let connected = state
-            .mcp_server_states
+            .mcp_maps.server_states
             .values()
             .filter(|s| s.is_connected())
             .count();
-        let total = state.mcp_server_states.len();
+        let total = state.mcp_maps.server_states.len();
         let mcp_style = if connected == total {
             state.theme.style(crate::services::theme::StyleKey::Success)
         } else {

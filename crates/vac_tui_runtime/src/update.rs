@@ -240,7 +240,7 @@ pub fn handle_backend_event(
             // transition log the MCP signal_tail tool can recall.
             for job in &jobs {
                 let buf = state
-                    .runtime_signals
+                    .mcp_maps.runtime_signals
                     .entry(job.id)
                     .or_insert_with(|| {
                         vac_signal::SignalBuffer::new(
@@ -432,13 +432,13 @@ pub fn handle_backend_event(
             // L5 — also route status into the signal pipeline so
             // `vac signal tail --stream mcp:<name>` can recall it.
             let buf = state
-                .mcp_signals
+                .mcp_maps.server_signals
                 .entry(name.clone())
                 .or_insert_with(|| {
                     vac_signal::SignalBuffer::new(vac_signal::SignalStreamKind::Mcp, 200)
                 });
             buf.push_line(format!("status: {:?}", conn_state.status));
-            state.mcp_server_states.insert(name, conn_state);
+            state.mcp_maps.server_states.insert(name, conn_state);
         }
         InputEvent::VilStatusUpdated(snapshot) => {
             state.record_vil_score(snapshot.validation_score);

@@ -1,6 +1,12 @@
 //! `vac session-run "<input>"` — drive a single submit through
 //! [`vac_session_engine::submit_one`].
 //!
+//! **R0.d status:** this subcommand is retained as the mock-only
+//! entry point (EchoAdapter). For real runs wiring VacEngine, use
+//! `vac run --engine session`. Once R0.c migrates the TUI and every
+//! integration test passes on the session engine, `session-run` will
+//! become an alias for `vac run --engine session --provider mock`.
+//!
 //! Trae-style one-shot runner. Defaults:
 //!
 //! - **Adapter**: `EchoAdapter` (deterministic, no provider calls).

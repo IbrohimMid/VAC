@@ -81,7 +81,7 @@ pub(crate) fn build_session_snapshot(
     snapshot.task_count = state.todos.len();
     snapshot.completed_tasks = todo_done;
     snapshot.failed_tasks = 0;
-    snapshot.total_tokens = state.total_session_usage.total_tokens;
+    snapshot.total_tokens = state.billing.total_session.total_tokens;
     snapshot.modified_files = state.modified_files.len();
     snapshot.tui_state.active_tab_idx =
         Some(crate::workbench::active_tab_index(&state.workbench_tab));

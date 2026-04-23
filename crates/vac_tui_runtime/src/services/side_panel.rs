@@ -56,7 +56,7 @@ pub fn render_side_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
         6
     };
     let mcp_lines = state
-        .mcp_server_states
+        .mcp_maps.server_states
         .values()
         .map(|s| {
             if matches!(
@@ -79,9 +79,9 @@ pub fn render_side_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
     } else {
         8
     };
-    let usage_visible = state.current_message_usage.total_tokens > 0
-        || state.total_session_usage.total_tokens > 0
-        || state.context_usage_percent > 0.0;
+    let usage_visible = state.billing.current_message.total_tokens > 0
+        || state.billing.total_session.total_tokens > 0
+        || state.billing.context_usage_percent > 0.0;
     let usage_height = if !usage_visible {
         0
     } else if usage_collapsed {
@@ -174,7 +174,7 @@ fn render_usage_section(f: &mut Frame, state: &AppState, area: Rect, collapsed: 
         return;
     }
 
-    let pct = state.context_usage_percent.clamp(0.0, 100.0);
+    let pct = state.billing.context_usage_percent.clamp(0.0, 100.0);
     let pct_style = if pct >= 80.0 {
         state.theme.style(StyleKey::Error)
     } else if pct >= 50.0 {
@@ -188,12 +188,12 @@ fn render_usage_section(f: &mut Frame, state: &AppState, area: Rect, collapsed: 
             Span::styled("    Turn: ", state.theme.style(StyleKey::Muted)),
             Span::raw(format!(
                 "{} in / {} out",
-                state.current_message_usage.input_tokens, state.current_message_usage.output_tokens
+                state.billing.current_message.input_tokens, state.billing.current_message.output_tokens
             )),
         ]),
         Line::from(vec![
             Span::styled("    Session: ", state.theme.style(StyleKey::Muted)),
-            Span::raw(format!("{} tokens", state.total_session_usage.total_tokens)),
+            Span::raw(format!("{} tokens", state.billing.total_session.total_tokens)),
         ]),
         Line::from(vec![
             Span::styled("    Context: ", state.theme.style(StyleKey::Muted)),
@@ -249,10 +249,10 @@ fn render_context_section(f: &mut Frame, state: &AppState, area: Rect, collapsed
     ]));
 
     if let Some(ident) = state
-        .auth_display_info
+        .billing.auth_display
         .0
         .as_ref()
-        .or(state.auth_display_info.1.as_ref())
+        .or(state.billing.auth_display.1.as_ref())
     {
         lines.push(Line::from(vec![
             Span::styled("    Auth: ", state.theme.style(StyleKey::Muted)),
@@ -356,11 +356,11 @@ fn render_sessions_section(f: &mut Frame, state: &mut AppState, area: Rect, coll
 fn render_mcp_section(f: &mut Frame, state: &mut AppState, area: Rect, collapsed: bool) {
     let collapse_indicator = if collapsed { "▸" } else { "▾" };
     let connected = state
-        .mcp_server_states
+        .mcp_maps.server_states
         .values()
         .filter(|s| s.is_connected())
         .count();
-    let total = state.mcp_server_states.len();
+    let total = state.mcp_maps.server_states.len();
     let header = Line::from(Span::styled(
         format!(
             "  {} MCP Servers ({}/{})",
@@ -386,7 +386,7 @@ fn render_mcp_section(f: &mut Frame, state: &mut AppState, area: Rect, collapsed
         ));
     } else {
         let mut row_offset = 1u16; // header is row 0
-        for (name, conn_state) in &state.mcp_server_states {
+        for (name, conn_state) in &state.mcp_maps.server_states {
             // Track row for click
             let row_y = area.y + row_offset;
             if row_y < area.y + area.height {

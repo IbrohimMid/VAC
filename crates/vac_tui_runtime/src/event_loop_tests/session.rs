@@ -32,7 +32,7 @@ async fn session_snapshot_bridge_restores_tui_state() {
     state
         .side_panel.section_collapsed
         .insert(crate::app::SidePanelSection::Runtime);
-    state.total_session_usage.total_tokens = 2048;
+    state.billing.total_session.total_tokens = 2048;
     state.modified_files = vec!["src/main.rs".to_string()];
 
     let snapshot = build_session_snapshot(&state).unwrap();
@@ -64,7 +64,7 @@ async fn session_snapshot_bridge_restores_tui_state() {
             .side_panel.section_collapsed
             .contains(&crate::app::SidePanelSection::Runtime)
     );
-    assert_eq!(restored.total_session_usage.total_tokens, 0);
+    assert_eq!(restored.billing.total_session.total_tokens, 0);
     assert_eq!(restored.startup.provider_status, "initializing");
     assert_eq!(
         restored.startup.active_rulebook.as_deref(),
