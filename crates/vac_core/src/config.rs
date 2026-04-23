@@ -700,6 +700,49 @@ pub struct ScheduleEntry {
     pub disabled: bool,
 }
 
+impl ScheduleEntry {
+    /// Validate shape before handing the entry to the runtime
+    /// scheduler. Rejects empty id/cron/task, id outside
+    /// `[A-Za-z0-9_-]{1,64}`, and cron expressions that aren't
+    /// either a `@`-preset or a 5- or 6-field whitespace-separated
+    /// form. A deeper parse happens in `vac_runtime::cron_scheduler`
+    /// at fire time; this just catches malformed entries on config
+    /// load so the operator sees the failure immediately instead of
+    /// hours later when the cron silently never fires.
+    pub fn validate(&self) -> Result<(), String> {
+        if self.id.is_empty() {
+            return Err("schedule id is empty".into());
+        }
+        if self.id.len() > 64 {
+            return Err(format!("schedule id '{}' exceeds 64 chars", self.id));
+        }
+        for ch in self.id.chars() {
+            if !(ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-')) {
+                return Err(format!(
+                    "schedule id '{}' contains illegal char {ch:?}",
+                    self.id
+                ));
+            }
+        }
+        if self.task.trim().is_empty() {
+            return Err(format!("schedule '{}' has empty task", self.id));
+        }
+        let cron = self.cron.trim();
+        if cron.is_empty() {
+            return Err(format!("schedule '{}' has empty cron", self.id));
+        }
+        let is_preset = cron.starts_with('@');
+        let field_count = cron.split_whitespace().count();
+        if !is_preset && !(5..=6).contains(&field_count) {
+            return Err(format!(
+                "schedule '{}' cron '{cron}' must be a @preset or 5-6 fields",
+                self.id
+            ));
+        }
+        Ok(())
+    }
+}
+
 /// Autopilot daemon configuration (`autopilot.toml`)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AutopilotConfig {
@@ -766,5 +809,59 @@ mod minimal_config_tests {
         assert!(cfg.mcp_presets.is_empty());
         // Core subsystems preserved:
         assert_eq!(cfg.llm.default_provider, "anthropic");
+    }
+
+    #[test]
+    fn schedule_entry_validate_accepts_well_formed() {
+        let e = super::ScheduleEntry {
+            id: "nightly-audit".into(),
+            cron: "0 2 * * *".into(),
+            task: "vac run audit".into(),
+            profile: None,
+            disabled: false,
+        };
+        assert!(e.validate().is_ok());
+    }
+
+    #[test]
+    fn schedule_entry_validate_rejects_malformed() {
+        let bad_id = super::ScheduleEntry {
+            id: "".into(),
+            cron: "0 2 * * *".into(),
+            task: "x".into(),
+            profile: None,
+            disabled: false,
+        };
+        assert!(bad_id.validate().is_err());
+
+        let bad_cron = super::ScheduleEntry {
+            id: "ok".into(),
+            cron: "not-a-cron".into(),
+            task: "x".into(),
+            profile: None,
+            disabled: false,
+        };
+        assert!(bad_cron.validate().is_err());
+
+        let empty_task = super::ScheduleEntry {
+            id: "ok".into(),
+            cron: "@hourly".into(),
+            task: "   ".into(),
+            profile: None,
+            disabled: false,
+        };
+        assert!(empty_task.validate().is_err());
+    }
+
+    #[test]
+    fn schedule_entry_validate_accepts_preset() {
+        let e = super::ScheduleEntry {
+            id: "daily".into(),
+            cron: "@daily".into(),
+            task: "vac run x".into(),
+            profile: None,
+            disabled: false,
+        };
+        assert!(e.validate().is_ok());
     }
 }

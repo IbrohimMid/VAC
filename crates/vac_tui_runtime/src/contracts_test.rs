@@ -426,21 +426,29 @@ mod tests {
 
     /// F6.5 — `vac resume <checkpoint>` parses the session id from
     /// the checkpoint filename, honoring the historical `_state`
-    /// suffix. Mirrors the parser in `commands::resume::execute` so
-    /// a refactor that drops `_state` support fails this gate rather
-    /// than silently changing resume semantics.
+    /// suffix. Use `strip_suffix` (not `replace`) so a UUID whose
+    /// hex encoding happens to contain the substring `_state` is
+    /// not corrupted. `test_state_<uuid>.json` is a prefix shape
+    /// that should parse back to the real uuid.
     #[test]
     fn checkpoint_filename_parses_session_id() {
         use std::path::PathBuf;
         use uuid::Uuid;
+        fn parse_stem(stem: &str) -> Option<Uuid> {
+            let core = stem.strip_suffix("_state").unwrap_or(stem);
+            Uuid::parse_str(core).ok()
+        }
         let sid = Uuid::new_v4();
         for p in [
             PathBuf::from(format!("/ck/{sid}.json")),
             PathBuf::from(format!("/ck/{sid}_state.json")),
         ] {
             let stem = p.file_stem().and_then(|s| s.to_str()).unwrap();
-            let parsed = Uuid::parse_str(stem.replace("_state", "").as_str()).unwrap();
-            assert_eq!(parsed, sid);
+            assert_eq!(parse_stem(stem), Some(sid));
         }
+        // Filenames that are NOT valid checkpoint stems must not
+        // masquerade as uuids via substring rewriting.
+        assert!(parse_stem("test_state_sid").is_none());
+        assert!(parse_stem("not-a-uuid").is_none());
     }
 }

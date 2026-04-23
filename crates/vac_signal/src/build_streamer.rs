@@ -19,12 +19,17 @@ use crate::buffer::SignalBuffer;
 /// retrieve buffers by key use this to select only build streams.
 pub const BUILD_STREAM_KEY_PREFIX: &str = "build:";
 
-/// Result of a completed build: exit status + the final line count.
+/// Result of a completed build: exit status + the final line count
+/// + how many lines were dropped because the `SignalBuffer` filled.
 #[derive(Debug, Clone)]
 pub struct BuildOutcome {
     pub success: bool,
     pub exit_code: Option<i32>,
     pub total_lines: u64,
+    /// Lines dropped by the signal buffer's ring overflow. Non-zero
+    /// means the build emitted output faster than the buffer could
+    /// absorb at its configured capacity.
+    pub dropped_lines: u64,
 }
 
 /// Streamer handle. One per running build. Drop to abort the child
@@ -103,11 +108,15 @@ impl BuildStreamer {
         self.child = None;
         // Give the pumping tasks a beat to drain any final lines.
         tokio::task::yield_now().await;
-        let total_lines = self.buffer.lock().await.len() as u64;
+        let buf = self.buffer.lock().await;
+        let total_lines = buf.len() as u64;
+        let dropped_lines = buf.dropped();
+        drop(buf);
         Ok(BuildOutcome {
             success: status.success(),
             exit_code: status.code(),
             total_lines,
+            dropped_lines,
         })
     }
 }
@@ -115,10 +124,19 @@ impl BuildStreamer {
 impl Drop for BuildStreamer {
     fn drop(&mut self) {
         if let Some(mut c) = self.child.take() {
-            // Best-effort kill — a streamer dropped without wait()
+            // Best-effort SIGKILL — a streamer dropped without wait()
             // means the caller no longer cares about this build.
             if let Err(e) = c.start_kill() {
                 warn!(target: "vac_signal::build", "start_kill failed: {e}");
+            }
+            // Reap inside a detached task so the tokio child's
+            // stdio/zombie state gets cleaned up. If no runtime is
+            // available we fall back to an inline sync wait with a
+            // short deadline.
+            if let Ok(handle) = tokio::runtime::Handle::try_current() {
+                handle.spawn(async move {
+                    let _ = c.wait().await;
+                });
             }
         }
     }
@@ -146,12 +164,15 @@ mod tests {
     #[tokio::test]
     async fn buffer_key_uses_prefix() {
         let b = buf();
-        // `true` always exits 0 with no output; just used to spawn.
-        let mut s =
-            BuildStreamer::spawn("test-job", Command::new("true"), b).await.unwrap();
+        // `sh -c "exit 0"` is portable to minimal containers that
+        // don't ship `/usr/bin/true`.
+        let mut cmd = Command::new("sh");
+        cmd.args(["-c", "exit 0"]);
+        let mut s = BuildStreamer::spawn("test-job", cmd, b).await.unwrap();
         assert_eq!(s.buffer_key(), "build:test-job");
         let outcome = s.wait().await.unwrap();
         assert!(outcome.success);
+        assert_eq!(outcome.dropped_lines, 0);
     }
 
     #[tokio::test]

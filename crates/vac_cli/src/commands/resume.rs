@@ -10,7 +10,13 @@ pub async fn execute(project_root: PathBuf, checkpoint_path: PathBuf) -> anyhow:
         .and_then(|s| s.to_str())
         .ok_or_else(|| anyhow::anyhow!("Invalid checkpoint filename"))?;
 
-    let session_id = uuid::Uuid::parse_str(session_id_str.replace("_state", "").as_str())
+    // Strip the trailing `_state` suffix only — substring replace
+    // would corrupt any filename whose body happens to contain
+    // `_state`. Historical shapes: `<uuid>.json`, `<uuid>_state.json`.
+    let core = session_id_str
+        .strip_suffix("_state")
+        .unwrap_or(session_id_str);
+    let session_id = uuid::Uuid::parse_str(core)
         .map_err(|e| anyhow::anyhow!("Failed to parse session ID: {}", e))?;
 
     println!("\n{}", "=".repeat(60));

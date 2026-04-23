@@ -20,10 +20,16 @@ use tokio::fs;
 
 use crate::error::ToolError;
 
-/// Length of the hash prefix used as the snapshot id. 16 hex chars
-/// = 64 bits of namespace — collision-resistant for a project-local
-/// tree while keeping filenames short.
+/// Length of the content hash prefix. 16 hex chars = 64 bits. A
+/// project memdir of thousands of files has a negligible birthday-
+/// collision probability; the full id also contains a path-hash
+/// segment so two distinct files that happen to share the same
+/// content prefix never overwrite each other's metadata.
 const HASH_PREFIX_LEN: usize = 16;
+/// Path-hash prefix used to disambiguate snapshots of different files
+/// with identical content. 8 hex chars = 32 bits — enough to separate
+/// every file in a project tree.
+const PATH_HASH_PREFIX_LEN: usize = 8;
 
 /// One entry in the backup tree.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -44,6 +50,51 @@ fn hash_prefix(bytes: &[u8]) -> String {
     let digest = hasher.finalize();
     let hex = format!("{digest:x}");
     hex[..HASH_PREFIX_LEN].to_string()
+}
+
+fn path_prefix(path: &Path) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(path.as_os_str().as_encoded_bytes());
+    let digest = hasher.finalize();
+    let hex = format!("{digest:x}");
+    hex[..PATH_HASH_PREFIX_LEN].to_string()
+}
+
+/// Compose the full backup id: `<content_hash>_<path_hash>`. Same
+/// content under different paths gets different ids so dedup is
+/// content-addressed WITHIN a path and restore always points at the
+/// caller's original location.
+fn compose_id(content: &str, path_hash: &str) -> String {
+    format!("{content}_{path_hash}")
+}
+
+/// Return a canonical, absolute form of `path`. Falls back to
+/// `project_root.join(path)` when the path does not yet exist (e.g.
+/// snapshotting a create-new-file).
+fn canonicalize_or_join(project_root: &Path, path: &Path) -> PathBuf {
+    match std::fs::canonicalize(path) {
+        Ok(p) => p,
+        Err(_) => {
+            if path.is_absolute() {
+                path.to_path_buf()
+            } else {
+                project_root.join(path)
+            }
+        }
+    }
+}
+
+/// Build a unique tmp sibling path for an atomic rename. Appends the
+/// suffix to the existing filename (never replaces an extension) so
+/// multi-dot names like `<id>.meta.json` stay distinct from their
+/// tmps.
+fn tmp_sibling(final_path: &Path, pid: u32, nonce: i64) -> PathBuf {
+    let mut name = final_path
+        .file_name()
+        .map(|n| n.to_os_string())
+        .unwrap_or_default();
+    name.push(format!(".{pid}.{nonce}.tmp"));
+    final_path.with_file_name(name)
 }
 
 fn backups_dir(project_root: &Path) -> PathBuf {
@@ -70,33 +121,36 @@ pub async fn snapshot_file(
     path: &Path,
 ) -> Result<BackupRecord, ToolError> {
     let dir = backups_dir(project_root);
-    fs::create_dir_all(&dir).await.map_err(|e| ToolError::ExecutionFailed(e.to_string()))?;
+    fs::create_dir_all(&dir)
+        .await
+        .map_err(|e| ToolError::ExecutionFailed(e.to_string()))?;
 
-    let bytes = match fs::read(path).await {
+    let canonical = canonicalize_or_join(project_root, path);
+    let bytes = match fs::read(&canonical).await {
         Ok(b) => b,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
         Err(e) => return Err(ToolError::ExecutionFailed(e.to_string())),
     };
-    let id = hash_prefix(&bytes);
+    let content_hash = hash_prefix(&bytes);
+    let path_hash = path_prefix(&canonical);
+    let id = compose_id(&content_hash, &path_hash);
     let snap = snap_path(project_root, &id);
     let meta = meta_path(project_root, &id);
 
-    // Only write if not already present (content-addressed dedup).
+    // Only write if not already present (content+path-addressed dedup).
     let already = fs::try_exists(&snap).await.unwrap_or(false)
         && fs::try_exists(&meta).await.unwrap_or(false);
     if !already {
-        // Unique staging suffix — concurrent writers on the same
-        // hash never collide on the tmp name.
         let pid = std::process::id();
         let nonce = chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0);
-        let snap_tmp = snap.with_extension(format!("snap.{pid}.{nonce}.tmp"));
-        let meta_tmp = meta.with_extension(format!("json.{pid}.{nonce}.tmp"));
+        let snap_tmp = tmp_sibling(&snap, pid, nonce);
+        let meta_tmp = tmp_sibling(&meta, pid, nonce);
         fs::write(&snap_tmp, &bytes)
             .await
             .map_err(|e| ToolError::ExecutionFailed(e.to_string()))?;
         let record = BackupRecord {
             id: id.clone(),
-            original_path: path.to_path_buf(),
+            original_path: canonical.clone(),
             taken_at: chrono::Utc::now(),
             size_bytes: bytes.len() as u64,
         };
@@ -115,8 +169,12 @@ pub async fn snapshot_file(
     }
 
     // Existing entry — read its metadata back so callers see the
-    // originally-recorded path/timestamp.
-    let raw = fs::read(&meta).await.map_err(|e| ToolError::ExecutionFailed(e.to_string()))?;
+    // originally-recorded path/timestamp. Because `id` includes the
+    // path hash, this entry is guaranteed to correspond to the same
+    // caller path.
+    let raw = fs::read(&meta)
+        .await
+        .map_err(|e| ToolError::ExecutionFailed(e.to_string()))?;
     let record: BackupRecord = serde_json::from_slice(&raw)
         .map_err(|e| ToolError::ExecutionFailed(format!("meta parse: {e}")))?;
     Ok(record)
@@ -230,7 +288,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn identical_contents_dedup_by_hash() {
+    async fn same_content_different_paths_get_distinct_ids() {
+        // Prior behavior: identical content collapsed to the same
+        // snapshot and the second caller got back the FIRST path.
+        // Fixed: id = content_hash + path_hash, so each caller's
+        // record points at their own path and restore is never
+        // cross-wired.
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
         let a = root.join("a.txt");
@@ -239,8 +302,34 @@ mod tests {
         fs::write(&b, b"same").await.unwrap();
         let r1 = snapshot_file(root, &a).await.unwrap();
         let r2 = snapshot_file(root, &b).await.unwrap();
-        // Same hash; metadata of the first entry wins.
+        assert_ne!(r1.id, r2.id, "distinct paths must get distinct ids");
+        assert!(r1.original_path.ends_with("a.txt"));
+        assert!(r2.original_path.ends_with("b.txt"));
+    }
+
+    #[tokio::test]
+    async fn same_path_same_content_dedups_to_one_entry() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let a = root.join("a.txt");
+        fs::write(&a, b"hello").await.unwrap();
+        let r1 = snapshot_file(root, &a).await.unwrap();
+        let r2 = snapshot_file(root, &a).await.unwrap();
         assert_eq!(r1.id, r2.id);
+        assert_eq!(r1.taken_at, r2.taken_at, "dedup preserves first timestamp");
+    }
+
+    #[tokio::test]
+    async fn relative_path_is_canonicalized_into_record() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let a = root.join("rel.txt");
+        fs::write(&a, b"x").await.unwrap();
+        let rec = snapshot_file(root, std::path::Path::new("rel.txt"))
+            .await
+            .unwrap();
+        // original_path is now absolute regardless of caller input.
+        assert!(rec.original_path.is_absolute(), "{:?}", rec.original_path);
     }
 
     #[tokio::test]
