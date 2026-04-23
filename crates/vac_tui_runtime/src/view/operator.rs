@@ -12,7 +12,29 @@ use ratatui::{
 
 pub(super) fn render_operator_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
     let mut lines: Vec<Line> = Vec::new();
-    if state.loading {
+    // O4 — Snapshot loading placeholder. Only visible in the brief
+    // window between boot and SessionSnapshotLoaded (typically <10ms
+    // for cold FS cache, <1ms warm). Higher priority than `thinking`
+    // so operators don't see conflicting indicators.
+    if state.session_loading {
+        let spinner = match state.spinner_frame % 4 {
+            0 => "⠋",
+            1 => "⠙",
+            2 => "⠹",
+            _ => "⠸",
+        };
+        lines.push(Line::from(vec![
+            Span::styled(
+                spinner,
+                state.theme.style(crate::services::theme::StyleKey::Spinner),
+            ),
+            Span::raw(" "),
+            Span::styled(
+                "restoring session",
+                state.theme.style(crate::services::theme::StyleKey::Spinner),
+            ),
+        ]));
+    } else if state.loading {
         let spinner = match state.spinner_frame % 4 {
             0 => "⠋",
             1 => "⠙",
