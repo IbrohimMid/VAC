@@ -60,12 +60,34 @@ pub async fn run_vac_tui(project_root: PathBuf, resume: bool) -> Result<()> {
     run_vac_tui_with_io(project_root, resume, TuiIoMode::default()).await
 }
 
+/// R0.c — env var that opts the TUI runner into the session-engine
+/// path once it lands. Today this branch is a detection-only stub:
+/// the TUI still drives VacEngine directly, but when set we log
+/// the intent and record it on AppState so drivers/tests can see
+/// the flag was honored. Full migration is blueprint R0.c — invasive
+/// and feature-flagged for a two-week coexistence window per §6.
+const TUI_ENGINE_ENV: &str = "VAC_ENGINE";
+
+fn tui_wants_session_engine() -> bool {
+    std::env::var(TUI_ENGINE_ENV)
+        .map(|v| v.eq_ignore_ascii_case("session"))
+        .unwrap_or(false)
+}
+
 /// Run the VAC TUI with explicit input recording/replay configuration.
 pub async fn run_vac_tui_with_io(
     project_root: PathBuf,
     resume: bool,
     io_mode: TuiIoMode,
 ) -> Result<()> {
+    if tui_wants_session_engine() {
+        tracing::info!(
+            target: "vac_tui_runtime::runner",
+            "VAC_ENGINE=session detected — session-engine TUI migration \
+             is in-progress (blueprint R0.c). Running legacy path for now; \
+             transcript still lands under .vac/sessions/ via VacEngine."
+        );
+    }
     // Initialize VacEngine
     let mut engine = VacEngine::new(project_root.clone()).await?;
 

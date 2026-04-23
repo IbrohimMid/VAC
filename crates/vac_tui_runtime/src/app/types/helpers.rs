@@ -115,6 +115,8 @@ impl AppState {
             // T14: vil dev runner state
             vil_dev: VilDevState::default(),
             bridge: super::BridgeState::default(),
+            rate_limit: crate::services::rate_limit::RateLimitState::default(),
+            prompt_history: crate::services::prompt_suggest::PromptHistory::default(),
         }
     }
 

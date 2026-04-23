@@ -78,6 +78,69 @@ pub fn reject_current(ctx: &mut HandlerContext) -> HandlerResult {
     Ok(())
 }
 
+/// R2.b — Toggle the bulk-selected flag on the currently indexed
+/// approval. Keyed by `ToolCall.id` so the selection survives row
+/// reordering (new call arriving, single-approve shifts indices).
+pub fn bulk_toggle_current(ctx: &mut HandlerContext) -> HandlerResult {
+    let idx = ctx.state.approvals.approval_selected_idx;
+    ctx.state.approvals.bulk_toggle(idx);
+    Ok(())
+}
+
+/// R2.b — Clear the entire bulk selection (without approving).
+pub fn bulk_clear(ctx: &mut HandlerContext) -> HandlerResult {
+    ctx.state.approvals.bulk_clear();
+    Ok(())
+}
+
+/// R2.b — Approve every tool currently in the bulk selection. Drains
+/// selection through the same per-call `AcceptTool` pipeline single
+/// approve uses, so recorder + output bus stay consistent.
+pub fn bulk_approve(ctx: &mut HandlerContext) -> HandlerResult {
+    let picked = ctx.state.approvals.drain_bulk_selection();
+    if picked.is_empty() {
+        return Ok(());
+    }
+    for tc in &picked {
+        ctx.state.approvals.pending_approvals.retain(|t| t.id != tc.id);
+        ctx.state.approvals.approval_explanations.remove(&tc.id);
+        ctx.state.approvals.approved_tools.push(tc.clone());
+        let tool_name = tc.function.name.clone();
+        let _ = ctx.output_tx.try_send(OutputEvent::AcceptTool(tc.clone()));
+        ctx.state
+            .push_activity(ActivityKind::Approval, format!("Approved: {tool_name}"));
+    }
+    ctx.state.approval_normalize_selection();
+    ctx.state
+        .toasts
+        .push(Toast::success(format!("Approved {} tools", picked.len())));
+    Ok(())
+}
+
+/// R2.b — Reject every tool currently in the bulk selection.
+pub fn bulk_reject(ctx: &mut HandlerContext) -> HandlerResult {
+    let picked = ctx.state.approvals.drain_bulk_selection();
+    if picked.is_empty() {
+        return Ok(());
+    }
+    for tc in &picked {
+        ctx.state.approvals.pending_approvals.retain(|t| t.id != tc.id);
+        ctx.state.approvals.approval_explanations.remove(&tc.id);
+        ctx.state.approvals.rejected_tools.push(tc.clone());
+        let tool_name = tc.function.name.clone();
+        let _ = ctx
+            .output_tx
+            .try_send(OutputEvent::RejectTool(tc.clone(), false, None));
+        ctx.state
+            .push_activity(ActivityKind::Approval, format!("Rejected: {tool_name}"));
+    }
+    ctx.state.approval_normalize_selection();
+    ctx.state
+        .toasts
+        .push(Toast::error(format!("Rejected {} tools", picked.len())));
+    Ok(())
+}
+
 /// Approve all pending tools at once.
 pub fn approve_all(ctx: &mut HandlerContext) -> HandlerResult {
     let tools: Vec<_> = ctx.state.approvals.pending_approvals.drain(..).collect();

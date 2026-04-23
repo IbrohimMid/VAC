@@ -303,4 +303,13 @@ pub struct AppState {
     /// Remote bridge session state — populated by `vac_bridge` in
     /// Fase 5. Present as a stable slot now so drivers can bind.
     pub bridge: BridgeState,
+
+    /// R2.c — rate-limit banner state (10-message rotating bank,
+    /// `VAC_MOCK_RATE_LIMIT` env mock for screenshots). Starts
+    /// inactive (`None`); engine writes on 429 / provider throttle.
+    pub rate_limit: crate::services::rate_limit::RateLimitState,
+
+    /// R2.c — prompt history for composer suggestions. Bounded ring;
+    /// seed on session restore, record on submit.
+    pub prompt_history: crate::services::prompt_suggest::PromptHistory,
 }

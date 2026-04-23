@@ -451,4 +451,21 @@ mod tests {
         assert!(parse_stem("test_state_sid").is_none());
         assert!(parse_stem("not-a-uuid").is_none());
     }
+
+    /// R2.c — service wires live on AppState and stay reachable
+    /// from handler code. Without this assertion, a "dead field"
+    /// cleanup could silently drop the rate-limit banner / prompt
+    /// history surfaces.
+    #[test]
+    fn service_wires_reachable_on_appstate() {
+        let mut state = crate::app::AppState::default();
+        assert!(!state.rate_limit.is_active());
+        let before = state.rate_limit.current_message().to_string();
+        let after = state.rate_limit.next_message().to_string();
+        assert_ne!(before, after);
+        assert!(state.prompt_history.is_empty());
+        state.prompt_history.record("refactor auth module");
+        let hits = state.prompt_history.suggest("refactor", 5);
+        assert_eq!(hits.len(), 1);
+    }
 }

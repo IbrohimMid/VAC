@@ -34,6 +34,28 @@ impl McpConnectionState {
     pub fn is_connected(&self) -> bool {
         matches!(self.status, McpConnectionStatus::Connected)
     }
+
+    /// R3 (blueprint) — produce the `vac_mcp_core` 5-state machine
+    /// record for this legacy state. Lets new consumers bind the
+    /// canonical state (Disabled/Pending/Connected/Failed/NeedsAuth)
+    /// without waiting for the full migration. Reason strings carry
+    /// the operator-facing detail from `McpConnectionStatus::Unreachable`.
+    pub fn to_core_connection(
+        &self,
+        server_name: impl Into<String>,
+    ) -> vac_mcp_core::McpConnection {
+        use vac_mcp_core::{McpConnection, McpConnectionState as CoreState};
+        let (state, reason) = match &self.status {
+            McpConnectionStatus::Connected => (CoreState::Connected, String::new()),
+            McpConnectionStatus::Unreachable(reason) => (CoreState::Failed, reason.clone()),
+        };
+        McpConnection {
+            server_name: server_name.into(),
+            state,
+            reason,
+            entered_at: chrono::Utc::now(),
+        }
+    }
 }
 
 pub async fn probe_mcp_server(config: &McpServerConfig) -> McpConnectionState {
@@ -258,5 +280,30 @@ mod tests {
             config.effective_trust_class(),
             McpTrustClass::RemoteUntrusted
         );
+    }
+
+    #[test]
+    fn to_core_connection_maps_connected() {
+        let s = McpConnectionState {
+            status: McpConnectionStatus::Connected,
+            trust_class: None,
+            allowed_in_modes: vec![],
+        };
+        let c = s.to_core_connection("srv");
+        assert_eq!(c.state, vac_mcp_core::McpConnectionState::Connected);
+        assert_eq!(c.server_name, "srv");
+        assert!(c.reason.is_empty());
+    }
+
+    #[test]
+    fn to_core_connection_maps_unreachable_to_failed() {
+        let s = McpConnectionState {
+            status: McpConnectionStatus::Unreachable("tcp reset".into()),
+            trust_class: None,
+            allowed_in_modes: vec![],
+        };
+        let c = s.to_core_connection("srv");
+        assert_eq!(c.state, vac_mcp_core::McpConnectionState::Failed);
+        assert_eq!(c.reason, "tcp reset");
     }
 }
