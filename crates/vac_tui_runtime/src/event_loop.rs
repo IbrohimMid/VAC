@@ -8,10 +8,10 @@ use crate::app::{AppState, AppStateOptions, InputEvent, OutputEvent};
 use crate::background::{spawn_mcp_probe, spawn_vil_profile_detect};
 use crate::event::map_crossterm_event_to_input_event;
 use crate::services::helper_block::welcome_messages;
-// Re-exported so tests can use `super::apply_session_snapshot` etc.
-pub(crate) use crate::session_snapshot::{
-    apply_session_snapshot, load_session_snapshot, persist_session_snapshot,
-};
+// Re-exported so tests can use `super::load_session_snapshot` etc.
+// `apply_session_snapshot` is now called via the controller handler
+// for `InputEvent::SessionSnapshotLoaded` (O1), not directly here.
+pub(crate) use crate::session_snapshot::{load_session_snapshot, persist_session_snapshot};
 use crate::terminal::TerminalGuard;
 use crate::view::view;
 use crossterm::{
