@@ -5,7 +5,9 @@ use nucleo_matcher::{
 };
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+
+use vac_ingest::{Bm25Params, rank_paths};
 
 pub fn build_file_index(project_root: &Path) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
@@ -65,6 +67,46 @@ pub fn fuzzy_search_files(query: &str, files: &[String], max_matches: usize) -> 
     best.get_sorted_matches()
 }
 
+/// R4 — BM25-ranked file search.
+///
+/// Fuzzy (nucleo) matching answers "which paths contain these
+/// characters in order"; BM25 answers "which paths are most
+/// relevant to this token set". For typed queries of ≥3 alphanum
+/// characters BM25 surfaces path-segment hits (e.g. `auth` → files
+/// under `src/auth/`) that fuzzy scoring ranks lower.
+///
+/// Strategy here is additive: return the BM25 top-k first, then
+/// backfill from the fuzzy result so operators don't lose short-
+/// query matches on 1–2 character inputs.
+pub fn ranked_search_files(
+    query: &str,
+    files: &[String],
+    max_matches: usize,
+) -> Vec<String> {
+    let q = query.trim();
+    if q.len() < 3 {
+        return fuzzy_search_files(query, files, max_matches);
+    }
+    let bm_paths: Vec<PathBuf> = files.iter().map(PathBuf::from).collect();
+    let bm = rank_paths(&bm_paths, q, max_matches, Bm25Params::default());
+    let mut out: Vec<String> = bm
+        .into_iter()
+        .map(|r| r.path.to_string_lossy().to_string())
+        .collect();
+    if out.len() < max_matches {
+        for f in fuzzy_search_files(query, files, max_matches) {
+            if !out.contains(&f) {
+                out.push(f);
+                if out.len() >= max_matches {
+                    break;
+                }
+            }
+        }
+    }
+    out.truncate(max_matches);
+    out
+}
+
 #[derive(Debug)]
 struct BestMatchesList {
     max_count: usize,
@@ -112,5 +154,46 @@ impl BestMatchesList {
             other => other,
         });
         sorted_matches.into_iter().map(|(_, path)| path).collect()
+    }
+}
+
+#[cfg(test)]
+mod ranked_tests {
+    use super::*;
+
+    fn corpus() -> Vec<String> {
+        vec![
+            "src/auth/mod.rs".into(),
+            "src/auth/session.rs".into(),
+            "src/auth/tokens.rs".into(),
+            "src/database/users.rs".into(),
+            "src/database/schema.rs".into(),
+            "src/ui/header.rs".into(),
+        ]
+    }
+
+    #[test]
+    fn short_query_falls_back_to_fuzzy() {
+        // <3 chars: path through nucleo, not BM25.
+        let out = ranked_search_files("au", &corpus(), 5);
+        assert!(!out.is_empty());
+    }
+
+    #[test]
+    fn bm25_wins_on_token_relevance() {
+        let out = ranked_search_files("auth", &corpus(), 10);
+        // Every auth path shows up; header/database deprioritized.
+        assert!(out.iter().any(|p| p.contains("auth/mod.rs")));
+        assert!(out.iter().any(|p| p.contains("auth/session.rs")));
+        assert!(out.iter().any(|p| p.contains("auth/tokens.rs")));
+    }
+
+    #[test]
+    fn ranked_backfills_from_fuzzy_when_bm25_underfills() {
+        // Query that BM25 can match on ≤ 1 path, but fuzzy matches
+        // more. Backfill must honor `max_matches`.
+        let out = ranked_search_files("users", &corpus(), 3);
+        assert!(out.iter().any(|p| p.contains("users.rs")));
+        assert!(out.len() <= 3);
     }
 }

@@ -70,12 +70,23 @@ impl crate::registry::VilTool for FileEditTool {
             context.working_dir.join(&input.file_path)
         };
 
-        // Snapshot before edit
+        // Snapshot before edit — both paths: session-journal
+        // (path-keyed, session-scoped) and content-addressable
+        // backup (R2.a) that survives the session and drives
+        // `vac restore <file>`.
         crate::journal::snapshot_before_write(
             &context.working_dir,
             context.session_id,
             &input.file_path,
         );
+        if let Err(e) = crate::backup::snapshot_file(&context.working_dir, &path).await {
+            tracing::warn!(
+                target: "vac_tools::backup",
+                path = %path.display(),
+                error = %e,
+                "backup snapshot failed; edit proceeds without reversal record",
+            );
+        }
 
         let content = tokio::fs::read_to_string(&path).await?;
 

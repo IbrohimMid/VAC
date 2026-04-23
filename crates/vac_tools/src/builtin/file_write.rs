@@ -104,13 +104,29 @@ impl VilTool for FileWriteTool {
 
         let created = !path.exists();
 
-        // Snapshot before overwrite (not for append or new files)
-        if !created && !input.append.unwrap_or(false) {
-            crate::journal::snapshot_before_write(
-                &context.working_dir,
-                context.session_id,
-                &input.path,
-            );
+        // Snapshot before overwrite (not for append). For new files
+        // we still snapshot an empty record — restoring an empty
+        // snapshot reverses the create.
+        if !input.append.unwrap_or(false) {
+            // Session-journal snapshot (path-keyed, session-scoped).
+            if !created {
+                crate::journal::snapshot_before_write(
+                    &context.working_dir,
+                    context.session_id,
+                    &input.path,
+                );
+            }
+            // R2.a — content-addressable backup for `vac restore`.
+            // Best-effort: on failure we log + continue so the tool
+            // call isn't blocked by a snapshot problem.
+            if let Err(e) = crate::backup::snapshot_file(&context.working_dir, &path).await {
+                tracing::warn!(
+                    target: "vac_tools::backup",
+                    path = %path.display(),
+                    error = %e,
+                    "backup snapshot failed; write proceeds without reversal record",
+                );
+            }
         }
 
         let bytes_written = if input.append.unwrap_or(false) {
