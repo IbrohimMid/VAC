@@ -123,13 +123,24 @@ impl McpConnection {
             | (McpConnectionState::NeedsAuth, StateTransition::Enable) => {
                 McpConnectionState::Pending
             }
+            // Operator supplied credentials and the transport reported
+            // success without needing a fresh connect — NeedsAuth can
+            // skip straight to Connected.
+            (McpConnectionState::NeedsAuth, StateTransition::ConnectOk) => {
+                McpConnectionState::Connected
+            }
+            // Live reconnect from Connected back into Pending, e.g.
+            // after a soft restart request.
+            (McpConnectionState::Connected, StateTransition::Enable) => {
+                McpConnectionState::Pending
+            }
             (McpConnectionState::Connected, StateTransition::Disconnect) => {
                 McpConnectionState::Failed
             }
-            (from, _) => {
+            (from, event) => {
                 return Err(McpCoreError::InvalidTransition {
                     from,
-                    to: self.state,
+                    attempted: event,
                 });
             }
         };
@@ -179,12 +190,38 @@ mod tests {
     }
 
     #[test]
-    fn illegal_transition_is_rejected() {
+    fn illegal_transition_is_rejected_and_reports_event() {
         let mut c = McpConnection::new("n");
         // Disabled → ConnectOk is nonsense.
         let err = c.transition(StateTransition::ConnectOk, "").unwrap_err();
-        assert!(matches!(err, McpCoreError::InvalidTransition { .. }));
+        match err {
+            McpCoreError::InvalidTransition { from, attempted } => {
+                assert_eq!(from, McpConnectionState::Disabled);
+                assert_eq!(attempted, StateTransition::ConnectOk);
+            }
+            other => panic!("wrong variant: {other:?}"),
+        }
         assert_eq!(c.state, McpConnectionState::Disabled);
+    }
+
+    #[test]
+    fn needs_auth_can_transition_directly_to_connected() {
+        let mut c = McpConnection::new("n");
+        c.transition(StateTransition::Enable, "").unwrap();
+        c.transition(StateTransition::AuthNeeded, "401").unwrap();
+        assert_eq!(c.state, McpConnectionState::NeedsAuth);
+        c.transition(StateTransition::ConnectOk, "creds ok").unwrap();
+        assert_eq!(c.state, McpConnectionState::Connected);
+    }
+
+    #[test]
+    fn connected_can_reconnect_via_enable() {
+        let mut c = McpConnection::new("n");
+        c.transition(StateTransition::Enable, "").unwrap();
+        c.transition(StateTransition::ConnectOk, "").unwrap();
+        assert_eq!(c.state, McpConnectionState::Connected);
+        c.transition(StateTransition::Enable, "soft reconnect").unwrap();
+        assert_eq!(c.state, McpConnectionState::Pending);
     }
 
     #[test]

@@ -5,6 +5,8 @@ use thiserror::Error;
 pub enum BridgeError {
     #[error("handshake: {0}")]
     Handshake(String),
+    #[error("handshake timed out after {0}ms")]
+    HandshakeTimeout(u64),
     #[error("permission denied: {0}")]
     PermissionDenied(String),
     #[error("permission timed out after {0}ms")]

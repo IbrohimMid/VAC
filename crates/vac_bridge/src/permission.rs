@@ -51,12 +51,14 @@ pub struct StaticAllowMediator {
 }
 
 impl StaticAllowMediator {
+    #[must_use]
     pub fn allow() -> Self {
         Self {
             decision: PermissionDecision::Allow,
         }
     }
 
+    #[must_use]
     pub fn deny() -> Self {
         Self {
             decision: PermissionDecision::Deny,

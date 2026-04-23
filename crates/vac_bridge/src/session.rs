@@ -52,6 +52,7 @@ impl RemoteSessionHandle {
 }
 
 /// Driver-side owner of the session's receive end.
+#[derive(Debug)]
 pub struct RemoteSession {
     pub session_id: Uuid,
     inbound_rx: mpsc::Receiver<InboundEvent>,
@@ -63,12 +64,18 @@ impl RemoteSession {
     /// Create a fresh session + handle pair with a given channel
     /// buffer. Buffer bounds both directions to back-pressure slow
     /// consumers — unbounded would let a stuck TUI balloon memory.
+    ///
+    /// `buffer` must be ≥ 1. `tokio::sync::mpsc::channel(0)` panics
+    /// at runtime; buffer=1 can deadlock the handshake's welcome-send
+    /// when the outbound reader hasn't started polling yet. Drivers
+    /// should pass at least 4.
     #[must_use]
     pub fn new(buffer: usize) -> Self {
         Self::with_id(Uuid::new_v4(), buffer)
     }
 
     pub fn with_id(session_id: Uuid, buffer: usize) -> Self {
+        assert!(buffer >= 1, "RemoteSession buffer must be >= 1");
         let (inbound_tx, inbound_rx) = mpsc::channel(buffer);
         let (outbound_tx, outbound_rx) = mpsc::channel(buffer);
         let state = Arc::new(Mutex::new(SessionAttachState::Connecting));

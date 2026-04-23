@@ -9,6 +9,11 @@ use crate::transport::McpTransportKind;
 
 /// Which config file the entry came from. Higher variants win when
 /// the same server name appears at multiple scopes.
+///
+/// **Load-bearing ordering**: `System < User < Project < Session`.
+/// `resolve_config` uses this ordering via the derived `Ord`. Any
+/// reorder of the variants below silently flips scope preference —
+/// the `scope_ordering_is_stable` test guards against that.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
@@ -106,5 +111,15 @@ mod tests {
     fn unknown_name_is_none() {
         let pool = vec![cfg("a", McpConfigScope::User)];
         assert!(resolve_config("b", &pool).is_none());
+    }
+
+    #[test]
+    fn scope_ordering_is_stable() {
+        // Load-bearing for resolve_config. If a future change reorders
+        // the enum variants, this test breaks and forces the author
+        // to update the resolution semantics deliberately.
+        assert!(McpConfigScope::System < McpConfigScope::User);
+        assert!(McpConfigScope::User < McpConfigScope::Project);
+        assert!(McpConfigScope::Project < McpConfigScope::Session);
     }
 }
