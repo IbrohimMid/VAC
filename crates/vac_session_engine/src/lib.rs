@@ -31,6 +31,7 @@
 pub mod compact;
 pub mod error;
 pub mod event;
+pub mod fork;
 pub mod llm;
 pub mod slash;
 pub mod submit;
@@ -39,6 +40,10 @@ pub mod usage;
 
 pub use compact::{CompactBoundary, CompactHint, CompactInput, TrivialCompactBoundary};
 pub use error::{EngineError, EngineResult};
+pub use fork::{
+    CacheSafeParams, ForkBudget, ForkResult, ForkedAgentRunner, OverlayGuard,
+    MAX_SPECULATION_MESSAGES, MAX_SPECULATION_TURNS,
+};
 pub use event::{SubmitContext, SubmitEvent};
 pub use llm::{EchoAdapter, LlmAdapter, LlmRequest, LlmResponse};
 pub use slash::{SlashCommand, SlashProcessor};
