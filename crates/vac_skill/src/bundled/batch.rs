@@ -13,6 +13,11 @@ use serde_json::json;
 use crate::error::{SkillError, SkillResult};
 use crate::skill::{Skill, SkillContext, SkillOutcome};
 
+/// Hard cap to stop a bogus manifest from monopolising scheduler +
+/// transcript space. 64 steps per batch is plenty for real-world
+/// composition; higher counts should split across multiple submits.
+pub const MAX_STEPS: usize = 64;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct BatchInput {
     steps: Vec<StepInput>,
@@ -44,6 +49,9 @@ impl Skill for BatchSkill {
     fn description(&self) -> &str {
         "Run a list of labelled steps in a single skill call. Returns the normalised list; the driver dispatches each step."
     }
+    fn is_read_only(&self) -> bool {
+        true
+    }
     fn schema(&self) -> serde_json::Value {
         json!({
             "type": "object",
@@ -72,6 +80,12 @@ impl Skill for BatchSkill {
             return Err(SkillError::InvalidInput(
                 "batch requires at least one step".into(),
             ));
+        }
+        if parsed.steps.len() > MAX_STEPS {
+            return Err(SkillError::InvalidInput(format!(
+                "batch requires <= {MAX_STEPS} steps, got {}",
+                parsed.steps.len()
+            )));
         }
         let normalised: Vec<NormalisedStep> = parsed
             .steps
@@ -122,6 +136,18 @@ mod tests {
     async fn empty_steps_rejected() {
         let err = BatchSkill
             .run(ctx(json!({ "steps": [] })))
+            .await
+            .unwrap_err();
+        assert!(matches!(err, SkillError::InvalidInput(_)));
+    }
+
+    #[tokio::test]
+    async fn oversized_batch_rejected() {
+        let steps: Vec<serde_json::Value> = (0..MAX_STEPS + 1)
+            .map(|_| json!({ "kind": "read" }))
+            .collect();
+        let err = BatchSkill
+            .run(ctx(json!({ "steps": steps })))
             .await
             .unwrap_err();
         assert!(matches!(err, SkillError::InvalidInput(_)));

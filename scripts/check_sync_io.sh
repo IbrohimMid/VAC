@@ -4,7 +4,7 @@ set -eo pipefail
 # Guardrail to prevent sync I/O in async-sensitive paths
 # Supports baseline-ratcheting to prevent new regressions without breaking existing code.
 
-CRATES=("crates/vac_cli" "crates/vac_runtime" "crates/vac_tui_runtime" "crates/vil_rag" "crates/vac_core" "crates/vil_swarm" "crates/vac_session_control" "crates/vac_trace" "crates/vil_knowledge")
+CRATES=("crates/vac_cli" "crates/vac_runtime" "crates/vac_tui_runtime" "crates/vil_rag" "crates/vac_core" "crates/vil_swarm" "crates/vac_session_control" "crates/vac_trace" "crates/vil_knowledge" "crates/vac_skill")
 STRICT_CRATES=()
 
 PATTERNS=("stdin\(\)\.read_line" "blocking_read\(" "blocking_write\(" "std::fs::write\(" "fs::write\(" "std::fs::read_to_string\(" "fs::read_to_string\(" "std::fs::read\(" "fs::read\(" "std::fs::metadata\(" "fs::metadata\(" "std::fs::File::open\(" "std::fs::File::create\(" "std::fs::read_dir\(" "fs::read_dir\(" "std::fs::remove_dir_all\(" "fs::remove_dir_all\(" "std::fs::create_dir_all\(" "fs::create_dir_all\(" "std::fs::copy\(" "fs::copy\(" "std::fs::canonicalize\(" "fs::canonicalize\(" "std::thread::sleep\(" "blocking_lock" "use std::fs\\b" "image::image_dimensions\(" "image::open\(")

@@ -52,6 +52,7 @@ impl Skill for RememberSkill {
     fn description(&self) -> &str {
         "Persist a named memory entry under .vac/skill-memory/. Topic is slugified for safety."
     }
+    // Remember mutates the filesystem; keep default is_read_only=false.
     fn schema(&self) -> serde_json::Value {
         json!({
             "type": "object",
@@ -74,6 +75,16 @@ impl Skill for RememberSkill {
         }
         let dir = ctx.working_dir.join(".vac").join("skill-memory");
         tokio::fs::create_dir_all(&dir).await?;
+        // Refuse to write through a symlink — a compromised or
+        // misconfigured .vac/skill-memory could point outside the
+        // project tree. `symlink_metadata` does not follow links.
+        let lmeta = tokio::fs::symlink_metadata(&dir).await?;
+        if lmeta.file_type().is_symlink() {
+            return Err(SkillError::Execution(format!(
+                "refusing to write through symlink: {}",
+                dir.display()
+            )));
+        }
         let path = dir.join(format!("{topic}.md"));
         let body = format!(
             "---\ntopic: {topic}\nwritten_at: {ts}\n---\n\n{content}\n",
@@ -162,6 +173,28 @@ mod tests {
             .await
             .unwrap_err();
         assert!(matches!(err, SkillError::InvalidInput(_)));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn remember_refuses_to_write_through_symlink() {
+        use std::os::unix::fs::symlink;
+        let tmp = tempfile::tempdir().unwrap();
+        // Create a sibling dir and symlink .vac/skill-memory to it.
+        // The symlink points within the tempdir so it's a harmless
+        // probe — the point is the guard fires regardless of target.
+        let outside = tempfile::tempdir().unwrap();
+        let vac_dir = tmp.path().join(".vac");
+        tokio::fs::create_dir_all(&vac_dir).await.unwrap();
+        symlink(outside.path(), vac_dir.join("skill-memory")).unwrap();
+        let err = RememberSkill
+            .run(ctx_for(&tmp, json!({ "topic": "x", "content": "y" })))
+            .await
+            .unwrap_err();
+        match err {
+            SkillError::Execution(msg) => assert!(msg.contains("symlink")),
+            other => panic!("expected Execution error, got {other:?}"),
+        }
     }
 
     #[tokio::test]

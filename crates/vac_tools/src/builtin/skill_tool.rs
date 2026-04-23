@@ -78,17 +78,18 @@ impl VilTool for SkillTool {
         crate::registry::default_spec(self)
     }
 
-    /// W2.4 style refinement — a skill is only truly read-only when
-    /// the named skill is non-mutating. Hard-coded allowlist matches
-    /// the bundled skill set; new skills default to mutating and
-    /// must be added here after audit.
+    /// W2.4-style refinement — classification delegates to the
+    /// `Skill::is_read_only` trait method on the resolved skill.
+    /// Unknown names fall back to `false` so a typo can't slip
+    /// through the gate. Uses the registry's `try_get` so the sync
+    /// trait method never blocks on a contended lock.
     fn is_input_read_only(&self, input: &serde_json::Value) -> bool {
-        const READ_ONLY_SKILLS: &[&str] =
-            &["batch", "simplify", "stuck", "verify"];
-        input
-            .get("skill")
-            .and_then(|s| s.as_str())
-            .map(|s| READ_ONLY_SKILLS.contains(&s))
+        let Some(name) = input.get("skill").and_then(|s| s.as_str()) else {
+            return false;
+        };
+        self.registry
+            .try_get(name)
+            .map(|s| s.is_read_only())
             .unwrap_or(false)
     }
 

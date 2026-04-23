@@ -38,6 +38,15 @@ impl SkillRegistry {
         self.skills.read().await.get(name).cloned()
     }
 
+    /// Sync best-effort lookup. Returns `None` when the lock is
+    /// contended or the name is missing. Used by callers (e.g.
+    /// `SkillTool::is_input_read_only`) that cannot `.await` but
+    /// need a read-only classification. Contention is rare — the
+    /// registry is write-locked only during initial registration.
+    pub fn try_get(&self, name: &str) -> Option<Arc<dyn Skill>> {
+        self.skills.try_read().ok()?.get(name).cloned()
+    }
+
     pub async fn list_names(&self) -> Vec<String> {
         let mut names: Vec<String> = self.skills.read().await.keys().cloned().collect();
         names.sort();

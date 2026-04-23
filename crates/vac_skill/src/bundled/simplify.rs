@@ -51,6 +51,9 @@ impl Skill for SimplifySkill {
     fn description(&self) -> &str {
         "Deterministically collapse overlong text to a bounded head-and-tail form."
     }
+    fn is_read_only(&self) -> bool {
+        true
+    }
     fn schema(&self) -> serde_json::Value {
         json!({
             "type": "object",

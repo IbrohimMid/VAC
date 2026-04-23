@@ -8,19 +8,6 @@ use std::sync::Arc;
 
 use vac_skill::SkillRegistry;
 
-fn mk_registry_with_bundled() -> Arc<SkillRegistry> {
-    let reg = Arc::new(SkillRegistry::new());
-    // blocking in a thin CLI context is fine — registry population
-    // is a handful of Arc::new + HashMap inserts.
-    let reg_handle = reg.clone();
-    tokio::runtime::Handle::current()
-        .block_on(async move {
-            vac_skill::bundled::register_bundled(&reg_handle).await
-        })
-        .expect("bundled skills register cleanly");
-    reg
-}
-
 pub async fn execute_list() -> anyhow::Result<()> {
     let reg = Arc::new(SkillRegistry::new());
     vac_skill::bundled::register_bundled(&reg).await?;
@@ -51,13 +38,6 @@ pub async fn execute_show(name: String) -> anyhow::Result<()> {
     println!("schema:");
     println!("{}", serde_json::to_string_pretty(&entry.schema)?);
     Ok(())
-}
-
-// Silence warning — the helper is exposed for future callers (e.g. a
-// REPL `/skills` that wants the shared registry).
-#[allow(dead_code)]
-pub fn _suppress_unused() {
-    let _ = mk_registry_with_bundled;
 }
 
 #[cfg(test)]

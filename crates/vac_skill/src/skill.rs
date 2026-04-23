@@ -75,5 +75,15 @@ pub trait Skill: Send + Sync {
     fn description(&self) -> &str;
     fn schema(&self) -> serde_json::Value;
 
+    /// Whether this skill is observationally read-only — no file
+    /// writes, no network mutation, no process spawn. `SkillTool`
+    /// uses this to drive the fork-speculation + trust-gate path
+    /// instead of maintaining its own allowlist. Default: `false`
+    /// (safe: new skills are treated as mutating until proven
+    /// otherwise).
+    fn is_read_only(&self) -> bool {
+        false
+    }
+
     async fn run(&self, ctx: SkillContext) -> SkillResult<SkillOutcome>;
 }

@@ -65,6 +65,9 @@ impl Skill for StuckSkill {
     fn description(&self) -> &str {
         "Detect agent loop from recent tool-call history and emit an escalation payload."
     }
+    fn is_read_only(&self) -> bool {
+        true
+    }
     fn schema(&self) -> serde_json::Value {
         json!({
             "type": "object",
