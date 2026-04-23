@@ -20,6 +20,7 @@ use regex::Regex;
 /// Classic BM25 params. `k1` controls term-frequency saturation;
 /// `b` controls length normalization.
 #[derive(Debug, Clone, Copy)]
+#[non_exhaustive]
 pub struct Bm25Params {
     pub k1: f32,
     pub b: f32,
@@ -34,6 +35,7 @@ impl Default for Bm25Params {
 
 /// Hit returned from [`rank_paths`].
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct RankedPath {
     pub path: PathBuf,
     pub score: f32,
@@ -67,6 +69,18 @@ pub fn rank_paths(
     if q_tokens.is_empty() {
         return Vec::new();
     }
+
+    // Dedup paths before scoring. Duplicates would otherwise inflate
+    // document-frequency (depressing IDF for their shared terms) AND
+    // produce duplicate `RankedPath` rows. Order-preserving so the
+    // first occurrence wins.
+    let mut seen: std::collections::HashSet<&Path> = std::collections::HashSet::new();
+    let paths: Vec<PathBuf> = paths
+        .iter()
+        .filter(|p| seen.insert(p.as_path()))
+        .cloned()
+        .collect();
+    let paths = paths.as_slice();
 
     // Tokenize corpus once.
     let docs: Vec<Vec<String>> = paths.iter().map(|p| tokenize_path(p)).collect();
@@ -186,6 +200,18 @@ mod tests {
         let corpus = vec![p("src/AUTH/Mod.rs")];
         let out = rank_paths(&corpus, "auth", 5, Bm25Params::default());
         assert_eq!(out.len(), 1);
+    }
+
+    #[test]
+    fn duplicate_paths_are_deduped_before_scoring() {
+        let corpus = vec![
+            p("src/auth/mod.rs"),
+            p("src/auth/mod.rs"), // exact dupe
+            p("src/database/users.rs"),
+        ];
+        let out = rank_paths(&corpus, "auth", 10, Bm25Params::default());
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].path, p("src/auth/mod.rs"));
     }
 
     #[test]

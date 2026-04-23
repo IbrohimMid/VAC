@@ -79,16 +79,16 @@ impl MockBackend {
 #[async_trait]
 impl InferenceBackend for MockBackend {
     fn kind(&self) -> BackendKind {
-        // Claim the Stub slot — no new variant required, and the
-        // mock IS a deliberately no-op backend from the scheduler's
-        // perspective.
-        BackendKind::Stub
+        // Dedicated `Mock` variant so the scheduler / operator
+        // filter can distinguish a testing adapter from the
+        // production no-op `Stub` fallback.
+        BackendKind::Mock
     }
 
     async fn load(&self, path: &Path) -> InferenceResult<LoadedModel> {
         Ok(LoadedModel {
             path: path.to_path_buf(),
-            kind: Some(BackendKind::Stub),
+            kind: Some(BackendKind::Mock),
             max_context_tokens: self.max_context_tokens,
         })
     }
@@ -96,14 +96,23 @@ impl InferenceBackend for MockBackend {
     async fn infer(&self, request: &InferenceRequest) -> InferenceResult<String> {
         match self.behaviour {
             MockBehaviour::EchoPrompt => {
-                // Clamp to max_tokens so the mock honors the request
-                // cap — callers testing budget logic need this.
+                // Clamp by CHARACTER count (not byte length) so
+                // non-ASCII prompts don't blow up at a non-UTF-8
+                // boundary. `max_tokens == 0` is treated as "no cap"
+                // because the mock has no real tokenizer to honor
+                // the literal zero — callers wiring real budgets
+                // pick a concrete cap.
                 let cap = request.max_tokens as usize;
-                let mut body = format!("mock:{}", request.prompt);
-                if cap > 0 && body.len() > cap {
-                    body.truncate(cap);
+                let body = format!("mock:{}", request.prompt);
+                if cap == 0 {
+                    return Ok(body);
                 }
-                Ok(body)
+                let end = body
+                    .char_indices()
+                    .nth(cap)
+                    .map(|(i, _)| i)
+                    .unwrap_or(body.len());
+                Ok(body[..end].to_string())
             }
             MockBehaviour::Canned => Ok(self.canned_response.clone()),
             MockBehaviour::AlwaysFail => Err(InferenceError::InferenceFailed(
@@ -131,7 +140,27 @@ mod tests {
     async fn echo_clamps_to_max_tokens_as_chars() {
         let b = MockBackend::echo();
         let out = b.infer(&InferenceRequest::new("hello world", 6)).await.unwrap();
-        assert_eq!(out.len(), 6, "expected clamp at 6 chars, got {out:?}");
+        // "mock:h" = 6 chars.
+        assert_eq!(out.chars().count(), 6, "expected 6 chars, got {out:?}");
+    }
+
+    #[tokio::test]
+    async fn echo_clamp_is_codepoint_safe_for_non_ascii() {
+        // Prior byte-based truncate would panic on a boundary like
+        // this one (é is two UTF-8 bytes). Char-boundary clamp must
+        // round-trip cleanly.
+        let b = MockBackend::echo();
+        let out = b.infer(&InferenceRequest::new("héllo", 8)).await.unwrap();
+        // "mock:hél" = 8 chars; no panic, exact char count.
+        assert_eq!(out.chars().count(), 8, "got {out:?}");
+        assert!(out.starts_with("mock:h"));
+    }
+
+    #[tokio::test]
+    async fn echo_max_tokens_zero_means_no_cap() {
+        let b = MockBackend::echo();
+        let out = b.infer(&InferenceRequest::new("long prompt here", 0)).await.unwrap();
+        assert_eq!(out, "mock:long prompt here");
     }
 
     #[tokio::test]
@@ -157,7 +186,13 @@ mod tests {
         let b = MockBackend::echo();
         let m = b.load(Path::new("/nowhere/model.gguf")).await.unwrap();
         assert_eq!(m.path, Path::new("/nowhere/model.gguf"));
-        assert_eq!(m.kind, Some(BackendKind::Stub));
+        assert_eq!(m.kind, Some(BackendKind::Mock));
         assert_eq!(m.max_context_tokens, Some(8_192));
+    }
+
+    #[test]
+    fn mock_kind_is_distinct_from_stub() {
+        assert_ne!(MockBackend::echo().kind(), BackendKind::Stub);
+        assert_eq!(MockBackend::echo().kind(), BackendKind::Mock);
     }
 }

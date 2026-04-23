@@ -135,3 +135,75 @@ fn t10_report_is_serializable_for_trace_persistence() {
     assert!(s.contains("score="));
     assert!(s.contains("issues="));
 }
+
+/// H3 — Negative fixture: a public async fn that takes `Json<T>`
+/// violates the vil-way pass. The contract gate must catch this
+/// and report both a sub-1.0 score AND a non-empty issue list; a
+/// regression that makes `run_all_passes` always return 1.0 would
+/// silently hide every real VIL violation.
+#[test]
+fn t11_vil_way_violation_is_detected() {
+    let module: IrModule = serde_json::from_value(serde_json::json!({
+        "path": "crates/bad/src/handler.rs",
+        "name": "handler",
+        "functions": [{
+            "name": "create_user",
+            "visibility": "Public",
+            "is_async": true,
+            "is_unsafe": false,
+            "is_const": false,
+            "generics": [],
+            "params": [{
+                "name": "body",
+                "ty": {
+                    "name": "Json",
+                    "generics": [{
+                        "name": "CreateUser",
+                        "generics": [],
+                        "is_reference": false,
+                        "is_mutable": false,
+                        "lifetime": null,
+                        "is_option": false,
+                        "is_result": false
+                    }],
+                    "is_reference": false,
+                    "is_mutable": false,
+                    "lifetime": null,
+                    "is_option": false,
+                    "is_result": false
+                },
+                "is_self": false,
+                "is_mutable": false,
+                "is_reference": false,
+                "lifetime": null
+            }],
+            "return_type": null,
+            "where_clauses": [],
+            "body_summary": null,
+            "body_calls": [],
+            "doc_comment": null,
+            "line_span": [1, 10],
+            "vil_attrs": []
+        }],
+        "structs": [],
+        "enums": [],
+        "traits": [],
+        "impls": [],
+        "uses": [],
+        "submodules": [],
+        "doc_comment": null
+    }))
+    .expect("violating fixture parses");
+
+    let r = run_all_passes(&module);
+    assert!(
+        r.score < 1.0,
+        "vil-way violation must drop score below 1.0; got {}",
+        r.score,
+    );
+    assert!(
+        r.issues.iter().any(|i| i.contains("Json")),
+        "expected a 'Json' issue; got {:?}",
+        r.issues,
+    );
+}

@@ -36,9 +36,14 @@ use std::sync::Arc;
 
 /// Names of the supported backends. Used by factories / CLI / config.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum BackendKind {
     /// No-op backend used before B1 lands. Always available.
     Stub,
+    /// Deterministic mock for tests + `--mock` runs (F9.1). Distinct
+    /// from `Stub` so routing can tell a production fallback apart
+    /// from a testing adapter.
+    Mock,
     /// GGUF via llama-cpp-2 (or candle-gguf). Not yet implemented.
     Gguf,
     /// ONNX via `ort`. Not yet implemented.
@@ -51,6 +56,7 @@ impl BackendKind {
     pub fn as_str(self) -> &'static str {
         match self {
             BackendKind::Stub => "stub",
+            BackendKind::Mock => "mock",
             BackendKind::Gguf => "gguf",
             BackendKind::Onnx => "onnx",
             BackendKind::Candle => "candle",
