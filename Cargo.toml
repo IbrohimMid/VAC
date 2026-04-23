@@ -23,6 +23,7 @@ members = [
     "crates/vac_memory",
     "crates/vac_mcp_core",
     "crates/vac_bridge",
+    "crates/vac_skill",
 ]
 resolver = "2"
 
@@ -154,6 +155,7 @@ vac_session_engine = { path = "crates/vac_session_engine" }
 vac_memory = { path = "crates/vac_memory" }
 vac_mcp_core = { path = "crates/vac_mcp_core" }
 vac_bridge = { path = "crates/vac_bridge" }
+vac_skill = { path = "crates/vac_skill" }
 
 [profile.release]
 lto = "thin"

@@ -14,6 +14,7 @@ pub mod search;
 pub mod sequential_think;
 pub mod signal_list;
 pub mod signal_tail;
+pub mod skill_tool;
 pub mod task_suite;
 pub mod tool_search;
 pub mod utility;

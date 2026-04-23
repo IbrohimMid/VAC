@@ -21,6 +21,7 @@ pub mod run;
 pub mod runtime;
 pub mod session;
 pub mod signal;
+pub mod skills;
 pub mod status;
 pub mod trajectory;
 pub mod vil;

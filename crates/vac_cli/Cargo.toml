@@ -30,6 +30,7 @@ vac_trace = { workspace = true }
 vac_approvals = { path = "../vac_approvals" }
 vac_tools = { workspace = true }
 vac_runtime = { workspace = true }
+vac_skill = { workspace = true }
 vac_ingest = { workspace = true }
 vac_trajectory = { workspace = true }
 vac_signal = { workspace = true }

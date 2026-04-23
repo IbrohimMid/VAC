@@ -6099,6 +6099,7 @@ dependencies = [
  "vac_session_engine",
  "vac_shell",
  "vac_signal",
+ "vac_skill",
  "vac_tool_core",
  "vac_tools",
  "vac_trace",
@@ -6284,6 +6285,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "vac_skill"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "vac_tool_core"
 version = "0.1.0"
 dependencies = [
@@ -6323,6 +6338,7 @@ dependencies = [
  "uuid",
  "vac_mcp_core",
  "vac_signal",
+ "vac_skill",
  "vac_tool_core",
  "vil_context",
  "vil_ir",

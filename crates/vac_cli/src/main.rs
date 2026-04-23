@@ -204,6 +204,10 @@ enum Commands {
     /// to be active at runtime.
     #[command(next_help_heading = "Trace & Export", subcommand)]
     Signal(SignalCommand),
+    /// List or inspect bundled skills (W3). Skills are named workflows
+    /// the agent invokes via `SkillTool`.
+    #[command(next_help_heading = "Tools & Skills", subcommand)]
+    Skills(SkillsCommand),
     /// Observe recent trajectory artifacts
     #[command(next_help_heading = "Trace & Export")]
     Observe {
@@ -571,6 +575,10 @@ async fn main() -> anyhow::Result<()> {
         Commands::Restore { file, submit } => commands::restore::execute(project_root, file, submit).await?,
         Commands::Status => commands::status::execute(project_root, &cli.format).await?,
         Commands::Signal(cmd) => commands::signal::dispatch(project_root, &cli.format, cmd).await?,
+        Commands::Skills(cmd) => match cmd {
+            SkillsCommand::List => commands::skills::execute_list().await?,
+            SkillsCommand::Show { name } => commands::skills::execute_show(name).await?,
+        },
         Commands::Observe { limit } => {
             commands::trajectory::observe(project_root, &cli.format, limit).await?
         }
@@ -706,6 +714,18 @@ async fn main() -> anyhow::Result<()> {
 
     crate::boot::boot_profile().print_if_requested();
     result
+}
+
+/// W3 — skills introspection surface.
+#[derive(Subcommand, Debug)]
+pub enum SkillsCommand {
+    /// List bundled skills with one-line descriptions.
+    List,
+    /// Show a specific skill: description + JSON schema.
+    Show {
+        /// Skill name (e.g. "verify", "batch").
+        name: String,
+    },
 }
 
 #[derive(Subcommand, Debug)]
