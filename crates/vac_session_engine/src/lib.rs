@@ -31,6 +31,7 @@
 pub mod compact;
 pub mod error;
 pub mod event;
+pub mod file_state_cache;
 pub mod fork;
 pub mod llm;
 pub mod slash;
@@ -40,6 +41,9 @@ pub mod usage;
 
 pub use compact::{CompactBoundary, CompactHint, CompactInput, TrivialCompactBoundary};
 pub use error::{EngineError, EngineResult};
+pub use file_state_cache::{
+    FileStateCache, FileStateEntry, ForkedCache, DEFAULT_FILE_STATE_CAPACITY,
+};
 pub use fork::{
     CacheSafeParams, ForkBudget, ForkResult, ForkedAgentRunner, OverlayGuard,
     MAX_SPECULATION_MESSAGES, MAX_SPECULATION_TURNS,
