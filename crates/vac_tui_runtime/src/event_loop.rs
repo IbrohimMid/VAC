@@ -431,7 +431,7 @@ pub async fn run_tui(
         // Update spinner
         spinner_interval.tick().await;
         if state.loading || state.streaming.is_streaming {
-            state.spinner_frame = (state.spinner_frame + 1) % 10;
+            state.view_flags.spinner_frame = (state.view_flags.spinner_frame + 1) % 10;
         }
 
         // Tick vil-expr linter — runs the actual lint if debounce window has elapsed (PR-T12.1).

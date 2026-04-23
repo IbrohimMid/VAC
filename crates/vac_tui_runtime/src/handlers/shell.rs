@@ -66,7 +66,7 @@ pub fn handle_shell_key(
                 session.history_idx = Some(next_idx);
                 if let Some(cmd) = session.history.get(next_idx) {
                     state.input.set_content(cmd);
-                    state.cursor_position = state.input.get_content().len();
+                    state.scroll.cursor_position = state.input.get_content().len();
                 }
                 return true;
             }
@@ -80,12 +80,12 @@ pub fn handle_shell_key(
                 if next_idx >= session.history.len() {
                     session.history_idx = None;
                     state.input.clear();
-                    state.cursor_position = 0;
+                    state.scroll.cursor_position = 0;
                 } else {
                     session.history_idx = Some(next_idx);
                     if let Some(cmd) = session.history.get(next_idx) {
                         state.input.set_content(cmd);
-                        state.cursor_position = state.input.get_content().len();
+                        state.scroll.cursor_position = state.input.get_content().len();
                     }
                 }
                 return true;

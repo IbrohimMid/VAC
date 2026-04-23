@@ -5,7 +5,7 @@ pub fn message_at_row(state: &AppState, row: u16) -> Option<uuid::Uuid> {
     let row_in_area = (row as usize)
         .checked_sub(state.message_ui.message_area_y as usize)?
         .checked_sub(1)?;
-    let line_idx = row_in_area + state.scroll;
+    let line_idx = row_in_area + state.scroll.messages;
 
     if let Some(id) = state.message_ui.line_to_message_map.get(line_idx).copied() {
         return Some(id);

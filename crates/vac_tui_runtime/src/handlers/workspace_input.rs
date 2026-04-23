@@ -70,16 +70,16 @@ pub fn handle(state: &mut AppState, output_tx: &Sender<OutputEvent>, event: Inpu
         InputEvent::Up => handle_up(state, output_tx),
         InputEvent::Down => handle_down(state, output_tx),
         InputEvent::ScrollUp => match state.focus {
-            WorkspaceFocus::Conversation => state.scroll = state.scroll.saturating_sub(1),
+            WorkspaceFocus::Conversation => state.scroll.messages = state.scroll.messages.saturating_sub(1),
             WorkspaceFocus::Activity => {
-                state.activity_scroll = state.activity_scroll.saturating_add(1)
+                state.scroll.activity = state.scroll.activity.saturating_add(1)
             }
             _ => {}
         },
         InputEvent::ScrollDown => match state.focus {
-            WorkspaceFocus::Conversation => state.scroll = state.scroll.saturating_add(1),
+            WorkspaceFocus::Conversation => state.scroll.messages = state.scroll.messages.saturating_add(1),
             WorkspaceFocus::Activity => {
-                state.activity_scroll = state.activity_scroll.saturating_sub(1)
+                state.scroll.activity = state.scroll.activity.saturating_sub(1)
             }
             _ => {}
         },
@@ -254,8 +254,8 @@ fn handle_up(state: &mut AppState, output_tx: &Sender<OutputEvent>) {
                 state.input.move_cursor_up();
             }
         }
-        WorkspaceFocus::Conversation => state.scroll = state.scroll.saturating_sub(1),
-        WorkspaceFocus::Activity => state.activity_scroll = state.activity_scroll.saturating_add(1),
+        WorkspaceFocus::Conversation => state.scroll.messages = state.scroll.messages.saturating_sub(1),
+        WorkspaceFocus::Activity => state.scroll.activity = state.scroll.activity.saturating_add(1),
         WorkspaceFocus::Workbench => {} // handled by workbench_input
     }
 }
@@ -269,8 +269,8 @@ fn handle_down(state: &mut AppState, output_tx: &Sender<OutputEvent>) {
                 state.input.move_cursor_down();
             }
         }
-        WorkspaceFocus::Conversation => state.scroll = state.scroll.saturating_add(1),
-        WorkspaceFocus::Activity => state.activity_scroll = state.activity_scroll.saturating_sub(1),
+        WorkspaceFocus::Conversation => state.scroll.messages = state.scroll.messages.saturating_add(1),
+        WorkspaceFocus::Activity => state.scroll.activity = state.scroll.activity.saturating_sub(1),
         WorkspaceFocus::Workbench => {} // handled by workbench_input
     }
 }

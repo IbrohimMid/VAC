@@ -100,7 +100,7 @@ pub(super) fn render_messages(f: &mut Frame, state: &mut AppState, area: Rect) {
     let highlighted_lines = crate::services::text_selection::apply_selection_highlight(
         lines,
         &state.selection_state,
-        state.scroll,
+        state.scroll.messages,
     );
 
     let widget = Paragraph::new(highlighted_lines)
@@ -113,6 +113,6 @@ pub(super) fn render_messages(f: &mut Frame, state: &mut AppState, area: Rect) {
                 )),
         )
         .wrap(Wrap { trim: false })
-        .scroll((state.scroll as u16, 0));
+        .scroll((state.scroll.messages as u16, 0));
     f.render_widget(widget, area);
 }

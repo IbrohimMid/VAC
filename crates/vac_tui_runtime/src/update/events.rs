@@ -160,7 +160,7 @@ pub fn on_session_restored(
     state.at_mention.results.clear();
     state.streaming.is_streaming = false;
     state.streaming.message_id = None;
-    state.scroll = 0;
+    state.scroll.messages = 0;
     state.input.clear();
     state.review.open = false;
     state.review.filter.clear();
@@ -174,7 +174,7 @@ pub fn on_session_restored(
     state.runtime.detail_scroll = 0;
     state.runtime.snapshot = None;
     state.activity.clear();
-    state.activity_scroll = 0;
+    state.scroll.activity = 0;
     state.toasts.clear();
     crate::overlay::close_overlay(state, crate::overlay::OverlayId::ModelSwitcher);
     state.switchers.model_filter.clear();

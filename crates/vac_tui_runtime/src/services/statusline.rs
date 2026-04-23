@@ -50,12 +50,12 @@ pub fn render_statusline(f: &mut Frame, state: &AppState, area: Rect) {
         ),
         Span::raw(" | "),
         Span::styled(
-            if state.auto_approve {
+            if state.view_flags.auto_approve {
                 "AUTO-APPROVE"
             } else {
                 "MANUAL"
             },
-            if state.auto_approve {
+            if state.view_flags.auto_approve {
                 state.theme.style(StyleKey::Error)
             } else {
                 state.theme.style(StyleKey::Success)

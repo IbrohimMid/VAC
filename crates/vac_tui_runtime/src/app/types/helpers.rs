@@ -10,7 +10,7 @@ use crate::services::textarea::TextArea;
 use crate::types::*;
 
 use super::{
-    ActivityItem, ActivityKind, AppState, ApprovalsState, AskUserState, AtMentionState, BannerState, ChangesetUiState, CommandPaletteState, FileIndexState, FilePickerState, HelperCommand, LoadingStateManager, LspUiState, MessageUiState, PasteState, PinsState, QuitState, SessionResumeState, SidePanelState, StreamingState, SwitchersState, TaskTrayState, VilDevState, WorkbenchChromeState,
+    ActivityItem, ActivityKind, AppState, ApprovalsState, AskUserState, AtMentionState, BannerState, ChangesetUiState, CommandPaletteState, FileIndexState, FilePickerState, HelperCommand, LoadingStateManager, LspUiState, MessageUiState, PasteState, PinsState, QuitState, ScrollState, SessionResumeState, SidePanelState, StreamingState, SwitchersState, TaskTrayState, ViewFlagsState, VilDevState, WorkbenchChromeState,
     Message, QueueMetrics, RenderMetrics, ReviewItem, ReviewItemStatus, ReviewState, RuntimeState,
     ShellState, StartupSnapshot, TokenUsage, VilLogEntry, VilState,
     WorkbenchTab, WorkspaceFocus,
@@ -43,13 +43,12 @@ impl AppState {
             hydration_deadline: std::time::Instant::now() + std::time::Duration::from_secs(10),
             side_panel: SidePanelState::default(),
             input: TextArea::new(),
-            cursor_position: 0,
             focus: WorkspaceFocus::Input,
             messages: Vec::new(),
-            scroll: 0,
+            scroll: ScrollState::default(),
             loading: false,
             loading_manager: LoadingStateManager::new(),
-            spinner_frame: 0,
+            view_flags: ViewFlagsState::default(),
             session_id: options
                 .session_id
                 .unwrap_or_else(|| Uuid::new_v4().to_string()),
@@ -57,7 +56,6 @@ impl AppState {
             session_title: None,
             checkpoint_path: options.checkpoint_path,
             current_model: options.model,
-            mouse_capture_enabled: true,
             approvals: ApprovalsState::default(),
             shell: ShellState::default(),
             streaming: StreamingState::default(),
@@ -74,7 +72,6 @@ impl AppState {
             sessions_selected_idx: 0,
             runtime: RuntimeState::default(),
             activity: Vec::new(),
-            activity_scroll: 0,
             toasts: Vec::new(),
             file_index: FileIndexState::default(),
             file_picker: FilePickerState::new(options.project_root.clone()),
@@ -82,7 +79,6 @@ impl AppState {
             context_chip_cursor: None,
             at_mention: AtMentionState::default(),
             changeset_ui: ChangesetUiState::default(),
-            auto_approve: false,
             project_root: options.project_root,
             mcp_server_states: HashMap::new(),
             mcp_signals: HashMap::new(),
@@ -119,7 +115,6 @@ impl AppState {
             // vil workbench fields are in vil: VilState::default()
             // Unit 5 (Wave 3.1) — Attachment tray preview & reorder
             // Context Composer
-            context_composer_visible: false,
             lsp_ui: LspUiState::default(),
             pins: PinsState::default(),
             pending_user_messages: VecDeque::new(),
@@ -425,7 +420,7 @@ impl AppState {
         if self.activity.len() > 500 {
             let overflow = self.activity.len() - 500;
             self.activity.drain(0..overflow);
-            self.activity_scroll = self.activity_scroll.saturating_sub(overflow);
+            self.scroll.activity = self.scroll.activity.saturating_sub(overflow);
         }
     }
 

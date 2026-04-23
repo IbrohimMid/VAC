@@ -181,8 +181,8 @@ pub fn confirm_reject_all(ctx: &mut HandlerContext) -> HandlerResult {
 
 /// Toggle auto-approve mode.
 pub fn toggle_auto_approve(ctx: &mut HandlerContext) -> HandlerResult {
-    ctx.state.auto_approve = !ctx.state.auto_approve;
-    let status = if ctx.state.auto_approve {
+    ctx.state.view_flags.auto_approve = !ctx.state.view_flags.auto_approve;
+    let status = if ctx.state.view_flags.auto_approve {
         "enabled"
     } else {
         "disabled"
@@ -230,12 +230,12 @@ mod tests {
         let (mut state, tx, _rx) = create_test_context();
         let mut ctx = HandlerContext::new(&mut state, &tx);
 
-        let initial = ctx.state.auto_approve;
+        let initial = ctx.state.view_flags.auto_approve;
         assert!(toggle_auto_approve(&mut ctx).is_ok());
-        assert_eq!(ctx.state.auto_approve, !initial);
+        assert_eq!(ctx.state.view_flags.auto_approve, !initial);
 
         assert!(toggle_auto_approve(&mut ctx).is_ok());
-        assert_eq!(ctx.state.auto_approve, initial);
+        assert_eq!(ctx.state.view_flags.auto_approve, initial);
     }
 
     #[test]

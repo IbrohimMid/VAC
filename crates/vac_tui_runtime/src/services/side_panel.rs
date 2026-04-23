@@ -233,12 +233,12 @@ fn render_context_section(f: &mut Frame, state: &AppState, area: Rect, collapsed
         Span::raw(session),
     ]));
 
-    let auto = if state.auto_approve {
+    let auto = if state.view_flags.auto_approve {
         "Enabled"
     } else {
         "Disabled"
     };
-    let auto_style = if state.auto_approve {
+    let auto_style = if state.view_flags.auto_approve {
         state.theme.style(StyleKey::Error)
     } else {
         state.theme.style(StyleKey::Success)

@@ -66,12 +66,12 @@ pub(super) fn render_header(f: &mut Frame, state: &mut AppState, area: Rect) {
     ));
     spans.push(Span::raw("  "));
     spans.push(Span::styled(
-        if state.auto_approve {
+        if state.view_flags.auto_approve {
             "perm AUTO"
         } else {
             "perm MANUAL"
         },
-        if state.auto_approve {
+        if state.view_flags.auto_approve {
             state
                 .theme
                 .style(StyleKey::Error)

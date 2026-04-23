@@ -94,8 +94,8 @@ pub fn execute_shortcuts_command(
             true
         }
         CommandAction::ToggleAutoApprove => {
-            state.auto_approve = !state.auto_approve;
-            if state.auto_approve {
+            state.view_flags.auto_approve = !state.view_flags.auto_approve;
+            if state.view_flags.auto_approve {
                 state.add_assistant_message(
                     "Permission Mode: AUTO-APPROVE (Low-risk tools will run without confirmation)"
                         .to_string(),

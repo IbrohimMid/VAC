@@ -23,7 +23,7 @@ const VAC_LOGO: &str = r#"
 /// Generate welcome messages for TUI
 pub fn welcome_messages(version: Option<&str>, state: &crate::app::AppState) -> Vec<Message> {
     let version_str = version.unwrap_or(&state.startup.version);
-    let permission_mode = if state.auto_approve {
+    let permission_mode = if state.view_flags.auto_approve {
         "AUTO-APPROVE (tool requests run without confirmation)"
     } else {
         "PROMPT (tool requests require confirmation)"

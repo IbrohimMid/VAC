@@ -206,8 +206,8 @@ fn handle_global(
             true
         }
         InputEvent::ToggleAutoApprove => {
-            state.auto_approve = !state.auto_approve;
-            let msg = if state.auto_approve {
+            state.view_flags.auto_approve = !state.view_flags.auto_approve;
+            let msg = if state.view_flags.auto_approve {
                 "Permission Mode: AUTO-APPROVE (Low-risk tools will run without confirmation)"
             } else {
                 "Permission Mode: PROMPT (You will be prompted for tool execution)"

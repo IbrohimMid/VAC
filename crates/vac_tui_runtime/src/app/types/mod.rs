@@ -19,6 +19,7 @@ pub mod command_palette;
 pub mod file_index;
 pub mod file_picker;
 pub mod lsp_ui;
+pub mod scroll;
 pub mod message_ui;
 pub mod paste;
 pub mod pins;
@@ -28,6 +29,7 @@ pub mod side_panel;
 pub mod streaming;
 pub mod task_tray;
 pub mod switchers;
+pub mod view_flags;
 pub mod vil_dev;
 pub mod workbench_ui;
 pub mod commands;
@@ -48,6 +50,7 @@ pub use command_palette::CommandPaletteState;
 pub use file_index::FileIndexState;
 pub use file_picker::FilePickerState;
 pub use lsp_ui::LspUiState;
+pub use scroll::ScrollState;
 pub use message_ui::MessageUiState;
 pub use paste::PasteState;
 pub use pins::PinsState;
@@ -57,6 +60,7 @@ pub use side_panel::SidePanelState;
 pub use streaming::StreamingState;
 pub use task_tray::TaskTrayState;
 pub use switchers::SwitchersState;
+pub use view_flags::ViewFlagsState;
 pub use vil_dev::VilDevState;
 pub use workbench_ui::WorkbenchChromeState;
 pub use billing::{
@@ -98,17 +102,18 @@ pub struct AppState {
 
     // Input state
     pub input: TextArea,
-    pub cursor_position: usize,
     pub focus: WorkspaceFocus,
 
     // Messages
     pub messages: Vec<Message>,
-    pub scroll: usize,
+
+    /// Grouped scroll offsets + cursor position.
+    pub scroll: ScrollState,
 
     // Loading state
     pub loading: bool,
     pub loading_manager: LoadingStateManager,
-    pub spinner_frame: usize,
+    pub view_flags: ViewFlagsState,
 
     // Session state
     pub session_id: String,
@@ -120,7 +125,6 @@ pub struct AppState {
     pub current_model: Option<Model>,
 
     // Mouse capture
-    pub mouse_capture_enabled: bool,
 
     // Approval state — see ApprovalsState for field details
     pub approvals: ApprovalsState,
@@ -159,7 +163,6 @@ pub struct AppState {
     pub runtime: RuntimeState,
 
     pub activity: Vec<ActivityItem>,
-    pub activity_scroll: usize,
 
     pub toasts: Vec<Toast>,
 
@@ -180,7 +183,6 @@ pub struct AppState {
     pub changeset_ui: ChangesetUiState,
 
     // Permission UX
-    pub auto_approve: bool,
     pub project_root: PathBuf,
 
     // MCP
@@ -305,7 +307,6 @@ pub struct AppState {
     // ===== Unit 5 (Wave 3.1) — Attachment tray preview & reorder =====
 
     // ===== Context Composer (Wave 3) =====
-    pub context_composer_visible: bool,
     pub lsp_ui: LspUiState,
     /// PR-T15 P1 — per-file overlay cache for inline diagnostics squiggles.
     /// Renderers clear it when the focused file changes to avoid stale spans

@@ -17,7 +17,7 @@ pub(super) fn render_operator_panel(f: &mut Frame, state: &mut AppState, area: R
     // for cold FS cache, <1ms warm). Higher priority than `thinking`
     // so operators don't see conflicting indicators.
     if state.session_loading {
-        let spinner = match state.spinner_frame % 4 {
+        let spinner = match state.view_flags.spinner_frame % 4 {
             0 => "⠋",
             1 => "⠙",
             2 => "⠹",
@@ -35,7 +35,7 @@ pub(super) fn render_operator_panel(f: &mut Frame, state: &mut AppState, area: R
             ),
         ]));
     } else if state.loading {
-        let spinner = match state.spinner_frame % 4 {
+        let spinner = match state.view_flags.spinner_frame % 4 {
             0 => "⠋",
             1 => "⠙",
             2 => "⠹",
@@ -269,7 +269,7 @@ pub(super) fn render_activity_panel(f: &mut Frame, state: &mut AppState, area: R
     let height = area.height.saturating_sub(2) as usize;
     let total = state.activity.len();
     let max_visible = height.min(total);
-    let start = total.saturating_sub(max_visible + state.activity_scroll);
+    let start = total.saturating_sub(max_visible + state.scroll.activity);
     let end = (start + max_visible).min(total);
 
     let mut lines: Vec<Line> = Vec::new();

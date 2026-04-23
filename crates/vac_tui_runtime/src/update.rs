@@ -504,7 +504,7 @@ pub fn handle_backend_event(
                 open_ask_user_popup(state, &tc);
                 return;
             }
-            if state.auto_approve && is_low_risk_tool(&tc.function.name) {
+            if state.view_flags.auto_approve && is_low_risk_tool(&tc.function.name) {
                 state.approvals.approved_tools.push(tc.clone());
                 let _ = output_tx.try_send(OutputEvent::AcceptTool(tc));
                 state.push_activity(

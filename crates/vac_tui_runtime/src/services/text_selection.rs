@@ -20,7 +20,7 @@ pub fn handle_drag_start(state: &mut AppState, col: u16, row: u16) {
         return;
     }
 
-    let absolute_line = state.scroll + row_in_message_area.saturating_sub(1); // -1 for border
+    let absolute_line = state.scroll.messages + row_in_message_area.saturating_sub(1); // -1 for border
     let rel_col = col.saturating_sub(1); // -1 for border
 
     state.selection_state = SelectionState {
@@ -42,7 +42,7 @@ pub fn handle_drag(state: &mut AppState, col: u16, row: u16) {
     let row_in_message_area = (row as usize).saturating_sub(state.message_ui.message_area_y as usize);
     let clamped_row = row_in_message_area.min(message_area_height.saturating_sub(2)); // -2 for borders
 
-    let absolute_line = state.scroll + clamped_row.saturating_sub(1);
+    let absolute_line = state.scroll.messages + clamped_row.saturating_sub(1);
     let rel_col = col.saturating_sub(1);
 
     state.selection_state.end_line = Some(absolute_line);
