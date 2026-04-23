@@ -1,8 +1,10 @@
 //! P3 — team context.
 //!
-//! Populated by the driver from external sources (PR reviewers,
-//! Slack discussion handles, etc). Today's sources are stubbed; the
-//! shape is stable so downstream renderers can bind today.
+//! Populated by the driver from a [`ReviewSource`](crate::services::review_source::ReviewSource).
+//! [`MockReviewSource`](crate::services::review_source::MockReviewSource)
+//! is the canned source used by tests and `--review-mock` runs; real
+//! adapters (GitHub PR, Slack) implement the same trait so swapping
+//! the source never requires a change here.
 
 #[derive(Debug, Default, Clone)]
 pub struct TeamContext {
