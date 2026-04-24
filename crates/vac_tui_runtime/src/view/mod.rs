@@ -159,10 +159,9 @@ pub fn view(f: &mut Frame, state: &mut AppState) {
     {
         let area = f.area();
         // Dogfood F2 fix: fit dropdown width to actual content
-        // instead of reserving 50% of the frame. Previous 50%
-        // width spilled into the right-side panes visually even
-        // when content was short. Pad column names + descriptions
-        // to the widest row, add a small buffer, cap at 60% frame.
+        // instead of reserving 50% of the frame. Pad column names
+        // + descriptions to the widest row, add a small buffer,
+        // cap at 60% frame.
         let widest_row = state
             .layout
             .command_palette
@@ -171,19 +170,34 @@ pub fn view(f: &mut Frame, state: &mut AppState) {
             .map(|h| h.command.chars().count() + h.description.chars().count() + 6)
             .max()
             .unwrap_or(40) as u16;
-        let width = widest_row
-            .max(40)
-            .min((area.width as f32 * 0.6) as u16)
-            .min(area.width.saturating_sub(2));
         let count = state.layout.command_palette.filtered_helpers.len().min(5) as u16;
         // Height = visible items + top/bottom arrow indicators.
         let height = count + 2;
-        let x = area.x + 1;
-        // Anchor dropdown above the footer+input row-pair with a
-        // one-row gap so it doesn't visually kiss the input line.
-        // Prior calc (`- (height + 2)`) left zero gap and looked
-        // like the dropdown was stacked on top of the input.
-        let y = area.y + area.height.saturating_sub(height + 3);
+
+        // Dogfood F2 follow-up: anchor dropdown above the Input
+        // pane border (reference: Claude Code's `> /` prompt with
+        // dropdown directly above). Pre-fix used a frame-bottom
+        // offset which placed the dropdown over the conversation
+        // body on wide terminals. Fallback to frame-bottom calc
+        // when `input_area` hasn't been populated (first frame).
+        let (x, y, width) = if let Some(input_rect) = state.layout.input_area {
+            let width = widest_row
+                .max(40)
+                .min(input_rect.width)
+                .min(area.width.saturating_sub(2));
+            let x = input_rect.x;
+            // Sit one row above the input border; clamp to 0.
+            let y = input_rect.y.saturating_sub(height);
+            (x, y, width)
+        } else {
+            let width = widest_row
+                .max(40)
+                .min((area.width as f32 * 0.6) as u16)
+                .min(area.width.saturating_sub(2));
+            let x = area.x + 1;
+            let y = area.y + area.height.saturating_sub(height + 3);
+            (x, y, width)
+        };
 
         let rect = ratatui::layout::Rect {
             x,

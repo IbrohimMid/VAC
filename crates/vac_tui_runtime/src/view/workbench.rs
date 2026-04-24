@@ -43,6 +43,10 @@ pub(super) fn render_workspace(f: &mut Frame, state: &mut AppState, area: Rect) 
         .split(body[0]);
 
     render_messages(f, state, left[0]);
+    // Dogfood F2 follow-up: cache the input Rect so overlay
+    // renderers can anchor dropdowns directly above the input
+    // border instead of guessing from frame bottom.
+    state.layout.input_area = Some(left[1]);
     render_input(f, state, left[1]);
 
     let right = Layout::default()

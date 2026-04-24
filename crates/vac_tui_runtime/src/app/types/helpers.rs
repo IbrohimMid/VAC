@@ -71,6 +71,7 @@ impl AppState {
                 session_resume: SessionResumeState::default(),
                 ask_user: AskUserState::default(),
                 elicitation: None,
+                input_area: None,
             },
             composer: super::ComposerState {
                 input: TextArea::new(),

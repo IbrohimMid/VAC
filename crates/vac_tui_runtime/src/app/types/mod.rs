@@ -177,6 +177,14 @@ pub struct LayoutState {
     /// lock, then awaits a oneshot the overlay's input handler
     /// resolves.
     pub elicitation: Option<crate::services::elicitation::ElicitationPrompt>,
+    /// Dogfood F2 fix (follow-up) — last-rendered Input pane
+    /// `Rect`. Overlay renderers (e.g. `HelperDropdown`) anchor
+    /// themselves relative to this so the dropdown sits directly
+    /// above the input border, not floating somewhere inside the
+    /// conversation area. Updated every frame by
+    /// `view::workbench::render_workspace`; `None` until first
+    /// frame lands.
+    pub input_area: Option<ratatui::layout::Rect>,
 }
 
 impl Default for LayoutState {
@@ -201,6 +209,7 @@ impl Default for LayoutState {
             session_resume: SessionResumeState::default(),
             ask_user: AskUserState::default(),
             elicitation: None,
+            input_area: None,
         }
     }
 }
