@@ -224,3 +224,54 @@ async fn sla_10_concurrent_submits_under_1s() {
         );
     }
 }
+
+// A.6 — first-chunk latency assertion. Wall-clock to first non-
+// Accepted chunk via EchoAdapter. Ceiling is deliberately loose
+// (250ms) — cold-start + tempfs + runtime spawn dominates; the
+// bench in benches/submit_one.rs captures the drift-tracking
+// sample. What this test pins is "the first chunk arrives
+// strictly before the submit completes" — i.e. the stream is
+// actually streaming, not collecting.
+#[tokio::test]
+async fn submit_stream_first_chunk_under_250ms() {
+    use futures::StreamExt;
+    use std::sync::Arc;
+    use std::time::Instant;
+    use vac_session_engine::{
+        CompactBoundary, CompactConfig, EchoAdapter, LlmAdapter,
+        SlashProcessor, SubmitChunk, SubmitContext, TranscriptWriter,
+        TrivialCompactBoundary, UsageTracker, submit_stream,
+    };
+
+    let tmp = tempfile::tempdir().unwrap();
+    let writer = Arc::new(TranscriptWriter::new(tmp.path().to_path_buf()));
+    let slash = Arc::new(SlashProcessor::new());
+    let compact: Arc<dyn CompactBoundary> =
+        Arc::new(TrivialCompactBoundary::default());
+    let usage = Arc::new(UsageTracker::new());
+    let llm: Arc<dyn LlmAdapter> = Arc::new(EchoAdapter);
+
+    let start = Instant::now();
+    let mut stream = submit_stream(
+        SubmitContext::new(uuid::Uuid::new_v4(), "hi"),
+        writer,
+        slash,
+        compact,
+        usage,
+        llm,
+        CompactConfig::default(),
+    );
+    let mut first_non_accepted = None;
+    while let Some(chunk) = stream.next().await {
+        if !matches!(chunk, SubmitChunk::Accepted { .. }) {
+            first_non_accepted = Some(start.elapsed());
+            break;
+        }
+    }
+    let elapsed = first_non_accepted.expect("non-Accepted chunk arrives");
+    assert!(
+        elapsed.as_millis() < 250,
+        "first chunk took {}ms (> 250ms ceiling)",
+        elapsed.as_millis(),
+    );
+}
