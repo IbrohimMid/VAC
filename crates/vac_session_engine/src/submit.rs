@@ -55,6 +55,42 @@ pub struct CompactConfig {
     /// transcript stays consistent without requiring every caller
     /// to provide a dispatcher today.
     pub dispatcher: Option<Arc<dyn crate::llm::ToolDispatcher>>,
+    /// A.4 — auto-compaction trigger. When set, `submit_one`
+    /// preemptively fires an extra compact boundary if the
+    /// session's token usage is within `safety_margin` of the
+    /// context window ceiling. CC fires at roughly
+    /// `context_window - 13000`; VAC keeps the margin caller-
+    /// configurable for heterogeneous providers.
+    pub auto_compact: Option<AutoCompactConfig>,
+}
+
+/// A.4 — auto-compaction knobs. The in-session failure counter
+/// lives on a caller-supplied `Arc<AtomicU8>` so the circuit
+/// breaker state survives across submits; set to None to disable
+/// the breaker.
+#[derive(Clone)]
+pub struct AutoCompactConfig {
+    /// Effective context window for the provider/model in play.
+    pub context_window_tokens: u64,
+    /// How many tokens to keep as headroom above the ceiling. A
+    /// conservative 13 000 matches CC's default; tighten when the
+    /// operator knows the expected response size.
+    pub safety_margin: u64,
+    /// Consecutive-failure counter for the circuit breaker.
+    /// After 3 strikes the breaker trips and the trigger
+    /// disables itself for the session (no more auto-compact
+    /// attempts; the normal compact boundary still runs).
+    pub failure_counter: Option<Arc<std::sync::atomic::AtomicU8>>,
+}
+
+impl std::fmt::Debug for AutoCompactConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AutoCompactConfig")
+            .field("context_window_tokens", &self.context_window_tokens)
+            .field("safety_margin", &self.safety_margin)
+            .field("failure_counter_attached", &self.failure_counter.is_some())
+            .finish()
+    }
 }
 
 impl Default for CompactConfig {
@@ -68,6 +104,7 @@ impl Default for CompactConfig {
             policy: None,
             gate: None,
             dispatcher: None,
+            auto_compact: None,
         }
     }
 }
@@ -196,6 +233,80 @@ async fn submit_after_accepted(
                 tokens_used: used,
                 budget,
             });
+        }
+    }
+
+    // A.4 — auto-compaction preemption. Check total tokens
+    // consumed so far against the configured ceiling; if within
+    // the safety margin, force an extra compact attempt. Circuit
+    // breaker trips after 3 consecutive failures.
+    if let Some(auto) = compact_cfg.auto_compact.as_ref() {
+        let tripped = auto
+            .failure_counter
+            .as_ref()
+            .map(|c| c.load(std::sync::atomic::Ordering::SeqCst) >= 3)
+            .unwrap_or(false);
+        if !tripped {
+            let used = usage.snapshot().total_tokens();
+            let ceiling = auto
+                .context_window_tokens
+                .saturating_sub(auto.safety_margin);
+            if used >= ceiling {
+                let forced = CompactInput {
+                    message_count: compact_cfg.message_count,
+                    approx_tokens: used,
+                    context_window_tokens: auto.context_window_tokens,
+                };
+                match compact.decide(&forced).await {
+                    Ok(hint) => {
+                        if let Some(c) = auto.failure_counter.as_ref() {
+                            c.store(0, std::sync::atomic::Ordering::SeqCst);
+                        }
+                        if let CompactHint::DropOldest { n } | CompactHint::Summarise { n, .. } =
+                            &hint
+                        {
+                            if *n > 0 {
+                                let row = TranscriptEntry::new(
+                                    submit.session_id,
+                                    TranscriptKind::CompactBoundary,
+                                    serde_json::json!({
+                                        "trigger": "auto_compact",
+                                        "used": used,
+                                        "ceiling": ceiling,
+                                        "hint": format!("{hint:?}"),
+                                    }),
+                                );
+                                transcript.append(handle, &row).await?;
+                                emit(
+                                    events,
+                                    SubmitEvent::Compacted {
+                                        kept: compact_cfg.message_count.saturating_sub(*n),
+                                        dropped: *n,
+                                    },
+                                );
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        if let Some(c) = auto.failure_counter.as_ref() {
+                            let prev = c.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                            if prev + 1 >= 3 {
+                                tracing::warn!(
+                                    target: "vac_session_engine::auto_compact",
+                                    strikes = prev + 1,
+                                    last_error = %e,
+                                    "auto-compact circuit breaker tripped — disabling for session",
+                                );
+                            }
+                        }
+                        tracing::warn!(
+                            target: "vac_session_engine::auto_compact",
+                            error = %e,
+                            "auto-compact attempt failed",
+                        );
+                    }
+                }
+            }
         }
     }
 

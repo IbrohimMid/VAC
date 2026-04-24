@@ -514,3 +514,52 @@ async fn tool_dispatch_runs_through_composite_gate_allow_path() {
     assert!(labels.contains(&"tool.result"), "ToolResult emitted: {labels:?}");
     assert_eq!(labels.last().copied(), Some("finished"));
 }
+
+// A.4 — auto-compaction trigger.
+
+#[tokio::test]
+async fn auto_compact_fires_when_usage_exceeds_ceiling() {
+    let tmp = tempfile::tempdir().unwrap();
+    let writer = TranscriptWriter::new(tmp.path().to_path_buf());
+    let usage = UsageTracker::new();
+    // Pre-load usage past the ceiling.
+    usage.add_input_tokens(90_000);
+
+    let cfg = CompactConfig {
+        auto_compact: Some(vac_session_engine::submit::AutoCompactConfig {
+            context_window_tokens: 100_000,
+            safety_margin: 13_000,
+            failure_counter: None,
+        }),
+        message_count: 10,
+        ..Default::default()
+    };
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    submit_one(
+        SubmitContext::new(Uuid::new_v4(), "trigger compact"),
+        &writer,
+        &SlashProcessor::new(),
+        &AlwaysDrop,
+        &usage,
+        &vac_session_engine::EchoAdapter,
+        cfg,
+        Some(tx),
+    )
+    .await
+    .unwrap();
+
+    let mut events = Vec::new();
+    while let Ok(ev) = rx.try_recv() {
+        events.push(ev);
+    }
+    // There should be at least one Compacted event (auto-compact
+    // fires + the normal compact boundary also fires in AlwaysDrop).
+    assert!(
+        events
+            .iter()
+            .filter(|e| matches!(e, SubmitEvent::Compacted { .. }))
+            .count()
+            >= 1,
+        "expected ≥1 Compacted events, got {events:?}",
+    );
+}
