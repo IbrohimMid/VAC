@@ -44,10 +44,11 @@ pub fn welcome_messages(version: Option<&str>, state: &crate::app::AppState) -> 
             Permission Mode: {}\n\
             ═══════════════════════════════════════\n\n\
             Shortcuts:\n\
-            • Ctrl+P - Command palette\n\
+            • Ctrl+P - Command palette (all /commands, including hook/cron/subagent/fetch/monitor/signal)\n\
+            • Ctrl+S - Shortcuts popup (context-aware keybindings)\n\
             • Ctrl+C - Quit\n\
             • Esc    - Cancel/Close\n\
-            • Up/Down - Scroll\n\n\
+            • /      - Open palette with slash filter\n\n\
             Type your message and press Enter to start.{}",
         VAC_LOGO, version_str, permission_mode, model_hint
     ))]
@@ -284,6 +285,95 @@ pub fn vac_commands() -> Vec<HelperCommand> {
             wired: true,
             surface: CommandSurface::Template,
         },
+
+        // --- UX-unification patch C — arc feature discoverability.
+        //
+        // These surface hook/cron/subagent/fetch/monitor/signal as
+        // first-class palette entries (Ctrl+P → /) so operators
+        // don't have to read source or ask the LLM "what can you
+        // do?". They dispatch canned prompts that ask the agent
+        // to invoke the corresponding tool with operator-supplied
+        // parameters. See docs/adr/ADR-001 for the hybrid boundary.
+        HelperCommand {
+            command: "/hook-create".to_string(),
+            description: "Register a PreToolUse hook (sandboxed command) via the agent".to_string(),
+            source: CommandSource::BuiltInWithPrompt {
+                prompt_content: "Use the `hook_create` tool to register a new hook. Ask the operator for: (1) event — one of PreToolUse/PostToolUse/UserPromptSubmit/Stop/SubagentStop/Notification/SessionStart/SessionEnd/PreCompact; (2) matcher — regex against tool name, empty means match all; (3) argv — the shell command to run. Kind is always `command` in VAC v1 (prompt/agent/http are reserved; see HookSandbox docs). After creation, confirm the registration + sandbox policy.".to_string(),
+            },
+            shortcut: None,
+            wired: true,
+            surface: CommandSurface::Template,
+        },
+        HelperCommand {
+            command: "/hook-list".to_string(),
+            description: "List registered hooks in .vac/hooks.json".to_string(),
+            source: CommandSource::BuiltInWithPrompt {
+                prompt_content: "Call the `hook_list` tool and render each entry as: id, event, matcher, kind, description.".to_string(),
+            },
+            shortcut: None,
+            wired: true,
+            surface: CommandSurface::Template,
+        },
+        HelperCommand {
+            command: "/cron-add".to_string(),
+            description: "Schedule a recurring agent task (cron) via the agent".to_string(),
+            source: CommandSource::BuiltInWithPrompt {
+                prompt_content: "Use the `schedule_cron` tool to register a recurring task. Ask the operator for: (1) id — unique identifier; (2) cron expression — 5-field minute-hour-dom-month-dow; (3) task — prompt the agent runs when the schedule fires. After creation, remind the operator that the autopilot daemon must be running (`vac autopilot up --execute`) for schedules to actually fire.".to_string(),
+            },
+            shortcut: None,
+            wired: true,
+            surface: CommandSurface::Template,
+        },
+        HelperCommand {
+            command: "/cron-list".to_string(),
+            description: "List cron-scheduled tasks".to_string(),
+            source: CommandSource::BuiltInWithPrompt {
+                prompt_content: "Call the `cron_list` tool and render each entry: id, schedule, prompt, last_fire_unix, fire_count.".to_string(),
+            },
+            shortcut: None,
+            wired: true,
+            surface: CommandSurface::Template,
+        },
+        HelperCommand {
+            command: "/subagent-run".to_string(),
+            description: "Dispatch a first-level subagent (explore/plan/verify/general/statusline)".to_string(),
+            source: CommandSource::BuiltInWithPrompt {
+                prompt_content: "Use the `agent_run` tool to dispatch a subagent. Ask the operator which kind (explore / plan / verify / general-purpose / statusline-setup) and what the subagent should do. Compose a focused prompt. Note: VAC v1 supports first-level delegation only; the subagent itself cannot call agent_run (see ADR-002).".to_string(),
+            },
+            shortcut: None,
+            wired: true,
+            surface: CommandSurface::Template,
+        },
+        HelperCommand {
+            command: "/fetch".to_string(),
+            description: "Fetch a URL via the agent (Authorization opt-in)".to_string(),
+            source: CommandSource::BuiltInWithPrompt {
+                prompt_content: "Use the `web_fetch` tool to issue an HTTP request. Ask for URL, method (default GET), any body/headers needed. Authorization header is stripped by default; only forward it when the operator explicitly requests (`allow_authorization: true`) since that elevates the call to destructive.".to_string(),
+            },
+            shortcut: None,
+            wired: true,
+            surface: CommandSurface::Template,
+        },
+        HelperCommand {
+            command: "/monitor".to_string(),
+            description: "Run a command and filter stdout lines via the agent".to_string(),
+            source: CommandSource::BuiltInWithPrompt {
+                prompt_content: "Use the `monitor` tool. Ask the operator for: argv (program + args), match_regex, and optional max_lines / timeout_secs. Report the collected matching lines.".to_string(),
+            },
+            shortcut: None,
+            wired: true,
+            surface: CommandSurface::Template,
+        },
+        HelperCommand {
+            command: "/signal".to_string(),
+            description: "Distill scored key-lines from a session signal buffer".to_string(),
+            source: CommandSource::BuiltInWithPrompt {
+                prompt_content: "Use the `signal_distilled` tool to pull scored key lines + tail from the named stream (e.g. `shell`, `vil_dev`, `build-*`). If the operator did not name a stream, call `signal_list` first to discover available ids.".to_string(),
+            },
+            shortcut: None,
+            wired: true,
+            surface: CommandSurface::Template,
+        },
     ];
 
     // Load custom commands from .vac/commands/
@@ -435,5 +525,64 @@ fn extract_front_matter(content: &str) -> (Option<String>, &str) {
             }
         }
         None => (None, content),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// UX-unification patch C drift guard — the arc feature
+    /// entries that make hook/cron/subagent/fetch/monitor/signal
+    /// discoverable from the command palette must stay wired.
+    /// If a future edit removes them, the palette goes back to
+    /// "agent-only discovery" for these features, which is
+    /// exactly what the reviewer flagged as the UX gap.
+    #[test]
+    fn arc_feature_palette_entries_are_present() {
+        let cmds = vac_commands();
+        let arc_aliases = [
+            "/hook-create",
+            "/hook-list",
+            "/cron-add",
+            "/cron-list",
+            "/subagent-run",
+            "/fetch",
+            "/monitor",
+            "/signal",
+        ];
+        for alias in arc_aliases {
+            assert!(
+                cmds.iter().any(|c| c.command == alias),
+                "palette must expose {alias} (patch C). Full list: {:?}",
+                cmds.iter().map(|c| &c.command).collect::<Vec<_>>(),
+            );
+        }
+    }
+
+    /// Arc entries are prompt templates — they send a canned
+    /// prompt to the agent, not a one-shot action. Verify source
+    /// kind so a future edit doesn't accidentally convert them
+    /// to `Passthrough` (which would send the raw `/hook-create`
+    /// text and lose the tool-invocation instructions).
+    #[test]
+    fn arc_feature_entries_are_builtin_with_prompt() {
+        let cmds = vac_commands();
+        for alias in ["/hook-create", "/cron-add", "/subagent-run", "/fetch", "/monitor", "/signal"] {
+            let entry = cmds.iter().find(|c| c.command == alias).unwrap();
+            match &entry.source {
+                CommandSource::BuiltInWithPrompt { prompt_content } => {
+                    assert!(
+                        !prompt_content.is_empty(),
+                        "{alias} must carry a non-empty prompt_content",
+                    );
+                }
+                other => panic!(
+                    "{alias} should be BuiltInWithPrompt so it dispatches a templated \
+                     message to the agent; got {:?}",
+                    std::mem::discriminant(other),
+                ),
+            }
+        }
     }
 }
