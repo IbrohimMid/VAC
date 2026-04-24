@@ -28,6 +28,7 @@
 //! - Module `compact` — context-budget boundary hooks
 //! - Module `usage` — token/cost accounting
 
+pub mod agent_tool;
 pub mod compact;
 pub mod error;
 pub mod event;
@@ -58,6 +59,10 @@ pub use gate::{
     CompositeGate, GateDecision, NoopHookGate, PolicyGate, ToolCheckCtx, ToolGate,
 };
 pub use stream::{SubmitChunk, SubmitStream, submit_stream};
+pub use agent_tool::{
+    AgentToolInput, BUILT_IN_SUBAGENTS, BuiltInAgentSpec, BuiltInKind,
+    dispatch_agent_tool, find_built_in, resolve_subagent_kind,
+};
 pub use subagent::{
     SubagentDispatchContext, SubagentKind, SubagentRunner, SubagentSpec,
 };
