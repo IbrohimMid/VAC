@@ -20,7 +20,8 @@ pub use channel::ChannelAcl;
 pub use config::{McpConfigScope, McpServerConfig, resolve_config};
 pub use elicitation::{
     ElicitationHandler, ElicitationRequest, ElicitationResult,
-    FailingElicitationHandler, UnsupportedElicitationHandler,
+    FailingElicitationHandler, McpElicitationRegistry,
+    UnsupportedElicitationHandler,
 };
 pub use error::{McpCoreError, McpCoreResult};
 pub use state::{McpConnection, McpConnectionState, StateTransition};

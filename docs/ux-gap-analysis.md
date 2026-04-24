@@ -74,7 +74,7 @@ implies is scoped in the "Remediation ladder" at the bottom.
 | Feature | Producer | Surface | Deep-link | Disc. | Status |
 |---|---|---|---|---|---|
 | MCP state machine + connection tracking | `vac_mcp_core::state::McpConnection` | SystemPulse `mcp` facet | Enter → Signal tab | Yes | 🟢 |
-| `ElicitationHandler` trait | `vac_mcp_core::elicitation` | None — no TUI driver | None | No | 🔴 |
+| `ElicitationHandler` trait | `vac_mcp_core::elicitation` | `TuiElicitationHandler` → `OverlayId::Elicitation` modal; attach via `McpElicitationRegistry::attach_elicitation_handler`. Text/Confirm degrade to Cancelled for now | Elicitation overlay | Yes (OpenUrl) | 🟢 |
 | `ChannelAcl` deny/allow/notify | `vac_mcp_core::channel` + `TrustGate::check_mcp_tool_with_channel` | `tracing::warn` → NotifyRouter via A1 bridge | Activity panel | Yes | 🟢 |
 | Stdio + WS transports | `vac_tools::mcp::*` | Silent bootstrap | None | No | 🔴 |
 | `/mcp` CLI | `vac_cli::commands::mcp` | CLI only | `vac mcp` | Yes (CLI) | ⚫ |

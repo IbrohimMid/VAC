@@ -125,6 +125,61 @@ impl ElicitationHandler for FailingElicitationHandler {
     }
 }
 
+/// G1c — runtime-side registry that lets a driver attach an
+/// [`ElicitationHandler`] for the lifetime of an MCP connection
+/// without polluting the serializable [`crate::state::McpConnection`]
+/// record. Kept separate so tests and transport layers can clone
+/// the `Arc<dyn ElicitationHandler>` freely while the state record
+/// stays pure data.
+///
+/// A connection-scoped registry is the chosen shape (not a global)
+/// so multi-tenant hosts with per-session handlers keep their own
+/// isolation. Drivers construct one registry per live MCP session,
+/// attach their handler after the `Connected` transition, and call
+/// [`McpElicitationRegistry::dispatch`] when an
+/// `elicitation/request` JSON-RPC arrives on the session transport.
+/// When no handler is attached the registry falls back to
+/// [`UnsupportedElicitationHandler`] — the same
+/// answer-Cancelled-so-the-server-doesn't-hang contract the spec
+/// has always had.
+#[derive(Clone, Default, Debug)]
+pub struct McpElicitationRegistry {
+    handler: Option<std::sync::Arc<dyn ElicitationHandler>>,
+}
+
+impl McpElicitationRegistry {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Attach a handler. Replaces any previously-attached handler
+    /// for this registry (caller's responsibility — a live session
+    /// should never swap handlers mid-flight).
+    pub fn attach_elicitation_handler(
+        &mut self,
+        handler: std::sync::Arc<dyn ElicitationHandler>,
+    ) {
+        self.handler = Some(handler);
+    }
+
+    pub fn has_handler(&self) -> bool {
+        self.handler.is_some()
+    }
+
+    /// Dispatch a single `elicitation/request`. Falls back to
+    /// [`UnsupportedElicitationHandler`] when nothing is attached
+    /// so the server always sees a well-formed response.
+    pub async fn dispatch(
+        &self,
+        request: ElicitationRequest,
+    ) -> McpCoreResult<ElicitationResult> {
+        match &self.handler {
+            Some(h) => h.handle(request).await,
+            None => UnsupportedElicitationHandler.handle(request).await,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
