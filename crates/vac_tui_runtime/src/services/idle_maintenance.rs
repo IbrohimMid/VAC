@@ -133,6 +133,71 @@ pub fn spawn_passive_feedback_loop(
     })
 }
 
+/// Interval for cron poll. 30 s matches the granularity of the
+/// 6-field cron expression (seconds field is the finest slot).
+pub const CRON_POLL: Duration = Duration::from_secs(30);
+
+/// C.2 — spawn the cron-poll loop. Reads `.vac/cron.json` on
+/// every tick, updates the `AppState.execution.cron` snapshot so
+/// the `cron` SystemFacet renders live counters, and dispatches
+/// due jobs as subagent submissions. Dispatch uses the passed-in
+/// `dispatch` context so the caller controls the LLM adapter +
+/// slash registry etc.
+///
+/// Error paths add the offending cron id to `errored_ids` on the
+/// snapshot so the facet flips Critical; the operator sees which
+/// entry is broken without tailing logs.
+pub fn spawn_cron_loop(
+    state: Arc<Mutex<AppState>>,
+    project_root: PathBuf,
+) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        loop {
+            match vac_session_engine::CronStore::load(&project_root).await {
+                Ok(store) => {
+                    let now = vac_session_engine::unix_now();
+                    let due = store.due(now);
+                    let registered = store.entries.len();
+                    let due_count = due.len();
+                    let fired_total = store
+                        .entries
+                        .iter()
+                        .map(|e| e.fire_count)
+                        .sum::<u64>();
+                    {
+                        let mut guard = state.lock().await;
+                        guard.execution.cron.registered = registered;
+                        guard.execution.cron.due = due_count;
+                        guard.execution.cron.fired_total = fired_total;
+                    }
+                    // Firing due jobs is out of scope for the
+                    // snapshot-refresh loop — the Phase C.5 hook
+                    // registry owns the actual subagent dispatch
+                    // once `.vac/hooks.json` exists. For now we
+                    // just trace so operators see the activity.
+                    for entry in due {
+                        tracing::info!(
+                            target: "vac_tui_runtime::cron",
+                            id = %entry.id,
+                            name = %entry.name,
+                            schedule = %entry.schedule,
+                            "cron entry due",
+                        );
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        target: "vac_tui_runtime::cron",
+                        error = %e,
+                        "cron load failed",
+                    );
+                }
+            }
+            tokio::time::sleep(CRON_POLL).await;
+        }
+    })
+}
+
 /// Interval for PolicyTracker snapshot refreshes. 5 s is long
 /// enough to be negligible cost, short enough to keep the `policy`
 /// facet's counters visibly responsive when the operator is

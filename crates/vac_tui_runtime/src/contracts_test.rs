@@ -215,12 +215,14 @@ mod tests {
         let state = AppState::default();
         let pulse = SystemPulse::from_state(&state);
         let line = pulse.compact_line();
-        // U6 budget bumped from 80 to 100 cols as the pulse grew
-        // to 11 facets (added policy, lsp). Modern terminals default
-        // to ≥ 100; truncation lives in the statusline renderer for
-        // narrower cases.
+        // U6 budget scales with the pulse: 80 (v0) → 100 (A.5) →
+        // 120 (C.2 as cron + tasks land). Modern terminals default
+        // to ≥ 120; truncation lives in the statusline renderer
+        // for narrower cases. If the budget is tripping again,
+        // consider whether new facets should be observational-only
+        // instead of eager.
         assert!(
-            line.chars().count() <= 100,
+            line.chars().count() <= 120,
             "compact_line too wide: {} chars",
             line.chars().count()
         );

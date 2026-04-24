@@ -299,6 +299,19 @@ pub struct ExecutionState {
     /// G — PassiveFeedback driver telemetry; refreshed by the idle
     /// tick at ~2s cadence. Drives the `lsp` SystemFacet.
     pub lsp: LspSnapshot,
+    /// C.2 — cron snapshot: count of registered + due entries,
+    /// last-fire timestamp. Refreshed by `spawn_cron_loop`.
+    pub cron: CronSnapshot,
+}
+
+/// Read-only cron snapshot the `cron` facet renders from.
+#[derive(Debug, Default, Clone)]
+pub struct CronSnapshot {
+    pub registered: usize,
+    pub due: usize,
+    pub fired_total: u64,
+    pub last_fire_unix: i64,
+    pub errored_ids: Vec<String>,
 }
 
 /// Read-only snapshot the `lsp` facet renders from.

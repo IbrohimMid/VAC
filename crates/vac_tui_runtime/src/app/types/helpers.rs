@@ -124,6 +124,7 @@ impl AppState {
                 activity: Vec::new(),
                 policy: None,
                 lsp: super::LspSnapshot::default(),
+                cron: super::CronSnapshot::default(),
             },
             operator_config: super::OperatorConfigState {
                 operator: OperatorState {

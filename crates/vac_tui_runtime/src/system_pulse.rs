@@ -83,6 +83,8 @@ pub enum SystemFacetKind {
     // monitor, workflow, teammate). Aggregates over
     // `AppState.execution.task_tray.entries`.
     Tasks,
+    // Phase C.2 — cron-registered recurring jobs.
+    Cron,
     // Deferred until producers wire: Vil.
 }
 
@@ -102,6 +104,7 @@ impl SystemFacetKind {
             Self::Environment => "env",
             Self::Lsp => "lsp",
             Self::Tasks => "tasks",
+            Self::Cron => "cron",
         }
     }
 }
@@ -171,6 +174,7 @@ impl<'a> SystemPulse<'a> {
             self.policy_facet(),
             self.lsp_facet(),
             self.tasks_facet(),
+            self.cron_facet(),
             self.subagent_facet(),
         ]
     }
@@ -668,6 +672,64 @@ impl<'a> SystemPulse<'a> {
         }
     }
 
+    /// C.2 — cron facet. Reads
+    /// `AppState.execution.cron` which spawn_cron_loop refreshes
+    /// every 30 s. Severity: Ok when no entries are registered
+    /// AND no jobs errored; Info while entries exist with zero
+    /// errors; Warn when any entry is due past its slot; Critical
+    /// if any entry is in `errored_ids`.
+    fn cron_facet(&self) -> SystemFacet {
+        let snap = &self.state.execution.cron;
+        let errored = snap.errored_ids.len();
+        let (severity, token, detail_rows) = if errored > 0 {
+            (
+                FacetSeverity::Critical,
+                Cow::Owned(format!("cron✗{errored}")),
+                vec![
+                    format!("registered: {}", snap.registered),
+                    format!("errored:    {errored}"),
+                    format!("fired:      {}", snap.fired_total),
+                ],
+            )
+        } else if snap.registered == 0 {
+            (
+                FacetSeverity::Ok,
+                Cow::Borrowed("cron·"),
+                vec!["no cron entries registered".into()],
+            )
+        } else if snap.due > 0 {
+            (
+                FacetSeverity::Warn,
+                Cow::Owned(format!("cron●{}", snap.due)),
+                vec![
+                    format!("registered: {}", snap.registered),
+                    format!("due now:    {}", snap.due),
+                    format!("fired:      {}", snap.fired_total),
+                ],
+            )
+        } else {
+            (
+                FacetSeverity::Info,
+                Cow::Owned(format!("cron:{}", snap.registered)),
+                vec![
+                    format!("registered: {}", snap.registered),
+                    format!("fired:      {}", snap.fired_total),
+                ],
+            )
+        };
+        SystemFacet {
+            kind: SystemFacetKind::Cron,
+            severity,
+            compact_token: token,
+            detail_rows,
+            // NavTarget: runtime tab (no dedicated cron tab; sub-pane
+            // under Runtime matches UX rule 3).
+            nav_target: Some(NavTarget::WorkbenchTab(
+                crate::app::types::WorkbenchTab::Runtime,
+            )),
+        }
+    }
+
     /// Phase E1 — subagent facet. Reads the in-memory root handle
     /// counters if the TUI has bound one. Today AppState does not
     /// carry an AppStateRootHandle; we defer real wiring to the
@@ -718,7 +780,7 @@ mod tests {
         // Phase A2 + B2 + E1 added three more facets (budget,
         // memory, subagent). Count is 9 now; the grammar stays
         // consistent.
-        assert_eq!(facets.len(), 12);
+        assert_eq!(facets.len(), 13);
         for f in &facets {
             assert!(!f.compact_token.is_empty(), "facet {:?} has empty token", f.kind);
         }
@@ -741,8 +803,9 @@ mod tests {
         assert!(line.contains("policy"));
         assert!(line.contains("lsp"));
         assert!(line.contains("tasks"));
-        // Twelve facets → exactly eleven internal spaces.
-        assert_eq!(line.matches(' ').count(), 11);
+        assert!(line.contains("cron"));
+        // Thirteen facets → exactly twelve internal spaces.
+        assert_eq!(line.matches(' ').count(), 12);
     }
 
     #[test]
