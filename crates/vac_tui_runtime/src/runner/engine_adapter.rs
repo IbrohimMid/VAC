@@ -30,7 +30,8 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use tokio::sync::{Mutex, mpsc};
+use tokio::sync::{Mutex, mpsc, oneshot};
+use vac_core::TaskResult;
 use vac_core::engine::{RuntimeUpdate, VacEngine};
 use vac_session_engine::{
     EngineError, EngineResult, LlmAdapter, LlmRequest, LlmResponse, SubmitChunk, SubmitEvent,
@@ -54,7 +55,13 @@ pub async fn run_via_session_engine(
     // pattern; behaviourally equivalent (submit_one was already
     // emitting events incrementally via its outbound tx) but drops
     // one `tokio::spawn` and the intermediate mpsc hop.
-    let adapter = Arc::new(VacEngineAdapter::new(engine.clone()));
+    // B1 audit fix: create a oneshot so the adapter can hand the
+    // real `TaskResult` (with populated modified_files /
+    // created_files / elapsed_ms) back to this function. Without
+    // this the post-NS.2 path synthesized an empty TaskResult and
+    // the TUI's changeset / review pane was silently blank.
+    let (result_tx, result_rx) = oneshot::channel::<TaskResult>();
+    let adapter = Arc::new(VacEngineAdapter::with_result_tx(engine.clone(), result_tx));
     let writer = Arc::new(TranscriptWriter::new(project_root));
     let slash = Arc::new(SlashProcessor::new());
     let compact: Arc<dyn vac_session_engine::CompactBoundary> =
@@ -102,21 +109,49 @@ pub async fn run_via_session_engine(
         return Err(anyhow::anyhow!("submit aborted: {reason}"));
     }
 
-    let fallback_task_id = vac_core::task::TaskId(uuid::Uuid::new_v4());
-    let res = vac_core::TaskResult {
-        task_id: fallback_task_id,
-        status: vac_core::TaskStatus::Completed,
-        summary: format!(
-            "session-engine submit finished; {} tokens, transcript at {}",
-            total_tokens,
-            writer.sessions_dir().display(),
-        ),
-        modified_files: Vec::new(),
-        created_files: Vec::new(),
-        validation_score: None,
-        elapsed_ms: 0,
-        agent_contributions: Vec::new(),
-        total_tokens_used: total_tokens,
+    // B1: harvest the real TaskResult the adapter captured. If the
+    // oneshot was dropped without a send (adapter never reached the
+    // send point — unusual; only if submit errored before complete()
+    // finished producing a TaskResult) fall back to a synthetic
+    // entry so the function signature stays totals-aware. Log the
+    // unexpected case.
+    let res = match result_rx.await {
+        Ok(real) => {
+            // Prefer the adapter's totals but let the stream's
+            // Finished chunk supply usage when the adapter didn't
+            // bump it.
+            let total = if real.total_tokens_used > 0 {
+                real.total_tokens_used
+            } else {
+                total_tokens
+            };
+            TaskResult {
+                total_tokens_used: total,
+                ..real
+            }
+        }
+        Err(_dropped) => {
+            tracing::warn!(
+                target: "vac_cli::engine_adapter",
+                "adapter result oneshot dropped without value — \
+                 synthesizing fallback TaskResult",
+            );
+            TaskResult {
+                task_id: vac_core::task::TaskId(uuid::Uuid::new_v4()),
+                status: vac_core::TaskStatus::Completed,
+                summary: format!(
+                    "session-engine submit finished; {} tokens, transcript at {}",
+                    total_tokens,
+                    writer.sessions_dir().display(),
+                ),
+                modified_files: Vec::new(),
+                created_files: Vec::new(),
+                validation_score: None,
+                elapsed_ms: 0,
+                agent_contributions: Vec::new(),
+                total_tokens_used: total_tokens,
+            }
+        }
     };
 
     // Run the predictor after submit finishes
@@ -127,6 +162,10 @@ pub async fn run_via_session_engine(
         });
     }
 
+    // TUI backend reads RuntimeUpdate::Completed off update_tx;
+    // caller reads Ok(res). These are different consumers (TUI
+    // event loop vs. vac_cli driver) — not the H3 double-signal
+    // pattern.
     let _ = update_tx.send(vac_core::engine::RuntimeUpdate::Completed(res.clone()));
 
     Ok(res)
@@ -177,6 +216,11 @@ fn chunk_to_runtime_update(chunk: SubmitChunk) -> Option<RuntimeUpdate> {
 pub struct VacEngineAdapter {
     engine: Arc<Mutex<VacEngine>>,
     event_forward: Option<mpsc::UnboundedSender<SubmitEvent>>,
+    // B1 audit fix: oneshot for handing the real TaskResult back
+    // to the caller of `run_via_session_engine`. Wrapped in
+    // Mutex<Option<>> because `complete()` borrows `&self` yet
+    // needs to move the Sender out (it can only fire once).
+    result_tx: Arc<Mutex<Option<oneshot::Sender<TaskResult>>>>,
 }
 
 impl VacEngineAdapter {
@@ -185,6 +229,7 @@ impl VacEngineAdapter {
         Self {
             engine,
             event_forward: None,
+            result_tx: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -196,6 +241,23 @@ impl VacEngineAdapter {
         Self {
             engine,
             event_forward: Some(tx),
+            result_tx: Arc::new(Mutex::new(None)),
+        }
+    }
+
+    /// Attach a oneshot the adapter will fire with the real
+    /// `TaskResult` as soon as `run_task_with_updates` returns —
+    /// before the `LlmResponse` is assembled. Only one send per
+    /// adapter instance; downstream calls drop silently.
+    #[must_use]
+    pub fn with_result_tx(
+        engine: Arc<Mutex<VacEngine>>,
+        result_tx: oneshot::Sender<TaskResult>,
+    ) -> Self {
+        Self {
+            engine,
+            event_forward: None,
+            result_tx: Arc::new(Mutex::new(Some(result_tx))),
         }
     }
 }
@@ -278,6 +340,14 @@ impl LlmAdapter for VacEngineAdapter {
                 .await
                 .map_err(|e| EngineError::Other(format!("vac_core engine: {e}")))?
         };
+
+        // B1: forward the real TaskResult to whoever supplied the
+        // oneshot (typically `run_via_session_engine`). Ignore send
+        // errors — the receiver dropped means the caller no longer
+        // needs it, which is fine.
+        if let Some(tx) = self.result_tx.lock().await.take() {
+            let _ = tx.send(result.clone());
+        }
 
         // Drop the Sender by dropping the engine guard already happened;
         // drop by letting `rt_tx` go out of scope — the translator
