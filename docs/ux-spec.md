@@ -114,15 +114,19 @@ through the router.
 Every row is prefixed `[<subsystem>] <summary>` using the same
 vocabulary as the SystemPulse labels.
 
-**Tracing bridge (A1):** `services::tracing_bridge::TuiTracingLayer`
-is a `tracing_subscriber::Layer` that forwards `warn!` / `error!`
-events on an allowlisted set of subsystem targets directly into
-`NotifyRouter`, closing the gap where trust-gate / isolation /
-channel-ACL / rate-limit / policy / speculation / auto_dream /
-away_summary / result_spill denials were only visible to stderr
-log readers. Prefix match means nested module paths
-(`vac_tools::trust_gate::foo`) resolve to the parent subsystem
-(`trust_gate`). Enable via `VAC_TRACING_BRIDGE=1` at startup.
+**Tracing bridge (A1 + D2):** `services::tracing_bridge::TuiTracingLayer`
+is a `tracing_subscriber::Layer` that forwards `info!` / `warn!` /
+`error!` events on an allowlisted set of subsystem targets directly
+into `NotifyRouter`. Severity mapping:
+
+- `error!` → `NotifyEvent::critical` (activity + banner)
+- `warn!`  → `NotifyEvent::warn` (activity + toast)
+- `info!`  → `NotifyEvent::info` (activity only — breadcrumb lane
+  used by D2 speculation warmed-reads, auto_dream writes, etc.)
+
+Prefix match means nested module paths (`vac_tools::trust_gate::foo`)
+resolve to the parent subsystem (`trust_gate`). Enable via
+`VAC_TRACING_BRIDGE=1` at startup.
 
 Length caps (post-audit hardening):
 - `NOTIFY_SUBSYSTEM_CAP = 64 chars`

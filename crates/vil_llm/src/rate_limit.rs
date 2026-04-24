@@ -176,10 +176,15 @@ impl RateLimitTracker {
         let mut guard = self.inner.lock().await;
         let entry = guard.entry(provider.to_string()).or_default();
         entry.cooldown_until = Some(cooldown_until);
-        tracing::debug!(
+        // Promoted to warn so the TUI A1 tracing bridge surfaces
+        // the cooldown as an activity row + toast when the router
+        // wires this tracker. Keeps the silent-producer path open
+        // until C2's call-site wiring lands.
+        tracing::warn!(
             target: "vil_llm::rate_limit",
             provider = provider,
             backoff_ms = effective.as_millis() as u64,
+            reason = %format!("{}ms cooldown", effective.as_millis()),
             "rate-limit cooldown applied",
         );
         effective

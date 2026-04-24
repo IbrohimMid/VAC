@@ -39,7 +39,7 @@ implies is scoped in the "Remediation ladder" at the bottom.
 | Feature | Producer | Surface | Deep-link | Disc. | Status |
 |---|---|---|---|---|---|
 | `ForkedAgentRunner` | `vac_session_engine::fork` | SystemPulse `spec` facet | Observational | Yes (statusline) | 🟢 |
-| `FileStateCache::fork/merge` | `vac_session_engine::file_state_cache` | Warm cache on next submit | None | No | 🟡 |
+| `FileStateCache::fork/merge` | `vac_session_engine::file_state_cache` | Warm cache + D2 activity breadcrumb via A1 bridge | Activity panel | Yes | 🟢 |
 | `ForkSpeculationDriver` | `vac_tui_runtime::services::speculation` | via `AppState.speculation` → `spec` facet | None | Yes | 🟢 |
 
 **Gap:** FileStateCache merge is invisible — operator can't tell whether the last submit benefited from a warm cache. A one-line breadcrumb "cache hit on auth.rs" in activity timeline would pay for itself in trust.
@@ -150,7 +150,7 @@ implies is scoped in the "Remediation ladder" at the bottom.
 
 | Feature | Producer | Surface | Deep-link | Disc. | Status |
 |---|---|---|---|---|---|
-| `SignalBuffer` bounded ring | `vac_signal::buffer` | Signal tab (`WorkbenchTab::Signal`) | `Ctrl+Tab` → Signal | Yes | 🟡 |
+| `SignalBuffer` bounded ring | `vac_signal::buffer` | Signal tab header uses `FacetSeverity` glyph (E3) | `Ctrl+Tab` → Signal | Yes | 🟢 |
 | `RegexScorer` / `TailDistiller` | `vac_signal::*` | Silent transform | None | No | 🔴 |
 | `RewindStore` SQLite | `vac_signal::rewind` | `vac signal list/tail` CLI | `vac signal` | Partial | ⚫ |
 | Buffer attachments (shell/vil dev) | `vac_tui_runtime::update::events` | Shell output / VIL dev output panes | View-specific | Yes | 🟢 |
@@ -187,7 +187,7 @@ After F2, ten W8 commands have ACTION_SPECS palette entries (🟢) — the remai
 
 | Feature | Producer | Surface | Deep-link | Disc. | Status |
 |---|---|---|---|---|---|
-| `RateLimitTracker` | `vil_llm::rate_limit` | **Not wired** into LLM router; A1 bridge would surface if wired | None | No | 🔴 |
+| `RateLimitTracker` | `vil_llm::rate_limit` | **Not wired** into LLM router. Producer now emits `warn!` (C2 partial) so A1 bridge surfaces automatically once call-site wiring lands | None | No | 🔴 |
 | `PolicyLimits::check` | `vac_core::policy_limits` | **Not wired** into submit_one; A1 bridge would surface if wired | None | No | 🔴 |
 
 **Gap:** both primitives are ready. Once wired, a `rate` facet (countdown) and a `policy` facet (submits used / cap) drop into SystemPulse cleanly — producers are the remaining blocker, not the projection.
@@ -200,9 +200,9 @@ Same shape as W9: primitives complete, REPL poll-loop integration outstanding. A
 
 | Category | Count | Representative items |
 |---|---|---|
-| 🟢 Fully surfaced | 22 | 9 facets (approvals/runtime/mcp/shell/spec/env/budget/memory/subagent); A1 tracing bridge; B1 skill palette; D1 idle maintenance; F2 ten CLI bridges; registry + resume overlay |
-| 🟡 Partial | 6 | FileStateCache merge, `should_defer`, MemoryScanner, SignalBuffer tabs, Consolidator slash |
-| 🔴 Silent | 9 | RateLimitTracker, PolicyTracker, PassiveFeedback tick, Elicitation, W7 auth primitives, scorer/distiller |
+| 🟢 Fully surfaced | 24 | 9 facets; A1+D2 tracing bridge (info/warn/error); B1 skills; D1 idle maintenance; E3 signal grammar; F1 CLI dispatch + F2 palette; D2 speculation breadcrumb; registry + resume overlay |
+| 🟡 Partial | 4 | `should_defer`, MemoryScanner, Consolidator slash, memory panel absent |
+| 🔴 Silent | 9 | RateLimitTracker + PolicyTracker call-sites, PassiveFeedback tick, Elicitation, W7 auth, scorer/distiller |
 | ⚫ CLI-only | 7 | remaining W8 integrations/diagnostics, `vac eval`, signal rewind |
 
 ## Root causes
