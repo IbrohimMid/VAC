@@ -256,12 +256,13 @@ pub(super) fn render_shortcuts(f: &mut Frame, state: &mut AppState) {
     let area = centered_rect(70, 60, f.area());
     f.render_widget(Clear, area);
 
-    // U0 — shortcuts are derived from ACTION_SPECS, not hardcoded.
-    // An action appears here iff (a) it declares at least one
-    // keybinding AND (b) it is currently available for the operator.
-    // This is the single source of truth the command-palette +
-    // footer + doc generator also consume, so drift is impossible.
-    let mut rows: Vec<String> = Vec::new();
+    // U0 + post-audit — shortcuts are derived from ACTION_SPECS and
+    // grouped by scope so operators see "where does this chord
+    // work?" without reading docs. View-internal chords (Tab / Ctrl+
+    // Tab / PageUp-Down / arrows / Enter / Esc) are appended
+    // separately since they aren't registry-backed actions.
+    let mut grouped: std::collections::BTreeMap<&'static str, Vec<String>> =
+        std::collections::BTreeMap::new();
     for spec in crate::action_registry::ACTION_SPECS.iter() {
         if spec.keybindings.is_empty() {
             continue;
@@ -269,9 +270,50 @@ pub(super) fn render_shortcuts(f: &mut Frame, state: &mut AppState) {
         if !(spec.availability)(state) {
             continue;
         }
+        let scope_label: &'static str = match spec.scope {
+            crate::action_ids::ActionContext::Global => "Global",
+            crate::action_ids::ActionContext::InputFocus => "Input focus",
+            crate::action_ids::ActionContext::ConversationFocus => "Conversation focus",
+            crate::action_ids::ActionContext::ActivityFocus => "Activity focus",
+            crate::action_ids::ActionContext::WorkbenchApprovals => "Approvals tab",
+            crate::action_ids::ActionContext::WorkbenchReview => "Review tab",
+            crate::action_ids::ActionContext::WorkbenchSessions => "Sessions tab",
+            crate::action_ids::ActionContext::WorkbenchAgents => "Agents tab",
+            crate::action_ids::ActionContext::WorkbenchRuntime => "Runtime tab",
+            crate::action_ids::ActionContext::WorkbenchPlan => "Plan tab",
+            crate::action_ids::ActionContext::WorkbenchVil => "VIL tab",
+            crate::action_ids::ActionContext::WorkbenchVwfd => "VWFD tab",
+            crate::action_ids::ActionContext::WorkbenchAny => "Any workbench tab",
+            crate::action_ids::ActionContext::OverlayActive => "Overlay",
+        };
         let chords = spec.keybindings.join(" / ");
-        rows.push(format!("{chords} — {} ({})", spec.title, spec.description));
+        grouped
+            .entry(scope_label)
+            .or_default()
+            .push(format!("  {chords:<18}  {} — {}", spec.title, spec.description));
     }
+
+    let mut rows: Vec<String> = Vec::new();
+    // "Global" first, then the rest in BTreeMap order. This keeps
+    // the most-used chords near the top of the popup.
+    if let Some(global) = grouped.remove("Global") {
+        rows.push("[Global]".into());
+        rows.extend(global);
+        rows.push(String::new());
+    }
+    for (scope, lines) in &grouped {
+        rows.push(format!("[{scope}]"));
+        rows.extend(lines.clone());
+        rows.push(String::new());
+    }
+
+    rows.push("[View-internal navigation]".into());
+    rows.push("  Tab                 Cycle focus pane".into());
+    rows.push("  Ctrl+Tab            Cycle workbench tabs".into());
+    rows.push("  PageUp / PageDown   Scroll pane content".into());
+    rows.push("  Up / Down           List / history navigation".into());
+    rows.push("  Enter               Submit / confirm".into());
+    rows.push("  Esc                 Cancel / close overlay".into());
 
     let items: Vec<ListItem> = rows
         .iter()

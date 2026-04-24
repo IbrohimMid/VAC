@@ -72,13 +72,28 @@ pub async fn execute(project_root: PathBuf) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// LSP probes matched to the extension → default-server mapping
+/// used by `vac_tools::rust_analysis::pool::server_for_extension`.
+/// Keeping this list local (short, static) rather than reaching
+/// across a layer: the cost is one data-point duplication, the
+/// benefit is that `vac_cli` stays a thin wrapper and doesn't pull
+/// the full rust_analysis module.
+const LSP_PROBES: &[(&str, &str)] = &[
+    ("rust-analyzer", "VAC_LSP_RUST_SERVER"),
+    ("pyright-langserver", "VAC_LSP_PYTHON_SERVER"),
+    ("typescript-language-server", "VAC_LSP_TS_SERVER"),
+    ("gopls", "VAC_LSP_GO_SERVER"),
+];
+
 pub(crate) async fn scan(project_root: &Path) -> Vec<OnboardItem> {
     let mut out = Vec::new();
     out.push(check_config_toml(project_root).await);
     out.push(check_policy_toml(project_root).await);
     out.push(check_sandbox_toml(project_root).await);
     out.push(check_memory_dir(project_root).await);
-    out.push(check_lsp_server("rust-analyzer").await);
+    for (bin, env_var) in LSP_PROBES {
+        out.push(check_lsp_server_with_env(bin, env_var).await);
+    }
     out.push(check_git(project_root).await);
     out
 }
@@ -156,27 +171,30 @@ async fn check_memory_dir(project_root: &Path) -> OnboardItem {
     }
 }
 
-async fn check_lsp_server(name: &str) -> OnboardItem {
-    // `which`-style PATH probe via env. We avoid spawning the real
-    // binary because some LSP servers take >1s to respond.
+/// Probe a single LSP binary on PATH. Uses a pure env split —
+/// cheap, no subprocess. Honours the matching env-var override
+/// (see W5.1's `DEFAULT_SERVERS` in `vac_tools::rust_analysis::pool`).
+async fn check_lsp_server_with_env(name: &str, env_var: &str) -> OnboardItem {
+    // Operator override via env takes precedence in the probe.
+    let bin = std::env::var(env_var).unwrap_or_else(|_| name.to_string());
     let on_path = std::env::var_os("PATH")
         .and_then(|p| {
             std::env::split_paths(&p)
-                .find(|dir| dir.join(name).is_file())
+                .find(|dir| dir.join(&bin).is_file())
         })
         .is_some();
     if on_path {
         OnboardItem {
             status: OnboardStatus::Ok,
-            label: format!("{name} on PATH"),
+            label: format!("LSP: {bin} on PATH"),
             suggestion: None,
         }
     } else {
         OnboardItem {
             status: OnboardStatus::Info,
-            label: format!("{name} not on PATH (LSP features degraded)"),
+            label: format!("LSP: {bin} not on PATH (language degraded)"),
             suggestion: Some(format!(
-                "install {name} or set VAC_LSP_RUST_SERVER to an alternative"
+                "install {bin} or set {env_var} to an alternative"
             )),
         }
     }
@@ -240,9 +258,24 @@ mod tests {
 
     #[tokio::test]
     async fn lsp_probe_for_bogus_binary_returns_info() {
-        let item = check_lsp_server("definitely-not-a-real-binary-xyz").await;
+        let item = check_lsp_server_with_env(
+            "definitely-not-a-real-binary-xyz",
+            "VAC_LSP_NONEXISTENT_SERVER",
+        )
+        .await;
         assert_eq!(item.status, OnboardStatus::Info);
         assert!(item.suggestion.is_some());
+    }
+
+    #[tokio::test]
+    async fn scan_emits_one_lsp_row_per_probe() {
+        let tmp = tempfile::tempdir().unwrap();
+        let items = scan(tmp.path()).await;
+        let lsp_rows = items
+            .iter()
+            .filter(|i| i.label.starts_with("LSP: "))
+            .count();
+        assert_eq!(lsp_rows, LSP_PROBES.len());
     }
 
     #[test]

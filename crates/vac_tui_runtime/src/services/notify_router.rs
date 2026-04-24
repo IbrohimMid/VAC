@@ -23,6 +23,23 @@
 
 use crate::app::{AppState, ActivityKind};
 
+/// Upper bounds on NotifyEvent string fields. Prevents a buggy
+/// producer from pushing a multi-MB message into the activity ring
+/// or toast / banner surfaces.
+pub const NOTIFY_SUBSYSTEM_CAP: usize = 64;
+pub const NOTIFY_SUMMARY_CAP: usize = 512;
+pub const NOTIFY_DETAIL_CAP: usize = 4 * 1024;
+
+fn clamp_chars(s: &str, cap: usize) -> String {
+    if s.chars().count() <= cap {
+        return s.to_string();
+    }
+    const MARK: &str = "…";
+    let keep = cap.saturating_sub(MARK.chars().count()).max(1);
+    let head: String = s.chars().take(keep).collect();
+    format!("{head}{MARK}")
+}
+
 /// Severity lanes. Maps to the three existing surfaces.
 /// `OperatorDecision` is reserved — routers must not auto-fire it;
 /// approval/ask-user flows own that path.
@@ -99,7 +116,12 @@ impl NotifyEvent {
 /// prefix so operators can scan origin at a glance — matches the
 /// SystemPulse panel's grammar.
 pub fn route(state: &mut AppState, event: NotifyEvent) {
-    let prefixed = format!("[{}] {}", event.subsystem, event.summary);
+    // Clamp every field before rendering — a producer pushing a
+    // 10 MB message would otherwise OOM the activity ring and
+    // toast pipeline.
+    let subsystem = clamp_chars(&event.subsystem, NOTIFY_SUBSYSTEM_CAP);
+    let summary = clamp_chars(&event.summary, NOTIFY_SUMMARY_CAP);
+    let prefixed = format!("[{}] {}", subsystem, summary);
     let kind = event.severity.to_activity_kind();
     state.push_activity(kind, prefixed.clone());
 
@@ -215,6 +237,30 @@ mod tests {
         assert!(prefixes[0].starts_with("[approvals]"));
         assert!(prefixes[1].starts_with("[runtime]"));
         assert!(prefixes[2].starts_with("[mcp]"));
+    }
+
+    #[test]
+    fn oversized_fields_are_clamped() {
+        let mut state = fresh();
+        let huge_sub: String = "s".repeat(NOTIFY_SUBSYSTEM_CAP * 4);
+        let huge_sum: String = "m".repeat(NOTIFY_SUMMARY_CAP * 4);
+        route(&mut state, NotifyEvent::warn(huge_sub, huge_sum));
+        let line = &state.execution.activity[0].message;
+        // [s…]  + [m…] — both fields truncated; total line length
+        // bounded by cap+cap+format overhead.
+        assert!(
+            line.chars().count() <= NOTIFY_SUBSYSTEM_CAP + NOTIFY_SUMMARY_CAP + 8,
+            "activity row too long: {} chars",
+            line.chars().count(),
+        );
+    }
+
+    #[test]
+    fn clamp_helper_marks_truncation() {
+        let long: String = "x".repeat(100);
+        let clamped = clamp_chars(&long, 20);
+        assert!(clamped.chars().count() <= 20);
+        assert!(clamped.contains('…'));
     }
 
     #[test]
