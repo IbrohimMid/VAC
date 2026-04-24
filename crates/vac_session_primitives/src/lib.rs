@@ -7,11 +7,14 @@
 //! No session-runtime deps (no LlmAdapter, SubagentRunner,
 //! SubmitStream); this crate sits below them in the graph.
 
+pub mod agent_dispatch;
 pub mod error;
 pub mod cron;
 pub mod hooks;
 pub mod web;
 pub mod monitor;
+
+pub use agent_dispatch::{AgentDispatchInput, AgentDispatcher};
 
 pub use error::{EngineError, EngineResult};
 pub use cron::{CronEntry, CronStore, DEFAULT_CRON_FILENAME, unix_now};

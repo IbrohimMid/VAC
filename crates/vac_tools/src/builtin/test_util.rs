@@ -22,5 +22,6 @@ pub fn make_ctx(working_dir: PathBuf, session_id: Uuid) -> ToolContext {
         agent_zone: AgentZone::ParentAgent,
         environment_mode: "host".to_string(),
         privacy: Arc::new(RwLock::new(PrivacyVault::new())),
+        agent_dispatcher: None,
     }
 }

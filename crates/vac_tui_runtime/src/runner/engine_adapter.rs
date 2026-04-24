@@ -53,14 +53,45 @@ pub async fn run_via_session_engine(
     // B2: live dispatcher wiring. Build a ToolRegistry with
     // builtins registered, construct a ToolContext for this
     // submit, and assemble a live_compact_config that carries both
-    // the dispatcher and (future B3) composite gate.
+    // the dispatcher and (B3) composite gate.
+    // B4: attach an AgentDispatcher so the `agent_run` tool can
+    // actually spawn subagents in the live session.
     let registry = Arc::new(ToolRegistry::new());
     vac_tools::builtin::register_builtin_tools(&registry)
         .await
         .map_err(|e| anyhow::anyhow!("register builtins: {e}"))?;
     let session_id = uuid::Uuid::new_v4();
+
+    let writer = Arc::new(TranscriptWriter::new(project_root.clone()));
+    let slash = Arc::new(SlashProcessor::new());
+    let compact: Arc<dyn vac_session_engine::CompactBoundary> =
+        Arc::new(TrivialCompactBoundary::default());
+    let usage = Arc::new(UsageTracker::new());
+    // Build the agent dispatcher from a sibling SubagentDispatchContext
+    // that shares transcript/slash/compact/usage with the parent
+    // submit. The LlmAdapter passed in is a fresh
+    // `VacEngineAdapter` without a result oneshot (subagents don't
+    // hand TaskResult back — they emit ToolResults on the parent
+    // stream, which EngineAgentDispatcher folds into an envelope).
+    let subagent_llm: Arc<dyn vac_session_engine::LlmAdapter> =
+        Arc::new(VacEngineAdapter::new(engine.clone()));
+    let subagent_dispatch_ctx = vac_session_engine::SubagentDispatchContext::new(
+        writer.clone(),
+        slash.clone(),
+        compact.clone(),
+        usage.clone(),
+        subagent_llm,
+    );
+    let agent_dispatcher: Arc<
+        dyn vac_session_primitives::AgentDispatcher,
+    > = Arc::new(vac_session_engine::EngineAgentDispatcher::new(
+        subagent_dispatch_ctx,
+    ));
+
     let ctx = Arc::new(
-        ToolContext::new(project_root.clone()).with_session_id(session_id),
+        ToolContext::new(project_root.clone())
+            .with_session_id(session_id)
+            .with_agent_dispatcher(agent_dispatcher),
     );
     // B3: compose HookGate + (future) other gates into the live
     // CompositeGate. Load-time schema errors abort the submit
@@ -85,11 +116,6 @@ pub async fn run_via_session_engine(
     // the TUI's changeset / review pane was silently blank.
     let (result_tx, result_rx) = oneshot::channel::<TaskResult>();
     let adapter = Arc::new(VacEngineAdapter::with_result_tx(engine.clone(), result_tx));
-    let writer = Arc::new(TranscriptWriter::new(project_root));
-    let slash = Arc::new(SlashProcessor::new());
-    let compact: Arc<dyn vac_session_engine::CompactBoundary> =
-        Arc::new(TrivialCompactBoundary::default());
-    let usage = Arc::new(UsageTracker::new());
     let submit_ctx = SubmitContext::new(session_id, task_description.to_string());
 
     let mut stream = submit_stream(

@@ -164,6 +164,12 @@ pub struct ToolContext {
     pub agent_zone: AgentZone,
     pub environment_mode: String,
     pub privacy: Arc<RwLock<crate::PrivacyVault>>,
+    /// B4 — optional `AgentDispatcher`. When set, the `agent_run`
+    /// tool delegates to it; when None, `agent_run` returns an
+    /// explicit error rather than silently failing. Populated by
+    /// the live session wiring in `vac_tui_runtime::runner`.
+    pub agent_dispatcher:
+        Option<Arc<dyn vac_session_primitives::AgentDispatcher>>,
 }
 
 impl std::fmt::Debug for ToolContext {
@@ -189,7 +195,16 @@ impl ToolContext {
             environment_mode: std::env::var("VAC_ENVIRONMENT_MODE")
                 .unwrap_or_else(|_| "host".to_string()),
             privacy: Arc::new(RwLock::new(crate::PrivacyVault::new())),
+            agent_dispatcher: None,
         }
+    }
+
+    pub fn with_agent_dispatcher(
+        mut self,
+        d: Arc<dyn vac_session_primitives::AgentDispatcher>,
+    ) -> Self {
+        self.agent_dispatcher = Some(d);
+        self
     }
 
     pub fn with_session_id(mut self, session_id: uuid::Uuid) -> Self {

@@ -21,6 +21,7 @@ futures = { workspace = true }
 cron = { workspace = true }
 regex = { workspace = true }
 reqwest = { workspace = true }
+vac_tool_core = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

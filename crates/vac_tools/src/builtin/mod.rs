@@ -1,4 +1,5 @@
 pub mod agent_list;
+pub mod agent_run;
 pub mod bash;
 pub mod canonical_lint;
 pub mod cargo;
@@ -97,6 +98,7 @@ pub async fn register_builtin_tools(registry: &Arc<ToolRegistry>) -> Result<(), 
         .await?;
     // NS.1 — session-primitive wrappers.
     registry.register(agent_list::AgentListTool::new()).await?;
+    registry.register(agent_run::AgentRunTool::new()).await?;
     registry.register(web_fetch::WebFetchTool::new()).await?;
     registry.register(web_search::WebSearchTool::new()).await?;
     registry.register(cron_crud::CronListTool::new()).await?;
