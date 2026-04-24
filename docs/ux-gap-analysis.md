@@ -187,8 +187,8 @@ After F2, ten W8 commands have ACTION_SPECS palette entries (🟢) — the remai
 
 | Feature | Producer | Surface | Deep-link | Disc. | Status |
 |---|---|---|---|---|---|
-| `RateLimitTracker` | `vil_llm::rate_limit` | **Not wired** into LLM router. Producer now emits `warn!` (C2 partial) so A1 bridge surfaces automatically once call-site wiring lands | None | No | 🔴 |
-| `PolicyLimits::check` | `vac_core::policy_limits` | **Not wired** into submit_one; A1 bridge would surface if wired | None | No | 🔴 |
+| `RateLimitTracker` | `vil_llm::rate_limit` + `router.rs` | 429 path emits `warn!` on `vil_llm::rate_limit` (C2) → A1 bridge → activity + toast | Activity panel | Yes | 🟢 |
+| `PolicyLimits::check` | `vac_core::policy_limits` + `submit.rs` | Budget-exceeded emits `error!` on `vac_core::policy_limits` (C1 partial) → A1 bridge → activity + banner. Full PolicyTracker.check wiring (hourly cap, per-call cap) still needs tracker instance threaded through engine | Activity + banner | Partial | 🟡 |
 
 **Gap:** both primitives are ready. Once wired, a `rate` facet (countdown) and a `policy` facet (submits used / cap) drop into SystemPulse cleanly — producers are the remaining blocker, not the projection.
 
@@ -200,9 +200,9 @@ Same shape as W9: primitives complete, REPL poll-loop integration outstanding. A
 
 | Category | Count | Representative items |
 |---|---|---|
-| 🟢 Fully surfaced | 24 | 9 facets; A1+D2 tracing bridge (info/warn/error); B1 skills; D1 idle maintenance; E3 signal grammar; F1 CLI dispatch + F2 palette; D2 speculation breadcrumb; registry + resume overlay |
-| 🟡 Partial | 4 | `should_defer`, MemoryScanner, Consolidator slash, memory panel absent |
-| 🔴 Silent | 9 | RateLimitTracker + PolicyTracker call-sites, PassiveFeedback tick, Elicitation, W7 auth, scorer/distiller |
+| 🟢 Fully surfaced | 25 | 9 facets; A1+D2 bridge (info/warn/error); B1 skills; D1 idle maintenance; E3 signal grammar; F1 CLI dispatch + F2 palette; D2 speculation breadcrumb; **C2 rate-limit 429 on router 🟢**; registry + resume overlay |
+| 🟡 Partial | 5 | `should_defer`, MemoryScanner, Consolidator slash, memory panel absent, **C1 partial (budget gate surfaces; full PolicyTracker.check wiring deferred)** |
+| 🔴 Silent | 7 | PassiveFeedback tick, Elicitation handler not consumed by MCP lifecycle, W7 auth primitives, scorer/distiller |
 | ⚫ CLI-only | 7 | remaining W8 integrations/diagnostics, `vac eval`, signal rewind |
 
 ## Root causes
@@ -232,12 +232,16 @@ Grouped by effort × reach.
 6. **Wire AutoDream + AwaySummary ticks into event_loop.** Producer side is ready; poll loop integration.
 7. **Retarget Agents / Memory / Signal panels to SystemPulse grammar.** U3-shape work per-panel.
 
-### Higher effort (≥ 4 days each)
-8. **PolicyTracker wiring into submit_one + pulse facet.** Plan already describes the integration point.
-9. **RateLimitTracker wiring into LLM router + pulse facet.**
-10. **`ActionId::SpawnCliCommand` variant + shell popup bridge.** Exposes all 17 W8 commands in the palette.
-11. **`TuiElicitationHandler` + overlay.** Closes the MCP elicitation gap.
-12. **`vac auth login <provider>` binary + palette entry.** Lights up the entire W7 stack.
+### Completed
+
+8. **PolicyTracker surface** — ✅ partial (C1). Budget-exceeded gate emits `error!` on `vac_core::policy_limits`; A1 forwards. Full tracker wiring needs engine refactor.
+9. **RateLimitTracker surface** — ✅ (C2). Router 429 arm emits `warn!` on `vil_llm::rate_limit`; A1 forwards.
+10. **CLI palette bridge** — ✅ (F1+F2). Ten `SpawnCli*` variants + dispatch.
+
+### Blocked (need cross-crate design)
+
+11. **`TuiElicitationHandler` + overlay.** Needs (a) a new `OverlayId::Elicitation` with its own input-capture lane, (b) an `attach_elicitation_handler` entry point on `McpConnection` (trait exists in `vac_mcp_core::elicitation` but no consumer in the MCP lifecycle today), (c) oneshot channel plumbing from async handler back to the render thread for modal-wait. 3+ days.
+12. **`vac auth login <provider>` binary.** Needs external crates (webbrowser or xdg-open wrapper, a tokio HTTP listener for the OAuth callback, and an HTTP client like reqwest/hyper for the token exchange) — none of these are currently in the workspace. 3+ days + dep additions.
 
 ## Conclusion
 

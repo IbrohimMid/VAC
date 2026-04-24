@@ -396,6 +396,20 @@ impl LlmRouter {
                                     "retry-after".to_string(),
                                     retry_after_secs.to_string(),
                                 );
+                                // C2 — surface provider cooldown into
+                                // the TUI activity panel via the A1
+                                // tracing bridge. Target matches
+                                // BRIDGE_ALLOWLIST("vil_llm::rate_limit").
+                                tracing::warn!(
+                                    target: "vil_llm::rate_limit",
+                                    provider = provider_name.as_str(),
+                                    retry_after_secs = retry_after_secs,
+                                    reason = %format!(
+                                        "{}s cooldown from provider 429",
+                                        retry_after_secs
+                                    ),
+                                    "provider returned 429; backing off",
+                                );
                             }
                             match crate::retry::next_retry_decision(
                                 &headers,

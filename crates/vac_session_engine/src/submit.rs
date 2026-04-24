@@ -140,6 +140,19 @@ async fn submit_after_accepted(
     if let Some(budget) = compact_cfg.max_budget_tokens {
         let used = usage.snapshot().total_tokens();
         if used >= budget {
+            // C1 partial — emit on the policy target so the TUI A1
+            // tracing bridge surfaces the denial as a critical
+            // banner + activity row. Full PolicyTracker wiring
+            // (hourly submit cap, per-call token cap) still needs
+            // a tracker instance threaded through the engine; this
+            // covers the existing budget gate without refactoring
+            // all 29 submit_one call sites.
+            tracing::error!(
+                target: "vac_core::policy_limits",
+                rule = "budget_exceeded",
+                reason = %format!("tokens_used={used} >= budget={budget}"),
+                "submit denied: session token budget exhausted",
+            );
             return Err(crate::error::EngineError::BudgetExceeded {
                 tokens_used: used,
                 budget,
