@@ -316,7 +316,18 @@ pub(super) fn activity_icon(kind: ActivityKind) -> &'static str {
         ActivityKind::Mcp => "🔌",
         ActivityKind::Isolation => "🛡",
         ActivityKind::Shell => "⚡",
+        ActivityKind::Todo => "☑",
     }
+}
+
+/// QW.1 — compose one conversation-lane line for a Todo activity
+/// item. Pulled out for unit-testability; the real renderer in
+/// `render_activity_panel` calls this when it sees a
+/// `ActivityKind::Todo` row (consecutive rows stay consecutive,
+/// which groups them visually without a separate widget).
+pub(crate) fn render_todo_line(item: &crate::app::types::ActivityItem) -> String {
+    let (state, text) = crate::app::types::parse_todo_message(&item.message);
+    format!("{}  {}", state.glyph(), text)
 }
 
 pub(super) fn render_activity_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
@@ -329,6 +340,11 @@ pub(super) fn render_activity_panel(f: &mut Frame, state: &mut AppState, area: R
     let mut lines: Vec<Line> = Vec::new();
     for item in &state.execution.activity[start..end] {
         let ts = item.at.format("%H:%M:%S").to_string();
+        let body = if item.kind == ActivityKind::Todo {
+            render_todo_line(item)
+        } else {
+            item.message.clone()
+        };
         lines.push(Line::from(vec![
             Span::styled(
                 ts,
@@ -340,7 +356,7 @@ pub(super) fn render_activity_panel(f: &mut Frame, state: &mut AppState, area: R
                 state.core.theme.style(crate::services::theme::StyleKey::Warning),
             ),
             Span::raw(" "),
-            Span::raw(item.message.clone()),
+            Span::raw(body),
         ]));
     }
     if lines.is_empty() {

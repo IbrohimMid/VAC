@@ -89,7 +89,8 @@ pub use rendering::{
     VisibleLinesCache,
 };
 pub use runtime::{
-    ActivityItem, ActivityKind, RuntimeState, VilIssue, VilIssueKind, VilLogEntry, VilSeverity,
+    ActivityItem, ActivityKind, RuntimeState, TodoState, VilIssue, VilIssueKind, VilLogEntry,
+    VilSeverity, format_todo_message, parse_todo_message,
     VilState, VilStatusSnapshot,
 };
 pub use shell::{ShellSession, ShellSessionStore, ShellState};

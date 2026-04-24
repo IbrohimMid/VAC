@@ -29,6 +29,68 @@ pub enum ActivityKind {
     Mcp,
     Isolation,
     Shell,
+    /// QW.1 — TodoTool writes materialise as grouped checklist
+    /// rows in the conversation lane. `message` encodes
+    /// `<state>: <text>` where state ∈ pending / in_progress /
+    /// done; the conversation view merges consecutive Todo
+    /// activity items into a single widget.
+    Todo,
+}
+
+/// Explicit state for a Todo row. The `ActivityKind::Todo`
+/// variant carries this as a prefix in `message` so the
+/// conversation-lane renderer can split + render without
+/// introducing a separate domain store.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum TodoState {
+    Pending,
+    InProgress,
+    Done,
+}
+
+impl TodoState {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Pending => "pending",
+            Self::InProgress => "in_progress",
+            Self::Done => "done",
+        }
+    }
+
+    pub fn glyph(self) -> char {
+        match self {
+            Self::Pending => '○',
+            Self::InProgress => '◐',
+            Self::Done => '●',
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "pending" => Some(Self::Pending),
+            "in_progress" => Some(Self::InProgress),
+            "done" => Some(Self::Done),
+            _ => None,
+        }
+    }
+}
+
+/// Helper: format a Todo activity message from parts.
+pub fn format_todo_message(state: TodoState, text: &str) -> String {
+    format!("{}: {}", state.label(), text)
+}
+
+/// Helper: decompose a Todo activity message back into parts.
+/// Returns (state, text); falls back to `Pending` on parse
+/// failure so the renderer never panics on bad input.
+pub fn parse_todo_message(raw: &str) -> (TodoState, &str) {
+    match raw.split_once(": ") {
+        Some((label, text)) => {
+            let state = TodoState::parse(label).unwrap_or(TodoState::Pending);
+            (state, text)
+        }
+        None => (TodoState::Pending, raw),
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -230,4 +292,36 @@ pub struct VilState {
     pub event_log: VecDeque<VilLogEntry>,
     pub workbench_selected: usize,
     pub workbench_group_filter: Option<VilIssueKind>,
+}
+
+#[cfg(test)]
+mod todo_helper_tests {
+    use super::*;
+
+    #[test]
+    fn todo_message_roundtrips() {
+        let msg = format_todo_message(TodoState::InProgress, "wire up tracing");
+        let (state, text) = parse_todo_message(&msg);
+        assert_eq!(state, TodoState::InProgress);
+        assert_eq!(text, "wire up tracing");
+    }
+
+    #[test]
+    fn todo_glyph_differs_per_state() {
+        let g: std::collections::HashSet<char> = [
+            TodoState::Pending.glyph(),
+            TodoState::InProgress.glyph(),
+            TodoState::Done.glyph(),
+        ]
+        .into_iter()
+        .collect();
+        assert_eq!(g.len(), 3, "three distinct glyphs expected");
+    }
+
+    #[test]
+    fn parse_todo_message_falls_back_to_pending_on_garbage() {
+        let (state, text) = parse_todo_message("no colon here");
+        assert_eq!(state, TodoState::Pending);
+        assert_eq!(text, "no colon here");
+    }
 }
