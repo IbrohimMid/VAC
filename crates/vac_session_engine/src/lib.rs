@@ -36,6 +36,7 @@ pub mod hooks;
 pub mod monitor;
 pub mod schedule;
 pub mod web;
+pub mod worktree;
 pub mod event;
 pub mod gate;
 pub mod file_state_cache;
@@ -74,6 +75,10 @@ pub use monitor::{MonitorHandle, MonitorLine, MonitorSpec, spawn_monitor};
 pub use web::{
     BraveBackend, DEFAULT_RESPONSE_CAP, SearchBackend, WebFetchRequest,
     WebFetchResult, WebSearchHit, WebSearchRequest, fetch as web_fetch,
+};
+pub use worktree::{
+    EnterWorktreeRequest, ExitWorktreeRequest, WorktreeHandle, enter_worktree,
+    exit_worktree,
 };
 pub use schedule::{
     MAX_DELAY, MIN_DELAY, WakeupSpec, clamp_delay, schedule_interval_loop,
