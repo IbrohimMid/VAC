@@ -1,16 +1,14 @@
-//! NS.1 + NS.4 — `hook_list` / `hook_delete` / `hook_create` tools.
-//! Read/mutate `.vac/hooks.json` via `vac_session_primitives`.
+//! NS.1 + NS.4 + B3 — `hook_list` / `hook_delete` / `hook_create`
+//! tools. Read/mutate `.vac/hooks.json` via `vac_session_primitives`.
 //!
-//! `HookSandbox` + `validate_hook_store` land in NS.4; the sandbox
-//! enforces env allowlist + rlimits + wall-clock when hooks run
-//! through `HookGate`. **Integration note**: the live session's
-//! `CompositeGate` does not yet include `HookGate` (tracked
-//! follow-up). Until that wiring lands, `hook_create` writes the
-//! entry to disk but VAC itself does not execute it — only
-//! external runners that wrap `HookGate::new` observe the
-//! registration. Tool trust therefore stays at `privileged` so
-//! the operator consents to disk-level registration even while
-//! execution-side enforcement is in progress.
+//! As of B3 the live session's `CompositeGate` composes `HookGate`
+//! with `HookSandbox::operator_default()` (env allowlist +
+//! rlimit AS/CPU/NOFILE + 5-min wall-clock). A command hook
+//! registered via `hook_create` now actually runs through the
+//! sandbox at PreToolUse time — not merely written to disk. Trust
+//! is back at `ask_once` because the sandbox enforces at execute
+//! time; `hook_create` kind=http keeps `is_input_destructive`
+//! because network egress is not caught by the sandbox.
 
 use async_trait::async_trait;
 use serde::Deserialize;
@@ -271,11 +269,10 @@ impl VilTool for HookCreateTool {
     }
 
     fn trust_requirement(&self) -> &str {
-        // Audit C1: pending `HookGate` integration into the live
-        // CompositeGate, stay at `privileged` so the operator
-        // explicitly consents. Drop back to `ask_once` once the
-        // sandbox actually guards execution.
-        "privileged"
+        // B3: HookGate now wired into the live CompositeGate with
+        // a restrictive HookSandbox, so command hooks are
+        // sandboxed at execute time. Drop back to `ask_once`.
+        "ask_once"
     }
 
     fn risk_level(&self) -> &str {

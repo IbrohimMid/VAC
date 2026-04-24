@@ -60,7 +60,10 @@ pub use fork::{
     MAX_SPECULATION_MESSAGES, MAX_SPECULATION_TURNS,
 };
 pub use event::{SubmitContext, SubmitEvent};
-pub use llm::{CassetteAdapter, EchoAdapter, LlmAdapter, LlmRequest, LlmResponse};
+pub use llm::{
+    CassetteAdapter, EchoAdapter, LlmAdapter, LlmRequest, LlmResponse, ToolCallRequest,
+    ToolDispatcher, UnsupportedDispatcher,
+};
 pub use slash::{SlashCommand, SlashProcessor};
 pub use gate::{
     CompositeGate, GateDecision, NoopHookGate, PlanModeGate, PolicyGate, ToolCheckCtx,

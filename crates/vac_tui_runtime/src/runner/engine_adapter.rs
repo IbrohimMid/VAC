@@ -45,9 +45,32 @@ pub async fn run_via_session_engine(
 ) -> anyhow::Result<vac_core::TaskResult> {
     use futures::StreamExt;
     use vac_session_engine::{
-        CompactConfig, SlashProcessor, SubmitContext, TranscriptWriter,
-        TrivialCompactBoundary, UsageTracker, submit_stream,
+        SlashProcessor, SubmitContext, TranscriptWriter, TrivialCompactBoundary,
+        UsageTracker, submit_stream,
     };
+    use vac_tools::{ToolRegistry, registry::ToolContext};
+
+    // B2: live dispatcher wiring. Build a ToolRegistry with
+    // builtins registered, construct a ToolContext for this
+    // submit, and assemble a live_compact_config that carries both
+    // the dispatcher and (future B3) composite gate.
+    let registry = Arc::new(ToolRegistry::new());
+    vac_tools::builtin::register_builtin_tools(&registry)
+        .await
+        .map_err(|e| anyhow::anyhow!("register builtins: {e}"))?;
+    let session_id = uuid::Uuid::new_v4();
+    let ctx = Arc::new(
+        ToolContext::new(project_root.clone()).with_session_id(session_id),
+    );
+    // B3: compose HookGate + (future) other gates into the live
+    // CompositeGate. Load-time schema errors abort the submit
+    // with a crisp message instead of silently disabling hooks.
+    let gate = super::dispatcher::build_live_gate(&project_root).await?;
+    let compact_cfg = super::dispatcher::live_compact_config(
+        registry.clone(),
+        ctx.clone(),
+        Some(gate),
+    );
 
     // NS.2 — drive the submit through `submit_stream` and pump each
     // `SubmitChunk` directly into the TUI's `RuntimeUpdate` channel
@@ -67,16 +90,16 @@ pub async fn run_via_session_engine(
     let compact: Arc<dyn vac_session_engine::CompactBoundary> =
         Arc::new(TrivialCompactBoundary::default());
     let usage = Arc::new(UsageTracker::new());
-    let ctx = SubmitContext::new(uuid::Uuid::new_v4(), task_description.to_string());
+    let submit_ctx = SubmitContext::new(session_id, task_description.to_string());
 
     let mut stream = submit_stream(
-        ctx,
+        submit_ctx,
         writer.clone(),
         slash,
         compact,
         usage.clone(),
         adapter,
-        CompactConfig::default(),
+        compact_cfg,
     );
     let mut total_tokens: u64 = 0;
     // NS.2 audit fix: pre-migration submit_one returned its error

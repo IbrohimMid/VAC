@@ -21,6 +21,7 @@ pub struct TuiProjectContext {
 
 mod backend;
 mod bundle_tasks;
+pub mod dispatcher;
 pub mod engine_adapter;
 mod message_tasks;
 mod profile_tasks;
