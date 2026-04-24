@@ -170,6 +170,12 @@ pub struct ToolContext {
     /// the live session wiring in `vac_tui_runtime::runner`.
     pub agent_dispatcher:
         Option<Arc<dyn vac_session_primitives::AgentDispatcher>>,
+    /// ADR-002 — depth in the subagent delegation tree.
+    /// 0 = parent, 1 = first-level subagent (supported),
+    /// ≥ 2 = nested (hard-denied by `agent_run`). Live drivers
+    /// construct the parent ctx at depth 0 and the subagent ctx
+    /// at depth 1; the guard lives in `agent_run::execute`.
+    pub depth: u32,
 }
 
 impl std::fmt::Debug for ToolContext {
@@ -196,6 +202,7 @@ impl ToolContext {
                 .unwrap_or_else(|_| "host".to_string()),
             privacy: Arc::new(RwLock::new(crate::PrivacyVault::new())),
             agent_dispatcher: None,
+            depth: 0,
         }
     }
 
@@ -204,6 +211,15 @@ impl ToolContext {
         d: Arc<dyn vac_session_primitives::AgentDispatcher>,
     ) -> Self {
         self.agent_dispatcher = Some(d);
+        self
+    }
+
+    /// ADR-002 — mark this context as a subagent at a given
+    /// delegation depth. Parent calls this on the ctx it hands
+    /// to `SubagentDispatchContext`; the guard in `agent_run`
+    /// rejects `depth >= 1`.
+    pub fn with_depth(mut self, depth: u32) -> Self {
+        self.depth = depth;
         self
     }
 

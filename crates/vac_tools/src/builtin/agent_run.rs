@@ -79,6 +79,20 @@ impl VilTool for AgentRunTool {
         args: serde_json::Value,
         context: &ToolContext,
     ) -> Result<serde_json::Value, ToolError> {
+        // ADR-002 runtime guard — deep delegation trees require
+        // a formal model (quota/gate/approval inheritance, cancel
+        // tree, transcript tree) VAC v1 has not designed. Reject
+        // nested `agent_run` with an explicit pointer to the ADR
+        // so operators can restructure their workflow.
+        if context.depth >= 1 {
+            return Err(ToolError::ExecutionFailed(
+                "Nested subagents are not supported in VAC v1. First-level \
+                 delegation only — see docs/adr/ADR-002-subagent-depth-policy.md. \
+                 Restructure so the parent agent (depth 0) dispatches all \
+                 subagents directly rather than through another subagent."
+                    .into(),
+            ));
+        }
         let input: Input = serde_json::from_value(args)
             .map_err(|e| ToolError::ExecutionFailed(format!("invalid arguments: {e}")))?;
         let dispatcher = context.agent_dispatcher.as_ref().ok_or_else(|| {
@@ -127,6 +141,48 @@ mod tests {
             .await
             .unwrap_err();
         assert!(err.to_string().contains("no AgentDispatcher"));
+    }
+
+    /// ADR-002 — nested `agent_run` is hard-denied.
+    #[tokio::test]
+    async fn agent_run_denies_nested_depth() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut ctx = make_ctx(tmp.path().to_path_buf(), uuid::Uuid::new_v4());
+        ctx.depth = 1; // subagent ctx
+        let err = AgentRunTool::new()
+            .execute(
+                serde_json::json!({
+                    "subagent_type": "explore",
+                    "description": "x",
+                    "prompt": "y"
+                }),
+                &ctx,
+            )
+            .await
+            .unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("Nested subagents are not supported"), "{msg}");
+        assert!(msg.contains("ADR-002"), "error should cite the ADR: {msg}");
+    }
+
+    /// ADR-002 — deeper nesting (depth 2+) also denied.
+    #[tokio::test]
+    async fn agent_run_denies_deeply_nested_depth() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut ctx = make_ctx(tmp.path().to_path_buf(), uuid::Uuid::new_v4());
+        ctx.depth = 5;
+        let err = AgentRunTool::new()
+            .execute(
+                serde_json::json!({
+                    "subagent_type": "plan",
+                    "description": "x",
+                    "prompt": "y"
+                }),
+                &ctx,
+            )
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("ADR-002"));
     }
 
     #[tokio::test]

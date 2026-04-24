@@ -19,6 +19,8 @@ fn ctx(working_dir: std::path::PathBuf, session_id: uuid::Uuid) -> ToolContext {
         agent_zone: AgentZone::ParentAgent,
         environment_mode: "host".to_string(),
         privacy: Arc::new(tokio::sync::RwLock::new(vac_tools::PrivacyVault::new())),
+        agent_dispatcher: None,
+        depth: 0,
     }
 }
 

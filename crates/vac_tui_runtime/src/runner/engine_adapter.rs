@@ -167,9 +167,14 @@ pub async fn run_via_session_engine_with_broadcast(
     // to the budget cap `SubagentRunner` enforces upstream.
     let parent_ctx_base = ToolContext::new(project_root.clone())
         .with_session_id(session_id);
+    // ADR-002: subagent ctx runs at depth=1 so nested
+    // `agent_run` inside the subagent hard-denies. `depth` field
+    // is the enforcement seam; agent_run checks it at execute
+    // time.
+    let subagent_ctx = parent_ctx_base.clone().with_depth(1);
     let subagent_cfg = super::dispatcher::live_compact_config(
         registry.clone(),
-        Arc::new(parent_ctx_base.clone()),
+        Arc::new(subagent_ctx),
         Some(gate.clone()),
     );
     let subagent_dispatch_ctx = vac_session_engine::SubagentDispatchContext::new(
