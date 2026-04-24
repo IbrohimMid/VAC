@@ -367,6 +367,16 @@ pub(super) fn render_context_inspector(f: &mut Frame, state: &mut AppState) {
         "Current message: {}",
         b.current_message.total_tokens,
     )));
+    // D.5 — sidechain + compaction breadcrumbs.
+    lines.push(Line::raw(format!(
+        "Sidechain total: {} tokens",
+        b.sidechain_total_tokens,
+    )));
+    lines.push(Line::raw(format!(
+        "Compactions:     {} (recent: {})",
+        b.compactions_count,
+        b.recent_compactions.len(),
+    )));
     lines.push(Line::raw(""));
     lines.push(Line::raw("[Esc] close"));
 

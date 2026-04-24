@@ -24,6 +24,17 @@ pub struct BillingState {
     pub context_usage_percent: f32,
     pub billing_info: Option<BillingInfo>,
     pub auth_display: (Option<String>, Option<String>, Option<String>),
+    /// D.5 — running total of tokens consumed by sidechain
+    /// (subagent) runs. Updated on each subagent Finished chunk.
+    pub sidechain_total_tokens: u64,
+    /// D.5 — number of compact boundaries fired this session
+    /// (normal + auto-compact combined). The ctx overlay shows
+    /// this as a history ribbon.
+    pub compactions_count: u64,
+    /// D.5 — sliding window of recent Compacted event timestamps
+    /// (unix seconds). Capped at the last 32 for a ~short-term
+    /// "when did we last compact" pulse.
+    pub recent_compactions: Vec<i64>,
 }
 
 #[derive(Debug, Clone)]
