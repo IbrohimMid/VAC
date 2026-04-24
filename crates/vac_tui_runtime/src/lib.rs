@@ -48,6 +48,7 @@ pub mod controller;
 mod event;
 pub mod overlay;
 pub mod session_snapshot;
+pub mod system_pulse;
 pub mod ui;
 pub mod workbench;
 
