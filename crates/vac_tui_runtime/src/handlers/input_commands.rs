@@ -445,6 +445,30 @@ fn dispatch_action(
                 crate::overlay::OverlayId::ContextInspector,
             );
         }
+        ActionId::Thinkback => {
+            // D.6 — the full scrub UI lands when RewindStore is
+            // default-on. Today the slash fires + traces so
+            // operators see the call has landed + where the
+            // primitive sits.
+            state.push_activity(
+                crate::app::ActivityKind::Status,
+                "thinkback: primitive armed (rewind UI pending)".to_string(),
+            );
+            tracing::info!(
+                target: "vac_tui_runtime::rewind",
+                "thinkback invoked — scrub target: previous Accepted",
+            );
+        }
+        ActionId::ThinkbackPlay => {
+            state.push_activity(
+                crate::app::ActivityKind::Status,
+                "thinkback-play: primitive armed (replay UI pending)".to_string(),
+            );
+            tracing::info!(
+                target: "vac_tui_runtime::rewind",
+                "thinkback-play invoked — replay from current anchor",
+            );
+        }
         // F1 — CLI bridge. Each SpawnCli* action ID launches the
         // matching `vac <cmd>` subprocess through the shell popup
         // pipeline. We reuse `OutputEvent::ExecuteCommand` + the

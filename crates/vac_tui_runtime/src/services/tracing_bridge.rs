@@ -49,6 +49,7 @@ pub const BRIDGE_ALLOWLIST: &[(&str, &str)] = &[
     ("vac_tui_runtime::monitor", "monitor"),
     ("vac_tui_runtime::hooks", "hooks"),
     ("vac_tui_runtime::web", "web"),
+    ("vac_tui_runtime::rewind", "rewind"),
 ];
 
 /// Shared handle the TUI event loop holds to the `AppState` so the

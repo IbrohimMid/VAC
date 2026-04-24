@@ -109,6 +109,10 @@ pub enum ActionId {
     SpawnCliAuthLogin,
     /// QW.2 — open the /context overlay.
     OpenContextInspector,
+    /// D.6 — scrub to previous Accepted row in the transcript.
+    Thinkback,
+    /// D.6 — replay tool calls from a saved point forward.
+    ThinkbackPlay,
 }
 
 // ── KeyChord ────────────────────────────────────────────────────────────────
