@@ -30,15 +30,11 @@
 
 pub mod agent_tool;
 pub mod compact;
-pub mod cron;
-pub mod error;
-pub mod hooks;
-pub mod monitor;
 pub mod schedule;
-pub mod web;
 pub mod worktree;
 pub mod event;
 pub mod gate;
+pub mod hooks_gate;
 pub mod file_state_cache;
 pub mod fork;
 pub mod llm;
@@ -49,8 +45,13 @@ pub mod submit;
 pub mod transcript;
 pub mod usage;
 
+// Re-export the primitives modules so `crate::cron::…`,
+// `crate::hooks::…`, `crate::error::…`, `crate::web::…`,
+// `crate::monitor::…` keep resolving for in-crate call sites.
+pub use vac_session_primitives::{cron, error, hooks, monitor, web};
+
 pub use compact::{CompactBoundary, CompactHint, CompactInput, TrivialCompactBoundary};
-pub use error::{EngineError, EngineResult};
+pub use vac_session_primitives::{EngineError, EngineResult};
 pub use file_state_cache::{
     FileStateCache, FileStateEntry, ForkedCache, DEFAULT_FILE_STATE_CAPACITY,
 };
@@ -66,16 +67,16 @@ pub use gate::{
     ToolGate,
 };
 pub use stream::{SubmitChunk, SubmitStream, submit_stream};
-pub use cron::{CronEntry, CronStore, DEFAULT_CRON_FILENAME, unix_now};
-pub use hooks::{
+pub use vac_session_primitives::{
+    CronEntry, CronStore, DEFAULT_CRON_FILENAME, unix_now,
     DEFAULT_HOOKS_FILENAME, HookCommand, HookDecision, HookEntry, HookEvent,
-    HookGate, HookStore, exec_hook,
-};
-pub use monitor::{MonitorHandle, MonitorLine, MonitorSpec, spawn_monitor};
-pub use web::{
+    HookStore, exec_hook,
+    MonitorHandle, MonitorLine, MonitorSpec, spawn_monitor,
     BraveBackend, DEFAULT_RESPONSE_CAP, SearchBackend, WebFetchRequest,
-    WebFetchResult, WebSearchHit, WebSearchRequest, fetch as web_fetch,
+    WebFetchResult, WebSearchHit, WebSearchRequest,
 };
+pub use vac_session_primitives::fetch as web_fetch;
+pub use hooks_gate::HookGate;
 pub use worktree::{
     EnterWorktreeRequest, ExitWorktreeRequest, WorktreeHandle, enter_worktree,
     exit_worktree,

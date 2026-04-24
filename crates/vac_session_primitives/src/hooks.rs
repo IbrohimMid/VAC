@@ -1,4 +1,4 @@
-//! C.5 — hook registry (9 events × 4 command types).
+//! C.5 — hook registry storage (9 events × 4 command types).
 //!
 //! Operator-configured hooks under `<project_root>/.vac/hooks.json`.
 //! Each hook declares an `event` (PreToolUse, PostToolUse, etc.),
@@ -6,27 +6,22 @@
 //! prompt / agent / http). Event names match CC's `HOOK_EVENTS`
 //! enum so operators can port hook configs between ecosystems.
 //!
-//! This module ships the storage primitive + a `HookGate` that
-//! wires `PreToolUse` hooks into `CompositeGate` from A.2. The
-//! `command` kind runs via `tokio::process::Command`; the other
-//! three kinds (`prompt`, `agent`, `http`) return Allow with a
-//! log marker for now — real dispatchers land when the tool
-//! registry integration in a follow-up crate exposes the
-//! adapters these need.
+//! This module holds the pure-storage primitives (types,
+//! `HookStore`, `exec_hook`). The `HookGate` implementation that
+//! wires these into `vac_session_engine::gate::ToolGate` lives in
+//! `vac_session_engine::hooks_gate`.
 //!
 //! Security: shell commands inherit the current process
 //! environment + cwd; no shell expansion (argv is split on
 //! whitespace, quoted tokens preserved). A hook returning a
-//! non-zero exit code maps to `GateDecision::Deny` with the
+//! non-zero exit code maps to `HookDecision::Deny` with the
 //! stderr body as the reason.
 
 use std::path::{Path, PathBuf};
 
-use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::error::{EngineError, EngineResult};
-use crate::gate::{GateDecision, ToolCheckCtx, ToolGate};
 
 pub const DEFAULT_HOOKS_FILENAME: &str = "hooks.json";
 
@@ -234,121 +229,6 @@ pub enum HookDecision {
     Deny { reason: String },
 }
 
-/// `ToolGate` implementation that fires all PreToolUse hooks
-/// matching `ctx.tool_name` and denies if any hook denies.
-///
-/// Audit fix: the previous implementation recompiled each
-/// matcher regex on every call (O(n·compile) per ToolCheckCtx);
-/// this version compiles once at `new()` / `replace_store()`
-/// time and looks up by id on match.
-#[derive(Debug, Clone)]
-pub struct HookGate {
-    store: std::sync::Arc<tokio::sync::RwLock<HookStoreCompiled>>,
-}
-
-/// Internal: HookStore + cached compiled matchers indexed by id.
-#[derive(Debug)]
-pub(crate) struct HookStoreCompiled {
-    pub store: HookStore,
-    pub compiled: std::collections::HashMap<String, Option<regex::Regex>>,
-}
-
-impl HookStoreCompiled {
-    fn from_store(store: HookStore) -> Self {
-        let mut compiled = std::collections::HashMap::with_capacity(store.entries.len());
-        for e in &store.entries {
-            let r = if e.matcher.is_empty() {
-                None
-            } else {
-                match regex::Regex::new(&e.matcher) {
-                    Ok(r) => Some(r),
-                    Err(err) => {
-                        tracing::warn!(
-                            target: "vac_tui_runtime::hooks",
-                            hook = %e.id,
-                            matcher = %e.matcher,
-                            error = %err,
-                            "hook matcher failed to compile — entry disabled",
-                        );
-                        None
-                    }
-                }
-            };
-            compiled.insert(e.id.clone(), r);
-        }
-        Self { store, compiled }
-    }
-
-    fn matches<'a>(&'a self, event: HookEvent, tool_name: &str) -> Vec<&'a HookEntry> {
-        self.store
-            .entries
-            .iter()
-            .filter(|e| e.event == event)
-            .filter(|e| match self.compiled.get(&e.id) {
-                Some(Some(re)) => re.is_match(tool_name),
-                // None means the matcher was empty (accept all)
-                // OR it failed to compile (entry disabled).
-                // An empty matcher is recorded as `compiled[id] =
-                // None` with `store.matcher = ""`; a bad regex
-                // is also `None` but with non-empty matcher text.
-                // Keep the "empty = match-all" contract:
-                Some(None) => e.matcher.is_empty(),
-                None => false,
-            })
-            .collect()
-    }
-}
-
-impl HookGate {
-    pub fn new(store: HookStore) -> Self {
-        Self {
-            store: std::sync::Arc::new(tokio::sync::RwLock::new(
-                HookStoreCompiled::from_store(store),
-            )),
-        }
-    }
-
-    pub async fn replace_store(&self, new: HookStore) {
-        *self.store.write().await = HookStoreCompiled::from_store(new);
-    }
-}
-
-#[async_trait]
-impl ToolGate for HookGate {
-    fn label(&self) -> &'static str {
-        "hooks"
-    }
-
-    async fn check(&self, ctx: &ToolCheckCtx) -> GateDecision {
-        let store = self.store.read().await;
-        let matches = store.matches(HookEvent::PreToolUse, &ctx.tool_name);
-        // Clone the matching entries so we drop the read lock
-        // before each potentially-slow exec_hook call.
-        let matches: Vec<HookEntry> = matches.iter().copied().cloned().collect();
-        drop(store);
-        for entry in &matches {
-            match exec_hook(entry).await {
-                Ok(HookDecision::Allow) => continue,
-                Ok(HookDecision::Deny { reason }) => {
-                    return GateDecision::Deny { reason };
-                }
-                Err(e) => {
-                    tracing::warn!(
-                        target: "vac_tui_runtime::hooks",
-                        hook = %entry.id,
-                        error = %e,
-                        "hook execution failed — treating as deny",
-                    );
-                    return GateDecision::Deny {
-                        reason: format!("hook '{}' failed: {e}", entry.id),
-                    };
-                }
-            }
-        }
-        GateDecision::allow()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -430,20 +310,5 @@ mod tests {
             .collect();
         let err = s.create(entry("big", argv)).unwrap_err();
         assert!(format!("{err}").contains("cap "));
-    }
-
-    #[tokio::test]
-    async fn hook_gate_denies_when_hook_denies() {
-        use uuid::Uuid;
-        let gate = HookGate::new(HookStore {
-            entries: vec![entry("nope", vec!["false".into()])],
-        });
-        let ctx = ToolCheckCtx::new("Edit", Uuid::new_v4());
-        match gate.check(&ctx).await {
-            GateDecision::Deny { reason } => {
-                assert!(reason.contains("hook 'nope'"));
-            }
-            other => panic!("expected Deny, got {other:?}"),
-        }
     }
 }

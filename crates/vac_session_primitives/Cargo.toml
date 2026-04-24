@@ -1,26 +1,22 @@
 [package]
-name = "vac_session_engine"
+name = "vac_session_primitives"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
-description = "VAC Session Engine — submit-message lifecycle, transcript durability, slash processing, compact boundary, usage tracking. Consumed by both CLI (headless) and TUI (interactive) drivers."
+description = "VAC session primitives — leaf-level storage/transport types (cron, hooks, web, monitor, error) shared by vac_session_engine and vac_tools. No session-runtime deps."
 
 [dependencies]
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["sync", "fs", "io-util", "time", "rt", "macros", "process"] }
+tokio-stream = { workspace = true }
 async-trait = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
 tracing = { workspace = true }
-
-vac_tool_core = { workspace = true }
-vac_core = { workspace = true }
-vac_session_primitives = { workspace = true }
-tokio-stream = { workspace = true }
 futures = { workspace = true }
 cron = { workspace = true }
 regex = { workspace = true }
@@ -29,11 +25,6 @@ reqwest = { workspace = true }
 [dev-dependencies]
 tempfile = "3.14"
 tokio = { workspace = true, features = ["full", "test-util"] }
-criterion = { workspace = true }
-
-[[bench]]
-name = "submit_one"
-harness = false
 
 [lints]
 workspace = true

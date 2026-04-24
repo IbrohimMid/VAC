@@ -1,6 +1,12 @@
+pub mod agent_list;
 pub mod bash;
 pub mod canonical_lint;
 pub mod cargo;
+pub mod cron_crud;
+pub mod hook_registry;
+pub mod monitor;
+pub mod web_fetch;
+pub mod web_search;
 pub mod file_edit;
 pub mod file_read;
 pub mod file_write;
@@ -87,6 +93,15 @@ pub async fn register_builtin_tools(registry: &Arc<ToolRegistry>) -> Result<(), 
     registry
         .register(canonical_lint::CanonicalLintTool::new())
         .await?;
+    // NS.1 — session-primitive wrappers.
+    registry.register(agent_list::AgentListTool::new()).await?;
+    registry.register(web_fetch::WebFetchTool::new()).await?;
+    registry.register(web_search::WebSearchTool::new()).await?;
+    registry.register(cron_crud::CronListTool::new()).await?;
+    registry.register(cron_crud::CronDeleteTool::new()).await?;
+    registry.register(monitor::MonitorTool::new()).await?;
+    registry.register(hook_registry::HookListTool::new()).await?;
+    registry.register(hook_registry::HookDeleteTool::new()).await?;
 
     let skills_dir = std::path::PathBuf::from(".vac/skills");
     registry

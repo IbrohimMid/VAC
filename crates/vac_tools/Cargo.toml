@@ -18,6 +18,7 @@ vac_signal = { workspace = true, features = ["rewind"] }
 vac_tool_core = { workspace = true }
 vac_skill = { workspace = true }
 vac_mcp_core = { workspace = true }
+vac_session_primitives = { workspace = true }
 sha2 = { workspace = true }
 
 tokio = { workspace = true }
