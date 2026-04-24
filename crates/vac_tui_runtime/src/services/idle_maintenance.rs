@@ -133,6 +133,33 @@ pub fn spawn_passive_feedback_loop(
     })
 }
 
+/// Interval for PolicyTracker snapshot refreshes. 5 s is long
+/// enough to be negligible cost, short enough to keep the `policy`
+/// facet's counters visibly responsive when the operator is
+/// approaching a cap.
+pub const POLICY_SNAPSHOT_POLL: Duration = Duration::from_secs(5);
+
+/// C1 — spawn a periodic `PolicyTracker::snapshot` → AppState.policy
+/// refresher. Without this producer the `policy` SystemFacet reads
+/// `None` forever even when the engine is threading deny decisions
+/// through `PolicyTracker::check` — the tracker counts independently
+/// of what the pulse sees. This loop closes that gap.
+pub fn spawn_policy_snapshot_loop(
+    state: Arc<Mutex<AppState>>,
+    tracker: Arc<vac_core::policy_limits::PolicyTracker>,
+) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        loop {
+            let snap = tracker.snapshot().await;
+            {
+                let mut guard = state.lock().await;
+                guard.execution.policy = Some(snap);
+            }
+            tokio::time::sleep(POLICY_SNAPSHOT_POLL).await;
+        }
+    })
+}
+
 /// One-shot on-startup probe of `AwaySummaryService`. Called from
 /// the interactive bootstrap. If the gap is ≥ 1h, pushes a
 /// `NotifyEvent::info` so the operator sees a welcome-back summary
@@ -170,6 +197,59 @@ mod tests {
     fn constants_are_sane() {
         assert!(PRUNE_INTERVAL <= PRUNE_RETENTION);
         assert!(AUTO_DREAM_POLL <= Duration::from_secs(300));
+        assert!(PASSIVE_FEEDBACK_POLL <= Duration::from_secs(10));
+        assert!(POLICY_SNAPSHOT_POLL <= Duration::from_secs(30));
+    }
+
+    #[tokio::test]
+    async fn passive_feedback_loop_updates_lsp_snapshot() {
+        use crate::services::passive_feedback::PassiveFeedbackDriver;
+        use vac_tools::rust_analysis::LspDiagnosticRegistry;
+
+        let state = Arc::new(Mutex::new(AppState::default()));
+        let driver = Arc::new(PassiveFeedbackDriver::new(
+            Arc::new(LspDiagnosticRegistry::new()),
+        ));
+        let handle = spawn_passive_feedback_loop(state.clone(), driver);
+        // Give the loop one tick to run; the poll period is 2s,
+        // but the first body runs before the first sleep.
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        {
+            let guard = state.lock().await;
+            assert!(
+                guard.execution.lsp.total_ticks >= 1,
+                "expected ≥ 1 tick, got {}",
+                guard.execution.lsp.total_ticks,
+            );
+            assert!(guard.execution.lsp.last_tick_unix > 0);
+        }
+        handle.abort();
+    }
+
+    #[tokio::test]
+    async fn policy_snapshot_loop_populates_execution_policy() {
+        use std::sync::Arc as SArc;
+        use vac_core::policy_limits::{PolicyLimits, PolicyTracker};
+
+        let state = Arc::new(Mutex::new(AppState::default()));
+        let tracker = SArc::new(PolicyTracker::new(PolicyLimits {
+            max_submits_per_hour: Some(3),
+            max_tokens_per_session: Some(10_000),
+            ..Default::default()
+        }));
+        let handle = spawn_policy_snapshot_loop(state.clone(), tracker.clone());
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        {
+            let guard = state.lock().await;
+            let snap = guard
+                .execution
+                .policy
+                .as_ref()
+                .expect("policy snapshot populated");
+            assert_eq!(snap.policy.max_submits_per_hour, Some(3));
+            assert_eq!(snap.policy.max_tokens_per_session, Some(10_000));
+        }
+        handle.abort();
     }
 
     #[tokio::test]

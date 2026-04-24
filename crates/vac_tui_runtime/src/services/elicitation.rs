@@ -96,6 +96,23 @@ impl ElicitationHandler for TuiElicitationHandler {
                 let (tx, rx) = oneshot::channel();
                 {
                     let mut guard = self.state.lock().await;
+                    // Concurrency guard — if a prior elicitation is
+                    // still parked, explicitly cancel its oneshot so
+                    // the earlier server sees `Cancelled` with a
+                    // matching audit log rather than a silent
+                    // `RecvError` from dropped-sender. The operator
+                    // then sees two denials in the A1 feed instead
+                    // of one prompt magically replacing another.
+                    if let Some(mut prior) = guard.layout.elicitation.take() {
+                        let resolved = prior.resolve(ElicitationResult::Cancelled);
+                        tracing::warn!(
+                            target: "vac_mcp_core::channel",
+                            new_url = %url,
+                            prior_url = %prior.url,
+                            prior_resolved = resolved,
+                            "elicitation: pre-empting in-flight prompt with newer request",
+                        );
+                    }
                     guard.layout.elicitation =
                         Some(ElicitationPrompt::new(url, prompt, tx));
                     crate::overlay::open_overlay(
@@ -226,6 +243,69 @@ mod tests {
         ));
         assert!(cancel_current(&mut state));
         assert_eq!(rx.await.unwrap(), ElicitationResult::Cancelled);
+    }
+
+    #[tokio::test]
+    async fn handler_cancels_prior_prompt_when_preempted() {
+        let state: SharedState = Arc::new(Mutex::new(make_state()));
+        let handler = TuiElicitationHandler::new(state.clone());
+
+        // Park a first prompt manually (as if an earlier handler
+        // call was still awaiting) and capture its oneshot receiver
+        // so we can assert it was resolved with Cancelled.
+        let (tx, mut rx) = oneshot::channel();
+        {
+            let mut guard = state.lock().await;
+            guard.layout.elicitation = Some(ElicitationPrompt::new(
+                "https://first.test",
+                None,
+                tx,
+            ));
+            crate::overlay::open_overlay(
+                &mut guard,
+                crate::overlay::OverlayId::Elicitation,
+            );
+        }
+
+        let task = tokio::spawn(async move {
+            handler
+                .handle(ElicitationRequest::OpenUrl {
+                    url: "https://second.test".into(),
+                    prompt: None,
+                })
+                .await
+        });
+
+        // First prompt's oneshot must resolve to Cancelled — not
+        // RecvError from a dropped sender.
+        let first = tokio::time::timeout(Duration::from_secs(2), &mut rx)
+            .await
+            .expect("first prompt resolved within timeout");
+        assert_eq!(first.unwrap(), ElicitationResult::Cancelled);
+
+        // Resolve the newer one so the task exits cleanly.
+        for _ in 0..50 {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+            let guard = state.lock().await;
+            if guard
+                .layout
+                .elicitation
+                .as_ref()
+                .map(|p| p.url == "https://second.test")
+                .unwrap_or(false)
+            {
+                break;
+            }
+        }
+        {
+            let mut guard = state.lock().await;
+            accept_current(&mut guard);
+            crate::overlay::close_overlay(
+                &mut guard,
+                crate::overlay::OverlayId::Elicitation,
+            );
+        }
+        let _ = task.await;
     }
 
     #[tokio::test]

@@ -325,9 +325,25 @@ async fn wait_for_callback(listener: TcpListener) -> anyhow::Result<String> {
     let (mut socket, _peer) = timeout(Duration::from_secs(300), listener.accept())
         .await
         .map_err(|_| anyhow::anyhow!("timed out waiting for OAuth callback"))??;
-    let mut buf = [0u8; 4096];
-    let n = socket.read(&mut buf).await?;
-    let raw = String::from_utf8_lossy(&buf[..n]);
+    // Read until we see the end-of-headers marker or hit 16 KB
+    // (generous — a typical GET on 127.0.0.1 fits in one frame, but
+    // some browsers split TLS-fronted requests across reads). Cap
+    // exists so a malicious callback can't exhaust the process.
+    let mut accumulated: Vec<u8> = Vec::with_capacity(4096);
+    let mut chunk = [0u8; 1024];
+    while accumulated.len() < 16_384 {
+        let n = match timeout(Duration::from_secs(5), socket.read(&mut chunk)).await {
+            Ok(Ok(0)) => break,
+            Ok(Ok(n)) => n,
+            Ok(Err(e)) => return Err(e.into()),
+            Err(_) => break, // idle gap → assume request is complete
+        };
+        accumulated.extend_from_slice(&chunk[..n]);
+        if accumulated.windows(4).any(|w| w == b"\r\n\r\n") {
+            break;
+        }
+    }
+    let raw = String::from_utf8_lossy(&accumulated);
     let code = parse_code_from_request(&raw).ok_or_else(|| {
         anyhow::anyhow!("callback request had no ?code= parameter")
     })?;
