@@ -144,6 +144,27 @@ pub fn handle_helper_dropdown(
         InputEvent::HandleEsc => {
             crate::overlay::close_overlay(state, OverlayId::HelperDropdown);
         }
+        // Dogfood F5 fix: pass-through character typing so the
+        // dropdown narrows as the user refines the query. Pre-fix
+        // the handler swallowed every keystroke that wasn't
+        // Up/Down/Enter/Esc, so the user could open the dropdown
+        // with `/` but had no way to type `/mo` to narrow to
+        // commands starting with "mo" — Esc was the only escape.
+        InputEvent::InputChanged(c) => {
+            state.composer.input.input(c);
+            state.layout.command_palette.helper_selected = 0;
+            state.layout.command_palette.helper_scroll = 0;
+            crate::services::helper_dropdown::filter_helpers_sync(state);
+        }
+        // Backspace lets the user retract characters to re-widen
+        // the filter. Without this, dropdown becomes a one-way
+        // funnel — narrow but can't backtrack.
+        InputEvent::InputBackspace => {
+            state.composer.input.backspace();
+            state.layout.command_palette.helper_selected = 0;
+            state.layout.command_palette.helper_scroll = 0;
+            crate::services::helper_dropdown::filter_helpers_sync(state);
+        }
         _ => {}
     }
 }
