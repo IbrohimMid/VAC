@@ -76,8 +76,23 @@ pub(super) fn render_operator_panel(f: &mut Frame, state: &mut AppState, area: R
                 .style(crate::services::theme::StyleKey::Streaming),
         ));
     } else {
+        // UX audit: static "idle" gave no clue what to do next for
+        // first-run operators. Swap to an action hint when the
+        // session has no activity yet; keep plain "idle" once
+        // there's conversation history so it doesn't feel noisy
+        // mid-session.
+        let idle_text = if state.transcript.messages.is_empty()
+            && state.core.startup.active_model.is_none()
+            && state.operator_config.operator.current_model.is_none()
+        {
+            "idle — pick a model via /model to start"
+        } else if state.transcript.messages.is_empty() {
+            "idle — type a message or / for commands"
+        } else {
+            "idle"
+        };
         lines.push(Line::styled(
-            "idle",
+            idle_text,
             state.core.theme.style(crate::services::theme::StyleKey::Muted),
         ));
     }

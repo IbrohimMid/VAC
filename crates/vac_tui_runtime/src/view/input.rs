@@ -40,8 +40,13 @@ pub(super) fn render_input(f: &mut Frame, state: &mut AppState, area: Rect) {
 
     let mut lines = Vec::new();
     if state.composer.input.is_empty() {
+        // UX deepdive audit: placeholder now hints at all three
+        // core input affordances (palette, multiline, paste) so a
+        // first-run operator doesn't have to guess which keys
+        // produce which behaviour. Matches Claude Code's
+        // affordance-hinting footer pattern.
         lines.push(Line::from(Span::styled(
-            "Type your message... (Ctrl+P for commands)",
+            "Type your message or / for commands (Alt+Enter for newline, Ctrl+V to paste)",
             state.core.theme.style(crate::services::theme::StyleKey::Muted),
         )));
     } else {
