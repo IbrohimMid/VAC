@@ -105,6 +105,8 @@ pub enum ActionId {
     SpawnCliUltraplan,
     SpawnCliRewind,
     SpawnCliDecisions,
+    /// G2 — launch `vac auth login` interactively via the shell popup.
+    SpawnCliAuthLogin,
 }
 
 // ── KeyChord ────────────────────────────────────────────────────────────────

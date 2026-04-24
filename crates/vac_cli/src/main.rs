@@ -426,6 +426,22 @@ enum AuthAction {
         #[arg(long)]
         token: Option<String>,
     },
+    /// G2 — browser-redirect OAuth with PKCE. Opens the authorize
+    /// URL, listens on a loopback port, exchanges the code for a
+    /// token, stores it under `TokenCache::default_root()`.
+    Oauth {
+        /// Provider key (must be registered in commands/auth.rs).
+        provider: String,
+        /// Override client_id (otherwise provider default).
+        #[arg(long)]
+        client_id: Option<String>,
+        /// Override authorize URL.
+        #[arg(long)]
+        auth_url: Option<String>,
+        /// Override token URL.
+        #[arg(long)]
+        token_url: Option<String>,
+    },
     Status,
     Logout,
 }

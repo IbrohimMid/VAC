@@ -70,6 +70,8 @@ textwrap = "0.16.2"
 unicode-segmentation = "1.12.0"
 unicode-width = "0.2.0"
 rand = "0.9"
+open = "5"
+reqwest = { workspace = true }
 ansi-to-tui = "7.0.0"
 syntect = "5.2.0"
 nucleo-matcher = "0.3.1"

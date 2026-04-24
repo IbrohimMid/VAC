@@ -782,4 +782,16 @@ pub static ACTION_SPECS: &[ActionSpec] = &[
         availability: always_available,
         activity_message: None,
     },
+    ActionSpec {
+        id: ActionId::SpawnCliAuthLogin,
+        title: "CLI: auth login",
+        description: "Configure provider auth (OAuth/PKCE or API key paste)",
+        scope: ActionContext::Global,
+        keybindings: &[],
+        slash_aliases: &["/auth-login"],
+        palette_visible: true,
+        footer_visible: false,
+        availability: always_available,
+        activity_message: None,
+    },
 ];

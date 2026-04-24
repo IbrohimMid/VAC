@@ -123,8 +123,8 @@ implies is scoped in the "Remediation ladder" at the bottom.
 
 | Feature | Producer | Surface | Deep-link | Disc. | Status |
 |---|---|---|---|---|---|
-| `PkceChallenge` | `vac_bridge::auth::oauth` | None — no binary wires it | None | No | 🔴 |
-| `TokenCache` | `vac_bridge::auth::oauth` | None | None | No | 🔴 |
+| `PkceChallenge` | `vac_bridge::auth::oauth` | `vac auth oauth <provider>` drives the full browser-redirect flow: `PkceChallenge::generate` → `TcpListener` on 127.0.0.1 → `open::that(auth_url)` → callback parse → token exchange → `TokenCache::save` | CLI output | Yes | 🟢 |
+| `TokenCache` | `vac_bridge::auth::oauth` | Saved at `TokenCache::default_root()` by `vac auth oauth` flow; palette entry `/auth-login` also reaches the legacy paste flow | CLI output | Yes | 🟢 |
 | `JwtKeySet` (HS256) | `vac_bridge::auth::jwt` | Silent during bridge session | None | No | 🔴 |
 | `CapacityWake` FIFO | `vac_bridge::capacity_wake` | Silent | None | No | 🔴 |
 

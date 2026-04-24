@@ -453,7 +453,8 @@ fn dispatch_action(
         | ActionId::SpawnCliThinkback
         | ActionId::SpawnCliUltraplan
         | ActionId::SpawnCliRewind
-        | ActionId::SpawnCliDecisions => {
+        | ActionId::SpawnCliDecisions
+        | ActionId::SpawnCliAuthLogin => {
             let subcmd = match id {
                 ActionId::SpawnCliAdvisor => "advisor",
                 ActionId::SpawnCliAutofixPr => "autofix-pr",
@@ -465,6 +466,7 @@ fn dispatch_action(
                 ActionId::SpawnCliUltraplan => "ultraplan",
                 ActionId::SpawnCliRewind => "rewind",
                 ActionId::SpawnCliDecisions => "decisions",
+                ActionId::SpawnCliAuthLogin => "auth login",
                 _ => unreachable!(),
             };
             let extra = cmd_args.unwrap_or_default().trim();
