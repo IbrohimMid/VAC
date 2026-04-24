@@ -72,6 +72,10 @@ unicode-width = "0.2.0"
 rand = "0.9"
 open = "5"
 reqwest = { workspace = true }
+axum = { workspace = true }
+tokio-stream = { workspace = true }
+futures = { workspace = true }
+bytes = { workspace = true }
 ansi-to-tui = "7.0.0"
 syntect = "5.2.0"
 nucleo-matcher = "0.3.1"

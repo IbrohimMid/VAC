@@ -28,5 +28,6 @@ pub mod session;
 pub mod signal;
 pub mod skills;
 pub mod status;
+pub mod teleport;
 pub mod trajectory;
 pub mod vil;

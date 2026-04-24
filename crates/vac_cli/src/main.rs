@@ -253,9 +253,28 @@ enum Commands {
     /// Scan `.vac/plugins/` for operator-dropped plugins.
     #[command(next_help_heading = "Integrations", name = "reload-plugins")]
     ReloadPlugins,
-    /// Quick session switcher — lists recent resume candidates.
+    /// Teleport: list recent sessions, or host/attach a remote SSE bridge.
     #[command(next_help_heading = "Integrations")]
-    Teleport,
+    Teleport {
+        /// Host mode: start an SSE server and mint a teleport JWT.
+        #[arg(long)]
+        serve: bool,
+        /// Bind address for host mode (default 127.0.0.1:9042).
+        #[arg(long, default_value = "127.0.0.1:9042")]
+        bind: String,
+        /// Short operator label — surfaces in the activity row on attach.
+        #[arg(long, default_value = "teleport")]
+        label: String,
+        /// Allow non-loopback binds (HTTP only today; TLS is TODO).
+        #[arg(long)]
+        insecure: bool,
+        /// Attach mode: connect to a host using this bearer token.
+        #[arg(long)]
+        attach: Option<String>,
+        /// Base URL of the host (e.g. http://192.168.1.10:9042).
+        #[arg(long, default_value = "http://127.0.0.1:9042")]
+        url: String,
+    },
 
     /// Dump the last tool-call line from the newest transcript.
     #[command(next_help_heading = "Diagnostics", name = "debug-tool-call")]
@@ -730,8 +749,15 @@ async fn main() -> anyhow::Result<()> {
         Commands::ReloadPlugins => {
             commands::integrations::reload_plugins(project_root).await?
         }
-        Commands::Teleport => {
-            commands::integrations::teleport(project_root).await?
+        Commands::Teleport { serve, bind, label, insecure, attach, url } => {
+            if serve {
+                commands::teleport::teleport_serve(project_root, bind, label, insecure).await?
+            } else if let Some(token) = attach {
+                commands::teleport::teleport_attach(token, url).await?
+            } else {
+                // Legacy behaviour: list recent sessions.
+                commands::integrations::teleport(project_root).await?
+            }
         }
         Commands::DebugToolCall => {
             commands::diagnostics::debug_tool_call(project_root).await?

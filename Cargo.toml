@@ -45,7 +45,7 @@ expect_used = "warn"
 [workspace.dependencies]
 # Async runtime
 tokio = { version = "1.43", features = ["full"] }
-tokio-stream = "0.1"
+tokio-stream = { version = "0.1", features = ["sync"] }
 tokio-util = { version = "0.7", features = ["rt"] }
 futures = "0.3"
 
@@ -124,6 +124,7 @@ thiserror = "2.0"
 uuid = { version = "1.11", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 bytes = "1.9"
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio", "json", "tracing"] }
 dashmap = "6.1"
 async-trait = "0.1"
 dirs-next = "2.0"

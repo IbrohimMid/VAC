@@ -33,7 +33,7 @@ use async_trait::async_trait;
 use tokio::sync::{Mutex, mpsc};
 use vac_core::engine::{RuntimeUpdate, VacEngine};
 use vac_session_engine::{
-    EngineError, EngineResult, LlmAdapter, LlmRequest, LlmResponse, SubmitEvent,
+    EngineError, EngineResult, LlmAdapter, LlmRequest, LlmResponse, SubmitChunk, SubmitEvent,
 };
 
 pub async fn run_via_session_engine(
@@ -42,68 +42,44 @@ pub async fn run_via_session_engine(
     task_description: &str,
     update_tx: tokio::sync::mpsc::UnboundedSender<vac_core::engine::RuntimeUpdate>,
 ) -> anyhow::Result<vac_core::TaskResult> {
+    use futures::StreamExt;
     use vac_session_engine::{
         CompactConfig, SlashProcessor, SubmitContext, TranscriptWriter,
-        TrivialCompactBoundary, UsageTracker, submit_one,
+        TrivialCompactBoundary, UsageTracker, submit_stream,
     };
 
-    let (submit_tx, mut submit_rx) = tokio::sync::mpsc::unbounded_channel::<SubmitEvent>();
-    let legacy_tx = update_tx.clone();
-    let bridge = tokio::spawn(async move {
-        while let Some(ev) = submit_rx.recv().await {
-            // Translate SubmitEvent back to RuntimeUpdate for the UI
-            // This is a basic mapping, you can expand it if needed
-            let update = match ev {
-                SubmitEvent::LlmRequested { provider, model } => Some(RuntimeUpdate::ModelInfo { provider, model }),
-                SubmitEvent::LlmChunk { text } => Some(RuntimeUpdate::AssistantChunk(text)),
-                SubmitEvent::ToolRequested { id, name, arguments } => Some(RuntimeUpdate::ToolCall { id, name, arguments }),
-                SubmitEvent::ToolResult { id, name, payload } => {
-                    let success = payload.kind == vac_tool_core::ToolResultKind::Ok || payload.kind == vac_tool_core::ToolResultKind::Warning;
-                    Some(RuntimeUpdate::ToolResult {
-                        id,
-                        name,
-                        success,
-                        content: payload.summary.clone(),
-                        envelope: Some(payload),
-                    })
-                },
-                SubmitEvent::Aborted { reason } => Some(RuntimeUpdate::Failed(reason)),
-                SubmitEvent::SpeculationReady { predicted_prompt, precomputed_context } => {
-                    // Send a custom update or handle directly?
-                    // For now we map it to Status so TUI sees it if we don't add a variant to RuntimeUpdate.
-                    // But we actually need to update AppState.speculation.
-                    // Let's add a variant to RuntimeUpdate.
-                    Some(RuntimeUpdate::SpeculationReady { predicted_prompt, precomputed_context })
-                },
-                _ => None,
-            };
-            if let Some(rt) = update {
-                let _ = legacy_tx.send(rt);
-            }
-        }
-    });
-
-    let adapter = VacEngineAdapter::with_event_forward(engine.clone(), submit_tx);
-    let writer = TranscriptWriter::new(project_root);
-    let slash = SlashProcessor::new();
-    let compact = TrivialCompactBoundary::default();
-    let usage = UsageTracker::new();
+    // NS.2 — drive the submit through `submit_stream` and pump each
+    // `SubmitChunk` directly into the TUI's `RuntimeUpdate` channel
+    // as it arrives. Replaces the previous submit_one+bridge-task
+    // pattern; behaviourally equivalent (submit_one was already
+    // emitting events incrementally via its outbound tx) but drops
+    // one `tokio::spawn` and the intermediate mpsc hop.
+    let adapter = Arc::new(VacEngineAdapter::new(engine.clone()));
+    let writer = Arc::new(TranscriptWriter::new(project_root));
+    let slash = Arc::new(SlashProcessor::new());
+    let compact: Arc<dyn vac_session_engine::CompactBoundary> =
+        Arc::new(TrivialCompactBoundary::default());
+    let usage = Arc::new(UsageTracker::new());
     let ctx = SubmitContext::new(uuid::Uuid::new_v4(), task_description.to_string());
 
-    let snap = submit_one(
+    let mut stream = submit_stream(
         ctx,
-        &writer,
-        &slash,
-        &compact,
-        &usage,
-        &adapter,
+        writer.clone(),
+        slash,
+        compact,
+        usage.clone(),
+        adapter,
         CompactConfig::default(),
-        None,
-    )
-    .await
-    .map_err(|e| anyhow::anyhow!("submit_one: {e}"))?;
-
-    let _ = bridge.await;
+    );
+    let mut total_tokens: u64 = 0;
+    while let Some(chunk) = stream.next().await {
+        if let SubmitChunk::Finished { usage: snap } = &chunk {
+            total_tokens = snap.total_tokens() as u64;
+        }
+        if let Some(rt) = chunk_to_runtime_update(chunk) {
+            let _ = update_tx.send(rt);
+        }
+    }
 
     let fallback_task_id = vac_core::task::TaskId(uuid::Uuid::new_v4());
     let res = vac_core::TaskResult {
@@ -111,7 +87,7 @@ pub async fn run_via_session_engine(
         status: vac_core::TaskStatus::Completed,
         summary: format!(
             "session-engine submit finished; {} tokens, transcript at {}",
-            snap.total_tokens(),
+            total_tokens,
             writer.sessions_dir().display(),
         ),
         modified_files: Vec::new(),
@@ -119,7 +95,7 @@ pub async fn run_via_session_engine(
         validation_score: None,
         elapsed_ms: 0,
         agent_contributions: Vec::new(),
-        total_tokens_used: snap.total_tokens() as u64,
+        total_tokens_used: total_tokens,
     };
 
     // Run the predictor after submit finishes
@@ -133,6 +109,44 @@ pub async fn run_via_session_engine(
     let _ = update_tx.send(vac_core::engine::RuntimeUpdate::Completed(res.clone()));
 
     Ok(res)
+}
+
+/// NS.2 — translate one streamed `SubmitChunk` into the UI's
+/// `RuntimeUpdate`. Mirrors the pre-NS.2 bridge task logic so the
+/// TUI sees the exact same ordered sequence. Returns `None` for
+/// chunks that don't map (non-terminal control/metadata chunks
+/// already surfaced elsewhere).
+fn chunk_to_runtime_update(chunk: SubmitChunk) -> Option<RuntimeUpdate> {
+    match chunk {
+        SubmitChunk::LlmRequested { provider, model } => {
+            Some(RuntimeUpdate::ModelInfo { provider, model })
+        }
+        SubmitChunk::TextDelta { text } => Some(RuntimeUpdate::AssistantChunk(text)),
+        SubmitChunk::ToolRequested { id, name, arguments } => {
+            Some(RuntimeUpdate::ToolCall { id, name, arguments })
+        }
+        SubmitChunk::ToolResult { id, name, payload } => {
+            let success = payload.kind == vac_tool_core::ToolResultKind::Ok
+                || payload.kind == vac_tool_core::ToolResultKind::Warning;
+            let content = payload.summary.clone();
+            Some(RuntimeUpdate::ToolResult {
+                id,
+                name,
+                success,
+                content,
+                envelope: Some(payload),
+            })
+        }
+        SubmitChunk::Aborted { reason } => Some(RuntimeUpdate::Failed(reason)),
+        SubmitChunk::SpeculationReady {
+            predicted_prompt,
+            precomputed_context,
+        } => Some(RuntimeUpdate::SpeculationReady {
+            predicted_prompt,
+            precomputed_context,
+        }),
+        _ => None,
+    }
 }
 
 /// Adapter that makes `VacEngine` appear as an `LlmAdapter` to
@@ -313,6 +327,47 @@ mod tests {
             translate(RuntimeUpdate::Cancelled),
             Some(SubmitEvent::Aborted { .. })
         ));
+    }
+
+    /// NS.2 — the new `chunk_to_runtime_update` must cover the same
+    /// event surface as the legacy bridge's SubmitEvent→RuntimeUpdate
+    /// translation. Drift here would mean the TUI stops seeing a
+    /// whole class of events post-migration.
+    #[test]
+    fn chunk_to_runtime_update_covers_core_surface() {
+        use vac_session_engine::SubmitChunk;
+        assert!(matches!(
+            chunk_to_runtime_update(SubmitChunk::LlmRequested {
+                provider: "p".into(),
+                model: "m".into()
+            }),
+            Some(RuntimeUpdate::ModelInfo { .. })
+        ));
+        assert!(matches!(
+            chunk_to_runtime_update(SubmitChunk::TextDelta { text: "hi".into() }),
+            Some(RuntimeUpdate::AssistantChunk(_))
+        ));
+        assert!(matches!(
+            chunk_to_runtime_update(SubmitChunk::ToolRequested {
+                id: "1".into(),
+                name: "file_read".into(),
+                arguments: serde_json::Value::Null,
+            }),
+            Some(RuntimeUpdate::ToolCall { .. })
+        ));
+        assert!(matches!(
+            chunk_to_runtime_update(SubmitChunk::Aborted { reason: "x".into() }),
+            Some(RuntimeUpdate::Failed(_))
+        ));
+        // Non-forwarded chunks (no TUI-side RuntimeUpdate analog).
+        assert!(chunk_to_runtime_update(SubmitChunk::Accepted {
+            entry_id: uuid::Uuid::nil(),
+        })
+        .is_none());
+        assert!(chunk_to_runtime_update(SubmitChunk::Finished {
+            usage: vac_session_engine::UsageSnapshot::default(),
+        })
+        .is_none());
     }
 
     #[test]
