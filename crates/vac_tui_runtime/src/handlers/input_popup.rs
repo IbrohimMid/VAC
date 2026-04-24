@@ -120,6 +120,12 @@ pub fn dispatch_popup_event(
             handle_elicitation(state, event);
             true
         }
+        Some(OverlayId::ContextInspector) => {
+            if matches!(event, InputEvent::HandleEsc | InputEvent::InputSubmitted) {
+                crate::overlay::close_overlay(state, OverlayId::ContextInspector);
+            }
+            true
+        }
         None => false,
     }
 }

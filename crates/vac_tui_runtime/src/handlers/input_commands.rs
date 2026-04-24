@@ -439,6 +439,12 @@ fn dispatch_action(
             state.operator_config.operator.theme_picker_selected = 0;
             crate::overlay::open_overlay(state, crate::overlay::OverlayId::ThemePicker);
         }
+        ActionId::OpenContextInspector => {
+            crate::overlay::open_overlay(
+                state,
+                crate::overlay::OverlayId::ContextInspector,
+            );
+        }
         // F1 — CLI bridge. Each SpawnCli* action ID launches the
         // matching `vac <cmd>` subprocess through the shell popup
         // pipeline. We reuse `OutputEvent::ExecuteCommand` + the

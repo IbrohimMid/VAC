@@ -138,6 +138,13 @@ pub fn view(f: &mut Frame, state: &mut AppState) {
         overlays::render_elicitation(f, state);
     }
 
+    if state
+        .layout.overlay_manager
+        .is_active(crate::overlay::OverlayId::ContextInspector)
+    {
+        overlays::render_context_inspector(f, state);
+    }
+
     if state.execution.shell.session_store.popup_visible {
         popups::render_shell_popup(f, state);
     }

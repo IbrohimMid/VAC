@@ -107,6 +107,8 @@ pub enum ActionId {
     SpawnCliDecisions,
     /// G2 — launch `vac auth login` interactively via the shell popup.
     SpawnCliAuthLogin,
+    /// QW.2 — open the /context overlay.
+    OpenContextInspector,
 }
 
 // ── KeyChord ────────────────────────────────────────────────────────────────

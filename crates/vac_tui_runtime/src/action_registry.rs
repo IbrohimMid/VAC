@@ -783,6 +783,18 @@ pub static ACTION_SPECS: &[ActionSpec] = &[
         activity_message: None,
     },
     ActionSpec {
+        id: ActionId::OpenContextInspector,
+        title: "Context inspector",
+        description: "Show token breakdown for the active session (input/output/total)",
+        scope: ActionContext::Global,
+        keybindings: &[],
+        slash_aliases: &["/ctx", "/usage"],
+        palette_visible: true,
+        footer_visible: false,
+        availability: always_available,
+        activity_message: None,
+    },
+    ActionSpec {
         id: ActionId::SpawnCliAuthLogin,
         title: "CLI: auth login",
         description: "Configure provider auth (OAuth/PKCE or API key paste)",

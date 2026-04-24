@@ -36,6 +36,10 @@ pub enum OverlayId {
     SessionResume,
     /// File picker v2 (multi-select, dir nav, preview).
     FilePicker,
+    /// QW.2 — `/context` operator overlay. Reuses the
+    /// Shortcuts-style centred modal; no new domain state. Read
+    /// from `AppState.operator_config.billing`.
+    ContextInspector,
     /// G1 — MCP elicitation/request modal. Centred popup showing
     /// the URL (or prompt) + [Enter] open / [Esc] cancel footer.
     /// The prompt + oneshot sender live on
@@ -58,6 +62,7 @@ const RENDER_ORDER: &[OverlayId] = &[
     OverlayId::RulebookSwitcher,
     OverlayId::AskUser,
     OverlayId::Elicitation,
+    OverlayId::ContextInspector,
     OverlayId::Shortcuts,
     OverlayId::CommandPalette,
     OverlayId::HelperDropdown,
@@ -228,7 +233,8 @@ fn sync_domain_state(state: &mut AppState, id: OverlayId, value: bool) {
         | OverlayId::TaskTray
         | OverlayId::ThemePicker
         | OverlayId::SessionResume
-        | OverlayId::FilePicker => {}
+        | OverlayId::FilePicker
+        | OverlayId::ContextInspector => {}
     }
 }
 

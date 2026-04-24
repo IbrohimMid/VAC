@@ -327,6 +327,59 @@ pub(super) fn render_shortcuts(f: &mut Frame, state: &mut AppState) {
     f.render_widget(list, area);
 }
 
+pub(super) fn render_context_inspector(f: &mut Frame, state: &mut AppState) {
+    let area = centered_rect(60, 50, f.area());
+    f.render_widget(Clear, area);
+
+    let b = &state.operator_config.billing;
+    let input = b.total_session.input_tokens;
+    let output = b.total_session.output_tokens;
+    let total = input.saturating_add(output).max(1);
+
+    let bar = |n: u64, label: &str, width: u16| -> Line<'static> {
+        let fraction = (n as f64) / (total as f64);
+        let filled = ((fraction * width as f64).round() as u16).min(width);
+        let empty = width.saturating_sub(filled);
+        Line::from(vec![
+            Span::raw(format!("{label:<10}")),
+            Span::raw("│"),
+            Span::raw("█".repeat(filled as usize)),
+            Span::raw(" ".repeat(empty as usize)),
+            Span::raw("│ "),
+            Span::raw(format!("{n:>8} ({:.1}%)", fraction * 100.0)),
+        ])
+    };
+
+    let mut lines: Vec<Line> = Vec::new();
+    lines.push(Line::raw(format!(
+        "Context usage: {:.1}%",
+        b.context_usage_percent,
+    )));
+    lines.push(Line::raw(""));
+    lines.push(bar(input, "input", 30));
+    lines.push(bar(output, "output", 30));
+    lines.push(Line::raw(""));
+    lines.push(Line::raw(format!(
+        "Total session:   {}",
+        b.total_session.total_tokens,
+    )));
+    lines.push(Line::raw(format!(
+        "Current message: {}",
+        b.current_message.total_tokens,
+    )));
+    lines.push(Line::raw(""));
+    lines.push(Line::raw("[Esc] close"));
+
+    let para = Paragraph::new(lines)
+        .wrap(Wrap { trim: false })
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Context inspector (/context)"),
+        );
+    f.render_widget(para, area);
+}
+
 pub(super) fn render_elicitation(f: &mut Frame, state: &mut AppState) {
     let Some(prompt) = state.layout.elicitation.as_ref() else {
         return;
