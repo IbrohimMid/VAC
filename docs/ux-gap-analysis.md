@@ -188,7 +188,7 @@ After F2, ten W8 commands have ACTION_SPECS palette entries (🟢) — the remai
 | Feature | Producer | Surface | Deep-link | Disc. | Status |
 |---|---|---|---|---|---|
 | `RateLimitTracker` | `vil_llm::rate_limit` + `router.rs` | 429 path emits `warn!` on `vil_llm::rate_limit` (C2) → A1 bridge → activity + toast | Activity panel | Yes | 🟢 |
-| `PolicyLimits::check` | `vac_core::policy_limits` + `submit.rs` | Budget-exceeded emits `error!` on `vac_core::policy_limits` (C1 partial) → A1 bridge → activity + banner. Full PolicyTracker.check wiring (hourly cap, per-call cap) still needs tracker instance threaded through engine | Activity + banner | Partial | 🟡 |
+| `PolicyLimits::check` | `vac_core::policy_limits` + `submit.rs` | C1 full — `PolicyTracker` threaded through `CompactConfig.policy`; deny → `EngineError::Other` + tracker's `warn!` on `vac_core::policy_limits` → A1 bridge → activity + banner. `record_submit` + `record_tokens` called post-response | Activity + banner | Yes | 🟢 |
 
 **Gap:** both primitives are ready. Once wired, a `rate` facet (countdown) and a `policy` facet (submits used / cap) drop into SystemPulse cleanly — producers are the remaining blocker, not the projection.
 

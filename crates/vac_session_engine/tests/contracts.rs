@@ -373,3 +373,58 @@ async fn budget_gate_aborts_submit_when_exceeded() {
     let aborted = rows.last().unwrap();
     assert_eq!(aborted.content["kind"], "budget_exceeded");
 }
+
+/// C1 — PolicyTracker gate blocks the second submit when
+/// `max_submits_per_hour=1`.
+#[tokio::test]
+async fn policy_tracker_caps_submits_per_hour() {
+    use std::sync::Arc;
+    use vac_core::policy_limits::{PolicyLimits, PolicyTracker};
+
+    let tmp = tempfile::tempdir().unwrap();
+    let writer = TranscriptWriter::new(tmp.path().to_path_buf());
+    let tracker = Arc::new(PolicyTracker::new(PolicyLimits {
+        max_submits_per_hour: Some(1),
+        ..Default::default()
+    }));
+
+    let cfg = || CompactConfig {
+        policy: Some(tracker.clone()),
+        ..Default::default()
+    };
+
+    // First submit succeeds.
+    submit_one(
+        SubmitContext::new(Uuid::new_v4(), "one"),
+        &writer,
+        &SlashProcessor::new(),
+        &TrivialCompactBoundary::default(),
+        &UsageTracker::new(),
+        &vac_session_engine::EchoAdapter,
+        cfg(),
+        None,
+    )
+    .await
+    .expect("first submit under cap");
+
+    // Second submit denied.
+    let err = submit_one(
+        SubmitContext::new(Uuid::new_v4(), "two"),
+        &writer,
+        &SlashProcessor::new(),
+        &TrivialCompactBoundary::default(),
+        &UsageTracker::new(),
+        &vac_session_engine::EchoAdapter,
+        cfg(),
+        None,
+    )
+    .await
+    .unwrap_err();
+
+    match err {
+        EngineError::Other(reason) => {
+            assert!(reason.contains("max_submits_per_hour"), "{reason}");
+        }
+        other => panic!("expected EngineError::Other, got {other:?}"),
+    }
+}

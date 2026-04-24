@@ -13,7 +13,11 @@
 //!      `LlmChunk` (one shot) + `Finished`.
 //!   7. On error: append `Aborted`, emit `Aborted`.
 
+use std::sync::Arc;
+
 use tokio::sync::mpsc;
+
+use vac_core::policy_limits::{PolicyDecision, PolicyTracker, SubmitIntent};
 
 use crate::compact::{CompactBoundary, CompactHint, CompactInput};
 use crate::error::EngineResult;
@@ -25,13 +29,19 @@ use crate::usage::{UsageSnapshot, UsageTracker};
 
 /// Knobs the caller can pass to `submit_one` without constructing a
 /// full compact input themselves.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct CompactConfig {
     pub message_count: usize,
     pub approx_tokens: u64,
     pub context_window_tokens: u64,
     pub max_budget_tokens: Option<u64>,
     pub max_turns: Option<u32>,
+    /// C1 — optional PolicyTracker. When set, `submit_one` calls
+    /// `check` before the LLM round-trip (deny → EngineError::Other),
+    /// then `record_submit` + `record_tokens` after a successful
+    /// response. Kept as Option so the 29 existing call sites that
+    /// `CompactConfig::default()` continue to work unchanged.
+    pub policy: Option<Arc<PolicyTracker>>,
 }
 
 impl Default for CompactConfig {
@@ -42,7 +52,21 @@ impl Default for CompactConfig {
             context_window_tokens: 200_000,
             max_budget_tokens: None,
             max_turns: None,
+            policy: None,
         }
+    }
+}
+
+impl std::fmt::Debug for CompactConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CompactConfig")
+            .field("message_count", &self.message_count)
+            .field("approx_tokens", &self.approx_tokens)
+            .field("context_window_tokens", &self.context_window_tokens)
+            .field("max_budget_tokens", &self.max_budget_tokens)
+            .field("max_turns", &self.max_turns)
+            .field("policy", &self.policy.as_ref().map(|_| "…"))
+            .finish()
     }
 }
 
@@ -160,6 +184,21 @@ async fn submit_after_accepted(
         }
     }
 
+    // C1 — PolicyTracker gate. Deny here surfaces as a
+    // tracing::warn on target `vac_core::policy_limits` (emitted
+    // by the tracker itself) → A1 bridge renders critical banner.
+    if let Some(policy) = compact_cfg.policy.as_ref() {
+        let decision = policy
+            .check(&SubmitIntent {
+                tool: None,
+                additional_tokens: 0,
+            })
+            .await;
+        if let PolicyDecision::Deny(reason) = decision {
+            return Err(crate::error::EngineError::Other(reason));
+        }
+    }
+
     // LLM round-trip.
     let req = LlmRequest {
         prompt: submit.input.clone(),
@@ -173,6 +212,12 @@ async fn submit_after_accepted(
     transcript.append(handle, &req_row).await?;
 
     let resp = llm.complete(req).await?;
+    if let Some(policy) = compact_cfg.policy.as_ref() {
+        policy.record_submit().await;
+        policy
+            .record_tokens(resp.input_tokens.saturating_add(resp.output_tokens))
+            .await;
+    }
     emit(
         events,
         SubmitEvent::LlmRequested {
