@@ -1,4 +1,3 @@
-```
 # Dependencies
 target/
 **/target/
@@ -25,10 +24,26 @@ target/
 **/Cargo.lock
 **/Cargo.toml.orig
 **/Cargo.toml.backup
-```
 
 # Stakpak session files
 .stakpak/session*
 .stakpak/
-*.rlib
-*.txt
+
+# Per-session VAC runtime artifacts (do NOT commit).
+# Operator-authored config (hooks.json, policy.toml, cron.json,
+# autopilot.schedules.toml, config.toml, commands/*.md,
+# CONTINUATION_PROMPT.md, CLAUDE.md) stays tracked.
+.vac/sessions/
+.vac/signal/
+.vac/traces/
+.vac/memory/
+.vac/memory
+.vac/memory.semantic.db
+.vac/cache/
+.vac/checkpoints/
+.vac/tool-results/
+.vac/messages/
+.vac/worktrees/
+.vac/teleport.key
+.vac/agent-journal.md
+.vac/*.tmp
