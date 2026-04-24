@@ -30,6 +30,7 @@
 
 pub mod agent_tool;
 pub mod compact;
+pub mod cron;
 pub mod error;
 pub mod event;
 pub mod gate;
@@ -60,6 +61,7 @@ pub use gate::{
     ToolGate,
 };
 pub use stream::{SubmitChunk, SubmitStream, submit_stream};
+pub use cron::{CronEntry, CronStore, DEFAULT_CRON_FILENAME, unix_now};
 pub use agent_tool::{
     AgentToolInput, BUILT_IN_SUBAGENTS, BuiltInAgentSpec, BuiltInKind,
     dispatch_agent_tool, find_built_in, resolve_subagent_kind,
