@@ -37,6 +37,7 @@ pub mod fork;
 pub mod llm;
 pub mod slash;
 pub mod stream;
+pub mod subagent;
 pub mod submit;
 pub mod transcript;
 pub mod usage;
@@ -57,6 +58,9 @@ pub use gate::{
     CompositeGate, GateDecision, NoopHookGate, PolicyGate, ToolCheckCtx, ToolGate,
 };
 pub use stream::{SubmitChunk, SubmitStream, submit_stream};
+pub use subagent::{
+    SubagentDispatchContext, SubagentKind, SubagentRunner, SubagentSpec,
+};
 pub use submit::{CompactConfig, submit_one};
 pub use transcript::{TranscriptEntry, TranscriptHandle, TranscriptKind, TranscriptWriter};
 pub use usage::{UsageSnapshot, UsageTracker};

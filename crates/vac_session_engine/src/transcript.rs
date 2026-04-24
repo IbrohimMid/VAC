@@ -53,6 +53,12 @@ pub enum TranscriptKind {
     Finished,
     /// Submit aborted.
     Aborted,
+    /// B.1 — subagent sidechain marker. The parent transcript
+    /// records one Sidechain row per subagent run with payload
+    /// `{ subagent_id, subagent_type, prompt, result_summary }`.
+    /// The subagent's own transcript lives at
+    /// `.vac/sessions/<id>.jsonl` under its fresh session id.
+    Sidechain,
 }
 
 /// One row in a transcript JSONL file.
