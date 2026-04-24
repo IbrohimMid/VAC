@@ -112,7 +112,33 @@ pub fn handle_helper_dropdown(
                 // Clear the typed `/` prefix before dispatching so
                 // the conversation log doesn't show the raw query.
                 state.composer.input.set_content("");
-                dispatch_builtin_command(state, output_tx, &cmd.command, None);
+                tracing::info!(
+                    target: "vac_tui_runtime::helper_dropdown",
+                    command = %cmd.command,
+                    "dispatching selected helper command",
+                );
+                let handled = dispatch_builtin_command(
+                    state,
+                    output_tx,
+                    &cmd.command,
+                    None,
+                );
+                if !handled {
+                    tracing::warn!(
+                        target: "vac_tui_runtime::helper_dropdown",
+                        command = %cmd.command,
+                        "dispatch_builtin_command returned false — command \
+                         not in state.layout.commands; palette filtered from \
+                         a stale list?",
+                    );
+                }
+            } else {
+                tracing::warn!(
+                    target: "vac_tui_runtime::helper_dropdown",
+                    selected = state.layout.command_palette.helper_selected,
+                    total = state.layout.command_palette.filtered_helpers.len(),
+                    "no helper at selected index — dropdown closed without dispatch",
+                );
             }
         }
         InputEvent::HandleEsc => {

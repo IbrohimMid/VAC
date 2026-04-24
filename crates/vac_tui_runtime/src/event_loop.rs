@@ -304,7 +304,16 @@ pub async fn run_tui(
         });
     }
 
-    let mut spinner_interval = interval(Duration::from_millis(150));
+    // Dogfood lag fix: the main loop's `spinner_interval.tick().await`
+    // gates every iteration, including input handling + draw. Prior
+    // 150ms interval meant typed characters took up to 150ms to
+    // appear → "laggy" feeling even though individual draws were
+    // cheap. 33ms (≈30 FPS) keeps the spinner visibly animated
+    // without starving responsiveness; the loop's other cooperative
+    // awaits (input_rx.try_recv) don't block so the true input
+    // latency is now the tick period, not animation cadence.
+    let mut spinner_interval = interval(Duration::from_millis(33));
+    let mut spinner_tick_counter: u32 = 0;
     let mut last_session_snapshot_save = Instant::now();
     let mut last_signal_persist = Instant::now();
     let signal_persist_interval =
@@ -412,9 +421,16 @@ pub async fn run_tui(
             }
         }
 
-        // Update spinner
+        // Update spinner. The loop ticks every ~33ms (30 FPS) for
+        // input responsiveness, but the spinner glyph only needs
+        // to advance every ~150ms to feel natural — gate the
+        // frame bump with a small counter so the animation
+        // cadence matches the pre-fix 150ms interval.
         spinner_interval.tick().await;
-        if state.core.loading || state.transcript.streaming.is_streaming {
+        spinner_tick_counter = spinner_tick_counter.wrapping_add(1);
+        if (state.core.loading || state.transcript.streaming.is_streaming)
+            && spinner_tick_counter % 5 == 0
+        {
             state.core.view_flags.spinner_frame = (state.core.view_flags.spinner_frame + 1) % 10;
         }
 
