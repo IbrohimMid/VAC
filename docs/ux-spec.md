@@ -46,9 +46,23 @@ identifier. Defined by `SystemFacetKind::label` and matched by
 | `subagent` | `RootObservables.errors_seen + notifications.len()` |
 | `policy` | `AppState.execution.policy` — `PolicyTracker::snapshot` (submits/hr + tokens vs caps) |
 | `lsp` | `AppState.execution.lsp` — `PassiveFeedbackDriver::tick` last-run counter |
+| `tasks` | `AppState.execution.task_tray.entries` — 7-kind `TaskKind` enum (A.5) |
+| `cron` | `AppState.execution.cron` — `.vac/cron.json` snapshot refreshed by `spawn_cron_loop` (C.2) |
 
 Reserved (future producers): `rate`, `vil` — slot into
 `SystemFacetKind` via its `#[non_exhaustive]` attribute.
+
+**Current facet count:** 13 (contract-pinned in
+`contracts_test::pulse_compact_line_fits_width_budget` at
+≤ 120 chars — raised from 100 at C.2 to fit the two new
+facets on the standard row).
+
+**Current BRIDGE_ALLOWLIST size:** 19 subsystem labels —
+trust / env / mcp / spill / policy / rate / memory / resume /
+spec / lsp / compact / gate / skills / cron / schedule /
+monitor / hooks / web / rewind. Any new `warn!` / `error!`
+target from a compete-blueprint primitive MUST register here
+before merge.
 
 ## The four surfaces
 
@@ -65,9 +79,9 @@ Reserved (future producers): `rate`, `vil` — slot into
 The `·`-separated suffix is the `SystemPulse::compact_line()`
 output. Each token is styled per its facet's `FacetSeverity`.
 
-Width budget: ≤ 100 chars for the pulse suffix
-(`pulse_compact_line_fits_width_budget` contract test, bumped
-from 80 after the 11-facet expansion).
+Width budget: ≤ 120 chars for the pulse suffix
+(`pulse_compact_line_fits_width_budget` contract test; scaled
+80 → 100 → 120 across the arc as the pulse grew to 13 facets).
 
 ### 2. Operator panel
 
@@ -285,6 +299,43 @@ the in-TUI launcher.
 Provider registry is deliberately empty for Anthropic/OpenAI
 (both issue API keys, not OAuth tokens) — operators with private
 IdPs pass `--auth-url / --token-url / --client-id`.
+
+## Compete-blueprint primitives (Phase 0 + A–D)
+
+The 26-task arc in `docs/COMPETE_EXECUTION_PLAN.md` landed
+library primitives for everything Claude Code exposes that VAC
+previously lacked. Grammar-facing surfaces (covered above):
+
+- **Streamed agent loop** (A.1 – A.6): `SubmitChunk` +
+  `submit_stream` + `CompositeGate` (policy / trust / approvals /
+  hooks / plan) + tool-use iteration + auto-compact circuit
+  breaker + `tasks` facet. Back-pressure via bounded 256-chunk
+  channel.
+- **Subagents** (B.1 – B.4): `SubagentRunner` writes a
+  `TranscriptKind::Sidechain` row in the parent transcript per
+  run. `AgentTool` exposes 5 built-ins (explore / plan / verify /
+  general-purpose / statusline-setup) + the markdown skills
+  registry (`.vac/skills/*.md`) for custom kinds. `PlanModeGate`
+  enforces a strict write-gate with a read-only allowlist.
+- **Autonomous loops** (C.1 – C.6): `CronStore` +
+  `spawn_cron_loop` + `cron` facet; `MonitorTool` streams
+  regex-matched subprocess stdout through NotifyRouter;
+  `ScheduleWakeup` + `/loop` dynamic pacing; `HookRegistry` with
+  9 events × 4 command types, shell-hook exec denies on
+  non-zero exit; `HookFireRecord` ring on ExecutionState for
+  the Runtime sub-pane.
+- **Portable sessions** (D.1 – D.7): `web::fetch` with 2 MB
+  response cap + allowlist; `SearchBackend` trait + Brave;
+  `enter_worktree` / `exit_worktree`; `/statusline` +
+  `/output-style`; `/ctx` extended with sidechain + compaction
+  ribbons; `/scrub-back` + `/thinkback-play` palette entries;
+  `issue_teleport_token` + `validate_teleport_token` + SSE-
+  ready `RemoteSessionConfig`.
+
+Per the unified-UX discipline, every new primitive above either
+lives behind a palette entry + slash alias, routes through the
+A1 tracing bridge, or — when it has ambient state — earns a
+`SystemFacet`. No orphan overlays, no new severity lanes.
 
 ## Palette (B1 / F2)
 

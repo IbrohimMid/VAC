@@ -240,10 +240,50 @@ codebase; do not treat it as a commitment.
   bughunter / security-review / perf-issue / teleport / thinkback /
   ultraplan / rewind / decisions.
 
+## Compete-blueprint arc (2026-04-24 — shipped)
+
+The 26-task arc in `docs/COMPETE_EXECUTION_PLAN.md` closing
+the feature gap against Claude Code landed on main. Commits
+`e9b1277..dd12708` (25 feature commits + 1 audit-sweep). Ships
+library primitives for:
+
+- **Streamed agent loop** (Phase A, 6 commits): `SubmitChunk` +
+  `submit_stream`, `CompositeGate` composer with policy / trust /
+  approvals / hook / plan gates, tool-use iteration, auto-compact
+  with circuit breaker, `tasks` SystemFacet, bounded 256-chunk
+  back-pressure, `<250 ms` first-chunk SLA test.
+- **Subagents** (Phase B, 4 commits): `SubagentRunner` with
+  `TranscriptKind::Sidechain` rows, `AgentTool` + 5 built-ins
+  (explore / plan / verify / general-purpose / statusline-setup),
+  `vac_skill::md_registry` for `.vac/skills/*.md`, `PlanModeGate`
+  with read-only allowlist.
+- **Autonomous loops** (Phase C, 6 commits): `CronStore` +
+  `spawn_cron_loop` + `cron` facet, `MonitorTool` streaming
+  regex-matched subprocess stdout, `ScheduleWakeup` + `/loop`
+  dynamic pace, `HookRegistry` with 9 events × 4 command types,
+  `HookFireRecord` ring.
+- **Portable sessions** (Phase D, 7 commits): `web::fetch` with
+  2 MB spill + allowlist, `SearchBackend` trait + Brave, git
+  worktree enter/exit, `/statusline` + `/output-style`,
+  sidechain + compaction ribbons on `/ctx`, `/scrub-back` +
+  `/thinkback-play` palette entries, JWT teleport primitives
+  with `MIN_TELEPORT_TTL`.
+
+Audit pass (`dd12708`) closed 8 post-landing correctness +
+hardening issues: `HookStore` dup-id rejection + argv cap,
+`HookGate` regex cache, `submit_stream` bounded outer channel,
+teleport TTL minimum, `SubagentDispatchContext::child_scoped`,
+`clamp_delay` audit-trail warn, auth-header redact pin,
+`SubmitEvent → SubmitChunk` drift guard test.
+
+BRIDGE_ALLOWLIST grew 10 → 19 subsystem labels. SystemPulse
+facets grew 11 → 13 (width budget 100 → 120 cols).
+
 ## Deferred to next cycle
 
-Post UX-unification (C1/C2/E2/G1/G2 + policy + lsp facets
-shipped), two items remain:
+Two categories remain open:
+
+**UX-visibility gaps (same as pre-arc):**
 
 - **Scorer / distiller visibility** — `vac_signal::RegexScorer` +
   `TailDistiller` run silently. Producer is stable; what's missing
@@ -257,13 +297,31 @@ shipped), two items remain:
   idle producer that reads `.vac/memory/archived/` and populates
   it runs in the AutoDream loop but is not yet spawned by any boot
   site (same wire-in blocker as `spawn_prune_spill_loop` /
-  `spawn_auto_dream_loop`). Blocker: the TUI boot path owning
-  these spawns has not landed; once it does, E2 surfaces real
-  entries with no facet change.
+  `spawn_auto_dream_loop`).
 
-Text/Confirm elicitation modals degrade to `Cancelled` today —
-follow-up work when a server actually needs them. OpenUrl is the
-live path.
+**Arc follow-ups:**
+
+- **vac_tools tool-registry integration.** The Phase A–D
+  primitives are library-level — `AgentTool`, `WebFetchTool`,
+  `Cron*`, `MonitorTool`, `HookRegistry`, `WorktreeTool` are all
+  dispatchable functions but not yet wrapped as LLM-callable
+  tools via `vac_tools::registry`. Blocker: `vac_tools` has to
+  gain a `vac_session_engine` dep. Single commit; no architectural
+  novelty. Once landed, the LLM can invoke everything above
+  through the existing `tool_use` path.
+- **TUI event-loop migration from `mpsc<SubmitEvent>` to
+  `SubmitStream`.** A.6's bench + SLA pin the invariant that
+  streaming works at the engine layer; the view-layer switch
+  lands when the TUI renderer is ready to consume chunks
+  without breaking the existing Ink-style flow. Non-blocking —
+  the legacy event path still works today.
+- **Teleport HTTP/SSE transport.** D.7 ships the JWT crypto +
+  config bundle; the actual HTTP server binding + SSE stream
+  lives in the `vac` driver binary and lands when `/teleport`
+  is wired to `vac_cli`.
+- **Text / Confirm elicitation modals.** OpenUrl is the live
+  path; the other two MCP elicitation variants still degrade to
+  `Cancelled`. Follow-up work when a server actually needs them.
 
 ## Reference docs to read
 

@@ -1,5 +1,19 @@
 # VAC vs Claude Code — Capability Gap Analysis + Implementation Blueprint
 
+> **Status (2026-04-24):** All four tentpoles shipped at the
+> library layer. The 26-task arc from
+> `docs/COMPETE_EXECUTION_PLAN.md` landed on main (commits
+> `e9b1277..dd12708`). See `docs/ROADMAP.md` §"Compete-blueprint
+> arc (shipped)" for per-phase commit refs; see
+> `docs/ux-gap-analysis.md` for the updated 🟢/🟡/🔴 tally (46 /
+> 2 / 2). Remaining work is tool-registry wrapping + TUI stream
+> consumer migration — both are single-commit, no new
+> architecture.
+>
+> This document is preserved as the audit + design record. Read
+> top-down for why each tentpole was chosen; for current status
+> consult ROADMAP first.
+
 > **Purpose:** Identify where VAC trails Claude Code on raw agent
 > capability, and lay out a plan to close the gap **without
 > collapsing into a feature pile**. Every new capability plugs

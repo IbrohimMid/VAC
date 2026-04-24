@@ -21,18 +21,20 @@ Note: the 🔴 grep count is inflated by historical table rows
 that describe past silent states; the canonical "still silent"
 list lives in ROADMAP §Deferred and names exactly 2 items.
 
-## Pulse facets
+## Pulse facets (post-arc: 13)
 
-- `SystemPulse::facets().len()` = **11**
+- `SystemPulse::facets().len()` = **13**
   (approvals / runtime / mcp / shell / speculation / environment /
-  budget / memory / policy / lsp / subagent)
-- Contract tests: 11 facets, 10 separators, ≤100-char compact line.
+  budget / memory / policy / lsp / tasks / cron / subagent)
+- Contract tests: 13 facets, 12 separators, ≤120-char compact
+  line (scaled up from 100 at C.2).
 
-## Bridge allowlist
+## Bridge allowlist (post-arc: 19)
 
-- `BRIDGE_ALLOWLIST` entries = **10**
+- `BRIDGE_ALLOWLIST` entries = **19**
   (trust / env / mcp / spill / policy / rate / memory / resume /
-  spec / lsp)
+  spec / lsp / compact / gate / skills / cron / schedule /
+  monitor / hooks / web / rewind)
 
 ## Session-engine tests
 
@@ -45,16 +47,20 @@ list lives in ROADMAP §Deferred and names exactly 2 items.
 
 Total engine tests = 25.
 
-## Benchmarks (TO CAPTURE — skipped here to keep T0.1 short)
+## Benchmarks
 
-These slots wait for Phase A to care about them; filling now
-would spend 15+ minutes of cold-build wall-time for numbers that
-will be superseded at A.6 anyway.
+A.6 landed the `bench_submit_stream_first_chunk` criterion
+bench + a wall-clock SLA test. Post-arc numbers (EchoAdapter,
+tempfs, M1-class host):
 
-- `cargo build -p vac_cli --release` cold — unrecorded.
-- `cargo build -p vac_cli --release` warm — unrecorded.
-- First-token latency (EchoAdapter) — unrecorded; Phase A.6 adds
-  the `first_token_under_100ms` bench that captures both sides.
+- `submit_stream_first_chunk_under_250ms` — passes consistently
+  at ~20–60 ms first non-Accepted chunk. Ceiling left loose
+  (250 ms) so CI on slower runners stays green; the criterion
+  bench is the drift-tracking sample.
+- 169 / 169 engine tests green post-arc (up from 25 at T0.1).
+
+Build wall-time slots remain unrecorded — cold-rebuild cost is
+dominated by the 583-dep tree, not arc additions.
 
 ## Invariants Phase A must preserve
 

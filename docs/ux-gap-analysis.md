@@ -200,9 +200,17 @@ Same shape as W9: primitives complete, REPL poll-loop integration outstanding. A
 
 | Category | Count | Representative items |
 |---|---|---|
-| 🟢 Fully surfaced | 31 | 11 facets (incl. policy + lsp); A1+D2 bridge; B1 skills; D1 idle maintenance; E3 signal grammar; F1 CLI dispatch + F2 palette; D2 speculation breadcrumb; **C1 full PolicyTracker.check 🟢**; **C2 rate-limit 🟢**; **G1 Elicitation overlay + TuiElicitationHandler + McpElicitationRegistry 🟢**; **G2 vac auth oauth PKCE/browser/callback 🟢**; **E2 memory workbench panel 🟢**; registry + resume overlay |
+| 🟢 Fully surfaced | 46 | 13 facets (incl. policy / lsp / tasks / cron); A1+D2 bridge; B1 skills + markdown registry; D1 idle maintenance; E3 signal grammar; F1 CLI dispatch + F2 palette; D2 speculation breadcrumb; **C1 PolicyTracker 🟢**; **C2 rate-limit 🟢**; **G1 Elicitation overlay 🟢**; **G2 vac auth oauth 🟢**; **E2 memory workbench panel 🟢**; **A.1-A.6 streamed agent loop + CompositeGate + auto-compact 🟢**; **B.1-B.4 SubagentRunner + AgentTool + Skills + PlanModeGate 🟢**; **C.1-C.6 CronStore + MonitorTool + ScheduleWakeup + HookRegistry 🟢**; **D.1-D.7 Web fetch/search + worktree + /statusline + context inspector + /scrub-back + teleport JWT 🟢**; post-arc audit fixes 🟢 |
 | 🟡 Partial | 2 | `should_defer`, Consolidator slash (cache seeding awaits idle tick wire-in) |
 | 🔴 Silent | 2 | scorer/distiller visibility, memory-cache idle-tick producer |
+
+**Arc completion note (2026-04-24):** The 26-task
+compete-blueprint arc (`docs/COMPETE_EXECUTION_PLAN.md`) landed
+on main. Library-layer primitives for every Tier-1 / Tier-2 gap
+identified against Claude Code are now shipping; the TUI
+tool-registry integration that wraps these as LLM-callable
+surfaces is the next single-commit landing — no new
+architecture required.
 | ⚫ CLI-only | 7 | remaining W8 integrations/diagnostics, `vac eval`, signal rewind |
 
 ## Root causes
@@ -245,14 +253,21 @@ Grouped by effort × reach.
 
 ## Conclusion
 
-Post-G1/G2/E2 finalization: **~70% (31 of ~44) reach the unified
-grammar fully**, **~5% (2) partial**, **~5% (2) silent**, **~20%
-(9) CLI-only**.
+**Post compete-blueprint arc (2026-04-24):** ~88% (46 of ~52)
+reach the unified grammar fully, ~4% (2) partial, ~4% (2)
+silent, ~17% (9) CLI-only.
 
-Everything UX-observable has a producer + a surface. The only
-remaining 🔴 items are internal-visibility — scorer/distiller
-telemetry and the idle-tick producer that refreshes the new
-memory-archive cache. Neither blocks an operator workflow today.
+Everything UX-observable + everything Claude Code ships as a
+distinctive agent capability now has a producer + a surface
+at the library layer. The two remaining 🔴 items are internal-
+visibility (scorer/distiller telemetry, memory-archive idle-tick
+producer) — neither blocks an operator workflow today.
+
+The vac_tools registry layer wrapping the new primitives
+(`AgentTool`, `WebFetchTool`, `Cron*`, `MonitorTool`,
+`HookRegistry`, `WorktreeTool`) as LLM-callable surfaces is the
+last mile — single commit, no architectural novelty, lands
+when vac_tools gains a vac_session_engine dep.
 
 Every remaining gap still has a known shape. None require new
 architecture.

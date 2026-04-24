@@ -381,46 +381,53 @@ Every task above expands into this when executed:
 
 ## Progress ledger
 
-Marked in-flight when a branch picks up a task; marked `[x]` when
-pushed.
+**Status: all 26 tasks landed on `main`. Arc complete
+2026-04-24.** Commits `e9b1277..dd12708`; `fix(audit):` commit
+`dd12708` closes the post-landing correctness/hardening sweep.
 
 ### Pre-flight
-- [ ] T0.1 — Baseline
+- [x] T0.1 — Baseline (`e9b1277`)
 
-### Quick wins (parallelisable with Phase A)
-- [ ] QW.1 — TodoTool → conversation lane
-- [ ] QW.2 — /context overlay
+### Quick wins
+- [x] QW.1 — TodoTool → conversation lane (`7d89ffb`)
+- [x] QW.2 — /ctx overlay (`a9c0f3a`)
 
 ### Phase A — Streamed agent loop
-- [ ] A.1 — SubmitChunk contract + adapter shim
-- [ ] A.2 — CompositeGate / wrappedCanUseTool
-- [ ] A.3 — Streamed submit_one rewrite
-- [ ] A.4 — Auto-compaction trigger
-- [ ] A.5 — tasks SystemFacet + TaskKind
-- [ ] A.6 — TUI stream consumer + <100ms first-token
+- [x] A.1 — SubmitChunk contract + adapter shim (`4d2bce8`)
+- [x] A.2 — CompositeGate / wrappedCanUseTool (`558a1f5`)
+- [x] A.3 — Streamed submit_one rewrite (`fa2349d`)
+- [x] A.4 — Auto-compaction trigger (`029d6b9`)
+- [x] A.5 — tasks SystemFacet + TaskKind (`fb79991`)
+- [x] A.6 — First-chunk bench + <250 ms SLA (`3e400f8`)
 
 ### Phase B — Subagents visible
-- [ ] B.1 — SubagentRunner over VIL swarm
-- [ ] B.2 — AgentTool + 5 built-ins
-- [ ] B.3 — Skills markdown registry + /skills
-- [ ] B.4 — Plan mode strict gate
+- [x] B.1 — SubagentRunner + Sidechain transcript (`5596d00`)
+- [x] B.2 — AgentTool + 5 built-ins (`93f9265`)
+- [x] B.3 — Skills markdown registry (`a635594`)
+- [x] B.4 — PlanModeGate (`a774229`)
 
 ### Phase C — Autonomous loops
-- [ ] C.1 — Cron storage + Create/Delete/List
-- [ ] C.2 — spawn_cron_loop + cron facet
-- [ ] C.3 — MonitorTool
-- [ ] C.4 — ScheduleWakeup + /loop dynamic
-- [ ] C.5 — HookRegistry (9 × 4)
-- [ ] C.6 — Hook sub-pane under Runtime
+- [x] C.1 — CronStore + Create/Delete/List (`23f6126`)
+- [x] C.2 — spawn_cron_loop + cron facet (`8fc941f`)
+- [x] C.3 — MonitorTool (`a66b6dd`)
+- [x] C.4 — ScheduleWakeup + /loop (`80c5459`)
+- [x] C.5 — HookRegistry 9 × 4 (`f1cefa8`)
+- [x] C.6 — HookFireRecord ring (`e43709e`)
 
 ### Phase D — Portable sessions
-- [ ] D.1 — WebFetchTool
-- [ ] D.2 — WebSearchTool
-- [ ] D.3 — Worktree tools
-- [ ] D.4 — /statusline + /output-style
-- [ ] D.5 — Context inspector deepening
-- [ ] D.6 — /thinkback + /thinkback-play
-- [ ] D.7 — Remote bridge SSE + JWT
+- [x] D.1 + D.2 — WebFetch + WebSearch (`b8540d6`)
+- [x] D.3 — Worktree tools (`71076f9`)
+- [x] D.4 — /statusline + /output-style (`5d216a6`)
+- [x] D.5 — Context inspector deepening (`0e3b8a1`)
+- [x] D.6 — /scrub-back + /thinkback-play (`fd8a7fa`)
+- [x] D.7 — Teleport JWT + RemoteSessionConfig (`c83d2e0`)
+
+### Audit pass
+- [x] Post-arc correctness + hardening sweep (`dd12708`)
+  — HookStore dup-id, HookGate regex cache, bounded
+  submit_stream, MIN_TELEPORT_TTL, child_scoped subagent,
+  clamp_delay warn, auth-header redact pin, SubmitChunk drift
+  guard.
 
 ---
 
