@@ -31,6 +31,7 @@
 pub mod compact;
 pub mod error;
 pub mod event;
+pub mod gate;
 pub mod file_state_cache;
 pub mod fork;
 pub mod llm;
@@ -52,6 +53,9 @@ pub use fork::{
 pub use event::{SubmitContext, SubmitEvent};
 pub use llm::{EchoAdapter, LlmAdapter, LlmRequest, LlmResponse};
 pub use slash::{SlashCommand, SlashProcessor};
+pub use gate::{
+    CompositeGate, GateDecision, NoopHookGate, PolicyGate, ToolCheckCtx, ToolGate,
+};
 pub use stream::{SubmitChunk, SubmitStream, submit_stream};
 pub use submit::{CompactConfig, submit_one};
 pub use transcript::{TranscriptEntry, TranscriptHandle, TranscriptKind, TranscriptWriter};
