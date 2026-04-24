@@ -212,6 +212,15 @@ impl VilTool for SendMessageTool {
         f.write_all(line.as_bytes())
             .await
             .map_err(|e| ToolError::ExecutionFailed(format!("write: {e}")))?;
+        // tokio::fs::File does NOT auto-flush on drop. Without an
+        // explicit flush the bytes can live in the buffer past the
+        // end of `execute` and an immediate read-back (in tests, or
+        // a downstream tool reading the inbox) may see an empty
+        // file. Latent pre-NS.4 bug; surfaced by Part 3's registry
+        // changes perturbing test timing.
+        f.flush()
+            .await
+            .map_err(|e| ToolError::ExecutionFailed(format!("flush: {e}")))?;
 
         Ok(serde_json::json!({
             "channel": match input.channel {

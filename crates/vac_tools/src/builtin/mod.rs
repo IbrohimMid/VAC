@@ -18,6 +18,7 @@ pub mod plan_mode;
 pub mod schedule_cron;
 pub mod search;
 pub mod sequential_think;
+pub mod signal_distilled;
 pub mod signal_list;
 pub mod signal_tail;
 pub mod skill_tool;
@@ -56,6 +57,7 @@ pub async fn register_builtin_tools(registry: &Arc<ToolRegistry>) -> Result<(), 
     registry.register(search::SearchTool::new()).await?;
     registry.register(signal_tail::SignalTailTool::new()).await?;
     registry.register(signal_list::SignalListTool::new()).await?;
+    registry.register(signal_distilled::SignalDistilledTool::new()).await?;
     registry.register(plan_mode::EnterPlanModeTool::new()).await?;
     registry.register(plan_mode::ExitPlanModeTool::new()).await?;
     registry.register(worktree::EnterWorktreeTool::new()).await?;
@@ -102,6 +104,7 @@ pub async fn register_builtin_tools(registry: &Arc<ToolRegistry>) -> Result<(), 
     registry.register(monitor::MonitorTool::new()).await?;
     registry.register(hook_registry::HookListTool::new()).await?;
     registry.register(hook_registry::HookDeleteTool::new()).await?;
+    registry.register(hook_registry::HookCreateTool::new()).await?;
 
     let skills_dir = std::path::PathBuf::from(".vac/skills");
     registry

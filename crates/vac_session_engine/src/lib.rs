@@ -70,7 +70,7 @@ pub use stream::{SubmitChunk, SubmitStream, submit_stream};
 pub use vac_session_primitives::{
     CronEntry, CronStore, DEFAULT_CRON_FILENAME, unix_now,
     DEFAULT_HOOKS_FILENAME, HookCommand, HookDecision, HookEntry, HookEvent,
-    HookStore, exec_hook,
+    HookSandbox, HookStore, exec_hook, exec_hook_sandboxed, validate_hook_store,
     MonitorHandle, MonitorLine, MonitorSpec, spawn_monitor,
     BraveBackend, DEFAULT_RESPONSE_CAP, SearchBackend, WebFetchRequest,
     WebFetchResult, WebSearchHit, WebSearchRequest,

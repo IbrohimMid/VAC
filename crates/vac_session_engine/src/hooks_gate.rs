@@ -12,12 +12,13 @@ use async_trait::async_trait;
 
 use crate::gate::{GateDecision, ToolCheckCtx, ToolGate};
 use vac_session_primitives::hooks::{
-    HookDecision, HookEntry, HookEvent, HookStore, exec_hook,
+    HookDecision, HookEntry, HookEvent, HookSandbox, HookStore, exec_hook_sandboxed,
 };
 
 #[derive(Debug, Clone)]
 pub struct HookGate {
     store: std::sync::Arc<tokio::sync::RwLock<HookStoreCompiled>>,
+    sandbox: std::sync::Arc<HookSandbox>,
 }
 
 #[derive(Debug)]
@@ -67,11 +68,19 @@ impl HookStoreCompiled {
 }
 
 impl HookGate {
+    /// Default gate — applies `HookSandbox::default()` (restrictive)
+    /// to every shell hook. Matches the NS.4 posture: sandbox-on
+    /// unless the operator opts into a wider policy.
     pub fn new(store: HookStore) -> Self {
+        Self::with_sandbox(store, HookSandbox::default())
+    }
+
+    pub fn with_sandbox(store: HookStore, sandbox: HookSandbox) -> Self {
         Self {
             store: std::sync::Arc::new(tokio::sync::RwLock::new(
                 HookStoreCompiled::from_store(store),
             )),
+            sandbox: std::sync::Arc::new(sandbox),
         }
     }
 
@@ -92,7 +101,7 @@ impl ToolGate for HookGate {
         let matches: Vec<HookEntry> = matches.iter().copied().cloned().collect();
         drop(store);
         for entry in &matches {
-            match exec_hook(entry).await {
+            match exec_hook_sandboxed(entry, &self.sandbox).await {
                 Ok(HookDecision::Allow) => continue,
                 Ok(HookDecision::Deny { reason }) => {
                     return GateDecision::Deny { reason };

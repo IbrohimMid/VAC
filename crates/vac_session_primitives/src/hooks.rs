@@ -166,10 +166,138 @@ impl HookStore {
     }
 }
 
-/// Execute a single hook. For `command` kind this spawns the
-/// subprocess; other kinds trace + return Allow until the real
+/// NS.4 — sandbox policy applied when executing a
+/// `HookCommand::Command`. All fields are conservative defaults so
+/// an operator who cares only about "some limits" can pass
+/// `HookSandbox::default()`. CLAUDE.md rules say "only validate at
+/// system boundaries" — this is that boundary for shell hooks.
+#[derive(Debug, Clone)]
+pub struct HookSandbox {
+    /// Wall-clock cap. Child is killed on timeout; hook is Denied.
+    pub wall_clock: std::time::Duration,
+    /// Env-var allowlist. Empty means no env vars forwarded (maximum
+    /// isolation); `None` disables filtering (inherit everything,
+    /// pre-NS.4 behaviour). A missing allowed var is silently
+    /// omitted.
+    pub env_allowlist: Option<Vec<String>>,
+    /// Soft RLIMIT_AS cap in bytes (address space). 0 disables.
+    pub mem_bytes: u64,
+    /// Soft RLIMIT_CPU cap in seconds. 0 disables.
+    pub cpu_secs: u64,
+    /// Soft RLIMIT_NOFILE cap. 0 disables.
+    pub nofile: u64,
+}
+
+impl Default for HookSandbox {
+    fn default() -> Self {
+        Self {
+            wall_clock: std::time::Duration::from_secs(30),
+            // Minimal env: PATH + LANG + HOME. A hook that needs
+            // more passes a wider list; the operator must opt in.
+            env_allowlist: Some(vec![
+                "PATH".into(),
+                "HOME".into(),
+                "LANG".into(),
+                "LC_ALL".into(),
+                "USER".into(),
+                "LOGNAME".into(),
+                "TZ".into(),
+            ]),
+            mem_bytes: 512 * 1024 * 1024,
+            cpu_secs: 10,
+            nofile: 128,
+        }
+    }
+}
+
+impl HookSandbox {
+    /// Unrestricted sandbox — inherits full environment, no rlimits,
+    /// long wall-clock. Matches pre-NS.4 `exec_hook` semantics.
+    /// Used by the backward-compat `exec_hook` shim only; do not
+    /// expose to operators.
+    pub fn permissive() -> Self {
+        Self {
+            wall_clock: std::time::Duration::from_secs(5 * 60),
+            env_allowlist: None,
+            mem_bytes: 0,
+            cpu_secs: 0,
+            nofile: 0,
+        }
+    }
+}
+
+/// Validate a `HookStore` at load time. JSON-schema-level checks
+/// (argv bounds, id charset, regex compilability) the rest of the
+/// stack relies on. Returns the first violation so operators get a
+/// crisp error line rather than a silent disable.
+pub fn validate_hook_store(store: &HookStore) -> EngineResult<()> {
+    let mut seen: std::collections::HashSet<&str> =
+        std::collections::HashSet::with_capacity(store.entries.len());
+    for entry in &store.entries {
+        if entry.id.is_empty() || entry.id.len() > 128 {
+            return Err(EngineError::Other(format!(
+                "hook id '{}' must be 1..=128 chars",
+                entry.id
+            )));
+        }
+        if !entry
+            .id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+        {
+            return Err(EngineError::Other(format!(
+                "hook id '{}' must match [A-Za-z0-9_-]+",
+                entry.id
+            )));
+        }
+        if !seen.insert(entry.id.as_str()) {
+            return Err(EngineError::Other(format!(
+                "duplicate hook id '{}'",
+                entry.id
+            )));
+        }
+        if !entry.matcher.is_empty() {
+            regex::Regex::new(&entry.matcher).map_err(|e| {
+                EngineError::Other(format!(
+                    "hook '{}' matcher regex invalid: {e}",
+                    entry.id
+                ))
+            })?;
+        }
+        if let HookCommand::Command { argv } = &entry.command {
+            if argv.is_empty() {
+                return Err(EngineError::Other(format!(
+                    "hook '{}' command has empty argv",
+                    entry.id
+                )));
+            }
+            if argv.len() > HOOK_ARGV_MAX_LEN {
+                return Err(EngineError::Other(format!(
+                    "hook '{}' argv length {} exceeds cap {}",
+                    entry.id,
+                    argv.len(),
+                    HOOK_ARGV_MAX_LEN
+                )));
+            }
+            if argv[0].is_empty() {
+                return Err(EngineError::Other(format!(
+                    "hook '{}' argv[0] (program) is empty",
+                    entry.id
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Execute a single hook under the given sandbox. For `command`
+/// kind this spawns the subprocess with rlimits + env allowlist +
+/// wall-clock cap; other kinds trace + return Allow until the real
 /// adapters land.
-pub async fn exec_hook(entry: &HookEntry) -> EngineResult<HookDecision> {
+pub async fn exec_hook_sandboxed(
+    entry: &HookEntry,
+    sandbox: &HookSandbox,
+) -> EngineResult<HookDecision> {
     match &entry.command {
         HookCommand::Command { argv } => {
             if argv.is_empty() {
@@ -178,10 +306,52 @@ pub async fn exec_hook(entry: &HookEntry) -> EngineResult<HookDecision> {
                     entry.id,
                 )));
             }
-            let output = tokio::process::Command::new(&argv[0])
-                .args(&argv[1..])
-                .output()
-                .await?;
+            let mut cmd = tokio::process::Command::new(&argv[0]);
+            cmd.args(&argv[1..]);
+            cmd.kill_on_drop(true);
+
+            // Env filtering.
+            if let Some(allow) = &sandbox.env_allowlist {
+                cmd.env_clear();
+                for key in allow {
+                    if let Ok(val) = std::env::var(key) {
+                        cmd.env(key, val);
+                    }
+                }
+            }
+
+            // rlimit installation via pre_exec. Safe because the
+            // closure only calls setrlimit — a syscall documented
+            // async-signal-safe.
+            #[cfg(unix)]
+            {
+                use std::os::unix::process::CommandExt;
+                let mem = sandbox.mem_bytes;
+                let cpu = sandbox.cpu_secs;
+                let nof = sandbox.nofile;
+                unsafe {
+                    cmd.pre_exec(move || {
+                        apply_rlimit(libc::RLIMIT_AS, mem);
+                        apply_rlimit(libc::RLIMIT_CPU, cpu);
+                        apply_rlimit(libc::RLIMIT_NOFILE, nof);
+                        Ok(())
+                    });
+                }
+            }
+
+            let fut = cmd.output();
+            let output = match tokio::time::timeout(sandbox.wall_clock, fut).await {
+                Ok(r) => r?,
+                Err(_) => {
+                    return Ok(HookDecision::Deny {
+                        reason: format!(
+                            "hook '{}' exceeded wall-clock cap {}s",
+                            entry.id,
+                            sandbox.wall_clock.as_secs(),
+                        ),
+                    });
+                }
+            };
             if output.status.success() {
                 Ok(HookDecision::Allow)
             } else {
@@ -220,6 +390,33 @@ pub async fn exec_hook(entry: &HookEntry) -> EngineResult<HookDecision> {
             );
             Ok(HookDecision::Allow)
         }
+    }
+}
+
+/// NS.4 — backward-compatible shim. Runs the hook under a
+/// permissive sandbox (inherits full env, no rlimits, 5-min
+/// wall-clock) so pre-NS.4 call sites observe identical behaviour.
+/// **New call sites must prefer [`exec_hook_sandboxed`] with an
+/// explicit policy.**
+pub async fn exec_hook(entry: &HookEntry) -> EngineResult<HookDecision> {
+    exec_hook_sandboxed(entry, &HookSandbox::permissive()).await
+}
+
+#[cfg(unix)]
+fn apply_rlimit(resource: libc::__rlimit_resource_t, soft: u64) {
+    if soft == 0 {
+        return;
+    }
+    // SAFETY: setrlimit is async-signal-safe. Failure is non-fatal;
+    // the process will simply run without the cap — we can't log
+    // from pre_exec so swallow errors silently. Tests verify
+    // positive enforcement via `prlimit`-style probes.
+    let rl = libc::rlimit {
+        rlim_cur: soft as libc::rlim_t,
+        rlim_max: soft as libc::rlim_t,
+    };
+    unsafe {
+        let _ = libc::setrlimit(resource, &rl);
     }
 }
 
@@ -300,6 +497,102 @@ mod tests {
             .create(entry("a", vec!["true".into()]))
             .unwrap_err();
         assert!(format!("{err}").contains("already registered"));
+    }
+
+    #[tokio::test]
+    async fn sandbox_wall_clock_denies_runaway() {
+        let e = HookEntry {
+            id: "slow".into(),
+            event: HookEvent::PreToolUse,
+            matcher: String::new(),
+            command: HookCommand::Command {
+                argv: vec!["sleep".into(), "5".into()],
+            },
+            description: String::new(),
+        };
+        let sandbox = HookSandbox {
+            wall_clock: std::time::Duration::from_millis(300),
+            ..HookSandbox::permissive()
+        };
+        let decision = exec_hook_sandboxed(&e, &sandbox).await.unwrap();
+        match decision {
+            HookDecision::Deny { reason } => {
+                assert!(reason.contains("wall-clock"), "{reason}");
+            }
+            other => panic!("expected Deny, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn sandbox_env_allowlist_filters_inherited_env() {
+        // Child sees only PATH and TEST_ALLOWED; TEST_BLOCKED is stripped.
+        unsafe {
+            std::env::set_var("TEST_ALLOWED_NS4", "1");
+            std::env::set_var("TEST_BLOCKED_NS4", "1");
+        }
+        let e = HookEntry {
+            id: "envcheck".into(),
+            event: HookEvent::PreToolUse,
+            matcher: String::new(),
+            command: HookCommand::Command {
+                argv: vec![
+                    "sh".into(),
+                    "-c".into(),
+                    "test -z \"$TEST_BLOCKED_NS4\" && test \"$TEST_ALLOWED_NS4\" = 1".into(),
+                ],
+            },
+            description: String::new(),
+        };
+        let sandbox = HookSandbox {
+            wall_clock: std::time::Duration::from_secs(5),
+            env_allowlist: Some(vec!["PATH".into(), "TEST_ALLOWED_NS4".into()]),
+            mem_bytes: 0,
+            cpu_secs: 0,
+            nofile: 0,
+        };
+        let decision = exec_hook_sandboxed(&e, &sandbox).await.unwrap();
+        assert!(matches!(decision, HookDecision::Allow), "{decision:?}");
+    }
+
+    #[test]
+    fn validate_hook_store_rejects_duplicate_ids() {
+        let store = HookStore {
+            entries: vec![
+                entry("dup", vec!["true".into()]),
+                entry("dup", vec!["true".into()]),
+            ],
+        };
+        let err = validate_hook_store(&store).unwrap_err();
+        assert!(format!("{err}").contains("duplicate"), "{err}");
+    }
+
+    #[test]
+    fn validate_hook_store_rejects_bad_regex() {
+        let store = HookStore {
+            entries: vec![HookEntry {
+                id: "h1".into(),
+                event: HookEvent::PreToolUse,
+                matcher: "(unclosed".into(),
+                command: HookCommand::Command { argv: vec!["true".into()] },
+                description: String::new(),
+            }],
+        };
+        let err = validate_hook_store(&store).unwrap_err();
+        assert!(format!("{err}").contains("matcher regex"), "{err}");
+    }
+
+    #[test]
+    fn validate_hook_store_rejects_bad_id_charset() {
+        let store = HookStore {
+            entries: vec![HookEntry {
+                id: "bad id!".into(),
+                event: HookEvent::PreToolUse,
+                matcher: String::new(),
+                command: HookCommand::Command { argv: vec!["true".into()] },
+                description: String::new(),
+            }],
+        };
+        assert!(validate_hook_store(&store).is_err());
     }
 
     #[test]

@@ -13,6 +13,7 @@ pub mod buffer;
 pub mod build_streamer;
 pub mod config;
 pub mod distill;
+pub mod idle_tick;
 pub mod registry;
 pub mod score;
 
@@ -23,5 +24,6 @@ pub use buffer::{SignalBuffer, SignalLine, SignalStreamKind};
 pub use build_streamer::{BUILD_STREAM_KEY_PREFIX, BuildOutcome, BuildStreamer};
 pub use config::SignalConfig;
 pub use distill::{DistilledView, Distiller, TailDistiller};
+pub use idle_tick::{IdleTickHandle, TickSample, spawn_scorer_tick};
 pub use registry::{RegistrySummary, SignalRegistry};
 pub use score::{RegexScorer, ScoreClass, Scorer};
