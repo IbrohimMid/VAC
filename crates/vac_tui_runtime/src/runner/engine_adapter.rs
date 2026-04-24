@@ -30,12 +30,34 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use tokio::sync::{Mutex, mpsc, oneshot};
+use tokio::sync::{Mutex, OnceCell, mpsc, oneshot};
 use vac_core::TaskResult;
 use vac_core::engine::{RuntimeUpdate, VacEngine};
 use vac_session_engine::{
     EngineError, EngineResult, LlmAdapter, LlmRequest, LlmResponse, SubmitChunk, SubmitEvent,
 };
+
+/// M3 audit fix: a process-wide `ToolRegistry` populated on first
+/// use. Builtin registration is ~15 tools and runs async file I/O
+/// for PTY hosts; per-submit rebuild was wasteful for interactive
+/// sessions. Cache is fine because `ToolRegistry::register` is
+/// additive and no builtin tool holds per-submit state — per-call
+/// context lives on `ToolContext`.
+static SHARED_TOOL_REGISTRY: OnceCell<Arc<vac_tools::ToolRegistry>> =
+    OnceCell::const_new();
+
+async fn shared_registry() -> anyhow::Result<Arc<vac_tools::ToolRegistry>> {
+    SHARED_TOOL_REGISTRY
+        .get_or_try_init(|| async {
+            let registry = Arc::new(vac_tools::ToolRegistry::new());
+            vac_tools::builtin::register_builtin_tools(&registry)
+                .await
+                .map_err(|e| anyhow::anyhow!("register builtins: {e}"))?;
+            Ok::<_, anyhow::Error>(registry)
+        })
+        .await
+        .cloned()
+}
 
 pub async fn run_via_session_engine(
     project_root: std::path::PathBuf,
@@ -49,28 +71,32 @@ pub async fn run_via_session_engine(
         task_description,
         update_tx,
         None,
+        None,
     )
     .await
 }
 
-/// B5 — explicit broadcast entry point. A driver that wants live
-/// teleport attach frames calls this with the session's
-/// `SessionBroadcast`; each `SubmitChunk` routes through
-/// `chunk_to_outbound` and lands on every attached SSE client.
-/// Callers without teleport pass `None` and get pre-B5 behaviour.
+/// B5 + C1 audit fix — shared entry point for every live driver
+/// (TUI, `vac run`, ACP). A driver that wants live teleport
+/// attach frames passes a `SessionBroadcast`; `SubmitChunk`s
+/// route through `chunk_to_outbound` and land on every attached
+/// SSE client. Optional `max_budget_tokens` threads through to
+/// the submit's compact config so headless callers keep their
+/// per-run budget gate.
 pub async fn run_via_session_engine_with_broadcast(
     project_root: std::path::PathBuf,
     engine: Arc<Mutex<VacEngine>>,
     task_description: &str,
     update_tx: tokio::sync::mpsc::UnboundedSender<vac_core::engine::RuntimeUpdate>,
     broadcast: Option<Arc<vac_bridge::remote::SessionBroadcast>>,
+    max_budget_tokens: Option<u64>,
 ) -> anyhow::Result<vac_core::TaskResult> {
     use futures::StreamExt;
     use vac_session_engine::{
         SlashProcessor, SubmitContext, TranscriptWriter, TrivialCompactBoundary,
         UsageTracker, submit_stream,
     };
-    use vac_tools::{ToolRegistry, registry::ToolContext};
+    use vac_tools::registry::ToolContext;
 
     // B2: live dispatcher wiring. Build a ToolRegistry with
     // builtins registered, construct a ToolContext for this
@@ -78,32 +104,62 @@ pub async fn run_via_session_engine_with_broadcast(
     // the dispatcher and (B3) composite gate.
     // B4: attach an AgentDispatcher so the `agent_run` tool can
     // actually spawn subagents in the live session.
-    let registry = Arc::new(ToolRegistry::new());
-    vac_tools::builtin::register_builtin_tools(&registry)
-        .await
-        .map_err(|e| anyhow::anyhow!("register builtins: {e}"))?;
-    let session_id = uuid::Uuid::new_v4();
+    // M3 audit fix: a shared registry cached across submits keeps
+    // builtin registration out of the per-submit hot path. Tests
+    // rebuild per-case by definition; long-running sessions reuse
+    // the same instance.
+    let registry = shared_registry().await?;
+    // C3 audit fix: use the VacEngine's real session id so
+    // TranscriptWriter and ToolContext agree with the engine's
+    // internal session record. Previously a fresh Uuid::new_v4()
+    // drifted from engine.session_id() and split transcript writes.
+    let session_id = {
+        let eng = engine.lock().await;
+        eng.session_id().await
+    };
 
     let writer = Arc::new(TranscriptWriter::new(project_root.clone()));
     let slash = Arc::new(SlashProcessor::new());
     let compact: Arc<dyn vac_session_engine::CompactBoundary> =
         Arc::new(TrivialCompactBoundary::default());
     let usage = Arc::new(UsageTracker::new());
-    // Build the agent dispatcher from a sibling SubagentDispatchContext
-    // that shares transcript/slash/compact/usage with the parent
-    // submit. The LlmAdapter passed in is a fresh
-    // `VacEngineAdapter` without a result oneshot (subagents don't
-    // hand TaskResult back — they emit ToolResults on the parent
-    // stream, which EngineAgentDispatcher folds into an envelope).
+
+    // B3: compose HookGate into the live CompositeGate. Load-time
+    // schema errors abort the submit with a crisp message.
+    let gate = super::dispatcher::build_live_gate(&project_root).await?;
+
+    // B4 + H1 audit fix: build the agent dispatcher with a
+    // `compact_cfg` that carries the parent's dispatcher + gate so
+    // the subagent's own tool calls route through the same live
+    // stack. Previously the subagent inherited `CompactConfig::
+    // default()` from `SubagentDispatchContext::new`, meaning the
+    // LLM could spawn a subagent but the subagent itself had no
+    // dispatcher — tool-use silently fell back to UnsupportedDispatcher.
     let subagent_llm: Arc<dyn vac_session_engine::LlmAdapter> =
         Arc::new(VacEngineAdapter::new(engine.clone()));
+
+    // ToolContext constructed *before* the dispatcher so we can
+    // clone it into both: the dispatcher (for its own tool routing)
+    // and the agent_dispatcher's subagent stack (so subagents see
+    // the same working_dir / session / agent_dispatcher chain).
+    // Note: subagent's ctx re-uses the parent's `agent_dispatcher`
+    // handle — agent_run can invoke another level of subagent up
+    // to the budget cap `SubagentRunner` enforces upstream.
+    let parent_ctx_base = ToolContext::new(project_root.clone())
+        .with_session_id(session_id);
+    let subagent_cfg = super::dispatcher::live_compact_config(
+        registry.clone(),
+        Arc::new(parent_ctx_base.clone()),
+        Some(gate.clone()),
+    );
     let subagent_dispatch_ctx = vac_session_engine::SubagentDispatchContext::new(
         writer.clone(),
         slash.clone(),
         compact.clone(),
         usage.clone(),
         subagent_llm,
-    );
+    )
+    .with_compact_cfg(subagent_cfg);
     let agent_dispatcher: Arc<
         dyn vac_session_primitives::AgentDispatcher,
     > = Arc::new(vac_session_engine::EngineAgentDispatcher::new(
@@ -111,19 +167,14 @@ pub async fn run_via_session_engine_with_broadcast(
     ));
 
     let ctx = Arc::new(
-        ToolContext::new(project_root.clone())
-            .with_session_id(session_id)
-            .with_agent_dispatcher(agent_dispatcher),
+        parent_ctx_base.with_agent_dispatcher(agent_dispatcher),
     );
-    // B3: compose HookGate + (future) other gates into the live
-    // CompositeGate. Load-time schema errors abort the submit
-    // with a crisp message instead of silently disabling hooks.
-    let gate = super::dispatcher::build_live_gate(&project_root).await?;
-    let compact_cfg = super::dispatcher::live_compact_config(
+    let mut compact_cfg = super::dispatcher::live_compact_config(
         registry.clone(),
         ctx.clone(),
         Some(gate),
     );
+    compact_cfg.max_budget_tokens = max_budget_tokens;
 
     // NS.2 — drive the submit through `submit_stream` and pump each
     // `SubmitChunk` directly into the TUI's `RuntimeUpdate` channel
@@ -453,14 +504,6 @@ impl LlmAdapter for VacEngineAdapter {
                 .map_err(|e| EngineError::Other(format!("vac_core engine: {e}")))?
         };
 
-        // B1: forward the real TaskResult to whoever supplied the
-        // oneshot (typically `run_via_session_engine`). Ignore send
-        // errors — the receiver dropped means the caller no longer
-        // needs it, which is fine.
-        if let Some(tx) = self.result_tx.lock().await.take() {
-            let _ = tx.send(result.clone());
-        }
-
         // Drop the Sender by dropping the engine guard already happened;
         // drop by letting `rt_tx` go out of scope — the translator
         // loop will exit once the channel closes.
@@ -469,6 +512,16 @@ impl LlmAdapter for VacEngineAdapter {
                 target: "vac_cli::engine_adapter",
                 "translator task join error: {e}",
             );
+        }
+
+        // B1 + audit H3: fire the oneshot *after* the translator
+        // join so the invariant "oneshot fires ⇒ all stream events
+        // flushed" holds structurally. Pre-audit this fired before
+        // the join and the ordering was correct only by convention;
+        // a future edit could have reordered the drain and silently
+        // broken it.
+        if let Some(tx) = self.result_tx.lock().await.take() {
+            let _ = tx.send(result.clone());
         }
 
         // VacEngine doesn't surface the concrete provider/model in

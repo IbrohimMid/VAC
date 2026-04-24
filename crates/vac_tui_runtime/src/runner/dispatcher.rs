@@ -231,4 +231,52 @@ mod tests {
         assert!(cfg.dispatcher.is_some());
         assert!(cfg.gate.is_none()); // explicit None means permissive
     }
+
+    /// Audit M2: missing `.vac/hooks.json` must be fail-soft
+    /// (empty store, no error) — first-run projects don't have one
+    /// and must still submit.
+    #[tokio::test]
+    async fn build_live_gate_fail_soft_on_missing_hooks_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let gate = build_live_gate(tmp.path()).await.unwrap();
+        assert!(!gate.is_empty(), "HookGate still composed even with no hooks");
+    }
+
+    /// Audit M2: malformed hooks.json must surface a crisp
+    /// operator-facing error rather than a deep parse panic.
+    #[tokio::test]
+    async fn build_live_gate_rejects_malformed_hooks_json() {
+        let tmp = tempfile::tempdir().unwrap();
+        let hooks_dir = tmp.path().join(".vac");
+        std::fs::create_dir_all(&hooks_dir).unwrap();
+        std::fs::write(hooks_dir.join("hooks.json"), "{ not valid json").unwrap();
+        let err = build_live_gate(tmp.path()).await.unwrap_err();
+        let msg = format!("{err}");
+        assert!(
+            msg.contains(".vac/hooks.json") || msg.contains("hooks.json"),
+            "error should reference hooks.json; got: {msg}",
+        );
+    }
+
+    /// Audit M2: hook entries that fail schema validation (e.g.
+    /// empty id, bad regex matcher) surface a validation error.
+    #[tokio::test]
+    async fn build_live_gate_rejects_schema_violation() {
+        let tmp = tempfile::tempdir().unwrap();
+        let hooks_dir = tmp.path().join(".vac");
+        std::fs::create_dir_all(&hooks_dir).unwrap();
+        // `matcher` is an invalid regex; `validate_hook_store`
+        // should surface it.
+        std::fs::write(
+            hooks_dir.join("hooks.json"),
+            r#"{"entries":[{"id":"h1","event":"PreToolUse","matcher":"(unclosed","type":"command","argv":["true"]}]}"#,
+        )
+        .unwrap();
+        let err = build_live_gate(tmp.path()).await.unwrap_err();
+        let msg = format!("{err}");
+        assert!(
+            msg.contains("validation") || msg.contains("regex"),
+            "error should mention validation; got: {msg}",
+        );
+    }
 }

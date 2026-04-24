@@ -141,6 +141,27 @@ pub async fn execute(project_root: PathBuf, _port: u16) -> anyhow::Result<()> {
     let compact = TrivialCompactBoundary::default();
     let usage = UsageTracker::new();
 
+    // Audit C1 fix: ACP host now ships live gate + dispatcher.
+    // Pre-fix `submit_one` was called with `CompactConfig::default()`
+    // — an ACP peer that asked the local adapter to run a tool
+    // fell back to `UnsupportedDispatcher` silently. Wired via the
+    // same builders the TUI uses.
+    let acp_registry: Arc<vac_tools::ToolRegistry> =
+        Arc::new(vac_tools::ToolRegistry::new());
+    vac_tools::builtin::register_builtin_tools(&acp_registry).await?;
+    let acp_ctx = Arc::new(
+        vac_tools::registry::ToolContext::new(project_root.clone())
+            .with_session_id(session_id),
+    );
+    let acp_gate =
+        vac_tui_runtime::runner::dispatcher::build_live_gate(&project_root)
+            .await?;
+    let base_compact_cfg = vac_tui_runtime::runner::dispatcher::live_compact_config(
+        acp_registry.clone(),
+        acp_ctx.clone(),
+        Some(acp_gate),
+    );
+
     let mut stdout = tokio::io::stdout();
 
     let (mut inbound_rx, mut outbound_rx) = session.split();
@@ -173,7 +194,7 @@ pub async fn execute(project_root: PathBuf, _port: u16) -> anyhow::Result<()> {
                                 &compact,
                                 &usage,
                                 &adapter,
-                                CompactConfig::default(),
+                                base_compact_cfg.clone(),
                                 None,
                             ).await;
 

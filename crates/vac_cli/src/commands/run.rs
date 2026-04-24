@@ -208,15 +208,15 @@ pub async fn execute(
     Ok(())
 }
 
-/// R0.b — Drive the task through `vac_session_engine::submit_one`
-/// with a `VacEngineAdapter` wrapping the real `VacEngine`. Returns
-/// a `vac_core::TaskResult` so the caller's summary-printing block
-/// is unchanged — only the orchestration changes.
-///
-/// The adapter forwards VacEngine's `RuntimeUpdate` stream as
-/// `SubmitEvent`s through the submit's outbound channel. Per-call
-/// approval prompts still flow through the pre-existing
-/// `update_tx` consumer path the caller spawned.
+/// Audit C1 fix — the CLI `vac run` path now delegates to the
+/// single shared `vac_tui_runtime::runner::engine_adapter::
+/// run_via_session_engine_with_broadcast` instead of carrying a
+/// parallel implementation that passed `CompactConfig::default()`
+/// (no gate, no dispatcher, no agent_dispatcher). Before this,
+/// `vac run` could not execute any tool call — it hit
+/// `UnsupportedDispatcher` silently. Now CLI and TUI share the
+/// same VIL single-spine submit path with HookGate + live tool
+/// dispatcher + agent dispatcher uniformly wired.
 async fn run_via_session_engine(
     project_root: PathBuf,
     engine: vac_core::VacEngine,
@@ -224,123 +224,25 @@ async fn run_via_session_engine(
     update_tx: tokio::sync::mpsc::UnboundedSender<vac_core::engine::RuntimeUpdate>,
     budget_tokens: Option<u64>,
 ) -> anyhow::Result<vac_core::TaskResult> {
-    use vac_tui_runtime::runner::engine_adapter::VacEngineAdapter;
-    use vac_session_engine::{
-        CompactConfig, SlashProcessor, SubmitContext, SubmitEvent, TranscriptWriter,
-        TrivialCompactBoundary, UsageTracker, submit_one,
-    };
-
-    // Share the engine between the adapter and the forwarder that
-    // translates updates back into the caller's existing channel.
     let engine_arc = Arc::new(Mutex::new(engine));
-
-    // Bridge: submit_one's outbound (SubmitEvent) → legacy
-    // update_tx (RuntimeUpdate) so the pre-existing stdout renderer
-    // still sees approvals / status lines without rewrite.
-    let (submit_tx, mut submit_rx) = tokio::sync::mpsc::unbounded_channel::<SubmitEvent>();
-    let legacy_tx = update_tx.clone();
-    let bridge = tokio::spawn(async move {
-        while let Some(ev) = submit_rx.recv().await {
-            if let Some(rt) = submit_event_to_runtime_update(ev) {
-                let _ = legacy_tx.send(rt);
-            }
-        }
-    });
-
-    let adapter = VacEngineAdapter::with_event_forward(engine_arc.clone(), submit_tx);
-    let writer = TranscriptWriter::new(project_root);
-    let slash = SlashProcessor::new();
-    let compact = TrivialCompactBoundary::default();
-    let usage = UsageTracker::new();
-    let ctx = SubmitContext::new(uuid::Uuid::new_v4(), task_description.to_string());
-
-    let mut compact_cfg = CompactConfig::default();
-    compact_cfg.max_budget_tokens = budget_tokens;
-
-    let snap = submit_one(
-        ctx,
-        &writer,
-        &slash,
-        &compact,
-        &usage,
-        &adapter,
-        compact_cfg,
+    vac_tui_runtime::runner::engine_adapter::run_via_session_engine_with_broadcast(
+        project_root,
+        engine_arc,
+        task_description,
+        update_tx,
         None,
+        budget_tokens,
     )
     .await
-    .map_err(|e| anyhow::anyhow!("submit_one: {e}"))?;
-
-    // Close the bridge cleanly (submit_tx dropped inside adapter
-    // already) and reclaim the engine handle so we can call
-    // `task_history` or equivalent for the summary below.
-    let _ = bridge.await;
-
-    // submit_one doesn't expose TaskResult; reconstitute a minimal
-    // one from the engine's last task entry so the existing summary
-    // renderer is unchanged. The authoritative record remains the
-    // transcript JSONL.
-    let mut engine = engine_arc.lock().await;
-    let fallback_task_id = vac_core::task::TaskId(uuid::Uuid::new_v4());
-    Ok(vac_core::TaskResult {
-        task_id: fallback_task_id,
-        status: vac_core::TaskStatus::Completed,
-        summary: format!(
-            "session-engine submit finished; {} tokens, transcript at {}",
-            snap.total_tokens(),
-            writer.sessions_dir().display(),
-        ),
-        modified_files: Vec::new(),
-        created_files: Vec::new(),
-        validation_score: None,
-        elapsed_ms: 0,
-        total_tokens_used: snap.total_tokens(),
-        agent_contributions: Vec::new(),
-    })
     .map(|r| {
-        // Keep the engine handle alive to silence the
-        // "unused mutable" warning; future rings read tool-call
-        // history from here.
-        let _ = &mut *engine;
+        // Preserve the historical unused-warning silence pattern —
+        // future rings may read tool-call history off the engine
+        // after the submit completes.
         r
     })
 }
 
-fn submit_event_to_runtime_update(
-    ev: vac_session_engine::SubmitEvent,
-) -> Option<vac_core::engine::RuntimeUpdate> {
-    use vac_core::engine::RuntimeUpdate;
-    use vac_session_engine::SubmitEvent;
-    match ev {
-        SubmitEvent::LlmRequested { provider, model } => {
-            Some(RuntimeUpdate::ModelInfo { provider, model })
-        }
-        SubmitEvent::LlmChunk { text } => Some(RuntimeUpdate::AssistantChunk(text)),
-        SubmitEvent::ToolRequested {
-            id,
-            name,
-            arguments,
-        } => Some(RuntimeUpdate::ToolCall {
-            id,
-            name,
-            arguments,
-        }),
-        SubmitEvent::ToolResult {
-            id,
-            name,
-            payload,
-        } => {
-            let success = payload.kind == vac_tool_core::ToolResultKind::Ok || payload.kind == vac_tool_core::ToolResultKind::Warning;
-            Some(RuntimeUpdate::ToolResult {
-                id,
-                name,
-                success,
-                content: payload.summary.clone(),
-                envelope: Some(payload),
-            })
-        }
-        SubmitEvent::Aborted { reason } => Some(RuntimeUpdate::Failed(reason)),
-        // Accepted/Compacted/SlashHandled/Finished are engine-layer
-        // events without a RuntimeUpdate peer; drop.
-        _ => None,
-    }
-}
+// Audit C1 fix: `submit_event_to_runtime_update` removed — the
+// shared TUI entry point now owns the SubmitChunk →
+// RuntimeUpdate translation (via `chunk_to_runtime_update`) so
+// the two drivers cannot drift.
