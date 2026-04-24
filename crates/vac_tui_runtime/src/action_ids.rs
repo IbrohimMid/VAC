@@ -84,6 +84,27 @@ pub enum ActionId {
     OpenThemePicker,
     OpenSessionResume,
     OpenFilePicker,
+    // Phase B1 — bundled skills exposed as palette entries so the
+    // operator discovers them via `Ctrl+P` instead of reading
+    // `vac skills list`. Dispatched through `SkillTool`.
+    SkillBatch,
+    SkillLoop,
+    SkillRemember,
+    SkillSimplify,
+    SkillStuck,
+    SkillVerify,
+    // Phase F1 — CLI command bridge. Each entry spawns
+    // `vac <name>` in a shell popup.
+    SpawnCliAdvisor,
+    SpawnCliAutofixPr,
+    SpawnCliBughunter,
+    SpawnCliSecurityReview,
+    SpawnCliPerfIssue,
+    SpawnCliTeleport,
+    SpawnCliThinkback,
+    SpawnCliUltraplan,
+    SpawnCliRewind,
+    SpawnCliDecisions,
 }
 
 // ── KeyChord ────────────────────────────────────────────────────────────────
