@@ -30,8 +30,16 @@ pub fn init(
     // TerminalGuard::drop() will NOT run. Restore terminal state here
     // so the user's shell is not left in raw / alternate-screen mode.
     std::panic::set_hook(Box::new(|info| {
+        // Mirror `vac_tui_runtime::terminal::TerminalGuard::drop` —
+        // must disable mouse + bracketed paste or their escape
+        // sequences leak as plain text to the cooked shell.
+        let _ = crossterm::execute!(
+            std::io::stdout(),
+            crossterm::event::DisableMouseCapture,
+            crossterm::event::DisableBracketedPaste,
+            crossterm::terminal::LeaveAlternateScreen,
+        );
         let _ = crossterm::terminal::disable_raw_mode();
-        let _ = crossterm::execute!(std::io::stdout(), crossterm::terminal::LeaveAlternateScreen);
 
         let payload = if let Some(s) = info.payload().downcast_ref::<&str>() {
             *s

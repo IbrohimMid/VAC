@@ -1,0 +1,12 @@
+{
+  "persisted_at_epoch_s": 1777046652,
+  "session_id": "27bd8ed4-9e74-4186-9c68-f53c261741b3",
+  "streams": [
+    {
+      "dropped": 0,
+      "id": "vil_dev",
+      "kind": "vil_dev",
+      "lines": 0
+    }
+  ]
+}

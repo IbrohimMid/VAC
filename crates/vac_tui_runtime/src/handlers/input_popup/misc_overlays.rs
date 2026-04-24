@@ -64,7 +64,13 @@ pub fn handle_file_changes(
 }
 
 /// Handle helper dropdown (inline helper command suggestions).
-pub fn handle_helper_dropdown(state: &mut AppState, event: InputEvent) {
+pub fn handle_helper_dropdown(
+    state: &mut AppState,
+    output_tx: &Sender<OutputEvent>,
+    event: InputEvent,
+) {
+    use crate::handlers::input_commands::dispatch_builtin_command;
+
     if state.layout.focus != crate::app::WorkspaceFocus::Input {
         return;
     }
@@ -88,13 +94,26 @@ pub fn handle_helper_dropdown(state: &mut AppState, event: InputEvent) {
                 }
             }
         }
+        // Dogfood F1 fix: pressing Enter on a highlighted inline
+        // slash suggestion now **executes** the command, matching
+        // the Ctrl+P palette behaviour (`handle_command_palette`).
+        // Pre-fix, Enter only pasted `/model ` into the input and
+        // required a second Enter to run — confusing, inconsistent
+        // with the primary palette.
         InputEvent::InputSubmitted => {
-            if let Some(cmd) = state.layout.command_palette.filtered_helpers.get(state.layout.command_palette.helper_selected).cloned() {
-                state.composer.input.set_content(&cmd.command);
-                state.composer.input.move_cursor_end();
-                state.composer.input.input(' ');
-            }
+            let cmd = state
+                .layout
+                .command_palette
+                .filtered_helpers
+                .get(state.layout.command_palette.helper_selected)
+                .cloned();
             crate::overlay::close_overlay(state, OverlayId::HelperDropdown);
+            if let Some(cmd) = cmd {
+                // Clear the typed `/` prefix before dispatching so
+                // the conversation log doesn't show the raw query.
+                state.composer.input.set_content("");
+                dispatch_builtin_command(state, output_tx, &cmd.command, None);
+            }
         }
         InputEvent::HandleEsc => {
             crate::overlay::close_overlay(state, OverlayId::HelperDropdown);

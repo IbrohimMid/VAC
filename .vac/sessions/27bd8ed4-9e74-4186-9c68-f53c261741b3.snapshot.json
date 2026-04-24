@@ -1,0 +1,32 @@
+{
+  "schema_version": 2,
+  "session_id": "27bd8ed4-9e74-4186-9c68-f53c261741b3",
+  "created_at": "2026-04-24T16:07:35.268824553Z",
+  "updated_at": "2026-04-24T16:07:35.268824553Z",
+  "project_root": "/home/emp/Documents/VAC/vastar-agentic-cli",
+  "active_model": "claude-3-7-sonnet-20250219",
+  "active_profile": "default",
+  "active_rulebooks": [],
+  "task_count": 0,
+  "completed_tasks": 0,
+  "failed_tasks": 0,
+  "total_tokens": 0,
+  "modified_files": 2,
+  "tui_state": {
+    "active_tab_idx": 0,
+    "history_selection": 0,
+    "last_focus": "input",
+    "collapsed_sections": []
+  },
+  "metadata": {
+    "provider_status": "ready",
+    "queue_depth": "0",
+    "active_isolation_mode": "host",
+    "pending_approvals": "0",
+    "todo_done": "0",
+    "focus": "input",
+    "active_profile": "default",
+    "todo_in_progress": "0",
+    "todo_pending": "0"
+  }
+}

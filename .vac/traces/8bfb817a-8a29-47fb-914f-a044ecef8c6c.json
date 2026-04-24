@@ -1,0 +1,16 @@
+[
+  {
+    "id": "b7441f18-9489-4991-82f9-f7a6d93e278c",
+    "timestamp": "2026-04-24T15:53:42.490333113Z",
+    "record_type": "AgentDecision",
+    "agent_id": null,
+    "content": {
+      "chosen": "default",
+      "rationale": "strategy resolved from SwarmConfig.strategy",
+      "rejected": [
+        "default",
+        "conservative"
+      ]
+    }
+  }
+]

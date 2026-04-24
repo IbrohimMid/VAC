@@ -47,7 +47,7 @@ pub fn dispatch_popup_event(
             true
         }
         Some(OverlayId::HelperDropdown) => {
-            misc_overlays::handle_helper_dropdown(state, event);
+            misc_overlays::handle_helper_dropdown(state, output_tx, event);
             true
         }
         Some(OverlayId::AtDropdown) => {
