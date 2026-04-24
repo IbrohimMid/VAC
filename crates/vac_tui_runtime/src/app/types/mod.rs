@@ -59,7 +59,7 @@ pub use lsp_ui::LspUiState;
 pub use scroll::ScrollState;
 pub use session_meta::SessionMetaState;
 pub use message_ui::MessageUiState;
-pub use operator::OperatorState;
+pub use operator::{OperatorState, OutputStyle};
 pub use paste::PasteState;
 pub use pins::PinsState;
 pub use quit::QuitState;
