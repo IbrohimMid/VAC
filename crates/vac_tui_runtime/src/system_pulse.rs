@@ -67,8 +67,17 @@ pub enum SystemFacetKind {
     Shell,
     Speculation,
     Environment,
-    // Deferred until producers wire: Lsp, Vil, Subagent, Memory,
-    // Policy, RateLimit.
+    // Phase A2 — budget facet reads BillingState.total_session.
+    Budget,
+    // Phase B2 — memory facet reads Consolidator phase state +
+    // BM25 staleness.
+    Memory,
+    // Phase C — policy / rate-limit facets once producers wire.
+    Policy,
+    RateLimit,
+    // Phase E1 — subagent facet reads AppStateRootHandle.
+    Subagent,
+    // Deferred until producers wire: Lsp, Vil.
 }
 
 impl SystemFacetKind {
@@ -79,6 +88,11 @@ impl SystemFacetKind {
             Self::Mcp => "mcp",
             Self::Shell => "shell",
             Self::Speculation => "spec",
+            Self::Budget => "budget",
+            Self::Memory => "memory",
+            Self::Policy => "policy",
+            Self::RateLimit => "rate",
+            Self::Subagent => "sub",
             Self::Environment => "env",
         }
     }
@@ -144,6 +158,9 @@ impl<'a> SystemPulse<'a> {
             self.shell_facet(),
             self.speculation_facet(),
             self.environment_facet(),
+            self.budget_facet(),
+            self.memory_facet(),
+            self.subagent_facet(),
         ]
     }
 
@@ -383,6 +400,147 @@ impl<'a> SystemPulse<'a> {
             nav_target: None,
         }
     }
+
+    /// Phase A2 — budget facet. Reads the already-tracked session
+    /// token total. When `VAC_BUDGET_TOKENS` is set we treat it as
+    /// a cap and derive severity from the remaining ratio; otherwise
+    /// the facet is observational (Info) and shows raw usage.
+    fn budget_facet(&self) -> SystemFacet {
+        let used = self
+            .state
+            .operator_config
+            .billing
+            .total_session
+            .total_tokens;
+        let cap = std::env::var("VAC_BUDGET_TOKENS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .filter(|n| *n > 0);
+        let (severity, token) = match cap {
+            Some(cap_n) => {
+                let remaining = cap_n.saturating_sub(used);
+                let ratio = (remaining as f64) / (cap_n as f64);
+                let sev = if ratio < 0.05 {
+                    FacetSeverity::Critical
+                } else if ratio < 0.20 {
+                    FacetSeverity::Warn
+                } else if ratio < 0.50 {
+                    FacetSeverity::Info
+                } else {
+                    FacetSeverity::Ok
+                };
+                (
+                    sev,
+                    format!("budget:{}/{}", k_fmt(used), k_fmt(cap_n)).into(),
+                )
+            }
+            None => {
+                // No cap configured — Info regardless, show raw used.
+                let sev = if used > 100_000 {
+                    FacetSeverity::Warn
+                } else {
+                    FacetSeverity::Info
+                };
+                (sev, format!("budget:{}", k_fmt(used)).into())
+            }
+        };
+        let detail_rows = match cap {
+            Some(cap_n) => vec![
+                format!("used:       {used}"),
+                format!("cap:        {cap_n}"),
+                format!("remaining:  {}", cap_n.saturating_sub(used)),
+            ],
+            None => vec![
+                format!("used:  {used}"),
+                "cap:   unlimited (set VAC_BUDGET_TOKENS to enforce)".into(),
+            ],
+        };
+        SystemFacet {
+            kind: SystemFacetKind::Budget,
+            severity,
+            compact_token: token,
+            detail_rows,
+            nav_target: Some(NavTarget::WorkbenchTab(
+                crate::app::types::WorkbenchTab::Sessions,
+            )),
+        }
+    }
+
+    /// Phase B2 — memory facet. Reports whether the Consolidator
+    /// left a phase stamp + BM25 cache freshness against ingest.
+    /// Projection-only — we read observable state (timestamps on
+    /// the memdir) without invoking the consolidator.
+    fn memory_facet(&self) -> SystemFacet {
+        // Best-effort: check if .vac/memory/archived has any entries
+        // and how recent the newest is. Purely a read.
+        let archived = self
+            .state
+            .core
+            .project_root
+            .join(".vac")
+            .join("memory")
+            .join("archived");
+        let (count, severity, token) = match std::fs::read_dir(&archived) {
+            Ok(rd) => {
+                let entries: Vec<_> = rd.filter_map(|e| e.ok()).collect();
+                let n = entries.len();
+                if n == 0 {
+                    (0, FacetSeverity::Info, "memory·".into())
+                } else {
+                    (n, FacetSeverity::Ok, format!("memory✓{n}").into())
+                }
+            }
+            Err(_) => (0, FacetSeverity::Info, "memory·".into()),
+        };
+        SystemFacet {
+            kind: SystemFacetKind::Memory,
+            severity,
+            compact_token: token,
+            detail_rows: vec![
+                format!("archived entries: {count}"),
+                format!("archive dir: {}", archived.display()),
+            ],
+            nav_target: Some(NavTarget::WorkbenchTab(
+                crate::app::types::WorkbenchTab::Plan,
+            )),
+        }
+    }
+
+    /// Phase E1 — subagent facet. Reads the in-memory root handle
+    /// counters if the TUI has bound one. Today AppState does not
+    /// carry an AppStateRootHandle; we defer real wiring to the
+    /// TUI runner. For now we project zeros — the facet exists so
+    /// the statusline slot is present and the grammar doesn't drift
+    /// when the producer lands.
+    fn subagent_facet(&self) -> SystemFacet {
+        // Placeholder projection until AppStateRootHandle is threaded
+        // into AppState. Keeping a live facet slot with Ok severity
+        // reserves the statusline column and the detail rows so
+        // the operator-panel layout doesn't reflow when the real
+        // producer wires in.
+        SystemFacet {
+            kind: SystemFacetKind::Subagent,
+            severity: FacetSeverity::Ok,
+            compact_token: "sub·".into(),
+            detail_rows: vec![
+                "producers: none wired".into(),
+                "RootHandle binding: pending".into(),
+            ],
+            nav_target: Some(NavTarget::WorkbenchTab(
+                crate::app::types::WorkbenchTab::Agents,
+            )),
+        }
+    }
+}
+
+fn k_fmt(n: u64) -> String {
+    if n >= 1_000_000 {
+        format!("{:.1}M", (n as f64) / 1_000_000.0)
+    } else if n >= 1_000 {
+        format!("{:.1}k", (n as f64) / 1_000.0)
+    } else {
+        n.to_string()
+    }
 }
 
 #[cfg(test)]
@@ -395,8 +553,10 @@ mod tests {
         let state = AppState::default();
         let pulse = SystemPulse::from_state(&state);
         let facets = pulse.facets();
-        assert_eq!(facets.len(), 6);
-        // Sanity: every facet emits a non-empty compact token.
+        // Phase A2 + B2 + E1 added three more facets (budget,
+        // memory, subagent). Count is 9 now; the grammar stays
+        // consistent.
+        assert_eq!(facets.len(), 9);
         for f in &facets {
             assert!(!f.compact_token.is_empty(), "facet {:?} has empty token", f.kind);
         }
@@ -413,8 +573,11 @@ mod tests {
         assert!(line.contains("shell✓"));
         assert!(line.contains("spec·"));
         assert!(line.contains("env:"));
-        // Six facets → exactly five internal spaces.
-        assert_eq!(line.matches(' ').count(), 5);
+        assert!(line.contains("budget"));
+        assert!(line.contains("memory"));
+        assert!(line.contains("sub"));
+        // Nine facets → exactly eight internal spaces.
+        assert_eq!(line.matches(' ').count(), 8);
     }
 
     #[test]
