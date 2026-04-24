@@ -88,11 +88,13 @@ impl VilTool for MonitorTool {
     }
 
     fn trust_requirement(&self) -> &str {
-        "ask_once"
+        // Spawns arbitrary argv — same blast radius as BashTool.
+        // Pre-NS-arc classification was too lenient.
+        "privileged"
     }
 
     fn risk_level(&self) -> &str {
-        "mutating"
+        "destructive"
     }
 
     async fn execute(
@@ -148,6 +150,7 @@ mod tests {
     use super::*;
     use crate::builtin::test_util::make_ctx;
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn monitor_collects_matching_lines() {
         let tmp = tempfile::tempdir().unwrap();

@@ -72,11 +72,16 @@ pub async fn run_via_session_engine(
         CompactConfig::default(),
     );
     let mut total_tokens: u64 = 0;
-    // NS.2 audit fix: the pre-migration submit_one returned its
-    // error via Result; the stream terminates with
-    // `SubmitChunk::Aborted` instead. We capture that reason so
-    // the caller's `?` still short-circuits on submit failure
-    // rather than silently receiving a "Completed" TaskResult.
+    // NS.2 audit fix: pre-migration submit_one returned its error
+    // via Result; the stream terminates with `SubmitChunk::Aborted`
+    // instead. Capture the reason so `?` still short-circuits on
+    // submit failure rather than silently receiving a Completed
+    // TaskResult.
+    //
+    // Arc-audit H3: do NOT also emit `RuntimeUpdate::Failed` for
+    // the abort — the caller's `Err` return is the single source
+    // of truth. Double-signalling (Failed event + Err result) made
+    // the TUI render the abort twice.
     let mut aborted: Option<String> = None;
     while let Some(chunk) = stream.next().await {
         match &chunk {
@@ -85,6 +90,7 @@ pub async fn run_via_session_engine(
             }
             SubmitChunk::Aborted { reason } => {
                 aborted = Some(reason.clone());
+                continue; // skip forwarding — Err below carries it
             }
             _ => {}
         }

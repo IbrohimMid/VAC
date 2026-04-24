@@ -6490,6 +6490,7 @@ dependencies = [
  "tracing",
  "uuid",
  "vac_mcp_core",
+ "vac_session_engine",
  "vac_session_primitives",
  "vac_signal",
  "vac_skill",

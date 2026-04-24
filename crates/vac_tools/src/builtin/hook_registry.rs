@@ -1,14 +1,16 @@
 //! NS.1 + NS.4 — `hook_list` / `hook_delete` / `hook_create` tools.
 //! Read/mutate `.vac/hooks.json` via `vac_session_primitives`.
 //!
-//! `hook_create` ships now that NS.4's `HookSandbox` enforces a
-//! restrictive env allowlist + rlimits + wall-clock cap on every
-//! `HookCommand::Command` invocation through `HookGate`. Without
-//! the sandbox this would be an RCE vector; with it, the worst a
-//! malicious hook can do is chew the 10-second CPU cap on its own
-//! process and return Deny. Schema validation on load (`validate_
-//! hook_store`) rejects malformed entries before they reach the
-//! execution path.
+//! `HookSandbox` + `validate_hook_store` land in NS.4; the sandbox
+//! enforces env allowlist + rlimits + wall-clock when hooks run
+//! through `HookGate`. **Integration note**: the live session's
+//! `CompositeGate` does not yet include `HookGate` (tracked
+//! follow-up). Until that wiring lands, `hook_create` writes the
+//! entry to disk but VAC itself does not execute it — only
+//! external runners that wrap `HookGate::new` observe the
+//! registration. Tool trust therefore stays at `privileged` so
+//! the operator consents to disk-level registration even while
+//! execution-side enforcement is in progress.
 
 use async_trait::async_trait;
 use serde::Deserialize;
@@ -269,7 +271,11 @@ impl VilTool for HookCreateTool {
     }
 
     fn trust_requirement(&self) -> &str {
-        "ask_once"
+        // Audit C1: pending `HookGate` integration into the live
+        // CompositeGate, stay at `privileged` so the operator
+        // explicitly consents. Drop back to `ask_once` once the
+        // sandbox actually guards execution.
+        "privileged"
     }
 
     fn risk_level(&self) -> &str {

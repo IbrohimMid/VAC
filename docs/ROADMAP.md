@@ -1,18 +1,51 @@
 # VAC — Current State
 
-**Snapshot:** 2026-04-24 (post UX finalization landings
-A1/A2/B1/B2/B3/C2-partial/D1/D2/E1/E3/F1/F2). Not a plan — a description of what is on
+**Snapshot:** 2026-04-24 (post NS roadmap arc
+NS.1–NS.7 landings). Not a plan — a description of what is on
 `main` today. When the next cycle starts, rewrite this file from the
 codebase; do not treat it as a commitment.
 
+## NS roadmap arc (landed this cycle)
+
+- **NS.1** — `vac_session_primitives` leaf crate extracted
+  (cron / hooks / web / monitor / error), breaking the
+  `vac_tools → vac_session_engine → vac_core → vac_tools` cycle.
+  Eight LLM-callable wrappers landed in `vac_tools::builtin`:
+  `agent_list`, `web_fetch`, `web_search`, `cron_list`,
+  `cron_delete`, `monitor`, `hook_list`, `hook_delete`.
+- **NS.2** — TUI `run_via_session_engine` migrated from
+  `submit_one + mpsc bridge-task` to direct `submit_stream`
+  consumption via `chunk_to_runtime_update`.
+- **NS.3** — `vac teleport --serve / --attach` (axum SSE + JWT
+  bearer + OS-CSPRNG keyset at `.vac/teleport.key` unix-0600).
+  Stub event source — integration with the live session
+  outbound stream is a follow-up.
+- **NS.4** — `HookSandbox` (env allowlist + rlimit AS/CPU/NOFILE
+  + wall-clock) + `validate_hook_store` (URL-scheme allowlist,
+  argv dotdot, prompt-length cap) + `hook_create` tool. Live
+  `CompositeGate` integration of `HookGate` is a follow-up;
+  until it lands, `hook_create` stays at `privileged` trust.
+- **NS.5** — `CassetteAdapter` + four hand-written provider
+  cassettes (Anthropic / OpenAI / Gemini / xAI) + regression
+  suite in `tests/cassettes.rs`. Real cassette recording lands
+  when provider creds are wired into CI.
+- **NS.6** — `vac_signal::idle_tick::spawn_scorer_tick` with
+  `catch_unwind`-guarded observer + `signal_distilled` LLM tool.
+- **NS.7** — `scripts/cargo_publish.sh` (topo-sort publisher) +
+  `packaging/homebrew/vac.rb` (tap formula) + cosign keyless
+  signing alongside existing minisign in `release.yml`.
+
 ## Workspace
 
-32 crates under `crates/`. Primary surfaces:
+33 crates under `crates/` (verified 2026-04-24). Primary surfaces:
 
 - `vac_cli` — `vac` binary: subcommands, TUI entrypoint.
 - `vac_core` — engine orchestration, config, policy limits.
 - `vac_session_engine` — submit lifecycle, transcript durability,
-  fork speculation primitive, file-state cache.
+  fork speculation primitive, file-state cache, `CassetteAdapter`.
+- `vac_session_primitives` — leaf-level cron / hooks (+ sandbox) /
+  web / monitor / error types shared between session_engine and
+  tools. No session-runtime deps.
 - `vac_tui_runtime` — TUI runtime, services, subagent coordinator.
 - `vac_tools` — tool registry, built-in tools, MCP bridge, trust
   gate, LSP pool.

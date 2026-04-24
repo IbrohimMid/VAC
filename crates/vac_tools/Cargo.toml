@@ -49,6 +49,12 @@ portable-pty = "0.9.0"
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }
 tempfile = "3.14"
+# Dev-only: the drift guard in tests/agent_list_drift.rs asserts
+# that the hardcoded subagent list in builtin/agent_list.rs stays
+# in sync with `vac_session_engine::BUILT_IN_SUBAGENTS`. Using it
+# only from integration tests keeps the prod dep graph leaf-clean
+# (vac_tools → vac_session_primitives only).
+vac_session_engine = { workspace = true }
 
 [lints]
 workspace = true

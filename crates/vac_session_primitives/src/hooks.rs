@@ -608,6 +608,7 @@ mod tests {
         assert!(format!("{err}").contains("already registered"));
     }
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn sandbox_wall_clock_denies_runaway() {
         let e = HookEntry {
@@ -632,6 +633,7 @@ mod tests {
         }
     }
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn sandbox_env_allowlist_filters_inherited_env() {
         // Child sees only PATH and TEST_ALLOWED; TEST_BLOCKED is stripped.

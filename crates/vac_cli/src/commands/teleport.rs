@@ -212,6 +212,13 @@ pub async fn teleport_serve(
     // command go to stderr so `vac teleport --serve | tee log.txt`
     // doesn't accidentally persist the bearer secret to disk.
     println!("── vac teleport (serve) ──────────────────────");
+    // Arc-audit C2: this host mode is currently a stub event
+    // source. The SSE stream emits the startup frame + anything
+    // posted to /input; wiring to a live `run_via_session_engine`
+    // outbound stream is a follow-up that requires plumbing a
+    // broadcast sink through the session construction path.
+    println!("[stub] host broadcasts startup + /input echo only;");
+    println!("[stub] live session integration pending follow-up.");
     println!("session_id    {session_id}");
     println!("label         {label}");
     println!("bind          {addr}");

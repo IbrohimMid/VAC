@@ -70,7 +70,10 @@ impl VilTool for WebFetchTool {
     }
 
     fn risk_level(&self) -> &str {
-        "mutating"
+        // Arbitrary URL egress with forwarded Authorization headers
+        // is network-exfil-shaped. Classify as destructive so gates
+        // reading is_input_destructive treat it accordingly.
+        "destructive"
     }
 
     async fn execute(
