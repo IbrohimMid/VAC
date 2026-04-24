@@ -32,6 +32,7 @@ pub mod agent_tool;
 pub mod compact;
 pub mod cron;
 pub mod error;
+pub mod hooks;
 pub mod monitor;
 pub mod schedule;
 pub mod event;
@@ -64,6 +65,10 @@ pub use gate::{
 };
 pub use stream::{SubmitChunk, SubmitStream, submit_stream};
 pub use cron::{CronEntry, CronStore, DEFAULT_CRON_FILENAME, unix_now};
+pub use hooks::{
+    DEFAULT_HOOKS_FILENAME, HookCommand, HookDecision, HookEntry, HookEvent,
+    HookGate, HookStore, exec_hook,
+};
 pub use monitor::{MonitorHandle, MonitorLine, MonitorSpec, spawn_monitor};
 pub use schedule::{
     MAX_DELAY, MIN_DELAY, WakeupSpec, clamp_delay, schedule_interval_loop,
