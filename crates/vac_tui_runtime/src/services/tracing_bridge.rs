@@ -40,6 +40,7 @@ pub const BRIDGE_ALLOWLIST: &[(&str, &str)] = &[
     ("vac_tui_runtime::auto_dream", "memory"),
     ("vac_tui_runtime::away_summary", "resume"),
     ("vac_tui_runtime::speculation", "spec"),
+    ("vac_tui_runtime::passive_feedback", "lsp"),
 ];
 
 /// Shared handle the TUI event loop holds to the `AppState` so the

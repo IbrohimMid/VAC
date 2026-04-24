@@ -77,7 +77,9 @@ pub enum SystemFacetKind {
     RateLimit,
     // Phase E1 — subagent facet reads AppStateRootHandle.
     Subagent,
-    // Deferred until producers wire: Lsp, Vil.
+    // Phase G — LSP passive-feedback tick counter.
+    Lsp,
+    // Deferred until producers wire: Vil.
 }
 
 impl SystemFacetKind {
@@ -94,6 +96,7 @@ impl SystemFacetKind {
             Self::RateLimit => "rate",
             Self::Subagent => "sub",
             Self::Environment => "env",
+            Self::Lsp => "lsp",
         }
     }
 }
@@ -161,6 +164,7 @@ impl<'a> SystemPulse<'a> {
             self.budget_facet(),
             self.memory_facet(),
             self.policy_facet(),
+            self.lsp_facet(),
             self.subagent_facet(),
         ]
     }
@@ -577,6 +581,47 @@ impl<'a> SystemPulse<'a> {
         }
     }
 
+    /// Phase G — LSP passive-feedback facet. Reads the last-tick
+    /// counter maintained by `spawn_passive_feedback_loop`. Info
+    /// with the recent diagnostics count; Warn when the driver has
+    /// not ticked in > 30 s (indicates the loop died).
+    fn lsp_facet(&self) -> SystemFacet {
+        let snap = &self.state.execution.lsp;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let (severity, token, detail_rows) = match snap.last_tick_unix {
+            0 => (
+                FacetSeverity::Info,
+                Cow::Borrowed("lsp·"),
+                vec!["driver: not ticked yet".into()],
+            ),
+            last => {
+                let age = now.saturating_sub(last);
+                let sev = if age > 30 {
+                    FacetSeverity::Warn
+                } else {
+                    FacetSeverity::Ok
+                };
+                let tok = format!("lsp✓{}", snap.recent_toasts);
+                let rows = vec![
+                    format!("last tick:   {age}s ago"),
+                    format!("last toasts: {}", snap.recent_toasts),
+                    format!("total ticks: {}", snap.total_ticks),
+                ];
+                (sev, Cow::Owned(tok), rows)
+            }
+        };
+        SystemFacet {
+            kind: SystemFacetKind::Lsp,
+            severity,
+            compact_token: token,
+            detail_rows,
+            nav_target: None,
+        }
+    }
+
     /// Phase E1 — subagent facet. Reads the in-memory root handle
     /// counters if the TUI has bound one. Today AppState does not
     /// carry an AppStateRootHandle; we defer real wiring to the
@@ -627,7 +672,7 @@ mod tests {
         // Phase A2 + B2 + E1 added three more facets (budget,
         // memory, subagent). Count is 9 now; the grammar stays
         // consistent.
-        assert_eq!(facets.len(), 10);
+        assert_eq!(facets.len(), 11);
         for f in &facets {
             assert!(!f.compact_token.is_empty(), "facet {:?} has empty token", f.kind);
         }
@@ -648,8 +693,9 @@ mod tests {
         assert!(line.contains("memory"));
         assert!(line.contains("sub"));
         assert!(line.contains("policy"));
-        // Ten facets → exactly nine internal spaces.
-        assert_eq!(line.matches(' ').count(), 9);
+        assert!(line.contains("lsp"));
+        // Eleven facets → exactly ten internal spaces.
+        assert_eq!(line.matches(' ').count(), 10);
     }
 
     #[test]

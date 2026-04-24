@@ -265,6 +265,17 @@ pub struct ExecutionState {
     /// Read by `SystemPulse::policy_facet`; refreshed by the idle
     /// tick that owns the tracker Arc.
     pub policy: Option<vac_core::policy_limits::PolicySnapshot>,
+    /// G — PassiveFeedback driver telemetry; refreshed by the idle
+    /// tick at ~2s cadence. Drives the `lsp` SystemFacet.
+    pub lsp: LspSnapshot,
+}
+
+/// Read-only snapshot the `lsp` facet renders from.
+#[derive(Debug, Default, Clone)]
+pub struct LspSnapshot {
+    pub last_tick_unix: u64,
+    pub total_ticks: u64,
+    pub recent_toasts: usize,
 }
 
 #[derive(Debug, Default)]

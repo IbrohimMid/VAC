@@ -122,6 +122,7 @@ impl AppState {
                 queue_metrics: QueueMetrics::default(),
                 activity: Vec::new(),
                 policy: None,
+                lsp: super::LspSnapshot::default(),
             },
             operator_config: super::OperatorConfigState {
                 operator: OperatorState {

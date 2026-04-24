@@ -88,6 +88,51 @@ pub fn spawn_auto_dream_loop(
     })
 }
 
+/// Interval for PassiveFeedback polls. W5.2 latency budget is
+/// 500 ms; a 2 s poll keeps the tick cost negligible while still
+/// surfacing fresh diagnostics quickly.
+pub const PASSIVE_FEEDBACK_POLL: Duration = Duration::from_secs(2);
+
+/// G — spawn the PassiveFeedback tick loop. Updates the
+/// `AppState.execution.lsp` snapshot on every tick so the `lsp`
+/// SystemFacet has a fresh counter, and routes each new toast via
+/// NotifyRouter. Failures emit `warn!` on
+/// `vac_tui_runtime::passive_feedback` — allowlisted so the A1
+/// bridge surfaces them with subsystem label `lsp`.
+pub fn spawn_passive_feedback_loop(
+    state: Arc<Mutex<AppState>>,
+    driver: Arc<crate::services::passive_feedback::PassiveFeedbackDriver>,
+) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        loop {
+            let toasts = driver.tick().await;
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            {
+                let mut guard = state.lock().await;
+                guard.execution.lsp.last_tick_unix = now;
+                guard.execution.lsp.total_ticks =
+                    guard.execution.lsp.total_ticks.saturating_add(1);
+                guard.execution.lsp.recent_toasts = toasts.len();
+            }
+            if !toasts.is_empty() {
+                // Surfacing individual diagnostics via the regular
+                // toast lane is the PassiveFeedbackDriver's contract;
+                // we don't double-dispatch here — the facet counter
+                // is the pulse-level hook.
+                tracing::info!(
+                    target: "vac_tui_runtime::passive_feedback",
+                    count = toasts.len(),
+                    "passive-feedback tick surfaced new diagnostics",
+                );
+            }
+            tokio::time::sleep(PASSIVE_FEEDBACK_POLL).await;
+        }
+    })
+}
+
 /// One-shot on-startup probe of `AwaySummaryService`. Called from
 /// the interactive bootstrap. If the gap is ≥ 1h, pushes a
 /// `NotifyEvent::info` so the operator sees a welcome-back summary
