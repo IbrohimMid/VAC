@@ -42,12 +42,13 @@ identifier. Defined by `SystemFacetKind::label` and matched by
 | `spec` | `AppState.speculation` (W6 primitive) |
 | `env` | `AppState.core.startup.environment` |
 | `budget` | `UsageTracker` vs `CompactConfig.max_budget_tokens` (env-gated via `VAC_BUDGET_TOKENS`) |
-| `memory` | `.vac/memory/archive` projection (path only; no fs on render path) |
+| `memory` | `.vac/memory/archive` cache (refreshed by idle tick; `WorkbenchTab::Memory`) |
 | `subagent` | `RootObservables.errors_seen + notifications.len()` |
+| `policy` | `AppState.execution.policy` — `PolicyTracker::snapshot` (submits/hr + tokens vs caps) |
+| `lsp` | `AppState.execution.lsp` — `PassiveFeedbackDriver::tick` last-run counter |
 
-Reserved (future producers): `lsp`, `vil`, `policy`, `rate` —
-slot into `SystemFacetKind` via its `#[non_exhaustive]`
-attribute.
+Reserved (future producers): `rate`, `vil` — slot into
+`SystemFacetKind` via its `#[non_exhaustive]` attribute.
 
 ## The four surfaces
 
@@ -64,8 +65,9 @@ attribute.
 The `·`-separated suffix is the `SystemPulse::compact_line()`
 output. Each token is styled per its facet's `FacetSeverity`.
 
-Width budget: ≤ 80 chars for the pulse suffix
-(`pulse_compact_line_fits_width_budget` contract test).
+Width budget: ≤ 100 chars for the pulse suffix
+(`pulse_compact_line_fits_width_budget` contract test, bumped
+from 80 after the 11-facet expansion).
 
 ### 2. Operator panel
 
@@ -248,6 +250,41 @@ event loop boot sequence:
 Failures on any job emit `tracing::warn!` on a subsystem target
 (`auto_dream`, `away_summary`, `result_spill`), which the A1
 bridge then surfaces in the activity panel.
+
+## Elicitation (G1)
+
+MCP servers can request an interactive elicitation mid-session
+(`elicitation/request`). VAC ships two halves:
+
+- **`McpElicitationRegistry`** (`vac_mcp_core::elicitation`) —
+  connection-scoped `attach_elicitation_handler(Arc<dyn
+  ElicitationHandler>)`. Kept separate from the serialisable
+  `McpConnection` state record so clone/equality on state
+  doesn't touch the handler Arc. Absent handler falls back to
+  `UnsupportedElicitationHandler` → `Cancelled`.
+- **`TuiElicitationHandler`** (`services/elicitation.rs`) — locks
+  the shared `AppState`, parks an `ElicitationPrompt { url,
+  prompt, response_tx }` on `layout.elicitation`, opens
+  `OverlayId::Elicitation`, awaits a oneshot (120 s timeout →
+  `Cancelled`).
+
+Input contract: Enter → `open::that(url)` + `ElicitationResult::
+Accepted{}`. Esc → `Cancelled`. Text/Confirm variants degrade to
+`Cancelled` with a `warn!` on target `vac_mcp_core::channel` —
+follow-up ships their own modal shape.
+
+## CLI auth (G2)
+
+`vac auth oauth <provider>` runs the full PKCE flow from a
+terminal: 32-byte OS entropy → `PkceChallenge::generate` → bind
+`127.0.0.1:0` → `open::that(auth_url)` → parse `code=` from the
+loopback GET → token exchange via `reqwest` → `TokenCache::save`
+at `~/.vac/auth/<provider>.json`. Palette slash `/auth-login` is
+the in-TUI launcher.
+
+Provider registry is deliberately empty for Anthropic/OpenAI
+(both issue API keys, not OAuth tokens) — operators with private
+IdPs pass `--auth-url / --token-url / --client-id`.
 
 ## Palette (B1 / F2)
 

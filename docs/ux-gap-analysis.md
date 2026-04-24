@@ -200,9 +200,9 @@ Same shape as W9: primitives complete, REPL poll-loop integration outstanding. A
 
 | Category | Count | Representative items |
 |---|---|---|
-| 🟢 Fully surfaced | 25 | 9 facets; A1+D2 bridge (info/warn/error); B1 skills; D1 idle maintenance; E3 signal grammar; F1 CLI dispatch + F2 palette; D2 speculation breadcrumb; **C2 rate-limit 429 on router 🟢**; registry + resume overlay |
-| 🟡 Partial | 5 | `should_defer`, MemoryScanner, Consolidator slash, memory panel absent, **C1 partial (budget gate surfaces; full PolicyTracker.check wiring deferred)** |
-| 🔴 Silent | 7 | PassiveFeedback tick, Elicitation handler not consumed by MCP lifecycle, W7 auth primitives, scorer/distiller |
+| 🟢 Fully surfaced | 31 | 11 facets (incl. policy + lsp); A1+D2 bridge; B1 skills; D1 idle maintenance; E3 signal grammar; F1 CLI dispatch + F2 palette; D2 speculation breadcrumb; **C1 full PolicyTracker.check 🟢**; **C2 rate-limit 🟢**; **G1 Elicitation overlay + TuiElicitationHandler + McpElicitationRegistry 🟢**; **G2 vac auth oauth PKCE/browser/callback 🟢**; **E2 memory workbench panel 🟢**; registry + resume overlay |
+| 🟡 Partial | 2 | `should_defer`, Consolidator slash (cache seeding awaits idle tick wire-in) |
+| 🔴 Silent | 2 | scorer/distiller visibility, memory-cache idle-tick producer |
 | ⚫ CLI-only | 7 | remaining W8 integrations/diagnostics, `vac eval`, signal rewind |
 
 ## Root causes
@@ -238,25 +238,21 @@ Grouped by effort × reach.
 9. **RateLimitTracker surface** — ✅ (C2). Router 429 arm emits `warn!` on `vil_llm::rate_limit`; A1 forwards.
 10. **CLI palette bridge** — ✅ (F1+F2). Ten `SpawnCli*` variants + dispatch.
 
-### Blocked (need cross-crate design)
+### Completed (previously-blocked)
 
-11. **`TuiElicitationHandler` + overlay.** Needs (a) a new `OverlayId::Elicitation` with its own input-capture lane, (b) an `attach_elicitation_handler` entry point on `McpConnection` (trait exists in `vac_mcp_core::elicitation` but no consumer in the MCP lifecycle today), (c) oneshot channel plumbing from async handler back to the render thread for modal-wait. 3+ days.
-12. **`vac auth login <provider>` binary.** Needs external crates (webbrowser or xdg-open wrapper, a tokio HTTP listener for the OAuth callback, and an HTTP client like reqwest/hyper for the token exchange) — none of these are currently in the workspace. 3+ days + dep additions.
+11. **`TuiElicitationHandler` + overlay.** ✅ shipped (G1a/G1b/G1c). `OverlayId::Elicitation` with Enter-opens-URL / Esc-cancels, `TuiElicitationHandler` wires the oneshot + 120s timeout, and `McpElicitationRegistry::attach_elicitation_handler` is the connection-scoped attach point (kept separate from the serialisable `McpConnection` state record).
+12. **`vac auth login <provider>` binary.** ✅ shipped (G2). `open = "5"` + workspace reqwest; PKCE via `PkceChallenge::generate` with 32-byte OS entropy; `TcpListener::bind(127.0.0.1:0)` + hand-rolled HTTP/1 callback parser; token exchange + `TokenCache::save`. Provider registry deliberately empty — Anthropic/OpenAI issue API keys, not OAuth tokens; operators with a private IdP pass `--auth-url / --token-url / --client-id`.
 
 ## Conclusion
 
-Post-finalization (A1/A2/B1/B2/B3/D1/E1/F2): of ~44 shipped
-features, **~50% (22) reach the unified grammar fully**, **~14%
-(6) partial**, **~20% (9) silent**, **~16% (7) CLI-only**.
+Post-G1/G2/E2 finalization: **~70% (31 of ~44) reach the unified
+grammar fully**, **~5% (2) partial**, **~5% (2) silent**, **~20%
+(9) CLI-only**.
 
-Tracing bridge (A1) converted "silent" denials into activity rows
-in one shot; D1 closed the idle-loop gap; facet expansion
-(budget/memory/subagent) converted the Agents / memory silent
-panels to grammar-consistent surfaces; F2 lifted ten CLI-only
-commands into the palette.
-
-What's left is producer wiring for RateLimitTracker /
-PolicyTracker / PassiveFeedback + the W7 auth stack.
+Everything UX-observable has a producer + a surface. The only
+remaining 🔴 items are internal-visibility — scorer/distiller
+telemetry and the idle-tick producer that refreshes the new
+memory-archive cache. Neither blocks an operator workflow today.
 
 Every remaining gap still has a known shape. None require new
 architecture.

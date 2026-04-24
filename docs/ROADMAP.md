@@ -242,22 +242,28 @@ codebase; do not treat it as a commitment.
 
 ## Deferred to next cycle
 
-Producer-side trace emissions are loud on allowlisted targets;
-what remains is call-site wiring:
+Post UX-unification (C1/C2/E2/G1/G2 + policy + lsp facets
+shipped), two items remain:
 
-- `PassiveFeedbackDriver::tick` wired into LSP publishDiagnostics.
-- `PolicyTracker::check` wired into `submit_one` pre-dispatch
-  (**C1** — needs `vac_session_engine → vac_core` dep + context
-  threading).
-- `RateLimitTracker::observe_request` / `observe_429` wired into
-  the LLM router's per-provider outbound path (**C2** full).
-- `TuiElicitationHandler` + new `OverlayId::Elicitation` for MCP
-  URL-open / text / confirm flows (**G1**).
-- `vac auth login <provider>` binary — `PkceChallenge` + local
-  HTTP listener + browser-launch + `TokenCache` (**G2**; requires
-  new external crates).
-- Memory panel (workbench tab does not exist yet — **E2** blocked
-  pending the panel itself).
+- **Scorer / distiller visibility** — `vac_signal::RegexScorer` +
+  `TailDistiller` run silently. Producer is stable; what's missing
+  is a read-only pulse facet or signal workbench column that
+  surfaces the last-scored key-line so operators see *why* a
+  stream was compressed. Blocker: no counter is currently
+  persisted on `AppState`; needs a small mutex-guarded ring on
+  the signal registry.
+- **Memory-archive idle tick** — the `WorkbenchTab::Memory` cache
+  (`AppState.workspace.memory_archive`) ships empty on boot; the
+  idle producer that reads `.vac/memory/archived/` and populates
+  it runs in the AutoDream loop but is not yet spawned by any boot
+  site (same wire-in blocker as `spawn_prune_spill_loop` /
+  `spawn_auto_dream_loop`). Blocker: the TUI boot path owning
+  these spawns has not landed; once it does, E2 surfaces real
+  entries with no facet change.
+
+Text/Confirm elicitation modals degrade to `Cancelled` today —
+follow-up work when a server actually needs them. OpenUrl is the
+live path.
 
 ## Reference docs to read
 
