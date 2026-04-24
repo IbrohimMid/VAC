@@ -6303,6 +6303,7 @@ dependencies = [
  "criterion",
  "cron",
  "futures",
+ "regex",
  "serde",
  "serde_json",
  "tempfile",
