@@ -19,9 +19,11 @@
 
 pub mod bundled;
 pub mod error;
+pub mod md_registry;
 pub mod registry;
 pub mod skill;
 
 pub use error::{SkillError, SkillResult};
+pub use md_registry::{MarkdownSkill, load_skills_from_dir};
 pub use registry::SkillRegistry;
 pub use skill::{Skill, SkillContext, SkillOutcome};
