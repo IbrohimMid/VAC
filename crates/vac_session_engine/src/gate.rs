@@ -247,6 +247,82 @@ impl ToolGate for PolicyGate {
     }
 }
 
+// ── PlanModeGate — B.4 ────────────────────────────────────────────
+
+/// Plan-mode gate. While `active` flips to true, every tool whose
+/// name isn't on the read-only allowlist denies with a
+/// `"plan_mode"` reason; operator uses `/exit-plan` to flip the
+/// flag back off.
+///
+/// Default read-only allowlist covers the standard research tools
+/// (Read / Grep / Glob / LSP / WebFetch-style surfaces). The
+/// caller can supply a custom list via [`with_allowed_tools`] so
+/// operators with strict plan modes can tighten further or let
+/// specific workflow tools through.
+#[derive(Debug, Clone)]
+pub struct PlanModeGate {
+    active: Arc<std::sync::atomic::AtomicBool>,
+    allowed: Arc<Vec<String>>,
+}
+
+impl PlanModeGate {
+    pub fn new(active: Arc<std::sync::atomic::AtomicBool>) -> Self {
+        let default_allowed = vec![
+            "FileRead".to_string(),
+            "Read".to_string(),
+            "Grep".to_string(),
+            "Glob".to_string(),
+            "ToolSearch".to_string(),
+            "WebFetch".to_string(),
+            "WebSearch".to_string(),
+            "CtxInspect".to_string(),
+            "Knowledge".to_string(),
+            "VilStatus".to_string(),
+            "VilDiagnostics".to_string(),
+            "VilLspQuery".to_string(),
+            "RustSymbolLookup".to_string(),
+            "RustDiagnostics".to_string(),
+            "Todo".to_string(),
+            "SignalList".to_string(),
+            "SignalTail".to_string(),
+        ];
+        Self {
+            active,
+            allowed: Arc::new(default_allowed),
+        }
+    }
+
+    pub fn with_allowed_tools(mut self, tools: Vec<String>) -> Self {
+        self.allowed = Arc::new(tools);
+        self
+    }
+
+    pub fn is_active(&self) -> bool {
+        self.active.load(std::sync::atomic::Ordering::SeqCst)
+    }
+}
+
+#[async_trait]
+impl ToolGate for PlanModeGate {
+    fn label(&self) -> &'static str {
+        "plan"
+    }
+
+    async fn check(&self, ctx: &ToolCheckCtx) -> GateDecision {
+        if !self.is_active() {
+            return GateDecision::allow();
+        }
+        let name = ctx.tool_name.as_str();
+        if self.allowed.iter().any(|a| a == name) {
+            GateDecision::allow_with_note("plan_mode: read-only allowed")
+        } else {
+            GateDecision::deny(format!(
+                "plan mode active — tool '{name}' blocked; use /exit-plan to unlock"
+            ))
+        }
+    }
+}
+
 // ── NoopHookGate — placeholder until C.5 ──────────────────────────
 
 /// Placeholder slot Phase C.5 replaces. Today it always allows —
@@ -380,6 +456,37 @@ mod tests {
             }
             other => panic!("expected Deny, got {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn plan_gate_inactive_allows_all() {
+        let flag = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let gate = PlanModeGate::new(flag.clone());
+        let mut ctx = ctx();
+        ctx.tool_name = "Edit".into();
+        assert!(matches!(
+            gate.check(&ctx).await,
+            GateDecision::Allow { .. }
+        ));
+    }
+
+    #[tokio::test]
+    async fn plan_gate_active_denies_destructive_but_allows_read_only() {
+        let flag = Arc::new(std::sync::atomic::AtomicBool::new(true));
+        let gate = PlanModeGate::new(flag.clone());
+        let mut ctx = ctx();
+        ctx.tool_name = "Edit".into();
+        match gate.check(&ctx).await {
+            GateDecision::Deny { reason } => {
+                assert!(reason.contains("plan mode"));
+            }
+            other => panic!("expected Deny, got {other:?}"),
+        }
+        ctx.tool_name = "Grep".into();
+        assert!(matches!(
+            gate.check(&ctx).await,
+            GateDecision::Allow { .. }
+        ));
     }
 
     #[tokio::test]

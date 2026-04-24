@@ -56,7 +56,8 @@ pub use event::{SubmitContext, SubmitEvent};
 pub use llm::{EchoAdapter, LlmAdapter, LlmRequest, LlmResponse};
 pub use slash::{SlashCommand, SlashProcessor};
 pub use gate::{
-    CompositeGate, GateDecision, NoopHookGate, PolicyGate, ToolCheckCtx, ToolGate,
+    CompositeGate, GateDecision, NoopHookGate, PlanModeGate, PolicyGate, ToolCheckCtx,
+    ToolGate,
 };
 pub use stream::{SubmitChunk, SubmitStream, submit_stream};
 pub use agent_tool::{
