@@ -235,6 +235,7 @@ impl LlmAdapter for RemoteSessionAdapter {
             content: chunks,
             input_tokens: 0,
             output_tokens: 0,
+        tool_calls: Vec::new(),
         })
     }
 }

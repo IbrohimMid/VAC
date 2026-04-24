@@ -37,6 +37,7 @@ impl LlmAdapter for InstantAdapter {
             content: req.prompt,
             input_tokens: 1,
             output_tokens: 1,
+        tool_calls: Vec::new(),
         })
     }
 }

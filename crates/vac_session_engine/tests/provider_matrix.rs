@@ -34,6 +34,7 @@ impl LlmAdapter for EchoLikeAdapter {
             content: format!("ack: {}", req.prompt),
             input_tokens: req.prompt.split_whitespace().count() as u64,
             output_tokens: 3,
+        tool_calls: Vec::new(),
         })
     }
 }
@@ -58,6 +59,7 @@ impl LlmAdapter for ChunkedAdapter {
             content: format!("chunk-{n} body"),
             input_tokens: 10,
             output_tokens: 10,
+        tool_calls: Vec::new(),
         })
     }
 }
@@ -72,6 +74,7 @@ impl LlmAdapter for BigUsageAdapter {
             content: "ok".into(),
             input_tokens: 180_000,
             output_tokens: 20_000,
+        tool_calls: Vec::new(),
         })
     }
 }
@@ -86,6 +89,7 @@ impl LlmAdapter for ZeroUsageAdapter {
             content: "(nothing to say)".into(),
             input_tokens: 0,
             output_tokens: 0,
+        tool_calls: Vec::new(),
         })
     }
 }

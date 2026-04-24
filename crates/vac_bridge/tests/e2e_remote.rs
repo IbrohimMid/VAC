@@ -38,6 +38,7 @@ impl LlmAdapter for MockAdapter {
             content: result_content.into(),
             input_tokens: 1,
             output_tokens: 1,
+        tool_calls: Vec::new(),
         })
     }
 }

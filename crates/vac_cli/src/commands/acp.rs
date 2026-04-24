@@ -83,6 +83,7 @@ impl LlmAdapter for AcpEngineAdapter {
             content: result.summary,
             input_tokens: req.prompt.split_whitespace().count() as u64,
             output_tokens: result.total_tokens_used,
+        tool_calls: Vec::new(),
         })
     }
 }

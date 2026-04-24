@@ -36,6 +36,28 @@ pub struct LlmResponse {
     /// Approximate output tokens emitted.
     #[serde(default)]
     pub output_tokens: u64,
+    /// A.3 — tool-use blocks the assistant emitted. Empty when
+    /// the response is pure text (today's EchoAdapter stays on
+    /// this default); non-empty when the LLM wants the engine to
+    /// dispatch tools. Each block is gated through the composite
+    /// gate before dispatch, then emits a `ToolResult` event.
+    #[serde(default)]
+    pub tool_calls: Vec<ToolCallRequest>,
+}
+
+/// Single tool-use block from the LLM response.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolCallRequest {
+    pub id: String,
+    pub name: String,
+    pub arguments: serde_json::Value,
+    /// Operator-readable reason the model wants the call —
+    /// surfaced in the approval prompt and in activity rows.
+    #[serde(default)]
+    pub reason: Option<String>,
+    /// Token estimate the PolicyGate uses to preempt overflow.
+    #[serde(default)]
+    pub estimated_tokens: u64,
 }
 
 #[async_trait]
@@ -43,6 +65,40 @@ pub trait LlmAdapter: Send + Sync {
     /// Run one LLM round-trip. The engine fires `LlmRequested` before
     /// calling this and `Finished` (or `Aborted`) after.
     async fn complete(&self, req: LlmRequest) -> EngineResult<LlmResponse>;
+}
+
+/// A.3 — dispatches tool-use blocks the LLM requested. The engine
+/// holds no opinion on *how* a tool runs (vac_tools owns dispatch);
+/// the dispatcher closes the loop. Drivers plug their concrete
+/// dispatcher at `submit_one` / `submit_stream` call time.
+#[async_trait]
+pub trait ToolDispatcher: Send + Sync {
+    /// Run a single tool call. Returns the result envelope the
+    /// engine records in the transcript + emits as a
+    /// `ToolResult` event.
+    async fn dispatch(
+        &self,
+        call: &ToolCallRequest,
+    ) -> EngineResult<vac_tool_core::ToolResultEnvelope>;
+}
+
+/// Always-fail dispatcher. Default slot when no dispatcher is
+/// attached — lets the engine keep the streaming shape without
+/// requiring every caller to provide one today.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct UnsupportedDispatcher;
+
+#[async_trait]
+impl ToolDispatcher for UnsupportedDispatcher {
+    async fn dispatch(
+        &self,
+        call: &ToolCallRequest,
+    ) -> EngineResult<vac_tool_core::ToolResultEnvelope> {
+        Err(crate::error::EngineError::Other(format!(
+            "no ToolDispatcher attached — cannot run tool '{}'",
+            call.name,
+        )))
+    }
 }
 
 /// Mock adapter for tests + `--minimal` runs. Echoes the prompt with a
@@ -59,6 +115,7 @@ impl LlmAdapter for EchoAdapter {
             content: format!("echo: {}", req.prompt),
             input_tokens: req.prompt.split_whitespace().count() as u64,
             output_tokens: 5,
+            tool_calls: Vec::new(),
         })
     }
 }

@@ -311,6 +311,7 @@ mod tests {
                 content: "ok".into(),
                 input_tokens: 0,
                 output_tokens: self.output_tokens,
+                tool_calls: Vec::new(),
             })
         }
     }
@@ -430,6 +431,7 @@ mod tests {
                     content: String::new(),
                     input_tokens: 0,
                     output_tokens: 0,
+                tool_calls: Vec::new(),
                 })
             }
         }
@@ -489,6 +491,7 @@ mod tests {
                     content: "".into(),
                     input_tokens: 0,
                     output_tokens: 0,
+                tool_calls: Vec::new(),
                 })
             }
         }

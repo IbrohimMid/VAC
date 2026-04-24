@@ -220,6 +220,7 @@ mod tests {
                 content: "ok".into(),
                 input_tokens: 0,
                 output_tokens: 0,
+            tool_calls: Vec::new(),
             })
         }
     }

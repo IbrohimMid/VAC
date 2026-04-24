@@ -53,6 +53,7 @@ impl LlmAdapter for RecordingAdapter {
             content: format!("ack: {}", req.prompt),
             input_tokens: 1,
             output_tokens: 1,
+        tool_calls: Vec::new(),
         })
     }
 }
@@ -427,4 +428,89 @@ async fn policy_tracker_caps_submits_per_hour() {
         }
         other => panic!("expected EngineError::Other, got {other:?}"),
     }
+}
+
+// A.3 — tool dispatch through CompositeGate.
+
+struct ToolCallingAdapter;
+#[async_trait]
+impl LlmAdapter for ToolCallingAdapter {
+    async fn complete(&self, _req: LlmRequest) -> EngineResult<vac_session_engine::LlmResponse> {
+        Ok(vac_session_engine::LlmResponse {
+            provider: "tc".into(),
+            model: "tc-1".into(),
+            content: "running tool".into(),
+            input_tokens: 1,
+            output_tokens: 1,
+            tool_calls: vec![vac_session_engine::llm::ToolCallRequest {
+                id: "call-1".into(),
+                name: "echo".into(),
+                arguments: serde_json::json!({"msg": "hi"}),
+                reason: Some("test".into()),
+                estimated_tokens: 10,
+            }],
+        })
+    }
+}
+
+#[derive(Debug)]
+struct RecordingDispatcher {
+    calls: Arc<AtomicUsize>,
+}
+#[async_trait]
+impl vac_session_engine::llm::ToolDispatcher for RecordingDispatcher {
+    async fn dispatch(
+        &self,
+        _call: &vac_session_engine::llm::ToolCallRequest,
+    ) -> EngineResult<vac_tool_core::ToolResultEnvelope> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        Ok(vac_tool_core::ToolResultEnvelope::ok(
+            "echoed",
+            serde_json::json!({"ok": true}),
+        ))
+    }
+}
+
+#[tokio::test]
+async fn tool_dispatch_runs_through_composite_gate_allow_path() {
+    let tmp = tempfile::tempdir().unwrap();
+    let writer = TranscriptWriter::new(tmp.path().to_path_buf());
+    let calls = Arc::new(AtomicUsize::new(0));
+    let dispatcher = Arc::new(RecordingDispatcher {
+        calls: calls.clone(),
+    });
+    let gate = Arc::new(vac_session_engine::CompositeGate::new());
+
+    let cfg = CompactConfig {
+        gate: Some(gate.clone()),
+        dispatcher: Some(dispatcher.clone() as Arc<dyn vac_session_engine::llm::ToolDispatcher>),
+        ..Default::default()
+    };
+
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    submit_one(
+        SubmitContext::new(Uuid::new_v4(), "hi"),
+        &writer,
+        &SlashProcessor::new(),
+        &TrivialCompactBoundary::default(),
+        &UsageTracker::new(),
+        &ToolCallingAdapter,
+        cfg,
+        Some(tx),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(calls.load(Ordering::SeqCst), 1, "dispatcher invoked once");
+
+    let labels: Vec<&'static str> = {
+        let mut v = Vec::new();
+        while let Ok(ev) = rx.try_recv() {
+            v.push(ev.label());
+        }
+        v
+    };
+    assert!(labels.contains(&"tool.request"), "ToolRequested emitted: {labels:?}");
+    assert!(labels.contains(&"tool.result"), "ToolResult emitted: {labels:?}");
+    assert_eq!(labels.last().copied(), Some("finished"));
 }

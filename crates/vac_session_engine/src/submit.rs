@@ -42,6 +42,19 @@ pub struct CompactConfig {
     /// response. Kept as Option so the 29 existing call sites that
     /// `CompactConfig::default()` continue to work unchanged.
     pub policy: Option<Arc<PolicyTracker>>,
+    /// A.2 — composite gate the per-tool-use loop consults. When
+    /// `None`, all tool calls pass freely (legacy behaviour). When
+    /// set, each tool call in `LlmResponse.tool_calls` runs through
+    /// `CompositeGate::check` before dispatch; Deny → the call is
+    /// skipped, a `ToolResult` envelope with error is recorded,
+    /// and the gate's trace entry drives the A1 bridge.
+    pub gate: Option<Arc<crate::gate::CompositeGate>>,
+    /// A.3 — dispatches tool-use blocks. When `None`, any
+    /// non-empty `tool_calls` from the LLM response surface as
+    /// failed `ToolResult`s via `UnsupportedDispatcher` so the
+    /// transcript stays consistent without requiring every caller
+    /// to provide a dispatcher today.
+    pub dispatcher: Option<Arc<dyn crate::llm::ToolDispatcher>>,
 }
 
 impl Default for CompactConfig {
@@ -53,6 +66,8 @@ impl Default for CompactConfig {
             max_budget_tokens: None,
             max_turns: None,
             policy: None,
+            gate: None,
+            dispatcher: None,
         }
     }
 }
@@ -245,6 +260,67 @@ async fn submit_after_accepted(
         }),
     );
     transcript.append(handle, &resp_row).await?;
+
+    // A.3 — tool-use block iteration. For each tool call the LLM
+    // emitted, run CompositeGate; Allow → dispatch → ToolResult.
+    // Deny → synthesise a failure envelope so the transcript stays
+    // consistent. Today's EchoAdapter emits zero tool calls, so
+    // this loop is a no-op for the legacy path.
+    for call in &resp.tool_calls {
+        emit(
+            events,
+            SubmitEvent::ToolRequested {
+                id: call.id.clone(),
+                name: call.name.clone(),
+                arguments: call.arguments.clone(),
+            },
+        );
+        let gate_decision = if let Some(gate) = compact_cfg.gate.as_ref() {
+            let mut ctx = crate::gate::ToolCheckCtx::new(
+                call.name.clone(),
+                submit.session_id,
+            )
+            .with_arguments(call.arguments.clone())
+            .with_estimated_tokens(call.estimated_tokens);
+            if let Some(reason) = call.reason.as_ref() {
+                ctx = ctx.with_reason(reason.clone());
+            }
+            gate.check(&ctx).await
+        } else {
+            crate::gate::GateDecision::allow()
+        };
+        let envelope: vac_tool_core::ToolResultEnvelope = match gate_decision {
+            crate::gate::GateDecision::Allow { .. } => {
+                let dispatcher = compact_cfg.dispatcher.clone().unwrap_or_else(|| {
+                    Arc::new(crate::llm::UnsupportedDispatcher)
+                        as Arc<dyn crate::llm::ToolDispatcher>
+                });
+                match dispatcher.dispatch(call).await {
+                    Ok(env) => env,
+                    Err(e) => vac_tool_core::ToolResultEnvelope::error(
+                        format!("dispatch error for '{}'", call.name),
+                        e.to_string(),
+                    ),
+                }
+            }
+            crate::gate::GateDecision::Deny { reason }
+            | crate::gate::GateDecision::NeedsApproval { reason } => {
+                vac_tool_core::ToolResultEnvelope::error(
+                    format!("tool '{}' blocked by gate", call.name),
+                    reason,
+                )
+            }
+        };
+        emit(
+            events,
+            SubmitEvent::ToolResult {
+                id: call.id.clone(),
+                name: call.name.clone(),
+                payload: envelope,
+            },
+        );
+    }
+
     let snap = usage.snapshot();
     let finished = TranscriptEntry::new(
         submit.session_id,
