@@ -12,6 +12,7 @@ pub fn init(
     log_format: &str,
     otel_endpoint: Option<&str>,
     metrics_addr: Option<&str>,
+    tui_mode: bool,
 ) -> anyhow::Result<()> {
     let filter = match verbose {
         0 => "warn,vac=info",
@@ -21,7 +22,14 @@ pub fn init(
     };
     let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| filter.into());
 
-    let fmt_layer = fmt::layer().with_writer(std::io::stderr);
+    // Suppress stderr layer under the TUI so the alternate-screen
+    // repaint stays clean; operators rely on `VAC_TUI_LOG=<path>`
+    // for diagnostics.
+    let fmt_layer = if tui_mode {
+        None
+    } else {
+        Some(fmt::layer().with_writer(std::io::stderr))
+    };
 
     // Dogfood diagnostic: when `VAC_TUI_LOG=<path>` is set, also
     // tee tracing output to that file. Stderr is awkward to tail
@@ -120,7 +128,11 @@ pub fn init(
     };
 
     if log_format == "json" {
-        let json_layer = fmt::layer().json().with_writer(std::io::stderr);
+        let json_layer = if tui_mode {
+            None
+        } else {
+            Some(fmt::layer().json().with_writer(std::io::stderr))
+        };
         if let Some(t) = tracer {
             let telemetry = tracing_opentelemetry::layer().with_tracer(t);
             registry.with(json_layer).with(telemetry).try_init()?;

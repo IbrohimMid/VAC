@@ -616,16 +616,21 @@ async fn main() -> anyhow::Result<()> {
     let cli = crate::boot::boot_profile().record("parse_args", crate::boot::BootPhase::Critical, || Cli::parse());
     let interactive_mode = matches!(&cli.command, Commands::Interactive { .. });
 
-    if !interactive_mode {
-        crate::boot::boot_profile().record("telemetry_init", crate::boot::BootPhase::Critical, || {
-            telemetry::init(
-                cli.verbose,
-                &cli.log_format,
-                cli.otel_endpoint.as_deref(),
-                cli.metrics_addr.as_deref(),
-            )
-        })?;
-    }
+    // Telemetry init — previously skipped entirely for interactive
+    // mode to keep stderr clean under the TUI's alternate screen.
+    // Dogfood fix: always init so `VAC_TUI_LOG=<path>` file-based
+    // tracing works under interactive too. Interactive mode bypasses
+    // stderr via the `tui_mode` flag so the TUI repaint stays clean;
+    // file layer still fires when VAC_TUI_LOG is set.
+    crate::boot::boot_profile().record("telemetry_init", crate::boot::BootPhase::Critical, || {
+        telemetry::init(
+            cli.verbose,
+            &cli.log_format,
+            cli.otel_endpoint.as_deref(),
+            cli.metrics_addr.as_deref(),
+            interactive_mode,
+        )
+    })?;
 
     let project_root = cli.project.clone().unwrap_or_else(|| {
         #[allow(clippy::expect_used)]
