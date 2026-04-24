@@ -1,6 +1,7 @@
 # VAC — Current State
 
-**Snapshot:** 2026-04-24. Not a plan — a description of what is on
+**Snapshot:** 2026-04-24 (post UX finalization landings
+A1/A2/B1/B2/B3/C2-partial/D1/D2/E1/E3/F1/F2). Not a plan — a description of what is on
 `main` today. When the next cycle starts, rewrite this file from the
 codebase; do not treat it as a commitment.
 
@@ -206,20 +207,57 @@ codebase; do not treat it as a commitment.
 - 6-provider LLM smoke matrix (anthropic, openai, gemini, xai,
   mistral, openai-compat).
 
+## UX unification (post-U8 finalization landings)
+
+- **A1** `TuiTracingLayer` — `tracing_subscriber::Layer` forwards
+  `info!`/`warn!`/`error!` on 9 allowlisted subsystem targets
+  (`trust_gate`, `isolation`, `channel`, `result_spill`,
+  `policy_limits`, `rate_limit`, `auto_dream`, `away_summary`,
+  `speculation`) into `NotifyRouter`. Gated by `VAC_TRACING_BRIDGE`.
+- **A2** `budget` SystemPulse facet — reads `UsageTracker` vs
+  `VAC_BUDGET_TOKENS`; severity ramps at 50/20/5 % remaining.
+- **B1** Six `/skill-*` palette rows (batch, loop, remember,
+  simplify, stuck, verify) in `ACTION_SPECS`.
+- **B2** `memory` SystemPulse facet — projection-only (archive
+  path, no fs on render path).
+- **B3** `idle_maintenance::spawn_prune_spill_loop` — hourly tick
+  calls `prune_spill_dir` with 24 h retention.
+- **C2 partial** `vil_llm::rate_limit` 429 cooldown promoted
+  from `debug!` to `warn!` so the A1 bridge surfaces
+  automatically once router call-sites wire the tracker.
+- **D1** `idle_maintenance` spawns AutoDream (per-minute poll,
+  gated on 5-min idle) + AwaySummary startup probe.
+- **D2** Fork speculation emits `info!` breadcrumb
+  "warmed N file(s): …" after merge; routes via A1.
+- **E1** `subagent` SystemPulse facet — reserves the slot;
+  `RootObservables` binding pending.
+- **E3** Signal workbench tab header uses `FacetSeverity::glyph`
+  (Ok/Info/Warn) driven by total dropped-line count.
+- **F1** Dispatch arms for ten `ActionId::SpawnCli*` variants in
+  `handlers::input_commands` — each spawns `vac <cmd>` through
+  the shell-popup pipeline with the active isolation mode.
+- **F2** ACTION_SPECS palette rows for advisor / autofix-pr /
+  bughunter / security-review / perf-issue / teleport / thinkback /
+  ultraplan / rewind / decisions.
+
 ## Deferred to next cycle
 
-These primitives exist but the TUI-loop does not yet pull them;
-adding the wiring is a small follow-up each:
+Producer-side trace emissions are loud on allowlisted targets;
+what remains is call-site wiring:
 
-- `AutoDreamService` + `AwaySummaryService` idle-poll tick.
 - `PassiveFeedbackDriver::tick` wired into LSP publishDiagnostics.
-- `PolicyTracker::check` wired into `submit_one` pre-dispatch.
-- `RateLimitTracker::observe_request` wired into the LLM router's
-  per-provider outbound path.
-- `ElicitationHandler` routed through a concrete interactive
-  driver (TUI prompt / browser redirect).
-- `vac auth login <provider>` binary calling `PkceChallenge`
-  + `TokenCache`.
+- `PolicyTracker::check` wired into `submit_one` pre-dispatch
+  (**C1** — needs `vac_session_engine → vac_core` dep + context
+  threading).
+- `RateLimitTracker::observe_request` / `observe_429` wired into
+  the LLM router's per-provider outbound path (**C2** full).
+- `TuiElicitationHandler` + new `OverlayId::Elicitation` for MCP
+  URL-open / text / confirm flows (**G1**).
+- `vac auth login <provider>` binary — `PkceChallenge` + local
+  HTTP listener + browser-launch + `TokenCache` (**G2**; requires
+  new external crates).
+- Memory panel (workbench tab does not exist yet — **E2** blocked
+  pending the panel itself).
 
 ## Reference docs to read
 
