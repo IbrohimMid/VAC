@@ -564,7 +564,15 @@ impl LlmAdapter for VacEngineAdapter {
             content: result.summary,
             input_tokens: req.prompt.split_whitespace().count() as u64,
             output_tokens: result.total_tokens_used,
-        tool_calls: Vec::new(),
+            // ADR-001 (hybrid execution architecture): VacEngine is
+            // the semantic execution plane; it owns tool dispatch
+            // and returns tool effects folded into `result.summary`
+            // + emitted as `RuntimeUpdate::ToolResult`s on the
+            // update channel. Session-engine is the durability /
+            // streaming plane and does not re-run tool calls. This
+            // empty vec is **intentional boundary**, not a TODO —
+            // see docs/adr/ADR-001-hybrid-execution-architecture.md.
+            tool_calls: Vec::new(),
         })
     }
 }
