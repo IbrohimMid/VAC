@@ -171,6 +171,83 @@ mod tests {
         );
     }
 
+    // ── UX unification invariants (U6) ────────────────────────────────────────
+
+    /// U6 — SystemPulse stays borrow-only. Any future refactor that
+    /// adds `Clone` or `Arc` on SystemPulse itself creates the
+    /// "third event plane" the unification plan forbids.
+    #[test]
+    fn system_pulse_source_has_no_clone_or_arc_on_pulse_type() {
+        let src = include_str!("system_pulse.rs");
+        let banned = ["Arc<SystemPulse", "Clone for SystemPulse"];
+        for needle in banned {
+            assert!(
+                !src.contains(needle),
+                "SystemPulse must remain borrow-only; found '{needle}'"
+            );
+        }
+    }
+
+    /// U6 — every pulse facet's NavTarget is applyable against a
+    /// fresh AppState without panicking. Catches future facets that
+    /// reference a removed WorkbenchTab or OverlayId variant.
+    #[test]
+    fn every_pulse_facet_nav_target_is_applyable() {
+        use crate::app::AppState;
+        use crate::system_pulse::SystemPulse;
+        let state = AppState::default();
+        let pulse = SystemPulse::from_state(&state);
+        for facet in pulse.facets() {
+            let tgt = facet
+                .nav_target
+                .clone()
+                .unwrap_or_else(|| panic!("facet {:?} missing nav_target", facet.kind));
+            let mut fresh = AppState::default();
+            let _ = tgt.apply(&mut fresh);
+        }
+    }
+
+    /// U6 — compact statusline tokens stay under 80 cols so they
+    /// survive narrow terminals.
+    #[test]
+    fn pulse_compact_line_fits_width_budget() {
+        use crate::app::AppState;
+        use crate::system_pulse::SystemPulse;
+        let state = AppState::default();
+        let pulse = SystemPulse::from_state(&state);
+        let line = pulse.compact_line();
+        assert!(
+            line.chars().count() <= 80,
+            "compact_line too wide: {} chars",
+            line.chars().count()
+        );
+    }
+
+    /// U6 — NotifyRouter severity→lane matrix.
+    #[test]
+    fn notify_router_severity_lane_matrix_is_stable() {
+        use crate::app::AppState;
+        use crate::services::notify_router::{route, NotifyEvent};
+
+        let mut state = AppState::default();
+        route(&mut state, NotifyEvent::info("a", "i"));
+        assert_eq!(state.execution.activity.len(), 1);
+        assert!(state.layout.toasts.is_empty());
+        assert!(state.layout.banner.message.is_none());
+
+        let mut state = AppState::default();
+        route(&mut state, NotifyEvent::warn("a", "w"));
+        assert_eq!(state.execution.activity.len(), 1);
+        assert_eq!(state.layout.toasts.len(), 1);
+        assert!(state.layout.banner.message.is_none());
+
+        let mut state = AppState::default();
+        route(&mut state, NotifyEvent::critical("a", "c"));
+        assert_eq!(state.execution.activity.len(), 1);
+        assert!(state.layout.toasts.is_empty());
+        assert!(state.layout.banner.message.is_some());
+    }
+
     // ── Action registry contracts ─────────────────────────────────────────────
 
     #[test]

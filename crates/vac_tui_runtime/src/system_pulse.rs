@@ -100,6 +100,27 @@ pub struct SystemPulse<'a> {
     state: &'a AppState,
 }
 
+impl NavTarget {
+    /// Apply this nav target to the mutable AppState. Returns true
+    /// when navigation actually moved (either a tab focus change or
+    /// an overlay opened). Caller can emit a notify event on true.
+    pub fn apply(&self, state: &mut AppState) -> bool {
+        match self {
+            NavTarget::WorkbenchTab(tab) => {
+                if state.layout.workbench_tab == *tab {
+                    return false;
+                }
+                state.layout.workbench_tab = *tab;
+                true
+            }
+            NavTarget::Overlay(id) => {
+                crate::overlay::open_overlay(state, *id);
+                true
+            }
+        }
+    }
+}
+
 impl<'a> SystemPulse<'a> {
     pub fn from_state(state: &'a AppState) -> Self {
         Self { state }
@@ -352,6 +373,38 @@ mod tests {
         assert_eq!(FacetSeverity::Info.glyph(), '·');
         assert_eq!(FacetSeverity::Warn.glyph(), '●');
         assert_eq!(FacetSeverity::Critical.glyph(), '✗');
+    }
+
+    #[test]
+    fn nav_target_apply_switches_workbench_tab() {
+        let mut state = AppState::default();
+        state.layout.workbench_tab = crate::app::types::WorkbenchTab::Sessions;
+        let tgt = NavTarget::WorkbenchTab(
+            crate::app::types::WorkbenchTab::Approvals,
+        );
+        let moved = tgt.apply(&mut state);
+        assert!(moved);
+        assert_eq!(
+            state.layout.workbench_tab,
+            crate::app::types::WorkbenchTab::Approvals
+        );
+        // Idempotent: second apply is a no-op.
+        let moved_again = tgt.apply(&mut state);
+        assert!(!moved_again);
+    }
+
+    #[test]
+    fn nav_target_apply_opens_overlay() {
+        let mut state = AppState::default();
+        let tgt = NavTarget::Overlay(crate::overlay::OverlayId::CommandPalette);
+        let moved = tgt.apply(&mut state);
+        assert!(moved);
+        assert!(
+            state
+                .layout
+                .overlay_manager
+                .is_active(crate::overlay::OverlayId::CommandPalette)
+        );
     }
 
     #[test]
