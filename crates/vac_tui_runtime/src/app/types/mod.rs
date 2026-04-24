@@ -302,6 +302,38 @@ pub struct ExecutionState {
     /// C.2 — cron snapshot: count of registered + due entries,
     /// last-fire timestamp. Refreshed by `spawn_cron_loop`.
     pub cron: CronSnapshot,
+    /// C.6 — recent hook fires. Ring-buffered; the Runtime tab
+    /// sub-pane reads this, and `emit_hook_fire` is the single
+    /// writer.
+    pub hook_log: Vec<HookFireRecord>,
+}
+
+/// One hook-fire event.
+#[derive(Debug, Clone)]
+pub struct HookFireRecord {
+    pub at_unix: i64,
+    pub hook_id: String,
+    pub event_label: String,
+    pub tool_name: String,
+    pub duration_ms: u64,
+    pub decision: HookFireDecision,
+}
+
+#[derive(Debug, Clone)]
+pub enum HookFireDecision {
+    Allowed,
+    Denied(String),
+    Errored(String),
+}
+
+impl HookFireDecision {
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::Allowed => "allowed",
+            Self::Denied(_) => "denied",
+            Self::Errored(_) => "errored",
+        }
+    }
 }
 
 /// Read-only cron snapshot the `cron` facet renders from.
