@@ -466,13 +466,14 @@ impl<'a> SystemPulse<'a> {
         }
     }
 
-    /// Phase B2 — memory facet. Reports whether the Consolidator
-    /// left a phase stamp + BM25 cache freshness against ingest.
-    /// Projection-only — we read observable state (timestamps on
-    /// the memdir) without invoking the consolidator.
+    /// Phase B2 — memory facet. **No disk I/O on the render path.**
+    /// The statusline renders every frame; a `read_dir` per frame
+    /// would hammer the filesystem and add visible latency on
+    /// rotating disks. Instead we expose *where* the memdir lives
+    /// in detail_rows; a follow-up landing wires an idle-tick
+    /// producer that caches the entry count on AppState so the
+    /// facet can flip to `memory✓N` without syscalls.
     fn memory_facet(&self) -> SystemFacet {
-        // Best-effort: check if .vac/memory/archived has any entries
-        // and how recent the newest is. Purely a read.
         let archived = self
             .state
             .core
@@ -480,25 +481,13 @@ impl<'a> SystemPulse<'a> {
             .join(".vac")
             .join("memory")
             .join("archived");
-        let (count, severity, token) = match std::fs::read_dir(&archived) {
-            Ok(rd) => {
-                let entries: Vec<_> = rd.filter_map(|e| e.ok()).collect();
-                let n = entries.len();
-                if n == 0 {
-                    (0, FacetSeverity::Info, "memory·".into())
-                } else {
-                    (n, FacetSeverity::Ok, format!("memory✓{n}").into())
-                }
-            }
-            Err(_) => (0, FacetSeverity::Info, "memory·".into()),
-        };
         SystemFacet {
             kind: SystemFacetKind::Memory,
-            severity,
-            compact_token: token,
+            severity: FacetSeverity::Info,
+            compact_token: "memory·".into(),
             detail_rows: vec![
-                format!("archived entries: {count}"),
                 format!("archive dir: {}", archived.display()),
+                "entry count: cached elsewhere (no fs on render path)".into(),
             ],
             nav_target: Some(NavTarget::WorkbenchTab(
                 crate::app::types::WorkbenchTab::Plan,

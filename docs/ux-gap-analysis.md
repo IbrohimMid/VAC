@@ -27,7 +27,7 @@ implies is scoped in the "Remediation ladder" at the bottom.
 | Feature | Producer | Surface reached | Deep-link | Disc. | Status |
 |---|---|---|---|---|---|
 | Transcript durability | `vac_session_engine::submit_one` | Implicit (session continues) | `vac resume` | No | 🔴 |
-| Budget gate (BudgetExceeded) | `vac_session_engine::submit.rs` | Error returned to controller | None | No | 🔴 |
+| Budget gate (BudgetExceeded) | `vac_session_engine::submit.rs` | SystemPulse `budget` facet (A2) | Observational | Yes | 🟢 |
 | Crashed-submit resume overlay | `vac_session_control` | `OverlayId::SessionResume` | `Ctrl+R` (ResumeCheckpoint) | Yes | 🟢 |
 | submit_id → BackupRecord | `vac_tools::backup` | File-edit history | `Ctrl+Z` (RevertSelected) | Yes | 🟢 |
 | LLM stream events (LlmChunk, Finished, Aborted) | `runner::engine_adapter` | Transcript render | Automatic | Yes | 🟢 |
@@ -51,7 +51,7 @@ implies is scoped in the "Remediation ladder" at the bottom.
 | Per-input `is_destructive` / `is_read_only` | `vac_tool_core::ToolSpec` + `vac_tools::registry` | Approval flow routing | `Ctrl+P` → Approvals tab | Yes | 🟢 |
 | `should_defer` / `always_load` | `vac_tools::registry::list_initial_specs` | Initial tool manifest | `ToolSearch` tool | Partial | 🟡 |
 | Disk-spill (`PreviewStub`, `maybe_spill_result`) | `vac_tools::result_spill` | Silent — payload persisted to `.vac/tool-results/` | None | No | 🔴 |
-| `prune_spill_dir` retention | `vac_tools::result_spill` | CLI-only (no scheduler wired) | None | No | 🔴 |
+| `prune_spill_dir` retention | `vac_tools::result_spill` | Idle maintenance hourly tick (D1) | None | Yes | 🟢 |
 | `is_read_only_bash_command` whitelist | `vac_tools::registry` | Trust gate silent pass/fail | None | No | 🔴 |
 | Built-in tools (FileRead, Bash, Grep, Glob, ToolSearch) | `vac_tools::builtin::*` | Tool request → approval | Implicit | Yes | 🟢 |
 
@@ -65,7 +65,7 @@ implies is scoped in the "Remediation ladder" at the bottom.
 |---|---|---|---|---|---|
 | `SkillRegistry` + `SkillTool` dispatch | `vac_skill::registry`, `vac_tools::builtin::skill_tool` | Approval flow (per call) | `ToolSearch` | Partial | 🟡 |
 | `vac skills list/show` CLI | `vac_cli::commands::skills` | CLI only | `vac skills` | Yes (CLI) | ⚫ |
-| Six bundled skills | `vac_skill::bundled::*` | Only via SkillTool | None in TUI | No | 🟡 |
+| Six bundled skills | `vac_skill::bundled::*` | ACTION_SPECS palette entries `/skill-*` (B1) | `Ctrl+P` | Yes | 🟢 |
 
 **Gap:** no palette entries for `/skill batch`, `/skill verify`, etc. A new operator sees skills only after running `vac skills list` from a shell. Adding ACTION_SPECS entries `/skill-<name>` for each bundled skill is mechanical.
 
@@ -75,7 +75,7 @@ implies is scoped in the "Remediation ladder" at the bottom.
 |---|---|---|---|---|---|
 | MCP state machine + connection tracking | `vac_mcp_core::state::McpConnection` | SystemPulse `mcp` facet | Enter → Signal tab | Yes | 🟢 |
 | `ElicitationHandler` trait | `vac_mcp_core::elicitation` | None — no TUI driver | None | No | 🔴 |
-| `ChannelAcl` deny/allow/notify | `vac_mcp_core::channel` + `TrustGate::check_mcp_tool_with_channel` | Silent on allow; `tracing::warn` on deny | None | No | 🔴 |
+| `ChannelAcl` deny/allow/notify | `vac_mcp_core::channel` + `TrustGate::check_mcp_tool_with_channel` | `tracing::warn` → NotifyRouter via A1 bridge | Activity panel | Yes | 🟢 |
 | Stdio + WS transports | `vac_tools::mcp::*` | Silent bootstrap | None | No | 🔴 |
 | `/mcp` CLI | `vac_cli::commands::mcp` | CLI only | `vac mcp` | Yes (CLI) | ⚫ |
 
@@ -88,8 +88,8 @@ implies is scoped in the "Remediation ladder" at the bottom.
 | Feature | Producer | Surface | Deep-link | Disc. | Status |
 |---|---|---|---|---|---|
 | `EnvironmentMode` + `TrustClass` | `vac_tools::trust_gate` | SystemPulse `env` facet (token + detail_rows) | Observational | Yes | 🟢 |
-| `TrustGate::check_tool` / `check_mcp_tool` | `vac_tools::trust_gate` | Silent (allow) / tracing::warn (deny) | None | No | 🔴 |
-| `IsolationManager::check_environment_gate` | `vac_runtime::isolation` | Silent | None | No | 🔴 |
+| `TrustGate::check_tool` / `check_mcp_tool` | `vac_tools::trust_gate` | A1 tracing bridge → NotifyRouter on deny | Activity panel | Yes | 🟢 |
+| `IsolationManager::check_environment_gate` | `vac_runtime::isolation` | A1 tracing bridge → NotifyRouter on deny | Activity panel | Yes | 🟢 |
 | Sandbox toggle | `vac_cli::commands::plan_memory::sandbox_toggle` | CLI writes `.vac/sandbox.toml`; `env` facet picks up next frame | `vac sandbox-toggle` | Yes | ⚫ |
 
 **Gap:** same tracing-bridge issue as MCP channel ACL. Trust-gate denials should reach the activity panel at minimum. Isolation gate denials should reach banner (critical).
@@ -113,7 +113,7 @@ implies is scoped in the "Remediation ladder" at the bottom.
 
 | Feature | Producer | Surface | Deep-link | Disc. | Status |
 |---|---|---|---|---|---|
-| `AppStateRootHandle` notifications + breadcrumbs | `vac_tui_runtime::app::root_handle` | Agents tab (`WorkbenchTab::Agents`) | `Ctrl+P` → Agents | Yes | 🟡 |
+| `AppStateRootHandle` notifications + breadcrumbs | `vac_tui_runtime::app::root_handle` | Agents tab + SystemPulse `subagent` facet (E1) | `Ctrl+P` → Agents | Yes | 🟢 |
 | `SubagentCoordinator::spawn_child` | `vac_tui_runtime::runner::subagent` | Agents tab | None direct | Partial | 🟡 |
 | `fork_speculate` composition | `vac_tui_runtime::runner::subagent` | `spec` facet via SpeculationCache | Observational | Yes | 🟢 |
 
@@ -138,8 +138,9 @@ implies is scoped in the "Remediation ladder" at the bottom.
 | `MemoryScanner` + memdir | `vac_memory::*` | Observable via `/memory` | Same | Yes | 🟡 |
 | `Bm25Index` + staleness check | `vac_ingest::bm25` | Silent | None | No | 🔴 |
 | `VacMemoryBridge` (vil ↔ vac) | `vil_memory::adapter` | Silent adapter | None | No | 🔴 |
-| `AutoDreamService` idle tick | `vac_tui_runtime::services::auto_dream` | **Not wired** | None | No | 🔴 |
-| `AwaySummaryService::on_resume` | `vac_tui_runtime::services::away_summary` | **Not wired** | None | No | 🔴 |
+| `AutoDreamService` idle tick | `vac_tui_runtime::services::auto_dream` | `idle_maintenance::spawn_auto_dream_loop` (D1) | Activity on completion | Yes | 🟢 |
+| `AwaySummaryService::on_resume` | `vac_tui_runtime::services::away_summary` | `idle_maintenance::away_summary_probe` (D1) | Activity on startup | Yes | 🟢 |
+| SystemPulse `memory` facet | `system_pulse::memory_facet` | Operator panel + statusline (B2) | Observational | Yes | 🟢 |
 
 **Gap:** no `memory` SystemPulse facet. Adding one reading `Consolidator` phase state + `Bm25Index::is_cache_fresh` result would surface a significant silent area.
 
@@ -168,10 +169,10 @@ implies is scoped in the "Remediation ladder" at the bottom.
 
 ## CLI-only commands (W8)
 
-All 17 W8 commands are ⚫ **CLI-only**. None have slash aliases or palette entries. Breakdown:
+After F2, ten W8 commands have ACTION_SPECS palette entries (🟢) — the remaining seven stay ⚫ **CLI-only**. Breakdown:
 
-### Review (5)
-`advisor` / `autofix-pr` / `bughunter` / `security-review` / `perf-issue` — live in `vac_cli::commands::review`. Good candidates for palette entries that spawn a shell popup running the command, so operators can trigger them without leaving the TUI.
+### Review (5) — 🟢 palette-wired (F2)
+`advisor` / `autofix-pr` / `bughunter` / `security-review` / `perf-issue` — `SpawnCli*` ActionIds spawn the CLI in a shell popup.
 
 ### Integrations (4)
 `install-github-app` / `install-slack-app` / `reload-plugins` / `teleport` — these print setup instructions (one-shot) or list sessions. `teleport` is a natural palette entry; the others are genuinely out-of-session.
@@ -180,14 +181,14 @@ All 17 W8 commands are ⚫ **CLI-only**. None have slash aliases or palette entr
 `debug-tool-call` / `heapdump` / `statusline` / `good-claude` — `statusline` is self-referential (prints what the TUI already shows). `debug-tool-call` + `heapdump` are developer probes. `good-claude` is an easter egg.
 
 ### Plan / memory (4)
-`thinkback` / `ultraplan` / `sandbox-toggle` / `rewind` — `sandbox-toggle` already has a palette-discoverable effect via the `env` facet (next render). `thinkback` + `ultraplan` + `rewind` should be palette entries.
+`thinkback` / `ultraplan` / `sandbox-toggle` / `rewind` — `sandbox-toggle` via `env` facet; `thinkback` / `ultraplan` / `rewind` plus `teleport` + `decisions` are now 🟢 palette-wired via F2 SpawnCli ActionIds.
 
 ## Rate + policy (W9)
 
 | Feature | Producer | Surface | Deep-link | Disc. | Status |
 |---|---|---|---|---|---|
-| `RateLimitTracker` | `vil_llm::rate_limit` | **Not wired** into LLM router call site | None | No | 🔴 |
-| `PolicyLimits::check` | `vac_core::policy_limits` | **Not wired** into submit_one | None | No | 🔴 |
+| `RateLimitTracker` | `vil_llm::rate_limit` | **Not wired** into LLM router; A1 bridge would surface if wired | None | No | 🔴 |
+| `PolicyLimits::check` | `vac_core::policy_limits` | **Not wired** into submit_one; A1 bridge would surface if wired | None | No | 🔴 |
 
 **Gap:** both primitives are ready. Once wired, a `rate` facet (countdown) and a `policy` facet (submits used / cap) drop into SystemPulse cleanly — producers are the remaining blocker, not the projection.
 
@@ -199,10 +200,10 @@ Same shape as W9: primitives complete, REPL poll-loop integration outstanding. A
 
 | Category | Count | Representative items |
 |---|---|---|
-| 🟢 Fully surfaced | 9 | approvals, runtime, mcp, env, spec, shell facets; `Ctrl+P` registry; resume overlay |
-| 🟡 Partial (surface exists, grammar drifts or needs follow-up) | 12 | Agents tab not-in-pulse-grammar, Skills palette missing, memory panel without facet |
-| 🔴 Silent (no user-visible signal) | 18 | trust-gate denials, channel ACL, spill thresholds, every W7 auth primitive, AutoDream/AwaySummary not-ticked |
-| ⚫ CLI-only | 11 | all W8 review/integration/diagnostic/memory commands, `vac decisions` / `vac eval`, signal rewind |
+| 🟢 Fully surfaced | 22 | 9 facets (approvals/runtime/mcp/shell/spec/env/budget/memory/subagent); A1 tracing bridge; B1 skill palette; D1 idle maintenance; F2 ten CLI bridges; registry + resume overlay |
+| 🟡 Partial | 6 | FileStateCache merge, `should_defer`, MemoryScanner, SignalBuffer tabs, Consolidator slash |
+| 🔴 Silent | 9 | RateLimitTracker, PolicyTracker, PassiveFeedback tick, Elicitation, W7 auth primitives, scorer/distiller |
+| ⚫ CLI-only | 7 | remaining W8 integrations/diagnostics, `vac eval`, signal rewind |
 
 ## Root causes
 
@@ -240,8 +241,18 @@ Grouped by effort × reach.
 
 ## Conclusion
 
-Of ~50 shipped features, **~18% (9 features) reach the unified grammar fully**, **24% (12) partial**, **36% (18) silent**, **22% (11) CLI-only**.
+Post-finalization (A1/A2/B1/B2/B3/D1/E1/F2): of ~44 shipped
+features, **~50% (22) reach the unified grammar fully**, **~14%
+(6) partial**, **~20% (9) silent**, **~16% (7) CLI-only**.
 
-The unification landed a solid **backbone** — registry converged, SystemPulse projection, NotifyRouter lanes, contract tests. What's left is **producer wiring**: connecting the primitives to the TUI poll loop, bridging `tracing::warn` denials into activity, and exposing CLI commands to the palette.
+Tracing bridge (A1) converted "silent" denials into activity rows
+in one shot; D1 closed the idle-loop gap; facet expansion
+(budget/memory/subagent) converted the Agents / memory silent
+panels to grammar-consistent surfaces; F2 lifted ten CLI-only
+commands into the palette.
 
-Every remaining gap has a known shape. None require new architecture.
+What's left is producer wiring for RateLimitTracker /
+PolicyTracker / PassiveFeedback + the W7 auth stack.
+
+Every remaining gap still has a known shape. None require new
+architecture.

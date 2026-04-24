@@ -1,9 +1,9 @@
 # VAC TUI UX Spec
 
-**Snapshot:** 2026-04-24 (post U0–U8 unification landing +
-post-audit hardening). Not a plan — a description of what the
-cockpit looks like today. When behaviour changes, regenerate this
-file from the codebase.
+**Snapshot:** 2026-04-24 (post U0–U8 unification + finalization
+pass A1/A2/B1/B2/B3/D1/E1/F2). Not a plan — a description of what
+the cockpit looks like today. When behaviour changes, regenerate
+this file from the codebase.
 
 ## Single-sentence summary
 
@@ -41,10 +41,13 @@ identifier. Defined by `SystemFacetKind::label` and matched by
 | `shell` | `AppState.execution.shell.session_store.sessions` |
 | `spec` | `AppState.speculation` (W6 primitive) |
 | `env` | `AppState.core.startup.environment` |
+| `budget` | `UsageTracker` vs `CompactConfig.max_budget_tokens` (env-gated via `VAC_BUDGET_TOKENS`) |
+| `memory` | `.vac/memory/archive` projection (path only; no fs on render path) |
+| `subagent` | `RootObservables.errors_seen + notifications.len()` |
 
-Reserved (future producers): `lsp`, `vil`, `subagent`, `memory`,
-`policy`, `rate` — slot into `SystemFacetKind` via its
-`#[non_exhaustive]` attribute.
+Reserved (future producers): `lsp`, `vil`, `policy`, `rate` —
+slot into `SystemFacetKind` via its `#[non_exhaustive]`
+attribute.
 
 ## The four surfaces
 
@@ -110,6 +113,16 @@ through the router.
 
 Every row is prefixed `[<subsystem>] <summary>` using the same
 vocabulary as the SystemPulse labels.
+
+**Tracing bridge (A1):** `services::tracing_bridge::TuiTracingLayer`
+is a `tracing_subscriber::Layer` that forwards `warn!` / `error!`
+events on an allowlisted set of subsystem targets directly into
+`NotifyRouter`, closing the gap where trust-gate / isolation /
+channel-ACL / rate-limit / policy / speculation / auto_dream /
+away_summary / result_spill denials were only visible to stderr
+log readers. Prefix match means nested module paths
+(`vac_tools::trust_gate::foo`) resolve to the parent subsystem
+(`trust_gate`). Enable via `VAC_TRACING_BRIDGE=1` at startup.
 
 Length caps (post-audit hardening):
 - `NOTIFY_SUBSYSTEM_CAP = 64 chars`
@@ -217,6 +230,40 @@ make drift impossible without a test failure:
 | `action_specs_slash_aliases_globally_unique` | Slash aliases don't collide |
 | `action_specs_and_helper_block_overlap_is_consistent` | Two registries agree on overlapping aliases |
 
+## Idle maintenance (D1)
+
+`services::idle_maintenance` spawns three tokio tasks from the
+event loop boot sequence:
+
+| Task | Cadence | Effect |
+|---|---|---|
+| `spawn_prune_spill_loop` | hourly tick | `vac_tools::result_spill::prune_spill_dir` with 24h retention — bounds `.vac/tool-results/` disk use |
+| `spawn_auto_dream_loop` | per-minute poll | gates internally on 5-min idle, triggers `AutoDreamService` memory consolidation |
+| `away_summary_probe` | one-shot at startup | routes an info notification when session gap ≥ 1h |
+
+Failures on any job emit `tracing::warn!` on a subsystem target
+(`auto_dream`, `away_summary`, `result_spill`), which the A1
+bridge then surfaces in the activity panel.
+
+## Palette (B1 / F2)
+
+Action registry was extended with sixteen new palette rows, all
+`ActionContext::Global`:
+
+- **Six skills** (B1): `SkillBatch`, `SkillLoop`, `SkillRemember`,
+  `SkillSimplify`, `SkillStuck`, `SkillVerify` — slash-accessible
+  via `/skill-<name>`.
+- **Ten CLI bridges** (F2): `SpawnCliAdvisor`, `SpawnCliAutofixPr`,
+  `SpawnCliBughunter`, `SpawnCliSecurityReview`, `SpawnCliPerfIssue`,
+  `SpawnCliTeleport`, `SpawnCliThinkback`, `SpawnCliUltraplan`,
+  `SpawnCliRewind`, `SpawnCliDecisions`. Each launches the matching
+  `vac <cmd>` in a shell popup so W8 commands are reachable without
+  leaving the TUI.
+
+Invariants (`action_specs_no_duplicate_keybindings_in_scope` +
+`action_specs_slash_aliases_globally_unique`) pin these rows
+against future drift.
+
 ## What is NOT in the TUI today
 
 Producers that exist as primitives but don't yet push events into
@@ -226,13 +273,16 @@ the unified surfaces:
   called from `submit_one`.
 - `RateLimitTracker` — primitive in `vil_llm::rate_limit`, not
   called from the LLM router.
-- `AutoDreamService`, `AwaySummaryService`,
-  `PassiveFeedbackDriver` — primitives in
-  `vac_tui_runtime::services::*`, not driven by the REPL poll loop.
+- `PassiveFeedbackDriver` — primitive in
+  `vac_tui_runtime::services::passive_feedback`, no REPL tick yet.
 - `ElicitationHandler` — trait in `vac_mcp_core`, no concrete
   driver wiring yet.
 - OAuth login binary — `PkceChallenge` + `TokenCache` primitives in
   `vac_bridge::auth`, no `vac auth login <provider>` wired yet.
+
+`AutoDreamService` and `AwaySummaryService` were in this list
+previously — D1 moved them into the live cockpit via
+`idle_maintenance`.
 
 When those producers come online, they slot into `SystemPulse`
 via new `SystemFacetKind` variants — the enum is
@@ -242,6 +292,8 @@ via new `SystemFacetKind` variants — the enum is
 
 - `crates/vac_tui_runtime/src/system_pulse.rs` — projection + facets.
 - `crates/vac_tui_runtime/src/services/notify_router.rs` — lane routing.
+- `crates/vac_tui_runtime/src/services/tracing_bridge.rs` — warn/error → NotifyRouter forwarding.
+- `crates/vac_tui_runtime/src/services/idle_maintenance.rs` — spill prune / auto-dream / away-summary tasks.
 - `crates/vac_tui_runtime/src/action_registry.rs` — chord registry.
 - `crates/vac_tui_runtime/src/view/overlays.rs::render_shortcuts` — popup.
 - `crates/vac_tui_runtime/src/view/operator.rs::render_operator_panel` — panel.
