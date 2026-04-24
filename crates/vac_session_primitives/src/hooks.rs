@@ -224,12 +224,38 @@ impl HookSandbox {
             nofile: 0,
         }
     }
+
+    /// Tier for operator-authored hooks that need to run real
+    /// build/test workflows (cargo check, nextest, linters) — keeps
+    /// the env allowlist but widens CPU/wall/memory. NOT suitable
+    /// for LLM-registered hooks; callers must gate this behind an
+    /// explicit human-in-the-loop decision.
+    pub fn operator_default() -> Self {
+        Self {
+            wall_clock: std::time::Duration::from_secs(5 * 60),
+            env_allowlist: Self::default().env_allowlist,
+            mem_bytes: 4 * 1024 * 1024 * 1024, // 4 GB (Linux-only enforce)
+            cpu_secs: 180,
+            nofile: 2048,
+        }
+    }
 }
 
+/// Max serialized prompt length for `HookCommand::Prompt` /
+/// `Agent` hooks. Keeps the on-disk hooks.json readable and
+/// prevents a multi-megabyte prompt from ballooning every session
+/// load.
+pub const HOOK_PROMPT_MAX_LEN: usize = 64 * 1024;
+
+/// URL schemes permitted for `HookCommand::Http`. `http`/`https`
+/// only — blocks `file://`, `gopher://`, `ftp://`, data URIs.
+pub const HOOK_HTTP_SCHEME_ALLOWLIST: &[&str] = &["http", "https"];
+
 /// Validate a `HookStore` at load time. JSON-schema-level checks
-/// (argv bounds, id charset, regex compilability) the rest of the
-/// stack relies on. Returns the first violation so operators get a
-/// crisp error line rather than a silent disable.
+/// (argv bounds, id charset, regex compilability, URL scheme,
+/// prompt length) the rest of the stack relies on. Returns the
+/// first violation so operators get a crisp error line rather
+/// than a silent disable.
 pub fn validate_hook_store(store: &HookStore) -> EngineResult<()> {
     let mut seen: std::collections::HashSet<&str> =
         std::collections::HashSet::with_capacity(store.entries.len());
@@ -264,26 +290,78 @@ pub fn validate_hook_store(store: &HookStore) -> EngineResult<()> {
                 ))
             })?;
         }
-        if let HookCommand::Command { argv } = &entry.command {
-            if argv.is_empty() {
-                return Err(EngineError::Other(format!(
-                    "hook '{}' command has empty argv",
-                    entry.id
-                )));
+        match &entry.command {
+            HookCommand::Command { argv } => {
+                if argv.is_empty() {
+                    return Err(EngineError::Other(format!(
+                        "hook '{}' command has empty argv",
+                        entry.id
+                    )));
+                }
+                if argv.len() > HOOK_ARGV_MAX_LEN {
+                    return Err(EngineError::Other(format!(
+                        "hook '{}' argv length {} exceeds cap {}",
+                        entry.id,
+                        argv.len(),
+                        HOOK_ARGV_MAX_LEN
+                    )));
+                }
+                if argv[0].is_empty() {
+                    return Err(EngineError::Other(format!(
+                        "hook '{}' argv[0] (program) is empty",
+                        entry.id
+                    )));
+                }
+                if argv[0].contains("..") {
+                    return Err(EngineError::Other(format!(
+                        "hook '{}' argv[0] must not contain '..': {}",
+                        entry.id, argv[0]
+                    )));
+                }
             }
-            if argv.len() > HOOK_ARGV_MAX_LEN {
-                return Err(EngineError::Other(format!(
-                    "hook '{}' argv length {} exceeds cap {}",
-                    entry.id,
-                    argv.len(),
-                    HOOK_ARGV_MAX_LEN
-                )));
+            HookCommand::Http { url } => {
+                if url.is_empty() {
+                    return Err(EngineError::Other(format!(
+                        "hook '{}' http url is empty",
+                        entry.id
+                    )));
+                }
+                let scheme = url
+                    .split_once("://")
+                    .map(|(s, _)| s.to_ascii_lowercase())
+                    .unwrap_or_default();
+                if !HOOK_HTTP_SCHEME_ALLOWLIST.iter().any(|&s| s == scheme) {
+                    return Err(EngineError::Other(format!(
+                        "hook '{}' http scheme '{}' not allowed (want http|https)",
+                        entry.id, scheme
+                    )));
+                }
             }
-            if argv[0].is_empty() {
-                return Err(EngineError::Other(format!(
-                    "hook '{}' argv[0] (program) is empty",
-                    entry.id
-                )));
+            HookCommand::Prompt { prompt } => {
+                if prompt.len() > HOOK_PROMPT_MAX_LEN {
+                    return Err(EngineError::Other(format!(
+                        "hook '{}' prompt length {} exceeds cap {}",
+                        entry.id,
+                        prompt.len(),
+                        HOOK_PROMPT_MAX_LEN
+                    )));
+                }
+            }
+            HookCommand::Agent { kind, prompt } => {
+                if kind.is_empty() {
+                    return Err(EngineError::Other(format!(
+                        "hook '{}' agent kind is empty",
+                        entry.id
+                    )));
+                }
+                if prompt.len() > HOOK_PROMPT_MAX_LEN {
+                    return Err(EngineError::Other(format!(
+                        "hook '{}' agent prompt length {} exceeds cap {}",
+                        entry.id,
+                        prompt.len(),
+                        HOOK_PROMPT_MAX_LEN
+                    )));
+                }
             }
         }
     }
@@ -320,9 +398,17 @@ pub async fn exec_hook_sandboxed(
                 }
             }
 
-            // rlimit installation via pre_exec. Safe because the
-            // closure only calls setrlimit — a syscall documented
-            // async-signal-safe.
+            // rlimit installation via pre_exec. The closure only
+            // calls setrlimit (async-signal-safe) and returns
+            // io::Result so failures abort the spawn — silent
+            // "sandbox didn't apply" was a Part 3 audit finding.
+            //
+            // Portability note: `RLIMIT_AS` enforcement is reliable
+            // only on Linux. On macOS/*BSD the kernel ignores it or
+            // it maps to a different resource — we cfg-gate memory
+            // caps to Linux and downgrade the field to a best-
+            // effort hint on other platforms. CPU + NOFILE are
+            // portable.
             #[cfg(unix)]
             {
                 use std::os::unix::process::CommandExt;
@@ -331,9 +417,12 @@ pub async fn exec_hook_sandboxed(
                 let nof = sandbox.nofile;
                 unsafe {
                     cmd.pre_exec(move || {
-                        apply_rlimit(libc::RLIMIT_AS, mem);
-                        apply_rlimit(libc::RLIMIT_CPU, cpu);
-                        apply_rlimit(libc::RLIMIT_NOFILE, nof);
+                        #[cfg(target_os = "linux")]
+                        apply_rlimit(libc::RLIMIT_AS, mem)?;
+                        #[cfg(not(target_os = "linux"))]
+                        let _ = mem; // hold off the unused-binding lint.
+                        apply_rlimit(libc::RLIMIT_CPU, cpu)?;
+                        apply_rlimit(libc::RLIMIT_NOFILE, nof)?;
                         Ok(())
                     });
                 }
@@ -398,27 +487,47 @@ pub async fn exec_hook_sandboxed(
 /// wall-clock) so pre-NS.4 call sites observe identical behaviour.
 /// **New call sites must prefer [`exec_hook_sandboxed`] with an
 /// explicit policy.**
+#[deprecated(
+    since = "0.1.0",
+    note = "prefer exec_hook_sandboxed with an explicit HookSandbox; \
+            the permissive default is a sandbox bypass and exists only \
+            for pre-NS.4 compat."
+)]
 pub async fn exec_hook(entry: &HookEntry) -> EngineResult<HookDecision> {
     exec_hook_sandboxed(entry, &HookSandbox::permissive()).await
 }
 
+/// Apply a soft+hard rlimit. Returns io::Error on setrlimit
+/// failure so `pre_exec` aborts the spawn — a silently dropped
+/// limit would defeat the sandbox.
 #[cfg(unix)]
-fn apply_rlimit(resource: libc::__rlimit_resource_t, soft: u64) {
+fn apply_rlimit(
+    resource: RlimitResource,
+    soft: u64,
+) -> std::io::Result<()> {
     if soft == 0 {
-        return;
+        return Ok(());
     }
-    // SAFETY: setrlimit is async-signal-safe. Failure is non-fatal;
-    // the process will simply run without the cap — we can't log
-    // from pre_exec so swallow errors silently. Tests verify
-    // positive enforcement via `prlimit`-style probes.
     let rl = libc::rlimit {
         rlim_cur: soft as libc::rlim_t,
         rlim_max: soft as libc::rlim_t,
     };
-    unsafe {
-        let _ = libc::setrlimit(resource, &rl);
+    // SAFETY: setrlimit is async-signal-safe per POSIX.
+    let rc = unsafe { libc::setrlimit(resource, &rl) };
+    if rc == 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error())
     }
 }
+
+// `libc::setrlimit` takes `__rlimit_resource_t` on Linux but
+// `c_int` on Darwin/BSD. Platform alias keeps the helper signature
+// stable across unixes.
+#[cfg(all(unix, target_os = "linux"))]
+type RlimitResource = libc::__rlimit_resource_t;
+#[cfg(all(unix, not(target_os = "linux")))]
+type RlimitResource = libc::c_int;
 
 #[derive(Debug, Clone)]
 pub enum HookDecision {
@@ -579,6 +688,84 @@ mod tests {
         };
         let err = validate_hook_store(&store).unwrap_err();
         assert!(format!("{err}").contains("matcher regex"), "{err}");
+    }
+
+    #[test]
+    fn validate_hook_store_rejects_http_non_allowlisted_scheme() {
+        let store = HookStore {
+            entries: vec![HookEntry {
+                id: "h1".into(),
+                event: HookEvent::PostToolUse,
+                matcher: String::new(),
+                command: HookCommand::Http {
+                    url: "file:///etc/passwd".into(),
+                },
+                description: String::new(),
+            }],
+        };
+        let err = validate_hook_store(&store).unwrap_err();
+        assert!(format!("{err}").contains("scheme 'file'"), "{err}");
+    }
+
+    #[test]
+    fn validate_hook_store_accepts_https_and_http() {
+        for url in ["http://localhost/x", "https://example.com/y"] {
+            let store = HookStore {
+                entries: vec![HookEntry {
+                    id: "h".into(),
+                    event: HookEvent::PostToolUse,
+                    matcher: String::new(),
+                    command: HookCommand::Http { url: url.into() },
+                    description: String::new(),
+                }],
+            };
+            assert!(
+                validate_hook_store(&store).is_ok(),
+                "should accept {url}"
+            );
+        }
+    }
+
+    #[test]
+    fn validate_hook_store_rejects_oversized_prompt() {
+        let store = HookStore {
+            entries: vec![HookEntry {
+                id: "h".into(),
+                event: HookEvent::PreToolUse,
+                matcher: String::new(),
+                command: HookCommand::Prompt {
+                    prompt: "x".repeat(HOOK_PROMPT_MAX_LEN + 1),
+                },
+                description: String::new(),
+            }],
+        };
+        assert!(validate_hook_store(&store).is_err());
+    }
+
+    #[test]
+    fn validate_hook_store_rejects_dotdot_argv0() {
+        let store = HookStore {
+            entries: vec![HookEntry {
+                id: "h".into(),
+                event: HookEvent::PreToolUse,
+                matcher: String::new(),
+                command: HookCommand::Command {
+                    argv: vec!["../../../evil".into()],
+                },
+                description: String::new(),
+            }],
+        };
+        assert!(validate_hook_store(&store).is_err());
+    }
+
+    #[test]
+    fn operator_default_is_permissive_wrt_cpu_and_wall() {
+        let op = HookSandbox::operator_default();
+        let strict = HookSandbox::default();
+        assert!(op.cpu_secs > strict.cpu_secs);
+        assert!(op.wall_clock > strict.wall_clock);
+        assert!(op.nofile > strict.nofile);
+        assert!(op.env_allowlist.is_some(), "operator tier keeps env allowlist");
     }
 
     #[test]

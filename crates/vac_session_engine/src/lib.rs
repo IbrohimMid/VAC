@@ -67,10 +67,12 @@ pub use gate::{
     ToolGate,
 };
 pub use stream::{SubmitChunk, SubmitStream, submit_stream};
+#[allow(deprecated)]
+pub use vac_session_primitives::exec_hook;
 pub use vac_session_primitives::{
     CronEntry, CronStore, DEFAULT_CRON_FILENAME, unix_now,
     DEFAULT_HOOKS_FILENAME, HookCommand, HookDecision, HookEntry, HookEvent,
-    HookSandbox, HookStore, exec_hook, exec_hook_sandboxed, validate_hook_store,
+    HookSandbox, HookStore, exec_hook_sandboxed, validate_hook_store,
     MonitorHandle, MonitorLine, MonitorSpec, spawn_monitor,
     BraveBackend, DEFAULT_RESPONSE_CAP, SearchBackend, WebFetchRequest,
     WebFetchResult, WebSearchHit, WebSearchRequest,

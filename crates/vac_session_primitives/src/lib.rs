@@ -15,10 +15,12 @@ pub mod monitor;
 
 pub use error::{EngineError, EngineResult};
 pub use cron::{CronEntry, CronStore, DEFAULT_CRON_FILENAME, unix_now};
+#[allow(deprecated)]
+pub use hooks::exec_hook;
 pub use hooks::{
-    DEFAULT_HOOKS_FILENAME, HOOK_ARGV_MAX_LEN, HookCommand, HookDecision, HookEntry,
-    HookEvent, HookSandbox, HookStore, exec_hook, exec_hook_sandboxed,
-    validate_hook_store,
+    DEFAULT_HOOKS_FILENAME, HOOK_ARGV_MAX_LEN, HOOK_HTTP_SCHEME_ALLOWLIST,
+    HOOK_PROMPT_MAX_LEN, HookCommand, HookDecision, HookEntry, HookEvent, HookSandbox,
+    HookStore, exec_hook_sandboxed, validate_hook_store,
 };
 pub use web::{
     BraveBackend, DEFAULT_RESPONSE_CAP, DEFAULT_TIMEOUT, REQUEST_HEADER_ALLOWLIST,

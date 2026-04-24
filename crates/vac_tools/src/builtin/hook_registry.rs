@@ -276,6 +276,15 @@ impl VilTool for HookCreateTool {
         "mutating"
     }
 
+    /// Per-input refinement: `kind=http` stages a network-egress
+    /// artifact — even though the sandbox catches shell hooks,
+    /// registering an exfiltration-shaped HTTP hook warrants a
+    /// destructive classification so gates that read
+    /// `is_input_destructive` prompt more aggressively.
+    fn is_input_destructive(&self, input: &serde_json::Value) -> bool {
+        input.get("kind").and_then(|v| v.as_str()) == Some("http")
+    }
+
     async fn execute(
         &self,
         args: serde_json::Value,

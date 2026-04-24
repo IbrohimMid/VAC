@@ -111,6 +111,11 @@ impl VilTool for SignalDistilledTool {
             vac_signal::SignalStreamKind::Other,
             (n as usize).max(1),
         );
+        // NB: seq numbers on the transient buffer are fresh 0..N
+        // (assigned by `push_line`). The original per-session seqs
+        // from the rewind DB are discarded here. Current
+        // `TailDistiller` is seq-agnostic so this is invisible
+        // today; revisit if a distiller grows seq-gap heuristics.
         for l in lines {
             buf.push_line(l.text);
         }

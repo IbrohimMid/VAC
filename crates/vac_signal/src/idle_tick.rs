@@ -36,6 +36,13 @@ impl IdleTickHandle {
     pub fn abort(&self) {
         self.inner.abort();
     }
+
+    /// Returns `true` while the tick loop is still running. Use
+    /// after a known-panicky observe to confirm the panic guard
+    /// kept the loop alive.
+    pub fn is_alive(&self) -> bool {
+        !self.inner.is_finished()
+    }
 }
 
 impl Drop for IdleTickHandle {
@@ -81,7 +88,21 @@ where
                     view: buf.distilled_default(tail_size),
                 })
                 .collect();
-            observe(samples);
+            // Audit fix: an `observe` panic used to kill the tick
+            // task silently, leaving `IdleTickHandle` looking alive
+            // until drop. Catch-unwind keeps the loop running and
+            // surfaces the panic via tracing so the operator sees
+            // the failure rather than silent cessation.
+            let result = std::panic::catch_unwind(
+                std::panic::AssertUnwindSafe(|| observe(samples)),
+            );
+            if let Err(e) = result {
+                tracing::error!(
+                    target: "vac_signal::idle_tick",
+                    panic = ?e,
+                    "scorer tick observer panicked — continuing loop",
+                );
+            }
         }
     });
     IdleTickHandle { inner }
@@ -122,6 +143,35 @@ mod tests {
         assert!(!got.is_empty(), "expected at least one tick sample");
         assert_eq!(got[0].id, "shell");
         assert!(!got[0].view.tail.is_empty());
+    }
+
+    #[tokio::test]
+    async fn observe_panic_does_not_kill_tick_loop() {
+        let counter = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counter_c = counter.clone();
+        let buf = Arc::new(SignalBuffer::new(SignalStreamKind::Other, 8));
+        let buf_c = buf.clone();
+        let handle = spawn_scorer_tick(
+            Duration::from_millis(20),
+            4,
+            move || {
+                let b = buf_c.clone();
+                async move { vec![("x".into(), b)] }
+            },
+            move |_samples| {
+                let n = counter_c.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                if n == 0 {
+                    panic!("first observe panics on purpose");
+                }
+            },
+        );
+        tokio::time::sleep(Duration::from_millis(150)).await;
+        assert!(handle.is_alive(), "panic guard must keep loop alive");
+        assert!(
+            counter.load(std::sync::atomic::Ordering::SeqCst) >= 2,
+            "observer must run again after panic",
+        );
+        drop(handle);
     }
 
     #[tokio::test]
