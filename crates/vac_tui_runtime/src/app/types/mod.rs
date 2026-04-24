@@ -171,6 +171,11 @@ pub struct LayoutState {
     pub switchers: SwitchersState,
     pub session_resume: SessionResumeState,
     pub ask_user: AskUserState,
+    /// G1 — parked MCP elicitation prompt. `None` when no overlay
+    /// is active. The TuiElicitationHandler inserts here under a
+    /// lock, then awaits a oneshot the overlay's input handler
+    /// resolves.
+    pub elicitation: Option<crate::services::elicitation::ElicitationPrompt>,
 }
 
 impl Default for LayoutState {
@@ -194,6 +199,7 @@ impl Default for LayoutState {
             switchers: SwitchersState::default(),
             session_resume: SessionResumeState::default(),
             ask_user: AskUserState::default(),
+            elicitation: None,
         }
     }
 }

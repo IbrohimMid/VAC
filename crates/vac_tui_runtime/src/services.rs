@@ -5,6 +5,7 @@
 pub mod approval_bar;
 pub mod ask_user;
 pub mod banner;
+pub mod elicitation;
 pub mod bash_block;
 pub mod clipboard_paste;
 pub mod detect_term;

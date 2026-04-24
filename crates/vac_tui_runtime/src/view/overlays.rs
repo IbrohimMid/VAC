@@ -327,6 +327,38 @@ pub(super) fn render_shortcuts(f: &mut Frame, state: &mut AppState) {
     f.render_widget(list, area);
 }
 
+pub(super) fn render_elicitation(f: &mut Frame, state: &mut AppState) {
+    let Some(prompt) = state.layout.elicitation.as_ref() else {
+        return;
+    };
+    let area = centered_rect(60, 30, f.area());
+    f.render_widget(Clear, area);
+
+    let mut lines: Vec<Line> = Vec::new();
+    if let Some(p) = prompt.prompt.as_deref() {
+        lines.push(Line::raw(p.to_string()));
+        lines.push(Line::raw(""));
+    }
+    lines.push(Line::from(vec![
+        Span::raw("URL: "),
+        Span::styled(
+            prompt.url.clone(),
+            Style::default(),
+        ),
+    ]));
+    lines.push(Line::raw(""));
+    lines.push(Line::raw("[Enter] open in browser   [Esc] cancel"));
+
+    let para = Paragraph::new(lines)
+        .wrap(Wrap { trim: false })
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("MCP elicitation"),
+        );
+    f.render_widget(para, area);
+}
+
 pub(crate) fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
     let popup_layout = Layout::default()
         .direction(Direction::Vertical)

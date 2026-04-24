@@ -116,11 +116,44 @@ pub fn dispatch_popup_event(
             file_search::handle_file_picker(state, output_tx, event);
             true
         }
+        Some(OverlayId::Elicitation) => {
+            handle_elicitation(state, event);
+            true
+        }
         None => false,
     }
 }
 
 // ── Per-overlay handlers ─────────────────────────────────────────────────────
+
+fn handle_elicitation(state: &mut AppState, event: InputEvent) {
+    use crate::services::elicitation;
+    match event {
+        InputEvent::InputSubmitted => {
+            let url = state
+                .layout
+                .elicitation
+                .as_ref()
+                .map(|p| p.url.clone());
+            if let Some(url) = url {
+                if let Err(e) = elicitation::launch_url(&url) {
+                    tracing::warn!(
+                        target: "vac_mcp_core::channel",
+                        error = %e,
+                        "elicitation: open::that failed",
+                    );
+                }
+            }
+            elicitation::accept_current(state);
+            crate::overlay::close_overlay(state, OverlayId::Elicitation);
+        }
+        InputEvent::HandleEsc => {
+            crate::services::elicitation::cancel_current(state);
+            crate::overlay::close_overlay(state, OverlayId::Elicitation);
+        }
+        _ => {}
+    }
+}
 
 fn handle_reject_reason(state: &mut AppState, output_tx: &Sender<OutputEvent>, event: InputEvent) {
     let mut ctx = HandlerContext::new(state, output_tx);

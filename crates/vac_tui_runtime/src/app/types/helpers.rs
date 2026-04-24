@@ -70,6 +70,7 @@ impl AppState {
                 switchers: SwitchersState::default(),
                 session_resume: SessionResumeState::default(),
                 ask_user: AskUserState::default(),
+                elicitation: None,
             },
             composer: super::ComposerState {
                 input: TextArea::new(),

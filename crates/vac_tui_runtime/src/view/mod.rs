@@ -131,6 +131,13 @@ pub fn view(f: &mut Frame, state: &mut AppState) {
         crate::services::ask_user::render_ask_user_popup(f, state);
     }
 
+    if state
+        .layout.overlay_manager
+        .is_active(crate::overlay::OverlayId::Elicitation)
+    {
+        overlays::render_elicitation(f, state);
+    }
+
     if state.execution.shell.session_store.popup_visible {
         popups::render_shell_popup(f, state);
     }

@@ -36,6 +36,11 @@ pub enum OverlayId {
     SessionResume,
     /// File picker v2 (multi-select, dir nav, preview).
     FilePicker,
+    /// G1 — MCP elicitation/request modal. Centred popup showing
+    /// the URL (or prompt) + [Enter] open / [Esc] cancel footer.
+    /// The prompt + oneshot sender live on
+    /// `AppState.layout.elicitation`.
+    Elicitation,
 }
 
 /// Render order (lower index = rendered first = underneath).
@@ -52,6 +57,7 @@ const RENDER_ORDER: &[OverlayId] = &[
     OverlayId::ProfileSwitcher,
     OverlayId::RulebookSwitcher,
     OverlayId::AskUser,
+    OverlayId::Elicitation,
     OverlayId::Shortcuts,
     OverlayId::CommandPalette,
     OverlayId::HelperDropdown,
@@ -197,6 +203,15 @@ fn sync_domain_state(state: &mut AppState, id: OverlayId, value: bool) {
             }
         }
         OverlayId::ReviewPane => state.workspace.review.open = value,
+        OverlayId::Elicitation => {
+            // When the overlay is dismissed without the operator
+            // explicitly resolving it (e.g. Esc), drop the prompt so
+            // the oneshot sender fires Cancelled via its Drop path
+            // for any awaiting handler.
+            if !value {
+                state.layout.elicitation = None;
+            }
+        }
         // These overlays carry no additional domain state beyond the stack itself.
         OverlayId::CommandPalette
         | OverlayId::Shortcuts
