@@ -242,6 +242,60 @@ pub(super) fn render_operator_panel(f: &mut Frame, state: &mut AppState, area: R
         ]));
     }
 
+    // U3 — append SystemPulse facet summary so the operator panel
+    // speaks the same grammar as the statusline. One line per
+    // facet: `<glyph> approvals: 2 pending` (for example). The
+    // grammar lives in SystemPulse so changes propagate to every
+    // surface without drift.
+    {
+        let pulse = crate::system_pulse::SystemPulse::from_state(state);
+        let facets = pulse.facets();
+        if !facets.is_empty() {
+            lines.push(Line::from(""));
+            lines.push(Line::styled(
+                "System",
+                state.core.theme.style(crate::services::theme::StyleKey::Accent),
+            ));
+            for facet in facets {
+                let style_key = match facet.severity {
+                    crate::system_pulse::FacetSeverity::Ok => {
+                        crate::services::theme::StyleKey::Success
+                    }
+                    crate::system_pulse::FacetSeverity::Info => {
+                        crate::services::theme::StyleKey::Accent
+                    }
+                    crate::system_pulse::FacetSeverity::Warn => {
+                        crate::services::theme::StyleKey::Warning
+                    }
+                    crate::system_pulse::FacetSeverity::Critical => {
+                        crate::services::theme::StyleKey::Error
+                    }
+                };
+                let glyph = facet.severity.glyph().to_string();
+                let label = facet.kind.label();
+                // Render one compact summary row per facet: the
+                // detail_rows already exist on the facet for a
+                // future expanded overlay; here we keep it to a
+                // single line per facet.
+                let summary = facet
+                    .detail_rows
+                    .first()
+                    .cloned()
+                    .unwrap_or_default();
+                lines.push(Line::from(vec![
+                    Span::styled(glyph, state.core.theme.style(style_key)),
+                    Span::raw(" "),
+                    Span::styled(
+                        label.to_string(),
+                        state.core.theme.style(style_key),
+                    ),
+                    Span::raw("  "),
+                    Span::raw(summary),
+                ]));
+            }
+        }
+    }
+
     let widget = Paragraph::new(lines)
         .block(Block::default().borders(Borders::ALL).title(Span::styled(
             "Operator",

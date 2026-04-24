@@ -115,6 +115,25 @@ pub fn render_statusline(f: &mut Frame, state: &AppState, area: Rect) {
         }
     }
 
+    // U2 — append SystemPulse tokens. Each facet gets its own
+    // severity-coloured span so the statusline reflects
+    // approvals / runtime / MCP health at a glance, using the same
+    // grammar the operator panel + future overlays consume.
+    let pulse = crate::system_pulse::SystemPulse::from_state(state);
+    for facet in pulse.facets() {
+        text.push(Span::raw(" · "));
+        let style_key = match facet.severity {
+            crate::system_pulse::FacetSeverity::Ok => StyleKey::Success,
+            crate::system_pulse::FacetSeverity::Info => StyleKey::Accent,
+            crate::system_pulse::FacetSeverity::Warn => StyleKey::Warning,
+            crate::system_pulse::FacetSeverity::Critical => StyleKey::Error,
+        };
+        text.push(Span::styled(
+            facet.compact_token.as_ref().to_string(),
+            state.core.theme.style(style_key),
+        ));
+    }
+
     let widget = Paragraph::new(Line::from(text)).alignment(Alignment::Left);
     f.render_widget(widget, area);
 }
