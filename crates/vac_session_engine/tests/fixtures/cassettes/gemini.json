@@ -1,0 +1,36 @@
+{
+  "provider": "gemini",
+  "model": "gemini-2.0-flash",
+  "entries": [
+    {
+      "prompt": "list the files in the current directory",
+      "response": {
+        "provider": "gemini",
+        "model": "gemini-2.0-flash",
+        "content": "Calling list_files.",
+        "input_tokens": 14,
+        "output_tokens": 31,
+        "tool_calls": [
+          {
+            "id": "gem-fc-1",
+            "name": "list_files",
+            "arguments": { "path": "." },
+            "reason": "function_call from model",
+            "estimated_tokens": 150
+          }
+        ]
+      }
+    },
+    {
+      "prompt": "hello",
+      "response": {
+        "provider": "gemini",
+        "model": "gemini-2.0-flash",
+        "content": "Hey!",
+        "input_tokens": 3,
+        "output_tokens": 3,
+        "tool_calls": []
+      }
+    }
+  ]
+}

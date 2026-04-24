@@ -5,6 +5,12 @@ on:
     tags:
       - 'v*.*.*'
 
+# cosign keyless signing needs id-token: write for the OIDC flow;
+# contents: write is the minimum for softprops/action-gh-release.
+permissions:
+  contents: write
+  id-token: write
+
 jobs:
   generate-release-notes:
     name: Generate Release Notes
@@ -54,6 +60,26 @@ jobs:
           done
           rm -f /tmp/minisign.key
 
+      # NS.7 — keyless cosign signing with OIDC identity bound to
+      # this workflow. Produces `<artifact>.sig` + `<artifact>.pem`
+      # next to each tarball; `cosign verify-blob` replays them
+      # against the Fulcio root of trust. Runs in parallel with
+      # minisign so operators have two independent signatures to
+      # cross-check.
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+      - name: Sign artifacts with cosign (keyless, OIDC)
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+        run: |
+          for f in target/dist/*.tar.gz target/dist/*.zip; do
+            [ -f "$f" ] || continue
+            cosign sign-blob \
+              --yes \
+              --bundle "${f}.cosign.bundle" \
+              "$f"
+          done
+
       - name: Generate SBOM
         run: |
           cargo install cargo-cyclonedx --locked
@@ -71,5 +97,6 @@ jobs:
           files: |
             target/dist/*
             target/dist/*.minisig
+            target/dist/*.cosign.bundle
             target/dist/vac-sbom.json
             target/dist/SHA256SUMS.txt

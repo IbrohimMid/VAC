@@ -101,6 +101,106 @@ impl ToolDispatcher for UnsupportedDispatcher {
     }
 }
 
+/// NS.5 — deterministic playback adapter. Loads a JSON cassette
+/// mapping `prompt_hash → LlmResponse` and returns the recorded
+/// response on match. Unmatched prompts surface a clear error so
+/// tests fail loudly on drift rather than silently replaying stale
+/// responses.
+///
+/// Cassette schema (on disk):
+/// ```json
+/// {
+///   "provider": "anthropic",
+///   "model": "claude-sonnet-4-6",
+///   "entries": [
+///     { "prompt": "<exact text>", "response": { ... LlmResponse ... } }
+///   ]
+/// }
+/// ```
+/// Matching is exact-string on `prompt` today; a follow-up can
+/// swap to request-hash when non-prompt fields (context, tool
+/// results) need to participate.
+#[derive(Debug, Clone)]
+pub struct CassetteAdapter {
+    entries: std::collections::HashMap<String, LlmResponse>,
+    provider: String,
+    model: String,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct CassetteFile {
+    provider: String,
+    model: String,
+    entries: Vec<CassetteEntry>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct CassetteEntry {
+    prompt: String,
+    response: LlmResponse,
+}
+
+impl CassetteAdapter {
+    /// Load a cassette from a JSON file.
+    pub fn from_file(path: impl AsRef<std::path::Path>) -> EngineResult<Self> {
+        let raw = std::fs::read_to_string(path.as_ref()).map_err(|e| {
+            crate::error::EngineError::Other(format!(
+                "cassette read {}: {e}",
+                path.as_ref().display(),
+            ))
+        })?;
+        Self::from_str(&raw)
+    }
+
+    /// Parse a cassette from an in-memory string.
+    pub fn from_str(raw: &str) -> EngineResult<Self> {
+        let file: CassetteFile = serde_json::from_str(raw).map_err(|e| {
+            crate::error::EngineError::Other(format!("cassette parse: {e}"))
+        })?;
+        let entries = file
+            .entries
+            .into_iter()
+            .map(|e| (e.prompt, e.response))
+            .collect();
+        Ok(Self {
+            entries,
+            provider: file.provider,
+            model: file.model,
+        })
+    }
+
+    pub fn provider(&self) -> &str {
+        &self.provider
+    }
+
+    pub fn model(&self) -> &str {
+        &self.model
+    }
+
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+}
+
+#[async_trait]
+impl LlmAdapter for CassetteAdapter {
+    async fn complete(&self, req: LlmRequest) -> EngineResult<LlmResponse> {
+        self.entries.get(&req.prompt).cloned().ok_or_else(|| {
+            crate::error::EngineError::Other(format!(
+                "cassette miss: no entry for prompt {:?} (cassette has {} entries for {}/{})",
+                &req.prompt,
+                self.entries.len(),
+                self.provider,
+                self.model,
+            ))
+        })
+    }
+}
+
 /// Mock adapter for tests + `--minimal` runs. Echoes the prompt with a
 /// deterministic prefix so assertions can match exactly.
 #[derive(Debug, Default)]

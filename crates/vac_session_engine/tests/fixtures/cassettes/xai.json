@@ -1,0 +1,36 @@
+{
+  "provider": "xai",
+  "model": "grok-2",
+  "entries": [
+    {
+      "prompt": "list the files in the current directory",
+      "response": {
+        "provider": "xai",
+        "model": "grok-2",
+        "content": "Using list_files.",
+        "input_tokens": 16,
+        "output_tokens": 27,
+        "tool_calls": [
+          {
+            "id": "xai-call-99",
+            "name": "list_files",
+            "arguments": { "path": "." },
+            "reason": "tool_use from grok",
+            "estimated_tokens": 170
+          }
+        ]
+      }
+    },
+    {
+      "prompt": "hello",
+      "response": {
+        "provider": "xai",
+        "model": "grok-2",
+        "content": "Hi!",
+        "input_tokens": 3,
+        "output_tokens": 3,
+        "tool_calls": []
+      }
+    }
+  ]
+}

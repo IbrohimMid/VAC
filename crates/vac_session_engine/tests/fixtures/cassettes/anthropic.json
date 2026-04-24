@@ -1,0 +1,36 @@
+{
+  "provider": "anthropic",
+  "model": "claude-sonnet-4-6",
+  "entries": [
+    {
+      "prompt": "list the files in the current directory",
+      "response": {
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-6",
+        "content": "I'll use the list_files tool.",
+        "input_tokens": 12,
+        "output_tokens": 34,
+        "tool_calls": [
+          {
+            "id": "toolu_01AnthropicCall",
+            "name": "list_files",
+            "arguments": { "path": "." },
+            "reason": "scanning project directory",
+            "estimated_tokens": 200
+          }
+        ]
+      }
+    },
+    {
+      "prompt": "hello",
+      "response": {
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-6",
+        "content": "Hello! How can I help?",
+        "input_tokens": 3,
+        "output_tokens": 7,
+        "tool_calls": []
+      }
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "provider": "openai",
+  "model": "gpt-4o-mini",
+  "entries": [
+    {
+      "prompt": "list the files in the current directory",
+      "response": {
+        "provider": "openai",
+        "model": "gpt-4o-mini",
+        "content": "Listing project files.",
+        "input_tokens": 15,
+        "output_tokens": 29,
+        "tool_calls": [
+          {
+            "id": "call_OpenAI123",
+            "name": "list_files",
+            "arguments": { "path": "." },
+            "reason": "function call from assistant",
+            "estimated_tokens": 180
+          }
+        ]
+      }
+    },
+    {
+      "prompt": "hello",
+      "response": {
+        "provider": "openai",
+        "model": "gpt-4o-mini",
+        "content": "Hi there!",
+        "input_tokens": 3,
+        "output_tokens": 5,
+        "tool_calls": []
+      }
+    }
+  ]
+}
