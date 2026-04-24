@@ -22,6 +22,7 @@ pub mod capacity_wake;
 pub mod error;
 pub mod event;
 pub mod permission;
+pub mod remote;
 pub mod session;
 
 pub use acp::{AcpHandshake, AcpServer};
@@ -31,5 +32,9 @@ pub use error::{BridgeError, BridgeResult};
 pub use event::{InboundEvent, OutboundEvent};
 pub use permission::{
     PermissionDecision, PermissionMediator, PermissionRequest, StaticAllowMediator, StdioPermissionMediator,
+};
+pub use remote::{
+    DEFAULT_TELEPORT_TTL, RemoteSessionConfig, RemoteTrustClass, TeleportClaims,
+    issue_teleport_token, validate_teleport_token,
 };
 pub use session::{RemoteSession, RemoteSessionHandle, SessionAttachState};
