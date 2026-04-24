@@ -439,6 +439,50 @@ fn dispatch_action(
             state.operator_config.operator.theme_picker_selected = 0;
             crate::overlay::open_overlay(state, crate::overlay::OverlayId::ThemePicker);
         }
+        // F1 — CLI bridge. Each SpawnCli* action ID launches the
+        // matching `vac <cmd>` subprocess through the shell popup
+        // pipeline. We reuse `OutputEvent::ExecuteCommand` + the
+        // active isolation mode so W8 commands stay inside the
+        // same sandbox/trust grammar as an operator-typed shell.
+        ActionId::SpawnCliAdvisor
+        | ActionId::SpawnCliAutofixPr
+        | ActionId::SpawnCliBughunter
+        | ActionId::SpawnCliSecurityReview
+        | ActionId::SpawnCliPerfIssue
+        | ActionId::SpawnCliTeleport
+        | ActionId::SpawnCliThinkback
+        | ActionId::SpawnCliUltraplan
+        | ActionId::SpawnCliRewind
+        | ActionId::SpawnCliDecisions => {
+            let subcmd = match id {
+                ActionId::SpawnCliAdvisor => "advisor",
+                ActionId::SpawnCliAutofixPr => "autofix-pr",
+                ActionId::SpawnCliBughunter => "bughunter",
+                ActionId::SpawnCliSecurityReview => "security-review",
+                ActionId::SpawnCliPerfIssue => "perf-issue",
+                ActionId::SpawnCliTeleport => "teleport",
+                ActionId::SpawnCliThinkback => "thinkback",
+                ActionId::SpawnCliUltraplan => "ultraplan",
+                ActionId::SpawnCliRewind => "rewind",
+                ActionId::SpawnCliDecisions => "decisions",
+                _ => unreachable!(),
+            };
+            let extra = cmd_args.unwrap_or_default().trim();
+            let full = if extra.is_empty() {
+                format!("vac {subcmd}")
+            } else {
+                format!("vac {subcmd} {extra}")
+            };
+            state.add_user_message(trimmed.to_string());
+            state.push_activity(
+                crate::app::ActivityKind::Status,
+                format!("spawn: {full}"),
+            );
+            let _ = output_tx.try_send(OutputEvent::ExecuteCommand(
+                full,
+                state.layout.switchers.active_isolation_mode.clone(),
+            ));
+        }
         ActionId::OpenSessionResume => {
             state.layout.session_resume.query.clear();
             state.layout.session_resume.selected = 0;

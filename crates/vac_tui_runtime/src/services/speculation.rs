@@ -255,6 +255,32 @@ impl ForkSpeculationDriver {
             );
         }
         guard.cleanup_async().await;
+        // D2 breadcrumb — surface the speculation payoff in the
+        // unified activity panel via the A1 tracing bridge.
+        let paths_summary: Vec<String> = outcome
+            .reads
+            .iter()
+            .take(3)
+            .map(|p| {
+                p.file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_else(|| p.display().to_string())
+            })
+            .collect();
+        let suffix = if outcome.reads.len() > 3 {
+            format!(", +{} more", outcome.reads.len() - 3)
+        } else {
+            String::new()
+        };
+        tracing::info!(
+            target: "vac_tui_runtime::speculation",
+            message = %format!(
+                "warmed {} file(s): {}{}",
+                outcome.reads.len(),
+                paths_summary.join(", "),
+                suffix,
+            ),
+        );
         Some(Prediction {
             prompt: next_likely_prompt.to_string(),
             context: ctx,

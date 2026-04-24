@@ -17,6 +17,7 @@ use ratatui::{
 
 use super::WorkbenchTabView;
 use crate::app::AppState;
+use crate::system_pulse::FacetSeverity;
 
 pub struct SignalTab;
 
@@ -67,10 +68,22 @@ impl WorkbenchTabView for SignalTab {
                 })
                 .collect()
         };
+        // E3 — align panel header with SystemPulse grammar: the
+        // glyph encodes stream health. Dropped lines escalate to
+        // Warn; empty registry stays Ok; any active stream is Info.
+        let total_dropped: u64 = summaries.iter().map(|s| s.dropped).sum();
+        let severity = if total_dropped > 0 {
+            FacetSeverity::Warn
+        } else if summaries.is_empty() {
+            FacetSeverity::Ok
+        } else {
+            FacetSeverity::Info
+        };
+        let title = format!(" {} Streams ", severity.glyph());
         let list = List::new(items).block(
             Block::default()
                 .borders(Borders::ALL)
-                .title(" Streams ")
+                .title(title)
                 .title_style(Style::default().add_modifier(Modifier::BOLD)),
         );
         f.render_widget(list, split[0]);

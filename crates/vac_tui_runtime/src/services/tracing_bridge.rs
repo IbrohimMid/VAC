@@ -92,7 +92,7 @@ where
     fn on_event(&self, event: &Event<'_>, _ctx: Context<'_, S>) {
         let meta = event.metadata();
         let level = *meta.level();
-        if level != Level::WARN && level != Level::ERROR {
+        if level != Level::WARN && level != Level::ERROR && level != Level::INFO {
             return;
         }
         let Some(subsystem) = subsystem_for_target(meta.target()) else {
@@ -118,8 +118,18 @@ where
                     None => e,
                 }
             }
-            _ => {
+            Level::WARN => {
                 let e = NotifyEvent::warn(subsystem, summary);
+                match visitor.reason {
+                    Some(r) => e.with_detail(r),
+                    None => e,
+                }
+            }
+            _ => {
+                // INFO — activity-only (no toast / banner pressure).
+                // Used by subsystems that want a breadcrumb
+                // (e.g. speculation warmed N files, auto_dream wrote).
+                let e = NotifyEvent::info(subsystem, summary);
                 match visitor.reason {
                     Some(r) => e.with_detail(r),
                     None => e,
@@ -240,20 +250,24 @@ mod tests {
     }
 
     #[test]
-    fn info_on_allowlisted_target_is_ignored() {
-        // Only warn/error bridge through. Info-level events would
-        // flood activity; leave them for normal tracing consumers.
+    fn info_on_allowlisted_target_routes_as_breadcrumb() {
+        // D2 extended the bridge to forward INFO as activity-only
+        // breadcrumbs (no toast / banner pressure). Used by
+        // speculation warmed-reads, auto_dream writes, etc.
         let state = fresh_state();
         let layer = TuiTracingLayer::new(state.clone());
         let subscriber = tracing_subscriber::registry().with(layer);
         tracing::subscriber::with_default(subscriber, || {
             tracing::info!(
-                target: "vac_tools::trust_gate",
-                "gate decision: allow",
+                target: "vac_tui_runtime::speculation",
+                "warmed 2 file(s): a.rs, b.rs",
             );
         });
         let guard = state.lock().unwrap();
-        assert!(guard.execution.activity.is_empty());
+        assert_eq!(guard.execution.activity.len(), 1);
+        assert!(guard.execution.activity[0].message.starts_with("[spec]"));
+        assert!(guard.layout.toasts.is_empty());
+        assert!(guard.layout.banner.message.is_none());
     }
 
     #[test]
