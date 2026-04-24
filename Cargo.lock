@@ -6581,6 +6581,7 @@ dependencies = [
  "url",
  "uuid",
  "vac_approvals",
+ "vac_bridge",
  "vac_changeset",
  "vac_core",
  "vac_ingest",

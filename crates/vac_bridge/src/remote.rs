@@ -16,11 +16,84 @@
 //! Actual HTTP server + SSE transport lives in the driver
 //! binary (the engine crate stays transport-free).
 
+use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
+use tokio::sync::broadcast;
 
 use crate::error::{BridgeError, BridgeResult};
+
+/// B5 — event payload a live session publishes on the teleport
+/// broadcast channel. Kept minimal: an opaque `kind` string + a
+/// JSON `payload`. Attach clients just forward these frames over
+/// SSE; they don't inspect the shape.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OutboundEvent {
+    pub kind: String,
+    pub payload: serde_json::Value,
+}
+
+impl OutboundEvent {
+    pub fn new(kind: impl Into<String>, payload: serde_json::Value) -> Self {
+        Self {
+            kind: kind.into(),
+            payload,
+        }
+    }
+}
+
+/// Broadcast channel size. Slow attach subscribers that fall
+/// behind this many events hit `RecvError::Lagged` and reconnect;
+/// we prefer that over unbounded memory growth.
+pub const OUTBOUND_BROADCAST_BUF: usize = 256;
+
+/// Shared handle a running session writes to and the teleport
+/// host's `/events` SSE subscribes to. One handle per session;
+/// construct via `SessionBroadcast::new()` in the session wiring
+/// path, hand the sender into the submit loop and the `Arc<Self>`
+/// into the teleport server.
+#[derive(Clone)]
+pub struct SessionBroadcast {
+    tx: broadcast::Sender<OutboundEvent>,
+}
+
+impl SessionBroadcast {
+    pub fn new() -> Arc<Self> {
+        let (tx, _rx0) = broadcast::channel(OUTBOUND_BROADCAST_BUF);
+        Arc::new(Self { tx })
+    }
+
+    /// Publish an event. Lost sends (no active subscribers) are
+    /// intentional silent no-ops — not every session has a
+    /// teleport listener.
+    pub fn publish(&self, event: OutboundEvent) {
+        let _ = self.tx.send(event);
+    }
+
+    /// Subscribe a new receiver. Teleport `/events` handler calls
+    /// this per attach.
+    pub fn subscribe(&self) -> broadcast::Receiver<OutboundEvent> {
+        self.tx.subscribe()
+    }
+
+    /// Active subscriber count. For diagnostics / future rate
+    /// limiting.
+    pub fn receiver_count(&self) -> usize {
+        self.tx.receiver_count()
+    }
+
+    pub fn sender(&self) -> broadcast::Sender<OutboundEvent> {
+        self.tx.clone()
+    }
+}
+
+impl Default for SessionBroadcast {
+    fn default() -> Self {
+        let (tx, _rx0) = broadcast::channel(OUTBOUND_BROADCAST_BUF);
+        Self { tx }
+    }
+}
 
 /// Claims baked into a teleport JWT. Minimal — no permissions
 /// grammar here; the host side composes PermissionMatcher +

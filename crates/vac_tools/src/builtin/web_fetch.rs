@@ -22,6 +22,14 @@ struct Input {
     body: Option<serde_json::Value>,
     #[serde(default)]
     headers: std::collections::HashMap<String, String>,
+    /// B6 — opt-in explicit forwarding of the `Authorization`
+    /// header. Default `false`: any Authorization key in `headers`
+    /// is stripped before the request leaves the host, preventing
+    /// accidental bearer exfiltration through LLM-suggested URLs.
+    /// Set `true` only when the target genuinely needs the header;
+    /// doing so elevates the call to `destructive` at gate time.
+    #[serde(default)]
+    allow_authorization: bool,
 }
 
 pub struct WebFetchTool;
@@ -59,10 +67,21 @@ impl VilTool for WebFetchTool {
                 "url": { "type": "string", "description": "Target URL." },
                 "method": { "type": "string", "description": "HTTP method (default GET)." },
                 "body": { "description": "Optional JSON body for POST/PUT." },
-                "headers": { "type": "object", "description": "Additional headers (allowlist: Accept, Accept-Language, Authorization, Content-Type, User-Agent)." }
+                "headers": { "type": "object", "description": "Additional headers. Authorization is stripped by default; set allow_authorization=true to forward." },
+                "allow_authorization": { "type": "boolean", "description": "Opt-in to forward the Authorization header. Elevates the call to destructive." }
             },
             "required": ["url"]
         })
+    }
+
+    /// B6 — per-input destructive when Authorization is opted in.
+    /// Gates reading this verdict prompt more aggressively for
+    /// calls that carry a bearer.
+    fn is_input_destructive(&self, input: &serde_json::Value) -> bool {
+        input
+            .get("allow_authorization")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
     }
 
     fn trust_requirement(&self) -> &str {
@@ -84,11 +103,16 @@ impl VilTool for WebFetchTool {
         let input: Input = serde_json::from_value(args)
             .map_err(|e| ToolError::ExecutionFailed(format!("invalid arguments: {e}")))?;
         let spill_dir = context.working_dir.join(".vac/tool-results");
+        // B6: strip Authorization unless explicitly opted in.
+        let mut headers = input.headers;
+        if !input.allow_authorization {
+            headers.retain(|k, _| !k.eq_ignore_ascii_case("authorization"));
+        }
         let req = WebFetchRequest {
             url: input.url,
             method: input.method,
             body: input.body,
-            headers: input.headers,
+            headers,
         };
         let result = fetch(&req, &spill_dir, DEFAULT_RESPONSE_CAP)
             .await
@@ -112,5 +136,25 @@ mod tests {
     fn input_rejects_missing_url() {
         let r: Result<Input, _> = serde_json::from_value(serde_json::json!({}));
         assert!(r.is_err());
+    }
+
+    #[test]
+    fn input_authorization_opt_in_defaults_false() {
+        let i: Input = serde_json::from_value(
+            serde_json::json!({"url": "https://example.com"}),
+        )
+        .unwrap();
+        assert!(!i.allow_authorization);
+    }
+
+    #[test]
+    fn per_input_destructive_reflects_allow_authorization() {
+        let tool = WebFetchTool::new();
+        assert!(
+            !tool.is_input_destructive(&serde_json::json!({"url": "x"}))
+        );
+        assert!(tool.is_input_destructive(
+            &serde_json::json!({"url": "x", "allow_authorization": true})
+        ));
     }
 }

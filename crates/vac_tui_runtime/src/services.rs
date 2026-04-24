@@ -43,6 +43,7 @@ pub mod rewind;
 pub mod rulebook_switcher;
 pub mod shortcuts_popup;
 pub mod side_panel;
+pub mod signal_ticker;
 pub mod sparkline;
 pub mod auto_dream;
 pub mod away_summary;

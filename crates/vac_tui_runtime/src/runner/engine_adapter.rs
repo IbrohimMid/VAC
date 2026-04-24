@@ -43,6 +43,28 @@ pub async fn run_via_session_engine(
     task_description: &str,
     update_tx: tokio::sync::mpsc::UnboundedSender<vac_core::engine::RuntimeUpdate>,
 ) -> anyhow::Result<vac_core::TaskResult> {
+    run_via_session_engine_with_broadcast(
+        project_root,
+        engine,
+        task_description,
+        update_tx,
+        None,
+    )
+    .await
+}
+
+/// B5 — explicit broadcast entry point. A driver that wants live
+/// teleport attach frames calls this with the session's
+/// `SessionBroadcast`; each `SubmitChunk` routes through
+/// `chunk_to_outbound` and lands on every attached SSE client.
+/// Callers without teleport pass `None` and get pre-B5 behaviour.
+pub async fn run_via_session_engine_with_broadcast(
+    project_root: std::path::PathBuf,
+    engine: Arc<Mutex<VacEngine>>,
+    task_description: &str,
+    update_tx: tokio::sync::mpsc::UnboundedSender<vac_core::engine::RuntimeUpdate>,
+    broadcast: Option<Arc<vac_bridge::remote::SessionBroadcast>>,
+) -> anyhow::Result<vac_core::TaskResult> {
     use futures::StreamExt;
     use vac_session_engine::{
         SlashProcessor, SubmitContext, TranscriptWriter, TrivialCompactBoundary,
@@ -140,6 +162,14 @@ pub async fn run_via_session_engine(
     // the TUI render the abort twice.
     let mut aborted: Option<String> = None;
     while let Some(chunk) = stream.next().await {
+        // B5: fan the raw chunk out to any teleport attach clients
+        // before translation. Remote attachees see the session as
+        // it streams, independent of the TUI's consumption.
+        if let Some(bc) = &broadcast {
+            if let Some(ev) = chunk_to_outbound(&chunk) {
+                bc.publish(ev);
+            }
+        }
         match &chunk {
             SubmitChunk::Finished { usage: snap } => {
                 total_tokens = snap.total_tokens() as u64;
@@ -218,6 +248,39 @@ pub async fn run_via_session_engine(
     let _ = update_tx.send(vac_core::engine::RuntimeUpdate::Completed(res.clone()));
 
     Ok(res)
+}
+
+/// B5 — map a streamed `SubmitChunk` into a remote-friendly
+/// `OutboundEvent`. Distinct from `chunk_to_runtime_update`
+/// (which targets the TUI's in-process enum); remote clients see
+/// a simpler kind-string + JSON payload shape.
+fn chunk_to_outbound(chunk: &SubmitChunk) -> Option<vac_bridge::remote::OutboundEvent> {
+    use vac_bridge::remote::OutboundEvent;
+    Some(match chunk {
+        SubmitChunk::LlmRequested { provider, model } => OutboundEvent::new(
+            "llm.request",
+            serde_json::json!({ "provider": provider, "model": model }),
+        ),
+        SubmitChunk::TextDelta { text } => {
+            OutboundEvent::new("text", serde_json::json!({ "text": text }))
+        }
+        SubmitChunk::ToolRequested { id, name, arguments } => OutboundEvent::new(
+            "tool.request",
+            serde_json::json!({ "id": id, "name": name, "arguments": arguments }),
+        ),
+        SubmitChunk::ToolResult { id, name, payload } => OutboundEvent::new(
+            "tool.result",
+            serde_json::json!({ "id": id, "name": name, "payload": payload }),
+        ),
+        SubmitChunk::Finished { usage } => OutboundEvent::new(
+            "finished",
+            serde_json::json!({ "total_tokens": usage.total_tokens() }),
+        ),
+        SubmitChunk::Aborted { reason } => {
+            OutboundEvent::new("aborted", serde_json::json!({ "reason": reason }))
+        }
+        _ => return None,
+    })
 }
 
 /// NS.2 — translate one streamed `SubmitChunk` into the UI's

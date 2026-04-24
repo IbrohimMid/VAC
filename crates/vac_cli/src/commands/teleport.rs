@@ -42,22 +42,16 @@ use axum::{
     routing::{get, post},
 };
 use futures::StreamExt;
-use tokio::sync::broadcast;
 use vac_bridge::auth::jwt::{JwtKeySet, KeyMaterial};
 use vac_bridge::remote::{
-    DEFAULT_TELEPORT_TTL, RemoteSessionConfig, TeleportClaims, issue_teleport_token,
-    validate_teleport_token,
+    DEFAULT_TELEPORT_TTL, OutboundEvent, RemoteSessionConfig, SessionBroadcast,
+    TeleportClaims, issue_teleport_token, validate_teleport_token,
 };
-
-/// Broadcast channel size. Slow subscribers that fall behind this
-/// many events get `RecvError::Lagged` and reconnect — we prefer
-/// that over unbounded memory growth.
-const BROADCAST_BUF: usize = 256;
 
 #[derive(Clone)]
 struct AppState {
     keys: Arc<JwtKeySet>,
-    events: broadcast::Sender<serde_json::Value>,
+    events: Arc<SessionBroadcast>,
 }
 
 fn validate_bearer(
@@ -90,8 +84,8 @@ async fn sse_handler(
     let rx = state.events.subscribe();
     let stream = tokio_stream::wrappers::BroadcastStream::new(rx).filter_map(|res| async move {
         match res {
-            Ok(v) => {
-                let data = serde_json::to_string(&v).unwrap_or_else(|_| "{}".into());
+            Ok(ev) => {
+                let data = serde_json::to_string(&ev).unwrap_or_else(|_| "{}".into());
                 Some(Ok(Event::default().data(data)))
             }
             // Lagged: let the client reconnect; one frame loss is
@@ -112,11 +106,9 @@ async fn input_handler(
     Json(payload): Json<serde_json::Value>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
     let _claims = validate_bearer(&state.keys, &headers)?;
-    // Echo-broadcast the input so subscribers see it (MVP stub).
-    let _ = state.events.send(serde_json::json!({
-        "kind": "input",
-        "payload": payload,
-    }));
+    state
+        .events
+        .publish(OutboundEvent::new("input", payload));
     Ok(Json(serde_json::json!({ "accepted": true })))
 }
 
@@ -178,11 +170,37 @@ fn load_or_create_keyset(project_root: &std::path::Path) -> anyhow::Result<(JwtK
 
 /// Host mode: mint a JWT and start the SSE server. Blocks until
 /// SIGINT or the server exits.
+///
+/// Standalone entry — constructs its own `SessionBroadcast`. For
+/// integration with a live session's outbound stream call
+/// [`teleport_serve_with_broadcast`] and pass the session's shared
+/// broadcaster.
 pub async fn teleport_serve(
     project_root: PathBuf,
     bind: String,
     label: String,
     insecure: bool,
+) -> anyhow::Result<()> {
+    teleport_serve_with_broadcast(
+        project_root,
+        bind,
+        label,
+        insecure,
+        SessionBroadcast::new(),
+    )
+    .await
+}
+
+/// B5 — host with a caller-provided `SessionBroadcast`. The caller
+/// (typically the vac_cli session wiring that owns the active
+/// submit) publishes `OutboundEvent`s via its own `Arc<SessionBroadcast>`;
+/// the teleport SSE subscribes and fans to attach clients.
+pub async fn teleport_serve_with_broadcast(
+    project_root: PathBuf,
+    bind: String,
+    label: String,
+    insecure: bool,
+    broadcast: Arc<SessionBroadcast>,
 ) -> anyhow::Result<()> {
     let addr: SocketAddr = bind
         .parse()
@@ -198,10 +216,9 @@ pub async fn teleport_serve(
         issue_teleport_token(&keys, &kid, &session_id, &label, DEFAULT_TELEPORT_TTL)
             .map_err(|e| anyhow::anyhow!("mint teleport token: {e}"))?;
 
-    let (tx, _rx0) = broadcast::channel::<serde_json::Value>(BROADCAST_BUF);
     let state = AppState {
         keys: Arc::new(keys),
-        events: tx.clone(),
+        events: broadcast.clone(),
     };
 
     let cfg = RemoteSessionConfig::default();
@@ -212,13 +229,12 @@ pub async fn teleport_serve(
     // command go to stderr so `vac teleport --serve | tee log.txt`
     // doesn't accidentally persist the bearer secret to disk.
     println!("── vac teleport (serve) ──────────────────────");
-    // Arc-audit C2: this host mode is currently a stub event
-    // source. The SSE stream emits the startup frame + anything
-    // posted to /input; wiring to a live `run_via_session_engine`
-    // outbound stream is a follow-up that requires plumbing a
-    // broadcast sink through the session construction path.
-    println!("[stub] host broadcasts startup + /input echo only;");
-    println!("[stub] live session integration pending follow-up.");
+    // B5: if a caller passes a `SessionBroadcast` already attached
+    // to a live `run_via_session_engine`, this host fans the
+    // session's real SubmitChunks (text, tool.request, tool.result,
+    // finished, aborted) out via SSE. Standalone invocation still
+    // works; in that mode the only frames are the startup banner
+    // and /input echoes.
     println!("session_id    {session_id}");
     println!("label         {label}");
     println!("bind          {addr}");
@@ -235,13 +251,12 @@ pub async fn teleport_serve(
     eprintln!("  vac teleport --attach {token} --url http://{addr}");
     eprintln!();
 
-    // MVP event source: emit a startup frame so attach clients see
-    // the connection immediately. Session integration lands later.
-    let _ = tx.send(serde_json::json!({
-        "kind": "session_started",
-        "session_id": session_id,
-        "label": label,
-    }));
+    // Emit a startup frame so attach clients see the connection
+    // immediately (zero-subscriber publishes are silent no-ops).
+    broadcast.publish(OutboundEvent::new(
+        "session_started",
+        serde_json::json!({ "session_id": session_id, "label": label }),
+    ));
 
     let app = Router::new()
         .route("/events", get(sse_handler))
@@ -381,10 +396,10 @@ mod tests {
             DEFAULT_TELEPORT_TTL,
         )
         .unwrap();
-        let (tx, _rx0) = broadcast::channel::<serde_json::Value>(BROADCAST_BUF);
+        let bc = SessionBroadcast::new();
         let state = AppState {
             keys: Arc::new(keys),
-            events: tx.clone(),
+            events: bc.clone(),
         };
         let app = Router::new()
             .route("/events", get(sse_handler))
@@ -444,15 +459,85 @@ mod tests {
         );
     }
 
+    /// B5 — caller publishes on a shared `SessionBroadcast`, SSE
+    /// subscriber receives the frame. This is the integration
+    /// contract between `run_via_session_engine_with_broadcast`
+    /// and `teleport_serve_with_broadcast`.
+    #[tokio::test]
+    async fn live_bridge_publishes_outbound_to_sse_attach() {
+        let tmp = tempfile::tempdir().unwrap();
+        let project = tmp.path().to_path_buf();
+        let (keys, kid) = load_or_create_keyset(&project).unwrap();
+        let token = issue_teleport_token(
+            &keys,
+            &kid,
+            "session-live",
+            "live",
+            DEFAULT_TELEPORT_TTL,
+        )
+        .unwrap();
+        let bc = SessionBroadcast::new();
+        let state = AppState {
+            keys: Arc::new(keys),
+            events: bc.clone(),
+        };
+        let app = Router::new()
+            .route("/events", get(sse_handler))
+            .with_state(state);
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let bound = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let _ = axum::serve(listener, app).await;
+        });
+
+        let resp = reqwest::Client::new()
+            .get(format!("http://{bound}/events"))
+            .bearer_auth(&token)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), reqwest::StatusCode::OK);
+        let mut body = resp.bytes_stream();
+
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        // Caller (e.g. run_via_session_engine) publishes a live
+        // SubmitChunk-derived event.
+        bc.publish(OutboundEvent::new(
+            "text",
+            serde_json::json!({ "text": "live session hello" }),
+        ));
+
+        let mut buf = String::new();
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        while tokio::time::Instant::now() < deadline {
+            let chunk = match tokio::time::timeout(
+                Duration::from_secs(1),
+                body.next(),
+            )
+            .await
+            {
+                Ok(Some(Ok(c))) => c,
+                _ => continue,
+            };
+            buf.push_str(&String::from_utf8_lossy(&chunk));
+            if buf.contains("live session hello") {
+                break;
+            }
+        }
+        assert!(
+            buf.contains("live session hello"),
+            "expected broadcast frame on SSE, got: {buf}",
+        );
+    }
+
     #[tokio::test]
     async fn sse_rejects_missing_bearer() {
         let tmp = tempfile::tempdir().unwrap();
         let project = tmp.path().to_path_buf();
         let (keys, _kid) = load_or_create_keyset(&project).unwrap();
-        let (tx, _) = broadcast::channel::<serde_json::Value>(BROADCAST_BUF);
         let state = AppState {
             keys: Arc::new(keys),
-            events: tx,
+            events: SessionBroadcast::new(),
         };
         let app = Router::new()
             .route("/events", get(sse_handler))
@@ -475,10 +560,9 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let project = tmp.path().to_path_buf();
         let (keys, _kid) = load_or_create_keyset(&project).unwrap();
-        let (tx, _) = broadcast::channel::<serde_json::Value>(BROADCAST_BUF);
         let state = AppState {
             keys: Arc::new(keys),
-            events: tx,
+            events: SessionBroadcast::new(),
         };
         let app = Router::new()
             .route("/events", get(sse_handler))
