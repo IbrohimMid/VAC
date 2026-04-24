@@ -63,8 +63,12 @@ pub enum SystemFacetKind {
     Approvals,
     RuntimeBackoff,
     Mcp,
-    // U7 will add: Lsp, Vil, Speculation, Subagent, Environment,
-    // Memory, Policy, RateLimit, Shell.
+    // U7 — three more facets whose data already lives on AppState.
+    Shell,
+    Speculation,
+    Environment,
+    // Deferred until producers wire: Lsp, Vil, Subagent, Memory,
+    // Policy, RateLimit.
 }
 
 impl SystemFacetKind {
@@ -73,6 +77,9 @@ impl SystemFacetKind {
             Self::Approvals => "approvals",
             Self::RuntimeBackoff => "runtime",
             Self::Mcp => "mcp",
+            Self::Shell => "shell",
+            Self::Speculation => "spec",
+            Self::Environment => "env",
         }
     }
 }
@@ -134,6 +141,9 @@ impl<'a> SystemPulse<'a> {
             self.approvals_facet(),
             self.runtime_facet(),
             self.mcp_facet(),
+            self.shell_facet(),
+            self.speculation_facet(),
+            self.environment_facet(),
         ]
     }
 
@@ -282,6 +292,97 @@ impl<'a> SystemPulse<'a> {
             )),
         }
     }
+
+    fn shell_facet(&self) -> SystemFacet {
+        let s = &self.state.execution.shell.session_store;
+        let total = s.sessions.len();
+        let active_label = s.active().map(|ss| ss.label.clone());
+        let (severity, token) = if total == 0 {
+            (FacetSeverity::Ok, "shell✓".into())
+        } else if active_label.is_some() {
+            (FacetSeverity::Info, format!("shell:{total}").into())
+        } else {
+            // Sessions exist but none active → backgrounded.
+            (FacetSeverity::Info, format!("shell·{total}").into())
+        };
+        SystemFacet {
+            kind: SystemFacetKind::Shell,
+            severity,
+            compact_token: token,
+            detail_rows: vec![
+                format!("sessions: {total}"),
+                format!(
+                    "active:   {}",
+                    active_label.unwrap_or_else(|| "<none>".into())
+                ),
+            ],
+            // No dedicated workbench tab; surface via shell popup.
+            nav_target: Some(NavTarget::Overlay(
+                crate::overlay::OverlayId::ShellPopup,
+            )),
+        }
+    }
+
+    fn speculation_facet(&self) -> SystemFacet {
+        // SpeculationCache carries { predicted_submit, precomputed_context,
+        // prediction_hits }. We project "is there a warm prediction?".
+        let c = &self.state.speculation;
+        let (severity, token) = if c.predicted_submit.is_some() {
+            (FacetSeverity::Info, "spec●".into())
+        } else {
+            (FacetSeverity::Ok, "spec·".into())
+        };
+        SystemFacet {
+            kind: SystemFacetKind::Speculation,
+            severity,
+            compact_token: token,
+            detail_rows: vec![
+                format!(
+                    "predicted: {}",
+                    if c.predicted_submit.is_some() { "yes" } else { "no" }
+                ),
+                format!("hits:      {}", c.prediction_hits),
+                format!("context:   {} entries", c.precomputed_context.len()),
+            ],
+            // No dedicated surface; pulse is observational for now.
+            nav_target: None,
+        }
+    }
+
+    fn environment_facet(&self) -> SystemFacet {
+        // StartupSnapshot.environment is the human label vac_doctor
+        // sets ("host" / "isolated-batch" / etc.). Used as-is for
+        // the compact token.
+        let env = &self.state.core.startup;
+        let mode = env.environment.as_str();
+        let (severity, token) = match mode {
+            "restricted-offline" => (
+                FacetSeverity::Warn,
+                "env:restricted".into(),
+            ),
+            m if m.starts_with("isolated") => {
+                (FacetSeverity::Info, format!("env:{m}").into())
+            }
+            "" => (FacetSeverity::Info, "env:?".into()),
+            m => (FacetSeverity::Ok, format!("env:{m}").into()),
+        };
+        SystemFacet {
+            kind: SystemFacetKind::Environment,
+            severity,
+            compact_token: token,
+            detail_rows: vec![
+                format!(
+                    "mode: {}",
+                    if mode.is_empty() { "<unknown>" } else { mode }
+                ),
+                format!(
+                    "profile: {}",
+                    env.active_profile.as_deref().unwrap_or("<none>"),
+                ),
+            ],
+            nav_target: None,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -294,17 +395,10 @@ mod tests {
         let state = AppState::default();
         let pulse = SystemPulse::from_state(&state);
         let facets = pulse.facets();
-        assert_eq!(facets.len(), 3);
+        assert_eq!(facets.len(), 6);
+        // Sanity: every facet emits a non-empty compact token.
         for f in &facets {
-            match f.kind {
-                SystemFacetKind::Approvals | SystemFacetKind::RuntimeBackoff => {
-                    assert_eq!(f.severity, FacetSeverity::Ok);
-                }
-                // Default state has no MCP servers configured.
-                SystemFacetKind::Mcp => {
-                    assert_eq!(f.severity, FacetSeverity::Info);
-                }
-            }
+            assert!(!f.compact_token.is_empty(), "facet {:?} has empty token", f.kind);
         }
     }
 
@@ -313,12 +407,14 @@ mod tests {
         let state = AppState::default();
         let pulse = SystemPulse::from_state(&state);
         let line = pulse.compact_line();
-        // "approvals✓ runtime✓ mcp·" — one space between each
         assert!(line.contains("approvals✓"));
         assert!(line.contains("runtime✓"));
         assert!(line.contains("mcp·"));
-        // Exactly two internal spaces between three facets.
-        assert_eq!(line.matches(' ').count(), 2);
+        assert!(line.contains("shell✓"));
+        assert!(line.contains("spec·"));
+        assert!(line.contains("env:"));
+        // Six facets → exactly five internal spaces.
+        assert_eq!(line.matches(' ').count(), 5);
     }
 
     #[test]
@@ -408,15 +504,17 @@ mod tests {
     }
 
     #[test]
-    fn every_facet_has_a_nav_target() {
+    fn facets_that_point_at_a_tab_or_overlay_resolve() {
+        // Not every facet has a NavTarget — speculation and
+        // environment are observational (None). The ones that DO
+        // have one must be apply()-able without panicking.
         let state = AppState::default();
         let pulse = SystemPulse::from_state(&state);
         for f in pulse.facets() {
-            assert!(
-                f.nav_target.is_some(),
-                "facet {:?} must have a nav_target in v0",
-                f.kind
-            );
+            if let Some(tgt) = f.nav_target.clone() {
+                let mut fresh = AppState::default();
+                let _ = tgt.apply(&mut fresh);
+            }
         }
     }
 

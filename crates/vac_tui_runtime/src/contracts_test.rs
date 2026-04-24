@@ -188,9 +188,10 @@ mod tests {
         }
     }
 
-    /// U6 — every pulse facet's NavTarget is applyable against a
-    /// fresh AppState without panicking. Catches future facets that
-    /// reference a removed WorkbenchTab or OverlayId variant.
+    /// U6 — every pulse facet that declares a NavTarget must be
+    /// apply()-able against a fresh AppState without panicking.
+    /// Observational facets (speculation, environment — no Some
+    /// target in v0) are skipped.
     #[test]
     fn every_pulse_facet_nav_target_is_applyable() {
         use crate::app::AppState;
@@ -198,12 +199,10 @@ mod tests {
         let state = AppState::default();
         let pulse = SystemPulse::from_state(&state);
         for facet in pulse.facets() {
-            let tgt = facet
-                .nav_target
-                .clone()
-                .unwrap_or_else(|| panic!("facet {:?} missing nav_target", facet.kind));
-            let mut fresh = AppState::default();
-            let _ = tgt.apply(&mut fresh);
+            if let Some(tgt) = facet.nav_target.clone() {
+                let mut fresh = AppState::default();
+                let _ = tgt.apply(&mut fresh);
+            }
         }
     }
 
