@@ -47,6 +47,7 @@ pub mod auto_dream;
 pub mod away_summary;
 pub mod notify_router;
 pub mod passive_feedback;
+pub mod tracing_bridge;
 pub mod review_source;
 pub mod speculation;
 pub mod statusline;
