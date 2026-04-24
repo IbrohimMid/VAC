@@ -66,7 +66,7 @@ pub use quit::QuitState;
 pub use session_resume::SessionResumeState;
 pub use side_panel::SidePanelState;
 pub use streaming::StreamingState;
-pub use task_tray::TaskTrayState;
+pub use task_tray::{TaskEntry, TaskKind, TaskStatus, TaskTrayState};
 pub use team::TeamContext;
 pub use speculation::SpeculationCache;
 pub use switchers::SwitchersState;

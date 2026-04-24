@@ -79,6 +79,10 @@ pub enum SystemFacetKind {
     Subagent,
     // Phase G — LSP passive-feedback tick counter.
     Lsp,
+    // Phase A.5 — background tasks (bash, agent, dream, remote,
+    // monitor, workflow, teammate). Aggregates over
+    // `AppState.execution.task_tray.entries`.
+    Tasks,
     // Deferred until producers wire: Vil.
 }
 
@@ -97,6 +101,7 @@ impl SystemFacetKind {
             Self::Subagent => "sub",
             Self::Environment => "env",
             Self::Lsp => "lsp",
+            Self::Tasks => "tasks",
         }
     }
 }
@@ -165,6 +170,7 @@ impl<'a> SystemPulse<'a> {
             self.memory_facet(),
             self.policy_facet(),
             self.lsp_facet(),
+            self.tasks_facet(),
             self.subagent_facet(),
         ]
     }
@@ -622,6 +628,46 @@ impl<'a> SystemPulse<'a> {
         }
     }
 
+    /// A.5 — tasks facet. Aggregates over `task_tray.entries`.
+    /// Severity: Ok when 0 in-flight; Info at 1–3; Warn at ≥4;
+    /// Critical if any entry is Failed. Compact token `tasks✓N`
+    /// or `tasks●N` or `tasks✗N`.
+    fn tasks_facet(&self) -> SystemFacet {
+        use crate::app::types::TaskStatus;
+        let entries = &self.state.execution.task_tray.entries;
+        let running = entries
+            .iter()
+            .filter(|e| matches!(e.status, TaskStatus::Running | TaskStatus::Queued))
+            .count();
+        let failed = entries
+            .iter()
+            .filter(|e| matches!(e.status, TaskStatus::Failed))
+            .count();
+        let (severity, token) = if failed > 0 {
+            (
+                FacetSeverity::Critical,
+                format!("tasks✗{failed}").into(),
+            )
+        } else if running == 0 {
+            (FacetSeverity::Ok, Cow::Borrowed("tasks✓"))
+        } else if running >= 4 {
+            (FacetSeverity::Warn, format!("tasks●{running}").into())
+        } else {
+            (FacetSeverity::Info, format!("tasks:{running}").into())
+        };
+        SystemFacet {
+            kind: SystemFacetKind::Tasks,
+            severity,
+            compact_token: token,
+            detail_rows: vec![
+                format!("running/queued: {running}"),
+                format!("failed:         {failed}"),
+                format!("total:          {}", entries.len()),
+            ],
+            nav_target: Some(NavTarget::Overlay(crate::overlay::OverlayId::TaskTray)),
+        }
+    }
+
     /// Phase E1 — subagent facet. Reads the in-memory root handle
     /// counters if the TUI has bound one. Today AppState does not
     /// carry an AppStateRootHandle; we defer real wiring to the
@@ -672,7 +718,7 @@ mod tests {
         // Phase A2 + B2 + E1 added three more facets (budget,
         // memory, subagent). Count is 9 now; the grammar stays
         // consistent.
-        assert_eq!(facets.len(), 11);
+        assert_eq!(facets.len(), 12);
         for f in &facets {
             assert!(!f.compact_token.is_empty(), "facet {:?} has empty token", f.kind);
         }
@@ -694,8 +740,9 @@ mod tests {
         assert!(line.contains("sub"));
         assert!(line.contains("policy"));
         assert!(line.contains("lsp"));
-        // Eleven facets → exactly ten internal spaces.
-        assert_eq!(line.matches(' ').count(), 10);
+        assert!(line.contains("tasks"));
+        // Twelve facets → exactly eleven internal spaces.
+        assert_eq!(line.matches(' ').count(), 11);
     }
 
     #[test]
