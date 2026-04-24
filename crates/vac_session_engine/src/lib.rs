@@ -35,6 +35,7 @@ pub mod error;
 pub mod hooks;
 pub mod monitor;
 pub mod schedule;
+pub mod web;
 pub mod event;
 pub mod gate;
 pub mod file_state_cache;
@@ -70,6 +71,10 @@ pub use hooks::{
     HookGate, HookStore, exec_hook,
 };
 pub use monitor::{MonitorHandle, MonitorLine, MonitorSpec, spawn_monitor};
+pub use web::{
+    BraveBackend, DEFAULT_RESPONSE_CAP, SearchBackend, WebFetchRequest,
+    WebFetchResult, WebSearchHit, WebSearchRequest, fetch as web_fetch,
+};
 pub use schedule::{
     MAX_DELAY, MIN_DELAY, WakeupSpec, clamp_delay, schedule_interval_loop,
     schedule_wakeup,
