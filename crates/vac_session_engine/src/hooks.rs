@@ -84,9 +84,45 @@ pub struct HookStore {
     pub entries: Vec<HookEntry>,
 }
 
+/// Soft cap on hook command argv length. Keeps a bogus or
+/// malicious hook from spawning a process with hundreds of
+/// megabytes of argv bytes that fail during the OS syscall path
+/// in ways that are hard to diagnose.
+pub const HOOK_ARGV_MAX_LEN: usize = 256;
+
 impl HookStore {
     pub fn resolve_path(project_root: &Path) -> PathBuf {
         project_root.join(".vac").join(DEFAULT_HOOKS_FILENAME)
+    }
+
+    /// Create a new entry, rejecting duplicate ids. Symmetric
+    /// with [`crate::cron::CronStore::create`] so both stores
+    /// surface the same failure shape.
+    pub fn create(&mut self, entry: HookEntry) -> EngineResult<()> {
+        if self.entries.iter().any(|e| e.id == entry.id) {
+            return Err(EngineError::Other(format!(
+                "hook id '{}' already registered",
+                entry.id
+            )));
+        }
+        if let HookCommand::Command { argv } = &entry.command {
+            if argv.len() > HOOK_ARGV_MAX_LEN {
+                return Err(EngineError::Other(format!(
+                    "hook '{}' argv has {} entries (cap {})",
+                    entry.id,
+                    argv.len(),
+                    HOOK_ARGV_MAX_LEN,
+                )));
+            }
+        }
+        self.entries.push(entry);
+        Ok(())
+    }
+
+    pub fn delete(&mut self, id: &str) -> bool {
+        let before = self.entries.len();
+        self.entries.retain(|e| e.id != id);
+        self.entries.len() < before
     }
 
     pub async fn load(project_root: &Path) -> EngineResult<Self> {
@@ -200,20 +236,80 @@ pub enum HookDecision {
 
 /// `ToolGate` implementation that fires all PreToolUse hooks
 /// matching `ctx.tool_name` and denies if any hook denies.
+///
+/// Audit fix: the previous implementation recompiled each
+/// matcher regex on every call (O(n·compile) per ToolCheckCtx);
+/// this version compiles once at `new()` / `replace_store()`
+/// time and looks up by id on match.
 #[derive(Debug, Clone)]
 pub struct HookGate {
-    store: std::sync::Arc<tokio::sync::RwLock<HookStore>>,
+    store: std::sync::Arc<tokio::sync::RwLock<HookStoreCompiled>>,
+}
+
+/// Internal: HookStore + cached compiled matchers indexed by id.
+#[derive(Debug)]
+pub(crate) struct HookStoreCompiled {
+    pub store: HookStore,
+    pub compiled: std::collections::HashMap<String, Option<regex::Regex>>,
+}
+
+impl HookStoreCompiled {
+    fn from_store(store: HookStore) -> Self {
+        let mut compiled = std::collections::HashMap::with_capacity(store.entries.len());
+        for e in &store.entries {
+            let r = if e.matcher.is_empty() {
+                None
+            } else {
+                match regex::Regex::new(&e.matcher) {
+                    Ok(r) => Some(r),
+                    Err(err) => {
+                        tracing::warn!(
+                            target: "vac_tui_runtime::hooks",
+                            hook = %e.id,
+                            matcher = %e.matcher,
+                            error = %err,
+                            "hook matcher failed to compile — entry disabled",
+                        );
+                        None
+                    }
+                }
+            };
+            compiled.insert(e.id.clone(), r);
+        }
+        Self { store, compiled }
+    }
+
+    fn matches<'a>(&'a self, event: HookEvent, tool_name: &str) -> Vec<&'a HookEntry> {
+        self.store
+            .entries
+            .iter()
+            .filter(|e| e.event == event)
+            .filter(|e| match self.compiled.get(&e.id) {
+                Some(Some(re)) => re.is_match(tool_name),
+                // None means the matcher was empty (accept all)
+                // OR it failed to compile (entry disabled).
+                // An empty matcher is recorded as `compiled[id] =
+                // None` with `store.matcher = ""`; a bad regex
+                // is also `None` but with non-empty matcher text.
+                // Keep the "empty = match-all" contract:
+                Some(None) => e.matcher.is_empty(),
+                None => false,
+            })
+            .collect()
+    }
 }
 
 impl HookGate {
     pub fn new(store: HookStore) -> Self {
         Self {
-            store: std::sync::Arc::new(tokio::sync::RwLock::new(store)),
+            store: std::sync::Arc::new(tokio::sync::RwLock::new(
+                HookStoreCompiled::from_store(store),
+            )),
         }
     }
 
     pub async fn replace_store(&self, new: HookStore) {
-        *self.store.write().await = new;
+        *self.store.write().await = HookStoreCompiled::from_store(new);
     }
 }
 
@@ -226,7 +322,11 @@ impl ToolGate for HookGate {
     async fn check(&self, ctx: &ToolCheckCtx) -> GateDecision {
         let store = self.store.read().await;
         let matches = store.matches(HookEvent::PreToolUse, &ctx.tool_name);
-        for entry in matches {
+        // Clone the matching entries so we drop the read lock
+        // before each potentially-slow exec_hook call.
+        let matches: Vec<HookEntry> = matches.iter().copied().cloned().collect();
+        drop(store);
+        for entry in &matches {
             match exec_hook(entry).await {
                 Ok(HookDecision::Allow) => continue,
                 Ok(HookDecision::Deny { reason }) => {
@@ -310,6 +410,26 @@ mod tests {
             }
             other => panic!("expected Deny, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn create_rejects_duplicate_id() {
+        let mut s = HookStore::default();
+        s.create(entry("a", vec!["true".into()])).unwrap();
+        let err = s
+            .create(entry("a", vec!["true".into()]))
+            .unwrap_err();
+        assert!(format!("{err}").contains("already registered"));
+    }
+
+    #[test]
+    fn create_rejects_oversized_argv() {
+        let mut s = HookStore::default();
+        let argv: Vec<String> = (0..HOOK_ARGV_MAX_LEN + 1)
+            .map(|i| format!("arg{i}"))
+            .collect();
+        let err = s.create(entry("big", argv)).unwrap_err();
+        assert!(format!("{err}").contains("cap "));
     }
 
     #[tokio::test]

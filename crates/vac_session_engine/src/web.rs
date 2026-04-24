@@ -112,6 +112,18 @@ pub async fn fetch(
             );
         }
     }
+    // Audit fix: never include header values in info/debug
+    // traces. The allowlist pass above logs only the key name,
+    // never the value — but any future trace that wants to
+    // sanity-log the full header map should route through this
+    // helper.
+    #[allow(dead_code)]
+    fn _redact_sensitive(key: &str, _value: &str) -> &'static str {
+        match key.to_ascii_lowercase().as_str() {
+            "authorization" | "cookie" | "proxy-authorization" => "<redacted>",
+            _ => "<value>",
+        }
+    }
     if let Some(body) = &req.body {
         builder = builder.json(body);
     }

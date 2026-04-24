@@ -136,6 +136,28 @@ impl SubagentDispatchContext {
         self.compact_cfg = cfg;
         self
     }
+
+    /// Audit fix: returns a context suitable for dispatching a
+    /// *child* subagent. Strips the parent's mutable state
+    /// references (policy tracker, gate, dispatcher) so the
+    /// child can't accidentally increment counters the parent
+    /// owns. Callers that explicitly want the child to share
+    /// the parent's policy cap just use the parent context
+    /// unchanged.
+    pub fn child_scoped(&self) -> Self {
+        let mut cfg = self.compact_cfg.clone();
+        cfg.policy = None;
+        cfg.gate = None;
+        cfg.dispatcher = None;
+        Self {
+            transcript: self.transcript.clone(),
+            slash: self.slash.clone(),
+            compact: self.compact.clone(),
+            usage: self.usage.clone(),
+            llm: self.llm.clone(),
+            compact_cfg: cfg,
+        }
+    }
 }
 
 /// `SubagentRunner` materialises a subagent as a [`SubmitStream`].
@@ -245,6 +267,27 @@ mod tests {
                 .any(|r| matches!(r.kind, TranscriptKind::Sidechain)),
             "parent transcript must carry a Sidechain row for the subagent",
         );
+    }
+
+    #[tokio::test]
+    async fn child_scoped_strips_parent_policy_and_gate() {
+        let tmp = tempfile::tempdir().unwrap();
+        let writer = Arc::new(TranscriptWriter::new(tmp.path().to_path_buf()));
+        let mut parent = SubagentDispatchContext::new(
+            writer,
+            Arc::new(SlashProcessor::new()),
+            Arc::new(TrivialCompactBoundary::default()),
+            Arc::new(UsageTracker::new()),
+            Arc::new(EchoAdapter),
+        );
+        let tracker = Arc::new(
+            vac_core::policy_limits::PolicyTracker::new(Default::default()),
+        );
+        parent.compact_cfg.policy = Some(tracker);
+        let child = parent.child_scoped();
+        assert!(child.compact_cfg.policy.is_none());
+        assert!(child.compact_cfg.gate.is_none());
+        assert!(child.compact_cfg.dispatcher.is_none());
     }
 
     #[test]

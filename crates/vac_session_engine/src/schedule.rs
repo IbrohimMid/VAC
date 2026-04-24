@@ -73,11 +73,28 @@ impl WakeupSpec {
     }
 }
 
-/// Clamp a requested delay into the accepted range.
+/// Clamp a requested delay into the accepted range. Warns on
+/// target `vac_tui_runtime::schedule` when the requested value
+/// was outside bounds so operators see the silent-drift rule
+/// wasn't violated — they get a row in the activity feed via
+/// the A1 bridge instead of a mysterious "my 5s timer became
+/// 60s" surprise.
 pub fn clamp_delay(requested: Duration) -> Duration {
     if requested < MIN_DELAY {
+        tracing::warn!(
+            target: "vac_tui_runtime::schedule",
+            requested_secs = requested.as_secs(),
+            min_secs = MIN_DELAY.as_secs(),
+            "delay clamped up to minimum",
+        );
         MIN_DELAY
     } else if requested > MAX_DELAY {
+        tracing::warn!(
+            target: "vac_tui_runtime::schedule",
+            requested_secs = requested.as_secs(),
+            max_secs = MAX_DELAY.as_secs(),
+            "delay clamped down to maximum",
+        );
         MAX_DELAY
     } else {
         requested

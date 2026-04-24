@@ -43,6 +43,12 @@ pub struct TeleportClaims {
 /// survive a flaky reconnection.
 pub const DEFAULT_TELEPORT_TTL: Duration = Duration::from_secs(15 * 60);
 
+/// Minimum TTL the issuer accepts. A token with TTL=0 races its
+/// own issuance against the wall clock — the attach side nearly
+/// always sees "expired" before it can attach. Require at least
+/// 30 s so the token has room to travel + validate.
+pub const MIN_TELEPORT_TTL: Duration = Duration::from_secs(30);
+
 /// Config bundle the remote transport reads.
 #[derive(Debug, Clone)]
 pub struct RemoteSessionConfig {
@@ -100,6 +106,13 @@ pub fn issue_teleport_token(
     label: impl Into<String>,
     ttl: Duration,
 ) -> BridgeResult<String> {
+    if ttl < MIN_TELEPORT_TTL {
+        return Err(BridgeError::Protocol(format!(
+            "teleport TTL {}s below minimum {}s — token would race its own expiry",
+            ttl.as_secs(),
+            MIN_TELEPORT_TTL.as_secs(),
+        )));
+    }
     let iat = unix_now();
     let exp = iat + ttl.as_secs() as i64;
     let session_id = session_id.into();
@@ -187,6 +200,20 @@ mod tests {
         )
         .unwrap();
         assert!(validate_teleport_token(&wrong, &token).is_err());
+    }
+
+    #[test]
+    fn short_ttl_is_rejected() {
+        let ks = keys(b"k");
+        let err = issue_teleport_token(
+            &ks,
+            "kid-1",
+            "s",
+            "l",
+            Duration::from_secs(5),
+        )
+        .unwrap_err();
+        assert!(format!("{err}").contains("below minimum"), "{err}");
     }
 
     #[test]
