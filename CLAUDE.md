@@ -1,10 +1,10 @@
 # VAC Agentic CLI — Agent Guide
 
-> 📍 **Where is the plan?** Start at
-> [`docs/ROADMAP.md`](docs/ROADMAP.md); the authoritative blueprint is
-> [`docs/cc-parity-blueprint.md`](docs/cc-parity-blueprint.md) and the
-> per-milestone execution plan is
-> [`docs/cc-parity-plan.md`](docs/cc-parity-plan.md).
+> 📍 **Where's the current state?** [`docs/ROADMAP.md`](docs/ROADMAP.md)
+> is a description of what's on `main` today (not a forward-looking
+> plan). For references — architecture, threat model, product spec,
+> runbook — see the "Reference docs" section at the bottom of that
+> file.
 
 ## Build discipline (READ FIRST)
 
