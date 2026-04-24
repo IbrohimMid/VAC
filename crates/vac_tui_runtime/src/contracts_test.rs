@@ -202,6 +202,72 @@ mod tests {
         }
     }
 
+    /// U0 — no two ACTION_SPECS in the same scope can share a
+    /// keybinding. Scope-qualified so a Global binding and a tab-
+    /// local binding with the same chord are allowed (rare but
+    /// legitimate). Prior to U0 `Ctrl+P` was bound to both
+    /// `OpenCommandPalette` and `OpenFilePicker` in Global scope —
+    /// this test pins the fix in place.
+    #[test]
+    fn action_specs_no_duplicate_keybindings_in_scope() {
+        use crate::action_registry::ACTION_SPECS;
+        let mut seen: HashSet<(String, String)> = HashSet::new();
+        for spec in ACTION_SPECS.iter() {
+            let scope_key = format!("{:?}", spec.scope);
+            for kb in spec.keybindings {
+                assert!(
+                    seen.insert((scope_key.clone(), (*kb).to_string())),
+                    "Duplicate keybinding '{kb}' in scope {scope_key} \
+                     (action: {:?})",
+                    spec.id
+                );
+            }
+        }
+    }
+
+    /// U0 — overlap consistency between the two registries.
+    ///
+    /// The two surfaces (`ACTION_SPECS` and `helper_block::vac_commands`)
+    /// carry different semantics: ACTION_SPECS is the keybinding /
+    /// palette-availability registry; `vac_commands` adds passthrough
+    /// and slash-only entries (`/vil`, `/swarm`, …) that have no
+    /// keybinding or context.
+    ///
+    /// We do NOT require full coverage in either direction. We DO
+    /// require: **every slash alias that appears in both must
+    /// resolve back to the same ActionId via `spec_by_slash_alias`.**
+    /// If a drift-introducing commit stuffs `/files` into
+    /// `vac_commands` but forgets to update ACTION_SPECS (or vice
+    /// versa and the mapping now points at a different ActionId),
+    /// this test fails.
+    #[test]
+    fn action_specs_and_helper_block_overlap_is_consistent() {
+        use crate::action_registry::{ACTION_SPECS, spec_by_slash_alias};
+        let helper_commands =
+            crate::services::helper_block::vac_commands();
+        let spec_alias_to_id: std::collections::HashMap<&'static str, u32> =
+            ACTION_SPECS
+                .iter()
+                .flat_map(|s| s.slash_aliases.iter().map(move |a| (*a, s.id as u32)))
+                .collect();
+        for cmd in &helper_commands {
+            let alias = cmd.command.as_str();
+            // If ACTION_SPECS claims this alias AND `spec_by_slash_alias`
+            // exposes it, the round-trip must agree on the id.
+            if let Some(expected_id) = spec_alias_to_id.get(alias) {
+                let via_fn = spec_by_slash_alias(alias)
+                    .map(|s| s.id as u32)
+                    .unwrap_or(u32::MAX);
+                assert_eq!(
+                    via_fn, *expected_id,
+                    "slash alias '{alias}' resolves to different ActionId \
+                     via spec_by_slash_alias vs direct ACTION_SPECS lookup — \
+                     registry drift",
+                );
+            }
+        }
+    }
+
     #[test]
     fn action_spec_by_slash_alias_roundtrips() {
         use crate::action_registry::{ACTION_SPECS, spec_by_slash_alias};

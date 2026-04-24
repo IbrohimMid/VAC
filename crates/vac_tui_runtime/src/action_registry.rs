@@ -565,7 +565,11 @@ pub static ACTION_SPECS: &[ActionSpec] = &[
         title: "File Picker",
         description: "Open file picker (multi-select, preview)",
         scope: ActionContext::Global,
-        keybindings: &["Ctrl+P"],
+        // U0 fix — Ctrl+P previously collided with OpenCommandPalette.
+        // File picker moves to Ctrl+Shift+P; command palette keeps
+        // Ctrl+P since it is the operator's single front door per
+        // the UX unification plan.
+        keybindings: &["Ctrl+Shift+P"],
         slash_aliases: &["/pick"],
         palette_visible: true,
         footer_visible: false,

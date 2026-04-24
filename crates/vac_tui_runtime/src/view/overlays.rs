@@ -252,31 +252,30 @@ pub(super) fn render_command_palette(f: &mut Frame, state: &mut AppState) {
     f.render_widget(list, chunks[1]);
 }
 
-pub(super) fn render_shortcuts(f: &mut Frame, _state: &mut AppState) {
+pub(super) fn render_shortcuts(f: &mut Frame, state: &mut AppState) {
     let area = centered_rect(70, 60, f.area());
     f.render_widget(Clear, area);
 
-    let shortcuts = vec![
-        "Ctrl+P - Command palette",
-        "Ctrl+C - Quit",
-        "Esc - Cancel/Close",
-        "Up/Down - Scroll/Navigate",
-        "Enter - Submit/Select",
-        "Ctrl+L - Toggle mouse capture",
-        "Ctrl+X - Revert selected (Review)",
-        "Ctrl+Y - Revert filtered (Review)",
-        "Ctrl+Z - Revert all (Review)",
-        "Ctrl+N - Open in editor (Review)",
-        "PageUp/PageDown - Scroll diff (Review)",
-        "Ctrl+G - Open review workstation",
-        "Ctrl+F - Toggle auto-approve",
-        "Tab - Cycle focus panes",
-        "Ctrl+Tab - Cycle workbench tabs",
-        "a/r - Approve/Reject selected (Approvals tab)",
-    ];
-    let items: Vec<ListItem> = shortcuts
+    // U0 — shortcuts are derived from ACTION_SPECS, not hardcoded.
+    // An action appears here iff (a) it declares at least one
+    // keybinding AND (b) it is currently available for the operator.
+    // This is the single source of truth the command-palette +
+    // footer + doc generator also consume, so drift is impossible.
+    let mut rows: Vec<String> = Vec::new();
+    for spec in crate::action_registry::ACTION_SPECS.iter() {
+        if spec.keybindings.is_empty() {
+            continue;
+        }
+        if !(spec.availability)(state) {
+            continue;
+        }
+        let chords = spec.keybindings.join(" / ");
+        rows.push(format!("{chords} — {} ({})", spec.title, spec.description));
+    }
+
+    let items: Vec<ListItem> = rows
         .iter()
-        .map(|s| ListItem::new(Line::raw(*s)))
+        .map(|s| ListItem::new(Line::raw(s.clone())))
         .collect();
     let list = List::new(items).block(
         Block::default()
