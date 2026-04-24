@@ -1,233 +1,293 @@
-# UX Unification Plan — making W1–W10 feel like one system
+# UX Unification Plan — converging the backbone, not inventing one
 
-**Written:** 2026-04-24.
-**Problem:** the TUI ships with ~45 services, 20+ CLI commands, 6
-bundled skills, and 4 autofiring subsystems (AutoDream,
-AwaySummary, PassiveFeedback, speculation). Each surfaces through
-its own channel — some via `println!`, some via `tracing`, some via
-the notifier service, some not at all. The operator sees a
-grab-bag of features; there is no single place to answer "what is
-the system doing right now?" or "why did that just happen?".
+**Written:** 2026-04-24. **Supersedes the earlier draft at this path
+in commit `a445986`.** The earlier draft was greenfield-minded; this
+rewrite is grounded in what is already on `main`.
 
-**Thesis:** the primitives are already the right ones. What is
-missing is a **backbone** — one aggregation point every subsystem
-writes to, one rendering spine every view reads from, and one
-front-door (command palette) that exposes every feature
-consistently. This turns the feature catalogue into a cockpit.
+## Status check
 
-## Architectural shape
+Significant backbone already exists. The plan's job is to **converge
+it**, not start from zero.
 
-Five layers, each small, each builds on the one below.
+| Layer | Already on main | Gap |
+|---|---|---|
+| Event spine | `app::events::InputEvent` + `update.rs` routes runtime / MCP / shell / LSP / VIL / task / banner / toast / approvals | No single projection reads from it consistently |
+| Root observables | `AppStateRootHandle` in `app::root_handle`, wired via `SubagentCoordinator` (commits `760456b`, `6410f61`) | Only subagents publish; other subsystems unaware |
+| Operator surface | `view::operator` renders an Operator panel + Activity timeline; workbench tabs for Approvals / Review / Sessions / Agents / Runtime / Plan / Vil / Vwfd / Signal | Surface exists; grammar across them drifts |
+| Command surface | `action_registry::ACTION_SPECS` (canonical), `services::helper_block::vac_commands`, `view::overlays::render_shortcuts` hardcoded, `docs/tui/action_matrix.md` | **Three registries + one doc that drift.** This is the root of fragmentation, not a missing bus |
+| Overlay stack | `overlay::OverlayManager` with `MAX_STACK_DEPTH = 2` | Non-negotiable constraint — limits how much the unification can lean on modals |
 
-### L1 — RuntimeEventBus
+## Revised thesis
 
-One typed enum every subsystem pushes on state change:
+> Backbone exists but is split across `InputEvent` (UI state),
+> `AppStateRootHandle` (subagent/root observables), and three
+> duplicated action registries. Operators see fragmentation not
+> because primitives are missing but because **the projection and
+> the command catalogue drift**.
+
+The answer is not a new event plane. The answer is:
+
+1. Converge the registry — single source for ACTION_SPECS.
+2. Project existing state into a read-only `SystemPulse`.
+3. Route every subsystem's user-visible output through the three
+   existing surfaces (activity / toast / banner / root
+   observables), not a new modal class.
+4. Deep-link statusline tokens to the **tabs and overlays that
+   already exist**.
+
+## Architecture: facet-oriented projection
+
+### L0 — Action registry convergence (foundation)
+
+One static truth (`ACTION_SPECS`) + one dynamic extension layer
+(custom commands under `.vac/commands/`). Everything else —
+`helper_block::vac_commands`, `render_shortcuts`, slash dispatcher,
+`docs/tui/action_matrix.md` — is **generated** from the registry
+or validated against it.
+
+Acceptance:
+
+- Duplicate `Ctrl+P` binding (today both `OpenFilePicker` and
+  "command palette" in some docs) resolved exactly once.
+- `render_shortcuts` walks the registry, no hardcoded list.
+- Generator emits `docs/tui/action_matrix.md` so doc drift becomes
+  a CI error.
+- Custom-command discovery stays dynamic but slots into the same
+  catalogue at lookup time.
+
+Without this, any "UX unification" regresses the moment someone
+adds a command in one place and forgets another.
+
+### L1 — SystemPulse: projection, not storage
+
+`SystemPulse` is a **pure read** over state that already lives in
+the runtime:
 
 ```rust
-pub enum RuntimeEvent {
-    PolicyDeny { rule: &'static str, reason: String },
-    RateLimitCooldown { provider: String, until: SystemTime },
-    ForkSpeculationStarted { parent: Uuid, reads_hint: Vec<PathBuf> },
-    ForkSpeculationFinished { parent: Uuid, reads: usize },
-    LspDiagnosticPublished { file: PathBuf, severity: Severity },
-    MemoryDreamWritten { path: PathBuf, delta_bytes: u64 },
-    AwayResumeSummary { gap_secs: u64, commits: u32 },
-    McpElicitationRequested { server: String, kind: String },
-    SubagentSpawned { agent: String, depth: u32 },
-    ToolDenied { tool: String, reason: String },
-    // … one variant per audit-interesting state change
+pub struct SystemPulse<'a> {
+    state: &'a AppState,
+    root: &'a AppStateRootHandle,
+}
+
+impl<'a> SystemPulse<'a> {
+    pub fn facets(&self) -> Vec<SystemFacet> { /* derive */ }
 }
 ```
 
-Bus is `Arc<RwLock<VecDeque<RuntimeEvent>>>` ring-buffered at 256
-entries. Cheap to clone (Arc refcount), one source of truth. Each
-subsystem that already calls `tracing::warn!` gets an additional
-one-liner to `bus.publish(event)`.
+No ring buffer. No new event enum. The projection pulls from:
 
-### L2 — SystemPulse aggregator
+- `state.execution.activity` (existing activity timeline)
+- `state.core.*`, `state.operator_config.*`
+- `state.approvals`, `state.mcp_maps`, `state.vil_domain`,
+  `state.workspace.*`
+- `root.notifications()`, `root.breadcrumbs()`
+- `state.speculation`, `state.team` (W6)
+- RateLimitTracker / PolicyTracker snapshots (once wired — W9
+  follow-up)
 
-One struct on AppState that derives the **current** state of every
-subsystem from the most-recent event of each kind. Computed lazily
-from the event ring.
+Every subsystem is represented by a **`SystemFacet`**:
 
 ```rust
-pub struct SystemPulse {
-    pub policy: PolicyPulse,     // ok / warn / blocked + reason
-    pub rate_limit: RatePulse,   // per-provider cooldown countdown
-    pub fork: ForkPulse,         // idle / speculating(reads N)
-    pub lsp: LspPulse,           // languages online + error count
-    pub memory: MemoryPulse,     // last-dream age + D=N counter
-    pub mcp: McpPulse,           // servers attached + elicitation pending
-    pub subagent: SubagentPulse, // depth + breadcrumb count
+pub enum SystemFacetKind {
+    Approvals, RuntimeBackoff, RateLimit, Shell,
+    Mcp, Lsp, Vil, Speculation, Subagent,
+    Environment, Memory, Policy,
+}
+
+pub struct SystemFacet {
+    pub kind: SystemFacetKind,
+    pub severity: FacetSeverity,   // Ok / Info / Warn / Critical
+    pub compact_token: CompactToken, // statusline glyph + color
+    pub detail_rows: Vec<Line>,      // expanded view
+    pub nav_target: Option<NavTarget>, // where Enter navigates
 }
 ```
 
-Each sub-pulse exposes `render_compact(&self) -> String` (one token
-for the statusline) and `render_full(&self) -> Vec<Line>` (for the
-overlay).
+`NavTarget` maps to an existing workbench tab or a canonical
+overlay — **not** a new one.
 
-### L3 — Statusline spine
+### L2 — Statusline reads only from pulse
 
-Rewrite the statusline as a single function reading only from
-`SystemPulse`. Target format:
+Replace the existing statusline content with
+`SystemPulse::compact_line(budget=80)`. Refresh is tied to the
+same AppState revision that already drives UI redraw.
 
-```
-[main] policy✓ rate✓ fork● lsp:rs+py mem D=3 mcp:2 sub:0 · cwd
-```
+Token deep-links via keyboard shortcut — e.g. `g a` opens the
+Approvals tab (already exists), `g m` opens Mcp, `g r` opens
+Runtime — rather than each token opening a bespoke drawer.
 
-Every token is a Pulse's `render_compact`. Width budget: 80 cols.
-Colors signal health: green ✓ / yellow ● / red ✗. Click / key
-mapping per token opens the right overlay.
+### L3 — Operator + Activity panel unified under pulse grammar
 
-Refresh is tied to the event bus revision counter — no wall-clock
-polling.
+`view::operator` and the activity panel stay. They are **retargeted**
+to read from the same `SystemPulse` + the same severity / wording /
+icon taxonomy the statusline uses. No UI shock, no new panel; the
+system starts to *feel* coherent because every surface speaks the
+same grammar.
 
-### L4 — System overlay (one drawer)
+### L4 — Routing normalisation (three existing lanes)
 
-New overlay key — `Ctrl-P s` or `F9`. Contents:
+One helper, `NotifyRouter::route(event, severity)`, decides between:
 
-1. **Top:** current `SystemPulse::render_full()` — one section per
-   subsystem, expanded view.
-2. **Middle:** last 20 `RuntimeEvent`s as a timeline (ts · subsystem
-   · severity · one-line summary).
-3. **Bottom:** action rows ("toggle sandbox", "freeze policy",
-   "reload plugins", "run fork now", "show memory dir"). Enter
-   executes, Tab/Shift-Tab navigates.
+| Severity | Lane | Existing mechanism |
+|---|---|---|
+| Info | `push_activity` | `services::activity`, already wired |
+| Warn | `push_activity` + `ShowToast` | `services::toast`, already wired |
+| Non-blocking critical | `push_activity` + `ShowBanner` | `app::types::banner`, already wired |
+| Operator-decision-required | Existing approval / ask-user modal | `OverlayManager` slot, already wired |
 
-Replaces: the scattered ad-hoc overlays currently showing one
-subsystem each. Existing specialised overlays (file picker,
-command palette) stay — this is for **system state**, not content.
+No new modal class. The last lane is reserved for genuine
+decisions (approvals, ask-user, reject-reason). Everything else
+rides existing surfaces.
 
-### L5 — Notification router
+### L5 — Navigation via `nav_target()`
 
-One function, three lanes:
+Each facet carries a `NavTarget::{Tab(WorkbenchTab), Overlay(OverlayId)}`
+pointer. Palette actions, statusline chords, and operator-panel
+Enter-behaviour all dispatch through one function.
 
-| Severity | Route |
-|---|---|
-| `Info` | statusline dot + silent entry in timeline |
-| `Warn` | toast (3 s) + statusline flash + timeline entry |
-| `Block` | modal overlay that demands acknowledgement + timeline entry |
+Deep-link targets already exist:
 
-Every subsystem that today calls `notifier.push` / `tracing::warn` /
-`println!` goes through `NotificationRouter::route(event,
-severity)`. One vocabulary, one visual hierarchy.
+- Mcp facet → `WorkbenchTab::Signal` or Mcp overlay
+- Runtime facet → `WorkbenchTab::Runtime`
+- Shell facet → shell popup / session
+- Approvals facet → `WorkbenchTab::Approvals`
+- Vil facet → `WorkbenchTab::Vil`
 
-### L6 — Command palette breadth
+### L6 — Contract tests (the real consistency enforcement)
 
-Every subsystem exposes `palette_entries()` → `Vec<PaletteCommand>`.
-Registry builds the full list at startup.
+VAC is already contract-test-oriented (`contracts_test`, overlay
+contract tests, workbench roundtrip). Extend the pattern:
 
-Target: ~60 entries grouped by prefix:
+- One global keychord cannot map to two actions.
+- `render_shortcuts` output === registry content.
+- Statusline output depends only on `SystemPulse`.
+- No module imports `ShowToast` except through `NotifyRouter`.
+- Overlay stack depth invariant remains `≤ MAX_STACK_DEPTH`.
+- `docs/tui/action_matrix.md` matches registry (generator + diff
+  check in CI).
 
-- `policy:` — view, freeze, unfreeze, toggle tool deny
-- `rate:` — status, reset backoff <provider>
-- `speculation:` — run fork, view cache, clear overlay dir
-- `lsp:` — restart <lang>, toggle passive feedback
-- `memory:` — list dreams, run consolidator now, toggle autodream
-- `mcp:` — list servers, reconnect <name>, view last elicitation
-- `bridge:` — auth login <provider>, revoke <provider>
-- `skill:` — show <name>, run <name>, list
-- `sandbox:` — toggle, view current
-- `system:` — show pulse, show timeline, clear events
+Manual audit replaced by a small file of failing-on-drift tests.
 
-One keystroke (`Ctrl-P`), one search box, one return — the entire
-feature surface reachable through one grammar.
+## Milestone sequence
 
-## Milestones
+**Strict:** U0 first. Without registry convergence, every other
+milestone degrades.
 
-Each milestone is small, independently ships UX improvement, can
-be reverted without cascade. Sequence is strict: L1 → L2 → L3 → L4
-run serial; L5 and L6 can parallel L3+L4 once L1 lands.
+**Parallelisable:** after U0 + U1, U2/U3/U4/U5 can run concurrently.
 
-### U1 (L1) — RuntimeEventBus primitive
-- `crates/vac_tui_runtime/src/runtime_event.rs` with enum + bus.
-- Field on AppState: `event_bus: Arc<RuntimeEventBus>`.
-- No wiring yet — just the plumbing. 1 day.
+### U0 — Registry convergence
+Scope: `ACTION_SPECS` is the sole static registry;
+`vac_commands` + shortcut popup + matrix doc regenerate from it;
+custom-command discovery is layered on top. Resolve the
+`Ctrl+P` clash.
+**Acceptance:** deleting a hardcoded shortcut in `render_shortcuts`
+or changing a `helper_block::vac_commands` entry that drifts from
+`ACTION_SPECS` causes a CI failure.
 
-### U2 — Wire existing subsystems to bus
-- PolicyTracker.check_deny → `PolicyDeny` event.
-- RateLimitTracker.observe_429 → `RateLimitCooldown`.
-- ForkSpeculationDriver.speculate → Start + Finish.
-- AutoDreamService.tick Wrote → `MemoryDreamWritten`.
-- AwaySummaryService.on_resume → `AwayResumeSummary`.
-- PassiveFeedbackDriver.tick → `LspDiagnosticPublished`.
-- SubagentCoordinator.spawn_child → `SubagentSpawned`.
-- TrustGate deny path → `ToolDenied`.
-- Each: 5–15 LoC. 2 days across all.
+### U1 — `SystemPulse` v0, first three producers
+Scope: facet model + projection code. Wire facets for
+**approvals / runtime-backoff / MCP** — these have the highest UX
+pain and data already present in `AppState`. No storage changes.
+**Acceptance:** `SystemPulse::facets()` returns a deterministic
+slice for a hand-built `AppState`. Test-only.
 
-### U3 (L2) — SystemPulse aggregator
-- Derives pulse state from the event ring.
-- `render_compact` + `render_full` per sub-pulse.
-- Unit-tested against synthetic event sequences. 2 days.
+### U2 — Statusline rewrite on pulse
+Scope: statusline reads only from `SystemPulse::compact_line`.
+Colour + severity mapped from facet severity. Token-keychord deep
+links implemented.
+**Acceptance:** snapshot test on compact-line render; no other
+input affects it.
 
-### U4 (L3) — Statusline rewrite
-- Replace existing statusline content with pulse read.
-- Colour palette + width budget.
-- Snapshot test on render output. 1 day.
+### U3 — Operator + Activity panel retargeting
+Scope: `view::operator` and activity timeline rewired to consume
+the same facets. Wording / icon / severity identical to statusline.
+**Acceptance:** contract test asserting every severity glyph used
+in Operator/Activity matches the statusline glyph for the same
+facet.
 
-### U5 (L4) — System overlay
-- New overlay + keybind.
-- Timeline renderer reads event ring.
-- Action rows dispatch into existing services.
-- 2 days.
+### U4 — NotifyRouter
+Scope: one routing function. Migrate every direct
+`push_activity` + `ShowToast` + `ShowBanner` call site through it.
+Subagent + root observables already land here via `AppStateRootHandle`.
+**Acceptance:** zero direct `ShowToast` constructions outside
+`NotifyRouter` (enforced by a grep-level contract test).
 
-### U6 (L5) — NotificationRouter
-- One routing function, three lanes.
-- Migrate existing `notifier::push` callers. 1 day.
+### U5 — `nav_target()` rollout
+Scope: every facet provides `nav_target()`. Statusline, palette,
+and operator-panel Enter all dispatch through one function.
+**Acceptance:** integration test: send `g a` / `g m` / `g r`,
+assert correct workbench tab becomes focused.
 
-### U7 (L6) — Palette breadth pass
-- Add `palette_entries()` method per subsystem.
-- Registry builds full list.
-- ~60 entries. 2–3 days.
+### U6 — Contract tests
+Scope: formalise the invariants above as failing-on-drift tests in
+`contracts_test.rs`.
+**Acceptance:** CI gates on every invariant from L6.
 
-### U8 — Consistency audit
-- Every overlay: `Esc` dismisses, `?` shows help.
-- Every list: `j/k` or arrows, `/` filter, `Enter` act.
-- One PR per crate. 1 day.
+### U7 — Remaining facets + palette breadth
+Scope: facets for the remaining 9 subsystems (LSP, VIL,
+speculation, subagent, environment, memory, policy, rate-limit,
+shell). Palette entries emitted per facet from the registry
+(piggy-backs on U0).
 
-### U9 — First-time onboarding
-- `vac doctor` suggests: set policy, install LSP servers, enable
-  candle feature.
-- Inline "apply" keystroke per suggestion. 1 day.
+### U8 — Onboarding polish
+Scope: `vac doctor` checks + inline "apply" suggestions. `StartupSnapshot`
+already carries most inputs. Kept last because it rides on the
+unified grammar being stable.
 
-**Total: ~12–14 working days.** Spread across one person that's
-2–3 weeks; two people in parallel from U3 onwards, ~1.5 weeks.
+## Non-goals (tightened)
+
+- **No third event plane.** `InputEvent` + `AppStateRootHandle` are
+  the spines; anything new is a projection, not storage.
+- **No new modal class for non-decision alerts.** `OverlayManager::MAX_STACK_DEPTH = 2`
+  is hard. Modal slots stay reserved for approvals / ask-user /
+  reject-reason.
+- **No new action registry parallel to `ACTION_SPECS`.** Extensions
+  layer on top via a dynamic discovery path.
+- **No keybinding overhaul.** Existing binds stay; U0 resolves the
+  one documented clash (`Ctrl+P`), nothing else moves.
+- **No theme / colour overhaul.** We use the existing palette
+  consistently — that's the unification, not new chrome.
+
+## Risks (reframed)
+
+| Risk | Severity | Mitigation |
+|---|---|---|
+| Dual/tri source truth (action registry) | **Highest** today | U0 first; contract tests in U6 |
+| Overlay pressure (MAX_STACK_DEPTH=2) | Medium | Non-goal explicitly forbids new modals for alerts |
+| Projection lag (if a future contributor tries to cache `SystemPulse`) | Medium | Keep it borrow-only; contract test forbids `Clone`/`Arc` on `SystemPulse` |
+| Registry regen drift | Low | Generator runs in CI + diff check against committed `action_matrix.md` |
+
+## First step
+
+**U0 + `SystemPulse` v0 wired for approvals / runtime / MCP.**
+
+Reasons those three:
+
+- Approvals has the most UX-sensitive failure mode (wrong decision
+  surfaced badly = lost tool call).
+- Runtime backoff is the place operators most often ask "what's
+  happening?"
+- MCP state is already exposed via multiple surfaces today — it's
+  the cleanest demonstration that unification doesn't require
+  inventing anything.
+
+Not W9 policy / rate-limit — those primitives aren't wired into
+the submit path yet; we'd be projecting state that doesn't exist
+end-to-end.
 
 ## Success metric
 
-A new operator running `vac interactive` for the first time can,
-in under 10 minutes and without reading docs:
+A new operator running `vac interactive` sees, within 10 minutes
+and without reading docs:
 
-1. See every live subsystem state from one glance (statusline).
-2. Reach every feature from one key (`Ctrl-P`).
-3. Read why any auto-action fired (timeline in `Ctrl-P s`).
-4. Trust that every overlay behaves the same way (`Esc`, `?`, `/`).
+1. Every live subsystem state from the statusline.
+2. Operator panel + Activity timeline using the **same** glyph +
+   wording + severity for each subsystem.
+3. Every feature reachable through `Ctrl+P` (single registry).
+4. Enter on any statusline token lands in the right existing tab
+   or overlay.
+5. Every overlay behaves the same way (`Esc` dismiss, `?` help,
+   `/` filter).
 
-None of this needs new primitives — it's plumbing + rendering on
-top of what's already there.
-
-## Non-goals
-
-- **No new LLM features.** This is purely the cockpit.
-- **No keybinding rework.** Existing binds stay; consistency pass
-  only clarifies behaviour inside overlays.
-- **No theme overhaul.** Current palette is fine; we use it
-  consistently instead.
-- **No backward-incompatible changes.** Every existing overlay +
-  command keeps working.
-
-## Risk
-
-The bus-and-pulse approach centralises UX so a regression in one
-place breaks the whole cockpit. Mitigation: every renderer is
-total — it never panics on missing events, always degrades to a
-safe "idle" token. The ring buffer means bus publish is
-wait-free for producers. Snapshot tests on statusline + overlay
-catch shape regressions.
-
----
-
-**If you approve this shape, the natural first step is U1 +
-U2.POLICY (wire policy deny as the first real producer). That
-proves the backbone end-to-end with one subsystem, then the other
-seven subsystems follow mechanically.**
+And an engineer touching VAC a year from now finds one registry,
+one projection, one router — not three.
