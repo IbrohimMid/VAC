@@ -23,8 +23,30 @@ pub fn init(
 
     let fmt_layer = fmt::layer().with_writer(std::io::stderr);
 
+    // Dogfood diagnostic: when `VAC_TUI_LOG=<path>` is set, also
+    // tee tracing output to that file. Stderr is awkward to tail
+    // during a live TUI session because the alternate-screen mode
+    // hides it; a file-based sink lets operators `tail -f
+    // /tmp/vac.log` in another pane without wrestling with
+    // redirects. Default off — only writes when env set.
+    let file_layer = std::env::var("VAC_TUI_LOG")
+        .ok()
+        .and_then(|path| {
+            std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&path)
+                .ok()
+                .map(|f| {
+                    fmt::layer()
+                        .with_writer(std::sync::Mutex::new(f))
+                        .with_ansi(false)
+                })
+        });
+
     // Choose format
     let registry = tracing_subscriber::registry().with(env_filter);
+    let registry = registry.with(file_layer);
 
     // Set up crash hook. Under `panic = "abort"` (release profile),
     // TerminalGuard::drop() will NOT run. Restore terminal state here
