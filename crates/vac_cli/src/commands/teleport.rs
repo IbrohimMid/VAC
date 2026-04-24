@@ -120,36 +120,53 @@ async fn input_handler(
     Ok(Json(serde_json::json!({ "accepted": true })))
 }
 
-/// Derive a deterministic per-project key set from
-/// `~/.vac/teleport.key` (created on first use with 32 random
-/// bytes). Keeps the signing secret on the host only.
+/// Load or create the teleport HMAC secret under
+/// `<project>/.vac/teleport.key`. 32 bytes drawn from the OS CSPRNG
+/// on first use; unix-0600 enforced at create time and re-checked
+/// on read (refusing world-readable secrets OpenSSH-style).
 fn load_or_create_keyset(project_root: &std::path::Path) -> anyhow::Result<(JwtKeySet, String)> {
-    let key_path = project_root.join(".vac").join("teleport.key");
-    if let Some(parent) = key_path.parent() {
-        std::fs::create_dir_all(parent)?;
+    let vac_dir = project_root.join(".vac");
+    std::fs::create_dir_all(&vac_dir)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = std::fs::metadata(&vac_dir)?.permissions();
+        if perms.mode() & 0o077 != 0 {
+            perms.set_mode(0o700);
+            let _ = std::fs::set_permissions(&vac_dir, perms);
+        }
     }
+    let key_path = vac_dir.join("teleport.key");
     let secret = if key_path.exists() {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&key_path)?.permissions().mode();
+            if mode & 0o077 != 0 {
+                anyhow::bail!(
+                    "refusing to read {} — mode {:o} is too permissive (want 0600); \
+                     chmod it or delete to regenerate",
+                    key_path.display(),
+                    mode & 0o777,
+                );
+            }
+        }
         std::fs::read(&key_path)?
     } else {
+        use rand::TryRngCore;
         use std::io::Write;
         let mut bytes = [0u8; 32];
-        let seed = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos() as u64)
-            .unwrap_or(0);
-        for (i, b) in bytes.iter_mut().enumerate() {
-            *b = ((seed.wrapping_mul(6364136223846793005u64).wrapping_add(i as u64)) & 0xff) as u8;
+        rand::rngs::OsRng
+            .try_fill_bytes(&mut bytes)
+            .map_err(|e| anyhow::anyhow!("OsRng: {e}"))?;
+        let mut opts = std::fs::OpenOptions::new();
+        opts.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            opts.mode(0o600);
         }
-        // Defense: mix in uuid v4 so two sessions starting in the
-        // same nanosecond still diverge.
-        let u = uuid::Uuid::new_v4();
-        for (i, b) in u.as_bytes().iter().enumerate() {
-            bytes[i] ^= *b;
-        }
-        let mut f = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&key_path)?;
+        let mut f = opts.open(&key_path)?;
         f.write_all(&bytes)?;
         bytes.to_vec()
     };
@@ -191,6 +208,9 @@ pub async fn teleport_serve(
     let sse_url = format!("http://{addr}/events");
     let input_url = format!("http://{addr}/input");
 
+    // Connection metadata to stdout (pipe-safe). Token + attach
+    // command go to stderr so `vac teleport --serve | tee log.txt`
+    // doesn't accidentally persist the bearer secret to disk.
     println!("── vac teleport (serve) ──────────────────────");
     println!("session_id    {session_id}");
     println!("label         {label}");
@@ -199,13 +219,14 @@ pub async fn teleport_serve(
     println!("input_url     {input_url}");
     println!("default_trust {}", cfg.default_trust.label());
     println!("ttl_seconds   {}", DEFAULT_TELEPORT_TTL.as_secs());
-    println!();
-    println!("Bearer token (15-min TTL — give this to the attach side):");
-    println!("{token}");
-    println!();
-    println!("Attach with:");
-    println!("  vac teleport --attach {token} --url http://{addr}");
-    println!();
+    eprintln!();
+    eprintln!("!! SECRET — do not redirect / log / paste in chat !!");
+    eprintln!("Bearer token ({}s TTL):", DEFAULT_TELEPORT_TTL.as_secs());
+    eprintln!("{token}");
+    eprintln!();
+    eprintln!("Attach with:");
+    eprintln!("  vac teleport --attach {token} --url http://{addr}");
+    eprintln!();
 
     // MVP event source: emit a startup frame so attach clients see
     // the connection immediately. Session integration lands later.
@@ -246,9 +267,9 @@ pub async fn teleport_attach(token: String, url: String) -> anyhow::Result<()> {
         format!("{}/input", url.trim_end_matches('/'))
     };
 
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(0))
-        .build()?;
+    // Long-lived client (no request timeout for SSE; per-request
+    // timeouts set on posts below).
+    let client = reqwest::Client::builder().build()?;
 
     println!("── vac teleport (attach) ─────────────────────");
     println!("sse_url   {sse_url}");
@@ -256,11 +277,11 @@ pub async fn teleport_attach(token: String, url: String) -> anyhow::Result<()> {
     println!("(stdin lines posted as JSON to /input; ctrl-C to exit)");
     println!();
 
-    // Spawn stdin pump.
+    // Stdin pump — tracked so the SSE loop can abort it on exit.
     let stdin_client = client.clone();
     let stdin_url = input_url.clone();
     let stdin_token = token.clone();
-    tokio::spawn(async move {
+    let stdin_handle = tokio::spawn(async move {
         let stdin = tokio::io::stdin();
         let mut lines = tokio::io::AsyncBufReadExt::lines(tokio::io::BufReader::new(stdin));
         while let Ok(Some(line)) = lines.next_line().await {
@@ -273,6 +294,7 @@ pub async fn teleport_attach(token: String, url: String) -> anyhow::Result<()> {
             let resp = stdin_client
                 .post(&stdin_url)
                 .bearer_auth(&stdin_token)
+                .timeout(Duration::from_secs(30))
                 .json(&payload)
                 .send()
                 .await;
@@ -283,6 +305,17 @@ pub async fn teleport_attach(token: String, url: String) -> anyhow::Result<()> {
             }
         }
     });
+    // Guard: abort the stdin pump when this function returns (SSE
+    // stream closed / error path / ctrl-C). Without this the
+    // spawned task lingers past the CLI exit and would silently
+    // post to a dead server on the next stdin line.
+    struct AbortOnDrop(tokio::task::JoinHandle<()>);
+    impl Drop for AbortOnDrop {
+        fn drop(&mut self) {
+            self.0.abort();
+        }
+    }
+    let _stdin_guard = AbortOnDrop(stdin_handle);
 
     // SSE consumer: parse `data:` lines out of the chunked body.
     let resp = client
@@ -301,12 +334,20 @@ pub async fn teleport_attach(token: String, url: String) -> anyhow::Result<()> {
         buf.push_str(&String::from_utf8_lossy(&chunk));
         while let Some(idx) = buf.find("\n\n") {
             let frame: String = buf.drain(..idx + 2).collect();
+            // Collect multi-line `data:` per SSE spec §9.2.6:
+            // multiple `data:` lines concatenate with '\n'.
+            let mut data_lines: Vec<&str> = Vec::new();
             for raw in frame.lines() {
-                if let Some(data) = raw.strip_prefix("data: ") {
-                    println!("{}", data);
-                } else if raw.starts_with(':') {
-                    // SSE comment / heartbeat — silent.
+                let payload = raw
+                    .strip_prefix("data: ")
+                    .or_else(|| raw.strip_prefix("data:"));
+                if let Some(p) = payload {
+                    data_lines.push(p);
                 }
+                // lines starting with ':' are SSE comments / heartbeats — silent.
+            }
+            if !data_lines.is_empty() {
+                println!("{}", data_lines.join("\n"));
             }
         }
     }

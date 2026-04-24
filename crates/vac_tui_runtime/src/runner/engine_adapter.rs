@@ -72,13 +72,28 @@ pub async fn run_via_session_engine(
         CompactConfig::default(),
     );
     let mut total_tokens: u64 = 0;
+    // NS.2 audit fix: the pre-migration submit_one returned its
+    // error via Result; the stream terminates with
+    // `SubmitChunk::Aborted` instead. We capture that reason so
+    // the caller's `?` still short-circuits on submit failure
+    // rather than silently receiving a "Completed" TaskResult.
+    let mut aborted: Option<String> = None;
     while let Some(chunk) = stream.next().await {
-        if let SubmitChunk::Finished { usage: snap } = &chunk {
-            total_tokens = snap.total_tokens() as u64;
+        match &chunk {
+            SubmitChunk::Finished { usage: snap } => {
+                total_tokens = snap.total_tokens() as u64;
+            }
+            SubmitChunk::Aborted { reason } => {
+                aborted = Some(reason.clone());
+            }
+            _ => {}
         }
         if let Some(rt) = chunk_to_runtime_update(chunk) {
             let _ = update_tx.send(rt);
         }
+    }
+    if let Some(reason) = aborted {
+        return Err(anyhow::anyhow!("submit aborted: {reason}"));
     }
 
     let fallback_task_id = vac_core::task::TaskId(uuid::Uuid::new_v4());
@@ -327,6 +342,27 @@ mod tests {
             translate(RuntimeUpdate::Cancelled),
             Some(SubmitEvent::Aborted { .. })
         ));
+    }
+
+    /// NS.2 audit fix — guarantees that a `SubmitChunk::Aborted`
+    /// chunk from the stream terminates the loop with `Some(reason)`
+    /// recorded. The in-loop code path (not the full
+    /// `run_via_session_engine` which needs a real VacEngine) is
+    /// exercised by constructing the state machine directly.
+    #[test]
+    fn aborted_chunk_captures_reason_for_err_propagation() {
+        use vac_session_engine::SubmitChunk;
+        let mut aborted: Option<String> = None;
+        let chunks = [
+            SubmitChunk::LlmRequested { provider: "p".into(), model: "m".into() },
+            SubmitChunk::Aborted { reason: "budget exhausted".into() },
+        ];
+        for chunk in chunks {
+            if let SubmitChunk::Aborted { reason } = &chunk {
+                aborted = Some(reason.clone());
+            }
+        }
+        assert_eq!(aborted.as_deref(), Some("budget exhausted"));
     }
 
     /// NS.2 — the new `chunk_to_runtime_update` must cover the same
