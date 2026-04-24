@@ -225,12 +225,26 @@ async fn run_via_session_engine(
     budget_tokens: Option<u64>,
 ) -> anyhow::Result<vac_core::TaskResult> {
     let engine_arc = Arc::new(Mutex::new(engine));
+
+    // Audit P0.3 — auto-wire teleport bridge when
+    // `VAC_TELEPORT_BIND` env is set. A single env variable turns
+    // `vac run` into a live remote-attachable session; clients
+    // connect via `vac teleport --attach <token>` and see the
+    // same SubmitChunks the local terminal is streaming. Product
+    // closure for the teleport remote story — no separate
+    // `vac teleport --serve` process needed.
+    let teleport_broadcast = if std::env::var("VAC_TELEPORT_BIND").is_ok() {
+        Some(super::teleport::start_live_teleport_bridge(&project_root).await?)
+    } else {
+        None
+    };
+
     vac_tui_runtime::runner::engine_adapter::run_via_session_engine_with_broadcast(
         project_root,
         engine_arc,
         task_description,
         update_tx,
-        None,
+        teleport_broadcast,
         budget_tokens,
     )
     .await

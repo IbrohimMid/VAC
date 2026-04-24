@@ -370,8 +370,10 @@ pub fn validate_hook_store(store: &HookStore) -> EngineResult<()> {
 
 /// Execute a single hook under the given sandbox. For `command`
 /// kind this spawns the subprocess with rlimits + env allowlist +
-/// wall-clock cap; other kinds trace + return Allow until the real
-/// adapters land.
+/// wall-clock cap; non-command kinds (`prompt`/`agent`/`http`)
+/// return `Deny` with a clear "not yet implemented" reason
+/// because runtime dispatch for those is deferred. Operators
+/// should register only `command` hooks until those adapters ship.
 pub async fn exec_hook_sandboxed(
     entry: &HookEntry,
     sandbox: &HookSandbox,
@@ -455,30 +457,42 @@ pub async fn exec_hook_sandboxed(
                 })
             }
         }
-        HookCommand::Prompt { prompt }
-        | HookCommand::Agent { prompt, .. } => {
-            tracing::warn!(
-                target: "vac_tui_runtime::hooks",
-                hook = %entry.id,
-                kind = if matches!(entry.command, HookCommand::Prompt { .. }) {
-                    "prompt"
-                } else {
-                    "agent"
-                },
-                prompt = %prompt,
-                "hook type not yet dispatched — returning Allow",
-            );
-            Ok(HookDecision::Allow)
-        }
-        HookCommand::Http { url } => {
-            tracing::warn!(
-                target: "vac_tui_runtime::hooks",
-                hook = %entry.id,
-                url = %url,
-                "hook http dispatch deferred — returning Allow",
-            );
-            Ok(HookDecision::Allow)
-        }
+        // Audit P0.1 — surface-truth cut. Pre-fix these three
+        // kinds silently returned `Allow` with a warning; that
+        // made the `hooks.json` schema claim 4-kind support while
+        // only `command` actually ran. For brutal parity we now
+        // **deny** with an explicit "not yet implemented" reason.
+        // A hook configured for one of these kinds is thus a hard
+        // error until real dispatch lands — operators see the gap
+        // instead of getting a silent pass. Schema validation at
+        // load time rejects these kinds up-front (see
+        // `validate_hook_store` below) so the runtime branch is
+        // defence-in-depth for hooks that somehow bypass the
+        // loader.
+        HookCommand::Prompt { .. } => Ok(HookDecision::Deny {
+            reason: format!(
+                "hook '{}' has kind=prompt which is not yet implemented \
+                 (runtime dispatch deferred); remove the entry or switch \
+                 to kind=command",
+                entry.id,
+            ),
+        }),
+        HookCommand::Agent { .. } => Ok(HookDecision::Deny {
+            reason: format!(
+                "hook '{}' has kind=agent which is not yet implemented \
+                 (runtime dispatch deferred); remove the entry or switch \
+                 to kind=command",
+                entry.id,
+            ),
+        }),
+        HookCommand::Http { .. } => Ok(HookDecision::Deny {
+            reason: format!(
+                "hook '{}' has kind=http which is not yet implemented \
+                 (runtime dispatch deferred); remove the entry or switch \
+                 to kind=command",
+                entry.id,
+            ),
+        }),
     }
 }
 
@@ -690,6 +704,68 @@ mod tests {
         };
         let err = validate_hook_store(&store).unwrap_err();
         assert!(format!("{err}").contains("matcher regex"), "{err}");
+    }
+
+    /// Audit P0.1 — non-command hook kinds must surface a clear
+    /// Deny with "not yet implemented" rather than silently Allow.
+    #[tokio::test]
+    async fn exec_prompt_hook_is_denied_with_not_implemented() {
+        let e = HookEntry {
+            id: "p1".into(),
+            event: HookEvent::UserPromptSubmit,
+            matcher: String::new(),
+            command: HookCommand::Prompt { prompt: "system".into() },
+            description: String::new(),
+        };
+        let d = exec_hook_sandboxed(&e, &HookSandbox::permissive()).await.unwrap();
+        match d {
+            HookDecision::Deny { reason } => {
+                assert!(reason.contains("not yet implemented"), "{reason}");
+                assert!(reason.contains("kind=prompt"), "{reason}");
+            }
+            other => panic!("expected Deny, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn exec_agent_hook_is_denied_with_not_implemented() {
+        let e = HookEntry {
+            id: "a1".into(),
+            event: HookEvent::SubagentStop,
+            matcher: String::new(),
+            command: HookCommand::Agent {
+                kind: "explore".into(),
+                prompt: "p".into(),
+            },
+            description: String::new(),
+        };
+        let d = exec_hook_sandboxed(&e, &HookSandbox::permissive()).await.unwrap();
+        match d {
+            HookDecision::Deny { reason } => {
+                assert!(reason.contains("kind=agent"), "{reason}");
+            }
+            other => panic!("expected Deny, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn exec_http_hook_is_denied_with_not_implemented() {
+        let e = HookEntry {
+            id: "h1".into(),
+            event: HookEvent::Notification,
+            matcher: String::new(),
+            command: HookCommand::Http {
+                url: "https://example.com/hook".into(),
+            },
+            description: String::new(),
+        };
+        let d = exec_hook_sandboxed(&e, &HookSandbox::permissive()).await.unwrap();
+        match d {
+            HookDecision::Deny { reason } => {
+                assert!(reason.contains("kind=http"), "{reason}");
+            }
+            other => panic!("expected Deny, got {other:?}"),
+        }
     }
 
     #[test]

@@ -191,6 +191,46 @@ pub async fn teleport_serve(
     .await
 }
 
+/// Audit P0.3 — spawn a teleport bridge bound to a caller-supplied
+/// `SessionBroadcast` in the background so a live `vac run` /
+/// TUI session can route its SubmitChunks out via SSE. Reads the
+/// same env knobs as CLI flags (`VAC_TELEPORT_BIND`,
+/// `VAC_TELEPORT_LABEL`, `VAC_TELEPORT_INSECURE`) so operators
+/// opt in with a single variable. Returns the broadcaster the
+/// caller hands to `run_via_session_engine_with_broadcast`.
+pub async fn start_live_teleport_bridge(
+    project_root: &std::path::Path,
+) -> anyhow::Result<Arc<SessionBroadcast>> {
+    let bind = std::env::var("VAC_TELEPORT_BIND")
+        .unwrap_or_else(|_| "127.0.0.1:9042".into());
+    let label = std::env::var("VAC_TELEPORT_LABEL")
+        .unwrap_or_else(|_| "live".into());
+    let insecure = std::env::var("VAC_TELEPORT_INSECURE")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+    let broadcast = SessionBroadcast::new();
+    let broadcast_for_srv = broadcast.clone();
+    let project_root_buf = project_root.to_path_buf();
+    tokio::spawn(async move {
+        if let Err(e) = teleport_serve_with_broadcast(
+            project_root_buf,
+            bind,
+            label,
+            insecure,
+            broadcast_for_srv,
+        )
+        .await
+        {
+            tracing::error!(
+                target: "vac_cli::teleport_bridge",
+                error = %e,
+                "teleport bridge server exited",
+            );
+        }
+    });
+    Ok(broadcast)
+}
+
 /// B5 — host with a caller-provided `SessionBroadcast`. The caller
 /// (typically the vac_cli session wiring that owns the active
 /// submit) publishes `OutboundEvent`s via its own `Arc<SessionBroadcast>`;

@@ -207,14 +207,19 @@ fn build_command(input: &CreateInput) -> Result<HookCommand, ToolError> {
             }
             Ok(HookCommand::Command { argv: input.argv.clone() })
         }
-        "prompt" => Ok(HookCommand::Prompt { prompt: input.prompt.clone() }),
-        "agent" => Ok(HookCommand::Agent {
-            kind: input.agent_kind.clone(),
-            prompt: input.prompt.clone(),
-        }),
-        "http" => Ok(HookCommand::Http { url: input.url.clone() }),
+        // Audit P0.1 — honest surface: `prompt`, `agent`, `http`
+        // are reserved schema kinds but runtime dispatch is
+        // deferred. The tool refuses to register them rather than
+        // silently write a hook that denies every trigger.
+        "prompt" | "agent" | "http" => Err(ToolError::ExecutionFailed(format!(
+            "hook kind '{}' is reserved but runtime dispatch is not yet \
+             implemented. Only kind=command is supported today. Register \
+             a command hook that wraps the desired behaviour (e.g. a \
+             script that calls `curl` for http, or `vac run` for agent).",
+            input.kind,
+        ))),
         other => Err(ToolError::ExecutionFailed(format!(
-            "unknown hook kind '{other}'; expected command/prompt/agent/http"
+            "unknown hook kind '{other}'; expected command"
         ))),
     }
 }
@@ -244,7 +249,7 @@ impl VilTool for HookCreateTool {
     }
 
     fn description(&self) -> &str {
-        "Register a hook in .vac/hooks.json. Shell hooks (kind=command) execute under HookSandbox: env allowlist, 512 MB / 10s CPU / 30s wall rlimits. Schema-validated at load."
+        "Register a shell hook in .vac/hooks.json. Shell hooks (kind=command) execute under HookSandbox: env allowlist, memory/CPU rlimits, 5-min wall-clock. Only kind=command is currently implemented; prompt/agent/http are reserved and rejected."
     }
 
     fn input_schema(&self) -> serde_json::Value {
@@ -257,14 +262,11 @@ impl VilTool for HookCreateTool {
                     "enum": ["PreToolUse", "PostToolUse", "UserPromptSubmit", "Stop", "SubagentStop", "Notification", "SessionStart", "SessionEnd", "PreCompact"]
                 },
                 "matcher": { "type": "string", "description": "Regex against tool name (empty = match all)." },
-                "kind": { "type": "string", "enum": ["command", "prompt", "agent", "http"] },
+                "kind": { "type": "string", "enum": ["command"], "description": "Only 'command' is implemented today." },
                 "argv": { "type": "array", "items": { "type": "string" }, "description": "Required when kind=command." },
-                "prompt": { "type": "string", "description": "Required when kind=prompt or agent." },
-                "agent_kind": { "type": "string", "description": "Required when kind=agent." },
-                "url": { "type": "string", "description": "Required when kind=http." },
                 "description": { "type": "string" }
             },
-            "required": ["id", "event", "kind"]
+            "required": ["id", "event", "kind", "argv"]
         })
     }
 

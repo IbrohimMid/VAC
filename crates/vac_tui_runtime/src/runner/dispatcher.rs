@@ -90,17 +90,40 @@ pub fn live_compact_config(
     }
 }
 
-/// B3 — construct the live `CompositeGate` stack: `HookGate`
-/// backed by `HookSandbox::operator_default()` (env allowlist +
-/// rlimits + 5-min wall-clock, headroom for build/lint hooks).
+/// B3 + audit P0.2 — construct the **full** live `CompositeGate`
+/// stack. Composes (in deny-wins order):
 ///
-/// Loads `.vac/hooks.json` from `project_root`; missing file is
-/// fail-soft (empty store). Schema validation surfaces malformed
-/// entries as `Err` rather than silent disable.
+/// 1. `PolicyGate` — vac_core rate/token budget if `policy_tracker`
+///    supplied. Skipped when None so headless callers that opt out
+///    of budget gating don't pay for it.
+/// 2. `PlanModeGate` — enforces the read-only tool allowlist when
+///    the caller flips `plan_active`. Skipped when the Arc is
+///    None; default TUI flow passes a shared `AtomicBool`.
+/// 3. `HookGate` — backed by `HookSandbox::operator_default()`
+///    (env allowlist + rlimits + 5-min wall-clock).
+///
+/// Pre-P0.2 this builder composed *only* `HookGate`. Claims of
+/// "live drivers pass full gate+dispatcher" now match code:
+/// policy/plan/hooks are all wired when supplied.
+///
+/// `.vac/hooks.json` missing is fail-soft (empty store). Schema
+/// validation surfaces malformed entries as `Err` rather than
+/// silent disable.
 pub async fn build_live_gate(
     project_root: &std::path::Path,
 ) -> anyhow::Result<Arc<vac_session_engine::CompositeGate>> {
-    use vac_session_engine::CompositeGate;
+    build_live_gate_with(project_root, None, None).await
+}
+
+/// Full-stack variant where the caller supplies optional policy
+/// tracker + plan-mode flag. `build_live_gate` above delegates
+/// here with None/None for the common case.
+pub async fn build_live_gate_with(
+    project_root: &std::path::Path,
+    policy_tracker: Option<Arc<vac_core::policy_limits::PolicyTracker>>,
+    plan_active: Option<Arc<std::sync::atomic::AtomicBool>>,
+) -> anyhow::Result<Arc<vac_session_engine::CompositeGate>> {
+    use vac_session_engine::{CompositeGate, PlanModeGate, PolicyGate};
     use vac_session_primitives::{
         HookSandbox, HookStore, hooks::validate_hook_store,
     };
@@ -114,7 +137,19 @@ pub async fn build_live_gate(
         store,
         HookSandbox::operator_default(),
     ));
-    Ok(Arc::new(CompositeGate::new().with_gate(hook_gate)))
+
+    let mut composite = CompositeGate::new();
+    // Order matters — deny-wins + first-hit short-circuits. Check
+    // policy caps before hook work because a blown budget should
+    // deny immediately without spawning the hook subprocess.
+    if let Some(tracker) = policy_tracker {
+        composite.push(Arc::new(PolicyGate::new(tracker)));
+    }
+    if let Some(active) = plan_active {
+        composite.push(Arc::new(PlanModeGate::new(active)));
+    }
+    composite.push(hook_gate);
+    Ok(Arc::new(composite))
 }
 
 #[cfg(test)]
@@ -256,6 +291,34 @@ mod tests {
             msg.contains(".vac/hooks.json") || msg.contains("hooks.json"),
             "error should reference hooks.json; got: {msg}",
         );
+    }
+
+    /// Audit P0.2 — builder with policy tracker + plan flag
+    /// composes a gate stack strictly longer than the
+    /// hooks-only default. Length-based check avoids brittling on
+    /// internal `CompositeGate` field layout.
+    #[tokio::test]
+    async fn build_live_gate_with_composes_full_stack() {
+        use std::sync::atomic::AtomicBool;
+        use vac_core::policy_limits::{PolicyLimits, PolicyTracker};
+        let tmp = tempfile::tempdir().unwrap();
+        let tracker = Arc::new(PolicyTracker::new(PolicyLimits::default()));
+        let plan = Arc::new(AtomicBool::new(false));
+        let full = build_live_gate_with(
+            tmp.path(),
+            Some(tracker),
+            Some(plan),
+        )
+        .await
+        .unwrap();
+        let hooks_only = build_live_gate(tmp.path()).await.unwrap();
+        assert!(
+            full.len() > hooks_only.len(),
+            "full stack ({}) must have more gates than hooks-only ({})",
+            full.len(),
+            hooks_only.len(),
+        );
+        assert_eq!(full.len(), 3, "policy + plan + hooks");
     }
 
     /// Audit M2: hook entries that fail schema validation (e.g.
