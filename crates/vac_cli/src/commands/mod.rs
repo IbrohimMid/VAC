@@ -14,6 +14,7 @@ pub mod mcp;
 pub mod migrate;
 pub mod diagnostics;
 pub mod integrations;
+pub mod onboard;
 pub mod plan;
 pub mod plan_memory;
 pub mod plan_remote;

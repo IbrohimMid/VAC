@@ -269,6 +269,11 @@ enum Commands {
     /// Delight.
     #[command(next_help_heading = "Diagnostics", name = "good-claude")]
     GoodClaude,
+    /// Post-install first-steps checklist (U8 onboarding polish).
+    /// Prints what's configured vs missing under `.vac/` and suggests
+    /// concrete next commands for each gap.
+    #[command(next_help_heading = "Diagnostics")]
+    Onboard,
 
     /// Tail the most recent session transcript.
     #[command(next_help_heading = "Plan & Memory")]
@@ -721,6 +726,9 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::GoodClaude => {
             commands::diagnostics::good_claude(project_root).await?
+        }
+        Commands::Onboard => {
+            commands::onboard::execute(project_root).await?
         }
         Commands::Thinkback { limit } => {
             commands::plan_memory::thinkback(project_root, limit).await?
