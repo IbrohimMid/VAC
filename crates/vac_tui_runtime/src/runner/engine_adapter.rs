@@ -124,9 +124,29 @@ pub async fn run_via_session_engine_with_broadcast(
         Arc::new(TrivialCompactBoundary::default());
     let usage = Arc::new(UsageTracker::new());
 
-    // B3: compose HookGate into the live CompositeGate. Load-time
-    // schema errors abort the submit with a crisp message.
-    let gate = super::dispatcher::build_live_gate(&project_root).await?;
+    // B3 + audit P0.2 closure — compose the **full** live gate
+    // stack (PolicyGate + PlanModeGate + HookGate) now that the
+    // live driver actually owns the policy tracker. Previously
+    // this called `build_live_gate` (hooks-only wrapper); the
+    // reviewer flagged that the full-stack builder existed but
+    // wasn't used by live paths. Wiring it here makes the policy
+    // tracker mandatory on the default live path: `.vac/policy.toml`
+    // loads, fallback is `PolicyLimits::unlimited()` for fresh
+    // projects. Plan-mode flag is None here — TUI maintains its
+    // own AtomicBool and can opt in via the `_with` variant
+    // directly when plan-mode UX lands.
+    let policy_limits = vac_core::policy_limits::PolicyLimits::load(&project_root)
+        .await
+        .map_err(|e| anyhow::anyhow!(".vac/policy.toml: {e}"))?;
+    let policy_tracker = std::sync::Arc::new(
+        vac_core::policy_limits::PolicyTracker::new(policy_limits),
+    );
+    let gate = super::dispatcher::build_live_gate_with(
+        &project_root,
+        Some(policy_tracker),
+        None,
+    )
+    .await?;
 
     // B4 + H1 audit fix: build the agent dispatcher with a
     // `compact_cfg` that carries the parent's dispatcher + gate so

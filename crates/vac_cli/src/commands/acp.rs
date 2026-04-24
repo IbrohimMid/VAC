@@ -153,9 +153,22 @@ pub async fn execute(project_root: PathBuf, _port: u16) -> anyhow::Result<()> {
         vac_tools::registry::ToolContext::new(project_root.clone())
             .with_session_id(session_id),
     );
-    let acp_gate =
-        vac_tui_runtime::runner::dispatcher::build_live_gate(&project_root)
-            .await?;
+    // Audit P0.2 closure — ACP host also runs the full live gate
+    // stack (PolicyGate + HookGate), matching the TUI / `vac run`
+    // path. Policy loaded from `.vac/policy.toml` with unlimited
+    // fallback for fresh projects.
+    let acp_policy = vac_core::policy_limits::PolicyLimits::load(&project_root)
+        .await
+        .map_err(|e| anyhow::anyhow!(".vac/policy.toml: {e}"))?;
+    let acp_policy_tracker = Arc::new(
+        vac_core::policy_limits::PolicyTracker::new(acp_policy),
+    );
+    let acp_gate = vac_tui_runtime::runner::dispatcher::build_live_gate_with(
+        &project_root,
+        Some(acp_policy_tracker),
+        None,
+    )
+    .await?;
     let base_compact_cfg = vac_tui_runtime::runner::dispatcher::live_compact_config(
         acp_registry.clone(),
         acp_ctx.clone(),

@@ -321,6 +321,35 @@ mod tests {
         assert_eq!(full.len(), 3, "policy + plan + hooks");
     }
 
+    /// Audit P0.2 reviewer — the shared adapter's shipped path
+    /// (what `vac run` + TUI actually execute) must compose the
+    /// full gate stack, not fall through to the hooks-only
+    /// default wrapper. Since the adapter isn't directly callable
+    /// without a VacEngine, we assert the rebuild invariant: the
+    /// same PolicyLimits::load() + build_live_gate_with(Some(t), None)
+    /// pattern the adapter uses yields a >1-gate composite, proving
+    /// the live path is not stuck at hooks-only.
+    #[tokio::test]
+    async fn live_shared_path_composes_policy_plus_hooks() {
+        use vac_core::policy_limits::{PolicyLimits, PolicyTracker};
+        let tmp = tempfile::tempdir().unwrap();
+        // Mirror the adapter's exact construction.
+        let limits = PolicyLimits::load(tmp.path()).await.unwrap();
+        let tracker = Arc::new(PolicyTracker::new(limits));
+        let shipped_gate = build_live_gate_with(
+            tmp.path(),
+            Some(tracker),
+            None,
+        )
+        .await
+        .unwrap();
+        assert!(
+            shipped_gate.len() >= 2,
+            "shipped live path must include PolicyGate + HookGate; got {} gates",
+            shipped_gate.len(),
+        );
+    }
+
     /// Audit M2: hook entries that fail schema validation (e.g.
     /// empty id, bad regex matcher) surface a validation error.
     #[tokio::test]
