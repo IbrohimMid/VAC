@@ -215,8 +215,12 @@ mod tests {
         let state = AppState::default();
         let pulse = SystemPulse::from_state(&state);
         let line = pulse.compact_line();
+        // U6 budget bumped from 80 to 100 cols as the pulse grew
+        // to 11 facets (added policy, lsp). Modern terminals default
+        // to ≥ 100; truncation lives in the statusline renderer for
+        // narrower cases.
         assert!(
-            line.chars().count() <= 80,
+            line.chars().count() <= 100,
             "compact_line too wide: {} chars",
             line.chars().count()
         );
@@ -371,7 +375,7 @@ mod tests {
     fn workbench_tab_labels_count_matches_variants() {
         let state = crate::app::AppState::default();
         let labels = crate::workbench::tab_labels(&state);
-        assert_eq!(labels.len(), 9, "expected exactly 9 workbench tab labels");
+        assert_eq!(labels.len(), 10, "expected exactly 10 workbench tab labels");
     }
 
     #[test]
@@ -387,6 +391,7 @@ mod tests {
             WorkbenchTab::Vil,
             WorkbenchTab::Vwfd,
             WorkbenchTab::Signal,
+            WorkbenchTab::Memory,
         ];
         let indices: Vec<usize> = variants
             .iter()
@@ -395,10 +400,10 @@ mod tests {
         let unique: HashSet<usize> = indices.iter().copied().collect();
         assert_eq!(
             unique.len(),
-            9,
+            10,
             "each WorkbenchTab variant should map to a unique index"
         );
-        assert_eq!(*indices.iter().max().unwrap(), 8, "max index should be 8");
+        assert_eq!(*indices.iter().max().unwrap(), 9, "max index should be 9");
     }
 
     // ── ACTION_SPECS keybinding consistency ──────────────────────────────────

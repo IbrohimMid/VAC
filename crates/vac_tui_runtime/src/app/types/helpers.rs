@@ -106,6 +106,7 @@ impl AppState {
                 changeset_ui: ChangesetUiState::default(),
                 review: ReviewState::default(),
                 plan: super::PlanState::default(),
+                memory_archive: super::MemoryArchiveCache::default(),
             },
             vil_domain: super::VilDomainState {
                 vil: VilState::default(),

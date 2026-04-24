@@ -108,6 +108,7 @@ fn handle_char(state: &mut AppState, output_tx: &Sender<OutputEvent>, c: char) {
         },
         WorkbenchTab::Vwfd => {}
         WorkbenchTab::Signal => {}
+        WorkbenchTab::Memory => {}
     }
 }
 
@@ -141,6 +142,7 @@ fn handle_up(state: &mut AppState, output_tx: &Sender<OutputEvent>) {
             state.vil_domain.vwfd_inspector.select_prev();
         }
         WorkbenchTab::Signal => {}
+        WorkbenchTab::Memory => {}
     }
 }
 
@@ -182,6 +184,7 @@ fn handle_down(state: &mut AppState, output_tx: &Sender<OutputEvent>) {
             state.vil_domain.vwfd_inspector.select_next();
         }
         WorkbenchTab::Signal => {}
+        WorkbenchTab::Memory => {}
     }
 }
 

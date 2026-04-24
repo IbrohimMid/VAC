@@ -241,6 +241,36 @@ pub struct WorkspaceState {
     pub changeset_ui: ChangesetUiState,
     pub review: ReviewState,
     pub plan: PlanState,
+    /// E2 — consolidator-archive cache backing `WorkbenchTab::Memory`.
+    /// Refreshed by an idle tick; never read from the render thread.
+    pub memory_archive: MemoryArchiveCache,
+}
+
+/// Cached snapshot of `.vac/memory/archived/`. Idle tick owns the
+/// refresh; the workbench tab is a pure projection. `last_refresh_unix`
+/// lets a future banner say "stale N minutes" without another stat().
+#[derive(Debug, Clone)]
+pub struct MemoryArchiveCache {
+    pub source: std::path::PathBuf,
+    pub entries: Vec<MemoryArchiveEntry>,
+    pub last_refresh_unix: u64,
+}
+
+impl Default for MemoryArchiveCache {
+    fn default() -> Self {
+        Self {
+            source: std::path::PathBuf::from(".vac/memory/archived"),
+            entries: Vec::new(),
+            last_refresh_unix: 0,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct MemoryArchiveEntry {
+    pub name: String,
+    pub timestamp: String,
+    pub size_bytes: u64,
 }
 
 #[derive(Debug, Default)]

@@ -175,6 +175,7 @@ impl ActionContext {
                 // Signal tab reuses the generic Workbench action context
                 // until dedicated bindings are required.
                 WorkbenchTab::Signal => ActionContext::WorkbenchRuntime,
+                WorkbenchTab::Memory => ActionContext::WorkbenchAny,
             },
         }
     }

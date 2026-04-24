@@ -495,7 +495,7 @@ impl<'a> SystemPulse<'a> {
                 "entry count: cached elsewhere (no fs on render path)".into(),
             ],
             nav_target: Some(NavTarget::WorkbenchTab(
-                crate::app::types::WorkbenchTab::Plan,
+                crate::app::types::WorkbenchTab::Memory,
             )),
         }
     }

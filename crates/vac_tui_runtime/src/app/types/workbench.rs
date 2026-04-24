@@ -36,6 +36,8 @@ pub enum WorkbenchTab {
     /// L3 — Signal workbench: list active signal streams + tail distilled
     /// view. Sources `AppState::signal_registry()`.
     Signal,
+    /// E2 — Memory workbench: browse archived consolidator runs.
+    Memory,
 }
 
 impl WorkbenchTab {
@@ -49,7 +51,8 @@ impl WorkbenchTab {
             Self::Plan => Self::Vil,
             Self::Vil => Self::Vwfd,
             Self::Vwfd => Self::Signal,
-            Self::Signal => Self::Approvals,
+            Self::Signal => Self::Memory,
+            Self::Memory => Self::Approvals,
         }
     }
 }
