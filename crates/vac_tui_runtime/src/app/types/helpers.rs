@@ -120,6 +120,7 @@ impl AppState {
                 task_tray: TaskTrayState::default(),
                 queue_metrics: QueueMetrics::default(),
                 activity: Vec::new(),
+                policy: None,
             },
             operator_config: super::OperatorConfigState {
                 operator: OperatorState {

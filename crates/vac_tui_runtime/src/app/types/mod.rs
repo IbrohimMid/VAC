@@ -254,6 +254,11 @@ pub struct ExecutionState {
     pub task_tray: TaskTrayState,
     pub queue_metrics: QueueMetrics,
     pub activity: Vec<ActivityItem>,
+    /// C1 — latest PolicyTracker snapshot (submits used + tokens
+    /// consumed + loaded caps). `None` until a tracker is attached.
+    /// Read by `SystemPulse::policy_facet`; refreshed by the idle
+    /// tick that owns the tracker Arc.
+    pub policy: Option<vac_core::policy_limits::PolicySnapshot>,
 }
 
 #[derive(Debug, Default)]

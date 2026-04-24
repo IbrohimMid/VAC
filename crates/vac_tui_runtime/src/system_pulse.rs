@@ -160,6 +160,7 @@ impl<'a> SystemPulse<'a> {
             self.environment_facet(),
             self.budget_facet(),
             self.memory_facet(),
+            self.policy_facet(),
             self.subagent_facet(),
         ]
     }
@@ -495,6 +496,87 @@ impl<'a> SystemPulse<'a> {
         }
     }
 
+    /// Phase C1 — policy facet. Reads
+    /// `AppState.execution.policy`, the latest PolicyTracker
+    /// snapshot refreshed by an idle tick. Severity is driven by
+    /// the higher of the two utilisation ratios (submits / tokens).
+    /// `None` snapshot → observational Info with "unconfigured".
+    fn policy_facet(&self) -> SystemFacet {
+        let snap = &self.state.execution.policy;
+        let (severity, token, detail_rows) = match snap {
+            None => (
+                FacetSeverity::Info,
+                Cow::Borrowed("policy·"),
+                vec!["tracker: not attached".into()],
+            ),
+            Some(s) => {
+                let submits_ratio = s.policy.max_submits_per_hour.and_then(|cap| {
+                    if cap == 0 {
+                        None
+                    } else {
+                        Some((s.submits_last_hour as f64) / (cap as f64))
+                    }
+                });
+                let tokens_ratio = s.policy.max_tokens_per_session.and_then(|cap| {
+                    if cap == 0 {
+                        None
+                    } else {
+                        Some((s.tokens_consumed as f64) / (cap as f64))
+                    }
+                });
+                let worst = [submits_ratio, tokens_ratio]
+                    .into_iter()
+                    .flatten()
+                    .fold(0.0f64, f64::max);
+                let sev = if submits_ratio.is_none() && tokens_ratio.is_none() {
+                    FacetSeverity::Ok
+                } else if worst >= 0.85 {
+                    FacetSeverity::Critical
+                } else if worst >= 0.50 {
+                    FacetSeverity::Warn
+                } else {
+                    FacetSeverity::Ok
+                };
+                let compact = match (s.policy.max_submits_per_hour, s.policy.max_tokens_per_session) {
+                    (Some(cap), _) => {
+                        format!("policy:{}/{}", s.submits_last_hour, cap)
+                    }
+                    (None, Some(cap)) => {
+                        format!("policy:{}/{}", k_fmt(s.tokens_consumed), k_fmt(cap))
+                    }
+                    (None, None) => "policy✓".to_string(),
+                };
+                let rows = vec![
+                    format!(
+                        "submits/hr: {} / {}",
+                        s.submits_last_hour,
+                        s.policy
+                            .max_submits_per_hour
+                            .map(|c| c.to_string())
+                            .unwrap_or_else(|| "unlimited".into()),
+                    ),
+                    format!(
+                        "tokens:     {} / {}",
+                        s.tokens_consumed,
+                        s.policy
+                            .max_tokens_per_session
+                            .map(|c| c.to_string())
+                            .unwrap_or_else(|| "unlimited".into()),
+                    ),
+                    format!("denied tools: {}", s.policy.denied_tools.len()),
+                ];
+                (sev, Cow::Owned(compact), rows)
+            }
+        };
+        SystemFacet {
+            kind: SystemFacetKind::Policy,
+            severity,
+            compact_token: token,
+            detail_rows,
+            nav_target: None,
+        }
+    }
+
     /// Phase E1 — subagent facet. Reads the in-memory root handle
     /// counters if the TUI has bound one. Today AppState does not
     /// carry an AppStateRootHandle; we defer real wiring to the
@@ -545,7 +627,7 @@ mod tests {
         // Phase A2 + B2 + E1 added three more facets (budget,
         // memory, subagent). Count is 9 now; the grammar stays
         // consistent.
-        assert_eq!(facets.len(), 9);
+        assert_eq!(facets.len(), 10);
         for f in &facets {
             assert!(!f.compact_token.is_empty(), "facet {:?} has empty token", f.kind);
         }
@@ -565,8 +647,9 @@ mod tests {
         assert!(line.contains("budget"));
         assert!(line.contains("memory"));
         assert!(line.contains("sub"));
-        // Nine facets → exactly eight internal spaces.
-        assert_eq!(line.matches(' ').count(), 8);
+        assert!(line.contains("policy"));
+        // Ten facets → exactly nine internal spaces.
+        assert_eq!(line.matches(' ').count(), 9);
     }
 
     #[test]
