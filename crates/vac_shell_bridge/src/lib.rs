@@ -144,6 +144,42 @@ pub trait SurfaceController: Send + Sync {
     fn enter_runtime(&self) -> Result<(), DispatchError>;
 }
 
+// =====================================================================
+// Approval controller — slice 4 seam
+// =====================================================================
+//
+// Mirrors the SurfaceController pattern exactly: bridge owns the
+// trait shape, host crate owns the actual queue + decision logic.
+// The UI widget never reaches into either; it operates on a view
+// projection and emits events that the host applies through this
+// trait.
+//
+// Sync per the running constraint. Approval decision policy
+// (auto-approve, hook gate, rulebook) stays in VAC core; the bridge
+// trait surface is intentionally narrow.
+
+/// Per-action decision the operator can hold while reviewing the
+/// queue. Mirrors the donor `ApprovalStatus` but is owned here so the
+/// UI widget never depends on donor types.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ApprovalDecision {
+    Approve,
+    Reject,
+}
+
+/// VAC-side approval queue controller. The bridge calls into this
+/// trait when the operator interacts with the widget.
+pub trait ApprovalController: Send + Sync {
+    /// Toggle the decision attached to `id` between Approve / Reject.
+    fn toggle(&self, id: &str) -> Result<(), DispatchError>;
+    /// Set every pending action to Reject. Used on the second Esc.
+    fn reject_all(&self) -> Result<(), DispatchError>;
+    /// Commit decisions and clear the queue. The host decides what
+    /// "commit" means (dispatch approved tools, append rejections to
+    /// the transcript, …); the bridge does not.
+    fn submit_all(&self) -> Result<(), DispatchError>;
+}
+
 /// Build a `DispatchHandler` that routes `/runtime` and `/chat`
 /// through a `SurfaceController`. Other slashes return
 /// `DispatchError::UnknownSlash` so the host knows to compose with

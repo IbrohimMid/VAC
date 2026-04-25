@@ -30,6 +30,8 @@ members = [
     "crates/vac_shell_bridge",
     "crates/vac_shell_host_surface",
     "crates/vac_shell_popup",
+    "crates/vac_shell_approval_bar",
+    "crates/vac_shell_host_approval",
 ]
 exclude = [
     # Wave 4 — Stakpak donor checkout. Treated as read-only reference;

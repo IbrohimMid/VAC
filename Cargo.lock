@@ -6423,6 +6423,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "vac_shell_approval_bar"
+version = "0.1.0"
+dependencies = [
+ "ratatui",
+]
+
+[[package]]
 name = "vac_shell_bridge"
 version = "0.1.0"
 dependencies = [
@@ -6439,6 +6446,14 @@ dependencies = [
  "thiserror 1.0.69",
  "tokio",
  "uuid",
+]
+
+[[package]]
+name = "vac_shell_host_approval"
+version = "0.1.0"
+dependencies = [
+ "vac_shell_approval_bar",
+ "vac_shell_bridge",
 ]
 
 [[package]]

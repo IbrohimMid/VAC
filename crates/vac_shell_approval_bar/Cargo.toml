@@ -1,0 +1,9 @@
+[package]
+name = "vac_shell_approval_bar"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Step 2 slice 4 — approval bar widget extracted from Stakpak's approval_bar.rs. Pure render + key handler over a caller-owned view state. Decision logic lives in vac_shell_host_approval."
+
+[dependencies]
+ratatui.workspace = true
