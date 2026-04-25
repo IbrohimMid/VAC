@@ -1,0 +1,10 @@
+[package]
+name = "vac_shell_host_model"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Step 2 slice 8.2 — read-only host-side projection of a VAC model registry into Vec<VacModelView> for the model switcher widget. No config mutation, no provider switching, no secret manager."
+
+[dependencies]
+vac_shell_contracts = { path = "../vac_shell_contracts" }
+vac_shell_model_switcher = { path = "../vac_shell_model_switcher" }
