@@ -18,8 +18,11 @@
 //!   plugged in via the [`ModelSource`] trait so this crate keeps a
 //!   tight dep graph; tests use the bundled [`InMemoryModelSource`].
 
+use std::sync::{Arc, RwLock};
+
+use vac_shell_bridge::{DispatchError, ModelController, ShellAction};
 use vac_shell_contracts::{ProviderId, VacModelView};
-use vac_shell_model_switcher::{ModelSwitcherView, clamp_selection};
+use vac_shell_model_switcher::{ModelSwitcherView, SwitcherEvent, clamp_selection};
 
 /// Provider summary the host source advertises. Mirrors the bits the
 /// UI cares about; richer provider state stays host-internal.
@@ -182,6 +185,352 @@ impl ModelSource for InMemoryModelSource {
 
     fn pinned_provider(&self) -> Option<ProviderId> {
         self.pinned.clone()
+    }
+}
+
+// =====================================================================
+// Slice 9 — host-side mutation seam
+// =====================================================================
+//
+// Mutable VAC-side model state. Validates incoming
+// `ShellAction::SelectModel` against the known providers/models and
+// the credentials advertised by the host source. Recents are kept
+// newest-first with deduplication. **No persistence yet** — this is
+// an in-memory mutation seam; persistent VAC config writes are a
+// follow-up slice.
+
+const RECENTS_CAP: usize = 20;
+
+#[derive(Debug, Default)]
+struct ModelSelectionInner {
+    providers: Vec<ProviderInfo>,
+    models: Vec<HostModel>,
+    active: Option<(ProviderId, String)>,
+    recent: Vec<(ProviderId, String)>,
+    pinned: Option<ProviderId>,
+}
+
+/// Shared, mutable model-selection state. Cheap to clone (`Arc`
+/// inside); thread-safe.
+#[derive(Debug, Clone, Default)]
+pub struct ModelSelectionState {
+    inner: Arc<RwLock<ModelSelectionInner>>,
+}
+
+impl ModelSelectionState {
+    pub fn new(
+        providers: Vec<ProviderInfo>,
+        models: Vec<HostModel>,
+        active: Option<(ProviderId, String)>,
+    ) -> Self {
+        Self {
+            inner: Arc::new(RwLock::new(ModelSelectionInner {
+                providers,
+                models,
+                active,
+                recent: Vec::new(),
+                pinned: None,
+            })),
+        }
+    }
+
+    pub fn with_recent(self, recent: Vec<(ProviderId, String)>) -> Self {
+        {
+            let mut inner = self.inner.write().expect("model state lock poisoned");
+            inner.recent = recent;
+        }
+        self
+    }
+
+    pub fn with_pinned(self, pinned: ProviderId) -> Self {
+        {
+            let mut inner = self.inner.write().expect("model state lock poisoned");
+            inner.pinned = Some(pinned);
+        }
+        self
+    }
+
+    pub fn active_model(&self) -> Option<(ProviderId, String)> {
+        self.inner.read().expect("model state lock poisoned").active.clone()
+    }
+
+    pub fn recent_snapshot(&self) -> Vec<(ProviderId, String)> {
+        self.inner.read().expect("model state lock poisoned").recent.clone()
+    }
+
+    /// Apply a selection. Validates provider is known, model is
+    /// known, and the provider has credentials present. On success,
+    /// updates `active` and pushes onto the recents list (dedup,
+    /// newest-first, capped at `RECENTS_CAP`).
+    pub fn select_model(
+        &self,
+        provider: &ProviderId,
+        id: &str,
+    ) -> Result<(), DispatchError> {
+        let mut inner = self.inner.write().expect("model state lock poisoned");
+
+        let prov = inner
+            .providers
+            .iter()
+            .find(|p| &p.id == provider)
+            .cloned()
+            .ok_or_else(|| {
+                DispatchError::Host(format!("unknown model provider: {}", provider.0))
+            })?;
+
+        if !inner
+            .models
+            .iter()
+            .any(|m| &m.provider == provider && m.id == id)
+        {
+            return Err(DispatchError::Host(format!(
+                "unknown model: {}/{}",
+                provider.0, id
+            )));
+        }
+
+        if !prov.credentials_present {
+            return Err(DispatchError::Host(format!(
+                "model provider has no credentials: {}",
+                provider.0
+            )));
+        }
+
+        let key = (provider.clone(), id.to_string());
+        inner.active = Some(key.clone());
+        inner.recent.retain(|p| p != &key);
+        inner.recent.insert(0, key);
+        if inner.recent.len() > RECENTS_CAP {
+            inner.recent.truncate(RECENTS_CAP);
+        }
+        Ok(())
+    }
+}
+
+impl ModelSource for ModelSelectionState {
+    fn providers(&self) -> Vec<ProviderInfo> {
+        self.inner.read().expect("model state lock poisoned").providers.clone()
+    }
+
+    fn models(&self) -> Vec<HostModel> {
+        self.inner.read().expect("model state lock poisoned").models.clone()
+    }
+
+    fn active_model(&self) -> Option<(ProviderId, String)> {
+        self.inner.read().expect("model state lock poisoned").active.clone()
+    }
+
+    fn recent_models(&self, limit: usize) -> Vec<(ProviderId, String)> {
+        self.inner
+            .read()
+            .expect("model state lock poisoned")
+            .recent
+            .iter()
+            .take(limit)
+            .cloned()
+            .collect()
+    }
+
+    fn pinned_provider(&self) -> Option<ProviderId> {
+        self.inner.read().expect("model state lock poisoned").pinned.clone()
+    }
+}
+
+/// Concrete `ModelController` over a `ModelSelectionState`. The
+/// bridge dispatches `ShellAction::SelectModel` here; this is the
+/// only place active-model mutation happens in the new shell stack.
+#[derive(Debug, Clone)]
+pub struct ModelSelectionController {
+    state: ModelSelectionState,
+}
+
+impl ModelSelectionController {
+    pub fn new(state: ModelSelectionState) -> Self {
+        Self { state }
+    }
+
+    pub fn state(&self) -> ModelSelectionState {
+        self.state.clone()
+    }
+}
+
+impl ModelController for ModelSelectionController {
+    fn select_model(
+        &self,
+        provider: &ProviderId,
+        id: &str,
+    ) -> Result<(), DispatchError> {
+        self.state.select_model(provider, id)
+    }
+}
+
+/// Map a model-switcher widget event into a `ShellAction` the
+/// bridge can route. Only `Selected` produces an action; other
+/// events stay UI-local.
+pub fn switcher_event_to_action(event: SwitcherEvent) -> Option<ShellAction> {
+    match event {
+        SwitcherEvent::Selected { provider, id } => {
+            Some(ShellAction::SelectModel { provider, id })
+        }
+        SwitcherEvent::Dismissed | SwitcherEvent::Consumed | SwitcherEvent::Ignored => None,
+    }
+}
+
+#[cfg(test)]
+mod selection_tests {
+    use super::*;
+
+    fn seed_state() -> ModelSelectionState {
+        let providers = vec![
+            ProviderInfo {
+                id: ProviderId("anthropic".into()),
+                credentials_present: true,
+            },
+            ProviderInfo {
+                id: ProviderId("openai".into()),
+                credentials_present: true,
+            },
+            ProviderInfo {
+                id: ProviderId("kilo".into()),
+                credentials_present: false,
+            },
+        ];
+        let models = vec![
+            HostModel {
+                provider: ProviderId("anthropic".into()),
+                id: "claude-sonnet-4.5".into(),
+                label: "Claude Sonnet 4.5".into(),
+                reasoning: true,
+                cost_label: None,
+            },
+            HostModel {
+                provider: ProviderId("openai".into()),
+                id: "gpt-4o".into(),
+                label: "GPT-4o".into(),
+                reasoning: false,
+                cost_label: None,
+            },
+            HostModel {
+                provider: ProviderId("kilo".into()),
+                id: "kilo-auto".into(),
+                label: "Kilo Auto".into(),
+                reasoning: false,
+                cost_label: None,
+            },
+        ];
+        ModelSelectionState::new(
+            providers,
+            models,
+            Some((ProviderId("anthropic".into()), "claude-sonnet-4.5".into())),
+        )
+    }
+
+    #[test]
+    fn select_model_updates_active_model() {
+        let state = seed_state();
+        state
+            .select_model(&ProviderId("openai".into()), "gpt-4o")
+            .unwrap();
+        assert_eq!(
+            state.active_model(),
+            Some((ProviderId("openai".into()), "gpt-4o".into()))
+        );
+    }
+
+    #[test]
+    fn select_model_pushes_recent_to_front_and_dedups() {
+        let state = seed_state();
+        state
+            .select_model(&ProviderId("openai".into()), "gpt-4o")
+            .unwrap();
+        state
+            .select_model(&ProviderId("anthropic".into()), "claude-sonnet-4.5")
+            .unwrap();
+        // Re-select gpt-4o → should move to front, not duplicate.
+        state
+            .select_model(&ProviderId("openai".into()), "gpt-4o")
+            .unwrap();
+        let recent = state.recent_snapshot();
+        assert_eq!(recent.len(), 2, "dedup must keep one entry per (provider, id)");
+        assert_eq!(recent[0], (ProviderId("openai".into()), "gpt-4o".into()));
+        assert_eq!(
+            recent[1],
+            (ProviderId("anthropic".into()), "claude-sonnet-4.5".into())
+        );
+    }
+
+    #[test]
+    fn select_model_rejects_unknown_provider() {
+        let state = seed_state();
+        let err = state
+            .select_model(&ProviderId("ghost".into()), "x")
+            .unwrap_err();
+        match err {
+            DispatchError::Host(msg) => assert!(msg.contains("unknown model provider")),
+            other => panic!("expected Host(...), got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn select_model_rejects_unknown_model() {
+        let state = seed_state();
+        let err = state
+            .select_model(&ProviderId("openai".into()), "no-such-model")
+            .unwrap_err();
+        match err {
+            DispatchError::Host(msg) => assert!(msg.contains("unknown model")),
+            other => panic!("expected Host(...), got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn select_model_rejects_provider_without_credentials() {
+        let state = seed_state();
+        let err = state
+            .select_model(&ProviderId("kilo".into()), "kilo-auto")
+            .unwrap_err();
+        match err {
+            DispatchError::Host(msg) => assert!(msg.contains("no credentials")),
+            other => panic!("expected Host(...), got {other:?}"),
+        }
+        // Active must not have moved.
+        assert_eq!(
+            state.active_model(),
+            Some((ProviderId("anthropic".into()), "claude-sonnet-4.5".into()))
+        );
+    }
+
+    #[test]
+    fn project_models_reflects_new_active_after_selection() {
+        let state = seed_state();
+        state
+            .select_model(&ProviderId("openai".into()), "gpt-4o")
+            .unwrap();
+        let views = project_models(&state);
+        let actives: Vec<&str> = views
+            .iter()
+            .filter(|m| m.active)
+            .map(|m| m.id.as_str())
+            .collect();
+        assert_eq!(actives, vec!["gpt-4o"]);
+    }
+
+    #[test]
+    fn switcher_event_to_action_maps_only_selected() {
+        let action = switcher_event_to_action(SwitcherEvent::Selected {
+            provider: ProviderId("openai".into()),
+            id: "gpt-4o".into(),
+        });
+        match action {
+            Some(ShellAction::SelectModel { provider, id }) => {
+                assert_eq!(provider, ProviderId("openai".into()));
+                assert_eq!(id, "gpt-4o");
+            }
+            other => panic!("expected SelectModel, got {other:?}"),
+        }
+        assert!(switcher_event_to_action(SwitcherEvent::Dismissed).is_none());
+        assert!(switcher_event_to_action(SwitcherEvent::Consumed).is_none());
+        assert!(switcher_event_to_action(SwitcherEvent::Ignored).is_none());
     }
 }
 
