@@ -67,8 +67,27 @@ pub fn build_shell_app(project_root: impl AsRef<Path>) -> ShellApp {
                 use vac_shell_host_model::ModelSource;
                 let providers = src.providers();
                 let models = src.models();
-                let fallback_active = src.active_model();
-                (providers, models, fallback_active)
+                // Hardening — never let the snapshot boot the
+                // cockpit with a no-credentials active model.
+                let raw_active = src.active_model();
+                let sanitized = vac_shell_host_vac_config::sanitize_active_model(
+                    &providers, &models, raw_active.clone(),
+                );
+                if raw_active.is_some() && sanitized.is_none() {
+                    let id = format!("config-warn-{}", now_unix());
+                    activity_log.record_error(
+                        id,
+                        now_unix(),
+                        "snapshot active model dropped",
+                        Some(
+                            "active model from .vac/model_config.json was either \
+                             not in the model list or its provider had no \
+                             credentials; falling back"
+                                .into(),
+                        ),
+                    );
+                }
+                (providers, models, sanitized)
             }
             Ok(None) => fixture_inputs(),
             Err(err) => {

@@ -231,6 +231,31 @@ impl VacModelConfigSnapshot for VacConfigModelSource {
     }
 }
 
+/// Hardening helper (D-track post-RC fix). Drop a
+/// `(provider, id)` whose provider lacks credentials, or whose
+/// model is no longer present in the registry. Without this guard
+/// the entrypoint's `fallback_active` path would let a snapshot
+/// boot the cockpit with a no-creds active model, contradicting
+/// `ModelSelectionState::select_model`'s validation contract.
+pub fn sanitize_active_model(
+    providers: &[ProviderInfo],
+    models: &[HostModel],
+    active: Option<(ProviderId, String)>,
+) -> Option<(ProviderId, String)> {
+    let (provider, id) = active?;
+    let provider_has_creds = providers
+        .iter()
+        .any(|p| p.id == provider && p.credentials_present);
+    let model_exists = models
+        .iter()
+        .any(|m| m.provider == provider && m.id == id);
+    if provider_has_creds && model_exists {
+        Some((provider, id))
+    } else {
+        None
+    }
+}
+
 impl ModelSource for VacConfigModelSource {
     fn providers(&self) -> Vec<ProviderInfo> {
         self.providers.clone()

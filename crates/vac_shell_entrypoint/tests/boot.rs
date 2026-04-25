@@ -107,7 +107,7 @@ fn public_types_are_local_smoke_test() {
 // =====================================================================
 
 #[test]
-fn entrypoint_uses_config_model_source_when_available() {
+fn entrypoint_uses_config_model_source_when_available_with_credentialed_active() {
     let tmp = tempfile::tempdir().unwrap();
     let paths = VacPathsImpl::new(tmp.path());
     let path = paths.model_config_file();
@@ -115,8 +115,7 @@ fn entrypoint_uses_config_model_source_when_available() {
     let snapshot = r#"
     {
       "providers": [
-        {"id": "anthropic", "credentials_present": true},
-        {"id": "openai",    "credentials_present": false}
+        {"id": "openai", "credentials_present": true}
       ],
       "models": [
         {
@@ -132,32 +131,116 @@ fn entrypoint_uses_config_model_source_when_available() {
     std::fs::write(&path, snapshot).unwrap();
     let app = build_shell_app(tmp.path());
     let comp = app.composition().unwrap();
-    // Note: the snapshot's active is openai/gpt-4o but the model
-    // selection state's restore_from drops actives whose provider
-    // has no creds. The fallback active is what we passed; in
-    // this case openai has creds = false, so the persisted layer
-    // will refuse to set it active. The composition's
-    // ModelSelectionState may end up empty active. What we *do*
-    // assert here: the projected providers/models came from the
-    // snapshot (openai is present, with credentials_present
-    // false).
-    let model = comp
-        .model_state
-        .recent_snapshot()
-        .into_iter()
-        .next();
-    let _ = model;
-    // Stronger projection check: ModelSource ran with openai +
-    // anthropic and the openai model; build_switcher_view reads
-    // them on overlay open. Easier: peek at composition-internal
-    // state via active_model fallback chain.
-    let active = comp.model_state.active_model();
-    // Either the snapshot's active was rejected (no creds) and
-    // active is None, or the validation accepted it because the
-    // provider HAD creds at fallback time. We accept either —
-    // the contract is *no panic, no fixture-only path*. Peek at
-    // recent_snapshot which is set by select_model only.
-    let _ = active;
+    assert_eq!(
+        comp.model_state.active_model(),
+        Some((ProviderId("openai".into()), "gpt-4o".into()))
+    );
+    // Happy path — no warning recorded.
+    assert!(app.activity_log.as_ref().unwrap().is_empty());
+}
+
+#[test]
+fn entrypoint_drops_config_active_when_provider_has_no_credentials() {
+    let tmp = tempfile::tempdir().unwrap();
+    let paths = VacPathsImpl::new(tmp.path());
+    let path = paths.model_config_file();
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let snapshot = r#"
+    {
+      "providers": [
+        {"id": "openai", "credentials_present": false}
+      ],
+      "models": [
+        {
+          "provider": "openai",
+          "id": "gpt-4o",
+          "label": "GPT-4o",
+          "reasoning": false
+        }
+      ],
+      "active": {"provider": "openai", "id": "gpt-4o"}
+    }
+    "#;
+    std::fs::write(&path, snapshot).unwrap();
+    let app = build_shell_app(tmp.path());
+    let comp = app.composition().unwrap();
+    assert!(
+        comp.model_state.active_model().is_none(),
+        "no-creds active must be dropped"
+    );
+    let log = app.activity_log.as_ref().unwrap().snapshot();
+    assert!(log.iter().any(|e| e.title.contains("active model dropped")));
+}
+
+#[test]
+fn entrypoint_drops_config_active_when_model_missing() {
+    let tmp = tempfile::tempdir().unwrap();
+    let paths = VacPathsImpl::new(tmp.path());
+    let path = paths.model_config_file();
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let snapshot = r#"
+    {
+      "providers": [
+        {"id": "anthropic", "credentials_present": true}
+      ],
+      "models": [
+        {
+          "provider": "anthropic",
+          "id": "claude-haiku-4",
+          "label": "Claude Haiku 4",
+          "reasoning": false
+        }
+      ],
+      "active": {"provider": "anthropic", "id": "ghost-model"}
+    }
+    "#;
+    std::fs::write(&path, snapshot).unwrap();
+    let app = build_shell_app(tmp.path());
+    let comp = app.composition().unwrap();
+    assert!(
+        comp.model_state.active_model().is_none(),
+        "missing-model active must be dropped"
+    );
+    let log = app.activity_log.as_ref().unwrap().snapshot();
+    assert!(log.iter().any(|e| e.title.contains("active model dropped")));
+}
+
+#[test]
+fn entrypoint_model_switcher_contains_snapshot_model_not_fixture() {
+    let tmp = tempfile::tempdir().unwrap();
+    let paths = VacPathsImpl::new(tmp.path());
+    let path = paths.model_config_file();
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let snapshot = r#"
+    {
+      "providers": [
+        {"id": "openai", "credentials_present": true}
+      ],
+      "models": [
+        {
+          "provider": "openai",
+          "id": "gpt-4o",
+          "label": "GPT-4o",
+          "reasoning": false
+        }
+      ],
+      "active": {"provider": "openai", "id": "gpt-4o"}
+    }
+    "#;
+    std::fs::write(&path, snapshot).unwrap();
+    let mut app = build_shell_app(tmp.path());
+    app.handle_global_key(vac_shell_app::GlobalKey::OpenModelSwitcher);
+    let labels: Vec<&str> = app
+        .model_switcher
+        .models
+        .iter()
+        .map(|m| m.label.as_str())
+        .collect();
+    assert!(labels.contains(&"GPT-4o"), "snapshot model missing: {labels:?}");
+    assert!(
+        !labels.contains(&"Claude Sonnet 4.5"),
+        "fixture model must not appear when snapshot is used: {labels:?}"
+    );
 }
 
 #[test]
