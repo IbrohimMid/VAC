@@ -22,7 +22,7 @@
 //! APIs, secret managers.
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use vac_shell_app::GlobalKey;
+use vac_shell_app::{AppError, AppEvent, GlobalKey, ShellApp};
 use vac_shell_approval_bar::ApprovalBarKey;
 use vac_shell_approval_detail::DetailKey;
 use vac_shell_contracts::ShellOverlay;
@@ -193,5 +193,35 @@ fn match_approval_detail(ev: KeyEvent) -> Option<DetailKey> {
         KeyCode::Char('y') | KeyCode::Char('Y') => Some(DetailKey::Approve),
         KeyCode::Char('n') | KeyCode::Char('N') => Some(DetailKey::Reject),
         _ => None,
+    }
+}
+
+// =====================================================================
+// D2.1 — dispatch adapter
+// =====================================================================
+//
+// Routes a `RoutedKey` to the right `ShellApp::dispatch_*_key`
+// method. Wraps the result so callers handle exactly one shape:
+// `Ok(Some(event))` apply via `app.apply_event(event)?`,
+// `Ok(None)` is a consumed/dismissed key, `Err` surfaces failures
+// already recorded in the activity log (when attached).
+
+/// Forward a `RoutedKey` into the right `ShellApp` dispatcher.
+/// Globals that map to a `ShellAction` (e.g. `EnterRuntime`,
+/// `EnterChat`) are wrapped as `AppEvent::ShellAction` so the
+/// caller can `apply_event` uniformly.
+pub fn dispatch_routed_key(
+    app: &mut ShellApp,
+    key: RoutedKey,
+) -> Result<Option<AppEvent>, AppError> {
+    match key {
+        RoutedKey::Global(g) => Ok(app.handle_global_key(g).map(AppEvent::ShellAction)),
+        RoutedKey::Palette(k) => Ok(app.dispatch_palette_key(k)),
+        RoutedKey::ModelSwitcher(k) => Ok(app.dispatch_model_switcher_key(k)),
+        RoutedKey::SessionBrowser(k) => Ok(app.dispatch_session_browser_key(k)),
+        RoutedKey::DiffReview(k) => Ok(app.dispatch_diff_review_key(k)),
+        RoutedKey::ApprovalBar(k) => Ok(app.dispatch_approval_bar_key(k)),
+        RoutedKey::ApprovalDetail(k) => Ok(app.dispatch_approval_detail_key(k)),
+        RoutedKey::Ignored => Ok(None),
     }
 }

@@ -6626,11 +6626,17 @@ name = "vac_shell_keymap"
 version = "0.1.0"
 dependencies = [
  "crossterm",
+ "tempfile",
  "vac_shell_app",
  "vac_shell_approval_bar",
  "vac_shell_approval_detail",
+ "vac_shell_bridge",
+ "vac_shell_composition",
  "vac_shell_contracts",
  "vac_shell_diff_view",
+ "vac_shell_host_approval",
+ "vac_shell_host_model",
+ "vac_shell_host_paths",
  "vac_shell_model_switcher",
  "vac_shell_palette",
  "vac_shell_session_browser",

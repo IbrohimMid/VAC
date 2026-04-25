@@ -250,3 +250,170 @@ fn public_types_are_local_smoke_test() {
     assert_only_local(RoutedKey::Ignored);
     assert_only_local(GlobalKey::Escape);
 }
+
+// =====================================================================
+// D2.1 — dispatch_routed_key proofs
+// =====================================================================
+
+mod dispatch {
+    use super::*;
+    use std::sync::Arc;
+    use vac_shell_app::{AppEvent, ShellApp};
+    use vac_shell_bridge::{ProviderId, ShellAction, SurfaceTarget};
+    use vac_shell_composition::ShellCompositionBuilder;
+    use vac_shell_contracts::VacPaths;
+    use vac_shell_host_approval::ApprovalRequest;
+    use vac_shell_host_model::{HostModel, ProviderInfo};
+    use vac_shell_host_paths::VacPathsImpl;
+    use vac_shell_keymap::{RoutedKey, dispatch_routed_key};
+
+    fn boot_app() -> (tempfile::TempDir, ShellApp) {
+        let tmp = tempfile::tempdir().unwrap();
+        let paths: Arc<dyn VacPaths> = Arc::new(VacPathsImpl::new(tmp.path()));
+        let comp = ShellCompositionBuilder::new(paths)
+            .with_providers(vec![ProviderInfo {
+                id: ProviderId("anthropic".into()),
+                credentials_present: true,
+            }])
+            .with_models(vec![HostModel {
+                provider: ProviderId("anthropic".into()),
+                id: "claude-sonnet-4.5".into(),
+                label: "Claude Sonnet 4.5".into(),
+                reasoning: true,
+                cost_label: None,
+            }])
+            .with_fallback_active(Some((
+                ProviderId("anthropic".into()),
+                "claude-sonnet-4.5".into(),
+            )))
+            .boot()
+            .unwrap();
+        (tmp, ShellApp::new(Arc::new(comp)))
+    }
+
+    #[test]
+    fn dispatch_global_open_palette_toggles_palette() {
+        let (_t, mut app) = boot_app();
+        let out = dispatch_routed_key(
+            &mut app,
+            RoutedKey::Global(vac_shell_app::GlobalKey::OpenPalette),
+        )
+        .unwrap();
+        assert!(out.is_none(), "global toggle does not emit AppEvent");
+        assert!(app.palette.visible);
+    }
+
+    #[test]
+    fn dispatch_global_enter_runtime_returns_shell_action_event() {
+        let (_t, mut app) = boot_app();
+        let out = dispatch_routed_key(
+            &mut app,
+            RoutedKey::Global(vac_shell_app::GlobalKey::EnterRuntime),
+        )
+        .unwrap()
+        .unwrap();
+        match out {
+            AppEvent::ShellAction(ShellAction::EnterSurface(SurfaceTarget::Runtime)) => {}
+            other => panic!("expected EnterRuntime, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn dispatch_palette_enter_returns_palette_selected() {
+        let (_t, mut app) = boot_app();
+        app.palette = vac_shell_palette::PaletteViewState::new(vec![
+            vac_shell_contracts::ShellCommandSpec {
+                id: "runtime".into(),
+                slash: "/runtime".into(),
+                title: "Runtime".into(),
+                description: String::new(),
+                kind: vac_shell_contracts::ShellCommandKind::BuiltInAction,
+                palette_visible: true,
+                ..Default::default()
+            },
+        ]);
+        app.palette.visible = true;
+        let _ = dispatch_routed_key(
+            &mut app,
+            RoutedKey::Palette(vac_shell_palette::PaletteKey::Char('/')),
+        )
+        .unwrap();
+        let event = dispatch_routed_key(
+            &mut app,
+            RoutedKey::Palette(vac_shell_palette::PaletteKey::Enter),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(event, AppEvent::PaletteSelected("/runtime".into()));
+    }
+
+    #[test]
+    fn dispatch_model_switcher_enter_returns_select_model_event() {
+        let (_t, mut app) = boot_app();
+        app.handle_global_key(vac_shell_app::GlobalKey::OpenModelSwitcher);
+        app.model_switcher.selected = 0;
+        let event = dispatch_routed_key(
+            &mut app,
+            RoutedKey::ModelSwitcher(vac_shell_model_switcher::SwitcherKey::Enter),
+        )
+        .unwrap()
+        .unwrap();
+        match event {
+            AppEvent::ShellAction(ShellAction::SelectModel { id, .. }) => {
+                assert_eq!(id, "claude-sonnet-4.5");
+            }
+            other => panic!("expected SelectModel, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn dispatch_approval_bar_enter_returns_submit_approvals() {
+        let (_t, mut app) = boot_app();
+        app.composition()
+            .unwrap()
+            .approval_queue
+            .enqueue(ApprovalRequest::new("a", "shell"));
+        app.refresh_approval_bar();
+        let event = dispatch_routed_key(
+            &mut app,
+            RoutedKey::ApprovalBar(vac_shell_approval_bar::ApprovalBarKey::Enter),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(
+            event,
+            AppEvent::ShellAction(ShellAction::SubmitApprovals)
+        );
+    }
+
+    #[test]
+    fn dispatch_approval_detail_reject_returns_approval_decision() {
+        let (_t, mut app) = boot_app();
+        app.composition()
+            .unwrap()
+            .approval_queue
+            .enqueue(ApprovalRequest::new("a", "shell"));
+        app.refresh_approval_bar();
+        app.handle_global_key(vac_shell_app::GlobalKey::OpenApprovalDetail);
+        let event = dispatch_routed_key(
+            &mut app,
+            RoutedKey::ApprovalDetail(vac_shell_approval_detail::DetailKey::Reject),
+        )
+        .unwrap()
+        .unwrap();
+        match event {
+            AppEvent::ApprovalDecision { id, approve } => {
+                assert_eq!(id, "a");
+                assert!(!approve);
+            }
+            other => panic!("expected ApprovalDecision, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn dispatch_ignored_noops() {
+        let (_t, mut app) = boot_app();
+        let out = dispatch_routed_key(&mut app, RoutedKey::Ignored).unwrap();
+        assert!(out.is_none());
+    }
+}
