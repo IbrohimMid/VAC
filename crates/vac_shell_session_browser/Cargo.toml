@@ -1,0 +1,10 @@
+[package]
+name = "vac_shell_session_browser"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Slice 13 — pure ratatui session browser widget over Vec<SessionEntry> + optional SessionPreview. Emits SessionAction intents; never reads disk."
+
+[dependencies]
+vac_shell_contracts = { path = "../vac_shell_contracts" }
+ratatui.workspace = true

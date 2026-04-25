@@ -1,0 +1,14 @@
+[package]
+name = "vac_shell_host_sessions"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Slice 13 — host-side session lifecycle. Lists sessions through VacPaths, builds previews from transcripts, applies SessionAction (Open/Resume/Archive/Delete) with confirmation gating."
+
+[dependencies]
+vac_shell_contracts = { path = "../vac_shell_contracts" }
+vac_shell_host_paths = { path = "../vac_shell_host_paths" }
+thiserror = "1"
+
+[dev-dependencies]
+tempfile = "3"

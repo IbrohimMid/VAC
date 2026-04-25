@@ -6505,6 +6505,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "vac_shell_host_sessions"
+version = "0.1.0"
+dependencies = [
+ "tempfile",
+ "thiserror 1.0.69",
+ "vac_shell_contracts",
+ "vac_shell_host_paths",
+]
+
+[[package]]
 name = "vac_shell_host_surface"
 version = "0.1.0"
 dependencies = [
@@ -6558,6 +6568,14 @@ name = "vac_shell_popup"
 version = "0.1.0"
 dependencies = [
  "ratatui",
+]
+
+[[package]]
+name = "vac_shell_session_browser"
+version = "0.1.0"
+dependencies = [
+ "ratatui",
+ "vac_shell_contracts",
 ]
 
 [[package]]

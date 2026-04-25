@@ -37,4 +37,4 @@ pub use paths::VacPaths;
 pub use registry::{ShellCommandKind, ShellCommandSpec, VacCommandRegistry};
 pub use overlay::{OverlayIntent, ShellOverlay};
 pub use selection::{ModelKey, ModelSelectionSnapshot};
-pub use session::SessionEntry;
+pub use session::{SessionAction, SessionEntry, SessionPreview};
