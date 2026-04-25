@@ -24,10 +24,16 @@ fn main() -> ExitCode {
         }
     };
     let app = vac_shell_entrypoint::build_shell_app(&root);
+    // D7B — attach the real engine-backed executor adapter via
+    // the example/dev path. The library `vac_shell_entrypoint`
+    // itself stays free of `vac_session_engine`; only this
+    // example pulls it in through the new
+    // `vac_shell_host_vac_command_adapter` crate.
+    let adapter = vac_shell_host_vac_command_adapter::VacCommandExecutorAdapter::new(
+        vac_shell_host_vac_command_adapter::AdapterConfig::dogfood(root.clone()),
+    );
     let ctx = vac_shell_runtime_loop::ShellRuntimeContext::new(app)
-        .with_executor(Arc::new(
-            vac_shell_host_commands::VacCommandExecutorAdapter::new(),
-        ));
+        .with_executor(Arc::new(adapter));
     match vac_shell_runtime_loop::run_shell_loop(
         ctx,
         vac_shell_runtime_loop::ShellLoopOptions::default(),

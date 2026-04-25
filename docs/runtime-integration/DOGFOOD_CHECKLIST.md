@@ -40,7 +40,8 @@ entrypoint falls back to the fixture model
 | 12 | `Esc` repeatedly with overlays stacked | Each press pops one overlay |
 | 13 | Plain `q` (no overlay) | Loop exits cleanly; terminal restored |
 | 14 | Force a panic / `Ctrl+C` mid-session | Terminal raw mode + alternate screen restored automatically (`TerminalGuard` Drop) — operator's shell prompt usable without `reset` |
-| 15 | Type `/memorize` (or any custom slash) `Enter` | Activity log records "command unsupported (D5.1 stub)" — confirms `ShellRuntimeContext` routes to executor |
+| 15 | Type `/memorize` `Enter` (mapped in D7B dogfood preset) | A transcript file lands at `<cwd>/.vac/sessions/<uuid>.jsonl`; first row's `metadata.source` is `shell_palette`. Confirms the D7B real engine adapter is wired through `ShellRuntimeContext`. |
+| 16 | Type `/unknown` `Enter` (no adapter mapping) | Activity log records "no adapter mapping for command id `unknown`" — confirms the `Unsupported` path still surfaces operator-visible errors. |
 
 ## Reporting issues
 
@@ -57,9 +58,18 @@ Tag the report by slice:
 * Live engine event bus is **not** connected — activity
   projections must be ingested by hosts manually
   (`vac_shell_host_event_projection::record_projected_event`).
-* `VacCommandExecutorAdapter` is a stub: every non-built-in
-  palette command rejects with an "unsupported (D5.1 stub)"
-  message.
+* The dogfood example now wires
+  `vac_shell_host_vac_command_adapter::VacCommandExecutorAdapter`
+  with `AdapterConfig::dogfood(...)`. Mapped slashes
+  (`/memorize`, `/ultraplan`) submit through
+  `vac_session_engine::submit_one` with the `EchoAdapter` LLM
+  stub and write a durable transcript under
+  `<cwd>/.vac/sessions/<uuid>.jsonl`. Real provider routing is
+  a later slice.
+* The legacy `vac_shell_host_commands::VacCommandExecutorAdapter`
+  D5.1 stub is retained for tests and hosts that want the
+  explicit "no engine wired" failure mode; the dogfood
+  example no longer uses it.
 * Model config snapshot at `.vac/model_config.json` is
   host-written. **D7A** ships
   `vac_shell_host_vac_engine_probe` — call

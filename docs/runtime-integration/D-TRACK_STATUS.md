@@ -14,6 +14,7 @@
 | **D5.1**| `VacCommandExecutorAdapter` stub | PASS |
 | **D6**  | `cargo run -p vac_shell_entrypoint --example dogfood` | PASS — example now constructs `ShellRuntimeContext` with the adapter stub (manual checklist) |
 | **D7A** | `vac_shell_host_vac_engine_probe` — host-side `VacConfig` → `.vac/model_config.json` projection (first ADR-sanctioned `vac_core` exception, allowlist-shaped, denylist-swept) | PASS after hardening — `EnvPresence::present_non_empty` + `ProcessEnvPresence`, `api_key_env=None` ⇒ ready (parity with `vil_llm::LlmConfig::provider_ready`), parent-dir fsync on Unix + Windows replace fallback |
+| **D7B** | `vac_shell_host_vac_command_adapter` — host-side `ShellCommandExecutor` impl that bridges custom palette slashes to `vac_session_engine::submit_one` (second ADR-sanctioned exception). Sync trait preserved via `block_in_place` / current-thread fallback. EchoAdapter LLM stub for v1; transcript durability proven. | PASS pending review |
 | **RC gate** | This doc + `DOGFOOD_CHECKLIST.md` + map update | PASS (post-hardening) |
 
 ## Crate inventory after the batch
@@ -26,6 +27,7 @@ crates/vac_shell_host_vac_config      D3
 crates/vac_shell_host_event_projection D4 + D4.1
 crates/vac_shell_host_commands        D5 + D5.1
 crates/vac_shell_host_vac_engine_probe D7A (host-side, vac_core exception)
+crates/vac_shell_host_vac_command_adapter D7B (host-side, vac_session_engine exception)
 ```
 
 Plus the cockpit layer landed before the D-track:
@@ -71,18 +73,30 @@ crates/vac_shell_host_diff            simple line-diff projector
 * No `vac_core`, `vac_session_engine`, `vac_tui_runtime`,
   `stakai`, donor crates, `SecretManager`, `AutoApproveManager`,
   or `.stakpak` path composition appears anywhere in the new
-  shell stack — **with one named exception**:
-  `vac_shell_host_vac_engine_probe` (D7A) is allowed to depend
-  on `vac_core` because it is a host-side *producer crate* that
-  writes the read-only `.vac/model_config.json` snapshot. It is
-  not reachable from any UI / widget / bridge / app /
-  entrypoint runtime graph; see the ADR appendix.
+  shell stack — **with two named exceptions**:
+  * `vac_shell_host_vac_engine_probe` (D7A) is allowed to
+    depend on `vac_core` because it is a host-side *producer
+    crate* that writes the read-only
+    `.vac/model_config.json` snapshot.
+  * `vac_shell_host_vac_command_adapter` (D7B) is allowed to
+    depend on `vac_session_engine` because it is a host-side
+    *executor crate* that submits custom palette slashes
+    through `submit_one`.
+
+  Neither crate is reachable from any UI / widget / bridge /
+  app / entrypoint / runtime-loop runtime graph; see the ADR
+  appendices.
 
 ## What is still deferred
 
-* `VacCommandExecutorAdapter` real impl — bridge into
-  `vac_session_engine` / `vac_cli::commands` for non-built-in
-  palette slashes.
+* Real provider routing inside the D7B adapter — currently
+  `EchoAdapter` is the LLM stub. A later slice replaces it
+  with the production adapter set behind the same
+  `ShellCommandExecutor` seam.
+* `vac_cli`-grade dispatch reuse — the D7B adapter goes
+  directly to `vac_session_engine::submit_one`. If `vac_cli`
+  exposes a reusable library entry point in a future slice,
+  the adapter can switch to it without changing call sites.
 * Live event bus → `record_projected_event` adapter — hosts
   currently call the ingest helper manually.
 * Diff/review live integration.

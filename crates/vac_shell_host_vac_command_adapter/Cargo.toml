@@ -1,0 +1,26 @@
+[package]
+name = "vac_shell_host_vac_command_adapter"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "D7B — host-side ShellCommandExecutor that bridges custom palette slashes into vac_session_engine::submit_one. Second ADR-sanctioned exception in the shell stack allowed to depend on vac_session_engine. Not reachable from any UI / widget / bridge / app / runtime-loop runtime graph; intended to be installed by hosts (CLI bootstrap, dogfood example) before the runtime loop starts."
+
+[dependencies]
+vac_shell_contracts = { path = "../vac_shell_contracts" }
+vac_shell_host_commands = { path = "../vac_shell_host_commands" }
+vac_session_engine = { path = "../vac_session_engine" }
+serde_json = "1"
+thiserror = "1"
+tokio = { version = "1.43", features = ["rt", "rt-multi-thread", "sync"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+
+[dev-dependencies]
+vac_shell_app = { path = "../vac_shell_app" }
+vac_shell_bridge = { path = "../vac_shell_bridge" }
+vac_shell_composition = { path = "../vac_shell_composition" }
+vac_shell_host_activity = { path = "../vac_shell_host_activity" }
+vac_shell_host_model = { path = "../vac_shell_host_model" }
+vac_shell_host_paths = { path = "../vac_shell_host_paths" }
+vac_shell_runtime_loop = { path = "../vac_shell_runtime_loop" }
+crossterm = "0.28"
+tempfile = "3"

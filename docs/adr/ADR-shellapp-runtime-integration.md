@@ -202,3 +202,59 @@ Future host-side exception crates (e.g. a real
 `VacCommandExecutorAdapter` bridge in D7B) require their own
 appendix entry justifying the boundary crossing on the same
 allowlist-shaped basis.
+
+## Appendix — D7B `vac_session_engine` host-side exception (2026-04-26)
+
+D7B introduces the **second** named exception, on the same
+shape as D7A:
+
+- **Crate**: `vac_shell_host_vac_command_adapter`.
+- **Purpose**: implement `vac_shell_host_commands::ShellCommandExecutor`
+  by submitting custom palette slashes through
+  `vac_session_engine::submit_one`. Built-in slashes
+  (`/chat`, `/runtime`, `/model`, `/sessions`) continue to be
+  handled by `ShellApp::apply_event` and never reach this
+  adapter. Unmapped custom slashes return
+  `ShellCommandError::Unsupported(...)`.
+- **Posture**: host-side. Hosts construct a
+  `VacCommandExecutorAdapter` and attach it to a
+  `ShellRuntimeContext` via `with_executor`. The library
+  surface of `vac_shell_entrypoint` does **not** depend on this
+  crate; only the dogfood example (a dev-dep path) installs it.
+- **Boundary**: `vac_shell_runtime_loop` continues to depend on
+  `vac_shell_host_commands` (trait only). The adapter crate is
+  the *only* shell-stack crate allowed to depend on
+  `vac_session_engine`. UI / widget / bridge / app crates
+  remain forbidden from that dependency.
+- **Execution model (D7B v1)**: each invocation builds a fresh
+  `SubmitContext` with metadata
+  `{ source: "shell_palette", command_id, slash, title }`,
+  drives `submit_one` with the EchoAdapter LLM stub, a
+  per-invocation `TranscriptWriter`, `TrivialCompactBoundary`,
+  `UsageTracker`, and a default `CompactConfig`. Operators see
+  the result via the durable transcript at
+  `<root>/.vac/sessions/<id>.jsonl`.
+- **Sync ↔ async**: `ShellCommandExecutor::execute` stays
+  synchronous. The adapter resolves the impedance mismatch
+  itself: under an existing tokio multi-thread runtime it uses
+  `block_in_place` + `Handle::block_on`; under a current-thread
+  runtime it dispatches into a helper thread; with no runtime
+  it spins a private current-thread runtime. The shell trait
+  surface is unchanged.
+- **D5.1 stub retained**: `vac_shell_host_commands::VacCommandExecutorAdapter`
+  remains in place as a backwards-compatible reference
+  fixture. Hosts that prefer the explicit "no engine wired"
+  failure mode keep using the stub; new hosts attach
+  `vac_shell_host_vac_command_adapter::VacCommandExecutorAdapter`.
+
+Rollback: delete `crates/vac_shell_host_vac_command_adapter/`
+and revert the dogfood example to the stub. The
+`ShellCommandExecutor` trait, the runtime loop, and every UI
+crate are unaffected because no shell-stack runtime graph
+depends on the adapter.
+
+D7B v1 **does not** replace real provider routing — `EchoAdapter`
+is the LLM. The slice proves the engine seam, transcript
+durability, and operator-visible routing direction. Real
+provider adapters and `vac_cli`-grade dispatch remain a later
+slice and require their own ADR appendix entry.
