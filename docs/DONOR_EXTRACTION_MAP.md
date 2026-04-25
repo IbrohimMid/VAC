@@ -55,38 +55,49 @@ These categories are **rejected wholesale**, regardless of file. The donor extra
 | `libs/ai`, `libs/agent-core`, `libs/api`, `libs/gateway`, `libs/server`, `libs/ak` | Stakpak semantic core | VAC keeps ownership |
 | `SecretManager` from donor | Privacy/secret model duplication | VAC `privacy_vault` |
 | Donor PTY/shell session lifecycle | Conflicts with `vac_shell` | VAC runtime, donor renders only |
+| **Manager / worker / controller state machines** | Hidden coupling to donor `AppState`, background tasks, and lifecycle hooks. **Reject by default unless proven stateless.** Keep widgets, drop their orchestrators. | Re-implemented VAC-side |
 
 ## Per-component map
 
-Each row: **donor module/file** · **verdict** · **adapter required (if any)** · **notes**.
+Each row: **donor module/file** · **verdict** · **extraction shape** · **adapter required (if any)** · **provenance** · **notes**.
 
 Verdicts:
 - ✅ **as-is** — copy unchanged into VAC tree
 - 🟡 **with adapter** — copy + wire through `vac_shell_contracts`
 - ❌ **reject** — do not transplant; rebuild VAC-native
 
+Extraction shapes:
+- **widget only** — pure render, no state outside what its caller passes
+- **pure helper** — stateless function / utility module
+- **service + worker** — request/response service that owns a background task
+- **stateful controller** — module that mutates donor `AppState` or holds long-lived state
+- **whole-app coupling** — only meaningful inside the donor app, can't be lifted
+
+Provenance: short attribution note recorded *when the file is actually copied* (donor commit + path + license tag). Empty until the row's verdict moves off `_TBD_`.
+
 ### Phase 1 candidates (highest leverage)
 
-| Donor path | Verdict | Adapter | Notes |
-|---|:---:|---|---|
-| `tui/src/services/commands.rs` | _TBD_ | `VacCommandRegistry` | Executor pattern is reusable; merge logic is rejected |
-| `tui/src/app.rs` | ❌ | — | Whole app state too coupled to donor — extract widgets only |
-| `tui/src/services/command_palette.rs` _(or equivalent)_ | _TBD_ | `VacCommandRegistry` | Step 3 proof-of-life target |
-| `tui/src/services/sessions*.rs` | _TBD_ | `VacPaths` | Strip `.stakpak/session/...` |
-| `tui/src/services/approval*.rs` _(approval list widget)_ | _TBD_ | `VacApprovalBridge` | UI only — no decision logic |
-| `tui/src/services/model_switcher*.rs` | _TBD_ | `VacModelView` | Decouple from `stakai::Model` |
-| `tui/src/services/plan_mode*.rs` | _TBD_ | `VacPaths` | Plan file lives at `.vac/session/plan.md` |
-| `tui/src/services/shell_popup*.rs` | _TBD_ | — | UI only; runtime stays VAC `vac_shell` |
+| Donor path | Verdict | Shape | Adapter | Provenance | Notes |
+|---|:---:|---|---|---|---|
+| `tui/src/services/commands.rs` | 🟡 | pure helper | `VacCommandRegistry` + `VacPaths` | — | Pure dispatcher (`execute_command`, `filter_commands`, `CommandAction` enum). Rejects: `commands_to_helper_commands()` legacy merge, hardcoded `.stakpak/session/plan.md`, indirect `AutoApproveManager` reach. AppState param must be replaced by a narrow context type at extraction. |
+| `tui/src/app.rs` | ❌ | whole-app coupling | — | — | Monolithic AppState — pulls every service, `stakai::Model`, `AutoApproveManager`, `SecretManager`. Reject as a unit; lift inner widget/state substructs individually. |
+| `tui/src/services/helper_dropdown.rs` _(palette UI lives here, not under a "command_palette" name)_ | ✅ | widget only | none (consumes `VacCommandRegistry` output via caller) | — | **Step 3 proof target.** Pure ratatui dropdown; reads filtered helpers from caller-supplied state. Zero business logic. Extracts cleanly if caller passes a `Vec<ShellCommandSpec>` instead of donor `AppState.input_state`. |
+| `tui/src/services/shortcuts_popup.rs` _(sessions list lives here, no dedicated module)_ | 🟡 | widget only | `VacCommandRegistry` (commands section), `VacPaths` (sessions section reads session dir) | — | Unified drawer with three sections (Commands / Shortcuts / Sessions). Sessions section is a read-only list widget — no manager. Extract per-section render fns; keep `Shortcut` struct. |
+| `tui/src/services/approval_bar.rs` | 🟡 | widget only | `VacApprovalBridge` | — | Pure tab/toggle widget over `ToolCall` identities. `ApprovalStatus` + `ApprovalAction` enums reusable. Inject queue snapshot; donor never decides. |
+| `tui/src/services/auto_approve.rs` _(decision logic — flagged per audit)_ | ❌ | stateful controller | — | — | `AutoApproveManager` reads/writes `.stakpak/.auto-approve.json`, holds mpsc + config_path, makes decisions. Hard reject by the manager rule. Only the `AutoApprovePolicy` enum may travel if proven stateless during extraction. |
+| `tui/src/services/model_switcher.rs` | 🟡 | widget only | `VacModelView` | — | Pure popup over a model list. Hard-imports `stakai::Model` for metadata; adapter must project `VacModelView` into a stand-in struct or fork the file at copy time to drop the donor type alias. |
+| `tui/src/services/plan.rs` | 🟡 | pure helper | `VacPaths` | — | YAML front-matter parser + `plan_file_exists` / `read_plan_file`. Hardcoded `.stakpak/session/plan.md` becomes an injected `VacPaths::plan_file()`. Extract `PlanMetadata`, `PlanStatus`, `parse_plan_front_matter`. |
+| `tui/src/services/shell_popup.rs` | ✅ | widget only | none | — | Stateless height/layout + render. Reads `shell_popup_state` + `shell_runtime_state` as params; no manager. `shell_mode.rs` is the *runtime/PTY* concern (already on the reject list — VAC `vac_shell` owns it). |
 
 ### Phase 2 candidates (deferred)
 
-| Donor path | Verdict | Adapter | Notes |
-|---|:---:|---|---|
-| `cli/` entry point | _TBD_ | — | May replace `vac_cli` entirely or merge |
-| `libs/mcp/*` | _TBD_ | — | Compare against `vac_mcp_core`; pick winner |
-| `libs/shell-tool-approvals` | _TBD_ | — | Possibly redundant with VAC gate |
-| `tui/src/services/runtime*.rs` | _TBD_ | — | VAC already has runtime tab (#05) |
-| `tui/src/services/autopilot*.rs` | _TBD_ | — | VAC owns scheduler state |
+| Donor path | Verdict | Shape | Adapter | Provenance | Notes |
+|---|:---:|---|---|---|---|
+| `cli/` entry point | _TBD_ | _TBD_ | — | — | May replace `vac_cli` entirely or merge |
+| `libs/mcp/*` | _TBD_ | _TBD_ | — | — | Compare against `vac_mcp_core`; pick winner |
+| `libs/shell-tool-approvals` | _TBD_ | _TBD_ | — | — | Possibly redundant with VAC gate |
+| `tui/src/services/runtime*.rs` | _TBD_ | _TBD_ | — | — | VAC already has runtime tab (#05) |
+| `tui/src/services/autopilot*.rs` | _TBD_ | _TBD_ | — | — | VAC owns scheduler state |
 
 ### Hard rejects (record-only, no further analysis)
 
@@ -127,10 +138,13 @@ Acceptance:
 
 ## Open questions
 
-1. Does the donor palette widget assume the donor `AppState`? If yes, the widget itself is part of the extraction surface (more work) — if no, it's just `VacCommandRegistry` plumbing.
-2. Donor's `tui/src/app.rs` `AppStateOptions::model: stakai::Model` — patch upstream or wrap? Decision deferred to Step 2.
-3. `cli/` vs `crates/vac_cli/` — eventually one of them survives. Out of scope for Step 1.
+1. ~~Does the donor palette widget assume the donor `AppState`?~~ **Resolved** — `helper_dropdown.rs` reads `AppState.input_state` only for the filtered helper list. A caller that passes a precomputed `Vec<ShellCommandSpec>` removes the coupling. Step 3 confirmed feasible.
+2. **`stakai::Model` projection** — `model_switcher.rs` reads provider, cost, reasoning flag from the donor type. Two paths: (a) `VacModelView` adds the same fields and we copy the donor file with a type alias swap, or (b) we fork the donor file at copy time and replace the type. **Decision: pick (a) only if no donor field requires Stakpak-specific semantics (cost is per-token; provider is a string) — likely fine.** Confirm at Step 2 contract impl.
+3. **Sessions list** — no dedicated donor module; lives inside `shortcuts_popup.rs`. Extracting the sessions section means we either copy the whole popup or surgically lift one render fn. Lean toward surgical.
+4. `cli/` vs `crates/vac_cli/` — eventually one of them survives. Out of scope for Step 1.
 
 ## Changelog
 
-- _date TBD_ · skeleton landed.
+- 2026-04-25 · skeleton landed; donor pinned at `2e75bd5`.
+- 2026-04-25 · added `extraction shape` + `provenance` columns; added manager/worker reject rule.
+- 2026-04-25 · Step 1 fill-in pass — 8 Phase-1 candidates classified. Net result: 2 ✅ as-is (`helper_dropdown`, `shell_popup`), 5 🟡 with-adapter (`commands`, `shortcuts_popup`, `approval_bar`, `model_switcher`, `plan`), 2 ❌ reject (`app`, `auto_approve`). Step 3 proof-of-life (command palette via `helper_dropdown`) confirmed feasible.
