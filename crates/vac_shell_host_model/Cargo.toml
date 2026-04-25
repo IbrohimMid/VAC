@@ -3,7 +3,7 @@ name = "vac_shell_host_model"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Host-side model projection (read-only Vec<VacModelView> from a VacModelView source) plus an in-memory model-selection seam (ModelSelectionState + ModelSelectionController). No persistent config writes, no provider API, no secret manager — those land in later slices."
+description = "Host-side model projection plus an in-memory model-selection seam (ModelSelectionState + ModelSelectionController) plus path-backed snapshot persistence (JsonFilePersistor + vac_paths_persistor + boot_selection_state). No provider API, no secret manager, no API-key handling, no semantic model runtime switching."
 
 [dependencies]
 vac_shell_contracts = { path = "../vac_shell_contracts" }

@@ -1,7 +1,7 @@
-//! Host-side model projection **plus the in-memory model-selection
-//! seam**.
+//! Host-side model projection, in-memory model-selection seam,
+//! and path-backed snapshot persistence.
 //!
-//! This crate hosts two layers that line up with their slice
+//! This crate hosts three layers that line up with their slice
 //! introductions:
 //!
 //! * **Read-only projection (slice 8.2 / 8.2a).** The
@@ -10,41 +10,59 @@
 //!   `Vec<VacModelView>` the model switcher widget renders. The
 //!   widget consumes that snapshot and never mutates anything; this
 //!   layer remains strictly read-only and DTO-based.
-//! * **Host-side mutation seam (slice 9).** [`ModelSelectionState`],
-//!   [`ModelSelectionController`], and [`switcher_event_to_action`]
-//!   accept widget-emitted intents (Selected → `ShellAction::
-//!   SelectModel`) and apply validated mutations to an in-memory
-//!   model state: known-provider check, known-model check,
-//!   credentials-present check, active-model update, recents
-//!   newest-first with deduplication and a 20-entry cap.
+//! * **Host-side mutation seam (slice 9 / 9.0a / 9.1a).**
+//!   [`ModelSelectionState`], [`ModelSelectionController`], and
+//!   [`switcher_event_to_action`] accept widget-emitted intents
+//!   (Selected → `ShellAction::SelectModel`) and apply validated
+//!   mutations to an in-memory model state: known-provider check,
+//!   known-model check, credentials-present check, active-model
+//!   update, recents newest-first with deduplication and a 20-entry
+//!   cap.
+//! * **Path-backed snapshot persistence (slice 9.1 / 9.1a / 9.2).**
+//!   [`JsonFilePersistor`] is a `ModelSelectionPersistor` impl that
+//!   round-trips an [`vac_shell_contracts::ModelSelectionSnapshot`]
+//!   through a host-supplied JSON file, with atomic temp-file +
+//!   rename writes and missing-file = `Ok(None)` reads. Wiring goes
+//!   through [`vac_paths_persistor`] (consumes
+//!   [`vac_shell_contracts::VacPaths::model_selection_file`]) and
+//!   [`boot_selection_state`] (constructs state, attaches the
+//!   persistor, calls `restore_from` once). `restore_from` validates
+//!   the loaded snapshot against the current registry, drops a
+//!   no-credentials active silently, and reports the post-cap
+//!   recents count.
 //!
 //! # What is *not* here
 //!
-//! No persistent VAC config writes. No provider API calls. No
-//! secret-manager access. No `stakai::Model` / donor `AppState`. The
-//! UI widget never sees this crate — the boundary that flows through
-//! the bridge keeps `vac_shell_model_switcher` consuming only
-//! `vac_shell_contracts` types.
-//!
-//! Persistent config adapters live in a follow-up slice (≥ 9.1) once
-//! a stable VAC config seam exists. Until then, mutation here is
-//! best read as the operator-side state of the switcher overlay,
-//! not the system-of-record.
+//! * No provider API calls.
+//! * No secret-manager writes.
+//! * No API-key handling or exposure.
+//! * No semantic model runtime switching (the persisted snapshot is
+//!   operator selection state — provider clients, prompts, and
+//!   inference paths are out of scope for this crate).
+//! * No donor `AppState`, no `stakai::Model`.
+//! * No `.stakpak` path composition; persistent paths only flow
+//!   through [`vac_shell_contracts::VacPaths::model_selection_file`].
+//! * The UI widget never sees this crate — the boundary that flows
+//!   through the bridge keeps `vac_shell_model_switcher` consuming
+//!   only `vac_shell_contracts` types.
 //!
 //! # Boundary
 //!
-//! * Depends on `vac_shell_contracts` (DTO surface),
+//! * Depends on `vac_shell_contracts` (DTO surface, `VacPaths`),
 //!   `vac_shell_model_switcher` (consumed for `ModelSwitcherView`,
-//!   `clamp_selection`, `SwitcherEvent`), and `vac_shell_bridge`
-//!   (implements `ModelController`, emits `ShellAction`).
+//!   `clamp_selection`, `SwitcherEvent`), `vac_shell_bridge`
+//!   (implements `ModelController` + `ModelSelectionPersistor`,
+//!   emits `ShellAction`), and `serde_json`
+//!   ([`JsonFilePersistor`]).
 //! * Does NOT depend on `vac_core`, `vac_session_engine`,
 //!   `vac_tui_runtime`, `stakai`, or the donor — and must not until
 //!   a real VAC model registry / config seam is wired in here.
 //! * Concrete VAC config wiring (e.g. `VacConfig.llm.providers`) is
 //!   plugged in via the [`ModelSource`] trait so this crate keeps a
 //!   tight dep graph; tests use the bundled [`InMemoryModelSource`]
-//!   for read-only flows and [`ModelSelectionState`] for mutation
-//!   flows.
+//!   for read-only flows, [`ModelSelectionState`] for mutation
+//!   flows, and [`InMemoryPersistor`] / [`JsonFilePersistor`] for
+//!   persistence flows.
 
 use std::sync::{Arc, RwLock};
 
