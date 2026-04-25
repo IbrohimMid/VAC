@@ -147,7 +147,19 @@ impl ChordKeymap {
     /// actions are recorded for diagnostics but never inserted into the
     /// lookup table.
     pub fn from_effective(effective: &HashMap<ActionId, Vec<String>>) -> Self {
+        use crate::action_ids::ActionContext;
+        use crate::action_registry::ACTION_SPECS;
         let mut map = ChordKeymap::default();
+        // Build scope index so the global chord lookup can ignore
+        // scoped actions (Workbench-Approvals/Review/Sessions/etc.).
+        // Without this, e.g. `Enter` bound to `ApproveCurrent`
+        // (WorkbenchApprovals scope) leaked into the global keymap
+        // and stole `Enter` everywhere — including the slash
+        // dropdown's submit. Dogfood F6 root cause.
+        let scope_of: HashMap<ActionId, ActionContext> = ACTION_SPECS
+            .iter()
+            .map(|s| (s.id, s.scope))
+            .collect();
         // Collect all (chord, id) pairs first so we can detect duplicate
         // chord bindings before the last-writer-wins `HashMap::insert`
         // hides them. We sort by ActionId enum order for deterministic
@@ -155,6 +167,20 @@ impl ChordKeymap {
         let mut staged: Vec<(String, ActionId)> = Vec::new();
         for (&id, chords) in effective {
             if action_id_to_input_event(id).is_none() {
+                for c in chords {
+                    map.skipped_non_reachable.push((c.clone(), id));
+                }
+                continue;
+            }
+            // Skip non-Global scoped actions — their chords should
+            // only fire inside their own context (handled by
+            // workbench_input handlers), never via the global
+            // keymap. Rebinding Workbench-scoped actions through
+            // user keybindings still works via the workbench
+            // dispatchers; this filter only controls *global*
+            // keymap inclusion.
+            let scope = scope_of.get(&id).copied().unwrap_or(ActionContext::Global);
+            if !matches!(scope, ActionContext::Global) {
                 for c in chords {
                     map.skipped_non_reachable.push((c.clone(), id));
                 }
@@ -277,6 +303,35 @@ mod tests {
 
     fn press(code: KeyCode, mods: KeyModifiers) -> KeyEvent {
         KeyEvent::new(code, mods)
+    }
+
+    /// Dogfood F6 — the bug that prevented Enter from submitting in
+    /// the slash dropdown. Workbench-scoped chords (e.g. ApproveCurrent
+    /// bound to "Enter" in WorkbenchApprovals) must NOT bleed into
+    /// the global keymap; otherwise lookup_override_global("Enter")
+    /// returns Some(AutoApproveCurrentTool) and shadows the
+    /// fall-through default Enter→InputSubmitted.
+    #[test]
+    fn from_effective_skips_workbench_scoped_chords() {
+        use crate::action_ids::ActionId;
+        let mut overrides: HashMap<ActionId, Vec<String>> = HashMap::new();
+        overrides.insert(ActionId::ApproveCurrent, vec!["Enter".into()]);
+        let effective = crate::services::keybindings_loader::resolve_effective(&overrides);
+        let keymap = ChordKeymap::from_effective(&effective);
+        assert!(
+            keymap.lookup(&press(KeyCode::Enter, KeyModifiers::NONE)).is_none(),
+            "Workbench-scoped Enter chord must not appear in global lookup",
+        );
+        // The accepted bindings list should NOT contain
+        // ApproveCurrent at all (filtered as non-Global scope).
+        assert!(
+            !keymap
+                .accepted
+                .iter()
+                .any(|(_, id)| *id == ActionId::ApproveCurrent),
+            "ApproveCurrent must be skipped from the global accepted list \
+             since it lives in WorkbenchApprovals scope",
+        );
     }
 
     #[test]
