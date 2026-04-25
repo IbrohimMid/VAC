@@ -6690,6 +6690,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "vac_shell_runtime_loop"
+version = "0.1.0"
+dependencies = [
+ "crossterm",
+ "ratatui",
+ "tempfile",
+ "thiserror 1.0.69",
+ "vac_shell_app",
+ "vac_shell_bridge",
+ "vac_shell_composition",
+ "vac_shell_contracts",
+ "vac_shell_host_activity",
+ "vac_shell_host_approval",
+ "vac_shell_host_model",
+ "vac_shell_host_paths",
+ "vac_shell_host_surface",
+ "vac_shell_keymap",
+]
+
+[[package]]
 name = "vac_shell_session_browser"
 version = "0.1.0"
 dependencies = [
