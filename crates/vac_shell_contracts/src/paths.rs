@@ -31,4 +31,11 @@ pub trait VacPaths: Send + Sync {
     /// Directory holding user-defined custom slash commands
     /// (`<state>/commands`).
     fn commands_dir(&self) -> PathBuf;
+
+    /// Persistent file holding the operator-side model selection
+    /// snapshot (`active` model + `recent` model keys). Slice 9.2
+    /// adds this method so the on-disk layout decision lives behind
+    /// the trait — no caller is allowed to compose
+    /// `.vac/state/...` or `.stakpak/...` themselves.
+    fn model_selection_file(&self) -> PathBuf;
 }

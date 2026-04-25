@@ -91,6 +91,17 @@ impl VacPaths for VacPathsImpl {
     fn commands_dir(&self) -> PathBuf {
         self.project_root.join(".vac").join("commands")
     }
+
+    fn model_selection_file(&self) -> PathBuf {
+        // Concrete on-disk layout: `<project>/.vac/state/
+        // model_selection.json`. The choice belongs here, behind the
+        // trait — adapter / boot helper / tests must consume the
+        // method only and never compose this path themselves.
+        self.project_root
+            .join(".vac")
+            .join("state")
+            .join("model_selection.json")
+    }
 }
 
 /// Enumerate session transcripts in `paths.sessions_dir()`.
@@ -178,6 +189,36 @@ mod tests {
     fn commands_dir_lives_under_dot_vac() {
         let p = VacPathsImpl::new("/tmp/proj");
         assert_eq!(p.commands_dir(), PathBuf::from("/tmp/proj/.vac/commands"));
+    }
+
+    #[test]
+    fn model_selection_file_resolves_under_vac_state_dir() {
+        let p = VacPathsImpl::new("/tmp/proj");
+        assert_eq!(
+            p.model_selection_file(),
+            PathBuf::from("/tmp/proj/.vac/state/model_selection.json")
+        );
+        // Sanity: the returned path is rooted under the project's
+        // .vac dir, not at the user-config tier or anywhere else.
+        let resolved = p.model_selection_file();
+        let project_state = p.project_state_dir();
+        assert!(
+            resolved.starts_with(&project_state),
+            "model_selection_file ({}) must live under project_state_dir ({})",
+            resolved.display(),
+            project_state.display(),
+        );
+    }
+
+    #[test]
+    fn model_selection_file_does_not_contain_stakpak() {
+        let p = VacPathsImpl::new("/tmp/proj");
+        let s = p.model_selection_file().to_string_lossy().to_string();
+        assert!(
+            !s.contains(".stakpak"),
+            "donor path leaked into model_selection_file: {s}"
+        );
+        assert!(s.contains(".vac"), "VAC path missing from {s}");
     }
 
     #[test]
