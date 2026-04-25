@@ -54,6 +54,7 @@ impl AppState {
             layout: super::LayoutState {
                 side_panel: SidePanelState::default(),
                 focus: WorkspaceFocus::Input,
+                surface: super::Surface::default(),
                 scroll: ScrollState::default(),
                 workbench_tab: WorkbenchTab::Approvals,
                 workbench_chrome: WorkbenchChromeState::default(),

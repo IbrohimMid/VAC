@@ -88,9 +88,90 @@ pub(super) fn render_messages(f: &mut Frame, state: &mut AppState, area: Rect) {
     state.core.render_metrics.cache_hits += hits;
     state.core.render_metrics.cache_misses += misses;
 
-    // Render pending tool calls from state
-    for tc in &state.execution.approvals.pending_tool_calls {
-        lines.extend(render_tool_call_pending(tc));
+    // Wave 3 #04 — inline approval card. If there's a pending approval,
+    // render it as a bordered block at the tail of the transcript so
+    // the operator sees the decision in the same flow as the tool
+    // request that produced it. Shows only the head of the queue; the
+    // rest remain accessible via the workbench approvals tab.
+    let pending_approvals = &state.execution.approvals.pending_approvals;
+    if let Some(head) = pending_approvals.first() {
+        lines.push(Line::raw(""));
+        lines.extend(crate::services::message::render_approval_card(
+            head,
+            0,
+            pending_approvals.len(),
+            width,
+        ));
+    }
+
+    // Wave 3 #03 — tool timeline. Render a single grouped block beneath
+    // the transcript covering (a) in-flight / queued tool calls and
+    // (b) a live streaming / thinking indicator with a context-budget
+    // bar. Emits only when something is actually pending so the idle
+    // state stays clean.
+    let pending = &state.execution.approvals.pending_tool_calls;
+    let streaming = state.transcript.streaming.is_streaming;
+    if !pending.is_empty() || streaming {
+        lines.push(Line::raw(""));
+        lines.push(ratatui::text::Line::from(ratatui::text::Span::styled(
+            "  ── tool timeline ──",
+            state.core.theme.style(crate::services::theme::StyleKey::Muted),
+        )));
+        for tc in pending {
+            lines.extend(render_tool_call_pending(tc));
+        }
+        if streaming {
+            let label = if pending.is_empty() {
+                "thinking"
+            } else {
+                "reviewing tool results"
+            };
+            lines.push(ratatui::text::Line::from(vec![
+                ratatui::text::Span::raw("  "),
+                ratatui::text::Span::styled(
+                    "✦ ",
+                    state.core.theme.style(crate::services::theme::StyleKey::Accent),
+                ),
+                ratatui::text::Span::styled(
+                    label.to_string(),
+                    state.core.theme.style(crate::services::theme::StyleKey::Muted),
+                ),
+                ratatui::text::Span::styled(
+                    " ▊",
+                    state.core.theme.style(crate::services::theme::StyleKey::Accent),
+                ),
+            ]));
+        }
+        // Context budget bar. Sources the current token total from the
+        // billing facet and renders a 20-cell bar against a 200k budget
+        // (the order-of-magnitude context window for current models).
+        let used = state.operator_config.billing.total_session.total_tokens as f64;
+        let budget = 200_000f64;
+        let frac = (used / budget).clamp(0.0, 1.0);
+        let filled = (frac * 20.0).round() as usize;
+        let bar: String = std::iter::repeat('▓')
+            .take(filled)
+            .chain(std::iter::repeat('░').take(20 - filled))
+            .collect();
+        lines.push(ratatui::text::Line::from(vec![
+            ratatui::text::Span::raw("  "),
+            ratatui::text::Span::styled(
+                "context ",
+                state.core.theme.style(crate::services::theme::StyleKey::Muted),
+            ),
+            ratatui::text::Span::styled(
+                bar,
+                state.core.theme.style(crate::services::theme::StyleKey::Accent),
+            ),
+            ratatui::text::Span::styled(
+                format!(" {} / 200k", used as u64),
+                state.core.theme.style(crate::services::theme::StyleKey::Muted),
+            ),
+            ratatui::text::Span::styled(
+                "  · esc to interrupt",
+                state.core.theme.style(crate::services::theme::StyleKey::Muted),
+            ),
+        ]));
     }
 
     // Cache the lines for text selection

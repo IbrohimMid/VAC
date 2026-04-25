@@ -30,109 +30,94 @@ pub fn render_statusline(f: &mut Frame, state: &AppState, area: Rect) {
 
     let tokens = state.operator_config.billing.total_session.total_tokens;
 
+    // Tightened chip set per Wave 3 design:
+    //   INPUT | model {name} | {tokens} tok | manual/auto | valid {%}
+    //         | lsp E{n} W{n} | profile {name} | rulebook {name}
+    // Provider/MCP/SystemPulse facets moved off the statusline — they
+    // belong on the operator pane and hydration snapshot, not on the
+    // permanent footer where they crowd out per-task signal.
+    let theme = &state.core.theme;
+    let sep = || Span::raw(" · ");
+
     let mut text = vec![
         Span::styled(
             format!(" {} ", mode_str),
-            state
-                .core.theme
-                .style(StyleKey::OverlaySelected)
-                .add_modifier(Modifier::BOLD),
+            theme.style(StyleKey::OverlaySelected).add_modifier(Modifier::BOLD),
         ),
-        Span::raw(" | "),
+        sep(),
+        Span::styled("model ", theme.style(StyleKey::Muted)),
+        Span::styled(model_str, theme.style(StyleKey::Accent)),
+        sep(),
+        Span::styled(format!("{} tok", tokens), theme.style(StyleKey::Success)),
+        sep(),
         Span::styled(
-            format!("Model: {}", model_str),
-            state.core.theme.style(StyleKey::Accent),
-        ),
-        Span::raw(" | "),
-        Span::styled(
-            format!("Tokens: {}", tokens),
-            state.core.theme.style(StyleKey::Success),
-        ),
-        Span::raw(" | "),
-        Span::styled(
+            if state.core.view_flags.auto_approve { "auto" } else { "manual" },
             if state.core.view_flags.auto_approve {
-                "AUTO-APPROVE"
+                theme.style(StyleKey::Warning)
             } else {
-                "MANUAL"
-            },
-            if state.core.view_flags.auto_approve {
-                state.core.theme.style(StyleKey::Error)
-            } else {
-                state.core.theme.style(StyleKey::Success)
+                theme.style(StyleKey::Success)
             },
         ),
     ];
 
-    if let Some(score) = state.layout.lsp_ui.validation_score {
-        text.push(Span::raw(" | "));
-        text.push(Span::styled(
-            format!("Valid: {:.1}%", score * 100.0),
-            if score >= 0.8 {
-                state.core.theme.style(StyleKey::Success)
+    // valid % — show even when unknown so the slot is stable
+    text.push(sep());
+    text.push(Span::styled("valid ", theme.style(StyleKey::Muted)));
+    match state.layout.lsp_ui.validation_score {
+        Some(score) => {
+            let pct = score * 100.0;
+            let style = if score >= 0.8 {
+                theme.style(StyleKey::Success)
             } else if score >= 0.5 {
-                state.core.theme.style(StyleKey::Warning)
+                theme.style(StyleKey::Warning)
             } else {
-                state.core.theme.style(StyleKey::Error)
-            },
-        ));
-    }
-
-    // Phase 3: Show provider/auth status from startup snapshot
-    {
-        let provider_status = &state.core.startup.provider_status;
-        let (provider_label, provider_key) = if provider_status.starts_with("ready") {
-            (provider_status.as_str(), StyleKey::Success)
-        } else if provider_status == "initializing" || provider_status == "loading..." {
-            (provider_status.as_str(), StyleKey::Warning)
-        } else {
-            (provider_status.as_str(), StyleKey::Error)
-        };
-        text.push(Span::raw(" | "));
-        text.push(Span::styled(
-            format!("Provider: {}", provider_label),
-            state.core.theme.style(provider_key),
-        ));
-    }
-    if state.core.startup.mcp_server_count > 0 {
-        text.push(Span::raw(" | "));
-        text.push(Span::styled(
-            format!("MCP: {}", state.core.startup.mcp_server_count),
-            state.core.theme.style(StyleKey::Accent),
-        ));
-    }
-
-    if state.layout.lsp_ui.lsp_available {
-        text.push(Span::raw(" | "));
-        text.push(Span::styled("LSP", state.core.theme.style(StyleKey::Accent)));
-        if let Some(diag) = &state.layout.lsp_ui.lsp_diagnostics {
-            let errs = diag.total_errors;
-            let warns = diag.total_warnings;
-            if errs > 0 || warns > 0 {
-                text.push(Span::raw(format!(" E:{} W:{}", errs, warns)));
-            } else {
-                text.push(Span::raw(" OK"));
-            }
+                theme.style(StyleKey::Error)
+            };
+            text.push(Span::styled(format!("{:.0}%", pct), style));
         }
+        None => text.push(Span::styled("—", theme.style(StyleKey::Muted))),
     }
 
-    // U2 — append SystemPulse tokens. Each facet gets its own
-    // severity-coloured span so the statusline reflects
-    // approvals / runtime / MCP health at a glance, using the same
-    // grammar the operator panel + future overlays consume.
-    let pulse = crate::system_pulse::SystemPulse::from_state(state);
-    for facet in pulse.facets() {
-        text.push(Span::raw(" · "));
-        let style_key = match facet.severity {
-            crate::system_pulse::FacetSeverity::Ok => StyleKey::Success,
-            crate::system_pulse::FacetSeverity::Info => StyleKey::Accent,
-            crate::system_pulse::FacetSeverity::Warn => StyleKey::Warning,
-            crate::system_pulse::FacetSeverity::Critical => StyleKey::Error,
-        };
-        text.push(Span::styled(
-            facet.compact_token.as_ref().to_string(),
-            state.core.theme.style(style_key),
-        ));
-    }
+    // lsp E{n} W{n} — always rendered with zero counts when no diagnostics
+    text.push(sep());
+    text.push(Span::styled("lsp ", theme.style(StyleKey::Muted)));
+    let (errs, warns) = state
+        .layout
+        .lsp_ui
+        .lsp_diagnostics
+        .as_ref()
+        .map(|d| (d.total_errors, d.total_warnings))
+        .unwrap_or((0, 0));
+    let lsp_style = if errs > 0 {
+        theme.style(StyleKey::Error)
+    } else if warns > 0 {
+        theme.style(StyleKey::Warning)
+    } else {
+        theme.style(StyleKey::Success)
+    };
+    text.push(Span::styled(format!("E{} W{}", errs, warns), lsp_style));
+
+    // profile
+    text.push(sep());
+    text.push(Span::styled("profile ", theme.style(StyleKey::Muted)));
+    let profile = state
+        .core
+        .startup
+        .active_profile
+        .clone()
+        .unwrap_or_else(|| "default".to_string());
+    text.push(Span::styled(profile, theme.style(StyleKey::Accent)));
+
+    // rulebook
+    text.push(sep());
+    text.push(Span::styled("rulebook ", theme.style(StyleKey::Muted)));
+    let rulebook = state
+        .core
+        .startup
+        .active_rulebook
+        .clone()
+        .unwrap_or_else(|| "none".to_string());
+    text.push(Span::styled(rulebook, theme.style(StyleKey::Accent)));
 
     let widget = Paragraph::new(Line::from(text)).alignment(Alignment::Left);
     f.render_widget(widget, area);

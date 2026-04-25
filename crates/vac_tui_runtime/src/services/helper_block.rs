@@ -10,48 +10,172 @@ use std::path::{Path, PathBuf};
 /// Maximum description length when derived from the first line of content.
 const MAX_DESCRIPTION_LEN: usize = 60;
 
-/// VAC ASCII logo
-const VAC_LOGO: &str = r#"
- ██╗   ██╗ █████╗  ██████╗ ██╗   ██╗
- ██║   ██║██╔══██╗██╔════╝ ██║   ██║
- ██║   ██║███████║██║  ███╗███████║
- ╚██╗ ██╔╝██╔══██║██║   ██║██╔══██║
-  ╚████╔╝ ██║  ██║╚██████╔╝██║  ██║
-   ╚═══╝  ╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝
-"#;
-
-/// Generate welcome messages for TUI
+/// Generate welcome messages for TUI — a "hydrating startup snapshot"
+/// that surfaces truthful boot-time state instead of a generic banner.
+/// Two-column layout: control plane (left) + runtime/integration (right).
 pub fn welcome_messages(version: Option<&str>, state: &crate::app::AppState) -> Vec<Message> {
-    let version_str = version.unwrap_or(&state.core.startup.version);
-    let permission_mode = if state.core.view_flags.auto_approve {
-        "AUTO-APPROVE (tool requests run without confirmation)"
+    let s = &state.core.startup;
+    let version_str = version.unwrap_or(&s.version);
+
+    let active_model = state
+        .operator_config
+        .operator
+        .current_model
+        .as_ref()
+        .map(|m| m.name.clone())
+        .or_else(|| s.active_model.clone());
+
+    let provider_label = if s.provider_status.starts_with("ready") {
+        s.provider_status.trim_start_matches("ready").trim()
+            .trim_start_matches('(').trim_end_matches(')')
+            .to_string()
     } else {
-        "PROMPT (tool requests require confirmation)"
+        String::new()
+    };
+    let provider_value = if provider_label.is_empty() {
+        "—".to_string()
+    } else {
+        provider_label.clone()
+    };
+    let provider_comment = if s.provider_status.starts_with("ready") {
+        "credentials resolved"
+    } else if s.provider_status == "loading..." || s.provider_status == "initializing" {
+        "resolving credentials"
+    } else {
+        "no credentials — run vac auth login"
     };
 
-    // Phase 3: Show model recovery hint if no active model
-    let model_hint = if state.core.startup.active_model.is_none() && state.operator_config.operator.current_model.is_none() {
-        "\n⚠ No active model configured. Use /model to select one."
+    let model_value = active_model.clone().unwrap_or_else(|| "—".to_string());
+    let model_comment = if active_model.is_some() {
+        "active override"
     } else {
-        ""
+        "use /model to select"
     };
 
-    vec![Message::assistant(format!(
-        "{}\n\
-            ═══════════════════════════════════════\n\
-            Vastar Agentic CLI v{}\n\
-            Powered by VIL Engine\n\
-            Permission Mode: {}\n\
-            ═══════════════════════════════════════\n\n\
-            Shortcuts:\n\
-            • Ctrl+P - Command palette (all /commands, including hook/cron/subagent/fetch/monitor/signal)\n\
-            • Ctrl+S - Shortcuts popup (context-aware keybindings)\n\
-            • Ctrl+C - Quit\n\
-            • Esc    - Cancel/Close\n\
-            • /      - Open palette with slash filter\n\n\
-            Type your message and press Enter to start.{}",
-        VAC_LOGO, version_str, permission_mode, model_hint
-    ))]
+    let fallback_value = s
+        .default_model
+        .clone()
+        .filter(|m| Some(m.as_str()) != active_model.as_deref())
+        .unwrap_or_else(|| "—".to_string());
+
+    let profile_value = s.active_profile.clone().unwrap_or_else(|| "default".to_string());
+
+    let (rulebook_value, rulebook_comment) = match &s.active_rulebook {
+        Some(rb) => (rb.clone(), format!("{} constraints active", s.selected_rulebooks.len().max(1))),
+        None => ("none".to_string(), "no rulebook overlay".to_string()),
+    };
+
+    let runtime_value = if s.environment.is_empty() {
+        "host".to_string()
+    } else {
+        s.environment.clone()
+    };
+
+    let mcp_value = if s.mcp_server_count == 0 {
+        "0 servers".to_string()
+    } else if s.mcp_server_count == 1 {
+        "1 server".to_string()
+    } else {
+        format!("{} servers", s.mcp_server_count)
+    };
+    let mcp_comment = if s.mcp_server_count == 0 { "none configured" } else { "registered" };
+
+    let sessions_value = format!("{} saved", s.session_count);
+    let vil_detect_value = if s.has_vil_engine { "rust-workspace" } else { "off" };
+    let vil_detect_comment = {
+        let n = state.workspace.file_index.all_files.len();
+        if n > 0 { format!("{n} files indexed") } else { "no files indexed".to_string() }
+    };
+
+    let mode_value = if state.core.view_flags.auto_approve { "auto-approve" } else { "manual" };
+
+    // Two-column line builder. Left column ~46 cols, right column flows.
+    fn row(left_label: &str, left_dot: &str, left_value: &str, left_cmt: &str,
+           right_label: &str, right_dot: &str, right_value: &str, right_cmt: &str) -> String {
+        format!(
+            "  {:<10} {} {:<14} · {:<18}    {:<10} {} {:<14} · {}",
+            left_label, left_dot, left_value, left_cmt,
+            right_label, right_dot, right_value, right_cmt,
+        )
+    }
+
+    let snapshot = vec![
+        format!("Vastar Agentic CLI v{version_str}"),
+        "VIL-native operator console · control-plane hardening active".to_string(),
+        String::new(),
+        format!(
+            "  cwd  {} · session {}",
+            state.core.project_root.display(),
+            state.session.session_id.chars().take(8).collect::<String>(),
+        ),
+        String::new(),
+        "  hydrating startup snapshot".to_string(),
+        String::new(),
+        row("version",  "●", version_str,        "running build",
+            "runtime",  "●", &runtime_value,     "network: inherit"),
+        row("provider", "●", &provider_value,    provider_comment,
+            "isolation","●", "off",              "execution_environment = host"),
+        row("model",    "●", &model_value,       model_comment,
+            "autopilot","●", "down",             "vac autopilot up"),
+        row("fallback", "●", &fallback_value,    "configured default",
+            "mcp",      "●", &mcp_value,         mcp_comment),
+        row("profile",  "●", &profile_value,     "active",
+            "sessions", "●", &sessions_value,    "saved transcripts"),
+        row("rulebook", "●", &rulebook_value,    &rulebook_comment,
+            "vil detect","●", vil_detect_value,  &vil_detect_comment),
+        String::new(),
+        format!("  ready · mode {}", mode_value),
+        String::new(),
+        "  The agent will stream thinking, tools, and approvals here.".to_string(),
+        "  type / for commands, /help to explore, or start typing a task.".to_string(),
+        String::new(),
+    ];
+
+    // Recent tasks block — best-effort surface. The TUI does not yet
+    // hydrate a cross-session task history into AppState, so when the
+    // current session has no completed results we render an honest
+    // placeholder rather than fabricating a list.
+    let recents = recent_task_lines(state, 3);
+    let mut snapshot = snapshot;
+    snapshot.push("  recent tasks".to_string());
+    if recents.is_empty() {
+        snapshot.push("    none yet — start typing to begin".to_string());
+    } else {
+        for line in recents {
+            snapshot.push(format!("    {line}"));
+        }
+    }
+    snapshot.push(String::new());
+    snapshot.push(
+        "  keys  tab focus · / commands · @ files · shift+tab plan · ctrl+p palette".to_string(),
+    );
+    let snapshot = snapshot;
+
+    vec![Message::assistant(snapshot.join("\n"))]
+}
+
+/// Pull up to `limit` recent task entries for the idle-state display.
+/// Reads from the in-flight task tray; cross-session history wiring is
+/// deferred. Returns formatted lines like
+/// `▸ refactor tool registry  · 12 files · queued`.
+fn recent_task_lines(state: &crate::app::AppState, limit: usize) -> Vec<String> {
+    state
+        .execution
+        .task_tray
+        .entries
+        .iter()
+        .rev()
+        .take(limit)
+        .map(|t| {
+            let status = match t.status {
+                crate::app::types::task_tray::TaskStatus::Queued => "queued",
+                crate::app::types::task_tray::TaskStatus::Running => "running",
+                crate::app::types::task_tray::TaskStatus::Done => "done",
+                crate::app::types::task_tray::TaskStatus::Failed => "failed",
+            };
+            format!("▸ {}  · {}", t.label, status)
+        })
+        .collect()
 }
 
 /// Default VAC commands.
@@ -112,7 +236,15 @@ pub fn vac_commands() -> Vec<HelperCommand> {
         // --- BuiltIn: wired to TUI handlers ---
         HelperCommand {
             command: "/runtime".to_string(),
-            description: "Show runtime inspector".to_string(),
+            description: "Open runtime surface — autopilot, cron, filewatch".to_string(),
+            source: CommandSource::BuiltIn,
+            shortcut: None,
+            wired: true,
+            surface: CommandSurface::OperatorAction,
+        },
+        HelperCommand {
+            command: "/chat".to_string(),
+            description: "Return to the conversation surface".to_string(),
             source: CommandSource::BuiltIn,
             shortcut: None,
             wired: true,

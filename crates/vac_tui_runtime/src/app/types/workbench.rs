@@ -4,6 +4,30 @@ use std::collections::HashMap;
 
 use super::commands::{ExistingPlanPrompt, PlanComment};
 
+/// Wave 3 #05 — top-level surface switcher.
+///
+/// The conversation pane, runtime pane, and later surfaces (review,
+/// workbench, mcp) are siblings of one another, not tabs inside the
+/// workbench. The surface selector is deliberately small (two
+/// variants shipped) so the tab strip in the header only advertises
+/// working destinations; more variants land as their panes become
+/// real.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Surface {
+    #[default]
+    Chat,
+    Runtime,
+}
+
+impl Surface {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Chat => "chat",
+            Self::Runtime => "runtime",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WorkspaceFocus {
     Conversation,

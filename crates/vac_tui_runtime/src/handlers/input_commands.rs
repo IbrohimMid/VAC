@@ -127,6 +127,14 @@ pub fn dispatch_builtin_command(
         cmd_word.to_string()
     };
 
+    // Wave 3 #05 — surface toggles. `/chat` returns to the conversation
+    // surface; `/runtime` is handled through ActionSpec below and
+    // promotes the runtime pane to the top-level surface.
+    if cmd_word == "/chat" {
+        state.layout.surface = crate::app::types::Surface::Chat;
+        return true;
+    }
+
     if let Some(cmd) = state
         .layout.commands
         .iter()
@@ -205,8 +213,13 @@ fn dispatch_action(
             let _ = output_tx.try_send(OutputEvent::ListSessions);
         }
         ActionId::Runtime => {
+            // Wave 3 #05 — /runtime now promotes the runtime pane to a
+            // top-level surface instead of burying it inside the
+            // workbench. Workbench tab is still synced so the existing
+            // tab renderer stays consistent when the operator returns
+            // to chat.
+            state.layout.surface = crate::app::types::Surface::Runtime;
             state.layout.workbench_tab = crate::app::WorkbenchTab::Runtime;
-            state.layout.focus = crate::app::WorkspaceFocus::Workbench;
             let _ = output_tx.try_send(OutputEvent::ListRuntimeJobs);
             let _ = output_tx.try_send(OutputEvent::LoadRuntimeState);
         }

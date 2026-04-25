@@ -12,7 +12,7 @@ mod workbench;
 use crate::app::AppState;
 use ratatui::{
     Frame,
-    layout::{Constraint, Direction, Layout},
+    layout::{Constraint, Direction, Layout, Rect},
 };
 
 pub use pickers::render_context_chips;
@@ -20,6 +20,81 @@ pub use pickers::render_context_chips;
 // For event_loop and other usages
 
 // Public functions from popups used elsewhere
+
+/// Wave 3 #05 — runtime surface.
+///
+/// Full-width runtime pane with an autopilot header line and the
+/// existing workbench Runtime tab body (`RuntimeTab::render`). Keeping
+/// the body shared means job-selection, keybindings, and data flow
+/// stay identical whether the operator opens runtime as a surface or
+/// as a workbench tab; the only visible difference is the real estate.
+fn render_runtime_surface(f: &mut Frame, state: &mut AppState, area: Rect) {
+    use crate::app::AppState;
+    use crate::services::theme::StyleKey;
+    use crate::workbench::WorkbenchTabView;
+    use ratatui::{text::Span, widgets::Paragraph};
+
+    fn header_line(state: &AppState) -> ratatui::text::Line<'static> {
+        let theme = &state.core.theme;
+        let muted = theme.style(StyleKey::Muted);
+        let accent = theme.style(StyleKey::Accent);
+        let ok = theme.style(StyleKey::Success);
+
+        let (state_label, state_style) = match state.execution.runtime.snapshot.as_ref() {
+            Some(snap) => {
+                let label = format!("{:?}", snap.state).to_lowercase();
+                let style = if label == "idle" { ok } else { accent };
+                (label, style)
+            }
+            None => ("idle".to_string(), muted),
+        };
+        let mode = state
+            .execution
+            .runtime
+            .snapshot
+            .as_ref()
+            .map(|s| s.mode.clone())
+            .unwrap_or_else(|| "monitor-only".to_string());
+        let queue_len = state
+            .execution
+            .runtime
+            .snapshot
+            .as_ref()
+            .map(|s| s.queue_len)
+            .unwrap_or(0);
+        let running = state
+            .execution
+            .runtime
+            .jobs
+            .iter()
+            .filter(|j| matches!(j.status, vac_runtime::JobStatus::Running))
+            .count();
+
+        ratatui::text::Line::from(vec![
+            Span::raw(" "),
+            Span::styled("autopilot", accent),
+            Span::styled("  ·  ", muted),
+            Span::styled(state_label, state_style),
+            Span::styled("  ·  ", muted),
+            Span::styled(format!("mode {}", mode), muted),
+            Span::styled("  ·  ", muted),
+            Span::styled(format!("queue {}", queue_len), muted),
+            Span::styled("  ·  ", muted),
+            Span::styled(format!("running {}", running), muted),
+            Span::styled("  ·  ", muted),
+            Span::styled("env host", muted),
+        ])
+    }
+
+    let rows = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(1), Constraint::Min(1)])
+        .split(area);
+
+    let header = Paragraph::new(header_line(state));
+    f.render_widget(header, rows[0]);
+    crate::workbench::runtime::RuntimeTab::render(f, state, rows[1]);
+}
 
 /// Main view function — layout orchestrator that calls sub-render functions
 pub fn view(f: &mut Frame, state: &mut AppState) {
@@ -31,7 +106,7 @@ pub fn view(f: &mut Frame, state: &mut AppState) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(1),
+            Constraint::Length(2),
             Constraint::Length(banner_h),
             Constraint::Min(1),
             Constraint::Length(1), // statusline
@@ -46,7 +121,15 @@ pub fn view(f: &mut Frame, state: &mut AppState) {
         state.layout.banner.click_regions.clear();
         state.layout.banner.dismiss_region = None;
     }
-    workbench::render_workspace(f, state, chunks[2]);
+    // Wave 3 #05 — top-level surface dispatch.
+    match state.layout.surface {
+        crate::app::types::Surface::Chat => {
+            workbench::render_workspace(f, state, chunks[2]);
+        }
+        crate::app::types::Surface::Runtime => {
+            render_runtime_surface(f, state, chunks[2]);
+        }
+    }
     crate::services::statusline::render_statusline(f, state, chunks[3]);
     popups::render_footer(f, state, chunks[4]);
 

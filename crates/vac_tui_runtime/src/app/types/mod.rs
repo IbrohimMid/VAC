@@ -99,7 +99,7 @@ pub use support::{
     StartupSnapshot,
 };
 pub use workbench::{
-    PlanState, ReviewDiffState, ReviewItem, ReviewItemStatus, ReviewState, WorkbenchTab,
+    PlanState, ReviewDiffState, ReviewItem, ReviewItemStatus, ReviewState, Surface, WorkbenchTab,
     WorkspaceFocus,
 };
 
@@ -156,6 +156,7 @@ impl Default for CoreState {
 pub struct LayoutState {
     pub side_panel: SidePanelState,
     pub focus: WorkspaceFocus,
+    pub surface: Surface,
     pub scroll: ScrollState,
     pub workbench_tab: WorkbenchTab,
     pub workbench_chrome: WorkbenchChromeState,
@@ -192,6 +193,7 @@ impl Default for LayoutState {
         Self {
             side_panel: SidePanelState::default(),
             focus: WorkspaceFocus::Input,
+            surface: Surface::default(),
             scroll: ScrollState::default(),
             workbench_tab: WorkbenchTab::Approvals,
             workbench_chrome: WorkbenchChromeState::default(),

@@ -258,96 +258,291 @@ pub fn render_assistant_message_with_theme(
     lines
 }
 
-/// Render a pending tool call bubble.
-pub fn render_tool_call_pending(tool_call: &ToolCall) -> Vec<Line<'static>> {
-    let mut lines = vec![Line::from(vec![
-        Span::styled(
-            "⏳ ",
-            crate::services::theme::Theme::default().style(StyleKey::Warning),
-        ),
-        Span::styled(
-            tool_call.function.name.clone(),
-            crate::services::theme::Theme::default()
-                .style(StyleKey::Warning)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::styled(
-            " [pending approval]",
-            crate::services::theme::Theme::default().style(StyleKey::Muted),
-        ),
-    ])];
-    let args = extract_full_command_arguments(tool_call);
-    if !args.is_empty() {
-        lines.push(Line::from(vec![
-            Span::raw("  "),
-            Span::styled(
-                truncate_chars(&args, 100),
-                crate::services::theme::Theme::default().style(StyleKey::Muted),
-            ),
-        ]));
+/// Pick the most informative single argument from a tool call for the
+/// timeline row's summary column (path > command > pattern > query > url).
+/// Falls back to the compact "k = v" projection when no known key is
+/// present.
+fn tool_summary(tool_call: &ToolCall) -> String {
+    let raw = tool_call.function.arguments.trim();
+    if let Ok(Value::Object(obj)) = serde_json::from_str::<Value>(raw) {
+        for key in [
+            "path",
+            "file_path",
+            "file",
+            "command",
+            "cmd",
+            "pattern",
+            "query",
+            "url",
+            "name",
+            "description",
+        ] {
+            if let Some(Value::String(s)) = obj.get(key) {
+                return truncate_chars(s, 60);
+            }
+        }
     }
+    truncate_chars(&extract_full_command_arguments(tool_call), 60)
+}
+
+/// Single-row tool timeline entry in the Wave 3 #03 format:
+///   `{dot} {name:<14} {summary}  {tail}`
+/// `tail` is a right-aligned hint like "queued", "12 matches", "823 B".
+fn render_tool_row(
+    dot: &str,
+    dot_key: StyleKey,
+    name: &str,
+    summary: &str,
+    tail: &str,
+    tail_key: StyleKey,
+) -> Line<'static> {
+    let theme = crate::services::theme::Theme::default();
+    let name_padded = format!("{:<14}", truncate_chars(name, 13));
+    Line::from(vec![
+        Span::raw("  "),
+        Span::styled(format!("{dot} "), theme.style(dot_key)),
+        Span::styled(name_padded, theme.style(StyleKey::Accent)),
+        Span::raw(" "),
+        Span::styled(summary.to_string(), theme.style(StyleKey::Muted)),
+        Span::raw("  "),
+        Span::styled(tail.to_string(), theme.style(tail_key)),
+    ])
+}
+
+/// Render a pending / queued tool call as a timeline row.
+pub fn render_tool_call_pending(tool_call: &ToolCall) -> Vec<Line<'static>> {
+    vec![render_tool_row(
+        "○",
+        StyleKey::Muted,
+        &tool_call.function.name,
+        &tool_summary(tool_call),
+        "queued",
+        StyleKey::Muted,
+    )]
+}
+
+/// Render a completed tool call result as a timeline row + optional
+/// 1-line summary tail.
+pub fn render_tool_result(result: &ToolCallResult) -> Vec<Line<'static>> {
+    let (dot, dot_key, tail_key) = match result.status {
+        ToolCallResultStatus::Success => ("●", StyleKey::Success, StyleKey::Success),
+        ToolCallResultStatus::Error => ("●", StyleKey::Error, StyleKey::Error),
+        _ => ("●", StyleKey::Warning, StyleKey::Warning),
+    };
+
+    // Tail: prefer envelope duration/size if present, otherwise summarize
+    // by output-line count so the operator can see whether the call
+    // returned anything substantive without expanding the row.
+    let tail = if let Some(envelope) = &result.envelope {
+        if envelope.duration_ms > 0 {
+            format_duration(envelope.duration_ms)
+        } else if !envelope.summary.is_empty() {
+            let n = envelope.summary.lines().count();
+            format!("{} line{}", n, if n == 1 { "" } else { "s" })
+        } else {
+            match result.status {
+                ToolCallResultStatus::Success => "done".to_string(),
+                ToolCallResultStatus::Error => "error".to_string(),
+                _ => "…".to_string(),
+            }
+        }
+    } else {
+        let bytes = result.result.len();
+        if bytes == 0 {
+            match result.status {
+                ToolCallResultStatus::Success => "done".to_string(),
+                ToolCallResultStatus::Error => "error".to_string(),
+                _ => "…".to_string(),
+            }
+        } else if bytes < 1024 {
+            format!("{} B", bytes)
+        } else {
+            format!("{:.1} KB", bytes as f64 / 1024.0)
+        }
+    };
+
+    let mut lines = vec![render_tool_row(
+        dot,
+        dot_key,
+        &result.call.function.name,
+        &tool_summary(&result.call),
+        &tail,
+        tail_key,
+    )];
+
+    // When the result is an error, surface the first line of the
+    // output under the row so the operator sees the cause without
+    // expanding an overlay.
+    if matches!(result.status, ToolCallResultStatus::Error) {
+        let first = result.result.lines().next().unwrap_or("").trim();
+        if !first.is_empty() {
+            lines.push(Line::from(vec![
+                Span::raw("     "),
+                Span::styled(
+                    truncate_chars(first, 100),
+                    crate::services::theme::Theme::default().style(StyleKey::Error),
+                ),
+            ]));
+        }
+    }
+
     lines
 }
 
-/// Render a tool call result bubble.
-pub fn render_tool_result(result: &ToolCallResult) -> Vec<Line<'static>> {
-    let (icon, status_key) = match result.status {
-        ToolCallResultStatus::Success => ("✓", StyleKey::Success),
-        ToolCallResultStatus::Error => ("✗", StyleKey::Error),
-        _ => ("·", StyleKey::Muted),
+/// Wave 3 #04 — inline approval card.
+///
+/// Renders the currently-active pending approval as a bordered
+/// information block that sits in the conversation stream rather than
+/// off in a side panel. Width is the conversation pane width; the card
+/// adapts so its borders never clip.
+pub fn render_approval_card(
+    tool_call: &ToolCall,
+    idx: usize,
+    total: usize,
+    width: usize,
+) -> Vec<Line<'static>> {
+    let theme = crate::services::theme::Theme::default();
+    let muted = theme.style(StyleKey::Muted);
+    let accent = theme.style(StyleKey::Accent);
+    let warn = theme.style(StyleKey::Warning);
+    let err = theme.style(StyleKey::Error);
+    let ok = theme.style(StyleKey::Success);
+
+    // Inner width (2 for borders, 2 for leading indent).
+    let inner_w = width.saturating_sub(4).max(40);
+
+    let tool_name = tool_call.function.name.as_str();
+    let tool_badge = tool_name.to_ascii_uppercase();
+    let tool_tag = tool_name.to_ascii_lowercase();
+
+    // Pick a single-line command/path preview for the "$ ..." line.
+    let preview = tool_summary(tool_call);
+    let preview = if preview.is_empty() {
+        "(no arguments)".to_string()
+    } else {
+        preview
     };
-    let base_style = crate::services::theme::Theme::default().style(status_key);
-    let mut lines = vec![Line::from(vec![
-        Span::styled(format!("{icon} "), base_style),
-        Span::styled(
-            result.call.function.name.clone(),
-            base_style.add_modifier(Modifier::BOLD),
+
+    // Risk heuristic — we don't yet carry a policy clause on ToolCall,
+    // so classify by tool name. Shell/edit/write = destructive; reads
+    // and queries = elevated; everything else = standard.
+    let (risk_label, risk_style, risk_reason) = match tool_name {
+        "shell" | "bash" | "run" | "execute" => (
+            "DESTRUCTIVE",
+            err,
+            "shell command · effects outside sandbox",
         ),
-    ])];
-
-    let args = extract_full_command_arguments(&result.call);
-    if !args.is_empty() {
-        lines.push(Line::from(vec![
-            Span::raw("  "),
-            Span::styled(
-                truncate_chars(&args, 100),
-                crate::services::theme::Theme::default().style(StyleKey::Muted),
-            ),
-        ]));
-    }
-
-    let mut result_lines: Vec<&str> = if let Some(envelope) = &result.envelope {
-        envelope.summary.lines().collect()
-    } else {
-        result.result.lines().collect()
-    };
-    let truncated = if result_lines.len() > 5 {
-        result_lines.truncate(5);
-        true
-    } else {
-        false
+        "file_write" | "file_edit" | "write" | "edit" | "apply_patch" => (
+            "WRITES",
+            warn,
+            "modifies files in the working tree",
+        ),
+        "file_read" | "read" | "grep" | "glob" | "search" => {
+            ("READ", ok, "read-only · no side effects")
+        }
+        _ => ("ELEVATED", warn, "requires operator confirmation"),
     };
 
-    for line in result_lines {
-        lines.push(Line::from(vec![
-            Span::raw("    "),
-            Span::styled(
-                truncate_chars(line, 100),
-                crate::services::theme::Theme::default().style(StyleKey::Muted),
-            ),
-        ]));
-    }
-    if truncated {
-        lines.push(Line::from(vec![
-            Span::raw("    "),
-            Span::styled(
-                "... (output truncated)",
-                crate::services::theme::Theme::default()
-                    .style(StyleKey::Muted)
-                    .add_modifier(Modifier::ITALIC),
-            ),
-        ]));
-    }
+    let top = format!("┌ approval required {}┐", "─".repeat(inner_w.saturating_sub(18)));
+    let bottom_label = if total > 1 {
+        format!("─ batch {}/{} ", idx + 1, total)
+    } else {
+        String::new()
+    };
+    let bottom = format!(
+        "└{}{}┘",
+        bottom_label,
+        "─".repeat(inner_w.saturating_sub(bottom_label.chars().count()))
+    );
 
+    let pad = |content: &str| -> String {
+        let n = content.chars().count();
+        if n >= inner_w {
+            content.chars().take(inner_w).collect::<String>()
+        } else {
+            format!("{}{}", content, " ".repeat(inner_w - n))
+        }
+    };
+
+    let lead = |s: Line<'static>| -> Line<'static> {
+        // Indent card under conversation body, matching tool timeline rows.
+        let mut spans = vec![Span::raw("  ")];
+        spans.extend(s.spans);
+        Line::from(spans)
+    };
+
+    let mut lines: Vec<Line<'static>> = Vec::new();
+    lines.push(lead(Line::from(Span::styled(top, warn))));
+
+    // Header row: BASH badge + human sentence.
+    let header_content = format!(" {:<6}  the agent wants to run this {}", tool_badge, tool_tag);
+    lines.push(lead(Line::from(vec![
+        Span::styled("│", warn),
+        Span::styled(pad(&header_content), accent),
+        Span::styled("│", warn),
+    ])));
+
+    // Blank spacer.
+    lines.push(lead(Line::from(vec![
+        Span::styled("│", warn),
+        Span::styled(pad(""), muted),
+        Span::styled("│", warn),
+    ])));
+
+    // $ command preview.
+    let cmd_line = format!(" $ {}", truncate_chars(&preview, inner_w.saturating_sub(4)));
+    lines.push(lead(Line::from(vec![
+        Span::styled("│", warn),
+        Span::styled(pad(&cmd_line), accent),
+        Span::styled("│", warn),
+    ])));
+
+    // runtime envelope row.
+    let env_line = " cwd  (project) · runtime host · network inherit · writes allowed";
+    lines.push(lead(Line::from(vec![
+        Span::styled("│", warn),
+        Span::styled(pad(env_line), muted),
+        Span::styled("│", warn),
+    ])));
+
+    // risk row.
+    let risk_line = format!(" risk  {}  {}", risk_label, risk_reason);
+    lines.push(lead(Line::from(vec![
+        Span::styled("│", warn),
+        Span::styled(pad(&risk_line), risk_style),
+        Span::styled("│", warn),
+    ])));
+
+    // policy row — placeholder until ToolCall carries a clause.
+    let policy_line = format!(
+        " policy vil.core · {} requires explicit approval",
+        tool_tag
+    );
+    lines.push(lead(Line::from(vec![
+        Span::styled("│", warn),
+        Span::styled(pad(&policy_line), muted),
+        Span::styled("│", warn),
+    ])));
+
+    // actions row.
+    let actions_line =
+        " [enter] approve  [shift+a] approve all  [x] reject  [esc] defer";
+    lines.push(lead(Line::from(vec![
+        Span::styled("│", warn),
+        Span::styled(pad(actions_line), accent),
+        Span::styled("│", warn),
+    ])));
+
+    lines.push(lead(Line::from(Span::styled(bottom, warn))));
     lines
+}
+
+fn format_duration(ms: u64) -> String {
+    if ms < 1000 {
+        format!("{} ms", ms)
+    } else if ms < 60_000 {
+        format!("{:.1}s", ms as f64 / 1000.0)
+    } else {
+        format!("{}m {}s", ms / 60_000, (ms % 60_000) / 1000)
+    }
 }
