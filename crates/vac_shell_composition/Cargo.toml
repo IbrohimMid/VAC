@@ -1,0 +1,17 @@
+[package]
+name = "vac_shell_composition"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Slice 10 — host composition layer that wires VacPaths, ShellHost, command registry, surface state, approval queue, and model selection state into a single ShellComposition the operator TUI consumes."
+
+[dependencies]
+vac_shell_contracts = { path = "../vac_shell_contracts" }
+vac_shell_bridge = { path = "../vac_shell_bridge" }
+vac_shell_host_surface = { path = "../vac_shell_host_surface" }
+vac_shell_host_approval = { path = "../vac_shell_host_approval" }
+vac_shell_host_model = { path = "../vac_shell_host_model" }
+
+[dev-dependencies]
+vac_shell_host_paths = { path = "../vac_shell_host_paths" }
+tempfile = "3"

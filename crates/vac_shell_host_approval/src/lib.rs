@@ -13,8 +13,13 @@
 
 use std::sync::{Arc, Mutex};
 
-use vac_shell_approval_bar::{ApprovalActionView, ApprovalBarViewState, ApprovalStatus};
+use vac_shell_approval_bar::{ApprovalActionView, ApprovalBarViewState};
 use vac_shell_bridge::{ApprovalController, DispatchError};
+
+// Re-export so downstream callers (e.g. `vac_shell_composition`)
+// can assert on row status without taking a direct dep on
+// `vac_shell_approval_bar`.
+pub use vac_shell_approval_bar::ApprovalStatus;
 
 /// One pending action in the queue. The widget never sees this type.
 #[derive(Debug, Clone)]
