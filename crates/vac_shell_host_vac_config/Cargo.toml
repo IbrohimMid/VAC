@@ -1,0 +1,18 @@
+[package]
+name = "vac_shell_host_vac_config"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "D3 — read-only VAC model-config seam. Loads provider/model metadata from a VacPaths-resolved JSON snapshot and projects into ProviderInfo/HostModel. credentials_present: bool only — never API keys, tokens, or secret paths."
+
+[dependencies]
+vac_shell_contracts = { path = "../vac_shell_contracts" }
+vac_shell_bridge = { path = "../vac_shell_bridge" }
+vac_shell_host_model = { path = "../vac_shell_host_model" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"
+
+[dev-dependencies]
+vac_shell_host_paths = { path = "../vac_shell_host_paths" }
+tempfile = "3"

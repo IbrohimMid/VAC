@@ -38,4 +38,16 @@ pub trait VacPaths: Send + Sync {
     /// the trait — no caller is allowed to compose
     /// `.vac/state/...` or `.stakpak/...` themselves.
     fn model_selection_file(&self) -> PathBuf;
+
+    /// D3 — read-only model-config snapshot file the shell projects
+    /// into `Vec<ProviderInfo>` / `Vec<HostModel>`. Default impl
+    /// returns `<project>/.vac/model_config.json`; concrete impls
+    /// may override. **No secrets**: this file holds provider names,
+    /// model identifiers, and a `credentials_present: bool` per
+    /// provider — never an API key, token, or secret path.
+    fn model_config_file(&self) -> PathBuf {
+        let mut p = self.project_state_dir();
+        p.push("model_config.json");
+        p
+    }
 }

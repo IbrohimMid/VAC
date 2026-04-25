@@ -47,9 +47,65 @@ use vac_shell_host_sessions::SessionsState;
 /// build steps inline.
 pub fn build_shell_app(project_root: impl AsRef<Path>) -> ShellApp {
     let paths: Arc<dyn VacPaths> = Arc::new(VacPathsImpl::new(project_root.as_ref()));
+    // The activity log is the canonical sink for boot warnings
+    // (e.g. config snapshot unreadable). Construct it before any
+    // fallible step so the first error path can record cleanly.
+    let activity_log = Arc::new(ActivityLog::default());
 
-    // D1 fixture providers/models/commands. D3 will replace these
-    // with a real read-only projection from `VacConfig.llm`.
+    // D3.1 — try the read-only `VacConfigModelSource` first.
+    //
+    // * snapshot present + valid → use it.
+    // * snapshot missing         → fall back to fixture, no warn
+    //   (this is the documented "first boot, no engine probe yet"
+    //   path).
+    // * snapshot present + unreadable / corrupt → fall back AND
+    //   record an activity warning so the operator sees what
+    //   went wrong.
+    let (providers, models, fallback_active) =
+        match vac_shell_host_vac_config::load_from_paths(paths.as_ref()) {
+            Ok(Some(src)) => {
+                use vac_shell_host_model::ModelSource;
+                let providers = src.providers();
+                let models = src.models();
+                let fallback_active = src.active_model();
+                (providers, models, fallback_active)
+            }
+            Ok(None) => fixture_inputs(),
+            Err(err) => {
+                let id = format!("config-warn-{}", now_unix());
+                activity_log.record_error(
+                    id,
+                    now_unix(),
+                    "model config snapshot unreadable; using fixture",
+                    Some(format!("{err}")),
+                );
+                fixture_inputs()
+            }
+        };
+
+    let commands = default_commands();
+    let composition: Arc<ShellComposition> = Arc::new(
+        ShellCompositionBuilder::new(paths)
+            .with_providers(providers)
+            .with_models(models)
+            .with_fallback_active(fallback_active)
+            .with_commands(commands)
+            .boot()
+            .expect("ShellCompositionBuilder::boot must succeed"),
+    );
+
+    let mut app = ShellApp::new(composition);
+    app.activity_log = Some(activity_log);
+    app.sessions = Some(Arc::new(SessionsState::new()));
+    app.prepare_frame();
+    app
+}
+
+fn fixture_inputs() -> (
+    Vec<ProviderInfo>,
+    Vec<HostModel>,
+    Option<(ProviderId, String)>,
+) {
     let providers = vec![ProviderInfo {
         id: ProviderId("anthropic".into()),
         credentials_present: true,
@@ -61,26 +117,18 @@ pub fn build_shell_app(project_root: impl AsRef<Path>) -> ShellApp {
         reasoning: true,
         cost_label: None,
     }];
-    let commands = default_commands();
+    let fallback_active = Some((
+        ProviderId("anthropic".into()),
+        "claude-sonnet-4.5".into(),
+    ));
+    (providers, models, fallback_active)
+}
 
-    let composition: Arc<ShellComposition> = Arc::new(
-        ShellCompositionBuilder::new(paths)
-            .with_providers(providers)
-            .with_models(models)
-            .with_fallback_active(Some((
-                ProviderId("anthropic".into()),
-                "claude-sonnet-4.5".into(),
-            )))
-            .with_commands(commands)
-            .boot()
-            .expect("ShellCompositionBuilder::boot must succeed for fixture inputs"),
-    );
-
-    let mut app = ShellApp::new(composition);
-    app.activity_log = Some(Arc::new(ActivityLog::default()));
-    app.sessions = Some(Arc::new(SessionsState::new()));
-    app.prepare_frame();
-    app
+fn now_unix() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
 }
 
 /// Boot the new `ShellApp` cockpit from a project root.
