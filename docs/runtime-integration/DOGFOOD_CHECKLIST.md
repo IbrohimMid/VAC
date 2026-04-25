@@ -39,6 +39,8 @@ entrypoint falls back to the fixture model
 | 11 | `Esc` once | Top overlay closes |
 | 12 | `Esc` repeatedly with overlays stacked | Each press pops one overlay |
 | 13 | Plain `q` (no overlay) | Loop exits cleanly; terminal restored |
+| 14 | Force a panic / `Ctrl+C` mid-session | Terminal raw mode + alternate screen restored automatically (`TerminalGuard` Drop) — operator's shell prompt usable without `reset` |
+| 15 | Type `/memorize` (or any custom slash) `Enter` | Activity log records "command unsupported (D5.1 stub)" — confirms `ShellRuntimeContext` routes to executor |
 
 ## Reporting issues
 

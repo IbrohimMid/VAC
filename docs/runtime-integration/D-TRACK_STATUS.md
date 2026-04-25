@@ -5,15 +5,15 @@
 | **D1** | `vac_shell_entrypoint` | PASS |
 | **D2**  | `vac_shell_keymap` (mapping) | PASS |
 | **D2.1**| `vac_shell_keymap` (dispatch) | PASS |
-| **D2.2**| `vac_shell_runtime_loop` | PASS |
+| **D2.2**| `vac_shell_runtime_loop` | PASS (after hardening: `TerminalGuard` RAII + `ShellRuntimeContext`) |
 | **D3**  | `vac_shell_host_vac_config` + `VacPaths::model_config_file` | PASS |
-| **D3.1**| Entrypoint config fallback | PASS |
+| **D3.1**| Entrypoint config fallback | PASS (after hardening: `sanitize_active_model` drops no-creds / unknown-model active before composition) |
 | **D4**  | `vac_shell_host_event_projection` | PASS |
 | **D4.1**| `record_projected_event` ingest helper | PASS |
-| **D5**  | `vac_shell_host_commands` (`ShellCommandExecutor` + `route_palette_command`) | PASS |
+| **D5**  | `vac_shell_host_commands` (`ShellCommandExecutor` + `route_palette_command`) | PASS (after hardening: actually wired into `handle_key_event_once` via `ShellRuntimeContext`) |
 | **D5.1**| `VacCommandExecutorAdapter` stub | PASS |
-| **D6**  | `cargo run -p vac_shell_entrypoint --example dogfood` | PASS (manual checklist) |
-| **RC gate** | This doc + `DOGFOOD_CHECKLIST.md` + map update | PASS |
+| **D6**  | `cargo run -p vac_shell_entrypoint --example dogfood` | PASS — example now constructs `ShellRuntimeContext` with the adapter stub (manual checklist) |
+| **RC gate** | This doc + `DOGFOOD_CHECKLIST.md` + map update | PASS (post-hardening) |
 
 ## Crate inventory after the batch
 

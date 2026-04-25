@@ -194,11 +194,11 @@ operator checklist. ADR:
 |---|---|---|
 | D1 | `vac_shell_entrypoint` | Opt-in `run_shell_app(project_root)` boot |
 | D2 + D2.1 | `vac_shell_keymap` | crossterm `KeyEvent` → `RoutedKey` + `dispatch_routed_key` into `ShellApp` |
-| D2.2 | `vac_shell_runtime_loop` | `handle_key_event_once` + live crossterm + ratatui loop |
-| D3 + D3.1 | `vac_shell_host_vac_config` | Read-only model-config snapshot at `VacPaths::model_config_file()`; entrypoint falls back to fixture on missing/corrupt snapshot, records warning on corruption |
+| D2.2 | `vac_shell_runtime_loop` | `ShellRuntimeContext` (app + optional `ShellCommandExecutor`) + `handle_key_event_once` routing `PaletteSelected` through `route_palette_command`; live crossterm/ratatui loop guarded by `TerminalGuard` RAII so panic/error/normal-exit always restore raw mode + alt screen |
+| D3 + D3.1 | `vac_shell_host_vac_config` | Read-only model-config snapshot at `VacPaths::model_config_file()`; entrypoint runs `sanitize_active_model` to drop no-creds / unknown-model active before composition; falls back to fixture on missing snapshot and records a warning on corruption |
 | D4 + D4.1 | `vac_shell_host_event_projection` | `RuntimeEventView` DTO → `ShellActivityEntry`; `record_projected_event` ingests into `ActivityLog` |
-| D5 + D5.1 | `vac_shell_host_commands` | `ShellCommandExecutor` trait + `route_palette_command`; `VacCommandExecutorAdapter` stub for non-built-in palette commands |
-| D6 | `vac_shell_entrypoint::examples::dogfood` | `cargo run -p vac_shell_entrypoint --example dogfood` boots the cockpit live |
+| D5 + D5.1 | `vac_shell_host_commands` | `ShellCommandExecutor` trait + `route_palette_command` (now wired into the runtime loop via `ShellRuntimeContext`); `VacCommandExecutorAdapter` stub records "unsupported (D5.1 stub)" for non-built-in palette commands |
+| D6 | `vac_shell_entrypoint::examples::dogfood` | `cargo run -p vac_shell_entrypoint --example dogfood` boots the cockpit live with `ShellRuntimeContext` + `VacCommandExecutorAdapter` stub attached |
 
 Hard guards still held: every UI widget runtime dep stays on
 `ratatui + vac_shell_contracts`; `vac_shell_bridge` stays on
