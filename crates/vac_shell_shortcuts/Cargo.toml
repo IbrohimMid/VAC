@@ -1,0 +1,10 @@
+[package]
+name = "vac_shell_shortcuts"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Step 2 slice 6 — shortcuts/command-palette popup widget extracted from Stakpak's shortcuts_popup.rs. Commands + Shortcuts sections only — Sessions section deferred until VacPaths lands."
+
+[dependencies]
+vac_shell_contracts = { path = "../vac_shell_contracts" }
+ratatui.workspace = true
