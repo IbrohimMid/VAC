@@ -1,0 +1,20 @@
+[package]
+name = "vac_shell_host_commands"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "D5 — palette command executor bridge. ShellCommandExecutor trait + a recording in-memory impl + a stub VacCommandExecutorAdapter (unsupported by default) that a future engine slice fills in. Hosts attach an executor to a ShellRuntimeContext; the runtime loop dispatches non-built-in slashes through it."
+
+[dependencies]
+vac_shell_contracts = { path = "../vac_shell_contracts" }
+vac_shell_app = { path = "../vac_shell_app" }
+vac_shell_host_activity = { path = "../vac_shell_host_activity" }
+vac_shell_bridge = { path = "../vac_shell_bridge" }
+thiserror = "1"
+
+[dev-dependencies]
+vac_shell_composition = { path = "../vac_shell_composition" }
+vac_shell_host_paths = { path = "../vac_shell_host_paths" }
+vac_shell_host_model = { path = "../vac_shell_host_model" }
+vac_shell_host_surface = { path = "../vac_shell_host_surface" }
+tempfile = "3"
