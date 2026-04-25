@@ -6433,7 +6433,10 @@ dependencies = [
 name = "vac_shell_bridge"
 version = "0.1.0"
 dependencies = [
+ "vac_shell_approval_bar",
  "vac_shell_contracts",
+ "vac_shell_host_approval",
+ "vac_shell_host_surface",
  "vac_shell_palette",
 ]
 

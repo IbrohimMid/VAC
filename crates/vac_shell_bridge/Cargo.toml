@@ -10,3 +10,6 @@ vac_shell_contracts = { path = "../vac_shell_contracts" }
 
 [dev-dependencies]
 vac_shell_palette = { path = "../vac_shell_palette" }
+vac_shell_approval_bar = { path = "../vac_shell_approval_bar" }
+vac_shell_host_approval = { path = "../vac_shell_host_approval" }
+vac_shell_host_surface = { path = "../vac_shell_host_surface" }

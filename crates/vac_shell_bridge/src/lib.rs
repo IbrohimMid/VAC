@@ -124,6 +124,129 @@ impl CommandDispatcher {
 }
 
 // =====================================================================
+// Unified host action seam — slice 5 (controller normalization)
+// =====================================================================
+//
+// The bridge's host-facing surface used to be a growing pile of
+// per-domain traits (`SurfaceController`, `ApprovalController`, …).
+// Each new donor widget threatened to add another. The unified seam
+// is `ShellAction` + `ShellHost`:
+//
+//   * `ShellAction` is the one closed enum the bridge routes through.
+//   * `ShellHost::handle(action)` is the single method hosts impl.
+//
+// Per-domain traits (`SurfaceController`, `ApprovalController`) stay
+// as the underlying primitives that the bundled `CompositeShellHost`
+// composes. New code targets `ShellHost`; product hosts that already
+// own a `SurfaceState` + `ApprovalQueue` build a composite from them.
+
+/// Closed action enum routed by [`ShellHost`]. Variants are added
+/// only when a new product behaviour ships, so the bridge surface
+/// grows by enum variant rather than by trait.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ShellAction {
+    EnterSurface(SurfaceTarget),
+    ToggleApproval { id: String },
+    RejectAllApprovals,
+    SubmitApprovals,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SurfaceTarget {
+    Chat,
+    Runtime,
+}
+
+/// Single host-facing seam. Hosts that compose multiple
+/// sub-controllers route by action variant; hosts that only own one
+/// domain return `DispatchError::UnknownAction` for the rest.
+pub trait ShellHost: Send + Sync {
+    fn handle(&self, action: ShellAction) -> Result<(), DispatchError>;
+}
+
+/// Concrete `ShellHost` that bundles the existing per-domain
+/// controllers. The bundling is pure routing — no state of its own.
+pub struct CompositeShellHost {
+    surface: Option<Arc<dyn SurfaceController>>,
+    approval: Option<Arc<dyn ApprovalController>>,
+}
+
+impl CompositeShellHost {
+    pub fn new() -> Self {
+        Self {
+            surface: None,
+            approval: None,
+        }
+    }
+
+    pub fn with_surface(mut self, controller: Arc<dyn SurfaceController>) -> Self {
+        self.surface = Some(controller);
+        self
+    }
+
+    pub fn with_approval(mut self, controller: Arc<dyn ApprovalController>) -> Self {
+        self.approval = Some(controller);
+        self
+    }
+}
+
+impl Default for CompositeShellHost {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ShellHost for CompositeShellHost {
+    fn handle(&self, action: ShellAction) -> Result<(), DispatchError> {
+        match action {
+            ShellAction::EnterSurface(target) => {
+                let ctrl = self
+                    .surface
+                    .as_ref()
+                    .ok_or_else(|| DispatchError::Host("surface controller not bound".into()))?;
+                match target {
+                    SurfaceTarget::Chat => ctrl.enter_chat(),
+                    SurfaceTarget::Runtime => ctrl.enter_runtime(),
+                }
+            }
+            ShellAction::ToggleApproval { id } => {
+                let ctrl = self
+                    .approval
+                    .as_ref()
+                    .ok_or_else(|| DispatchError::Host("approval controller not bound".into()))?;
+                ctrl.toggle(&id)
+            }
+            ShellAction::RejectAllApprovals => self
+                .approval
+                .as_ref()
+                .ok_or_else(|| DispatchError::Host("approval controller not bound".into()))?
+                .reject_all(),
+            ShellAction::SubmitApprovals => self
+                .approval
+                .as_ref()
+                .ok_or_else(|| DispatchError::Host("approval controller not bound".into()))?
+                .submit_all(),
+        }
+    }
+}
+
+/// Host-action dispatcher for slash commands. Replaces
+/// [`surface_dispatcher`] for new wiring; old wiring keeps working.
+/// The closure resolves slashes onto `ShellAction` values and routes
+/// via the unified host. Other slashes return
+/// `DispatchError::UnknownSlash` so further handlers can compose.
+pub fn host_dispatcher(host: Arc<dyn ShellHost>) -> DispatchHandler {
+    Arc::new(move |spec: &ShellCommandSpec| -> Result<(), DispatchError> {
+        let action = match spec.slash.as_str() {
+            "/chat" => ShellAction::EnterSurface(SurfaceTarget::Chat),
+            "/runtime" => ShellAction::EnterSurface(SurfaceTarget::Runtime),
+            other => return Err(DispatchError::UnknownSlash(other.to_string())),
+        };
+        host.handle(action)
+    })
+}
+
+// =====================================================================
 // Surface controller — first real-effect seam
 // =====================================================================
 //
@@ -139,6 +262,11 @@ impl CommandDispatcher {
 /// VAC-side surface controller. The bridge calls into this trait to
 /// flip the active operator surface (chat ↔ runtime) without
 /// reaching into VAC types directly.
+///
+/// **Status:** building block for [`CompositeShellHost`]. New
+/// integration code should target [`ShellHost`] + [`ShellAction`];
+/// this trait is the underlying primitive that the composite
+/// dispatches into.
 pub trait SurfaceController: Send + Sync {
     fn enter_chat(&self) -> Result<(), DispatchError>;
     fn enter_runtime(&self) -> Result<(), DispatchError>;
@@ -169,6 +297,11 @@ pub enum ApprovalDecision {
 
 /// VAC-side approval queue controller. The bridge calls into this
 /// trait when the operator interacts with the widget.
+///
+/// **Status:** building block for [`CompositeShellHost`]. New
+/// integration code should target [`ShellHost`] + [`ShellAction`];
+/// this trait is the underlying primitive that the composite
+/// dispatches into.
 pub trait ApprovalController: Send + Sync {
     /// Toggle the decision attached to `id` between Approve / Reject.
     fn toggle(&self, id: &str) -> Result<(), DispatchError>;
