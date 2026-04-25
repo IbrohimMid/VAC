@@ -13,6 +13,7 @@
 //! manual operator script.
 
 use std::process::ExitCode;
+use std::sync::Arc;
 
 fn main() -> ExitCode {
     let root = match std::env::current_dir() {
@@ -23,8 +24,12 @@ fn main() -> ExitCode {
         }
     };
     let app = vac_shell_entrypoint::build_shell_app(&root);
+    let ctx = vac_shell_runtime_loop::ShellRuntimeContext::new(app)
+        .with_executor(Arc::new(
+            vac_shell_host_commands::VacCommandExecutorAdapter::new(),
+        ));
     match vac_shell_runtime_loop::run_shell_loop(
-        app,
+        ctx,
         vac_shell_runtime_loop::ShellLoopOptions::default(),
     ) {
         Ok(code) => code,

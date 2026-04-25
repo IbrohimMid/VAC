@@ -9,6 +9,7 @@ description = "D2.2 — minimal interactive event-loop harness for the new Shell
 vac_shell_app = { path = "../vac_shell_app" }
 vac_shell_keymap = { path = "../vac_shell_keymap" }
 vac_shell_contracts = { path = "../vac_shell_contracts" }
+vac_shell_host_commands = { path = "../vac_shell_host_commands" }
 crossterm = "0.28"
 ratatui.workspace = true
 thiserror = "1"
