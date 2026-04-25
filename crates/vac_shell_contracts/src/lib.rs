@@ -31,10 +31,12 @@ pub mod selection;
 pub mod overlay;
 pub mod activity;
 pub mod diff;
+pub mod shell;
 
 pub use activity::{Severity, ShellActivityEntry, ShellActivityKind};
 pub use diff::{DiffFileView, DiffHunkView, DiffLineKind, DiffLineView, DiffReviewEvent};
-pub use approval::VacApprovalBridge;
+pub use shell::{ShellCommandView, ShellStatus};
+pub use approval::{ApprovalDetailView, RiskLevel, VacApprovalBridge};
 pub use events::{VacShellEvent, VacSubmitRequest};
 pub use model::{ProviderId, VacModelView};
 pub use paths::VacPaths;

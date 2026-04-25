@@ -8,6 +8,8 @@
 //! Blocker B in the donor extraction map: this trait is the seam that
 //! prevents two systems from racing to approve the same call.
 
+#![allow(clippy::module_inception)]
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -50,4 +52,27 @@ pub enum ApprovalError {
     AlreadyResolved(String),
     #[error("bridge error: {0}")]
     Other(String),
+}
+
+/// Slice 16 — risk classification surfaced in the detail drawer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RiskLevel {
+    Low,
+    Medium,
+    High,
+    Critical,
+}
+
+/// Slice 16 — full detail view for the currently-selected approval.
+/// Compact bar still uses the existing `PendingApproval`; this is
+/// what the drawer renders when the operator wants more context.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApprovalDetailView {
+    pub id: String,
+    pub tool_name: String,
+    pub risk_level: RiskLevel,
+    pub reason: String,
+    pub command_preview: Option<String>,
+    pub file_preview: Option<String>,
+    pub policy_source: Option<String>,
 }

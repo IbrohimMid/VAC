@@ -6438,6 +6438,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "vac_shell_approval_detail"
+version = "0.1.0"
+dependencies = [
+ "ratatui",
+ "vac_shell_contracts",
+]
+
+[[package]]
 name = "vac_shell_bridge"
 version = "0.1.0"
 dependencies = [
@@ -6598,6 +6606,7 @@ name = "vac_shell_popup"
 version = "0.1.0"
 dependencies = [
  "ratatui",
+ "vac_shell_contracts",
 ]
 
 [[package]]

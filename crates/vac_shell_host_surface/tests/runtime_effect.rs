@@ -25,6 +25,7 @@ fn fixture() -> Vec<ShellCommandSpec> {
             kind: ShellCommandKind::BuiltInAction,
             palette_visible: true,
             shortcut: None,
+        ..Default::default()
         },
         ShellCommandSpec {
             id: "chat".into(),
@@ -34,6 +35,7 @@ fn fixture() -> Vec<ShellCommandSpec> {
             kind: ShellCommandKind::BuiltInAction,
             palette_visible: true,
             shortcut: None,
+        ..Default::default()
         },
     ]
 }

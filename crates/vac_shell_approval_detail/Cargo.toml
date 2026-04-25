@@ -1,0 +1,10 @@
+[package]
+name = "vac_shell_approval_detail"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Slice 16 — pure ratatui approval detail drawer. Renders ApprovalDetailView (risk badge, reason, command preview, file preview, policy source). VAC gate remains the policy owner; this is presentation only."
+
+[dependencies]
+vac_shell_contracts = { path = "../vac_shell_contracts" }
+ratatui.workspace = true

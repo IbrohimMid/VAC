@@ -5,9 +5,10 @@
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum ShellCommandKind {
     /// In-process action handled by VAC (e.g. `/model`, `/runtime`).
+    #[default]
     BuiltInAction,
     /// Templated prompt that gets fed to the agent verbatim.
     PromptTemplate,
@@ -15,7 +16,7 @@ pub enum ShellCommandKind {
     OverlayRoute,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ShellCommandSpec {
     pub id: String,
     pub slash: String,
@@ -26,6 +27,16 @@ pub struct ShellCommandSpec {
     pub palette_visible: bool,
     /// Optional keybinding string (e.g. `Ctrl+P`) for help renderers.
     pub shortcut: Option<String>,
+    /// Slice 18 — palette v2 enrichment fields. All default to
+    /// empty / None so older specs round-trip unchanged.
+    #[serde(default)]
+    pub category: Option<String>,
+    #[serde(default)]
+    pub aliases: Vec<String>,
+    #[serde(default)]
+    pub keywords: Vec<String>,
+    #[serde(default)]
+    pub disabled_reason: Option<String>,
 }
 
 pub trait VacCommandRegistry: Send + Sync {

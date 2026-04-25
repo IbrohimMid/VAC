@@ -394,6 +394,7 @@ mod tests {
             kind: ShellCommandKind::BuiltInAction,
             palette_visible: true,
             shortcut: None,
+        ..Default::default()
         }
     }
 

@@ -25,6 +25,7 @@ fn cmd(slash: &str, palette_visible: bool) -> ShellCommandSpec {
         kind: ShellCommandKind::BuiltInAction,
         palette_visible,
         shortcut: None,
+        ..Default::default()
     }
 }
 

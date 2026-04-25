@@ -28,6 +28,7 @@ fn fixture() -> Vec<ShellCommandSpec> {
             kind: ShellCommandKind::OverlayRoute,
             palette_visible: true,
             shortcut: None,
+        ..Default::default()
         },
         ShellCommandSpec {
             id: "memorize".into(),
@@ -37,6 +38,7 @@ fn fixture() -> Vec<ShellCommandSpec> {
             kind: ShellCommandKind::PromptTemplate,
             palette_visible: true,
             shortcut: None,
+        ..Default::default()
         },
         ShellCommandSpec {
             id: "runtime".into(),
@@ -46,6 +48,7 @@ fn fixture() -> Vec<ShellCommandSpec> {
             kind: ShellCommandKind::BuiltInAction,
             palette_visible: true,
             shortcut: None,
+        ..Default::default()
         },
     ]
 }

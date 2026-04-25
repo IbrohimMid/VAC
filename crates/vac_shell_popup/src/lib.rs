@@ -226,3 +226,107 @@ pub fn reset_cursor_blink(view: &mut ShellPopupViewState) {
     view.cursor_visible = true;
     view.cursor_blink_timer = 0;
 }
+
+// =====================================================================
+// Slice 17 — shell popup v2 helpers
+// =====================================================================
+
+use vac_shell_contracts::{ShellCommandView, ShellStatus};
+
+/// One-line status badge string for a shell command. Pure helper —
+/// the renderer can drop this into the title area.
+pub fn status_badge(view: &ShellCommandView) -> String {
+    let elapsed = view
+        .ended_at
+        .or(Some(view.started_at))
+        .map(|end| end.saturating_sub(view.started_at))
+        .unwrap_or(0);
+    match view.status {
+        ShellStatus::Running => format!("running · {}s", elapsed),
+        ShellStatus::Succeeded => format!("ok · {}s", elapsed),
+        ShellStatus::Failed => match view.exit_code {
+            Some(c) => format!("failed · exit {} · {}s", c, elapsed),
+            None => format!("failed · {}s", elapsed),
+        },
+        ShellStatus::Cancelled => format!("cancelled · {}s", elapsed),
+    }
+}
+
+/// In-buffer line-text search — case-insensitive substring scan.
+/// Returns the indices into `lines` that match `needle`. Empty
+/// needle returns an empty result so the caller knows to clear
+/// any highlight.
+pub fn search_lines(lines: &[String], needle: &str) -> Vec<usize> {
+    let n = needle.trim().to_lowercase();
+    if n.is_empty() {
+        return Vec::new();
+    }
+    lines
+        .iter()
+        .enumerate()
+        .filter(|(_, l)| l.to_lowercase().contains(&n))
+        .map(|(i, _)| i)
+        .collect()
+}
+
+/// Single-line preview rendering for the collapsed popup overflow:
+/// the latest non-empty line, trimmed.
+pub fn collapsed_preview_line(lines: &[String]) -> Option<String> {
+    lines
+        .iter()
+        .rev()
+        .find(|l| !l.trim().is_empty())
+        .cloned()
+}
+
+#[cfg(test)]
+mod v2_tests {
+    use super::*;
+
+    #[test]
+    fn status_badge_running_then_failed() {
+        let mut v = ShellCommandView {
+            id: "x".into(),
+            command: "ls".into(),
+            cwd: "/tmp".into(),
+            status: ShellStatus::Running,
+            exit_code: None,
+            started_at: 100,
+            ended_at: None,
+        };
+        let s = status_badge(&v);
+        assert!(s.starts_with("running"));
+        v.status = ShellStatus::Failed;
+        v.ended_at = Some(105);
+        v.exit_code = Some(2);
+        let s = status_badge(&v);
+        assert!(s.contains("exit 2"));
+        assert!(s.contains("5s"));
+    }
+
+    #[test]
+    fn search_lines_case_insensitive() {
+        let lines: Vec<String> =
+            vec!["hello".into(), "World".into(), "WORLD again".into(), "foo".into()];
+        let hits = search_lines(&lines, "world");
+        assert_eq!(hits, vec![1, 2]);
+    }
+
+    #[test]
+    fn search_empty_needle_returns_empty() {
+        let lines: Vec<String> = vec!["hello".into()];
+        assert!(search_lines(&lines, "").is_empty());
+        assert!(search_lines(&lines, "   ").is_empty());
+    }
+
+    #[test]
+    fn collapsed_preview_picks_latest_non_empty() {
+        let lines: Vec<String> = vec![
+            "  ".into(),
+            "build ok".into(),
+            "".into(),
+            "   ".into(),
+        ];
+        assert_eq!(collapsed_preview_line(&lines).as_deref(), Some("build ok"));
+    }
+}

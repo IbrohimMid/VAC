@@ -120,6 +120,74 @@ pub fn filter_entries(input: &str, all: &[ShellCommandSpec]) -> Vec<ShellCommand
     prefix_filter(input, all)
 }
 
+/// Slice 18 — richer match policy. Walks slash, title, aliases, and
+/// keywords case-insensitively; respects `palette_visible`.
+/// Disabled commands (`disabled_reason = Some(_)`) still appear so
+/// the operator sees why they're disabled, but rank below enabled
+/// matches via [`rank_entries`].
+pub fn fuzzy_filter(input: &str, all: &[ShellCommandSpec]) -> Vec<ShellCommandSpec> {
+    let n = input.trim().trim_start_matches('/').to_lowercase();
+    if n.is_empty() {
+        return all.iter().filter(|s| s.palette_visible).cloned().collect();
+    }
+    all.iter()
+        .filter(|s| s.palette_visible)
+        .filter(|s| {
+            let slash_no_prefix = s.slash.trim_start_matches('/').to_lowercase();
+            slash_no_prefix.contains(&n)
+                || s.title.to_lowercase().contains(&n)
+                || s.aliases.iter().any(|a| a.to_lowercase().contains(&n))
+                || s.keywords.iter().any(|k| k.to_lowercase().contains(&n))
+        })
+        .cloned()
+        .collect()
+}
+
+/// Slice 18 — group entries by `category`. Untyped entries land
+/// under `None`. Within each group, ordering is preserved.
+pub fn group_by_category(
+    entries: &[ShellCommandSpec],
+) -> Vec<(Option<String>, Vec<ShellCommandSpec>)> {
+    let mut buckets: std::collections::BTreeMap<Option<String>, Vec<ShellCommandSpec>> =
+        std::collections::BTreeMap::new();
+    for e in entries {
+        buckets.entry(e.category.clone()).or_default().push(e.clone());
+    }
+    buckets.into_iter().collect()
+}
+
+/// Slice 18 — surface ordering: pinned recents first (by id), then
+/// enabled entries, then disabled entries. Caller-supplied recent
+/// id list pins those entries to the top while preserving their
+/// recency order.
+pub fn rank_entries(
+    entries: &[ShellCommandSpec],
+    recent_ids: &[String],
+) -> Vec<ShellCommandSpec> {
+    let mut recent: Vec<ShellCommandSpec> = Vec::new();
+    let mut enabled: Vec<ShellCommandSpec> = Vec::new();
+    let mut disabled: Vec<ShellCommandSpec> = Vec::new();
+    let recent_set: std::collections::HashSet<&String> = recent_ids.iter().collect();
+    for e in entries {
+        if recent_set.contains(&e.id) {
+            // skip — added below in recency order
+            continue;
+        }
+        if e.disabled_reason.is_some() {
+            disabled.push(e.clone());
+        } else {
+            enabled.push(e.clone());
+        }
+    }
+    // recents in caller-provided order
+    for id in recent_ids {
+        if let Some(found) = entries.iter().find(|e| &e.id == id) {
+            recent.push(found.clone());
+        }
+    }
+    recent.into_iter().chain(enabled).chain(disabled).collect()
+}
+
 /// Logical key event consumed by the palette. The crate stays free of
 /// `crossterm` so it can be driven from any input source (live TUI
 /// events, deterministic tests, ACP messages).

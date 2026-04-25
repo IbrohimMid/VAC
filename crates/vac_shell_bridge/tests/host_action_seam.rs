@@ -155,6 +155,7 @@ fn host_dispatcher_routes_runtime_and_chat_through_unified_seam() {
             kind: ShellCommandKind::BuiltInAction,
             palette_visible: true,
             shortcut: None,
+        ..Default::default()
         },
         ShellCommandSpec {
             id: "chat".into(),
@@ -164,6 +165,7 @@ fn host_dispatcher_routes_runtime_and_chat_through_unified_seam() {
             kind: ShellCommandKind::BuiltInAction,
             palette_visible: true,
             shortcut: None,
+        ..Default::default()
         },
     ]));
     let dispatcher = CommandDispatcher::new(registry, host_dispatcher(host));

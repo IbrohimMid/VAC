@@ -7,3 +7,4 @@ description = "Step 2 slice 3 — shell popup widget extracted from Stakpak's sh
 
 [dependencies]
 ratatui.workspace = true
+vac_shell_contracts = { path = "../vac_shell_contracts" }
