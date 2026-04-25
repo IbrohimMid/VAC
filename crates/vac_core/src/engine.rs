@@ -71,8 +71,11 @@ impl VacEngine {
     /// Create a new VacEngine for the given project root.
     pub async fn new(project_root: PathBuf) -> VacResult<Self> {
         let config = VacConfig::load_with_fallback(&project_root)?;
-        let session = Session::load_latest(&project_root)?
-            .unwrap_or_else(|| Session::new(project_root.clone()));
+        // Default to a fresh session per construction. Resume flows go
+        // through `resume_run_state` which loads the named session
+        // explicitly. Auto-loading here surprised dogfood users by
+        // silently reattaching old transcripts on every TUI launch.
+        let session = Session::new(project_root.clone());
         let project_context = match vac_ingest::bootstrap(project_root.clone()).await {
             Ok(context) => Some(context),
             Err(e) => {

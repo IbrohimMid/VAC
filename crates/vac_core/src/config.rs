@@ -273,22 +273,60 @@ impl VacConfig {
     /// Load config with fallback: project → global → defaults.
     pub fn load_with_fallback(project_root: &Path) -> crate::error::VacResult<Self> {
         let project_config = project_root.join(".vac/config.toml");
-        if project_config.exists() {
-            return Self::load(&project_config)
-                .map(|config| config.resolve_relative_paths(project_root));
-        }
+        let mut config = if project_config.exists() {
+            Self::load(&project_config)?
+        } else if let Some(config_dir) = get_default_config_dir()
+            && config_dir.join("vac/config.toml").exists()
+        {
+            Self::load(&config_dir.join("vac/config.toml"))?
+        } else {
+            let c = Self::default();
+            c.validate()?;
+            c
+        };
+        config.apply_kilo_auth_if_present();
+        Ok(config.resolve_relative_paths(project_root))
+    }
 
-        if let Some(config_dir) = get_default_config_dir() {
-            let global_config = config_dir.join("vac/config.toml");
-            if global_config.exists() {
-                return Self::load(&global_config)
-                    .map(|config| config.resolve_relative_paths(project_root));
+    /// If `vac auth login` saved a Kilo API key (or `KILO_API_KEY` env is set),
+    /// auto-register the kilo provider so the Model Switcher exposes it and
+    /// the LLM router can resolve credentials without a hand-edited
+    /// `.vac/config.toml`.
+    fn apply_kilo_auth_if_present(&mut self) {
+        let Ok(Some(key)) = crate::auth::resolve_kilo_api_key() else {
+            return;
+        };
+        if std::env::var("KILO_API_KEY")
+            .map(|v| v.trim().is_empty())
+            .unwrap_or(true)
+        {
+            // SAFETY: setting an env var is racy across threads; we do this
+            // during single-threaded config load before the runtime spawns.
+            unsafe {
+                std::env::set_var("KILO_API_KEY", &key);
             }
         }
-
-        let config = Self::default();
-        config.validate()?;
-        Ok(config.resolve_relative_paths(project_root))
+        self.llm
+            .providers
+            .entry("kilo".to_string())
+            .or_insert_with(|| LlmProviderConfig {
+                api_key_env: Some("KILO_API_KEY".to_string()),
+                model: Some("kilo-auto/free".to_string()),
+                base_url: None,
+                ..Default::default()
+            });
+        if !self.llm.fallback_chain.iter().any(|p| p == "kilo") {
+            self.llm.fallback_chain.insert(0, "kilo".to_string());
+        }
+        if self.llm.default_provider == "anthropic"
+            && !self.llm.providers.contains_key("anthropic")
+            || self.llm.default_provider == "anthropic"
+                && std::env::var("ANTHROPIC_API_KEY")
+                    .map(|v| v.trim().is_empty())
+                    .unwrap_or(true)
+        {
+            self.llm.default_provider = "kilo".to_string();
+        }
     }
 
     pub fn validate(&self) -> crate::error::VacResult<()> {

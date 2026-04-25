@@ -1358,6 +1358,12 @@ Rules:
         state.messages = coder_messages;
         state.trim_boundary = 0;
         state.iterations = 0;
+        // Reset the reasoning FSM along with the iteration counter — otherwise
+        // the Planner's terminal phase (Attempt after a Stop response) leaks
+        // into the Coder stage, where `begin_reasoning_iteration` then tries
+        // to fire BeginAttempt from Attempt and trips an IllegalTransition.
+        let max_attempts = state.reasoning.max_attempts;
+        state.reasoning = crate::reasoning_fsm::ReasoningStateMachine::new(max_attempts);
         state.stage = crate::run_state::RunStage::Coder;
         state.cancel = cancel;
 
