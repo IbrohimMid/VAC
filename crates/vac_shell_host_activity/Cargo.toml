@@ -1,0 +1,9 @@
+[package]
+name = "vac_shell_host_activity"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Slice 14 — host-side activity log. Bounded ring buffer of ShellActivityEntry plus projection helpers for tool/approval/model events."
+
+[dependencies]
+vac_shell_contracts = { path = "../vac_shell_contracts" }

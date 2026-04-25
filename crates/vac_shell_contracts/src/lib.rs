@@ -29,7 +29,11 @@ pub mod events;
 pub mod session;
 pub mod selection;
 pub mod overlay;
+pub mod activity;
+pub mod diff;
 
+pub use activity::{Severity, ShellActivityEntry, ShellActivityKind};
+pub use diff::{DiffFileView, DiffHunkView, DiffLineKind, DiffLineView, DiffReviewEvent};
 pub use approval::VacApprovalBridge;
 pub use events::{VacShellEvent, VacSubmitRequest};
 pub use model::{ProviderId, VacModelView};

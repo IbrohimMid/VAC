@@ -6423,6 +6423,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "vac_shell_activity"
+version = "0.1.0"
+dependencies = [
+ "ratatui",
+ "vac_shell_contracts",
+]
+
+[[package]]
 name = "vac_shell_approval_bar"
 version = "0.1.0"
 dependencies = [
@@ -6465,11 +6473,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "vac_shell_diff_view"
+version = "0.1.0"
+dependencies = [
+ "ratatui",
+ "vac_shell_contracts",
+]
+
+[[package]]
+name = "vac_shell_host_activity"
+version = "0.1.0"
+dependencies = [
+ "vac_shell_contracts",
+]
+
+[[package]]
 name = "vac_shell_host_approval"
 version = "0.1.0"
 dependencies = [
  "vac_shell_approval_bar",
  "vac_shell_bridge",
+]
+
+[[package]]
+name = "vac_shell_host_diff"
+version = "0.1.0"
+dependencies = [
+ "vac_shell_contracts",
 ]
 
 [[package]]

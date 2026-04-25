@@ -1,0 +1,10 @@
+[package]
+name = "vac_shell_diff_view"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Slice 15 — pure ratatui diff review widget. Renders Vec<DiffFileView>; emits DiffReviewEvent intents."
+
+[dependencies]
+vac_shell_contracts = { path = "../vac_shell_contracts" }
+ratatui.workspace = true

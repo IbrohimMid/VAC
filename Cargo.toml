@@ -43,6 +43,10 @@ members = [
     "crates/vac_shell_plan_view",
     "crates/vac_shell_session_browser",
     "crates/vac_shell_host_sessions",
+    "crates/vac_shell_activity",
+    "crates/vac_shell_host_activity",
+    "crates/vac_shell_diff_view",
+    "crates/vac_shell_host_diff",
 ]
 exclude = [
     # Wave 4 — Stakpak donor checkout. Treated as read-only reference;

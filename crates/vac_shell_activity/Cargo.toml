@@ -1,0 +1,10 @@
+[package]
+name = "vac_shell_activity"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Slice 14 — pure ratatui widget for the activity stream. Renders Vec<ShellActivityEntry> with severity badges, kind tags, and scroll."
+
+[dependencies]
+vac_shell_contracts = { path = "../vac_shell_contracts" }
+ratatui.workspace = true

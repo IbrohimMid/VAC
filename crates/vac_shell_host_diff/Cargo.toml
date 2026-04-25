@@ -1,0 +1,9 @@
+[package]
+name = "vac_shell_host_diff"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Slice 15 — host-side diff projection helpers. Builds DiffFileView from before/after text using a tiny LCS-style line diff. No git binary, no donor."
+
+[dependencies]
+vac_shell_contracts = { path = "../vac_shell_contracts" }
