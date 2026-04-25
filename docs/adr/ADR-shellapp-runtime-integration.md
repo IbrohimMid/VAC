@@ -1,0 +1,141 @@
+# ADR — ShellApp Dogfood Runtime Integration Strategy
+
+**Status:** Accepted (D1, 2026-04-25)
+**Track:** D-track (dogfood runtime integration)
+
+## Context
+
+Slices 8 — 20.3 landed a 26-crate **shell stack** (the "cockpit
+layer"): pure UI widget crates on `ratatui + vac_shell_contracts`,
+host crates that own state behind narrow trait/DTO seams, a
+`ShellApp` orchestrator that wires composition + overlays + status
++ approvals + sessions + plan + diff + activity + production error
+reporting. RC gate is closed: 239/239 tests, denylist sweep clean,
+boundary matrix verified.
+
+The legacy `vac_tui_runtime` crate is still the *real* operator
+TUI. It is large, has known UX debt (the work that motivated the
+shell-transplant project in the first place), and is still where
+operators actually run today.
+
+The next track is **dogfood runtime integration**: getting the new
+shell stack in front of a real operator without ripping the legacy
+TUI out from under in-progress work.
+
+## Decision
+
+Run the new `ShellApp` cockpit **side-by-side with the legacy
+`vac_tui_runtime`, behind an opt-in entrypoint**, until each
+runtime-integration slice (D2 — D6) lands and is reviewed.
+
+Concretely:
+
+- A new thin crate, `crates/vac_shell_entrypoint/`, exposes a
+  single public function:
+
+  ```rust
+  pub fn run_shell_app(project_root: impl AsRef<Path>) -> ExitCode
+  ```
+
+- The function instantiates `ShellComposition` + `ShellApp` from
+  the supplied project root, attaches `ActivityLog` and
+  `SessionsState`, calls `prepare_frame()` once, and returns
+  `ExitCode::SUCCESS`. **No interactive crossterm loop yet** —
+  the loop is a D2 / D2.1 concern.
+- A future CLI flag or subcommand (settled in D6) will route into
+  `run_shell_app`. Until then the entrypoint is exercised only
+  through tests and is not reachable from `cargo run`.
+
+The legacy runtime stays the default. Operators do not see the new
+shell until D6 lands.
+
+## Rejected alternatives
+
+### Replace `vac_tui_runtime` outright
+
+Rejected. The old runtime still has features (rich approvals UI,
+shell PTY popup runtime, autopilot panel, plan mode, telemetry hooks)
+that the new shell stack only models at the surface level. Cutting
+over before the integration adapters land would regress live
+operator workflow.
+
+### Fork `vac_tui_runtime` and merge changes piecemeal
+
+Rejected. The whole reason the shell stack exists is to escape the
+debt accumulated in the legacy TUI. Forking would re-import that
+debt into the new code path.
+
+### Wire `ShellApp` directly into `vac_core` / `vac_session_engine`
+
+Rejected for D1. The shell stack has held a hard "no engine
+coupling" line through 26 crates and 239 tests. Crossing that line
+in the same slice that introduces the entrypoint would be a large
+unreviewable change. Engine coupling is a D3 / D4 / D5 concern,
+and each slice gets its own scope, ADR notes, and review gate.
+
+## Boundary
+
+`vac_shell_entrypoint` may depend on:
+
+- `vac_shell_app`
+- `vac_shell_composition`
+- `vac_shell_host_paths`
+- `vac_shell_host_model`
+- `vac_shell_host_activity`
+- `vac_shell_host_sessions`
+- `vac_shell_contracts`
+
+It must **not** depend on:
+
+- `vac_core`
+- `vac_session_engine`
+- `vac_tui_runtime`
+- `stakai`
+- `vendor/stakpak`
+- `SecretManager`
+- `AutoApproveManager`
+- `.stakpak` paths (path composition stays inside `VacPaths`)
+
+These exclusions are enforced at the `Cargo.toml` level and
+verified by a denylist sweep at each RC gate.
+
+## Rollback path
+
+If D2 — D6 fail to deliver a credible operator experience inside
+the calendar window, the entrypoint can be deleted in one PR:
+
+1. Remove `crates/vac_shell_entrypoint/` from the workspace.
+2. Remove the future CLI flag / subcommand (when added).
+3. Operators continue using `vac_tui_runtime` unchanged.
+
+No state migration is required because the entrypoint never
+mutates engine state in this slice. The shell stack persists
+operator-side selection state to `<project>/.vac/state/...`, but
+that file is read-only on rollback and survives.
+
+## Subsequent slices
+
+| Slice | Goal |
+|---|---|
+| **D2** (`vac_shell_keymap`) | Pure crossterm-event → `RoutedKey` mapping. No I/O, no state. |
+| **D2.1** (dispatch adapter) | `RoutedKey` → the right `ShellApp::dispatch_*_key` method, returning `Result<Option<AppEvent>, AppError>`. |
+| **D3** | Read-only VAC config model source — first crossing into engine territory; behind a `ModelSource` impl that exposes `credentials_present: bool` only, never a key or token. |
+| **D4** | Activity projection from the live VAC event bus into `ActivityLog`, behind an `ActivityProjection` trait. |
+| **D5** | Real palette command dispatch bridge — slashes that aren't built-in flow into existing `vac_session_engine` / `vac_cli::commands` paths. |
+| **D6** | Dogfood smoke test path + operator checklist + decision on flag/subcommand. |
+
+Each slice is implemented in isolation, reviewed against this
+ADR, and accepted only after its tests + boundary matrix + map
+update pass.
+
+## Acceptance for D1
+
+- This ADR exists.
+- `vac_shell_entrypoint` exists, compiles, and tests pass.
+- Entrypoint boots `ShellApp` from a temp project root.
+- `ActivityLog` and `SessionsState` are attached.
+- Path resolution flows through `VacPaths` only — the test suite
+  asserts no `.stakpak` substring appears on resolved paths.
+- The legacy `vac_tui_runtime` remains the default.
+
+D2 is **not** authorized to begin until D1 is reviewed and passed.
