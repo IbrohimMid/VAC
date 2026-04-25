@@ -20,7 +20,7 @@
 
 use std::sync::{Arc, RwLock};
 
-pub use vac_shell_contracts::{ShellCommandKind, ShellCommandSpec, VacCommandRegistry};
+pub use vac_shell_contracts::{ProviderId, ShellCommandKind, ShellCommandSpec, VacCommandRegistry};
 
 /// In-memory `VacCommandRegistry` impl — the simplest possible
 /// concrete registry. Hosts seed it with the registered specs at
@@ -149,6 +149,9 @@ pub enum ShellAction {
     ToggleApproval { id: String },
     RejectAllApprovals,
     SubmitApprovals,
+    /// Set the active VAC model. Slice 9 seam — the host applies
+    /// the actual config mutation; the bridge only routes.
+    SelectModel { provider: ProviderId, id: String },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -169,6 +172,7 @@ pub trait ShellHost: Send + Sync {
 pub struct CompositeShellHost {
     surface: Option<Arc<dyn SurfaceController>>,
     approval: Option<Arc<dyn ApprovalController>>,
+    model: Option<Arc<dyn ModelController>>,
 }
 
 impl CompositeShellHost {
@@ -176,6 +180,7 @@ impl CompositeShellHost {
         Self {
             surface: None,
             approval: None,
+            model: None,
         }
     }
 
@@ -186,6 +191,11 @@ impl CompositeShellHost {
 
     pub fn with_approval(mut self, controller: Arc<dyn ApprovalController>) -> Self {
         self.approval = Some(controller);
+        self
+    }
+
+    pub fn with_model(mut self, controller: Arc<dyn ModelController>) -> Self {
+        self.model = Some(controller);
         self
     }
 }
@@ -226,6 +236,13 @@ impl ShellHost for CompositeShellHost {
                 .as_ref()
                 .ok_or_else(|| DispatchError::Host("approval controller not bound".into()))?
                 .submit_all(),
+            ShellAction::SelectModel { provider, id } => {
+                let ctrl = self
+                    .model
+                    .as_ref()
+                    .ok_or_else(|| DispatchError::Host("model controller not bound".into()))?;
+                ctrl.select_model(&provider, &id)
+            }
         }
     }
 }
@@ -293,6 +310,22 @@ pub trait SurfaceController: Send + Sync {
 pub enum ApprovalDecision {
     Approve,
     Reject,
+}
+
+/// VAC-side model selector controller. The bridge calls into this
+/// trait when the operator commits a `Selected` event from the
+/// model switcher.
+///
+/// **Status:** building block for [`CompositeShellHost`]. New
+/// integration code should target [`ShellHost`] + [`ShellAction`];
+/// this trait is the underlying primitive that the composite
+/// dispatches into.
+///
+/// Decision policy (validate provider, validate model, require
+/// credentials, update recents, persist) lives on the host side.
+/// The bridge only routes; it does not validate.
+pub trait ModelController: Send + Sync {
+    fn select_model(&self, provider: &ProviderId, id: &str) -> Result<(), DispatchError>;
 }
 
 /// VAC-side approval queue controller. The bridge calls into this

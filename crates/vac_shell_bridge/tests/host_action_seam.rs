@@ -13,13 +13,13 @@
 //! in `vac_shell_host_surface`. Both are wired in here as dev-deps so
 //! the test exercises the same composition the product code will.
 
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 use vac_shell_approval_bar::ApprovalStatus;
 use vac_shell_bridge::{
     ApprovalController, CommandDispatcher, CompositeShellHost, DispatchError,
-    InMemoryCommandRegistry, ShellAction, ShellHost, SurfaceController, SurfaceTarget,
-    host_dispatcher,
+    InMemoryCommandRegistry, ModelController, ProviderId, ShellAction, ShellHost,
+    SurfaceController, SurfaceTarget, host_dispatcher,
 };
 use vac_shell_contracts::{ShellCommandKind, ShellCommandSpec, VacCommandRegistry};
 use vac_shell_host_approval::{ApprovalQueue, ApprovalQueueController, ApprovalRequest};
@@ -77,6 +77,51 @@ fn reject_all_marks_every_request_rejected_via_unified_seam() {
     host.handle(ShellAction::RejectAllApprovals).unwrap();
     for r in queue.snapshot() {
         assert_eq!(r.status, ApprovalStatus::Rejected);
+    }
+}
+
+#[derive(Default)]
+struct RecordingModelController {
+    selected: RwLock<Option<(ProviderId, String)>>,
+}
+
+impl ModelController for RecordingModelController {
+    fn select_model(&self, provider: &ProviderId, id: &str) -> Result<(), DispatchError> {
+        *self.selected.write().unwrap() = Some((provider.clone(), id.to_string()));
+        Ok(())
+    }
+}
+
+#[test]
+fn select_model_routes_through_unified_seam() {
+    let ctrl = Arc::new(RecordingModelController::default());
+    let host: Arc<dyn ShellHost> = Arc::new(
+        CompositeShellHost::new().with_model(ctrl.clone() as Arc<dyn ModelController>),
+    );
+    host.handle(ShellAction::SelectModel {
+        provider: ProviderId("anthropic".into()),
+        id: "claude-sonnet-4.5".into(),
+    })
+    .unwrap();
+    let observed = ctrl.selected.read().unwrap().clone();
+    assert_eq!(
+        observed,
+        Some((ProviderId("anthropic".into()), "claude-sonnet-4.5".into())),
+    );
+}
+
+#[test]
+fn unbound_model_controller_returns_host_error_not_panic() {
+    let host: Arc<dyn ShellHost> = Arc::new(CompositeShellHost::new());
+    let err = host
+        .handle(ShellAction::SelectModel {
+            provider: ProviderId("anthropic".into()),
+            id: "claude".into(),
+        })
+        .unwrap_err();
+    match err {
+        DispatchError::Host(msg) => assert!(msg.contains("model"), "msg: {msg}"),
+        other => panic!("expected Host(...), got {other:?}"),
     }
 }
 
