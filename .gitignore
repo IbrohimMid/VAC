@@ -29,6 +29,10 @@ target/
 .stakpak/session*
 .stakpak/
 
+# Stakpak donor checkout — not committed; clone via the snippet in
+# docs/DONOR_EXTRACTION_MAP.md so reviewers pin the same revision.
+vendor/
+
 # Per-session VAC runtime artifacts (do NOT commit).
 # Operator-authored config (hooks.json, policy.toml, cron.json,
 # autopilot.schedules.toml, config.toml, commands/*.md,

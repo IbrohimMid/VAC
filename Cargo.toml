@@ -25,6 +25,13 @@ members = [
     "crates/vac_mcp_core",
     "crates/vac_bridge",
     "crates/vac_skill",
+    "crates/vac_shell_contracts",
+]
+exclude = [
+    # Wave 4 — Stakpak donor checkout. Treated as read-only reference;
+    # never compiled as part of the VAC workspace. Components are lifted
+    # into VAC-owned crates via the donor extraction map, not linked.
+    "vendor/stakpak",
 ]
 resolver = "2"
 

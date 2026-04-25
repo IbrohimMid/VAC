@@ -1,0 +1,13 @@
+[package]
+name = "vac_shell_contracts"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Adapter contracts between the VAC core and the Stakpak-derived operator shell. Trait + DTO surface only — no implementations."
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+tokio = { version = "1", features = ["sync"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+async-trait = "0.1"
+thiserror = "1"

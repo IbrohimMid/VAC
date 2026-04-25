@@ -6423,6 +6423,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "vac_shell_contracts"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "serde",
+ "thiserror 1.0.69",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "vac_signal"
 version = "0.1.0"
 dependencies = [
