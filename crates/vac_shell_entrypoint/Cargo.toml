@@ -18,3 +18,7 @@ vac_shell_host_vac_config = { path = "../vac_shell_host_vac_config" }
 
 [dev-dependencies]
 tempfile = "3"
+# D6 — only the dogfood example links the runtime loop. Dev-dep
+# so the entrypoint's runtime crate graph stays free of
+# crossterm/ratatui.
+vac_shell_runtime_loop = { path = "../vac_shell_runtime_loop" }

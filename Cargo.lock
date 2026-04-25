@@ -6533,6 +6533,7 @@ dependencies = [
  "vac_shell_host_paths",
  "vac_shell_host_sessions",
  "vac_shell_host_vac_config",
+ "vac_shell_runtime_loop",
 ]
 
 [[package]]

@@ -181,6 +181,32 @@ Hard guards held throughout:
   `.stakpak` path composition appears anywhere in the shell stack.
   Denylist sweep finds only test-tripwire mentions.
 
+## Dogfood runtime integration progress — April 2026
+
+D-track wires the cockpit layer into a runnable shell, side-by-side
+with the legacy `vac_tui_runtime`. See
+`docs/runtime-integration/D-TRACK_STATUS.md` for the slice table
+and `docs/runtime-integration/DOGFOOD_CHECKLIST.md` for the manual
+operator checklist. ADR:
+`docs/adr/ADR-shellapp-runtime-integration.md`.
+
+| Slice | Crate(s) | Purpose |
+|---|---|---|
+| D1 | `vac_shell_entrypoint` | Opt-in `run_shell_app(project_root)` boot |
+| D2 + D2.1 | `vac_shell_keymap` | crossterm `KeyEvent` → `RoutedKey` + `dispatch_routed_key` into `ShellApp` |
+| D2.2 | `vac_shell_runtime_loop` | `handle_key_event_once` + live crossterm + ratatui loop |
+| D3 + D3.1 | `vac_shell_host_vac_config` | Read-only model-config snapshot at `VacPaths::model_config_file()`; entrypoint falls back to fixture on missing/corrupt snapshot, records warning on corruption |
+| D4 + D4.1 | `vac_shell_host_event_projection` | `RuntimeEventView` DTO → `ShellActivityEntry`; `record_projected_event` ingests into `ActivityLog` |
+| D5 + D5.1 | `vac_shell_host_commands` | `ShellCommandExecutor` trait + `route_palette_command`; `VacCommandExecutorAdapter` stub for non-built-in palette commands |
+| D6 | `vac_shell_entrypoint::examples::dogfood` | `cargo run -p vac_shell_entrypoint --example dogfood` boots the cockpit live |
+
+Hard guards still held: every UI widget runtime dep stays on
+`ratatui + vac_shell_contracts`; `vac_shell_bridge` stays on
+`vac_shell_contracts` only; no `vac_core`, `vac_session_engine`,
+`vac_tui_runtime`, `stakai`, `SecretManager`, `AutoApproveManager`,
+donor crate, or `.stakpak` path composition appears anywhere in
+the new shell stack.
+
 ## Changelog
 
 - 2026-04-25 · skeleton landed; donor pinned at `2e75bd5`.
