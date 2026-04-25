@@ -20,7 +20,10 @@
 
 use std::sync::{Arc, RwLock};
 
-pub use vac_shell_contracts::{ProviderId, ShellCommandKind, ShellCommandSpec, VacCommandRegistry};
+pub use vac_shell_contracts::{
+    ModelKey, ModelSelectionSnapshot, ProviderId, ShellCommandKind, ShellCommandSpec,
+    VacCommandRegistry,
+};
 
 /// In-memory `VacCommandRegistry` impl — the simplest possible
 /// concrete registry. Hosts seed it with the registered specs at
@@ -310,6 +313,23 @@ pub trait SurfaceController: Send + Sync {
 pub enum ApprovalDecision {
     Approve,
     Reject,
+}
+
+/// Persistence seam for the model selection snapshot. Slice 9.1
+/// introduces this as a deliberately small trait so the host
+/// controller can be wired to an in-memory store, a JSON file, or a
+/// future VAC-config adapter without changing call sites.
+///
+/// **Status:** building block for [`CompositeShellHost`]'s host-side
+/// model controller. The bridge stays serde-free; impls handle
+/// serialisation through the [`ModelSelectionSnapshot`] DTO from
+/// `vac_shell_contracts`.
+///
+/// Errors propagate as [`DispatchError::Host`] so a failed write
+/// surfaces through the same channel as any other host failure.
+pub trait ModelSelectionPersistor: Send + Sync {
+    fn save(&self, snapshot: &ModelSelectionSnapshot) -> Result<(), DispatchError>;
+    fn load(&self) -> Result<Option<ModelSelectionSnapshot>, DispatchError>;
 }
 
 /// VAC-side model selector controller. The bridge calls into this

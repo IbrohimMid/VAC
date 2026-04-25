@@ -48,7 +48,10 @@
 
 use std::sync::{Arc, RwLock};
 
-use vac_shell_bridge::{DispatchError, ModelController, ShellAction};
+use vac_shell_bridge::{
+    DispatchError, ModelController, ModelKey, ModelSelectionPersistor, ModelSelectionSnapshot,
+    ShellAction,
+};
 use vac_shell_contracts::{ProviderId, VacModelView};
 use vac_shell_model_switcher::{ModelSwitcherView, SwitcherEvent, clamp_selection};
 
@@ -229,13 +232,27 @@ impl ModelSource for InMemoryModelSource {
 
 const RECENTS_CAP: usize = 20;
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 struct ModelSelectionInner {
     providers: Vec<ProviderInfo>,
     models: Vec<HostModel>,
     active: Option<(ProviderId, String)>,
     recent: Vec<(ProviderId, String)>,
     pinned: Option<ProviderId>,
+    persistor: Option<Arc<dyn ModelSelectionPersistor>>,
+}
+
+impl std::fmt::Debug for ModelSelectionInner {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ModelSelectionInner")
+            .field("providers", &self.providers)
+            .field("models", &self.models)
+            .field("active", &self.active)
+            .field("recent", &self.recent)
+            .field("pinned", &self.pinned)
+            .field("persistor", &self.persistor.is_some())
+            .finish()
+    }
 }
 
 /// Shared, mutable model-selection state. Cheap to clone (`Arc`
@@ -258,6 +275,7 @@ impl ModelSelectionState {
                 active,
                 recent: Vec::new(),
                 pinned: None,
+                persistor: None,
             })),
         }
     }
@@ -278,6 +296,83 @@ impl ModelSelectionState {
         self
     }
 
+    /// Wire a persistor. Successful mutations call `persistor.save`;
+    /// callers that want load-on-boot use [`Self::restore_from`].
+    pub fn with_persistor(self, persistor: Arc<dyn ModelSelectionPersistor>) -> Self {
+        {
+            let mut inner = self.inner.write().expect("model state lock poisoned");
+            inner.persistor = Some(persistor);
+        }
+        self
+    }
+
+    /// Snapshot the operator-owned bits (`active`, `recents`) for
+    /// persistence. Registry-owned bits (providers/models/pinned)
+    /// are deliberately excluded — those are derived from the host
+    /// source on every boot.
+    pub fn snapshot(&self) -> ModelSelectionSnapshot {
+        let inner = self.inner.read().expect("model state lock poisoned");
+        ModelSelectionSnapshot {
+            active: inner
+                .active
+                .as_ref()
+                .map(|(p, id)| ModelKey::new(p.clone(), id.clone())),
+            recent: inner
+                .recent
+                .iter()
+                .map(|(p, id)| ModelKey::new(p.clone(), id.clone()))
+                .collect(),
+        }
+    }
+
+    /// Restore from a persistor. Filters the loaded snapshot against
+    /// the current registry: a saved active or recent that no longer
+    /// resolves to a known model is dropped silently rather than
+    /// failing — the persisted state may legitimately have been
+    /// recorded against a previous registry build. Returns the count
+    /// of recents actually applied.
+    pub fn restore_from(
+        &self,
+        persistor: &dyn ModelSelectionPersistor,
+    ) -> Result<usize, DispatchError> {
+        let snap = match persistor.load()? {
+            Some(s) => s,
+            None => return Ok(0),
+        };
+        let mut inner = self.inner.write().expect("model state lock poisoned");
+        // Snapshot the registry's `(provider, id)` set up front so
+        // the lookup closure does not need to re-borrow `inner` while
+        // we mutate `inner.active` / `inner.recent`.
+        let known: std::collections::HashSet<(ProviderId, String)> = inner
+            .models
+            .iter()
+            .map(|m| (m.provider.clone(), m.id.clone()))
+            .collect();
+        let resolves =
+            |key: &ModelKey| known.contains(&(key.provider.clone(), key.id.clone()));
+        if let Some(active) = snap.active.as_ref() {
+            if resolves(active) {
+                inner.active = Some((active.provider.clone(), active.id.clone()));
+            }
+        }
+        let mut applied = 0usize;
+        let mut filtered: Vec<(ProviderId, String)> = Vec::new();
+        for k in snap.recent.iter() {
+            if resolves(k) {
+                let pair = (k.provider.clone(), k.id.clone());
+                if !filtered.contains(&pair) {
+                    filtered.push(pair);
+                    applied += 1;
+                }
+            }
+        }
+        if filtered.len() > RECENTS_CAP {
+            filtered.truncate(RECENTS_CAP);
+        }
+        inner.recent = filtered;
+        Ok(applied)
+    }
+
     pub fn active_model(&self) -> Option<(ProviderId, String)> {
         self.inner.read().expect("model state lock poisoned").active.clone()
     }
@@ -289,47 +384,59 @@ impl ModelSelectionState {
     /// Apply a selection. Validates provider is known, model is
     /// known, and the provider has credentials present. On success,
     /// updates `active` and pushes onto the recents list (dedup,
-    /// newest-first, capped at `RECENTS_CAP`).
+    /// newest-first, capped at `RECENTS_CAP`). When a persistor is
+    /// wired, also calls `persistor.save(&snapshot)` and propagates
+    /// any failure as `DispatchError::Host` *after* the in-memory
+    /// state has been updated — caller observes the new state and
+    /// the persistence error consistently.
     pub fn select_model(
         &self,
         provider: &ProviderId,
         id: &str,
     ) -> Result<(), DispatchError> {
-        let mut inner = self.inner.write().expect("model state lock poisoned");
+        let persistor: Option<Arc<dyn ModelSelectionPersistor>> = {
+            let mut inner = self.inner.write().expect("model state lock poisoned");
 
-        let prov = inner
-            .providers
-            .iter()
-            .find(|p| &p.id == provider)
-            .cloned()
-            .ok_or_else(|| {
-                DispatchError::Host(format!("unknown model provider: {}", provider.0))
-            })?;
+            let prov = inner
+                .providers
+                .iter()
+                .find(|p| &p.id == provider)
+                .cloned()
+                .ok_or_else(|| {
+                    DispatchError::Host(format!("unknown model provider: {}", provider.0))
+                })?;
 
-        if !inner
-            .models
-            .iter()
-            .any(|m| &m.provider == provider && m.id == id)
-        {
-            return Err(DispatchError::Host(format!(
-                "unknown model: {}/{}",
-                provider.0, id
-            )));
-        }
+            if !inner
+                .models
+                .iter()
+                .any(|m| &m.provider == provider && m.id == id)
+            {
+                return Err(DispatchError::Host(format!(
+                    "unknown model: {}/{}",
+                    provider.0, id
+                )));
+            }
 
-        if !prov.credentials_present {
-            return Err(DispatchError::Host(format!(
-                "model provider has no credentials: {}",
-                provider.0
-            )));
-        }
+            if !prov.credentials_present {
+                return Err(DispatchError::Host(format!(
+                    "model provider has no credentials: {}",
+                    provider.0
+                )));
+            }
 
-        let key = (provider.clone(), id.to_string());
-        inner.active = Some(key.clone());
-        inner.recent.retain(|p| p != &key);
-        inner.recent.insert(0, key);
-        if inner.recent.len() > RECENTS_CAP {
-            inner.recent.truncate(RECENTS_CAP);
+            let key = (provider.clone(), id.to_string());
+            inner.active = Some(key.clone());
+            inner.recent.retain(|p| p != &key);
+            inner.recent.insert(0, key);
+            if inner.recent.len() > RECENTS_CAP {
+                inner.recent.truncate(RECENTS_CAP);
+            }
+            inner.persistor.clone()
+        };
+
+        if let Some(p) = persistor {
+            let snap = self.snapshot();
+            p.save(&snap)?;
         }
         Ok(())
     }
@@ -389,6 +496,69 @@ impl ModelController for ModelSelectionController {
         id: &str,
     ) -> Result<(), DispatchError> {
         self.state.select_model(provider, id)
+    }
+}
+
+/// In-memory `ModelSelectionPersistor` impl for tests and host
+/// bring-up. Records every save into a shared vector and serves the
+/// most recent value back from `load`. Production hosts swap this
+/// out for [`crate::JsonFilePersistor`] (slice 9.1 c2) or a future
+/// VAC-config-backed impl.
+#[derive(Debug, Clone, Default)]
+pub struct InMemoryPersistor {
+    inner: Arc<RwLock<InMemoryPersistorInner>>,
+}
+
+#[derive(Debug, Default)]
+struct InMemoryPersistorInner {
+    saves: Vec<ModelSelectionSnapshot>,
+    current: Option<ModelSelectionSnapshot>,
+}
+
+impl InMemoryPersistor {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Pre-seed the persistor's "stored" snapshot — useful for
+    /// `restore_from` tests.
+    pub fn with_initial(self, snap: ModelSelectionSnapshot) -> Self {
+        {
+            let mut inner = self.inner.write().expect("persistor lock poisoned");
+            inner.current = Some(snap);
+        }
+        self
+    }
+
+    pub fn save_count(&self) -> usize {
+        self.inner.read().expect("persistor lock poisoned").saves.len()
+    }
+
+    pub fn last_saved(&self) -> Option<ModelSelectionSnapshot> {
+        self.inner
+            .read()
+            .expect("persistor lock poisoned")
+            .saves
+            .last()
+            .cloned()
+    }
+}
+
+impl ModelSelectionPersistor for InMemoryPersistor {
+    fn save(&self, snapshot: &ModelSelectionSnapshot) -> Result<(), DispatchError> {
+        let mut inner = self.inner.write().expect("persistor lock poisoned");
+        inner.saves.push(snapshot.clone());
+        inner.current = Some(snapshot.clone());
+        Ok(())
+    }
+
+    fn load(&self) -> Result<Option<ModelSelectionSnapshot>, DispatchError> {
+        Ok(self
+            .inner
+            .read()
+            .expect("persistor lock poisoned")
+            .current
+            .clone())
     }
 }
 
@@ -541,6 +711,81 @@ mod selection_tests {
             .map(|m| m.id.as_str())
             .collect();
         assert_eq!(actives, vec!["gpt-4o"]);
+    }
+
+    #[test]
+    fn select_model_persists_snapshot_when_persistor_wired() {
+        let persistor = Arc::new(InMemoryPersistor::new());
+        let state = seed_state().with_persistor(persistor.clone());
+        state
+            .select_model(&ProviderId("openai".into()), "gpt-4o")
+            .unwrap();
+        assert_eq!(persistor.save_count(), 1);
+        let saved = persistor.last_saved().expect("save must record");
+        assert_eq!(
+            saved.active,
+            Some(ModelKey::new(ProviderId("openai".into()), "gpt-4o"))
+        );
+        assert_eq!(saved.recent.len(), 1);
+        assert_eq!(saved.recent[0].id, "gpt-4o");
+    }
+
+    #[test]
+    fn select_model_does_not_persist_when_validation_fails() {
+        let persistor = Arc::new(InMemoryPersistor::new());
+        let state = seed_state().with_persistor(persistor.clone());
+        // No credentials on kilo — must reject and not persist.
+        let _ = state.select_model(&ProviderId("kilo".into()), "kilo-auto");
+        assert_eq!(persistor.save_count(), 0);
+        assert!(persistor.last_saved().is_none());
+    }
+
+    #[test]
+    fn restore_from_applies_known_active_and_filters_unknown_recents() {
+        let persistor = InMemoryPersistor::new().with_initial(ModelSelectionSnapshot {
+            active: Some(ModelKey::new(ProviderId("openai".into()), "gpt-4o")),
+            recent: vec![
+                ModelKey::new(ProviderId("openai".into()), "gpt-4o"),
+                ModelKey::new(ProviderId("ghost".into()), "missing-model"),
+                ModelKey::new(ProviderId("openai".into()), "gpt-4o"), // duplicate
+            ],
+        });
+        // State seeded with active anthropic, no recents.
+        let state = seed_state();
+        let applied = state.restore_from(&persistor).unwrap();
+        // Two raw recents resolve, one is filtered (ghost), and the
+        // duplicate is deduplicated → 1 applied.
+        assert_eq!(applied, 1);
+        assert_eq!(
+            state.active_model(),
+            Some((ProviderId("openai".into()), "gpt-4o".into()))
+        );
+        let recents = state.recent_snapshot();
+        assert_eq!(recents.len(), 1);
+        assert_eq!(recents[0].1, "gpt-4o");
+    }
+
+    #[test]
+    fn restore_from_drops_unknown_active_silently() {
+        let persistor = InMemoryPersistor::new().with_initial(ModelSelectionSnapshot {
+            active: Some(ModelKey::new(ProviderId("ghost".into()), "missing")),
+            recent: vec![],
+        });
+        let state = seed_state();
+        let initial = state.active_model();
+        state.restore_from(&persistor).unwrap();
+        // Unknown active must not nuke a previously-set active.
+        assert_eq!(state.active_model(), initial);
+    }
+
+    #[test]
+    fn restore_from_load_returning_none_is_a_noop() {
+        let persistor = InMemoryPersistor::new();
+        let state = seed_state();
+        let initial = state.active_model();
+        let applied = state.restore_from(&persistor).unwrap();
+        assert_eq!(applied, 0);
+        assert_eq!(state.active_model(), initial);
     }
 
     #[test]
