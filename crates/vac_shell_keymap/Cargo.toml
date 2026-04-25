@@ -1,0 +1,17 @@
+[package]
+name = "vac_shell_keymap"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "D2 — pure crossterm KeyEvent → RoutedKey mapping for the new ShellApp cockpit. No I/O, no state, no engine coupling. Hosts feed crossterm events in and route the result through ShellApp dispatchers (D2.1)."
+
+[dependencies]
+vac_shell_contracts = { path = "../vac_shell_contracts" }
+vac_shell_app = { path = "../vac_shell_app" }
+vac_shell_palette = { path = "../vac_shell_palette" }
+vac_shell_model_switcher = { path = "../vac_shell_model_switcher" }
+vac_shell_session_browser = { path = "../vac_shell_session_browser" }
+vac_shell_diff_view = { path = "../vac_shell_diff_view" }
+vac_shell_approval_bar = { path = "../vac_shell_approval_bar" }
+vac_shell_approval_detail = { path = "../vac_shell_approval_detail" }
+crossterm = "0.28"

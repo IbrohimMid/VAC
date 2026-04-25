@@ -6622,6 +6622,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "vac_shell_keymap"
+version = "0.1.0"
+dependencies = [
+ "crossterm",
+ "vac_shell_app",
+ "vac_shell_approval_bar",
+ "vac_shell_approval_detail",
+ "vac_shell_contracts",
+ "vac_shell_diff_view",
+ "vac_shell_model_switcher",
+ "vac_shell_palette",
+ "vac_shell_session_browser",
+]
+
+[[package]]
 name = "vac_shell_model_switcher"
 version = "0.1.0"
 dependencies = [
