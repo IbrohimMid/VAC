@@ -1,0 +1,10 @@
+[package]
+name = "vac_shell_plan_view"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Slice 12 — pure ratatui widget rendering PlanMetadata. UI crate; ratatui + vac_shell_plan only."
+
+[dependencies]
+vac_shell_plan = { path = "../vac_shell_plan" }
+ratatui.workspace = true

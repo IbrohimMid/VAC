@@ -1,0 +1,11 @@
+[package]
+name = "vac_shell_plan"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Slice 12 — pure plan-file parser/helper. PlanMetadata + PlanStatus + parse_plan_front_matter; uses VacPaths::plan_file. No donor AppState, no planner semantics."
+
+[dependencies]
+vac_shell_contracts = { path = "../vac_shell_contracts" }
+serde = { version = "1", features = ["derive"] }
+thiserror = "1"

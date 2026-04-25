@@ -6494,6 +6494,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "vac_shell_host_plan"
+version = "0.1.0"
+dependencies = [
+ "tempfile",
+ "thiserror 1.0.69",
+ "vac_shell_contracts",
+ "vac_shell_host_paths",
+ "vac_shell_plan",
+]
+
+[[package]]
 name = "vac_shell_host_surface"
 version = "0.1.0"
 dependencies = [
@@ -6523,6 +6534,23 @@ version = "0.1.0"
 dependencies = [
  "ratatui",
  "vac_shell_contracts",
+]
+
+[[package]]
+name = "vac_shell_plan"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "thiserror 1.0.69",
+ "vac_shell_contracts",
+]
+
+[[package]]
+name = "vac_shell_plan_view"
+version = "0.1.0"
+dependencies = [
+ "ratatui",
+ "vac_shell_plan",
 ]
 
 [[package]]

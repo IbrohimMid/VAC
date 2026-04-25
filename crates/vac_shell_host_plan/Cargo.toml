@@ -1,0 +1,15 @@
+[package]
+name = "vac_shell_host_plan"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Slice 12 — host-side plan-file reader. Resolves the path through VacPaths::plan_file and parses via vac_shell_plan. No path composition, no donor."
+
+[dependencies]
+vac_shell_contracts = { path = "../vac_shell_contracts" }
+vac_shell_plan = { path = "../vac_shell_plan" }
+thiserror = "1"
+
+[dev-dependencies]
+vac_shell_host_paths = { path = "../vac_shell_host_paths" }
+tempfile = "3"
