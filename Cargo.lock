@@ -6459,6 +6459,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "vac_shell_popup"
+version = "0.1.0"
+dependencies = [
+ "ratatui",
+]
+
+[[package]]
 name = "vac_signal"
 version = "0.1.0"
 dependencies = [

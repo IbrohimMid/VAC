@@ -1,0 +1,9 @@
+[package]
+name = "vac_shell_popup"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Step 2 slice 3 — shell popup widget extracted from Stakpak's shell_popup.rs. Pure render path; PTY runtime stays VAC-side and feeds this widget pre-built lines."
+
+[dependencies]
+ratatui.workspace = true
