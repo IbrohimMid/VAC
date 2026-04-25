@@ -562,6 +562,91 @@ impl ModelSelectionPersistor for InMemoryPersistor {
     }
 }
 
+/// File-backed `ModelSelectionPersistor` writing JSON. The host
+/// supplies the target path (typically resolved through `VacPaths`,
+/// e.g. `paths.project_state_dir().join("model_selection.json")`),
+/// so this impl never composes a `.stakpak` path or a `.vac/...`
+/// path itself — caller's choice.
+///
+/// Constraints honoured:
+///
+/// * No provider API. No secret manager. No API keys ever touch
+///   this struct.
+/// * Missing file on `load` → `Ok(None)`, not an error.
+/// * `save` creates parent directories on demand and writes via a
+///   temp file + rename so an aborted write cannot corrupt an
+///   existing snapshot.
+/// * Errors propagate through `DispatchError::Host(msg)` so the
+///   controller surfaces them via the same channel as validation
+///   failures.
+#[derive(Debug, Clone)]
+pub struct JsonFilePersistor {
+    path: std::path::PathBuf,
+}
+
+impl JsonFilePersistor {
+    pub fn new(path: impl Into<std::path::PathBuf>) -> Self {
+        Self { path: path.into() }
+    }
+
+    pub fn path(&self) -> &std::path::Path {
+        &self.path
+    }
+}
+
+impl ModelSelectionPersistor for JsonFilePersistor {
+    fn save(&self, snapshot: &ModelSelectionSnapshot) -> Result<(), DispatchError> {
+        let bytes = serde_json::to_vec_pretty(snapshot).map_err(|e| {
+            DispatchError::Host(format!("model snapshot serialise failed: {e}"))
+        })?;
+        if let Some(parent) = self.path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| {
+                DispatchError::Host(format!(
+                    "failed to create snapshot dir {}: {e}",
+                    parent.display()
+                ))
+            })?;
+        }
+        // Atomic-ish write: write to a sibling temp file, then rename
+        // over the target so a crashed save cannot truncate an
+        // existing snapshot to zero bytes.
+        let tmp = self.path.with_extension("json.tmp");
+        std::fs::write(&tmp, &bytes).map_err(|e| {
+            DispatchError::Host(format!(
+                "failed to write snapshot tmp {}: {e}",
+                tmp.display()
+            ))
+        })?;
+        std::fs::rename(&tmp, &self.path).map_err(|e| {
+            DispatchError::Host(format!(
+                "failed to rename snapshot tmp into place {}: {e}",
+                self.path.display()
+            ))
+        })?;
+        Ok(())
+    }
+
+    fn load(&self) -> Result<Option<ModelSelectionSnapshot>, DispatchError> {
+        let bytes = match std::fs::read(&self.path) {
+            Ok(b) => b,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(e) => {
+                return Err(DispatchError::Host(format!(
+                    "failed to read snapshot {}: {e}",
+                    self.path.display()
+                )));
+            }
+        };
+        let snap: ModelSelectionSnapshot = serde_json::from_slice(&bytes).map_err(|e| {
+            DispatchError::Host(format!(
+                "failed to parse snapshot {}: {e}",
+                self.path.display()
+            ))
+        })?;
+        Ok(Some(snap))
+    }
+}
+
 /// Map a model-switcher widget event into a `ShellAction` the
 /// bridge can route. Only `Selected` produces an action; other
 /// events stay UI-local.

@@ -6464,6 +6464,8 @@ name = "vac_shell_host_model"
 version = "0.1.0"
 dependencies = [
  "ratatui",
+ "serde_json",
+ "tempfile",
  "vac_shell_bridge",
  "vac_shell_contracts",
  "vac_shell_model_switcher",

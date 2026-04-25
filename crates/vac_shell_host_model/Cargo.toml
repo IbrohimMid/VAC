@@ -12,6 +12,10 @@ vac_shell_model_switcher = { path = "../vac_shell_model_switcher" }
 # `ShellAction` from widget events. Acceptable for a host crate —
 # UI crates still must not link to the bridge.
 vac_shell_bridge = { path = "../vac_shell_bridge" }
+# Slice 9.1: JsonFilePersistor needs JSON (de)serialisation. The
+# bridge stays serde-free; serde itself already lives in the
+# contract DTOs.
+serde_json = "1"
 
 # `ratatui` only appears in the integration test
 # (`tests/source_to_view.rs`) for the `TestBackend` render proof.
@@ -20,3 +24,4 @@ vac_shell_bridge = { path = "../vac_shell_bridge" }
 # `vac_shell_model_switcher` only.
 [dev-dependencies]
 ratatui.workspace = true
+tempfile = "3"
