@@ -252,6 +252,208 @@ fn shortcuts_overlay_renders_default_catalogue() {
     assert!(s.contains("Shortcuts"));
 }
 
+// =====================================================================
+// Slice 20.2 — live projection on overlay open
+// =====================================================================
+
+#[test]
+fn opening_palette_populates_from_live_command_registry() {
+    let (_t, comp) = boot();
+    // Add another command at runtime so the test proves the
+    // projection reads the live registry, not a static seed.
+    let mut app = ShellApp::new(comp.clone());
+    app.handle_global_key(GlobalKey::OpenPalette);
+    let slashes: Vec<String> = app.palette.all.iter().map(|s| s.slash.clone()).collect();
+    assert_eq!(
+        slashes.len(),
+        comp.command_registry.all().len(),
+        "palette must mirror the live registry on open"
+    );
+}
+
+#[test]
+fn opening_model_switcher_populates_from_live_model_state() {
+    let (_t, comp) = boot();
+    let mut app = ShellApp::new(comp);
+    app.handle_global_key(GlobalKey::OpenModelSwitcher);
+    let labels: Vec<&str> = app
+        .model_switcher
+        .models
+        .iter()
+        .map(|m| m.label.as_str())
+        .collect();
+    assert!(labels.contains(&"Claude Sonnet 4.5"));
+    assert!(labels.contains(&"Claude Haiku 4"));
+    assert!(app.model_switcher.visible);
+}
+
+#[test]
+fn opening_session_browser_populates_from_live_sessions_list() {
+    let (tmp, comp) = boot();
+    let dir = tmp.path().join(".vac").join("sessions");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("alpha.jsonl"), "operator: hi\n").unwrap();
+    let mut app = ShellApp::new(comp);
+    app.sessions = Some(Arc::new(vac_shell_host_sessions::SessionsState::new()));
+    app.handle_global_key(GlobalKey::OpenSessionBrowser);
+    let ids: Vec<String> = app
+        .session_browser
+        .entries
+        .iter()
+        .map(|e| e.id.clone())
+        .collect();
+    assert_eq!(ids, vec!["alpha"]);
+}
+
+// =====================================================================
+// Slice 20.2 — approval detail does not drain queue
+// =====================================================================
+
+#[test]
+fn approval_detail_reject_marks_row_rejected_without_draining_queue() {
+    let (_t, comp) = boot();
+    comp.approval_queue
+        .enqueue(ApprovalRequest::new("a", "shell"));
+    let mut app = ShellApp::new(comp.clone());
+    app.refresh_approval_bar();
+    app.handle_global_key(GlobalKey::OpenApprovalDetail);
+    let event = app.dispatch_approval_detail_key(DetailKey::Reject).unwrap();
+    app.apply_event(event);
+    let snap = comp.approval_queue.snapshot();
+    assert_eq!(snap.len(), 1, "queue must NOT drain on detail reject");
+    assert_eq!(snap[0].status, ApprovalStatus::Rejected);
+    assert!(comp.approval_queue.last_outcome().is_none());
+}
+
+#[test]
+fn approval_detail_approve_does_not_drain_queue() {
+    let (_t, comp) = boot();
+    comp.approval_queue
+        .enqueue(ApprovalRequest::new("a", "shell"));
+    let mut app = ShellApp::new(comp.clone());
+    app.refresh_approval_bar();
+    app.handle_global_key(GlobalKey::OpenApprovalDetail);
+    let event = app.dispatch_approval_detail_key(DetailKey::Approve).unwrap();
+    app.apply_event(event);
+    let snap = comp.approval_queue.snapshot();
+    assert_eq!(snap.len(), 1, "queue must NOT drain on detail approve");
+    assert_eq!(snap[0].status, ApprovalStatus::Approved);
+}
+
+// =====================================================================
+// Slice 20.2 — built-in palette routing through apply_event
+// =====================================================================
+
+fn boot_with_commands() -> (
+    tempfile::TempDir,
+    Arc<vac_shell_composition::ShellComposition>,
+) {
+    use vac_shell_contracts::{ShellCommandKind, ShellCommandSpec};
+    let tmp = tempfile::tempdir().unwrap();
+    let paths: Arc<dyn VacPaths> = Arc::new(VacPathsImpl::new(tmp.path()));
+    let make_cmd = |slash: &str| ShellCommandSpec {
+        id: slash.trim_start_matches('/').to_string(),
+        slash: slash.into(),
+        title: slash.into(),
+        description: String::new(),
+        kind: ShellCommandKind::BuiltInAction,
+        palette_visible: true,
+        ..Default::default()
+    };
+    let comp = ShellCompositionBuilder::new(paths)
+        .with_providers(vec![ProviderInfo {
+            id: ProviderId("anthropic".into()),
+            credentials_present: true,
+        }])
+        .with_models(vec![HostModel {
+            provider: ProviderId("anthropic".into()),
+            id: "claude-sonnet-4.5".into(),
+            label: "Claude Sonnet 4.5".into(),
+            reasoning: true,
+            cost_label: None,
+        }])
+        .with_fallback_active(Some((
+            ProviderId("anthropic".into()),
+            "claude-sonnet-4.5".into(),
+        )))
+        .with_commands(vec![
+            make_cmd("/chat"),
+            make_cmd("/runtime"),
+            make_cmd("/model"),
+            make_cmd("/sessions"),
+        ])
+        .boot()
+        .unwrap();
+    (tmp, Arc::new(comp))
+}
+
+#[test]
+fn palette_runtime_slash_changes_surface_through_apply_event() {
+    let (_t, comp) = boot_with_commands();
+    let mut app = ShellApp::new(comp.clone());
+    app.apply_event(AppEvent::PaletteSelected("/runtime".into()));
+    assert_eq!(
+        comp.surface_state.current(),
+        vac_shell_host_surface::Surface::Runtime
+    );
+    assert_eq!(app.overlays.top(), ShellOverlay::None);
+}
+
+#[test]
+fn palette_model_slash_opens_model_switcher_overlay() {
+    let (_t, comp) = boot_with_commands();
+    let mut app = ShellApp::new(comp);
+    app.apply_event(AppEvent::PaletteSelected("/model".into()));
+    assert_eq!(app.overlays.top(), ShellOverlay::ModelSwitcher);
+    assert!(app.model_switcher.visible);
+    assert!(!app.model_switcher.models.is_empty());
+}
+
+#[test]
+fn palette_sessions_slash_opens_session_browser_overlay() {
+    let (tmp, comp) = boot_with_commands();
+    let dir = tmp.path().join(".vac").join("sessions");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("alpha.jsonl"), "operator: hi\n").unwrap();
+    let mut app = ShellApp::new(comp);
+    app.sessions = Some(Arc::new(vac_shell_host_sessions::SessionsState::new()));
+    app.apply_event(AppEvent::PaletteSelected("/sessions".into()));
+    assert_eq!(app.overlays.top(), ShellOverlay::SessionBrowser);
+    assert_eq!(app.session_browser.entries.len(), 1);
+}
+
+#[test]
+fn palette_unknown_slash_only_closes_overlay() {
+    let (_t, comp) = boot_with_commands();
+    let mut app = ShellApp::new(comp.clone());
+    app.handle_global_key(GlobalKey::OpenPalette);
+    assert_eq!(app.overlays.top(), ShellOverlay::Palette);
+    app.apply_event(AppEvent::PaletteSelected("/never-registered".into()));
+    assert_eq!(app.overlays.top(), ShellOverlay::None);
+    assert_eq!(
+        comp.surface_state.current(),
+        vac_shell_host_surface::Surface::Chat
+    );
+}
+
+// =====================================================================
+// Slice 20.2 — frame refresh contract
+// =====================================================================
+
+#[test]
+fn prepare_frame_projects_queue_into_approval_bar() {
+    let (_t, comp) = boot();
+    comp.approval_queue
+        .enqueue(ApprovalRequest::new("a", "shell"));
+    let mut app = ShellApp::new(comp);
+    // No manual refresh: prepare_frame is the contract.
+    app.prepare_frame();
+    assert!(app.approval_bar.is_visible());
+    let s = screen(&app);
+    assert!(s.contains("Approval Required"));
+    assert!(s.contains("Shell"));
+}
+
 #[test]
 fn pending_approvals_count_reflects_queue_length() {
     let (_t, comp) = boot();

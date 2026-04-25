@@ -52,6 +52,8 @@ use vac_shell_session_browser::{
 use vac_shell_shortcuts::ShortcutsView;
 use vac_shell_status_bar::render_status_bar;
 
+const RECENTS_LIMIT: usize = 5;
+
 /// All view state owned by the app. Each widget's state is
 /// caller-owned per the boundary discipline; this is the caller.
 #[derive(Default)]
@@ -136,6 +138,14 @@ impl ShellApp {
     pub fn handle_global_key(&mut self, key: GlobalKey) -> Option<ShellAction> {
         match key {
             GlobalKey::OpenPalette => {
+                // Slice 20.2 — project the live registry into the
+                // palette state on open so the overlay never opens
+                // empty or stale.
+                if let Some(comp) = &self.composition {
+                    self.palette = vac_shell_palette::PaletteViewState::new(
+                        comp.command_registry.all(),
+                    );
+                }
                 self.toggle_overlay(ShellOverlay::Palette);
                 None
             }
@@ -144,10 +154,29 @@ impl ShellApp {
                 None
             }
             GlobalKey::OpenModelSwitcher => {
+                // Slice 20.2 — project the live model state into
+                // the switcher view so Ctrl+M never opens empty.
+                if let Some(comp) = &self.composition {
+                    self.model_switcher =
+                        vac_shell_host_model::build_switcher_view(
+                            &comp.model_state,
+                            RECENTS_LIMIT,
+                        );
+                }
                 self.toggle_overlay(ShellOverlay::ModelSwitcher);
                 None
             }
             GlobalKey::OpenSessionBrowser => {
+                // Slice 20.2 — populate session entries from the
+                // live SessionsState (if attached).
+                if let (Some(comp), Some(sessions)) = (&self.composition, &self.sessions) {
+                    self.session_browser.entries = sessions.list(comp.paths.as_ref());
+                    if self.session_browser.selected
+                        >= self.session_browser.entries.len()
+                    {
+                        self.session_browser.selected = 0;
+                    }
+                }
                 self.toggle_overlay(ShellOverlay::SessionBrowser);
                 None
             }
@@ -190,6 +219,15 @@ impl ShellApp {
             GlobalKey::EnterRuntime => Some(ShellAction::EnterSurface(SurfaceTarget::Runtime)),
             GlobalKey::EnterChat => Some(ShellAction::EnterSurface(SurfaceTarget::Chat)),
         }
+    }
+
+    /// Slice 20.2 — frame refresh contract. The host loop calls
+    /// this once per tick *before* `render` so projected widget
+    /// state (currently the approval bar) is up-to-date with the
+    /// live composition. Render itself stays `&self` to keep the
+    /// contract simple for ratatui's draw closure.
+    pub fn prepare_frame(&mut self) {
+        self.refresh_approval_bar();
     }
 
     fn toggle_overlay(&mut self, overlay: ShellOverlay) {
@@ -322,9 +360,14 @@ impl ShellApp {
                 // host loop and applied externally.
             }
             AppEvent::ApprovalDecision { id, approve } => {
-                // Toggle the row to the requested state, then
-                // submit. If already in the target state the
-                // toggle is skipped.
+                // Slice 20.2 — set the row to the requested
+                // tentative decision. Submission stays explicit
+                // through `ApprovalBarKey::Enter` (→
+                // `ShellAction::SubmitApprovals`); the detail
+                // drawer only marks rows, it does not drain the
+                // queue. If the row is already in the target state
+                // the toggle is skipped so two presses of `[y]`
+                // don't bounce the row back to Rejected.
                 let snap = comp.approval_queue.snapshot();
                 let target = if approve {
                     ApprovalStatus::Approved
@@ -343,12 +386,61 @@ impl ShellApp {
                 self.refresh_approval_bar();
             }
             AppEvent::PaletteSelected(slash) => {
-                if let Some(spec) = comp.command_registry.by_slash(&slash) {
-                    // Built-in actions that map directly to a
-                    // ShellAction. Other kinds (PromptTemplate,
-                    // OverlayRoute) are handed back to the host as
-                    // an event the embedding TUI can interpret.
-                    let _ = spec; // hand-off; concrete dispatch is host's job
+                // Slice 20.2 — built-in palette router. Closes the
+                // palette overlay first (consistent UX for any
+                // selection), then routes the slash:
+                //
+                //   /chat     → ShellAction::EnterSurface(Chat)
+                //   /runtime  → ShellAction::EnterSurface(Runtime)
+                //   /model    → open ModelSwitcher overlay
+                //   /sessions → open SessionBrowser overlay
+                //
+                // Anything else is left to the embedding host,
+                // which observes the event externally (via
+                // `dispatch_palette_key`'s return value) and
+                // dispatches it through whatever command pipeline
+                // the host owns. This crate intentionally does not
+                // know how to send a prompt template to an LLM —
+                // that is product semantics.
+                self.overlays.apply_intent(OverlayIntent::CloseAll);
+                self.sync_visibility();
+                match slash.as_str() {
+                    "/chat" => {
+                        let _ = comp
+                            .host
+                            .handle(ShellAction::EnterSurface(SurfaceTarget::Chat));
+                    }
+                    "/runtime" => {
+                        let _ = comp
+                            .host
+                            .handle(ShellAction::EnterSurface(SurfaceTarget::Runtime));
+                    }
+                    "/model" => {
+                        // Project the live model state, then open.
+                        self.model_switcher =
+                            vac_shell_host_model::build_switcher_view(
+                                &comp.model_state,
+                                RECENTS_LIMIT,
+                            );
+                        self.overlays
+                            .apply_intent(OverlayIntent::Open(ShellOverlay::ModelSwitcher));
+                        self.sync_visibility();
+                    }
+                    "/sessions" => {
+                        if let Some(sessions) = &self.sessions {
+                            self.session_browser.entries =
+                                sessions.list(comp.paths.as_ref());
+                            self.session_browser.selected = 0;
+                        }
+                        self.overlays
+                            .apply_intent(OverlayIntent::Open(ShellOverlay::SessionBrowser));
+                        self.sync_visibility();
+                    }
+                    _ => {
+                        // Unknown / non-built-in slash — observed
+                        // by the host loop via `dispatch_palette_key`;
+                        // not our problem to route here.
+                    }
                 }
             }
         }

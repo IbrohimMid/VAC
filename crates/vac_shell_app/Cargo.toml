@@ -30,4 +30,5 @@ ratatui.workspace = true
 
 [dev-dependencies]
 vac_shell_host_paths = { path = "../vac_shell_host_paths" }
+vac_shell_host_surface = { path = "../vac_shell_host_surface" }
 tempfile = "3"
