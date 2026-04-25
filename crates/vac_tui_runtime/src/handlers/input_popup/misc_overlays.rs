@@ -71,9 +71,26 @@ pub fn handle_helper_dropdown(
 ) {
     use crate::handlers::input_commands::dispatch_builtin_command;
 
+    let event_name: &'static str = match &event {
+        InputEvent::Up => "Up",
+        InputEvent::Down => "Down",
+        InputEvent::InputSubmitted => "InputSubmitted",
+        InputEvent::HandleEsc => "HandleEsc",
+        InputEvent::InputChanged(_) => "InputChanged",
+        InputEvent::InputBackspace => "InputBackspace",
+        InputEvent::InputDelete => "InputDelete",
+        InputEvent::InputClear => "InputClear",
+        InputEvent::InputChangedNewline => "InputChangedNewline",
+        InputEvent::Tab => "Tab",
+        InputEvent::CursorLeft => "CursorLeft",
+        InputEvent::CursorRight => "CursorRight",
+        InputEvent::ScrollUp => "ScrollUp",
+        InputEvent::ScrollDown => "ScrollDown",
+        _ => "other",
+    };
     tracing::info!(
         target: "vac_tui_runtime::helper_dropdown",
-        event = ?std::mem::discriminant(&event),
+        event = event_name,
         focus = ?state.layout.focus,
         filtered_count = state.layout.command_palette.filtered_helpers.len(),
         helper_selected = state.layout.command_palette.helper_selected,

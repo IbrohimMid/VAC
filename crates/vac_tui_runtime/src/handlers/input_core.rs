@@ -28,9 +28,14 @@ pub fn handle_input_event(
         event,
         InputEvent::InputSubmitted | InputEvent::HandleEsc
     ) {
+        let event_name = match &event {
+            InputEvent::InputSubmitted => "InputSubmitted",
+            InputEvent::HandleEsc => "HandleEsc",
+            _ => "other",
+        };
         tracing::info!(
             target: "vac_tui_runtime::handlers::input_core",
-            event = ?std::mem::discriminant(&event),
+            event = event_name,
             overlay_active = state.layout.overlay_manager.any_active(),
             topmost = ?state.layout.overlay_manager.topmost(),
             focus = ?state.layout.focus,
