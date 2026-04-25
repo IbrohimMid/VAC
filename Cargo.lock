@@ -6468,6 +6468,7 @@ dependencies = [
  "tempfile",
  "vac_shell_bridge",
  "vac_shell_contracts",
+ "vac_shell_host_paths",
  "vac_shell_model_switcher",
 ]
 

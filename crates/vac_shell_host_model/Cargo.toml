@@ -25,3 +25,8 @@ serde_json = "1"
 [dev-dependencies]
 ratatui.workspace = true
 tempfile = "3"
+# Slice 9.2 integration tests construct a real `VacPathsImpl` to
+# prove the persistor factory + boot helper resolve the path
+# through the trait. Dev-only — runtime crate stays independent of
+# the concrete VacPaths impl.
+vac_shell_host_paths = { path = "../vac_shell_host_paths" }

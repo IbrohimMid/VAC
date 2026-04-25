@@ -52,7 +52,7 @@ use vac_shell_bridge::{
     DispatchError, ModelController, ModelKey, ModelSelectionPersistor, ModelSelectionSnapshot,
     ShellAction,
 };
-use vac_shell_contracts::{ProviderId, VacModelView};
+use vac_shell_contracts::{ProviderId, VacModelView, VacPaths};
 use vac_shell_model_switcher::{ModelSwitcherView, SwitcherEvent, clamp_selection};
 
 /// Provider summary the host source advertises. Mirrors the bits the
@@ -662,6 +662,34 @@ impl ModelSelectionPersistor for JsonFilePersistor {
         })?;
         Ok(Some(snap))
     }
+}
+
+/// Build a [`JsonFilePersistor`] whose target path is resolved
+/// through the supplied `VacPaths`. The factory is the single seam
+/// allowed to wire VAC paths to the persistor — adapters / boot
+/// helpers / call sites never compose `.vac/state/...` themselves.
+pub fn vac_paths_persistor(paths: &dyn VacPaths) -> JsonFilePersistor {
+    JsonFilePersistor::new(paths.model_selection_file())
+}
+
+/// Build a `ModelSelectionState`, attach the persistor, and call
+/// `restore_from` once. Returns the populated state ready for use
+/// by `build_switcher_view` and `ModelSelectionController`.
+///
+/// Restore failures propagate as `DispatchError::Host` so a corrupt
+/// snapshot or unreadable file surfaces through the same channel
+/// as validation errors. A persistor that returns `Ok(None)` (no
+/// prior snapshot) is treated as a fresh boot.
+pub fn boot_selection_state(
+    providers: Vec<ProviderInfo>,
+    models: Vec<HostModel>,
+    fallback_active: Option<(ProviderId, String)>,
+    persistor: Arc<dyn ModelSelectionPersistor>,
+) -> Result<ModelSelectionState, DispatchError> {
+    let state = ModelSelectionState::new(providers, models, fallback_active)
+        .with_persistor(persistor.clone());
+    state.restore_from(persistor.as_ref())?;
+    Ok(state)
 }
 
 /// Map a model-switcher widget event into a `ShellAction` the
