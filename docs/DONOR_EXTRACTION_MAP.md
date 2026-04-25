@@ -143,6 +143,44 @@ Acceptance:
 3. **Sessions list** — no dedicated donor module; lives inside `shortcuts_popup.rs`. Extracting the sessions section means we either copy the whole popup or surgically lift one render fn. Lean toward surgical.
 4. `cli/` vs `crates/vac_cli/` — eventually one of them survives. Out of scope for Step 1.
 
+## Cockpit blueprint progress (Slices 10 – 20.3)
+
+After slices 10–20.3 the new shell stack is a 26-crate cockpit
+that the embedding TUI host consumes through one struct
+(`vac_shell_app::ShellApp`):
+
+| Concern | UI widget crate | Host state crate |
+|---|---|---|
+| Boot composition | — | `vac_shell_composition::ShellComposition` |
+| Overlay focus | — | `vac_shell_overlay::OverlayStack` |
+| Command palette | `vac_shell_palette` | (uses `VacCommandRegistry` from `vac_shell_bridge`) |
+| Shortcuts / commands / sessions popup | `vac_shell_shortcuts` | reads `VacPaths` for the Sessions tab |
+| Model switcher | `vac_shell_model_switcher` | `vac_shell_host_model` (projection + selection state + persistence) |
+| Approval bar (compact) | `vac_shell_approval_bar` | `vac_shell_host_approval::ApprovalQueue` + controller |
+| Approval detail drawer | `vac_shell_approval_detail` | (reuses `ApprovalQueue`) |
+| Shell popup | `vac_shell_popup` | (host owns PTY) |
+| Plan view | `vac_shell_plan_view` (DTOs in `vac_shell_contracts::plan`) | `vac_shell_host_plan` |
+| Session browser | `vac_shell_session_browser` | `vac_shell_host_sessions` |
+| Diff/review | `vac_shell_diff_view` | `vac_shell_host_diff` |
+| Activity stream | `vac_shell_activity` | `vac_shell_host_activity::ActivityLog` |
+| Status bar | `vac_shell_status_bar` | `vac_shell_host_status::project_status` |
+| App orchestrator | — | `vac_shell_app::ShellApp` |
+
+UI widget runtime dep graph (verified by `cargo tree -e normal --depth 1`):
+`ratatui + vac_shell_contracts` for every widget except
+`vac_shell_approval_bar` (which is `ratatui` only, narrower
+because it owns its `ApprovalActionView` type).
+
+`vac_shell_bridge` runtime dep graph: `vac_shell_contracts` only.
+The unified `ShellAction` / `ShellHost` seam grew variants but no
+new traits since slice 5.
+
+Hard guards held throughout:
+* No `vac_core`, `vac_session_engine`, `vac_tui_runtime`, `stakai`,
+  `SecretManager`, `AutoApproveManager`, donor `AppState`, or
+  `.stakpak` path composition appears anywhere in the shell stack.
+  Denylist sweep finds only test-tripwire mentions.
+
 ## Changelog
 
 - 2026-04-25 · skeleton landed; donor pinned at `2e75bd5`.
@@ -151,6 +189,7 @@ Acceptance:
 - 2026-04-25 · Step 3a — palette extraction proof landed in `crates/vac_shell_palette` (9 tests green). Verifies the donor widget runs against a VAC-owned state struct and a `Vec<ShellCommandSpec>` from `vac_shell_contracts`, with no link-time dependency on `vac_tui_runtime` or the donor `AppState`.
 - 2026-04-25 · Step 2 (slice 1, command-only) — `crates/vac_shell_bridge` landed with `InMemoryCommandRegistry` (impl of `VacCommandRegistry`) and `CommandDispatcher` routing slashes to a host-supplied callback. Integration test in `tests/palette_to_dispatch.rs` proves the `palette → registry → bridge → effect` path (14 tests green across both crates). Approvals / sessions / model / shell bridges intentionally NOT in this slice; landing them is gated on review of this surface. Match policy in the palette is now an injected `FilterFn` (default = strict prefix); fuzzy/contains can be swapped without touching the renderer.
 - 2026-04-25 · Step 2 (slice 2, first real VAC effect — `/runtime`) — `vac_shell_bridge` gained a `SurfaceController` trait + `surface_dispatcher(controller)` factory that maps `/runtime` and `/chat` slashes through the trait. New crate `crates/vac_shell_host_surface` owns the actual VAC-side state: `Surface { Chat, Runtime }` enum, `SurfaceState` (cheap-clone Arc-shared), `SurfaceStateController` impl. Integration test in `tests/runtime_effect.rs` drives the full chain palette → registry → dispatcher → SurfaceController → SurfaceState and asserts the state flips Chat→Runtime and back (18 tests green across the four shell crates). Bridge dep graph still excludes `vac_core` / `vac_session_engine` / `vac_tui_runtime` — the seam holds.
+- 2026-04-25 · Slices 10 – 20.3 — full cockpit landed across 26 shell crates, 239 tests green. ShellComposition (10), OverlayStack (11), Plan parser/host/view + DTO move to contracts (12, 20.1), Session browser + lifecycle (13), Activity stream (14), Diff review (15), Approval detail drawer (16, 20.1), Shell popup v2 helpers (17), Palette v2 with rich registry + dedup (18, 20.1), Status bar (19), and `ShellApp` integration (20, 20.1, 20.2, 20.3) covering live projection on overlay open, built-in palette routing (`/chat`/`/runtime`/`/model`/`/sessions`), explicit `prepare_frame` contract for the approval bar, queue-length pending semantics, error reporting via `Result<(), AppError>` plus `ActivityLog` integration. UI widget runtime dep graphs all `ratatui + vac_shell_contracts` (or narrower); bridge runtime dep stays `vac_shell_contracts` only.
 - 2026-04-25 · Step 2 (slice 9.2a, host_model crate doc correction) — addresses reviewer's `PARTIAL` on slice 9.2: the crate-level docs in `crates/vac_shell_host_model/src/lib.rs` and the `Cargo.toml` description still claimed "no persistent VAC config writes" and pointed at "follow-up slice (≥ 9.1)" after slice 9.1/9.1a/9.2 had landed `JsonFilePersistor`, `vac_paths_persistor`, and `boot_selection_state`. Rewrote the module preamble as three layers (read-only projection / in-memory mutation seam / path-backed snapshot persistence) with explicit slice citations, refreshed the "What is *not* here" list (no provider API, no secret manager, no API-key handling, no semantic model runtime switching, no donor `AppState` / `stakai::Model`, no `.stakpak` path composition), updated the boundary list to mention `serde_json`, and rewrote the package description to match. Documentation-only change: no logic, dep, or test edits.
 - 2026-04-25 · Step 2 (slice 9.2, VAC config/path seam integration — two commits) — **commit 1** (`749b918`): adds `VacPaths::model_selection_file(&self) -> PathBuf` to the contracts trait so the on-disk layout decision lives behind the trait. `VacPathsImpl` resolves it to `<project>/.vac/state/model_selection.json`. Two unit tests in `vac_shell_host_paths`: path lives under `project_state_dir()`, no `.stakpak` substring. **Commit 2** (this slice): `vac_shell_host_model` ships `vac_paths_persistor(paths) -> JsonFilePersistor` (single seam wiring `VacPaths` → persistor — adapters never compose paths) and `boot_selection_state(providers, models, fallback_active, persistor)` (constructs state, attaches persistor, calls `restore_from` once, returns ready-to-use state). Three integration tests against a tempdir-rooted `VacPathsImpl`: factory uses `paths.model_selection_file()` exactly; boot restores an existing snapshot, fallback active superseded; process-A select → process-B fresh boot via the same VacPaths picks up the persisted active + recents on disk. 35/35 host_model tests green. `vac_shell_host_paths` added strictly as a dev-dep on host_model (kept off the runtime graph). UI dep graph unchanged; bridge dep graph unchanged. No provider API, no secret manager, no API-key handling, no `.stakpak` path composition.
 - 2026-04-25 · Step 2 (slice 9.1a, restore hardening) — addresses reviewer's `PARTIAL` on slice 9.1: (1) `ModelSelectionState::restore_from` reported the *pre-cap* count of unique resolved recents, contradicting its own doc — fixed to return `filtered.len()` *after* the `RECENTS_CAP` truncation. (2) `restore_from` accepted a saved active model even when its provider had since lost credentials, which `select_model` would have rejected — now the active key must be both known *and* resolvable to a credentialed provider. Recents stay intentionally permissive so the UI can render known-but-no-creds rows with `(no creds)`. Two new tests: `restore_from_returns_capped_applied_count` (over-cap input → applied == `RECENTS_CAP`) and `restore_from_drops_active_when_provider_has_no_credentials` (live anthropic active is preserved when the saved openai active loses creds). 32/32 host_model tests green; no UI / bridge / dep / contract changes.

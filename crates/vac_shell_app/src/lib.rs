@@ -75,6 +75,13 @@ pub struct ShellApp {
     /// when sessions disk lifecycle should be active; left `None`
     /// in pure-render tests.
     pub sessions: Option<Arc<vac_shell_host_sessions::SessionsState>>,
+    /// Slice 20.3 — production error reporting sink. Failed
+    /// `apply_event` calls (host dispatch, sessions lifecycle,
+    /// approval toggles) are recorded here as an
+    /// `ShellActivityKind::Error` entry so the operator sees what
+    /// went wrong instead of staring at a silent UI. Optional so
+    /// pure-render tests don't have to instantiate one.
+    pub activity_log: Option<Arc<vac_shell_host_activity::ActivityLog>>,
 }
 
 /// Outbound app events the host loop consumes after a key press.
@@ -336,28 +343,52 @@ impl ShellApp {
         }
     }
 
-    /// Apply an `AppEvent` against live host state. Hosts that
-    /// prefer to handle events themselves can ignore this and
-    /// pattern-match on the returned events directly.
-    pub fn apply_event(&mut self, event: AppEvent) {
+    /// Apply an `AppEvent` against live host state. Returns
+    /// `Result<(), AppError>` so callers can react to failures.
+    /// Whenever an `Err` is produced, the matching error is also
+    /// recorded into [`Self::activity_log`] (when attached) as a
+    /// `ShellActivityKind::Error` entry — production hosts simply
+    /// surface the activity stream and the operator sees the
+    /// failure without bespoke error plumbing.
+    pub fn apply_event(&mut self, event: AppEvent) -> Result<(), AppError> {
         let comp = match &self.composition {
             Some(c) => c.clone(),
-            None => return,
+            None => return Err(self.report_error("composition not attached", None)),
         };
         match event {
             AppEvent::ShellAction(a) => {
-                let _ = comp.host.handle(a);
+                let label = describe_shell_action(&a);
+                if let Err(e) = comp.host.handle(a) {
+                    return Err(self.report_error(
+                        &format!("shell action failed: {label}"),
+                        Some(e.to_string()),
+                    ));
+                }
                 self.refresh_approval_bar();
+                Ok(())
             }
             AppEvent::Session(action) => {
                 if let Some(sessions) = &self.sessions {
-                    let _ = sessions.apply(comp.paths.as_ref(), action);
+                    let label = describe_session_action(&action);
+                    if let Err(e) = sessions.apply(comp.paths.as_ref(), action) {
+                        return Err(self.report_error(
+                            &format!("session action failed: {label}"),
+                            Some(e.to_string()),
+                        ));
+                    }
+                    Ok(())
+                } else {
+                    Err(self.report_error(
+                        "session action ignored: SessionsState not attached",
+                        None,
+                    ))
                 }
             }
             AppEvent::DiffReview(_) => {
                 // Real diff apply belongs to a host controller in a
                 // later slice. For now the event is observed by the
                 // host loop and applied externally.
+                Ok(())
             }
             AppEvent::ApprovalDecision { id, approve } => {
                 // Slice 20.2 — set the row to the requested
@@ -365,25 +396,36 @@ impl ShellApp {
                 // through `ApprovalBarKey::Enter` (→
                 // `ShellAction::SubmitApprovals`); the detail
                 // drawer only marks rows, it does not drain the
-                // queue. If the row is already in the target state
-                // the toggle is skipped so two presses of `[y]`
-                // don't bounce the row back to Rejected.
+                // queue.
                 let snap = comp.approval_queue.snapshot();
                 let target = if approve {
                     ApprovalStatus::Approved
                 } else {
                     ApprovalStatus::Rejected
                 };
-                if let Some(row) = snap.iter().find(|r| r.id == id) {
-                    if row.status != target {
-                        let approval_ctrl: Arc<dyn ApprovalController> =
-                            Arc::new(vac_shell_host_approval::ApprovalQueueController::new(
-                                comp.approval_queue.clone(),
-                            ));
-                        let _ = approval_ctrl.toggle(&id);
+                let row = snap.iter().find(|r| r.id == id);
+                if row.is_none() {
+                    self.refresh_approval_bar();
+                    return Err(self.report_error(
+                        &format!("approval id not found: {id}"),
+                        None,
+                    ));
+                }
+                if row.unwrap().status != target {
+                    let approval_ctrl: Arc<dyn ApprovalController> =
+                        Arc::new(vac_shell_host_approval::ApprovalQueueController::new(
+                            comp.approval_queue.clone(),
+                        ));
+                    if let Err(e) = approval_ctrl.toggle(&id) {
+                        self.refresh_approval_bar();
+                        return Err(self.report_error(
+                            &format!("approval toggle failed for {id}"),
+                            Some(e.to_string()),
+                        ));
                     }
                 }
                 self.refresh_approval_bar();
+                Ok(())
             }
             AppEvent::PaletteSelected(slash) => {
                 // Slice 20.2 — built-in palette router. Closes the
@@ -406,17 +448,28 @@ impl ShellApp {
                 self.sync_visibility();
                 match slash.as_str() {
                     "/chat" => {
-                        let _ = comp
+                        if let Err(e) = comp
                             .host
-                            .handle(ShellAction::EnterSurface(SurfaceTarget::Chat));
+                            .handle(ShellAction::EnterSurface(SurfaceTarget::Chat))
+                        {
+                            return Err(self.report_error(
+                                "palette /chat: enter-surface failed",
+                                Some(e.to_string()),
+                            ));
+                        }
                     }
                     "/runtime" => {
-                        let _ = comp
+                        if let Err(e) = comp
                             .host
-                            .handle(ShellAction::EnterSurface(SurfaceTarget::Runtime));
+                            .handle(ShellAction::EnterSurface(SurfaceTarget::Runtime))
+                        {
+                            return Err(self.report_error(
+                                "palette /runtime: enter-surface failed",
+                                Some(e.to_string()),
+                            ));
+                        }
                     }
                     "/model" => {
-                        // Project the live model state, then open.
                         self.model_switcher =
                             vac_shell_host_model::build_switcher_view(
                                 &comp.model_state,
@@ -442,6 +495,7 @@ impl ShellApp {
                         // not our problem to route here.
                     }
                 }
+                Ok(())
             }
         }
     }
@@ -528,6 +582,72 @@ impl ShellApp {
                 );
             }
         }
+    }
+}
+
+/// Slice 20.3 — production error reporting type. Returned by
+/// `apply_event` and recorded into the activity log.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AppError {
+    pub title: String,
+    pub detail: Option<String>,
+}
+
+impl std::fmt::Display for AppError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.detail {
+            Some(d) => write!(f, "{}: {}", self.title, d),
+            None => write!(f, "{}", self.title),
+        }
+    }
+}
+
+impl std::error::Error for AppError {}
+
+impl ShellApp {
+    /// Build the error, push it into the activity log if attached,
+    /// and return it. Internal helper so every failure path goes
+    /// through the same place.
+    fn report_error(&self, title: &str, detail: Option<String>) -> AppError {
+        let err = AppError {
+            title: title.to_string(),
+            detail: detail.clone(),
+        };
+        if let Some(log) = &self.activity_log {
+            let id = format!("err-{}", now_unix());
+            log.record_error(id, now_unix(), title, detail);
+        }
+        err
+    }
+}
+
+fn now_unix() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+fn describe_shell_action(a: &ShellAction) -> String {
+    match a {
+        ShellAction::EnterSurface(SurfaceTarget::Chat) => "EnterSurface(Chat)".into(),
+        ShellAction::EnterSurface(SurfaceTarget::Runtime) => "EnterSurface(Runtime)".into(),
+        ShellAction::ToggleApproval { id } => format!("ToggleApproval({id})"),
+        ShellAction::RejectAllApprovals => "RejectAllApprovals".into(),
+        ShellAction::SubmitApprovals => "SubmitApprovals".into(),
+        ShellAction::SelectModel { provider, id } => {
+            format!("SelectModel({}/{id})", provider.0)
+        }
+    }
+}
+
+fn describe_session_action(a: &vac_shell_contracts::SessionAction) -> String {
+    use vac_shell_contracts::SessionAction;
+    match a {
+        SessionAction::Open { id } => format!("Open({id})"),
+        SessionAction::Resume { id } => format!("Resume({id})"),
+        SessionAction::Archive { id } => format!("Archive({id})"),
+        SessionAction::Delete { id } => format!("Delete({id})"),
     }
 }
 

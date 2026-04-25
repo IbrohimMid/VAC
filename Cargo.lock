@@ -6443,6 +6443,7 @@ dependencies = [
  "vac_shell_composition",
  "vac_shell_contracts",
  "vac_shell_diff_view",
+ "vac_shell_host_activity",
  "vac_shell_host_approval",
  "vac_shell_host_model",
  "vac_shell_host_paths",

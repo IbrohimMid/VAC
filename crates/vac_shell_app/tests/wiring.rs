@@ -454,6 +454,84 @@ fn prepare_frame_projects_queue_into_approval_bar() {
     assert!(s.contains("Shell"));
 }
 
+// =====================================================================
+// Slice 20.3 — production error reporting
+// =====================================================================
+
+#[test]
+fn apply_event_returns_err_when_session_action_targets_unknown_id() {
+    let (_t, comp) = boot();
+    let mut app = ShellApp::new(comp);
+    app.sessions = Some(Arc::new(vac_shell_host_sessions::SessionsState::new()));
+    let result = app.apply_event(AppEvent::Session(
+        vac_shell_contracts::SessionAction::Resume { id: "ghost".into() },
+    ));
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    assert!(err.title.contains("session action failed"));
+}
+
+#[test]
+fn apply_event_records_error_into_activity_log_on_failure() {
+    let (_t, comp) = boot();
+    let mut app = ShellApp::new(comp);
+    app.sessions = Some(Arc::new(vac_shell_host_sessions::SessionsState::new()));
+    let log = Arc::new(vac_shell_host_activity::ActivityLog::default());
+    app.activity_log = Some(log.clone());
+    let _ = app.apply_event(AppEvent::Session(
+        vac_shell_contracts::SessionAction::Resume { id: "ghost".into() },
+    ));
+    let snap = log.snapshot();
+    assert_eq!(snap.len(), 1);
+    assert!(matches!(
+        snap[0].kind,
+        vac_shell_contracts::ShellActivityKind::Error
+    ));
+    assert!(snap[0].title.contains("session action failed"));
+    assert!(snap[0].detail.as_deref().unwrap_or("").contains("ghost"));
+}
+
+#[test]
+fn apply_event_records_error_when_session_routed_without_sessions_state() {
+    let (_t, comp) = boot();
+    let mut app = ShellApp::new(comp);
+    let log = Arc::new(vac_shell_host_activity::ActivityLog::default());
+    app.activity_log = Some(log.clone());
+    let result = app.apply_event(AppEvent::Session(
+        vac_shell_contracts::SessionAction::Open { id: "x".into() },
+    ));
+    assert!(result.is_err());
+    assert_eq!(log.snapshot().len(), 1);
+}
+
+#[test]
+fn apply_event_records_error_for_unknown_approval_id() {
+    let (_t, comp) = boot();
+    let mut app = ShellApp::new(comp);
+    let log = Arc::new(vac_shell_host_activity::ActivityLog::default());
+    app.activity_log = Some(log.clone());
+    let result = app.apply_event(AppEvent::ApprovalDecision {
+        id: "nope".into(),
+        approve: true,
+    });
+    assert!(result.is_err());
+    let snap = log.snapshot();
+    assert_eq!(snap.len(), 1);
+    assert!(snap[0].title.contains("approval id not found"));
+}
+
+#[test]
+fn apply_event_succeeds_silently_when_no_log_attached() {
+    let (_t, comp) = boot();
+    comp.approval_queue
+        .enqueue(ApprovalRequest::new("a", "shell"));
+    let mut app = ShellApp::new(comp);
+    let result = app.apply_event(AppEvent::ShellAction(
+        ShellAction::ToggleApproval { id: "a".into() },
+    ));
+    assert!(result.is_ok());
+}
+
 #[test]
 fn pending_approvals_count_reflects_queue_length() {
     let (_t, comp) = boot();
