@@ -55,6 +55,7 @@ members = [
     "crates/vac_shell_keymap",
     "crates/vac_shell_runtime_loop",
     "crates/vac_shell_host_vac_config",
+    "crates/vac_shell_host_event_projection",
 ]
 exclude = [
     # Wave 4 — Stakpak donor checkout. Treated as read-only reference;

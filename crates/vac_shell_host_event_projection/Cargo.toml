@@ -1,0 +1,11 @@
+[package]
+name = "vac_shell_host_event_projection"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "D4 — neutral RuntimeEventView DTO + projection into ShellActivityEntry. Hosts adapt their concrete VAC engine event types to RuntimeEventView; the shell's ActivityLog consumes the projected entries."
+
+[dependencies]
+vac_shell_contracts = { path = "../vac_shell_contracts" }
+vac_shell_host_activity = { path = "../vac_shell_host_activity" }
+serde = { version = "1", features = ["derive"] }

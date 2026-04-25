@@ -6558,6 +6558,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "vac_shell_host_event_projection"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "vac_shell_contracts",
+ "vac_shell_host_activity",
+]
+
+[[package]]
 name = "vac_shell_host_model"
 version = "0.1.0"
 dependencies = [
