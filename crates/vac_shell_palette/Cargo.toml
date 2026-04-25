@@ -1,0 +1,10 @@
+[package]
+name = "vac_shell_palette"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Step 3a — palette widget extracted from Stakpak's helper_dropdown.rs, decoupled from donor AppState. Reads ShellCommandSpec entries through vac_shell_contracts."
+
+[dependencies]
+vac_shell_contracts = { path = "../vac_shell_contracts" }
+ratatui.workspace = true

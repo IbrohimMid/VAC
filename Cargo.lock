@@ -6434,6 +6434,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "vac_shell_palette"
+version = "0.1.0"
+dependencies = [
+ "ratatui",
+ "vac_shell_contracts",
+]
+
+[[package]]
 name = "vac_signal"
 version = "0.1.0"
 dependencies = [
