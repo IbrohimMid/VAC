@@ -6,10 +6,12 @@
 //! matches the host's source. The widget never mutates the source —
 //! the host applies the model switch in slice 9 (not here).
 
+use ratatui::backend::TestBackend;
+use ratatui::Terminal;
 use vac_shell_contracts::ProviderId;
 use vac_shell_host_model::{InMemoryModelSource, build_switcher_view, project_models};
 use vac_shell_model_switcher::{
-    SwitcherEvent, SwitcherKey, navigation_order, on_key,
+    SwitcherEvent, SwitcherKey, navigation_order, on_key, render_model_switcher,
 };
 
 fn source() -> InMemoryModelSource {
@@ -100,6 +102,43 @@ fn pinned_provider_overrides_alphabetical_after_recents() {
             "Claude Haiku 4",
         ]
     );
+}
+
+/// Slice 8.2a — full chain proof: source → projection → widget
+/// render. Builds an `InMemoryModelSource`, projects via
+/// `build_switcher_view`, draws into a ratatui `TestBackend`, and
+/// asserts the buffer contains every UI artefact that depends on a
+/// real source: the title, a recent row label, an active-tag, a
+/// no-creds tag, a cost label, and a provider header. This is the
+/// piece slice 8.2's first acceptance proof was missing.
+#[test]
+fn source_projection_renders_model_switcher_widget() {
+    let src = source();
+    let mut view = build_switcher_view(&src, 5);
+    view.visible = true;
+
+    let backend = TestBackend::new(100, 24);
+    let mut terminal = Terminal::new(backend).unwrap();
+    terminal
+        .draw(|f| render_model_switcher(f, &view, f.area()))
+        .unwrap();
+
+    let buf = terminal.backend().buffer();
+    let mut all = String::new();
+    for y in 0..buf.area.height {
+        for x in 0..buf.area.width {
+            all.push_str(buf[(x, y)].symbol());
+        }
+        all.push('\n');
+    }
+
+    assert!(all.contains("Model Switcher"), "title missing\n{all}");
+    assert!(all.contains("GPT-4o"), "recent label missing\n{all}");
+    assert!(all.contains("Claude Sonnet 4.5"), "active model label missing\n{all}");
+    assert!(all.contains("active"), "active tag missing\n{all}");
+    assert!(all.contains("(no creds)"), "no-creds tag missing for kilo\n{all}");
+    assert!(all.contains("$3 / $15 per M"), "cost_label missing\n{all}");
+    assert!(all.contains("anthropic"), "anthropic provider header missing\n{all}");
 }
 
 #[test]

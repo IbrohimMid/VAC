@@ -8,3 +8,11 @@ description = "Step 2 slice 8.2 — read-only host-side projection of a VAC mode
 [dependencies]
 vac_shell_contracts = { path = "../vac_shell_contracts" }
 vac_shell_model_switcher = { path = "../vac_shell_model_switcher" }
+
+# `ratatui` only appears in the integration test
+# (`tests/source_to_view.rs`) for the `TestBackend` render proof.
+# Runtime crate has no need of it — kept as a dev-dep so the
+# production dep graph stays `vac_shell_contracts` +
+# `vac_shell_model_switcher` only.
+[dev-dependencies]
+ratatui.workspace = true
