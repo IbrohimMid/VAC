@@ -26,9 +26,11 @@ pub mod model;
 pub mod approval;
 pub mod registry;
 pub mod events;
+pub mod session;
 
 pub use approval::VacApprovalBridge;
 pub use events::{VacShellEvent, VacSubmitRequest};
 pub use model::{ProviderId, VacModelView};
 pub use paths::VacPaths;
 pub use registry::{ShellCommandKind, ShellCommandSpec, VacCommandRegistry};
+pub use session::SessionEntry;

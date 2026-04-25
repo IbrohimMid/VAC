@@ -6460,6 +6460,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "vac_shell_host_paths"
+version = "0.1.0"
+dependencies = [
+ "tempfile",
+ "vac_shell_contracts",
+]
+
+[[package]]
 name = "vac_shell_host_surface"
 version = "0.1.0"
 dependencies = [

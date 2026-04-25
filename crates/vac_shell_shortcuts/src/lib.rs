@@ -36,17 +36,21 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph, Tabs, Wrap},
 };
 use std::collections::HashMap;
-use vac_shell_contracts::ShellCommandSpec;
+use vac_shell_contracts::{SessionEntry, ShellCommandSpec};
 
 const SCROLL_BUFFER_LINES: usize = 1;
 
-/// Which tab the popup is currently showing. `Sessions` is reserved
-/// for a later slice once `VacPaths` is wired.
+/// Which tab the popup is currently showing. The Sessions tab lit up
+/// in slice 7 once `VacPaths` was implemented and a host-side
+/// session-directory enumerator landed (`vac_shell_host_paths`).
+/// Resume / delete / transcript-open flows are still deliberately
+/// out of scope; this tab is read-only.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ShortcutsMode {
     #[default]
     Commands,
     Shortcuts,
+    Sessions,
 }
 
 /// One row in the Shortcuts tab. The donor exposes the same shape;
@@ -85,6 +89,12 @@ pub struct ShortcutsView {
     pub shortcuts_scroll: usize,
     pub commands: Vec<ShellCommandSpec>,
     pub shortcuts: Vec<Shortcut>,
+    /// Sessions snapshot. The host fills this from
+    /// `vac_shell_host_paths::enumerate_sessions(...)` (or any other
+    /// `VacPaths`-backed scanner) — the widget never touches disk.
+    pub sessions: Vec<SessionEntry>,
+    /// Selected row in the sessions list.
+    pub sessions_scroll: usize,
 }
 
 impl ShortcutsView {
@@ -96,10 +106,17 @@ impl ShortcutsView {
         }
     }
 
+    pub fn with_sessions(mut self, sessions: Vec<SessionEntry>) -> Self {
+        self.sessions = sessions;
+        self
+    }
+
+    /// Cycle Commands → Shortcuts → Sessions → Commands.
     pub fn toggle_mode(&mut self) {
         self.mode = match self.mode {
             ShortcutsMode::Commands => ShortcutsMode::Shortcuts,
-            ShortcutsMode::Shortcuts => ShortcutsMode::Commands,
+            ShortcutsMode::Shortcuts => ShortcutsMode::Sessions,
+            ShortcutsMode::Sessions => ShortcutsMode::Commands,
         };
         self.search.clear();
     }
@@ -141,6 +158,18 @@ pub fn filter_shortcuts<'a>(needle: &str, all: &'a [Shortcut]) -> Vec<&'a Shortc
                 || s.description.to_lowercase().contains(&n)
                 || s.category.to_lowercase().contains(&n)
         })
+        .collect()
+}
+
+/// Filter sessions against an optional substring needle
+/// (case-insensitive over `id` + `label`). Empty needle returns all.
+pub fn filter_sessions<'a>(needle: &str, all: &'a [SessionEntry]) -> Vec<&'a SessionEntry> {
+    let n = needle.trim().to_lowercase();
+    if n.is_empty() {
+        return all.iter().collect();
+    }
+    all.iter()
+        .filter(|s| s.id.to_lowercase().contains(&n) || s.label.to_lowercase().contains(&n))
         .collect()
 }
 
@@ -239,10 +268,11 @@ pub fn render_shortcuts_popup(f: &mut Frame, view: &ShortcutsView, area: Rect) {
     ));
     let title_widget = Paragraph::new(title);
 
-    let tab_titles = vec![" Commands ", " Shortcuts "];
+    let tab_titles = vec![" Commands ", " Shortcuts ", " Sessions "];
     let selected_tab = match view.mode {
         ShortcutsMode::Commands => 0,
         ShortcutsMode::Shortcuts => 1,
+        ShortcutsMode::Sessions => 2,
     };
     let tabs = Tabs::new(tab_titles)
         .select(selected_tab)
@@ -284,9 +314,107 @@ pub fn render_shortcuts_popup(f: &mut Frame, view: &ShortcutsView, area: Rect) {
             f.render_widget(tabs, chunks[1]);
             render_shortcuts_section(f, view, chunks[3], chunks[4], chunks[5], chunks[6], area);
         }
+        ShortcutsMode::Sessions => {
+            // Donor layout: title, tabs, spacer, search, spacer, content,
+            // scroll, help. Mirrored verbatim modulo `AppState` reads.
+            let chunks = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([
+                    Constraint::Length(1),
+                    Constraint::Length(1),
+                    Constraint::Length(1),
+                    Constraint::Length(1),
+                    Constraint::Length(1),
+                    Constraint::Min(3),
+                    Constraint::Length(1),
+                    Constraint::Length(1),
+                ])
+                .split(inner);
+            f.render_widget(title_widget, chunks[0]);
+            f.render_widget(tabs, chunks[1]);
+            render_sessions_section(f, view, chunks[3], chunks[5], chunks[6], chunks[7]);
+        }
     }
 
     f.render_widget(block, area);
+}
+
+fn render_sessions_section(
+    f: &mut Frame,
+    view: &ShortcutsView,
+    search_area: Rect,
+    content_area: Rect,
+    scroll_area: Rect,
+    help_area: Rect,
+) {
+    let muted = Color::DarkGray;
+    let accent = Color::Cyan;
+    let text = Color::Gray;
+
+    f.render_widget(
+        Paragraph::new(render_search_line(view, "Type to filter sessions"))
+            .block(Block::default().border_style(Style::default().fg(muted))),
+        search_area,
+    );
+
+    let filtered = filter_sessions(&view.search, &view.sessions);
+    let total = filtered.len();
+    let height = content_area.height as usize;
+    let max_scroll = total.saturating_sub(height);
+    let scroll = view.sessions_scroll.min(max_scroll);
+
+    let mut lines: Vec<Line<'static>> = Vec::new();
+    if total == 0 {
+        lines.push(Line::from(Span::styled(
+            "  no sessions yet — start typing to begin",
+            Style::default().fg(muted),
+        )));
+    } else {
+        for i in 0..height {
+            let idx = scroll + i;
+            if idx < total {
+                let s = filtered[idx];
+                let label = if s.label.is_empty() { s.id.as_str() } else { s.label.as_str() };
+                lines.push(Line::from(vec![
+                    Span::styled("  ", Style::default()),
+                    Span::styled(label.to_string(), Style::default().fg(text)),
+                    Span::styled("   ", Style::default()),
+                    Span::styled(
+                        format!("[{}]", s.id),
+                        Style::default().fg(muted),
+                    ),
+                ]));
+            } else {
+                lines.push(Line::from(""));
+            }
+        }
+    }
+    f.render_widget(
+        Paragraph::new(lines).wrap(Wrap { trim: false }),
+        content_area,
+    );
+
+    let has_above = scroll > 0;
+    let has_below = scroll < max_scroll;
+    if has_above || has_below {
+        let cumulative = (scroll + height).min(total);
+        let mut indicator: Vec<Span<'static>> = Vec::new();
+        if has_above {
+            indicator.push(Span::styled(" ▲ ", Style::default().fg(muted)));
+        }
+        indicator.push(Span::styled(
+            format!("({}/{})", cumulative, total),
+            Style::default().fg(muted),
+        ));
+        if has_below {
+            indicator.push(Span::styled(" ▼", Style::default().fg(muted)));
+        }
+        f.render_widget(Paragraph::new(Line::from(indicator)), scroll_area);
+    } else {
+        f.render_widget(Paragraph::new(""), scroll_area);
+    }
+
+    f.render_widget(help_line(accent, muted), help_area);
 }
 
 fn render_search_line(view: &ShortcutsView, placeholder: &str) -> Line<'static> {

@@ -2,11 +2,19 @@
 
 use ratatui::backend::TestBackend;
 use ratatui::Terminal;
-use vac_shell_contracts::{ShellCommandKind, ShellCommandSpec};
+use vac_shell_contracts::{SessionEntry, ShellCommandKind, ShellCommandSpec};
 use vac_shell_shortcuts::{
     Shortcut, ShortcutsMode, ShortcutsView, build_shortcuts_lines, default_shortcuts,
-    filter_commands, filter_shortcuts, render_shortcuts_popup,
+    filter_commands, filter_sessions, filter_shortcuts, render_shortcuts_popup,
 };
+
+fn session(id: &str, label: &str, ts: u64) -> SessionEntry {
+    SessionEntry {
+        id: id.into(),
+        label: label.into(),
+        last_active_unix: ts,
+    }
+}
 
 fn cmd(slash: &str, palette_visible: bool) -> ShellCommandSpec {
     ShellCommandSpec {
@@ -67,14 +75,78 @@ fn build_shortcuts_lines_orders_categories_and_renders_headers() {
 }
 
 #[test]
-fn toggle_mode_flips_between_commands_and_shortcuts_and_clears_search() {
+fn toggle_mode_cycles_commands_shortcuts_sessions() {
     let mut view = ShortcutsView::new(vec![cmd("/model", true)], default_shortcuts());
     view.search = "anything".into();
     view.toggle_mode();
     assert_eq!(view.mode, ShortcutsMode::Shortcuts);
     assert!(view.search.is_empty());
     view.toggle_mode();
+    assert_eq!(view.mode, ShortcutsMode::Sessions);
+    view.toggle_mode();
     assert_eq!(view.mode, ShortcutsMode::Commands);
+}
+
+#[test]
+fn filter_sessions_matches_id_or_label() {
+    let all = vec![
+        session("aaa", "Add error handling", 100),
+        session("bbb", "Refactor swarm", 200),
+        session("ccc", "Bump dependencies", 300),
+    ];
+    assert_eq!(filter_sessions("", &all).len(), 3);
+    let by_id = filter_sessions("bbb", &all);
+    assert_eq!(by_id.len(), 1);
+    assert_eq!(by_id[0].id, "bbb");
+    let by_label = filter_sessions("refactor", &all);
+    assert_eq!(by_label.len(), 1);
+    assert_eq!(by_label[0].id, "bbb");
+    assert!(filter_sessions("nothing-matches-xyz", &all).is_empty());
+}
+
+#[test]
+fn visible_sessions_mode_renders_entries_or_empty_hint() {
+    let backend = TestBackend::new(80, 20);
+    let mut terminal = Terminal::new(backend).unwrap();
+    let mut view = ShortcutsView::new(vec![], default_shortcuts())
+        .with_sessions(vec![session("uuid-one", "Refactor swarm", 200)]);
+    view.visible = true;
+    view.mode = ShortcutsMode::Sessions;
+    terminal
+        .draw(|f| render_shortcuts_popup(f, &view, f.area()))
+        .unwrap();
+    let buf = terminal.backend().buffer();
+    let mut all = String::new();
+    for y in 0..buf.area.height {
+        for x in 0..buf.area.width {
+            all.push_str(buf[(x, y)].symbol());
+        }
+        all.push('\n');
+    }
+    assert!(all.contains("Sessions"), "Sessions tab missing\n{all}");
+    assert!(all.contains("Refactor swarm"), "label missing\n{all}");
+    assert!(all.contains("uuid-one"), "id missing\n{all}");
+}
+
+#[test]
+fn visible_sessions_mode_with_no_entries_renders_empty_hint() {
+    let backend = TestBackend::new(80, 20);
+    let mut terminal = Terminal::new(backend).unwrap();
+    let mut view = ShortcutsView::new(vec![], default_shortcuts());
+    view.visible = true;
+    view.mode = ShortcutsMode::Sessions;
+    terminal
+        .draw(|f| render_shortcuts_popup(f, &view, f.area()))
+        .unwrap();
+    let buf = terminal.backend().buffer();
+    let mut all = String::new();
+    for y in 0..buf.area.height {
+        for x in 0..buf.area.width {
+            all.push_str(buf[(x, y)].symbol());
+        }
+        all.push('\n');
+    }
+    assert!(all.contains("no sessions yet"), "empty hint missing\n{all}");
 }
 
 #[test]

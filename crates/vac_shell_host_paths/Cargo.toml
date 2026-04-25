@@ -1,0 +1,12 @@
+[package]
+name = "vac_shell_host_paths"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Step 2 slice 7 — VAC-canonical implementation of vac_shell_contracts::VacPaths plus a session-directory enumerator. Closes Blocker A: every donor `.stakpak/...` lookup routes through here to a `.vac/...` location."
+
+[dependencies]
+vac_shell_contracts = { path = "../vac_shell_contracts" }
+
+[dev-dependencies]
+tempfile = "3"
