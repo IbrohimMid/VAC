@@ -32,7 +32,7 @@ impl FakeEnv {
 }
 
 impl EnvPresence for FakeEnv {
-    fn is_present(&self, name: &str) -> bool {
+    fn present_non_empty(&self, name: &str) -> bool {
         self.present.contains(name)
     }
 }
@@ -111,21 +111,101 @@ fn credentials_present_reflects_env_presence_only() {
 }
 
 #[test]
-fn credentials_present_false_when_api_key_env_missing() {
+fn credentials_present_true_when_api_key_env_is_none_local_provider() {
+    // Mirrors `vil_llm::LlmConfig::provider_ready`: a provider
+    // whose `api_key_env` is None requires no env credential and
+    // is "ready" as long as the provider entry exists. Without
+    // this rule, local / no-key providers (e.g. an on-host model
+    // server) would always appear unauthenticated and
+    // `sanitize_active_model` would drop them at boot.
     let mut cfg = synthetic_config();
     cfg.llm
         .providers
         .get_mut("anthropic")
         .unwrap()
         .api_key_env = None;
-    let env = FakeEnv::with(&["ANTHROPIC_API_KEY"]);
+    let env = FakeEnv::default();
     let snap = build_snapshot_with_env(&cfg, &env);
     let anth = snap
         .providers
         .iter()
         .find(|p| p.id == "anthropic")
         .unwrap();
-    assert!(!anth.credentials_present, "no api_key_env => false");
+    assert!(
+        anth.credentials_present,
+        "api_key_env=None must mean ready (canonical LlmConfig::provider_ready parity)",
+    );
+}
+
+#[test]
+fn credentials_present_false_when_api_key_env_is_empty_string() {
+    // `api_key_env=Some("")` is malformed config — treat as a
+    // missing key rather than "no key needed", because the
+    // operator clearly *intended* to name an env var.
+    let mut cfg = synthetic_config();
+    cfg.llm
+        .providers
+        .get_mut("anthropic")
+        .unwrap()
+        .api_key_env = Some("   ".to_string());
+    let env = FakeEnv::default();
+    let snap = build_snapshot_with_env(&cfg, &env);
+    let anth = snap
+        .providers
+        .iter()
+        .find(|p| p.id == "anthropic")
+        .unwrap();
+    assert!(!anth.credentials_present);
+}
+
+#[test]
+fn local_no_key_provider_active_survives_sanitize_active_model() {
+    use vac_shell_bridge::ProviderId;
+    use vac_shell_host_model::{HostModel, ProviderInfo};
+    use vac_shell_host_vac_config::sanitize_active_model;
+
+    // Single provider that requires no env credential.
+    let mut cfg = VacConfig::default();
+    cfg.llm.providers.clear();
+    cfg.llm.default_provider = "local".to_string();
+    cfg.llm.providers.insert(
+        "local".to_string(),
+        LlmProviderConfig {
+            api_key_env: None,
+            model: Some("local-model-v1".to_string()),
+            base_url: None,
+            ..Default::default()
+        },
+    );
+    let snap = build_snapshot_with_env(&cfg, &FakeEnv::default());
+
+    let providers: Vec<ProviderInfo> = snap
+        .providers
+        .iter()
+        .map(|p| ProviderInfo {
+            id: ProviderId(p.id.clone()),
+            credentials_present: p.credentials_present,
+        })
+        .collect();
+    let models: Vec<HostModel> = snap
+        .models
+        .iter()
+        .map(|m| HostModel {
+            provider: ProviderId(m.provider.clone()),
+            id: m.id.clone(),
+            label: m.label.clone(),
+            reasoning: m.reasoning,
+            cost_label: m.cost_label.clone(),
+        })
+        .collect();
+    let active = snap
+        .active
+        .map(|a| (ProviderId(a.provider), a.id));
+
+    let sanitized = sanitize_active_model(&providers, &models, active);
+    let (pid, mid) = sanitized.expect("local-key-less active must survive sanitize");
+    assert_eq!(pid.0, "local");
+    assert_eq!(mid, "local-model-v1");
 }
 
 // ---------------------------------------------------------------------

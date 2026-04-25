@@ -109,16 +109,20 @@ pub struct SnapshotActive {
 /// avoids `std::env::var` calls inside the projection logic.
 pub trait EnvPresence: Send + Sync {
     /// Return `true` when the env var named `name` is set to a
-    /// non-empty value.
-    fn is_present(&self, name: &str) -> bool;
+    /// non-empty (after-trim) value in the underlying
+    /// environment.
+    fn present_non_empty(&self, name: &str) -> bool;
 }
 
-/// Default impl backed by `std::env::var`.
+/// Default impl backed by `std::env::var`. Mirrors the
+/// canonical `vil_llm::LlmConfig::provider_ready` env check —
+/// any unset / unreadable / empty / whitespace value is
+/// treated as not present.
 #[derive(Debug, Default, Clone, Copy)]
-pub struct StdEnvPresence;
+pub struct ProcessEnvPresence;
 
-impl EnvPresence for StdEnvPresence {
-    fn is_present(&self, name: &str) -> bool {
+impl EnvPresence for ProcessEnvPresence {
+    fn present_non_empty(&self, name: &str) -> bool {
         match std::env::var(name) {
             Ok(v) => !v.trim().is_empty(),
             Err(_) => false,
@@ -126,14 +130,19 @@ impl EnvPresence for StdEnvPresence {
     }
 }
 
+/// Backwards-compatible alias for [`ProcessEnvPresence`]. Retained
+/// so code written before the D7A hardening rename keeps
+/// compiling. New code should prefer `ProcessEnvPresence`.
+pub type StdEnvPresence = ProcessEnvPresence;
+
 // =====================================================================
 // Projection
 // =====================================================================
 
 /// Build a snapshot from `config` using the default
-/// [`StdEnvPresence`] strategy.
+/// [`ProcessEnvPresence`] strategy.
 pub fn build_snapshot(config: &VacConfig) -> SnapshotDoc {
-    build_snapshot_with_env(config, &StdEnvPresence)
+    build_snapshot_with_env(config, &ProcessEnvPresence)
 }
 
 /// Build a snapshot from `config` and an explicit
@@ -156,9 +165,13 @@ pub fn build_snapshot_with_env(config: &VacConfig, env: &dyn EnvPresence) -> Sna
         };
 
         // Allowlist-shaped projection: only the boolean.
+        // Mirrors `vil_llm::LlmConfig::provider_ready` —
+        // providers without `api_key_env` are local / no-key
+        // and treated as ready when the provider entry exists.
         let credentials_present = match provider_cfg.api_key_env.as_deref() {
-            Some(name) if !name.trim().is_empty() => env.is_present(name),
-            _ => false,
+            Some(name) if !name.trim().is_empty() => env.present_non_empty(name),
+            Some(_) => false, // `api_key_env = ""` is malformed config, not "no key needed".
+            None => true,
         };
         providers.push(SnapshotProvider {
             id: (*pid).clone(),
@@ -227,10 +240,11 @@ fn build_active(config: &VacConfig) -> Option<SnapshotActive> {
 /// Default env strategy; see [`write_snapshot_with_env`] for a
 /// test override.
 pub fn write_snapshot(config: &VacConfig, paths: &dyn VacPaths) -> Result<PathBuf, ProbeError> {
-    write_snapshot_with_env(config, paths, &StdEnvPresence)
+    write_snapshot_with_env(config, paths, &ProcessEnvPresence)
 }
 
-/// Same as [`write_snapshot`] with an explicit env strategy.
+/// Same as [`write_snapshot`] using an explicit
+/// [`ProcessEnvPresence`]-equivalent strategy.
 pub fn write_snapshot_with_env(
     config: &VacConfig,
     paths: &dyn VacPaths,
@@ -257,13 +271,15 @@ fn write_to_path(snapshot: &SnapshotDoc, dest: &Path) -> Result<(), ProbeError> 
     use std::fs;
     use std::io::Write;
 
-    if let Some(parent) = dest.parent() {
-        if !parent.as_os_str().is_empty() {
-            fs::create_dir_all(parent).map_err(|e| ProbeError::Io {
-                path: parent.display().to_string(),
-                source: e,
-            })?;
-        }
+    let parent = match dest.parent() {
+        Some(p) if !p.as_os_str().is_empty() => Some(p),
+        _ => None,
+    };
+    if let Some(parent) = parent {
+        fs::create_dir_all(parent).map_err(|e| ProbeError::Io {
+            path: parent.display().to_string(),
+            source: e,
+        })?;
     }
 
     let bytes = serde_json::to_vec_pretty(snapshot)?;
@@ -286,7 +302,14 @@ fn write_to_path(snapshot: &SnapshotDoc, dest: &Path) -> Result<(), ProbeError> 
             f.write_all(&bytes)?;
             f.sync_all()?;
         }
-        fs::rename(&tmp, dest)
+        atomic_replace(&tmp, dest)?;
+        // On Unix, fsync the parent dir so the rename's directory
+        // entry is durable even if the box crashes immediately after
+        // this returns. No-op on Windows (FS journals the rename).
+        if let Some(parent) = parent {
+            sync_dir(parent)?;
+        }
+        Ok(())
     };
 
     if let Err(e) = write_then_rename() {
@@ -296,5 +319,52 @@ fn write_to_path(snapshot: &SnapshotDoc, dest: &Path) -> Result<(), ProbeError> 
             source: e,
         });
     }
+    Ok(())
+}
+
+/// Cross-platform atomic-ish replace.
+///
+/// * Unix: `rename(2)` already replaces the destination atomically.
+/// * Windows: `std::fs::rename` fails when `dest` exists; we fall
+///   back to `remove_file` + `rename`. There is a narrow window
+///   where the destination is absent — operators that need a
+///   stronger guarantee on Windows should use a vetted crate
+///   (e.g. `tempfile::persist`); the on-disk consumer here treats
+///   a missing snapshot as "fall back to fixture", so a partial
+///   failure on Windows degrades to the documented missing-file
+///   path rather than data loss.
+#[cfg(unix)]
+fn atomic_replace(tmp: &Path, dest: &Path) -> std::io::Result<()> {
+    std::fs::rename(tmp, dest)
+}
+
+#[cfg(windows)]
+fn atomic_replace(tmp: &Path, dest: &Path) -> std::io::Result<()> {
+    match std::fs::rename(tmp, dest) {
+        Ok(()) => Ok(()),
+        Err(_) => {
+            let _ = std::fs::remove_file(dest);
+            std::fs::rename(tmp, dest)
+        }
+    }
+}
+
+#[cfg(not(any(unix, windows)))]
+fn atomic_replace(tmp: &Path, dest: &Path) -> std::io::Result<()> {
+    std::fs::rename(tmp, dest)
+}
+
+#[cfg(unix)]
+fn sync_dir(dir: &Path) -> std::io::Result<()> {
+    // Best-effort: opening the directory as O_RDONLY and fsyncing
+    // it is the documented POSIX way to durably commit a rename.
+    match std::fs::File::open(dir) {
+        Ok(f) => f.sync_all(),
+        Err(e) => Err(e),
+    }
+}
+
+#[cfg(not(unix))]
+fn sync_dir(_dir: &Path) -> std::io::Result<()> {
     Ok(())
 }

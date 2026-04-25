@@ -166,6 +166,26 @@ D7A introduces the **first** explicit, named exception:
   (id, label, reasoning, optional cost label), and an optional
   `active`. No `api_key_env` *names*, no `base_url`, no other
   `ProviderConfig` field crosses the seam.
+- **Readiness parity** with `vil_llm::LlmConfig::provider_ready`:
+  `Some(non-empty api_key_env)` ⇒ check the env;
+  `Some("" | "   ")` ⇒ false (malformed config);
+  `None` ⇒ true (local / no-key provider, ready when the
+  provider entry exists). This is what keeps the
+  `sanitize_active_model` boot guard from dropping local
+  models that legitimately need no API key.
+- **Public API** (post-hardening): `EnvPresence::present_non_empty`,
+  `ProcessEnvPresence` (default impl), with
+  `pub type StdEnvPresence = ProcessEnvPresence;` retained as a
+  backwards-compatible alias. Producer entry points are
+  `build_snapshot`, `build_snapshot_with_env`, `write_snapshot`,
+  `write_snapshot_with_env`, and `write_snapshot_doc`.
+- **Atomic write**: temp file via `create_new` → `write_all` →
+  `sync_all` → cross-platform replace → parent-dir fsync on
+  Unix (no-op on Windows; the journaling FS handles rename
+  durability). On Windows, `rename` falls back to
+  `remove_file` + `rename` so existing snapshots are
+  overwritable; operators that need a hard atomic guarantee
+  there are directed to `tempfile::persist`.
 - **Forbidden directions** still hold: nothing in
   `vac_shell_*` (excluding the probe itself) may add a
   `vac_core` dep. The probe must not gain a back-edge from any

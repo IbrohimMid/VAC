@@ -70,8 +70,12 @@ Tag the report by slice:
   `<project>/.vac/config.toml`. The probe never serializes API
   keys, `api_key_env` names, `base_url`, or any other
   `ProviderConfig` field — only `credentials_present: bool`
-  per provider. **Wiring into a host call site is deferred** —
-  the dogfood example currently still relies on the fixture
-  fallback / a hand-edited snapshot until D7B lands.
+  per provider. Post-hardening public API:
+  `write_snapshot(&vac_config, &paths)` /
+  `write_snapshot_with_env(&vac_config, &paths, &ProcessEnvPresence)`,
+  trait method `EnvPresence::present_non_empty`. **Wiring into
+  a host call site is deferred** — the dogfood example
+  currently still relies on the fixture fallback / a
+  hand-edited snapshot until D7B lands.
 * No diff/review live integration; `DiffReviewView` only renders
   what the host populates.
