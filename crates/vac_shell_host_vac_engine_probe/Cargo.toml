@@ -1,0 +1,20 @@
+[package]
+name = "vac_shell_host_vac_engine_probe"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "D7A — host-side probe that projects vac_core::VacConfig into the read-only .vac/model_config.json snapshot consumed by vac_shell_host_vac_config. ADR-sanctioned host exception: this is the FIRST shell-stack crate allowed to depend on vac_core. The schema is allowlist-shaped (providers/models/active only); api keys, api_key_env names, base_url, and other ProviderConfig fields never cross the seam."
+
+[dependencies]
+vac_core = { path = "../vac_core" }
+vac_shell_contracts = { path = "../vac_shell_contracts" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"
+
+[dev-dependencies]
+vac_shell_host_paths = { path = "../vac_shell_host_paths" }
+vac_shell_host_vac_config = { path = "../vac_shell_host_vac_config" }
+vac_shell_host_model = { path = "../vac_shell_host_model" }
+vac_shell_bridge = { path = "../vac_shell_bridge" }
+tempfile = "3"

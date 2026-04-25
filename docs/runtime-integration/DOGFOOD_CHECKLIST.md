@@ -61,8 +61,17 @@ Tag the report by slice:
   palette command rejects with an "unsupported (D5.1 stub)"
   message.
 * Model config snapshot at `.vac/model_config.json` is
-  host-written. A future slice (`vac_shell_host_vac_engine_probe`)
-  generates it from real `vac_core::VacConfig` without exposing
-  secrets.
+  host-written. **D7A** ships
+  `vac_shell_host_vac_engine_probe` — call
+  `write_snapshot(&vac_config, &paths)` from the host (CLI
+  bootstrap, `vac config probe` subcommand, or the dogfood
+  example) before `build_shell_app` to keep the snapshot in
+  sync with `~/.config/vac/config.toml` /
+  `<project>/.vac/config.toml`. The probe never serializes API
+  keys, `api_key_env` names, `base_url`, or any other
+  `ProviderConfig` field — only `credentials_present: bool`
+  per provider. **Wiring into a host call site is deferred** —
+  the dogfood example currently still relies on the fixture
+  fallback / a hand-edited snapshot until D7B lands.
 * No diff/review live integration; `DiffReviewView` only renders
   what the host populates.

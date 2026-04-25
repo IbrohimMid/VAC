@@ -13,6 +13,7 @@
 | **D5**  | `vac_shell_host_commands` (`ShellCommandExecutor` + `route_palette_command`) | PASS (after hardening: actually wired into `handle_key_event_once` via `ShellRuntimeContext`) |
 | **D5.1**| `VacCommandExecutorAdapter` stub | PASS |
 | **D6**  | `cargo run -p vac_shell_entrypoint --example dogfood` | PASS — example now constructs `ShellRuntimeContext` with the adapter stub (manual checklist) |
+| **D7A** | `vac_shell_host_vac_engine_probe` — host-side `VacConfig` → `.vac/model_config.json` projection (first ADR-sanctioned `vac_core` exception, allowlist-shaped, denylist-swept) | PASS |
 | **RC gate** | This doc + `DOGFOOD_CHECKLIST.md` + map update | PASS (post-hardening) |
 
 ## Crate inventory after the batch
@@ -24,6 +25,7 @@ crates/vac_shell_runtime_loop         D2.2
 crates/vac_shell_host_vac_config      D3
 crates/vac_shell_host_event_projection D4 + D4.1
 crates/vac_shell_host_commands        D5 + D5.1
+crates/vac_shell_host_vac_engine_probe D7A (host-side, vac_core exception)
 ```
 
 Plus the cockpit layer landed before the D-track:
@@ -69,13 +71,15 @@ crates/vac_shell_host_diff            simple line-diff projector
 * No `vac_core`, `vac_session_engine`, `vac_tui_runtime`,
   `stakai`, donor crates, `SecretManager`, `AutoApproveManager`,
   or `.stakpak` path composition appears anywhere in the new
-  shell stack.
+  shell stack — **with one named exception**:
+  `vac_shell_host_vac_engine_probe` (D7A) is allowed to depend
+  on `vac_core` because it is a host-side *producer crate* that
+  writes the read-only `.vac/model_config.json` snapshot. It is
+  not reachable from any UI / widget / bridge / app /
+  entrypoint runtime graph; see the ADR appendix.
 
 ## What is still deferred
 
-* `vac_shell_host_vac_engine_probe` — host-side helper that
-  reads `vac_core::VacConfig` and writes the
-  `.vac/model_config.json` snapshot without exposing keys.
 * `VacCommandExecutorAdapter` real impl — bridge into
   `vac_session_engine` / `vac_cli::commands` for non-built-in
   palette slashes.

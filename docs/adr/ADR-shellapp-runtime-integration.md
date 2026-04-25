@@ -139,3 +139,46 @@ update pass.
 - The legacy `vac_tui_runtime` remains the default.
 
 D2 is **not** authorized to begin until D1 is reviewed and passed.
+
+## Appendix — D7A `vac_core` host-side exception (2026-04-26)
+
+The hard "no `vac_core` dependency" rule above applies to every
+crate inside the **shell-stack runtime path**: UI widgets, the
+bridge, host-state crates, the app orchestrator, the entrypoint,
+and the runtime loop. None of them may link `vac_core`.
+
+D7A introduces the **first** explicit, named exception:
+
+- **Crate**: `vac_shell_host_vac_engine_probe`.
+- **Purpose**: project `vac_core::VacConfig` into the read-only
+  `.vac/model_config.json` snapshot consumed by
+  `vac_shell_host_vac_config`. The shell stack stays decoupled
+  from `vac_core` because the *file* is the contract — the probe
+  produces, the consumer parses, and no Rust type crosses the
+  seam.
+- **Posture**: host-side. The probe is a *producer crate* meant
+  to be invoked by hosts (CLI bootstrap, `vac config probe`,
+  dogfood example) **before** `build_shell_app`. It does not
+  appear in the runtime dependency graph of `vac_shell_app`,
+  `vac_shell_entrypoint`, or any UI widget.
+- **Allowlist-shaped projection**: the on-disk schema is closed —
+  `providers[]` (id + `credentials_present: bool`), `models[]`
+  (id, label, reasoning, optional cost label), and an optional
+  `active`. No `api_key_env` *names*, no `base_url`, no other
+  `ProviderConfig` field crosses the seam.
+- **Forbidden directions** still hold: nothing in
+  `vac_shell_*` (excluding the probe itself) may add a
+  `vac_core` dep. The probe must not gain a back-edge from any
+  shell-stack crate; it sits outside the runtime graph by
+  design.
+
+Rollback: delete `crates/vac_shell_host_vac_engine_probe/` and
+its workspace member entry. The on-disk snapshot remains
+parseable by `vac_shell_host_vac_config` regardless of how it
+was produced (host-written, hand-edited, or absent → fixture
+fallback).
+
+Future host-side exception crates (e.g. a real
+`VacCommandExecutorAdapter` bridge in D7B) require their own
+appendix entry justifying the boundary crossing on the same
+allowlist-shaped basis.

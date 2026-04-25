@@ -199,6 +199,7 @@ operator checklist. ADR:
 | D4 + D4.1 | `vac_shell_host_event_projection` | `RuntimeEventView` DTO → `ShellActivityEntry`; `record_projected_event` ingests into `ActivityLog` |
 | D5 + D5.1 | `vac_shell_host_commands` | `ShellCommandExecutor` trait + `route_palette_command` (now wired into the runtime loop via `ShellRuntimeContext`); `VacCommandExecutorAdapter` stub records "unsupported (D5.1 stub)" for non-built-in palette commands |
 | D6 | `vac_shell_entrypoint::examples::dogfood` | `cargo run -p vac_shell_entrypoint --example dogfood` boots the cockpit live with `ShellRuntimeContext` + `VacCommandExecutorAdapter` stub attached |
+| D7A | `vac_shell_host_vac_engine_probe` | First ADR-sanctioned `vac_core` host-side exception. Projects `VacConfig` → `.vac/model_config.json` via an allowlist-shaped schema (`providers[]` with `credentials_present: bool` only, `models[]`, optional `active`). Excludes `api_key_env` names, `base_url`, and every other `ProviderConfig` field. Atomic write (unique tmp + sync + rename). Not reachable from any UI / widget / bridge / app / entrypoint runtime graph; intended to be invoked host-side before `build_shell_app`. |
 
 Hard guards still held: every UI widget runtime dep stays on
 `ratatui + vac_shell_contracts`; `vac_shell_bridge` stays on
