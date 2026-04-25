@@ -19,4 +19,14 @@ pub struct VacModelView {
     pub active: bool,
     /// True when credentials for this provider have been resolved.
     pub credentials_present: bool,
+    /// True when the model exposes reasoning capabilities. Drives the
+    /// `Reasoning`-only filter mode in the model switcher.
+    #[serde(default)]
+    pub reasoning: bool,
+    /// Pre-formatted cost label (e.g. `"$3 / $15 per M"`). Optional —
+    /// the host formats once and the widget renders verbatim, keeping
+    /// any provider-specific currency / token-pricing logic out of
+    /// the contract.
+    #[serde(default)]
+    pub cost_label: Option<String>,
 }

@@ -1,0 +1,10 @@
+[package]
+name = "vac_shell_model_switcher"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Step 2 slice 8 — model switcher widget extracted from Stakpak's model_switcher.rs. UI-only over a Vec<VacModelView>; no config mutation, no `stakai::Model` dependency."
+
+[dependencies]
+vac_shell_contracts = { path = "../vac_shell_contracts" }
+ratatui.workspace = true
