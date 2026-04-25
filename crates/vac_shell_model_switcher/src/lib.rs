@@ -111,6 +111,37 @@ pub enum SwitcherEvent {
     Ignored,
 }
 
+/// Resolve `view.recent` against `view.models` and a precomputed
+/// `filtered` slice (indices that survive the current mode + search
+/// filter). Returns the *actual* recent indices in caller order,
+/// dropping:
+///
+/// * stale recents whose `(provider, id)` is no longer in `models`
+/// * recents that did not survive the active filter
+/// * duplicate recents (the donor allowed the same key to land in
+///   `recent` twice; we render once)
+///
+/// This is the single source of truth for "what counts as a recent
+/// row right now" — both `navigation_order` and `render_model_switcher`
+/// consume it so the boundary between the recent section and the
+/// provider sections never disagrees.
+pub fn recent_indices(view: &ModelSwitcherView, filtered: &[usize]) -> Vec<usize> {
+    let filtered_set: std::collections::HashSet<usize> = filtered.iter().copied().collect();
+    let mut out: Vec<usize> = Vec::new();
+    for (rp, rid) in &view.recent {
+        if let Some(idx) = view
+            .models
+            .iter()
+            .position(|m| &m.provider == rp && &m.id == rid)
+        {
+            if filtered_set.contains(&idx) && !out.contains(&idx) {
+                out.push(idx);
+            }
+        }
+    }
+    out
+}
+
 /// Filter the model list by mode + search. Returns indices into
 /// `view.models`. Search matches against label, provider, or id
 /// (case-insensitive); empty search is a passthrough.
@@ -135,33 +166,22 @@ pub fn filter_models(view: &ModelSwitcherView) -> Vec<usize> {
         .collect()
 }
 
-/// Navigation order — recents first (in their order), then provider
-/// groups (pinned provider first if set, else alphabetical), each
-/// preserving caller order. Returns indices into `view.models`.
+/// Navigation order — actual recents first, then provider groups
+/// (pinned provider first if set, else alphabetical). The recent
+/// segment is always exactly `recent_indices(view, filtered).len()`
+/// rows wide; nothing else can land in that prefix.
 pub fn navigation_order(view: &ModelSwitcherView) -> Vec<usize> {
     let filtered: Vec<usize> = filter_models(view);
-    let filtered_set: std::collections::HashSet<usize> = filtered.iter().copied().collect();
+    let recents = recent_indices(view, &filtered);
+    let recent_set: std::collections::HashSet<usize> = recents.iter().copied().collect();
 
-    let mut order: Vec<usize> = Vec::with_capacity(filtered.len());
-
-    // Recents first — keep host order, drop entries that don't
-    // match the current filter.
-    for (rp, rid) in &view.recent {
-        if let Some(idx) = view
-            .models
-            .iter()
-            .position(|m| &m.provider == rp && &m.id == rid)
-        {
-            if filtered_set.contains(&idx) && !order.contains(&idx) {
-                order.push(idx);
-            }
-        }
-    }
+    let mut order: Vec<usize> = recents;
+    order.reserve(filtered.len().saturating_sub(order.len()));
 
     // Group remaining filtered models by provider.
     let mut grouped: HashMap<&str, Vec<usize>> = HashMap::new();
     for &idx in &filtered {
-        if order.contains(&idx) {
+        if recent_set.contains(&idx) {
             continue;
         }
         let prov = view.models[idx].provider.0.as_str();
@@ -185,6 +205,18 @@ pub fn navigation_order(view: &ModelSwitcherView) -> Vec<usize> {
     order
 }
 
+/// Clamp `view.selected` so it never points past the navigation
+/// order. Hosts that swap `models`, `recent`, or `search` outside
+/// the key handler should call this before rendering / Enter.
+pub fn clamp_selection(view: &mut ModelSwitcherView) {
+    let len = navigation_order(view).len();
+    if len == 0 {
+        view.selected = 0;
+    } else if view.selected >= len {
+        view.selected = len - 1;
+    }
+}
+
 /// Stateless key handler. Mutates view (selection, search,
 /// esc-clears) and returns the host-visible intent. The host applies
 /// `Selected` to VAC config; nothing inside this crate touches
@@ -193,6 +225,9 @@ pub fn on_key(view: &mut ModelSwitcherView, key: SwitcherKey) -> SwitcherEvent {
     if !view.visible {
         return SwitcherEvent::Ignored;
     }
+    // Always clamp first — defends against hosts that mutated state
+    // outside the handler since the last tick.
+    clamp_selection(view);
     let order = navigation_order(view);
     match key {
         SwitcherKey::Up => {
@@ -283,24 +318,80 @@ pub fn render_model_switcher(f: &mut Frame, view: &ModelSwitcherView, area: Rect
     f.render_widget(Paragraph::new(header), header_area);
 
     // List body — render the navigation order as plain rows with
-    // provider headers between groups.
+    // provider headers between groups. The recent boundary is
+    // anchored to the same `recent_indices` helper that
+    // `navigation_order` uses, so stale or filtered-out recents
+    // never blur the section split.
+    let filtered: Vec<usize> = filter_models(view);
+    let recents = recent_indices(view, &filtered);
+    let recent_count_total = recents.len();
     let order = navigation_order(view);
+
+    // Empty-state branches — render a single explicit message
+    // instead of a silent blank list, then bail out before the
+    // header/footer / selection rendering.
+    if order.is_empty() {
+        let msg = if view.models.is_empty() {
+            "  No models available"
+        } else if matches!(view.mode, SwitcherMode::Reasoning)
+            && view
+                .models
+                .iter()
+                .all(|m| !m.reasoning)
+        {
+            "  No reasoning models available"
+        } else {
+            "  No models match your search"
+        };
+        let list_area = Rect {
+            x: inner.x,
+            y: inner.y + 1,
+            width: inner.width,
+            height: inner.height.saturating_sub(2),
+        };
+        f.render_widget(
+            Paragraph::new(Line::from(Span::styled(
+                msg.to_string(),
+                Style::default().fg(muted),
+            ))),
+            list_area,
+        );
+        // Footer renders below.
+        let footer = Line::from(vec![
+            Span::styled(" tab", Style::default().fg(muted)),
+            Span::styled(" toggle reasoning", Style::default().fg(cyan)),
+            Span::raw("  "),
+            Span::styled("esc", Style::default().fg(muted)),
+            Span::styled(" close", Style::default().fg(cyan)),
+        ]);
+        let footer_area = Rect {
+            x: inner.x,
+            y: inner.y + inner.height.saturating_sub(1),
+            width: inner.width,
+            height: 1,
+        };
+        f.render_widget(Paragraph::new(footer), footer_area);
+        f.render_widget(block, area);
+        return;
+    }
+
     let mut items: Vec<ListItem> = Vec::new();
     let mut last_provider: Option<&str> = None;
-    let mut recent_count = view.recent.len().min(order.len());
+    let mut recent_remaining = recent_count_total;
     for (row_idx, &idx) in order.iter().enumerate() {
         let m = &view.models[idx];
 
         // Recents rendered without a provider header; the rest get a
-        // header on first encounter.
-        if recent_count > 0 {
-            recent_count -= 1;
+        // header on first encounter. The boundary is `recent_remaining`,
+        // computed from the same source of truth as nav order.
+        if recent_remaining > 0 {
             if row_idx == 0 {
                 items.push(ListItem::new(Line::from(Span::styled(
                     " recent",
                     Style::default().fg(cyan).add_modifier(Modifier::BOLD),
                 ))));
             }
+            recent_remaining -= 1;
         } else if last_provider.as_deref() != Some(m.provider.0.as_str()) {
             last_provider = Some(m.provider.0.as_str());
             items.push(ListItem::new(Line::from(Span::styled(
