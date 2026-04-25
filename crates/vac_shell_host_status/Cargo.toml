@@ -1,0 +1,18 @@
+[package]
+name = "vac_shell_host_status"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Slice 19 — host-side status projection: builds ShellStatusView from the live ShellComposition state."
+
+[dependencies]
+vac_shell_contracts = { path = "../vac_shell_contracts" }
+vac_shell_composition = { path = "../vac_shell_composition" }
+vac_shell_host_surface = { path = "../vac_shell_host_surface" }
+vac_shell_host_approval = { path = "../vac_shell_host_approval" }
+
+[dev-dependencies]
+vac_shell_host_paths = { path = "../vac_shell_host_paths" }
+vac_shell_bridge = { path = "../vac_shell_bridge" }
+vac_shell_host_model = { path = "../vac_shell_host_model" }
+tempfile = "3"

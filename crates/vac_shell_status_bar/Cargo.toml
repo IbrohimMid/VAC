@@ -1,0 +1,10 @@
+[package]
+name = "vac_shell_status_bar"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Slice 19 — pure ratatui global status bar widget. Renders ShellStatusView along the bottom row."
+
+[dependencies]
+vac_shell_contracts = { path = "../vac_shell_contracts" }
+ratatui.workspace = true

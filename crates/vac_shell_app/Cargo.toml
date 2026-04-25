@@ -1,0 +1,30 @@
+[package]
+name = "vac_shell_app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Slice 20 — real-app integration crate. Wires ShellComposition + OverlayStack + status bar + every shell widget into one render driver, plus the key→action shim that maps logical key events into ShellAction / OverlayIntent."
+
+[dependencies]
+vac_shell_contracts = { path = "../vac_shell_contracts" }
+vac_shell_bridge = { path = "../vac_shell_bridge" }
+vac_shell_composition = { path = "../vac_shell_composition" }
+vac_shell_overlay = { path = "../vac_shell_overlay" }
+vac_shell_status_bar = { path = "../vac_shell_status_bar" }
+vac_shell_host_status = { path = "../vac_shell_host_status" }
+vac_shell_palette = { path = "../vac_shell_palette" }
+vac_shell_shortcuts = { path = "../vac_shell_shortcuts" }
+vac_shell_model_switcher = { path = "../vac_shell_model_switcher" }
+vac_shell_approval_bar = { path = "../vac_shell_approval_bar" }
+vac_shell_session_browser = { path = "../vac_shell_session_browser" }
+vac_shell_plan = { path = "../vac_shell_plan" }
+vac_shell_plan_view = { path = "../vac_shell_plan_view" }
+vac_shell_diff_view = { path = "../vac_shell_diff_view" }
+vac_shell_activity = { path = "../vac_shell_activity" }
+vac_shell_host_model = { path = "../vac_shell_host_model" }
+vac_shell_host_approval = { path = "../vac_shell_host_approval" }
+ratatui.workspace = true
+
+[dev-dependencies]
+vac_shell_host_paths = { path = "../vac_shell_host_paths" }
+tempfile = "3"

@@ -6431,6 +6431,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "vac_shell_app"
+version = "0.1.0"
+dependencies = [
+ "ratatui",
+ "tempfile",
+ "vac_shell_activity",
+ "vac_shell_approval_bar",
+ "vac_shell_bridge",
+ "vac_shell_composition",
+ "vac_shell_contracts",
+ "vac_shell_diff_view",
+ "vac_shell_host_approval",
+ "vac_shell_host_model",
+ "vac_shell_host_paths",
+ "vac_shell_host_status",
+ "vac_shell_model_switcher",
+ "vac_shell_overlay",
+ "vac_shell_palette",
+ "vac_shell_plan",
+ "vac_shell_plan_view",
+ "vac_shell_session_browser",
+ "vac_shell_shortcuts",
+ "vac_shell_status_bar",
+]
+
+[[package]]
 name = "vac_shell_approval_bar"
 version = "0.1.0"
 dependencies = [
@@ -6553,6 +6579,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "vac_shell_host_status"
+version = "0.1.0"
+dependencies = [
+ "tempfile",
+ "vac_shell_bridge",
+ "vac_shell_composition",
+ "vac_shell_contracts",
+ "vac_shell_host_approval",
+ "vac_shell_host_model",
+ "vac_shell_host_paths",
+ "vac_shell_host_surface",
+]
+
+[[package]]
 name = "vac_shell_host_surface"
 version = "0.1.0"
 dependencies = [
@@ -6619,6 +6659,14 @@ dependencies = [
 
 [[package]]
 name = "vac_shell_shortcuts"
+version = "0.1.0"
+dependencies = [
+ "ratatui",
+ "vac_shell_contracts",
+]
+
+[[package]]
+name = "vac_shell_status_bar"
 version = "0.1.0"
 dependencies = [
  "ratatui",

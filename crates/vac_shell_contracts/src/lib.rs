@@ -32,10 +32,12 @@ pub mod overlay;
 pub mod activity;
 pub mod diff;
 pub mod shell;
+pub mod status;
 
 pub use activity::{Severity, ShellActivityEntry, ShellActivityKind};
 pub use diff::{DiffFileView, DiffHunkView, DiffLineKind, DiffLineView, DiffReviewEvent};
 pub use shell::{ShellCommandView, ShellStatus};
+pub use status::ShellStatusView;
 pub use approval::{ApprovalDetailView, RiskLevel, VacApprovalBridge};
 pub use events::{VacShellEvent, VacSubmitRequest};
 pub use model::{ProviderId, VacModelView};
