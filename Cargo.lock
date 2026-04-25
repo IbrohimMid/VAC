@@ -6423,6 +6423,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "vac_shell_bridge"
+version = "0.1.0"
+dependencies = [
+ "vac_shell_contracts",
+ "vac_shell_palette",
+]
+
+[[package]]
 name = "vac_shell_contracts"
 version = "0.1.0"
 dependencies = [

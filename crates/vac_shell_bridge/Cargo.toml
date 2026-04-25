@@ -1,0 +1,12 @@
+[package]
+name = "vac_shell_bridge"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Step 2 — concrete impls of vac_shell_contracts. Step-2 slice intentionally contains command registry + dispatch only; approvals/sessions/model/shell come in later slices."
+
+[dependencies]
+vac_shell_contracts = { path = "../vac_shell_contracts" }
+
+[dev-dependencies]
+vac_shell_palette = { path = "../vac_shell_palette" }

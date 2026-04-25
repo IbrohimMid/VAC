@@ -32,7 +32,13 @@ use vac_shell_contracts::{ShellCommandKind, ShellCommandSpec};
 /// (`filtered_helpers`, `show_helper_dropdown`, `helper_scroll`,
 /// `helper_selected`). Pulling them into one struct is what lets the
 /// widget travel without the donor's app.
-#[derive(Debug, Clone, Default)]
+///
+/// Match policy is **injected**, not hard-coded. The default is a
+/// strict slash-prefix match (easy to assert in the extraction proof
+/// tests); product code is expected to swap in something fuzzier as
+/// the donor originally tolerated. The renderer never inspects the
+/// policy, so changes here never reach into UI code.
+#[derive(Debug, Clone)]
 pub struct PaletteViewState {
     /// Whether the palette overlay is open at all.
     pub visible: bool,
@@ -47,6 +53,22 @@ pub struct PaletteViewState {
     pub selected: usize,
     /// Top-of-window offset for scrolling (0-based).
     pub scroll: usize,
+    /// Match policy. Stable function pointer keeps the type `Clone`
+    /// and avoids dragging trait-object machinery into the widget.
+    pub filter: FilterFn,
+}
+
+impl Default for PaletteViewState {
+    fn default() -> Self {
+        Self {
+            visible: false,
+            input: String::new(),
+            all: Vec::new(),
+            selected: 0,
+            scroll: 0,
+            filter: prefix_filter,
+        }
+    }
 }
 
 impl PaletteViewState {
@@ -57,19 +79,30 @@ impl PaletteViewState {
         }
     }
 
+    /// Replace the filter policy. Default is [`prefix_filter`]; pass a
+    /// fuzzy/contains/scoring function here when product behaviour
+    /// needs to widen.
+    pub fn with_filter(mut self, filter: FilterFn) -> Self {
+        self.filter = filter;
+        self
+    }
+
     /// Computed, filtered list of entries that should appear at the
     /// current input. Pure — does not mutate state.
     pub fn filtered(&self) -> Vec<ShellCommandSpec> {
-        filter_entries(&self.input, &self.all)
+        (self.filter)(&self.input, &self.all)
     }
 }
 
-/// Stateless filter: keep entries whose slash starts with the trimmed
-/// input string. The donor used a fuzzier match against
-/// `command.contains(input)`; this proof keeps it strict so the
-/// behaviour is easy to assert in tests. Either is replaceable
-/// without touching the renderer.
-pub fn filter_entries(input: &str, all: &[ShellCommandSpec]) -> Vec<ShellCommandSpec> {
+/// Match policy signature. Receives the current input and the full
+/// command list, returns the visible subset (already
+/// `palette_visible`-checked or not — that's the policy's call).
+pub type FilterFn = fn(&str, &[ShellCommandSpec]) -> Vec<ShellCommandSpec>;
+
+/// Default policy — strict slash-prefix. Empty input or `"/"` lists
+/// every `palette_visible` entry; a non-empty needle keeps entries
+/// whose slash starts with it.
+pub fn prefix_filter(input: &str, all: &[ShellCommandSpec]) -> Vec<ShellCommandSpec> {
     let needle = input.trim();
     if needle.is_empty() || needle == "/" {
         return all.iter().filter(|s| s.palette_visible).cloned().collect();
@@ -78,6 +111,13 @@ pub fn filter_entries(input: &str, all: &[ShellCommandSpec]) -> Vec<ShellCommand
         .filter(|s| s.palette_visible && s.slash.starts_with(needle))
         .cloned()
         .collect()
+}
+
+/// Back-compat alias from the Step 3a proof. Prefer [`prefix_filter`]
+/// in new code; this name was used in the proof's tests and is kept
+/// stable so the test set continues to track the same behaviour.
+pub fn filter_entries(input: &str, all: &[ShellCommandSpec]) -> Vec<ShellCommandSpec> {
+    prefix_filter(input, all)
 }
 
 /// Logical key event consumed by the palette. The crate stays free of
