@@ -28,11 +28,13 @@ pub mod registry;
 pub mod events;
 pub mod session;
 pub mod selection;
+pub mod overlay;
 
 pub use approval::VacApprovalBridge;
 pub use events::{VacShellEvent, VacSubmitRequest};
 pub use model::{ProviderId, VacModelView};
 pub use paths::VacPaths;
 pub use registry::{ShellCommandKind, ShellCommandSpec, VacCommandRegistry};
+pub use overlay::{OverlayIntent, ShellOverlay};
 pub use selection::{ModelKey, ModelSelectionSnapshot};
 pub use session::SessionEntry;

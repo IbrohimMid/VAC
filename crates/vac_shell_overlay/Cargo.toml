@@ -1,0 +1,9 @@
+[package]
+name = "vac_shell_overlay"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Slice 11 — host-side OverlayStack: opens, closes, toggles, and reports the active overlay surface. UI widgets render against the active overlay; key handlers emit OverlayIntent values."
+
+[dependencies]
+vac_shell_contracts = { path = "../vac_shell_contracts" }
