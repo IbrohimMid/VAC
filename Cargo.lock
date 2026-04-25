@@ -6442,6 +6442,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "vac_shell_host_surface"
+version = "0.1.0"
+dependencies = [
+ "vac_shell_bridge",
+ "vac_shell_contracts",
+ "vac_shell_palette",
+]
+
+[[package]]
 name = "vac_shell_palette"
 version = "0.1.0"
 dependencies = [

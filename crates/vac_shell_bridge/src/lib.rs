@@ -123,6 +123,42 @@ impl CommandDispatcher {
     }
 }
 
+// =====================================================================
+// Surface controller — first real-effect seam
+// =====================================================================
+//
+// Reviewer guidance for slice 2: the bridge keeps registry lookup +
+// dispatch routing; the host owns the VAC-side effect. The trait
+// below is the seam. A concrete impl lives outside this crate (see
+// `vac_shell_host_surface`) so `vac_shell_bridge` does not take a
+// link-time dependency on any VAC engine type.
+//
+// Stays synchronous on purpose; switching to async only when a real
+// effect provably needs it.
+
+/// VAC-side surface controller. The bridge calls into this trait to
+/// flip the active operator surface (chat ↔ runtime) without
+/// reaching into VAC types directly.
+pub trait SurfaceController: Send + Sync {
+    fn enter_chat(&self) -> Result<(), DispatchError>;
+    fn enter_runtime(&self) -> Result<(), DispatchError>;
+}
+
+/// Build a `DispatchHandler` that routes `/runtime` and `/chat`
+/// through a `SurfaceController`. Other slashes return
+/// `DispatchError::UnknownSlash` so the host knows to compose with
+/// further handlers later. Composition strategy is deferred — for
+/// this slice there is one effect.
+pub fn surface_dispatcher(controller: Arc<dyn SurfaceController>) -> DispatchHandler {
+    Arc::new(move |spec: &ShellCommandSpec| -> Result<(), DispatchError> {
+        match spec.slash.as_str() {
+            "/runtime" => controller.enter_runtime(),
+            "/chat" => controller.enter_chat(),
+            other => Err(DispatchError::UnknownSlash(other.to_string())),
+        }
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

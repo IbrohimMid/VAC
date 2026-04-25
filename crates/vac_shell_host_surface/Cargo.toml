@@ -1,0 +1,13 @@
+[package]
+name = "vac_shell_host_surface"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Step 2 slice 2 — VAC-owned surface state for the new shell. Implements vac_shell_bridge::SurfaceController. Independent of vac_tui_runtime so the legacy TUI shell can be retired without churning the new stack."
+
+[dependencies]
+vac_shell_bridge = { path = "../vac_shell_bridge" }
+
+[dev-dependencies]
+vac_shell_contracts = { path = "../vac_shell_contracts" }
+vac_shell_palette = { path = "../vac_shell_palette" }
