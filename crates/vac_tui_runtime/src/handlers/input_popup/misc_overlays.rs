@@ -71,7 +71,19 @@ pub fn handle_helper_dropdown(
 ) {
     use crate::handlers::input_commands::dispatch_builtin_command;
 
+    tracing::info!(
+        target: "vac_tui_runtime::helper_dropdown",
+        event = ?std::mem::discriminant(&event),
+        focus = ?state.layout.focus,
+        filtered_count = state.layout.command_palette.filtered_helpers.len(),
+        helper_selected = state.layout.command_palette.helper_selected,
+        "handle_helper_dropdown entry",
+    );
     if state.layout.focus != crate::app::WorkspaceFocus::Input {
+        tracing::warn!(
+            target: "vac_tui_runtime::helper_dropdown",
+            "early-return: focus is not Input — Enter/Up/Down ignored",
+        );
         return;
     }
     match event {

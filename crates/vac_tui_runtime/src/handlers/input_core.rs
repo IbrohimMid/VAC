@@ -21,6 +21,22 @@ pub fn handle_input_event(
     output_tx: &Sender<OutputEvent>,
     event: InputEvent,
 ) {
+    // Dogfood deepdive — trace every event-route decision so we
+    // can see exactly which branch handles a given keystroke. Set
+    // `RUST_LOG=vac_tui_runtime::handlers::input_core=info` to see.
+    if matches!(
+        event,
+        InputEvent::InputSubmitted | InputEvent::HandleEsc
+    ) {
+        tracing::info!(
+            target: "vac_tui_runtime::handlers::input_core",
+            event = ?std::mem::discriminant(&event),
+            overlay_active = state.layout.overlay_manager.any_active(),
+            topmost = ?state.layout.overlay_manager.topmost(),
+            focus = ?state.layout.focus,
+            "handle_input_event entry",
+        );
+    }
     // Stage 1: Overlay router — topmost overlay captures everything.
     if state.layout.overlay_manager.any_active() {
         input_popup::dispatch_popup_event(state, output_tx, event);
