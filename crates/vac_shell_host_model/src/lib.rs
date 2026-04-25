@@ -340,35 +340,52 @@ impl ModelSelectionState {
             None => return Ok(0),
         };
         let mut inner = self.inner.write().expect("model state lock poisoned");
-        // Snapshot the registry's `(provider, id)` set up front so
-        // the lookup closure does not need to re-borrow `inner` while
-        // we mutate `inner.active` / `inner.recent`.
+        // Snapshot the registry's `(provider, id)` set + the
+        // credentialed-provider set up front so the lookup closures
+        // do not need to re-borrow `inner` while we mutate
+        // `inner.active` / `inner.recent`.
         let known: std::collections::HashSet<(ProviderId, String)> = inner
             .models
             .iter()
             .map(|m| (m.provider.clone(), m.id.clone()))
             .collect();
-        let resolves =
-            |key: &ModelKey| known.contains(&(key.provider.clone(), key.id.clone()));
+        let credentialed: std::collections::HashSet<ProviderId> = inner
+            .providers
+            .iter()
+            .filter(|p| p.credentials_present)
+            .map(|p| p.id.clone())
+            .collect();
+        let resolves = |key: &ModelKey| {
+            known.contains(&(key.provider.clone(), key.id.clone()))
+        };
+        // `active` must be both known AND backed by a credentialed
+        // provider — `select_model` rejects no-creds selections, so
+        // `restore_from` must not silently re-elevate one. Recents
+        // are intentionally allowed to contain known-but-no-creds
+        // entries so the UI can still surface them with `(no creds)`.
+        let resolves_selectable =
+            |key: &ModelKey| resolves(key) && credentialed.contains(&key.provider);
         if let Some(active) = snap.active.as_ref() {
-            if resolves(active) {
+            if resolves_selectable(active) {
                 inner.active = Some((active.provider.clone(), active.id.clone()));
             }
         }
-        let mut applied = 0usize;
         let mut filtered: Vec<(ProviderId, String)> = Vec::new();
         for k in snap.recent.iter() {
             if resolves(k) {
                 let pair = (k.provider.clone(), k.id.clone());
                 if !filtered.contains(&pair) {
                     filtered.push(pair);
-                    applied += 1;
                 }
             }
         }
         if filtered.len() > RECENTS_CAP {
             filtered.truncate(RECENTS_CAP);
         }
+        // Reviewer slice 9.1a: report the *post-cap* count so the
+        // doc claim ("count of recents actually applied") matches
+        // what the state ends up holding.
+        let applied = filtered.len();
         inner.recent = filtered;
         Ok(applied)
     }
@@ -871,6 +888,93 @@ mod selection_tests {
         let applied = state.restore_from(&persistor).unwrap();
         assert_eq!(applied, 0);
         assert_eq!(state.active_model(), initial);
+    }
+
+    #[test]
+    fn restore_from_returns_capped_applied_count() {
+        // Persist a recent list larger than RECENTS_CAP, all valid.
+        // Doc says the function returns the count of recents
+        // actually applied — that must equal RECENTS_CAP after the
+        // cap, not the raw input length.
+        let providers = vec![
+            ProviderInfo { id: ProviderId("anthropic".into()), credentials_present: true },
+            ProviderInfo { id: ProviderId("openai".into()), credentials_present: true },
+        ];
+        // Build many models so the over-cap recents all resolve.
+        let mut models: Vec<HostModel> = Vec::new();
+        for i in 0..(RECENTS_CAP + 5) {
+            models.push(HostModel {
+                provider: ProviderId("anthropic".into()),
+                id: format!("model-{i}"),
+                label: format!("Model {i}"),
+                reasoning: false,
+                cost_label: None,
+            });
+        }
+        let state = ModelSelectionState::new(providers, models, None);
+        let recent: Vec<ModelKey> = (0..(RECENTS_CAP + 5))
+            .map(|i| ModelKey::new(ProviderId("anthropic".into()), format!("model-{i}")))
+            .collect();
+        let persistor = InMemoryPersistor::new().with_initial(ModelSelectionSnapshot {
+            active: None,
+            recent,
+        });
+        let applied = state.restore_from(&persistor).unwrap();
+        assert_eq!(applied, RECENTS_CAP);
+        assert_eq!(state.recent_snapshot().len(), RECENTS_CAP);
+    }
+
+    #[test]
+    fn restore_from_drops_active_when_provider_has_no_credentials() {
+        // `select_model` rejects providers without credentials.
+        // `restore_from` must not silently re-elevate a previously
+        // saved active model whose provider lost credentials.
+        let providers = vec![
+            ProviderInfo { id: ProviderId("anthropic".into()), credentials_present: true },
+            // openai had creds when the snapshot was written, but now
+            // no longer has them.
+            ProviderInfo { id: ProviderId("openai".into()), credentials_present: false },
+        ];
+        let models = vec![
+            HostModel {
+                provider: ProviderId("anthropic".into()),
+                id: "claude-sonnet-4.5".into(),
+                label: "Claude Sonnet 4.5".into(),
+                reasoning: true,
+                cost_label: None,
+            },
+            HostModel {
+                provider: ProviderId("openai".into()),
+                id: "gpt-4o".into(),
+                label: "GPT-4o".into(),
+                reasoning: false,
+                cost_label: None,
+            },
+        ];
+        // Pre-existing in-memory active: anthropic.
+        let state = ModelSelectionState::new(
+            providers,
+            models,
+            Some((ProviderId("anthropic".into()), "claude-sonnet-4.5".into())),
+        );
+        // Snapshot says: please be openai/gpt-4o.
+        let persistor = InMemoryPersistor::new().with_initial(ModelSelectionSnapshot {
+            active: Some(ModelKey::new(ProviderId("openai".into()), "gpt-4o")),
+            // Recents may still surface the known-but-no-creds row
+            // so the UI can render `(no creds)` against it.
+            recent: vec![ModelKey::new(ProviderId("openai".into()), "gpt-4o")],
+        });
+        state.restore_from(&persistor).unwrap();
+        // The previously-set active must NOT be replaced by a
+        // no-creds model.
+        assert_eq!(
+            state.active_model(),
+            Some((ProviderId("anthropic".into()), "claude-sonnet-4.5".into()))
+        );
+        // Recents still carry the no-creds row — UI concern, not a
+        // mutation/dispatch path.
+        assert_eq!(state.recent_snapshot().len(), 1);
+        assert_eq!(state.recent_snapshot()[0].0, ProviderId("openai".into()));
     }
 
     #[test]
