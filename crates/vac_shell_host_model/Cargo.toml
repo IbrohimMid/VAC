@@ -3,7 +3,7 @@ name = "vac_shell_host_model"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Step 2 slice 8.2 — read-only host-side projection of a VAC model registry into Vec<VacModelView> for the model switcher widget. No config mutation, no provider switching, no secret manager."
+description = "Host-side model projection (read-only Vec<VacModelView> from a VacModelView source) plus an in-memory model-selection seam (ModelSelectionState + ModelSelectionController). No persistent config writes, no provider API, no secret manager — those land in later slices."
 
 [dependencies]
 vac_shell_contracts = { path = "../vac_shell_contracts" }

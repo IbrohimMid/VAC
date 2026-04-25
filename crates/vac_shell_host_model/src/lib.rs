@@ -1,22 +1,50 @@
-//! Step 2 slice 8.2 — host-side **read-only** model projection.
+//! Host-side model projection **plus the in-memory model-selection
+//! seam**.
 //!
-//! The model switcher widget consumes `Vec<VacModelView>`. Slice 8.2
-//! defines the host adapter that builds those views from a VAC-side
-//! source (config, registry, future trait impl). This crate stays
-//! strictly read-only: no provider switching, no active-model write,
-//! no secret manager, no API mutation. All of that lives in slice 9
-//! behind a host-side mutation seam, gated by review.
+//! This crate hosts two layers that line up with their slice
+//! introductions:
+//!
+//! * **Read-only projection (slice 8.2 / 8.2a).** The
+//!   [`ModelSource`] trait + [`project_models`] +
+//!   [`build_switcher_view`] turn a VAC-side source into the
+//!   `Vec<VacModelView>` the model switcher widget renders. The
+//!   widget consumes that snapshot and never mutates anything; this
+//!   layer remains strictly read-only and DTO-based.
+//! * **Host-side mutation seam (slice 9).** [`ModelSelectionState`],
+//!   [`ModelSelectionController`], and [`switcher_event_to_action`]
+//!   accept widget-emitted intents (Selected → `ShellAction::
+//!   SelectModel`) and apply validated mutations to an in-memory
+//!   model state: known-provider check, known-model check,
+//!   credentials-present check, active-model update, recents
+//!   newest-first with deduplication and a 20-entry cap.
+//!
+//! # What is *not* here
+//!
+//! No persistent VAC config writes. No provider API calls. No
+//! secret-manager access. No `stakai::Model` / donor `AppState`. The
+//! UI widget never sees this crate — the boundary that flows through
+//! the bridge keeps `vac_shell_model_switcher` consuming only
+//! `vac_shell_contracts` types.
+//!
+//! Persistent config adapters live in a follow-up slice (≥ 9.1) once
+//! a stable VAC config seam exists. Until then, mutation here is
+//! best read as the operator-side state of the switcher overlay,
+//! not the system-of-record.
 //!
 //! # Boundary
 //!
-//! * Depends on `vac_shell_contracts` (DTO surface) and
-//!   `vac_shell_model_switcher` (builds the `ModelSwitcherView`).
+//! * Depends on `vac_shell_contracts` (DTO surface),
+//!   `vac_shell_model_switcher` (consumed for `ModelSwitcherView`,
+//!   `clamp_selection`, `SwitcherEvent`), and `vac_shell_bridge`
+//!   (implements `ModelController`, emits `ShellAction`).
 //! * Does NOT depend on `vac_core`, `vac_session_engine`,
 //!   `vac_tui_runtime`, `stakai`, or the donor — and must not until
-//!   a real VAC model registry trait is wired in here.
+//!   a real VAC model registry / config seam is wired in here.
 //! * Concrete VAC config wiring (e.g. `VacConfig.llm.providers`) is
 //!   plugged in via the [`ModelSource`] trait so this crate keeps a
-//!   tight dep graph; tests use the bundled [`InMemoryModelSource`].
+//!   tight dep graph; tests use the bundled [`InMemoryModelSource`]
+//!   for read-only flows and [`ModelSelectionState`] for mutation
+//!   flows.
 
 use std::sync::{Arc, RwLock};
 
