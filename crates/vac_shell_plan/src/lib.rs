@@ -5,29 +5,12 @@
 //! `.stakpak/session/plan.md`. Reading and watching the file
 //! is the host crate's job (`vac_shell_host_plan`).
 
-use serde::{Deserialize, Serialize};
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-#[serde(rename_all = "snake_case")]
-pub enum PlanStatus {
-    #[default]
-    Draft,
-    Active,
-    Blocked,
-    Done,
-    Cancelled,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
-pub struct PlanMetadata {
-    pub status: PlanStatus,
-    #[serde(default)]
-    pub objective: Option<String>,
-    #[serde(default)]
-    pub steps: Vec<String>,
-    #[serde(default)]
-    pub blocked_on: Vec<String>,
-}
+// Slice 20.1 — `PlanMetadata` and `PlanStatus` moved to
+// `vac_shell_contracts` so UI widgets stay on the canonical
+// `ratatui + vac_shell_contracts` dep graph. Re-exported here so
+// existing call sites (parser, host plan reader, tests) keep
+// compiling without churn.
+pub use vac_shell_contracts::{PlanMetadata, PlanStatus};
 
 /// Extract the YAML front-matter block from a plan markdown file.
 /// The donor permits two delimiters; we accept the standard

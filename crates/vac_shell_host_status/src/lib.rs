@@ -22,18 +22,12 @@ pub fn project_status(comp: &ShellComposition, inputs: &StatusInputs) -> ShellSt
         Surface::Chat => "chat",
         Surface::Runtime => "runtime",
     };
-    let pending = comp
-        .approval_queue
-        .snapshot()
-        .iter()
-        .filter(|r| matches!(
-            r.status,
-            vac_shell_host_approval::ApprovalStatus::Approved
-                | vac_shell_host_approval::ApprovalStatus::Rejected
-        ))
-        .count()
-        // every queued row is a pending decision
-        .max(comp.approval_queue.snapshot().len());
+    // Slice 20.1 fix — `pending_approvals` means "rows still in the
+    // queue awaiting submission". A row's per-status flag
+    // (`Approved` / `Rejected`) is the operator's tentative
+    // decision; rows leave the queue only when `submit_all` drains
+    // it. So the pending count == queue length.
+    let pending = comp.approval_queue.snapshot().len();
     let model_label = comp.model_state.active_model().map(|(p, id)| {
         format!("{} / {}", p.0, id)
     });

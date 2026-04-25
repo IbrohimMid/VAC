@@ -11,7 +11,7 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph, Wrap},
 };
-use vac_shell_plan::{PlanMetadata, PlanStatus};
+use vac_shell_contracts::{PlanMetadata, PlanStatus};
 
 pub fn status_label(s: PlanStatus) -> &'static str {
     match s {

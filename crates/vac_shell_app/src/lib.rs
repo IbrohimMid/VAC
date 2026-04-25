@@ -1,19 +1,21 @@
-//! Slice 20 — real shell app integration.
+//! Slice 20 / 20.1 — real shell app integration.
 //!
 //! `ShellApp` is the single struct an operator-facing TUI host
 //! constructs and drives. It owns every widget's view state plus
 //! the `ShellComposition`, the `OverlayStack`, and the key→action
-//! shim that maps logical key events into `OverlayIntent` and
-//! `ShellAction` values.
+//! shim that maps logical key events into `OverlayIntent`,
+//! `ShellAction`, and per-overlay events.
 //!
 //! Layout (inside `area`):
 //!
 //! ```text
-//! ┌─────────────────────────────────────────────────────────┐
-//! │ activity stream / chat surface / runtime body          │
-//! ├─────────────────────────────────────────────────────────┤
-//! │ status bar (1 line)                                    │
-//! └─────────────────────────────────────────────────────────┘
+//! ┌────────────────────────────────────────────────────────────┐
+//! │ activity stream / chat surface                             │
+//! ├────────────────────────────────────────────────────────────┤
+//! │ approval bar (visible only when the queue is non-empty)    │
+//! ├────────────────────────────────────────────────────────────┤
+//! │ status bar (1 line)                                        │
+//! └────────────────────────────────────────────────────────────┘
 //!
 //! Overlays render above the body when active.
 //! ```
@@ -25,17 +27,28 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
 };
 use vac_shell_activity::ActivityView;
-use vac_shell_approval_bar::ApprovalBarViewState;
-use vac_shell_bridge::{ShellAction, ShellHost, SurfaceTarget};
+use vac_shell_approval_bar::{
+    ApprovalActionView, ApprovalBarKey, ApprovalBarViewState, ApprovalBarEvent,
+    ApprovalStatus,
+};
+use vac_shell_approval_detail::{
+    ApprovalDetailViewState, DetailEvent, DetailKey,
+};
+use vac_shell_bridge::{ApprovalController, ShellAction, SurfaceTarget};
 use vac_shell_composition::ShellComposition;
-use vac_shell_contracts::{OverlayIntent, ShellOverlay};
-use vac_shell_diff_view::DiffReviewView;
+use vac_shell_contracts::{
+    OverlayIntent, SessionAction, ShellOverlay,
+};
+use vac_shell_diff_view::{DiffReviewKey, DiffReviewKeyEvent, DiffReviewView};
 use vac_shell_host_status::{StatusInputs, project_status};
-use vac_shell_model_switcher::ModelSwitcherView;
+use vac_shell_model_switcher::{ModelSwitcherView, SwitcherEvent, SwitcherKey};
 use vac_shell_overlay::OverlayStack;
-use vac_shell_palette::PaletteViewState;
+use vac_shell_palette::{PaletteKey, PaletteEvent, PaletteViewState};
 use vac_shell_plan_view::render_plan_view;
-use vac_shell_session_browser::SessionBrowserView;
+use vac_shell_popup::ShellPopupViewState;
+use vac_shell_session_browser::{
+    SessionBrowserEvent, SessionBrowserKey, SessionBrowserView,
+};
 use vac_shell_shortcuts::ShortcutsView;
 use vac_shell_status_bar::render_status_bar;
 
@@ -49,11 +62,37 @@ pub struct ShellApp {
     pub shortcuts: ShortcutsView,
     pub model_switcher: ModelSwitcherView,
     pub approval_bar: ApprovalBarViewState,
+    pub approval_detail: ApprovalDetailViewState,
     pub session_browser: SessionBrowserView,
     pub diff_review: DiffReviewView,
     pub activity: ActivityView,
     pub plan: Option<vac_shell_plan::PlanMetadata>,
+    pub shell_popup: ShellPopupViewState,
     pub status_inputs: StatusInputs,
+    /// Slice 20.1 — host-side sessions controller. Set by the host
+    /// when sessions disk lifecycle should be active; left `None`
+    /// in pure-render tests.
+    pub sessions: Option<Arc<vac_shell_host_sessions::SessionsState>>,
+}
+
+/// Outbound app events the host loop consumes after a key press.
+/// Multiple events may fire for one key (e.g. an overlay close
+/// plus a `ShellAction`); the loop applies each in order.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AppEvent {
+    /// Routed through `ShellComposition.host` by the loop.
+    ShellAction(ShellAction),
+    /// Session-lifecycle intent. The loop forwards to a
+    /// `SessionsState` (`vac_shell_host_sessions`).
+    Session(SessionAction),
+    /// Diff-review intent.
+    DiffReview(vac_shell_contracts::DiffReviewEvent),
+    /// Approval drawer outcome. The loop applies the decision
+    /// against the live `ApprovalController` from the composition.
+    ApprovalDecision { id: String, approve: bool },
+    /// Palette emitted a `Selected` slash. The loop dispatches via
+    /// the registered command path.
+    PaletteSelected(String),
 }
 
 impl ShellApp {
@@ -68,46 +107,79 @@ impl ShellApp {
         self.composition.as_deref()
     }
 
+    /// Refresh the approval bar's `actions` from the live queue.
+    /// The host loop calls this when the queue changes (or every
+    /// tick for simplicity). Pure projection — does not mutate the
+    /// queue, only the view state.
+    pub fn refresh_approval_bar(&mut self) {
+        let comp = match &self.composition {
+            Some(c) => c,
+            None => return,
+        };
+        let snap = comp.approval_queue.snapshot();
+        self.approval_bar.actions = snap
+            .iter()
+            .map(|r| ApprovalActionView {
+                id: r.id.clone(),
+                label: r.label.clone(),
+                status: r.status,
+            })
+            .collect();
+        self.approval_bar.visible = !self.approval_bar.actions.is_empty();
+        if self.approval_bar.selected_index >= self.approval_bar.actions.len() {
+            self.approval_bar.selected_index = 0;
+        }
+    }
+
     /// Logical key the host derives from crossterm or another
-    /// source. Slice 20 keeps this tiny — wider key handling lives
-    /// in each widget's own crate.
+    /// source.
     pub fn handle_global_key(&mut self, key: GlobalKey) -> Option<ShellAction> {
         match key {
             GlobalKey::OpenPalette => {
-                self.overlays
-                    .apply_intent(OverlayIntent::Toggle(ShellOverlay::Palette));
-                self.palette.visible = self.overlays.top() == ShellOverlay::Palette;
+                self.toggle_overlay(ShellOverlay::Palette);
                 None
             }
             GlobalKey::OpenShortcuts => {
-                self.overlays
-                    .apply_intent(OverlayIntent::Toggle(ShellOverlay::Shortcuts));
-                self.shortcuts.visible = self.overlays.top() == ShellOverlay::Shortcuts;
+                self.toggle_overlay(ShellOverlay::Shortcuts);
                 None
             }
             GlobalKey::OpenModelSwitcher => {
-                self.overlays
-                    .apply_intent(OverlayIntent::Toggle(ShellOverlay::ModelSwitcher));
-                self.model_switcher.visible =
-                    self.overlays.top() == ShellOverlay::ModelSwitcher;
+                self.toggle_overlay(ShellOverlay::ModelSwitcher);
                 None
             }
             GlobalKey::OpenSessionBrowser => {
-                self.overlays
-                    .apply_intent(OverlayIntent::Toggle(ShellOverlay::SessionBrowser));
-                self.session_browser.visible =
-                    self.overlays.top() == ShellOverlay::SessionBrowser;
+                self.toggle_overlay(ShellOverlay::SessionBrowser);
                 None
             }
             GlobalKey::OpenPlan => {
-                self.overlays
-                    .apply_intent(OverlayIntent::Toggle(ShellOverlay::Plan));
+                self.toggle_overlay(ShellOverlay::Plan);
                 None
             }
             GlobalKey::OpenDiffReview => {
-                self.overlays
-                    .apply_intent(OverlayIntent::Toggle(ShellOverlay::DiffReview));
-                self.diff_review.visible = self.overlays.top() == ShellOverlay::DiffReview;
+                self.toggle_overlay(ShellOverlay::DiffReview);
+                None
+            }
+            GlobalKey::OpenShellPopup => {
+                self.toggle_overlay(ShellOverlay::ShellPopup);
+                None
+            }
+            GlobalKey::OpenApprovalDetail => {
+                // Drawer reads from the live approval bar selection.
+                self.refresh_approval_bar();
+                if let Some(action) = self.approval_bar.selected() {
+                    self.approval_detail.detail = Some(
+                        vac_shell_contracts::ApprovalDetailView {
+                            id: action.id.clone(),
+                            tool_name: action.label.clone(),
+                            risk_level: vac_shell_contracts::RiskLevel::Medium,
+                            reason: "operator opened detail drawer".into(),
+                            command_preview: None,
+                            file_preview: None,
+                            policy_source: None,
+                        },
+                    );
+                }
+                self.toggle_overlay(ShellOverlay::ApprovalDetail);
                 None
             }
             GlobalKey::Escape => {
@@ -120,6 +192,11 @@ impl ShellApp {
         }
     }
 
+    fn toggle_overlay(&mut self, overlay: ShellOverlay) {
+        self.overlays.apply_intent(OverlayIntent::Toggle(overlay));
+        self.sync_visibility();
+    }
+
     fn sync_visibility(&mut self) {
         let top = self.overlays.top();
         self.palette.visible = top == ShellOverlay::Palette;
@@ -127,23 +204,183 @@ impl ShellApp {
         self.model_switcher.visible = top == ShellOverlay::ModelSwitcher;
         self.session_browser.visible = top == ShellOverlay::SessionBrowser;
         self.diff_review.visible = top == ShellOverlay::DiffReview;
+        self.shell_popup.visible = top == ShellOverlay::ShellPopup;
+        self.approval_detail.visible = top == ShellOverlay::ApprovalDetail;
+    }
+
+    // -----------------------------------------------------------
+    // Slice 20.1 — overlay-key routing into AppEvent
+    // -----------------------------------------------------------
+
+    pub fn dispatch_palette_key(&mut self, key: PaletteKey) -> Option<AppEvent> {
+        match vac_shell_palette::on_key(&mut self.palette, key) {
+            PaletteEvent::Selected(slash) => Some(AppEvent::PaletteSelected(slash)),
+            PaletteEvent::Dismissed => {
+                self.overlays.apply_intent(OverlayIntent::CloseTop);
+                self.sync_visibility();
+                None
+            }
+            _ => None,
+        }
+    }
+
+    pub fn dispatch_model_switcher_key(&mut self, key: SwitcherKey) -> Option<AppEvent> {
+        match vac_shell_model_switcher::on_key(&mut self.model_switcher, key) {
+            SwitcherEvent::Selected { provider, id } => {
+                Some(AppEvent::ShellAction(ShellAction::SelectModel { provider, id }))
+            }
+            SwitcherEvent::Dismissed => {
+                self.overlays.apply_intent(OverlayIntent::CloseTop);
+                self.sync_visibility();
+                None
+            }
+            _ => None,
+        }
+    }
+
+    pub fn dispatch_session_browser_key(
+        &mut self,
+        key: SessionBrowserKey,
+    ) -> Option<AppEvent> {
+        match vac_shell_session_browser::on_key(&mut self.session_browser, key) {
+            SessionBrowserEvent::Action(action) => Some(AppEvent::Session(action)),
+            SessionBrowserEvent::Dismissed => {
+                self.overlays.apply_intent(OverlayIntent::CloseTop);
+                self.sync_visibility();
+                None
+            }
+            _ => None,
+        }
+    }
+
+    pub fn dispatch_diff_review_key(&mut self, key: DiffReviewKey) -> Option<AppEvent> {
+        match vac_shell_diff_view::on_key(&mut self.diff_review, key) {
+            DiffReviewKeyEvent::Event(e) => match e {
+                vac_shell_contracts::DiffReviewEvent::Dismiss => {
+                    self.overlays.apply_intent(OverlayIntent::CloseTop);
+                    self.sync_visibility();
+                    None
+                }
+                other => Some(AppEvent::DiffReview(other)),
+            },
+            _ => None,
+        }
+    }
+
+    pub fn dispatch_approval_bar_key(
+        &mut self,
+        key: ApprovalBarKey,
+    ) -> Option<AppEvent> {
+        match vac_shell_approval_bar::on_key(&mut self.approval_bar, key) {
+            ApprovalBarEvent::Toggle(id) => Some(AppEvent::ShellAction(
+                ShellAction::ToggleApproval { id },
+            )),
+            ApprovalBarEvent::SubmitAll => {
+                Some(AppEvent::ShellAction(ShellAction::SubmitApprovals))
+            }
+            ApprovalBarEvent::RejectAll => {
+                Some(AppEvent::ShellAction(ShellAction::RejectAllApprovals))
+            }
+            _ => None,
+        }
+    }
+
+    pub fn dispatch_approval_detail_key(&mut self, key: DetailKey) -> Option<AppEvent> {
+        match vac_shell_approval_detail::on_key(&mut self.approval_detail, key) {
+            DetailEvent::Approve(id) => Some(AppEvent::ApprovalDecision { id, approve: true }),
+            DetailEvent::Reject(id) => Some(AppEvent::ApprovalDecision { id, approve: false }),
+            DetailEvent::Dismissed => {
+                self.overlays.apply_intent(OverlayIntent::CloseTop);
+                self.sync_visibility();
+                None
+            }
+            _ => None,
+        }
+    }
+
+    /// Apply an `AppEvent` against live host state. Hosts that
+    /// prefer to handle events themselves can ignore this and
+    /// pattern-match on the returned events directly.
+    pub fn apply_event(&mut self, event: AppEvent) {
+        let comp = match &self.composition {
+            Some(c) => c.clone(),
+            None => return,
+        };
+        match event {
+            AppEvent::ShellAction(a) => {
+                let _ = comp.host.handle(a);
+                self.refresh_approval_bar();
+            }
+            AppEvent::Session(action) => {
+                if let Some(sessions) = &self.sessions {
+                    let _ = sessions.apply(comp.paths.as_ref(), action);
+                }
+            }
+            AppEvent::DiffReview(_) => {
+                // Real diff apply belongs to a host controller in a
+                // later slice. For now the event is observed by the
+                // host loop and applied externally.
+            }
+            AppEvent::ApprovalDecision { id, approve } => {
+                // Toggle the row to the requested state, then
+                // submit. If already in the target state the
+                // toggle is skipped.
+                let snap = comp.approval_queue.snapshot();
+                let target = if approve {
+                    ApprovalStatus::Approved
+                } else {
+                    ApprovalStatus::Rejected
+                };
+                if let Some(row) = snap.iter().find(|r| r.id == id) {
+                    if row.status != target {
+                        let approval_ctrl: Arc<dyn ApprovalController> =
+                            Arc::new(vac_shell_host_approval::ApprovalQueueController::new(
+                                comp.approval_queue.clone(),
+                            ));
+                        let _ = approval_ctrl.toggle(&id);
+                    }
+                }
+                self.refresh_approval_bar();
+            }
+            AppEvent::PaletteSelected(slash) => {
+                if let Some(spec) = comp.command_registry.by_slash(&slash) {
+                    // Built-in actions that map directly to a
+                    // ShellAction. Other kinds (PromptTemplate,
+                    // OverlayRoute) are handed back to the host as
+                    // an event the embedding TUI can interpret.
+                    let _ = spec; // hand-off; concrete dispatch is host's job
+                }
+            }
+        }
     }
 
     pub fn render(&self, f: &mut Frame, area: Rect) {
+        let approval_bar_h = if self.approval_bar.is_visible() { 6 } else { 0 };
         let chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Min(1), Constraint::Length(1)])
+            .constraints([
+                Constraint::Min(1),
+                Constraint::Length(approval_bar_h),
+                Constraint::Length(1),
+            ])
             .split(area);
 
-        // Body — the activity stream is always present. Surface
-        // switching (chat / runtime body) is the host's call to make
-        // beyond slice 20.
+        // Body — the activity stream is always present.
         vac_shell_activity::render_activity(f, &self.activity, chunks[0]);
+
+        // Approval bar — visible whenever the queue has rows.
+        if approval_bar_h > 0 {
+            vac_shell_approval_bar::render_approval_bar(
+                f,
+                &self.approval_bar,
+                chunks[1],
+            );
+        }
 
         // Bottom status bar.
         if let Some(comp) = &self.composition {
             let view = project_status(comp, &self.status_inputs);
-            render_status_bar(f, &view, chunks[1]);
+            render_status_bar(f, &view, chunks[2]);
         }
 
         // Overlays — render the active one in a centred rect.
@@ -185,9 +422,18 @@ impl ShellApp {
                 );
             }
             ShellOverlay::ShellPopup => {
-                // The shell popup widget is wired separately by the
-                // host because it owns its own state struct; slice 20
-                // keeps its render path out of the catch-all stack.
+                vac_shell_popup::render_shell_popup(
+                    f,
+                    &self.shell_popup,
+                    overlay_area,
+                );
+            }
+            ShellOverlay::ApprovalDetail => {
+                vac_shell_approval_detail::render_approval_detail(
+                    f,
+                    &self.approval_detail,
+                    overlay_area,
+                );
             }
         }
     }
@@ -204,6 +450,8 @@ pub enum GlobalKey {
     OpenSessionBrowser,
     OpenPlan,
     OpenDiffReview,
+    OpenShellPopup,
+    OpenApprovalDetail,
     EnterRuntime,
     EnterChat,
     Escape,

@@ -1,6 +1,6 @@
 use ratatui::backend::TestBackend;
 use ratatui::Terminal;
-use vac_shell_plan::{PlanMetadata, PlanStatus};
+use vac_shell_contracts::{PlanMetadata, PlanStatus};
 use vac_shell_plan_view::render_plan_view;
 
 fn render(plan: Option<&PlanMetadata>) -> String {

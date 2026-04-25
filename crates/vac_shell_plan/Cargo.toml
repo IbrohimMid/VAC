@@ -7,5 +7,4 @@ description = "Slice 12 — pure plan-file parser/helper. PlanMetadata + PlanSta
 
 [dependencies]
 vac_shell_contracts = { path = "../vac_shell_contracts" }
-serde = { version = "1", features = ["derive"] }
 thiserror = "1"

@@ -71,6 +71,36 @@ fn rank_entries_recents_first_then_enabled_then_disabled() {
 }
 
 #[test]
+fn rank_entries_dedups_duplicate_recent_ids() {
+    let a = spec("alpha", "/alpha");
+    let b = spec("beta", "/beta");
+    let ranked = rank_entries(
+        &[a, b],
+        &[
+            "alpha".into(),
+            "alpha".into(),
+            "alpha".into(),
+            "beta".into(),
+        ],
+    );
+    let ids: Vec<&str> = ranked.iter().map(|s| s.id.as_str()).collect();
+    assert_eq!(ids, vec!["alpha", "beta"]);
+}
+
+#[test]
+fn disabled_recent_stays_in_recent_block_and_keeps_reason() {
+    let a = spec("alpha", "/alpha");
+    let mut b = spec("beta", "/beta");
+    b.disabled_reason = Some("offline".into());
+    let ranked = rank_entries(&[a, b], &["beta".into()]);
+    // beta is disabled but pinned in recents → comes first.
+    assert_eq!(ranked[0].id, "beta");
+    assert_eq!(ranked[0].disabled_reason.as_deref(), Some("offline"));
+    // alpha then follows.
+    assert_eq!(ranked[1].id, "alpha");
+}
+
+#[test]
 fn group_by_category_buckets_entries_with_none_for_untyped() {
     let mut a = spec("model", "/model");
     a.category = Some("Models".into());

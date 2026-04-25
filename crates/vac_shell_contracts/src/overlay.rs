@@ -17,6 +17,8 @@ pub enum ShellOverlay {
     Plan,
     DiffReview,
     SessionBrowser,
+    /// Slice 20.1 — approval detail drawer on top of the compact bar.
+    ApprovalDetail,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

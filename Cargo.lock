@@ -6438,6 +6438,7 @@ dependencies = [
  "tempfile",
  "vac_shell_activity",
  "vac_shell_approval_bar",
+ "vac_shell_approval_detail",
  "vac_shell_bridge",
  "vac_shell_composition",
  "vac_shell_contracts",
@@ -6445,12 +6446,14 @@ dependencies = [
  "vac_shell_host_approval",
  "vac_shell_host_model",
  "vac_shell_host_paths",
+ "vac_shell_host_sessions",
  "vac_shell_host_status",
  "vac_shell_model_switcher",
  "vac_shell_overlay",
  "vac_shell_palette",
  "vac_shell_plan",
  "vac_shell_plan_view",
+ "vac_shell_popup",
  "vac_shell_session_browser",
  "vac_shell_shortcuts",
  "vac_shell_status_bar",
@@ -6628,7 +6631,6 @@ dependencies = [
 name = "vac_shell_plan"
 version = "0.1.0"
 dependencies = [
- "serde",
  "thiserror 1.0.69",
  "vac_shell_contracts",
 ]
@@ -6638,7 +6640,7 @@ name = "vac_shell_plan_view"
 version = "0.1.0"
 dependencies = [
  "ratatui",
- "vac_shell_plan",
+ "vac_shell_contracts",
 ]
 
 [[package]]

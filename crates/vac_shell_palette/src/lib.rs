@@ -179,8 +179,17 @@ pub fn rank_entries(
             enabled.push(e.clone());
         }
     }
-    // recents in caller-provided order
+    // Slice 20.1 fix — recents in caller-provided order, but
+    // dedup duplicate ids so a sloppy recents log cannot multiply
+    // a single command into several rows. Disabled recents stay
+    // in the recent block (the operator pinned them) and remain
+    // visibly disabled via `disabled_reason`.
+    let mut seen: std::collections::HashSet<String> =
+        std::collections::HashSet::new();
     for id in recent_ids {
+        if !seen.insert(id.clone()) {
+            continue;
+        }
         if let Some(found) = entries.iter().find(|e| &e.id == id) {
             recent.push(found.clone());
         }
