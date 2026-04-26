@@ -6543,6 +6543,7 @@ dependencies = [
  "vac_shell_host_model",
  "vac_shell_host_paths",
  "vac_shell_host_sessions",
+ "vac_shell_host_status_command",
  "vac_shell_host_vac_command_adapter",
  "vac_shell_host_vac_config",
  "vac_shell_host_vac_tool_dispatcher",
@@ -6686,6 +6687,20 @@ dependencies = [
  "vac_shell_host_model",
  "vac_shell_host_paths",
  "vac_shell_host_surface",
+]
+
+[[package]]
+name = "vac_shell_host_status_command"
+version = "0.1.0"
+dependencies = [
+ "tempfile",
+ "vac_shell_app",
+ "vac_shell_composition",
+ "vac_shell_contracts",
+ "vac_shell_host_activity",
+ "vac_shell_host_commands",
+ "vac_shell_host_doctor",
+ "vac_shell_test_support",
 ]
 
 [[package]]
