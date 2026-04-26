@@ -301,6 +301,95 @@ async fn execute_path_with_live_dispatcher_visible_in_transcript() {
 }
 
 // ---------------------------------------------------------------------
+// 10b. D8 smoke equivalent — drive submit_one DIRECTLY (no TUI loop)
+//      with VacToolDispatcher over a real ToolRegistry seeded with
+//      the read-only GlobTool, then read tool-use rows and assert
+//      a kind=Ok envelope landed. This is the unit-testable shape
+//      of the dogfood_tool_dispatch_smoke example so CI proves
+//      live dispatch end-to-end without launching the runtime loop.
+// ---------------------------------------------------------------------
+
+struct GlobEmittingLlm;
+
+#[async_trait]
+impl LlmAdapter for GlobEmittingLlm {
+    async fn complete(&self, _req: LlmRequest) -> EngineResult<LlmResponse> {
+        Ok(LlmResponse {
+            provider: "smoke".into(),
+            model: "smoke-1".into(),
+            content: "calling glob".into(),
+            input_tokens: 1,
+            output_tokens: 1,
+            tool_calls: vec![ToolCallRequest {
+                id: "smoke-glob-1".into(),
+                name: "glob".into(),
+                arguments: serde_json::json!({"pattern": "*.toml"}),
+                reason: None,
+                estimated_tokens: 0,
+            }],
+        })
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn dogfood_tool_dispatch_smoke_writes_ok_tool_result_row() {
+    use vac_session_engine::{
+        SlashProcessor, SubmitContext, TranscriptWriter, TrivialCompactBoundary, UsageTracker,
+        submit_one,
+    };
+    let tmp = tempfile::tempdir().unwrap();
+    // Seed at least one matching file so `glob` returns non-empty.
+    std::fs::write(tmp.path().join("Cargo.toml"), b"# fixture").unwrap();
+
+    let registry = vac_tools::ToolRegistry::new();
+    registry
+        .register(vac_tools::builtin::glob::GlobTool)
+        .await
+        .unwrap();
+    let registry = Arc::new(registry);
+    let ctx = Arc::new(ToolContext::new(tmp.path().to_path_buf()));
+    let dispatcher = Arc::new(VacToolDispatcher::new(registry, ctx));
+    let gate = Arc::new(CompositeGate::new());
+
+    let writer = TranscriptWriter::new(tmp.path().to_path_buf());
+    let slash = SlashProcessor::new();
+    let compact = TrivialCompactBoundary::default();
+    let usage = UsageTracker::new();
+    let session_id = uuid::Uuid::new_v4();
+    let submit_ctx = SubmitContext::new(session_id, "smoke");
+    let mut compact_cfg = vac_session_engine::CompactConfig::default();
+    compact_cfg.dispatcher = Some(dispatcher);
+    compact_cfg.gate = Some(gate);
+    submit_one(
+        submit_ctx,
+        &writer,
+        &slash,
+        &compact,
+        &usage,
+        &GlobEmittingLlm,
+        compact_cfg,
+        None,
+    )
+    .await
+    .unwrap();
+
+    let path = tmp
+        .path()
+        .join(".vac")
+        .join("sessions")
+        .join(format!("{session_id}.jsonl"));
+    let views = read_tool_use_rows(&path).unwrap();
+    assert_eq!(views.len(), 1);
+    assert_eq!(views[0].name, "glob");
+    let env = views[0].result.as_ref().expect("result row");
+    assert_eq!(
+        env.kind,
+        ToolResultKind::Ok,
+        "live dispatch must produce Ok envelope: {env:?}"
+    );
+}
+
+// ---------------------------------------------------------------------
 // 11–13. Replay helper invariants.
 // ---------------------------------------------------------------------
 

@@ -227,6 +227,38 @@ async fn dispatcher_error_preserved_in_envelope() {
 }
 
 // ---------------------------------------------------------------------
+// 4b. D8 hardening — registry.execute path is the active code
+//     path. This test pins it: an unknown-tool name produces
+//     the registry's `ToolError::NotFound` (variant message
+//     "Tool not found: <n>"), which the dispatcher maps to
+//     summary `tool '<n>' not registered`. A bypass that
+//     called `VilTool::execute` directly could not reach this
+//     branch because there is no tool to call.
+// ---------------------------------------------------------------------
+
+#[tokio::test]
+async fn dispatch_unknown_tool_uses_registry_not_found_path() {
+    let (registry, _) = make_registry().await;
+    let ctx = Arc::new(ToolContext::new(std::env::temp_dir()));
+    let dispatcher = VacToolDispatcher::new(registry, ctx);
+    let env = dispatcher
+        .dispatch(&call("absolutely_unknown", serde_json::json!({})))
+        .await
+        .unwrap();
+    assert_eq!(env.kind, ToolResultKind::Error);
+    let dump = serde_json::to_string(&env).unwrap();
+    assert!(
+        dump.contains("Tool not found"),
+        "envelope must surface the registry's ToolError::NotFound message: {dump}"
+    );
+    assert!(
+        env.summary.contains("not registered"),
+        "summary must mention the dispatcher's not-registered phrasing: {}",
+        env.summary
+    );
+}
+
+// ---------------------------------------------------------------------
 // 5. Bad payload (random JSON) does not panic; tool either accepts
 //    it or returns an error envelope.
 // ---------------------------------------------------------------------

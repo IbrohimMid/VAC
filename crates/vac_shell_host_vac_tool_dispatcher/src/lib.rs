@@ -26,16 +26,30 @@
 //!
 //! # Failure semantics
 //!
-//! `VacToolDispatcher::dispatch` never panics. Every failure
-//! becomes a `ToolResultEnvelope` with `kind = Error`:
+//! Every `ToolError` returned by the registry is mapped into a
+//! `ToolResultEnvelope` with `kind = Error`. The dispatcher
+//! itself does **not** return `EngineError` for tool failures
+//! — the engine's dispatch loop continues to the next tool
+//! call and writes a `tool_result` row in every case.
 //!
-//! * Unknown tool name → `error("tool '<name>' not registered", ...)`
-//! * `VilTool::execute` returns `Err(ToolError)` → `error("<tool> failed", message)`
-//! * Spawn / panic catch (defensive) → `error("<tool> panicked", message)`
+//! Mapping table:
 //!
-//! This matches the engine's contract: the dispatch loop
-//! continues to the next tool call and writes the
-//! `tool_result` row to the transcript regardless of outcome.
+//! * `ToolError::NotFound(_)` (registry says no such tool) →
+//!   `error("tool '<n>' not registered", message)`
+//! * `ToolError::InvalidArguments(_)` /
+//!   `ToolError::SerializationError(_)` →
+//!   `error("<tool> rejected arguments", message)`
+//! * any other `ToolError` →
+//!   `error("<tool> failed", message)`
+//!
+//! Panics inside `VilTool::execute` are **not** caught by this
+//! dispatcher. Async panics are not interceptable via
+//! `std::panic::catch_unwind` without isolating the future on
+//! a separate task, and the registry does not isolate tool
+//! work today. A panicking `VilTool` will unwind through the
+//! engine's `submit_one` future. Hosts that need stronger
+//! containment must implement it inside their `VilTool::execute`
+//! body or wrap the dispatcher.
 
 use std::sync::Arc;
 use std::time::Instant;
@@ -82,26 +96,16 @@ impl std::fmt::Debug for VacToolDispatcher {
 impl ToolDispatcher for VacToolDispatcher {
     async fn dispatch(&self, call: &ToolCallRequest) -> EngineResult<ToolResultEnvelope> {
         let started = Instant::now();
-        let tool = match self.registry.get(&call.name).await {
-            Some(t) => t,
-            None => {
-                return Ok(ToolResultEnvelope::error(
-                    format!("tool '{}' not registered", call.name),
-                    format!(
-                        "VacToolDispatcher: no `VilTool` named `{}` found in the registry",
-                        call.name
-                    ),
-                )
-                .with_duration_ms(started.elapsed().as_millis() as u64));
-            }
-        };
-
-        // Wrap execute in catch_unwind so a panicking tool
-        // becomes an error envelope instead of poisoning the
-        // engine submit. Async panics aren't caught by the std
-        // catch_unwind, so we also map any execution `Err` to
-        // an error envelope below.
-        let outcome = tool.execute(call.arguments.clone(), &self.context).await;
+        // D8 hardening — go through `ToolRegistry::execute`
+        // instead of `get` + direct `VilTool::execute`. The
+        // registry path adds load-bearing semantics like
+        // oversized-result spill (`maybe_spill_result`) that
+        // we must inherit; bypassing it would diverge from
+        // the rest of the VAC tool runtime.
+        let outcome = self
+            .registry
+            .execute(&call.name, call.arguments.clone(), &self.context)
+            .await;
         let duration_ms = started.elapsed().as_millis() as u64;
 
         match outcome {
@@ -112,12 +116,10 @@ impl ToolDispatcher for VacToolDispatcher {
                 duration_ms,
             }),
             Err(e) => {
-                // Distinguish argument-shape errors so operators
-                // see "malformed arguments" rather than a generic
-                // "failed" envelope. The classification reads
-                // ToolError variants; any future variant defaults
-                // to the generic execution-failure path.
                 let summary = match &e {
+                    vac_tools::ToolError::NotFound(_) => {
+                        format!("tool '{}' not registered", call.name)
+                    }
                     vac_tools::ToolError::InvalidArguments(_)
                     | vac_tools::ToolError::SerializationError(_) => {
                         format!("{} rejected arguments", call.name)

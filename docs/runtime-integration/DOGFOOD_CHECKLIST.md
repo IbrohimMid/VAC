@@ -88,13 +88,26 @@ Tag the report by slice:
   attaching a `vac_shell_host_vac_tool_dispatcher::VacToolDispatcher`
   + `CompositeGate` via
   `AdapterConfig::with_tool_dispatcher(...)`. The default
-  dogfood example keeps the unsupported path; explicit live
-  dispatch is reachable via
-  `cargo run -p vac_shell_entrypoint --example
-  dogfood_tool_dispatch`. Dispatcher without gate is rejected
-  pre-flight by `try_with_tool_dispatcher`, so a host cannot
-  accidentally turn on real dispatch with no policy/hook
-  enforcement path attached.
+  dogfood example keeps the unsupported path. Two opt-in
+  example binaries demonstrate the live path:
+  * `cargo run -p vac_shell_entrypoint --example
+    dogfood_tool_dispatch` — runs the full TUI loop with the
+    dispatcher attached. **Note:** the default `EchoAdapter`
+    LLM does not emit tool calls, so observing live dispatch
+    here also requires the operator to swap in a tool-calling
+    LLM (e.g. via `AdapterConfig::with_vil_llm_router(...)`).
+  * `cargo run -p vac_shell_entrypoint --example
+    dogfood_tool_dispatch_smoke` — self-contained: drives one
+    `submit_one` with a tool-emitting `LlmAdapter` and prints
+    the transcript path plus the paired tool-use view. This
+    is the canonical proof that live dispatch produces a
+    `tool_result.kind = ok` envelope end-to-end without
+    needing a real provider.
+
+  Dispatcher without gate is rejected pre-flight by
+  `try_with_tool_dispatcher`, so a host cannot accidentally
+  turn on real dispatch with no policy/hook enforcement path
+  attached.
 
   After **D7E** these envelopes are also persisted to the
   transcript file: every tool call emits a

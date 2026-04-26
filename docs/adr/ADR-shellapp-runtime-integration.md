@@ -336,11 +336,22 @@ What changed:
   host-side exception, may depend on `vac_session_engine` +
   `vac_tools` + `vac_tool_core`) with `pub struct
   VacToolDispatcher` impl `vac_session_engine::ToolDispatcher`.
-  Failure semantics: every error path becomes
-  `ToolResultEnvelope::error` — unknown tool name, malformed
-  arguments (`InvalidArguments`/`SerializationError` summarised
-  as `<tool> rejected arguments`), generic execution failure
-  (`<tool> failed`). Never panics. Adapter wiring lives in
+  Failure semantics: every `ToolError` returned by the registry
+  becomes `ToolResultEnvelope::error` — `NotFound` summarised
+  as `tool '<n>' not registered`, `InvalidArguments` /
+  `SerializationError` as `<tool> rejected arguments`, every
+  other `ToolError` as `<tool> failed`. Tool dispatch goes
+  through `ToolRegistry::execute` (D8 hardening), so existing
+  registry semantics — including oversized-result spill via
+  `maybe_spill_result` — apply to every dispatched call.
+  **Panic containment is not provided**: a panicking
+  `VilTool::execute` will unwind through `submit_one`. Async
+  panics cannot be caught with `std::panic::catch_unwind`
+  without isolating the future on a separate task; the
+  registry does not isolate tool work today and adding such
+  isolation is out of D8 scope. Hosts that need stronger
+  containment must implement it inside their `VilTool`
+  implementation. Adapter wiring lives in
   `vac_shell_host_vac_command_adapter`:
   * `AdapterConfig::with_tool_dispatcher(dispatcher, gate)`
     (infallible — both required).
