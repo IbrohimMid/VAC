@@ -75,4 +75,11 @@ Approval Detail
   → DefaultApprovalDetailProvider: heuristic risk from tool name
   → command preview: bounded 500 chars, top-level sensitive keys redacted
   → D11 target: recursive redaction for nested objects
+
+Doctor / Readiness Command
+  → vac_shell_host_doctor: pure read-only engine
+  → inputs: VacPaths + DoctorConfig
+  → outputs: DoctorReport DTO
+  → checks: .vac paths, model config snapshot, credentials, dispatcher mode, boundary gates
+  → never exposes secret values or mutates filesystem
 ```

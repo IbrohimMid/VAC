@@ -1,0 +1,15 @@
+[package]
+name = "vac_shell_host_doctor"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+vac_shell_contracts = { path = "../vac_shell_contracts" }
+vac_shell_host_paths = { path = "../vac_shell_host_paths" }
+vac_shell_host_vac_config = { path = "../vac_shell_host_vac_config" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[dev-dependencies]
+tempfile = "3.8"
+vac_shell_test_support = { path = "../vac_shell_test_support" }

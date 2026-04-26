@@ -23,6 +23,7 @@
 | **D10** | Session browser tile badge (`SessionTileView` / `SessionToolSummary` in contracts); live activity feed bridge (`spawn_activity_feed_bridge` in `vac_shell_host_event_projection`, fifth ADR-sanctioned exception); approval detail enrichment (`DefaultApprovalDetailProvider` heuristic in `vac_shell_host_approval`). Hardening commit (`b6e3b572`): boundary leak fixed — `ShellApp` injects `session_tool_summary_provider` callback, no direct dep on D9 projection; live feed redacts raw args (args never reach ActivityLog); Warning/Cancelled ToolResult → Severity::Warn; approval preview bounded (500 chars) + sensitive-key redaction. | PASS after hardening (SHA `b6e3b5720b94a16d4ccd3a74dc7b67ffd784c43a`) |
 | **D10.5** | Final consolidation — net -414 LOC, `vac_shell_test_support` adopted, boundary gates clean. | PASS after final consolidation (SHA `5765416d606ad7ed82a10c7cdf45a408dc8d95ff`) |
 | **D11** | Session Browser Tool-Use Summary Surface. Extends right-hand preview panel to display tool call status, duration, and summary. No raw payload/arguments exposed. Preserves strict boundaries (widget uses only ratatui + vac_shell_contracts). | PASS (pending review) |
+| **D12** | VAC Dogfood Doctor / Readiness Command. A read-only diagnostic engine (`vac_shell_host_doctor`) to verify model config, path accessibility, credential presence, and dispatcher mode without leaking secrets or mutating state. | PASS (pending review) |
 | **RC gate** | This doc + `DOGFOOD_CHECKLIST.md` + map update | PASS (post-hardening) |
 
 ## Crate inventory after the batch
@@ -40,7 +41,8 @@ crates/vac_shell_host_vac_tool_dispatcher D8 (host-side, vac_session_engine + va
 crates/vac_shell_host_transcript_projection D9 (host-side, vac_session_engine read-only exception)
 crates/vac_shell_host_event_projection     D10 (fifth ADR exception: SubmitStream bridge; not reachable from UI/app graph)
 crates/vac_shell_host_approval             D10 (heuristic risk classification; contracts-only, no engine dep)
-crates/vac_shell_session_browser           D10 (SessionTileView badge rendering; contracts-only)
+crates/vac_shell_session_browser           D10/D11 (SessionTileView badge rendering; contracts-only)
+crates/vac_shell_host_doctor               D12 (read-only diagnostic engine; no app/widget/engine dep)
 ```
 
 Plus the cockpit layer landed before the D-track:
