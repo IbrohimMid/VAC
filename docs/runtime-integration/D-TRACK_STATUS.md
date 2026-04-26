@@ -20,6 +20,7 @@
 | **D7E** | `vac_session_engine::submit.rs` now appends `TranscriptKind::ToolCall` before dispatch and `TranscriptKind::ToolResult` after the envelope is built, so tool-use is observable from the transcript file alone — no event subscription required. Operator audit trail is honest end-to-end: unsupported-dispatcher path, gate-deny path, and dispatcher-success path all leave durable rows. | PASS after review (SHA `84fc3688cb51e7eb23afbbb7337d3af2a2bbc930`) |
 | **D8** | `vac_shell_host_vac_tool_dispatcher` (third ADR-sanctioned host-side exception) ships `VacToolDispatcher` over `vac_tools::ToolRegistry`. Adapter gains `with_tool_dispatcher(dispatcher, gate)` + `try_with_tool_dispatcher(...)` (pre-flight rejects dispatcher without `CompositeGate`). Default stays `UnsupportedDispatcher`; opt-in dogfood example `dogfood_tool_dispatch` wires a real registry. D8E `read_tool_use_rows` reads paired `tool_call`/`tool_result` views from the transcript. | PASS after hardening — dispatcher now goes through `ToolRegistry::execute` (inheriting result-spill semantics); panic-catch claims removed from docs; new `dogfood_tool_dispatch_smoke` example + integration test demonstrably produce a `tool_result.kind=ok` envelope from a real `GlobTool` call |
 | **D9** | `vac_shell_host_transcript_projection` (fourth ADR-sanctioned host-side exception) projects D7E/D8 `tool_call`/`tool_result` rows into operator-safe `ShellActivityEntry` and a `ToolUseActivitySummary` for the session browser tile. Read-only — never mutates the transcript. Severity map: `Ok→Info/Ok`, `Warning→Warn`, `Error→Error`, `Cancelled→Warn`, missing result→`Pending`/Warn. Operator redaction: only tool name / status / envelope summary / duration / transcript path land in activity rows; raw `payload` and `arguments` stay in the JSONL file on disk. | PASS after review (SHA `2ce754dfe8809bccf2fccf9a20df0682cc233832`) |
+| **D10** | Session browser tile badge (`SessionTileView` / `SessionToolSummary` in contracts); live activity feed bridge (`spawn_activity_feed_bridge` in `vac_shell_host_event_projection`, fifth ADR-sanctioned exception); approval detail enrichment (`DefaultApprovalDetailProvider` heuristic in `vac_shell_host_approval`). Hardening commit (`b6e3b572`): boundary leak fixed — `ShellApp` injects `session_tool_summary_provider` callback, no direct dep on D9 projection; live feed redacts raw args (args never reach ActivityLog); Warning/Cancelled ToolResult → Severity::Warn; approval preview bounded (500 chars) + sensitive-key redaction. | PASS after hardening (SHA `b6e3b5720b94a16d4ccd3a74dc7b67ffd784c43a`) |
 | **RC gate** | This doc + `DOGFOOD_CHECKLIST.md` + map update | PASS (post-hardening) |
 
 ## Crate inventory after the batch
@@ -35,6 +36,9 @@ crates/vac_shell_host_vac_engine_probe D7A (host-side, vac_core exception)
 crates/vac_shell_host_vac_command_adapter D7B + D7C (host-side, vac_session_engine + vil_llm exceptions)
 crates/vac_shell_host_vac_tool_dispatcher D8 (host-side, vac_session_engine + vac_tools exception)
 crates/vac_shell_host_transcript_projection D9 (host-side, vac_session_engine read-only exception)
+crates/vac_shell_host_event_projection     D10 (fifth ADR exception: SubmitStream bridge; not reachable from UI/app graph)
+crates/vac_shell_host_approval             D10 (heuristic risk classification; contracts-only, no engine dep)
+crates/vac_shell_session_browser           D10 (SessionTileView badge rendering; contracts-only)
 ```
 
 Plus the cockpit layer landed before the D-track:
@@ -104,6 +108,18 @@ crates/vac_shell_host_diff            simple line-diff projector
     `ShellActivityEntry` rows + a `ToolUseActivitySummary`. It
     never mutates the transcript and never renders raw
     `payload` / `arguments` into the projected text.
+  * `vac_shell_host_event_projection` (D10) is allowed to
+    depend on `vac_session_engine` (`SubmitStream` /
+    `SubmitChunk`) and `vac_tool_core` (`ToolResultEnvelope`)
+    for `spawn_activity_feed_bridge`. The bridge maps live
+    stream chunks into `ShellActivityEntry` rows with strict
+    redaction: raw `arguments` are never forwarded (always
+    `None`); `ToolResultKind` maps faithfully to `Severity`
+    (Warning/Cancelled → Warn). `ShellApp` does NOT depend on
+    this crate; it is wired by the host entrypoint only.
+    `ShellApp` receives D9 summaries via an injected
+    `session_tool_summary_provider` callback — never via a
+    direct dep on any projection crate.
 
   Neither crate is reachable from any UI / widget / bridge /
   app / entrypoint / runtime-loop runtime graph; see the ADR
@@ -118,11 +134,41 @@ crates/vac_shell_host_diff            simple line-diff projector
 * Live event bus → `record_projected_event` adapter — hosts
   currently call the ingest helper manually.
 * Diff/review live integration.
-* Approval detail content from a real `ApprovalDetailProvider`
-  (today the drawer synthesises a placeholder from the compact
-  bar row).
 * Replacement of `vac_tui_runtime` — pending operator
   validation against the dogfood checklist.
+* **D11 candidate — recursive secret redaction**: current
+  `redact_and_preview` in `DefaultApprovalDetailProvider` only
+  redacts top-level object keys. Nested secrets like
+  `{ "config": { "token": "..." } }` are not yet redacted.
+  D11 should add a recursive redaction helper (reusable across
+  approval + bridge), with tests for: nested secret, array of
+  objects, mixed safe/secret fields, non-object root.
+
+## Boundary tripwire checks
+
+Run these after any change to `vac_shell_app`,
+`vac_shell_session_browser`, or `vac_shell_runtime_loop` to
+confirm no engine crates have crept back in:
+
+```bash
+# vac_shell_app must not reach engine/tools/LLM crates
+cargo tree -p vac_shell_app -e normal --depth 4 \
+  | grep -E 'vac_session_engine|vac_tools|vil_llm|vac_cli|stakpak|stakai' \
+  || echo "CLEAN"
+
+# vac_shell_session_browser must not reach engine/tools/LLM crates
+cargo tree -p vac_shell_session_browser -e normal --depth 3 \
+  | grep -E 'vac_session_engine|vac_tools|vil_llm|vac_cli|stakpak|stakai' \
+  || echo "CLEAN"
+
+# vac_shell_runtime_loop must not reach engine/tools/LLM crates
+cargo tree -p vac_shell_runtime_loop -e normal --depth 4 \
+  | grep -E 'vac_session_engine|vac_tools|vil_llm|vac_cli|stakpak|stakai' \
+  || echo "CLEAN"
+```
+
+All three must print `CLEAN`. Any match is a boundary violation
+that blocks the next D-slice review.
 
 ## How to run the dogfood loop
 
