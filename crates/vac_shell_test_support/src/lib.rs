@@ -1,4 +1,3 @@
-
 use std::fmt::Debug;
 use std::path::{Path, PathBuf};
 use vac_shell_contracts::{SessionToolSummary, ShellActivityKind, VacPaths};
@@ -204,4 +203,15 @@ pub fn fake_session_summary_provider(
 
 pub fn no_summary_provider() -> Arc<dyn Fn(&Path) -> Option<SessionToolSummary> + Send + Sync> {
     fake_session_summary_provider(None)
+}
+
+pub fn fake_session_tool_use_provider(
+    surface: Option<vac_shell_contracts::SessionToolUseSurface>,
+) -> Arc<dyn Fn(&Path) -> Option<vac_shell_contracts::SessionToolUseSurface> + Send + Sync> {
+    Arc::new(move |_: &Path| surface.clone())
+}
+
+pub fn no_tool_use_provider()
+-> Arc<dyn Fn(&Path) -> Option<vac_shell_contracts::SessionToolUseSurface> + Send + Sync> {
+    fake_session_tool_use_provider(None)
 }

@@ -41,6 +41,7 @@ fn render_shows_badge_for_tile_with_summary() {
                 error_count: 1,
                 ..Default::default()
             }),
+            tool_details: vec![],
         }],
         ..Default::default()
     };
@@ -70,6 +71,7 @@ fn render_shows_no_tools_when_zero_calls() {
         tiles: vec![SessionTileView {
             entry: make_entry("sess-b"),
             tool_summary: Some(SessionToolSummary::default()),
+            tool_details: vec![],
         }],
         ..Default::default()
     };
@@ -97,6 +99,7 @@ fn render_skips_badge_when_tool_summary_none() {
         tiles: vec![SessionTileView {
             entry: make_entry("sess-c"),
             tool_summary: None,
+            tool_details: vec![],
         }],
         ..Default::default()
     };

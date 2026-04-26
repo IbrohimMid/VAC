@@ -4,10 +4,11 @@
 //! and live feed.
 
 use crate::Severity;
+use serde::{Deserialize, Serialize};
 
 /// Coarse tool-use status for operator-visible surfaces.
 /// Maps from `vac_tool_core::ToolResultKind` or transcript `ToolStatus`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ToolUseUiStatus {
     Ok,
     Warning,

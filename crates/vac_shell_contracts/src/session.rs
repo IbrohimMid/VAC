@@ -3,6 +3,7 @@
 //! type; the host projects to `SessionEntry` via the `VacPaths`
 //! adapter and any disk-scanning helper that lives host-side.
 
+use crate::ToolUseUiStatus;
 use serde::{Deserialize, Serialize};
 
 /// One row in a sessions list. Identifier is opaque — the host maps
@@ -63,11 +64,33 @@ impl SessionToolSummary {
     }
 }
 
+/// D11 — detailed record of a single tool call for the session browser UI.
+/// Only contains operator-safe fields (status, name, summary, duration).
+/// Explicitly excludes raw payload or arguments.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionToolUseDetail {
+    pub call_id: String,
+    pub tool_name: String,
+    pub status: ToolUseUiStatus,
+    pub summary: String,
+    pub duration_ms: u64,
+}
+
+/// D11 — wrapper struct containing both summary and detailed rows,
+/// returned by the host provider callback.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionToolUseSurface {
+    pub summary: SessionToolSummary,
+    pub calls: Vec<SessionToolUseDetail>,
+}
+
 /// D10 — one tile in the session browser list. Wraps `SessionEntry`
-/// with an optional tool-use summary badge. Widget renders the badge;
-/// host populates it via the projection closure in `list_with_summaries`.
+/// with an optional tool-use summary badge and (in D11) a list of tool call details.
+/// Widget renders the badge and detail preview; host populates them via a closure.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionTileView {
     pub entry: SessionEntry,
     pub tool_summary: Option<SessionToolSummary>,
+    #[serde(default)]
+    pub tool_details: Vec<SessionToolUseDetail>,
 }

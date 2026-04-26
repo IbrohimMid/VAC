@@ -15,7 +15,7 @@ use vac_shell_model_switcher::SwitcherKey;
 use vac_shell_palette::PaletteKey;
 use vac_shell_session_browser::SessionBrowserKey;
 use vac_shell_shortcuts::default_shortcuts;
-use vac_shell_test_support::no_summary_provider;
+use vac_shell_test_support::no_tool_use_provider;
 
 use common::{boot_comp, boot_comp_with_commands, screen, seed_session_transcript};
 
@@ -93,7 +93,7 @@ fn session_browser_delete_routes_to_sessions_state_after_confirm() {
 
     let sessions = Arc::new(vac_shell_host_sessions::SessionsState::new());
     let mut app =
-        ShellApp::new(comp.clone()).with_session_tool_summary_provider(no_summary_provider());
+        ShellApp::new(comp.clone()).with_session_tool_use_provider(no_tool_use_provider());
     app.sessions = Some(sessions.clone());
     app.handle_global_key(GlobalKey::OpenSessionBrowser);
     app.session_browser.visible = true;

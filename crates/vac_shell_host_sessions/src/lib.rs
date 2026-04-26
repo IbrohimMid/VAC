@@ -1,4 +1,3 @@
-
 use std::sync::{Arc, Mutex};
 
 use vac_shell_contracts::{SessionAction, SessionEntry, SessionPreview, VacPaths};
@@ -51,6 +50,30 @@ impl SessionsState {
                 vac_shell_contracts::SessionTileView {
                     entry,
                     tool_summary,
+                    tool_details: Vec::new(),
+                }
+            })
+            .collect()
+    }
+
+    pub fn list_with_tool_use(
+        &self,
+        paths: &dyn VacPaths,
+        project: impl Fn(&std::path::Path) -> Option<vac_shell_contracts::SessionToolUseSurface>,
+    ) -> Vec<vac_shell_contracts::SessionTileView> {
+        let entries = enumerate_sessions(paths);
+        entries
+            .into_iter()
+            .map(|entry| {
+                let jsonl = paths.sessions_dir().join(format!("{}.jsonl", entry.id));
+                let (tool_summary, tool_details) = match project(&jsonl) {
+                    Some(surface) => (Some(surface.summary), surface.calls),
+                    None => (None, Vec::new()),
+                };
+                vac_shell_contracts::SessionTileView {
+                    entry,
+                    tool_summary,
+                    tool_details,
                 }
             })
             .collect()
@@ -184,5 +207,49 @@ mod tests {
         let tiles = state.list_with_summaries(&fake, |_| None);
         assert_eq!(tiles.len(), 1);
         assert!(tiles[0].tool_summary.is_none());
+    }
+
+    #[test]
+    fn list_with_tool_use_injects_details() {
+        let tmp = tempdir().unwrap();
+        temp_session_transcript(tmp.path().join("abc.jsonl"), "{}");
+
+        let state = SessionsState::new();
+        let fake = FakeVacPaths(tmp.path().to_path_buf());
+
+        let exp_summary = vac_shell_contracts::SessionToolSummary {
+            total_calls: 1,
+            ok_count: 1,
+            ..Default::default()
+        };
+        let detail = vac_shell_contracts::SessionToolUseDetail {
+            call_id: "call-1".into(),
+            tool_name: "test_tool".into(),
+            status: vac_shell_contracts::ToolUseUiStatus::Ok,
+            summary: "success".into(),
+            duration_ms: 10,
+        };
+        let exp_surface = vac_shell_contracts::SessionToolUseSurface {
+            summary: exp_summary.clone(),
+            calls: vec![detail.clone()],
+        };
+
+        let tiles = state.list_with_tool_use(&fake, move |_| Some(exp_surface.clone()));
+        assert_eq!(tiles.len(), 1);
+        assert_eq!(tiles[0].tool_summary, Some(exp_summary));
+        assert_eq!(tiles[0].tool_details, vec![detail]);
+    }
+
+    #[test]
+    fn list_with_tool_use_maps_none_to_empty() {
+        let tmp = tempdir().unwrap();
+        temp_session_transcript(tmp.path().join("def.jsonl"), "{}");
+
+        let state = SessionsState::new();
+        let fake = FakeVacPaths(tmp.path().to_path_buf());
+        let tiles = state.list_with_tool_use(&fake, |_| None);
+        assert_eq!(tiles.len(), 1);
+        assert!(tiles[0].tool_summary.is_none());
+        assert!(tiles[0].tool_details.is_empty());
     }
 }

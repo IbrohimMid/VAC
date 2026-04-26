@@ -28,27 +28,20 @@ use ratatui::{
 };
 use vac_shell_activity::ActivityView;
 use vac_shell_approval_bar::{
-    ApprovalActionView, ApprovalBarKey, ApprovalBarViewState, ApprovalBarEvent,
-    ApprovalStatus,
+    ApprovalActionView, ApprovalBarEvent, ApprovalBarKey, ApprovalBarViewState, ApprovalStatus,
 };
-use vac_shell_approval_detail::{
-    ApprovalDetailViewState, DetailEvent, DetailKey,
-};
+use vac_shell_approval_detail::{ApprovalDetailViewState, DetailEvent, DetailKey};
 use vac_shell_bridge::{ApprovalController, ShellAction, SurfaceTarget};
 use vac_shell_composition::ShellComposition;
-use vac_shell_contracts::{
-    OverlayIntent, SessionAction, ShellOverlay,
-};
+use vac_shell_contracts::{OverlayIntent, SessionAction, ShellOverlay};
 use vac_shell_diff_view::{DiffReviewKey, DiffReviewKeyEvent, DiffReviewView};
 use vac_shell_host_status::{StatusInputs, project_status};
 use vac_shell_model_switcher::{ModelSwitcherView, SwitcherEvent, SwitcherKey};
 use vac_shell_overlay::OverlayStack;
-use vac_shell_palette::{PaletteKey, PaletteEvent, PaletteViewState};
+use vac_shell_palette::{PaletteEvent, PaletteKey, PaletteViewState};
 use vac_shell_plan_view::render_plan_view;
 use vac_shell_popup::ShellPopupViewState;
-use vac_shell_session_browser::{
-    SessionBrowserEvent, SessionBrowserKey, SessionBrowserView,
-};
+use vac_shell_session_browser::{SessionBrowserEvent, SessionBrowserKey, SessionBrowserView};
 use vac_shell_shortcuts::ShortcutsView;
 use vac_shell_status_bar::render_status_bar;
 
@@ -61,9 +54,14 @@ const RECENTS_LIMIT: usize = 5;
 pub struct ShellAppProviders {
     /// Risk classification + command preview for the approval detail drawer.
     pub approval_detail: Option<Arc<dyn vac_shell_host_approval::ApprovalDetailProvider>>,
-    /// D9 summary callback — injected by host entrypoint to avoid engine dep in ShellApp.
-    pub session_tool_summary:
-        Option<Arc<dyn Fn(&std::path::Path) -> Option<vac_shell_contracts::SessionToolSummary> + Send + Sync>>,
+    /// D9/D11 summary callback — injected by host entrypoint to avoid engine dep in ShellApp.
+    pub session_tool_use_provider: Option<
+        Arc<
+            dyn Fn(&std::path::Path) -> Option<vac_shell_contracts::SessionToolUseSurface>
+                + Send
+                + Sync,
+        >,
+    >,
 }
 
 /// All view state owned by the app. Each widget's state is
@@ -136,11 +134,15 @@ impl ShellApp {
         self
     }
 
-    pub fn with_session_tool_summary_provider(
+    pub fn with_session_tool_use_provider(
         mut self,
-        f: Arc<dyn Fn(&std::path::Path) -> Option<vac_shell_contracts::SessionToolSummary> + Send + Sync>,
+        f: Arc<
+            dyn Fn(&std::path::Path) -> Option<vac_shell_contracts::SessionToolUseSurface>
+                + Send
+                + Sync,
+        >,
     ) -> Self {
-        self.providers.session_tool_summary = Some(f);
+        self.providers.session_tool_use_provider = Some(f);
         self
     }
 
@@ -181,9 +183,8 @@ impl ShellApp {
                 // palette state on open so the overlay never opens
                 // empty or stale.
                 if let Some(comp) = &self.composition {
-                    self.palette = vac_shell_palette::PaletteViewState::new(
-                        comp.command_registry.all(),
-                    );
+                    self.palette =
+                        vac_shell_palette::PaletteViewState::new(comp.command_registry.all());
                 }
                 self.toggle_overlay(ShellOverlay::Palette);
                 None
@@ -197,10 +198,7 @@ impl ShellApp {
                 // the switcher view so Ctrl+M never opens empty.
                 if let Some(comp) = &self.composition {
                     self.model_switcher =
-                        vac_shell_host_model::build_switcher_view(
-                            &comp.model_state,
-                            RECENTS_LIMIT,
-                        );
+                        vac_shell_host_model::build_switcher_view(&comp.model_state, RECENTS_LIMIT);
                 }
                 self.toggle_overlay(ShellOverlay::ModelSwitcher);
                 None
@@ -209,14 +207,14 @@ impl ShellApp {
                 // Slice 20.2 / D10-HARDENING — populate session tiles (with
                 // tool-use badges) from the live SessionsState (if attached).
                 // The summarize closure is injected by the host via
-                // `session_tool_summary_provider`; ShellApp has no direct dep
+                // `session_tool_use_provider`; ShellApp has no direct dep
                 // on vac_shell_host_transcript_projection.
                 if let (Some(comp), Some(sessions)) = (&self.composition, &self.sessions) {
-                    let provider = self.providers.session_tool_summary.clone();
-                    self.session_browser.tiles = sessions.list_with_summaries(
-                        comp.paths.as_ref(),
-                        |path| provider.as_ref().and_then(|f| f(path)),
-                    );
+                    let provider = self.providers.session_tool_use_provider.clone();
+                    self.session_browser.tiles = sessions
+                        .list_with_tool_use(comp.paths.as_ref(), |path| {
+                            provider.as_ref().and_then(|f| f(path))
+                        });
                     if self.session_browser.selected >= self.session_browser.tiles.len() {
                         self.session_browser.selected = 0;
                     }
@@ -313,7 +311,10 @@ impl ShellApp {
     pub fn dispatch_model_switcher_key(&mut self, key: SwitcherKey) -> Option<AppEvent> {
         match vac_shell_model_switcher::on_key(&mut self.model_switcher, key) {
             SwitcherEvent::Selected { provider, id } => {
-                Some(AppEvent::ShellAction(ShellAction::SelectModel { provider, id }))
+                Some(AppEvent::ShellAction(ShellAction::SelectModel {
+                    provider,
+                    id,
+                }))
             }
             SwitcherEvent::Dismissed => {
                 self.overlays.apply_intent(OverlayIntent::CloseTop);
@@ -324,10 +325,7 @@ impl ShellApp {
         }
     }
 
-    pub fn dispatch_session_browser_key(
-        &mut self,
-        key: SessionBrowserKey,
-    ) -> Option<AppEvent> {
+    pub fn dispatch_session_browser_key(&mut self, key: SessionBrowserKey) -> Option<AppEvent> {
         match vac_shell_session_browser::on_key(&mut self.session_browser, key) {
             SessionBrowserEvent::Action(action) => Some(AppEvent::Session(action)),
             SessionBrowserEvent::Dismissed => {
@@ -353,14 +351,11 @@ impl ShellApp {
         }
     }
 
-    pub fn dispatch_approval_bar_key(
-        &mut self,
-        key: ApprovalBarKey,
-    ) -> Option<AppEvent> {
+    pub fn dispatch_approval_bar_key(&mut self, key: ApprovalBarKey) -> Option<AppEvent> {
         match vac_shell_approval_bar::on_key(&mut self.approval_bar, key) {
-            ApprovalBarEvent::Toggle(id) => Some(AppEvent::ShellAction(
-                ShellAction::ToggleApproval { id },
-            )),
+            ApprovalBarEvent::Toggle(id) => {
+                Some(AppEvent::ShellAction(ShellAction::ToggleApproval { id }))
+            }
             ApprovalBarEvent::SubmitAll => {
                 Some(AppEvent::ShellAction(ShellAction::SubmitApprovals))
             }
@@ -419,10 +414,8 @@ impl ShellApp {
                     }
                     Ok(())
                 } else {
-                    Err(self.report_error(
-                        "session action ignored: SessionsState not attached",
-                        None,
-                    ))
+                    Err(self
+                        .report_error("session action ignored: SessionsState not attached", None))
                 }
             }
             AppEvent::DiffReview(_) => {
@@ -447,10 +440,7 @@ impl ShellApp {
                 let row = snap.iter().find(|r| r.id == id);
                 if row.is_none() {
                     self.refresh_approval_bar();
-                    return Err(self.report_error(
-                        &format!("approval id not found: {id}"),
-                        None,
-                    ));
+                    return Err(self.report_error(&format!("approval id not found: {id}"), None));
                 }
                 if row.unwrap().status != target {
                     let approval_ctrl: Arc<dyn ApprovalController> =
@@ -511,23 +501,21 @@ impl ShellApp {
                         }
                     }
                     "/model" => {
-                        self.model_switcher =
-                            vac_shell_host_model::build_switcher_view(
-                                &comp.model_state,
-                                RECENTS_LIMIT,
-                            );
+                        self.model_switcher = vac_shell_host_model::build_switcher_view(
+                            &comp.model_state,
+                            RECENTS_LIMIT,
+                        );
                         self.overlays
                             .apply_intent(OverlayIntent::Open(ShellOverlay::ModelSwitcher));
                         self.sync_visibility();
                     }
                     "/sessions" => {
                         if let Some(sessions) = &self.sessions {
-                            let provider = self.providers.session_tool_summary.clone();
-                            self.session_browser.tiles = sessions.list_with_summaries(
-                                comp.paths.as_ref(),
-                                |path| provider.as_ref().and_then(|f| f(path)),
-                            );
-                            self.session_browser.selected = 0;
+                            let provider = self.providers.session_tool_use_provider.clone();
+                            self.session_browser.tiles = sessions
+                                .list_with_tool_use(comp.paths.as_ref(), move |p| {
+                                    provider.as_ref().and_then(|f| f(p))
+                                });
                         }
                         self.overlays
                             .apply_intent(OverlayIntent::Open(ShellOverlay::SessionBrowser));
@@ -560,11 +548,7 @@ impl ShellApp {
 
         // Approval bar — visible whenever the queue has rows.
         if approval_bar_h > 0 {
-            vac_shell_approval_bar::render_approval_bar(
-                f,
-                &self.approval_bar,
-                chunks[1],
-            );
+            vac_shell_approval_bar::render_approval_bar(f, &self.approval_bar, chunks[1]);
         }
 
         // Bottom status bar.
@@ -581,11 +565,7 @@ impl ShellApp {
                 vac_shell_palette::render_palette(f, &self.palette, overlay_area);
             }
             ShellOverlay::Shortcuts => {
-                vac_shell_shortcuts::render_shortcuts_popup(
-                    f,
-                    &self.shortcuts,
-                    overlay_area,
-                );
+                vac_shell_shortcuts::render_shortcuts_popup(f, &self.shortcuts, overlay_area);
             }
             ShellOverlay::ModelSwitcher => {
                 vac_shell_model_switcher::render_model_switcher(
@@ -605,18 +585,10 @@ impl ShellApp {
                 render_plan_view(f, self.plan.as_ref(), overlay_area);
             }
             ShellOverlay::DiffReview => {
-                vac_shell_diff_view::render_diff_review(
-                    f,
-                    &self.diff_review,
-                    overlay_area,
-                );
+                vac_shell_diff_view::render_diff_review(f, &self.diff_review, overlay_area);
             }
             ShellOverlay::ShellPopup => {
-                vac_shell_popup::render_shell_popup(
-                    f,
-                    &self.shell_popup,
-                    overlay_area,
-                );
+                vac_shell_popup::render_shell_popup(f, &self.shell_popup, overlay_area);
             }
             ShellOverlay::ApprovalDetail => {
                 vac_shell_approval_detail::render_approval_detail(
@@ -718,5 +690,10 @@ fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
     let w = area.width.saturating_mul(percent_x) / 100;
     let x = area.x + (area.width.saturating_sub(w)) / 2;
     let y = area.y + (area.height.saturating_sub(h)) / 2;
-    Rect { x, y, width: w, height: h }
+    Rect {
+        x,
+        y,
+        width: w,
+        height: h,
+    }
 }

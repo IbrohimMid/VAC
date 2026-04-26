@@ -85,19 +85,21 @@ pub fn on_key(view: &mut SessionBrowserView, key: SessionBrowserKey) -> SessionB
             SessionBrowserEvent::Consumed
         }
         SessionBrowserKey::Enter => match filtered.get(view.selected) {
-            Some(t) => SessionBrowserEvent::Action(SessionAction::Open { id: t.entry.id.clone() }),
+            Some(t) => SessionBrowserEvent::Action(SessionAction::Open {
+                id: t.entry.id.clone(),
+            }),
             None => SessionBrowserEvent::Consumed,
         },
         SessionBrowserKey::Resume => match filtered.get(view.selected) {
-            Some(t) => {
-                SessionBrowserEvent::Action(SessionAction::Resume { id: t.entry.id.clone() })
-            }
+            Some(t) => SessionBrowserEvent::Action(SessionAction::Resume {
+                id: t.entry.id.clone(),
+            }),
             None => SessionBrowserEvent::Consumed,
         },
         SessionBrowserKey::Archive => match filtered.get(view.selected) {
-            Some(t) => {
-                SessionBrowserEvent::Action(SessionAction::Archive { id: t.entry.id.clone() })
-            }
+            Some(t) => SessionBrowserEvent::Action(SessionAction::Archive {
+                id: t.entry.id.clone(),
+            }),
             None => SessionBrowserEvent::Consumed,
         },
         SessionBrowserKey::Delete => {
@@ -215,17 +217,16 @@ pub fn render_session_browser(f: &mut Frame, view: &SessionBrowserView, area: Re
             }
         }
     }
-    f.render_widget(
-        Paragraph::new(left).wrap(Wrap { trim: false }),
-        chunks[0],
-    );
+    f.render_widget(Paragraph::new(left).wrap(Wrap { trim: false }), chunks[0]);
 
     let mut right: Vec<Line<'static>> = Vec::new();
     if let Some(p) = &view.preview {
         if let Some(t) = &p.title {
             right.push(Line::from(Span::styled(
                 format!(" {t}"),
-                Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
             )));
             right.push(Line::raw(""));
         }
@@ -241,6 +242,74 @@ pub fn render_session_browser(f: &mut Frame, view: &SessionBrowserView, area: Re
             Style::default().fg(Color::DarkGray),
         )));
     }
+
+    if let Some(selected_tile) = filtered.get(view.selected) {
+        if let Some(s) = &selected_tile.tool_summary {
+            right.push(Line::raw(""));
+            right.push(Line::from(Span::styled(
+                " Tools",
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            )));
+            if s.total_calls == 0 {
+                right.push(Line::from(Span::styled(
+                    "  no tool calls recorded",
+                    Style::default().fg(Color::DarkGray),
+                )));
+            } else {
+                for call in selected_tile.tool_details.iter().take(8) {
+                    let marker = match call.status {
+                        vac_shell_contracts::ToolUseUiStatus::Ok => "✓",
+                        vac_shell_contracts::ToolUseUiStatus::Error => "!",
+                        vac_shell_contracts::ToolUseUiStatus::Warning
+                        | vac_shell_contracts::ToolUseUiStatus::Cancelled => "~",
+                        vac_shell_contracts::ToolUseUiStatus::Pending => "…",
+                    };
+                    let color = match call.status {
+                        vac_shell_contracts::ToolUseUiStatus::Ok => Color::Green,
+                        vac_shell_contracts::ToolUseUiStatus::Error => Color::Red,
+                        vac_shell_contracts::ToolUseUiStatus::Warning
+                        | vac_shell_contracts::ToolUseUiStatus::Cancelled => Color::Yellow,
+                        vac_shell_contracts::ToolUseUiStatus::Pending => Color::DarkGray,
+                    };
+                    let mut spans = vec![
+                        Span::styled(
+                            format!("  {marker} "),
+                            Style::default().fg(color).add_modifier(Modifier::BOLD),
+                        ),
+                        Span::styled(
+                            format!("{:<15}", call.tool_name),
+                            Style::default().fg(Color::Gray),
+                        ),
+                        Span::styled(
+                            format!(" {:<20}", call.summary),
+                            Style::default().fg(Color::DarkGray),
+                        ),
+                    ];
+                    if call.status == vac_shell_contracts::ToolUseUiStatus::Pending {
+                        spans.push(Span::styled(
+                            " pending",
+                            Style::default().fg(Color::DarkGray),
+                        ));
+                    } else {
+                        spans.push(Span::styled(
+                            format!(" {}ms", call.duration_ms),
+                            Style::default().fg(Color::DarkGray),
+                        ));
+                    }
+                    right.push(Line::from(spans));
+                }
+                if selected_tile.tool_details.len() > 8 {
+                    right.push(Line::from(Span::styled(
+                        format!("  ... and {} more", selected_tile.tool_details.len() - 8),
+                        Style::default().fg(Color::DarkGray),
+                    )));
+                }
+            }
+        }
+    }
+
     if view.delete_pending {
         right.push(Line::raw(""));
         right.push(Line::from(Span::styled(
@@ -248,8 +317,5 @@ pub fn render_session_browser(f: &mut Frame, view: &SessionBrowserView, area: Re
             Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
         )));
     }
-    f.render_widget(
-        Paragraph::new(right).wrap(Wrap { trim: false }),
-        chunks[1],
-    );
+    f.render_widget(Paragraph::new(right).wrap(Wrap { trim: false }), chunks[1]);
 }

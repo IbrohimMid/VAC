@@ -59,9 +59,11 @@ ADR-sanctioned exceptions (must not expand without review):
 
 ```text
 Session Browser
-  → host injects session_tool_summary_provider callback
-  → ShellApp receives DTO summary only
+  → host injects session_tool_use_provider callback
+  → ShellApp receives DTO surface (SessionToolUseSurface)
   → tile shows "tools: N ok / M err"
+  → selecting a session renders detailed tool calls (status, name, summary, duration) in right panel
+  → no raw arguments or payloads are exposed
   → app graph remains engine-free
 
 Live Activity Feed

@@ -1,9 +1,8 @@
-use ratatui::backend::TestBackend;
 use ratatui::Terminal;
+use ratatui::backend::TestBackend;
 use vac_shell_contracts::{SessionAction, SessionEntry, SessionPreview, SessionTileView};
 use vac_shell_session_browser::{
-    SessionBrowserEvent, SessionBrowserKey, SessionBrowserView, on_key,
-    render_session_browser,
+    SessionBrowserEvent, SessionBrowserKey, SessionBrowserView, on_key, render_session_browser,
 };
 
 fn tiles() -> Vec<SessionTileView> {
@@ -15,6 +14,7 @@ fn tiles() -> Vec<SessionTileView> {
                 last_active_unix: 200,
             },
             tool_summary: None,
+            tool_details: vec![],
         },
         SessionTileView {
             entry: SessionEntry {
@@ -23,6 +23,7 @@ fn tiles() -> Vec<SessionTileView> {
                 last_active_unix: 100,
             },
             tool_summary: None,
+            tool_details: vec![],
         },
     ]
 }
@@ -48,7 +49,9 @@ fn session_browser_renders_entries_newest_first() {
     let buf = t.backend().buffer();
     let mut s = String::new();
     for y in 0..buf.area.height {
-        for x in 0..buf.area.width { s.push_str(buf[(x, y)].symbol()); }
+        for x in 0..buf.area.width {
+            s.push_str(buf[(x, y)].symbol());
+        }
         s.push('\n');
     }
     assert!(s.contains("Refactor swarm"));

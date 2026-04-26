@@ -21,34 +21,37 @@
 //! component-by-component reusability decisions that drive this
 //! surface.
 
-pub mod paths;
-pub mod model;
-pub mod approval;
-pub mod registry;
-pub mod events;
-pub mod session;
-pub mod selection;
-pub mod overlay;
 pub mod activity;
+pub mod approval;
 pub mod diff;
-pub mod shell;
-pub mod status;
+pub mod events;
+pub mod model;
+pub mod overlay;
+pub mod paths;
 pub mod plan;
 pub mod redaction;
+pub mod registry;
+pub mod selection;
+pub mod session;
+pub mod shell;
+pub mod status;
 pub mod tool_ui_status;
 
 pub use activity::{Severity, ShellActivityEntry, ShellActivityKind};
-pub use diff::{DiffFileView, DiffHunkView, DiffLineKind, DiffLineView, DiffReviewEvent};
-pub use shell::{ShellCommandView, ShellStatus};
-pub use status::ShellStatusView;
-pub use plan::{PlanMetadata, PlanStatus};
 pub use approval::{ApprovalDetailView, RiskLevel, VacApprovalBridge};
+pub use diff::{DiffFileView, DiffHunkView, DiffLineKind, DiffLineView, DiffReviewEvent};
 pub use events::{VacShellEvent, VacSubmitRequest};
 pub use model::{ProviderId, VacModelView};
-pub use paths::VacPaths;
-pub use registry::{ShellCommandKind, ShellCommandSpec, VacCommandRegistry};
 pub use overlay::{OverlayIntent, ShellOverlay};
-pub use selection::{ModelKey, ModelSelectionSnapshot};
-pub use session::{SessionAction, SessionEntry, SessionPreview, SessionTileView, SessionToolSummary};
+pub use paths::VacPaths;
+pub use plan::{PlanMetadata, PlanStatus};
 pub use redaction::{RedactionConfig, redact_json_value, redacted_json_preview};
+pub use registry::{ShellCommandKind, ShellCommandSpec, VacCommandRegistry};
+pub use selection::{ModelKey, ModelSelectionSnapshot};
+pub use session::{
+    SessionAction, SessionEntry, SessionPreview, SessionTileView, SessionToolSummary,
+    SessionToolUseDetail, SessionToolUseSurface,
+};
+pub use shell::{ShellCommandView, ShellStatus};
+pub use status::ShellStatusView;
 pub use tool_ui_status::ToolUseUiStatus;
