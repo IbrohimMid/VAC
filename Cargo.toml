@@ -89,7 +89,8 @@ members = [
     "crates/vac_shell_host_doctor",
 
     # Dev-only test support (never a production dep)
-    "crates/vac_shell_test_support",]
+    "crates/vac_shell_test_support",
+]
 exclude = [
     # Wave 4 — Stakpak donor checkout. Treated as read-only reference;
     # never compiled as part of the VAC workspace. Components are lifted
