@@ -201,7 +201,157 @@ fn custom_adapter_engine_error_surfaces_as_shell_command_failed() {
 }
 
 // ---------------------------------------------------------------------
-// 4. vil_llm router bridge constructs cleanly + plugs into config.
+// 4. vil_llm router bridge — fake providers prove the actual provider
+//    that satisfied the request lands in the engine response and
+//    transcript, even under fallback. No live credentials required.
+// ---------------------------------------------------------------------
+
+struct VilOk {
+    name: &'static str,
+    model: &'static str,
+}
+
+#[async_trait]
+impl vil_llm::LlmProvider for VilOk {
+    fn name(&self) -> &str {
+        self.name
+    }
+    async fn complete(
+        &self,
+        _req: &vil_llm::LlmRequest,
+    ) -> vil_llm::error::LlmResult<vil_llm::LlmResponse> {
+        Ok(vil_llm::LlmResponse {
+            content: format!("d7c-{}-needle", self.name),
+            model: self.model.to_string(),
+            finish_reason: vil_llm::provider::FinishReason::Stop,
+            usage: vil_llm::provider::TokenUsage {
+                prompt_tokens: 1,
+                completion_tokens: 1,
+                total_tokens: 2,
+                ..Default::default()
+            },
+            tool_calls: vec![],
+        })
+    }
+    async fn stream(
+        &self,
+        _req: &vil_llm::LlmRequest,
+    ) -> vil_llm::error::LlmResult<tokio::sync::mpsc::Receiver<vil_llm::provider::StreamChunk>> {
+        unimplemented!()
+    }
+}
+
+struct VilFail {
+    name: &'static str,
+}
+
+#[async_trait]
+impl vil_llm::LlmProvider for VilFail {
+    fn name(&self) -> &str {
+        self.name
+    }
+    async fn complete(
+        &self,
+        _req: &vil_llm::LlmRequest,
+    ) -> vil_llm::error::LlmResult<vil_llm::LlmResponse> {
+        Err(vil_llm::LlmError::Provider {
+            provider: self.name.to_string(),
+            status: None,
+            message: "synthetic fail".into(),
+        })
+    }
+    async fn stream(
+        &self,
+        _req: &vil_llm::LlmRequest,
+    ) -> vil_llm::error::LlmResult<tokio::sync::mpsc::Receiver<vil_llm::provider::StreamChunk>> {
+        unimplemented!()
+    }
+}
+
+#[test]
+fn vil_llm_router_bridge_records_actual_provider_in_transcript() {
+    // Default-only success path: provider == default == "good".
+    let mut router = vil_llm::LlmRouter::new("good", 1_000);
+    router.add_provider_named(
+        "good",
+        Arc::new(VilOk {
+            name: "good",
+            model: "good-model",
+        }),
+    );
+
+    let tmp = tempfile::tempdir().unwrap();
+    let adapter = VacCommandExecutorAdapter::new(
+        mapped(tmp.path().to_path_buf()).with_vil_llm_router(router),
+    );
+    adapter.execute(&cmd("memorize", "/memorize")).unwrap();
+
+    let path = adapter.last_transcript().unwrap();
+    let body = std::fs::read_to_string(&path).unwrap();
+    assert!(body.contains("\"provider\":\"good\""), "transcript: {body}");
+    assert!(body.contains("\"model\":\"good-model\""), "transcript: {body}");
+    assert!(body.contains("d7c-good-needle"), "transcript: {body}");
+}
+
+#[test]
+fn vil_llm_router_bridge_records_actual_fallback_provider_in_transcript() {
+    // Default `bad` always fails; fallback `good` satisfies the
+    // request. The transcript provider must be `good`, not `bad`.
+    let mut router = vil_llm::LlmRouter::new("bad", 1_000);
+    router.set_fallback_chain(vec!["bad".into(), "good".into()]);
+    router.add_provider_named("bad", Arc::new(VilFail { name: "bad" }));
+    router.add_provider_named(
+        "good",
+        Arc::new(VilOk {
+            name: "good",
+            model: "good-model",
+        }),
+    );
+
+    let tmp = tempfile::tempdir().unwrap();
+    let adapter = VacCommandExecutorAdapter::new(
+        mapped(tmp.path().to_path_buf()).with_vil_llm_router(router),
+    );
+    adapter.execute(&cmd("memorize", "/memorize")).unwrap();
+
+    let path = adapter.last_transcript().unwrap();
+    let body = std::fs::read_to_string(&path).unwrap();
+    assert!(
+        body.contains("\"provider\":\"good\""),
+        "fallback provider must land in transcript, not the configured default: {body}"
+    );
+    assert!(
+        !body.contains("\"provider\":\"bad\""),
+        "configured-default `bad` must NOT be recorded as the satisfying provider: {body}"
+    );
+}
+
+#[test]
+fn vil_llm_router_bridge_propagates_failure_when_all_providers_fail() {
+    let mut router = vil_llm::LlmRouter::new("bad", 1_000);
+    router.set_fallback_chain(vec!["bad".into()]);
+    router.add_provider_named("bad", Arc::new(VilFail { name: "bad" }));
+
+    let tmp = tempfile::tempdir().unwrap();
+    let adapter = VacCommandExecutorAdapter::new(
+        mapped(tmp.path().to_path_buf()).with_vil_llm_router(router),
+    );
+    let err = adapter.execute(&cmd("memorize", "/memorize")).unwrap_err();
+    match err {
+        ShellCommandError::Failed(msg) => {
+            assert!(
+                msg.contains("vil_llm router error"),
+                "operator-visible error must mention the bridge: {msg}"
+            );
+        }
+        other => panic!("expected Failed, got {other:?}"),
+    }
+    assert!(adapter.last_transcript().is_none());
+}
+
+// ---------------------------------------------------------------------
+// 4b. Construction-only test (kept from D7C v1) — the bridge plugs in
+//     even when the router has no providers attached.
 // ---------------------------------------------------------------------
 
 #[test]

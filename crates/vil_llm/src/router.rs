@@ -342,7 +342,27 @@ impl LlmRouter {
         chain
     }
 
+    /// Run one LLM round-trip and return only the assembled
+    /// response. Compatibility wrapper around
+    /// [`Self::complete_with_provider`]; existing callers that
+    /// only care about the response shape keep working.
     pub async fn complete(&self, request: &LlmRequest) -> LlmResult<LlmResponse> {
+        self.complete_with_provider(request)
+            .await
+            .map(|(_provider, response)| response)
+    }
+
+    /// Run one LLM round-trip and return both the actual
+    /// provider that succeeded and the response. Useful for
+    /// hosts that record provider identity in transcripts /
+    /// activity logs and need accuracy under fallback (the
+    /// default provider may have failed). The provider string
+    /// is the registered name from the router (e.g.
+    /// `"anthropic"`, `"openai"`).
+    pub async fn complete_with_provider(
+        &self,
+        request: &LlmRequest,
+    ) -> LlmResult<(String, LlmResponse)> {
         {
             let budget = self.budget.read().await;
             if budget.is_exceeded() {
@@ -387,7 +407,7 @@ impl LlmRouter {
                                 tokens = response.usage.total_tokens,
                                 "LLM request completed"
                             );
-                            return Ok(response);
+                            return Ok((provider_name.clone(), response));
                         }
                         Err(e) if is_retryable(&e) => {
                             let mut headers = std::collections::HashMap::new();
@@ -858,5 +878,142 @@ temperature = 0.25
         // max_attempts = 2 allows attempt 1, 2 (which are retried) and attempt 3 (which gives up).
         // Total provider calls = 3.
         assert_eq!(attempts.load(std::sync::atomic::Ordering::SeqCst), 3);
+    }
+
+    // -----------------------------------------------------------------
+    // D7C hardening — `complete_with_provider` reports the provider
+    // that actually satisfied the request, not the configured default.
+    // -----------------------------------------------------------------
+
+    struct AlwaysFailProvider {
+        name: &'static str,
+    }
+
+    #[async_trait::async_trait]
+    impl crate::provider::LlmProvider for AlwaysFailProvider {
+        fn name(&self) -> &str {
+            self.name
+        }
+        async fn complete(
+            &self,
+            _req: &LlmRequest,
+        ) -> LlmResult<crate::provider::LlmResponse> {
+            Err(LlmError::Provider {
+                provider: self.name.to_string(),
+                status: None,
+                message: "synthetic always-fail".into(),
+            })
+        }
+        async fn stream(
+            &self,
+            _req: &LlmRequest,
+        ) -> LlmResult<tokio::sync::mpsc::Receiver<crate::provider::StreamChunk>> {
+            unimplemented!()
+        }
+    }
+
+    struct AlwaysOkProvider {
+        name: &'static str,
+        model: &'static str,
+    }
+
+    #[async_trait::async_trait]
+    impl crate::provider::LlmProvider for AlwaysOkProvider {
+        fn name(&self) -> &str {
+            self.name
+        }
+        async fn complete(
+            &self,
+            _req: &LlmRequest,
+        ) -> LlmResult<crate::provider::LlmResponse> {
+            Ok(crate::provider::LlmResponse {
+                content: format!("from-{}", self.name),
+                model: self.model.to_string(),
+                finish_reason: crate::provider::FinishReason::Stop,
+                usage: crate::provider::TokenUsage {
+                    prompt_tokens: 1,
+                    completion_tokens: 1,
+                    total_tokens: 2,
+                    ..Default::default()
+                },
+                tool_calls: vec![],
+            })
+        }
+        async fn stream(
+            &self,
+            _req: &LlmRequest,
+        ) -> LlmResult<tokio::sync::mpsc::Receiver<crate::provider::StreamChunk>> {
+            unimplemented!()
+        }
+    }
+
+    #[tokio::test]
+    async fn complete_with_provider_reports_default_when_default_succeeds() {
+        let mut r = LlmRouter::new("good", 1_000);
+        r.add_provider_named(
+            "good",
+            Arc::new(AlwaysOkProvider {
+                name: "good",
+                model: "good-model",
+            }),
+        );
+        let req = LlmRequest::new(vec![Message::user("hi")]);
+        let (provider, response) = r.complete_with_provider(&req).await.unwrap();
+        assert_eq!(provider, "good");
+        assert_eq!(response.model, "good-model");
+        assert_eq!(response.content, "from-good");
+    }
+
+    #[tokio::test]
+    async fn complete_with_provider_reports_actual_fallback_provider() {
+        let mut r = LlmRouter::new("bad", 1_000);
+        r.set_fallback_chain(vec!["bad".into(), "good".into()]);
+        r.add_provider_named("bad", Arc::new(AlwaysFailProvider { name: "bad" }));
+        r.add_provider_named(
+            "good",
+            Arc::new(AlwaysOkProvider {
+                name: "good",
+                model: "good-model",
+            }),
+        );
+
+        let req = LlmRequest::new(vec![Message::user("hi")]);
+        let (provider, response) = r.complete_with_provider(&req).await.unwrap();
+        assert_eq!(
+            provider, "good",
+            "fallback provider must be reported, not configured default `bad`"
+        );
+        assert_eq!(response.model, "good-model");
+    }
+
+    #[tokio::test]
+    async fn complete_compatibility_wrapper_returns_response_only() {
+        let mut r = LlmRouter::new("good", 1_000);
+        r.add_provider_named(
+            "good",
+            Arc::new(AlwaysOkProvider {
+                name: "good",
+                model: "good-model",
+            }),
+        );
+        let req = LlmRequest::new(vec![Message::user("hi")]);
+        let response = r.complete(&req).await.unwrap();
+        assert_eq!(response.content, "from-good");
+    }
+
+    #[tokio::test]
+    async fn complete_with_provider_propagates_all_providers_failed() {
+        let mut r = LlmRouter::new("bad", 1_000);
+        r.set_fallback_chain(vec!["bad".into()]);
+        r.add_provider_named("bad", Arc::new(AlwaysFailProvider { name: "bad" }));
+        let req = LlmRequest::new(vec![Message::user("hi")]);
+        let err = r.complete_with_provider(&req).await.unwrap_err();
+        // Original `complete()` returns the last error or
+        // `AllProvidersFailed`; either is acceptable as long
+        // as it is an error and not silently masked.
+        assert!(
+            matches!(err, LlmError::Provider { .. } | LlmError::AllProvidersFailed),
+            "unexpected error variant: {err:?}"
+        );
     }
 }

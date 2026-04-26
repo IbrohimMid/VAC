@@ -424,13 +424,16 @@ impl LlmAdapter for VilLlmRouterAdapter {
 
         let vil_request =
             vil_llm::LlmRequest::new(vec![vil_llm::Message::user(prompt_text.clone())]);
-        let vil_response = self
+        // D7C hardening — record the provider that ACTUALLY
+        // satisfied the request, not the default provider id.
+        // Under fallback, default may have errored and a later
+        // entry in the chain succeeded; transcript / activity
+        // logs must reflect that for honest observability.
+        let (provider, vil_response) = self
             .router
-            .complete(&vil_request)
+            .complete_with_provider(&vil_request)
             .await
             .map_err(|e| EngineError::Other(format!("vil_llm router error: {e}")))?;
-
-        let provider = self.router.default_provider().to_string();
 
         Ok(LlmResponse {
             provider,

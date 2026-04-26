@@ -298,6 +298,20 @@ What changed:
   translated — D7C v1 emits `tool_calls: vec![]` so the
   engine treats every response as text. Tool-use round-tripping
   is a later slice.
+- **Provider identity preserved through fallback (D7C
+  hardening)**: the bridge calls
+  `LlmRouter::complete_with_provider`, a new public method
+  that returns `(provider_name, LlmResponse)` so the
+  *actual* provider that satisfied the request lands in the
+  engine `LlmResponse.provider` field. The previous wrapper
+  used `router.default_provider()`, which silently mislabelled
+  fallback responses with the configured-default name. The
+  legacy `LlmRouter::complete` is retained as a
+  compatibility wrapper (`map(|(_, r)| r)`). Pinned by:
+  * `complete_with_provider_reports_actual_fallback_provider`
+    in `vil_llm` (unit; no external creds)
+  * `vil_llm_router_bridge_records_actual_fallback_provider_in_transcript`
+    in the adapter crate (integration; fake providers)
 
 Boundary check after D7C:
 
