@@ -3,6 +3,19 @@
 > Generated: 2026-04-26 08:09 UTC
 > Base SHA: 3ca3bb577e7159a2a6e6f7944b8f27babff55020
 
+## D10.5 note
+
+Commit `e2b89df2` (D10.5 foundation) was **net-additive (+1181 LOC)**.
+It added scripts, docs, `vac_shell_test_support`, recursive redaction helper,
+`ShellAppProviders`, and `ToolUseUiStatus`. This was a **LOC reduction foundation**,
+not an actual LOC decrease. Actual boilerplate reduction requires adopting the new
+helpers — tracked in D10.5-HARDENING.
+
+**Actual reduction target (next pass):**
+- Adopt `vac_shell_test_support` in ≥3 test files → target −100 LOC in tests
+- Remove duplicate severity mapping in D9/D10 → done in D10.5-HARDENING
+- Remove local `write_jsonl` in projection tests → done in D10.5-HARDENING
+
 ## Summary
 
 | Area | Rust LOC |

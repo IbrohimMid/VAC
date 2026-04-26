@@ -15,9 +15,16 @@ use vac_shell_contracts::{Severity, ShellActivityKind};
 use vac_shell_host_transcript_projection::{
     ToolUseStatus, project_tool_use_activity, session_tool_use_summary, summarize_tool_use,
 };
+use vac_shell_test_support::write_transcript_rows;
 
 fn write_jsonl(path: &std::path::Path, body: &str) {
-    std::fs::write(path, body).unwrap();
+    // Delegate to test_support — write_transcript_rows joins with newlines.
+    let rows: Vec<&str> = body.lines().filter(|l| !l.is_empty()).collect();
+    if rows.is_empty() {
+        std::fs::write(path, b"").unwrap();
+    } else {
+        write_transcript_rows(path, &rows);
+    }
 }
 
 // ---------------------------------------------------------------------

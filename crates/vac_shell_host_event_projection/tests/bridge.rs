@@ -3,9 +3,13 @@
 use futures::stream;
 use vac_session_engine::stream::SubmitChunk;
 use vac_session_engine::usage::UsageSnapshot;
-use vac_shell_contracts::ShellActivityKind;
+use vac_shell_contracts::{Severity, ShellActivityKind};
 use vac_shell_host_activity::ActivityLog;
 use vac_shell_host_event_projection::spawn_activity_feed_bridge;
+use vac_shell_test_support::{
+    assert_activity_log_contains_kind, assert_activity_log_kind_severity,
+    assert_activity_log_not_contains,
+};
 
 fn make_stream(chunks: Vec<SubmitChunk>) -> vac_session_engine::stream::SubmitStream {
     Box::pin(stream::iter(chunks))
@@ -23,10 +27,7 @@ async fn bridge_maps_tool_chunks_to_activity_entries() {
         SubmitChunk::ToolResult {
             id: "t1".into(),
             name: "bash_exec".into(),
-            payload: vac_tool_core::ToolResultEnvelope::ok(
-                "ok output",
-                serde_json::json!({}),
-            ),
+            payload: vac_tool_core::ToolResultEnvelope::ok("ok output", serde_json::json!({})),
         },
         SubmitChunk::Finished {
             usage: UsageSnapshot::default(),
@@ -36,15 +37,8 @@ async fn bridge_maps_tool_chunks_to_activity_entries() {
     let handle = spawn_activity_feed_bridge(make_stream(chunks), log.clone(), "s1".into());
     handle.await.unwrap();
 
-    let snap = log.snapshot();
-    assert!(
-        snap.iter().any(|e| e.kind == ShellActivityKind::ToolCall),
-        "expected ToolCall entry, got: {snap:?}"
-    );
-    assert!(
-        snap.iter().any(|e| e.kind == ShellActivityKind::ToolResult),
-        "expected ToolResult entry, got: {snap:?}"
-    );
+    assert_activity_log_contains_kind(&log, ShellActivityKind::ToolCall);
+    assert_activity_log_contains_kind(&log, ShellActivityKind::ToolResult);
 }
 
 #[tokio::test]
@@ -57,11 +51,8 @@ async fn bridge_records_aborted_as_error_entry() {
     let handle = spawn_activity_feed_bridge(make_stream(chunks), log.clone(), "s2".into());
     handle.await.unwrap();
 
+    assert_activity_log_contains_kind(&log, ShellActivityKind::Error);
     let snap = log.snapshot();
-    assert!(
-        snap.iter().any(|e| e.kind == ShellActivityKind::Error),
-        "expected Error entry, got: {snap:?}"
-    );
     assert!(
         snap.iter().any(|e| e.detail.as_deref() == Some("timeout")),
         "expected reason='timeout' in detail, got: {snap:?}"
@@ -84,7 +75,6 @@ async fn bridge_skips_text_delta_chunks() {
     handle.await.unwrap();
 
     let snap = log.snapshot();
-    // Only Finished is bridged (as AgentThoughtSummary). TextDelta is skipped.
     assert_eq!(snap.len(), 1, "expected exactly 1 entry (Finished), got: {snap:?}");
     assert_eq!(snap[0].kind, ShellActivityKind::AgentThoughtSummary);
 }
@@ -136,15 +126,10 @@ async fn bridge_never_leaks_tool_arguments_to_log() {
     let handle = spawn_activity_feed_bridge(make_stream(chunks), log.clone(), "s5".into());
     handle.await.unwrap();
 
-    let snap = log.snapshot();
-    let serialized = format!("{snap:?}");
-    assert!(
-        !serialized.contains(SECRET),
-        "secret must not appear in activity log, got: {serialized}"
-    );
+    assert_activity_log_not_contains(&log, SECRET);
 }
 
-// D10-HARDENING: Warning and Cancelled ToolResultKind → Severity::Warn (not Error).
+// D10-HARDENING: Warning ToolResultKind → Severity::Warn (not Error).
 #[tokio::test]
 async fn bridge_maps_warning_result_to_warn_severity() {
     let log = ActivityLog::default();
@@ -172,19 +157,10 @@ async fn bridge_maps_warning_result_to_warn_severity() {
     let handle = spawn_activity_feed_bridge(make_stream(chunks), log.clone(), "s6".into());
     handle.await.unwrap();
 
-    let snap = log.snapshot();
-    let result_entry = snap
-        .iter()
-        .find(|e| e.kind == ShellActivityKind::ToolResult)
-        .expect("expected ToolResult entry");
-    assert_eq!(
-        result_entry.severity,
-        vac_shell_contracts::Severity::Warn,
-        "Warning kind must project to Severity::Warn, got: {:?}",
-        result_entry.severity
-    );
+    assert_activity_log_kind_severity(&log, ShellActivityKind::ToolResult, Severity::Warn);
 }
 
+// D10-HARDENING: Cancelled ToolResultKind → Severity::Warn (not Error).
 #[tokio::test]
 async fn bridge_maps_cancelled_result_to_warn_severity() {
     let log = ActivityLog::default();
@@ -212,15 +188,5 @@ async fn bridge_maps_cancelled_result_to_warn_severity() {
     let handle = spawn_activity_feed_bridge(make_stream(chunks), log.clone(), "s7".into());
     handle.await.unwrap();
 
-    let snap = log.snapshot();
-    let result_entry = snap
-        .iter()
-        .find(|e| e.kind == ShellActivityKind::ToolResult)
-        .expect("expected ToolResult entry");
-    assert_eq!(
-        result_entry.severity,
-        vac_shell_contracts::Severity::Warn,
-        "Cancelled kind must project to Severity::Warn, got: {:?}",
-        result_entry.severity
-    );
+    assert_activity_log_kind_severity(&log, ShellActivityKind::ToolResult, Severity::Warn);
 }

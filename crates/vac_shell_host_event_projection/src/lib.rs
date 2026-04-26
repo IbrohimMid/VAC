@@ -22,7 +22,7 @@
 //! widget / bridge / app / entrypoint / runtime-loop runtime graph.
 
 use serde::{Deserialize, Serialize};
-use vac_shell_contracts::{Severity, ShellActivityEntry, ShellActivityKind};
+use vac_shell_contracts::{Severity, ShellActivityEntry, ShellActivityKind, ToolUseUiStatus};
 use vac_shell_host_activity::ActivityLog;
 
 /// Neutral runtime-event DTO. Hosts adapt their concrete engine
@@ -322,13 +322,15 @@ pub fn spawn_activity_feed_bridge(
                 }
 
                 SubmitChunk::ToolResult { id: tool_id, name, payload } => {
-                    // D10-HARDENING: map ToolResultKind faithfully.
-                    // Warning and Cancelled → Severity::Warn (not Error).
-                    let severity = match payload.kind {
-                        ToolResultKind::Ok => Severity::Ok,
-                        ToolResultKind::Warning | ToolResultKind::Cancelled => Severity::Warn,
-                        ToolResultKind::Error => Severity::Error,
-                    };
+                    // D10.5: delegate to ToolUseUiStatus — single source of truth
+                    // for Ok/Warn/Error/Cancelled mapping across D9 + D10.
+                    let severity = (match payload.kind {
+                        ToolResultKind::Ok => ToolUseUiStatus::Ok,
+                        ToolResultKind::Warning => ToolUseUiStatus::Warning,
+                        ToolResultKind::Error => ToolUseUiStatus::Error,
+                        ToolResultKind::Cancelled => ToolUseUiStatus::Cancelled,
+                    })
+                    .severity();
                     let summary = if payload.summary.is_empty() {
                         None
                     } else {

@@ -6598,6 +6598,7 @@ dependencies = [
  "vac_session_engine",
  "vac_shell_contracts",
  "vac_shell_host_activity",
+ "vac_shell_test_support",
  "vac_tool_core",
 ]
 
@@ -6676,6 +6677,7 @@ dependencies = [
  "thiserror 1.0.69",
  "vac_session_engine",
  "vac_shell_contracts",
+ "vac_shell_test_support",
  "vac_tool_core",
 ]
 

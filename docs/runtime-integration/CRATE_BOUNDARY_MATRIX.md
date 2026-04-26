@@ -22,7 +22,7 @@
 
 | Crate | Layer | Allowed deps | Forbidden deps | ADR exception? |
 |---|---|---|---|---|
-| `vac_shell_contracts` | `shell_contract` | std, serde, serde_json | everything else | No |
+| `vac_shell_contracts` | `shell_contract` | std, serde, serde_json | everything else | No — `serde_json` added in D10.5 for recursive redaction helper (`redact_json_value`). Acceptable: no engine dep, no runtime behavior, pure JSON value transformation. All shell crates already transitively consumed serde_json; adding it as direct dep in contracts does not widen the transitive closure. |
 | `vac_shell_palette` | `shell_widget` | ratatui, vac_shell_contracts | engine, tools, host_state | No |
 | `vac_shell_popup` | `shell_widget` | ratatui, vac_shell_contracts | engine, tools, host_state | No |
 | `vac_shell_approval_bar` | `shell_widget` | ratatui, vac_shell_contracts | engine, tools | No |

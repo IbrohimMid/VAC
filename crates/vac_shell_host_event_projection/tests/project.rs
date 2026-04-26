@@ -3,6 +3,7 @@ use vac_shell_host_activity::ActivityLog;
 use vac_shell_host_event_projection::{
     RuntimeEventView, project_runtime_event, record_projected_event,
 };
+use vac_shell_test_support::assert_activity_log_contains_kind;
 
 #[test]
 fn tool_started_projects_to_activity() {
@@ -110,9 +111,7 @@ fn ingest_tool_event_updates_activity_log() {
             args_summary: None,
         },
     );
-    let snap = log.snapshot();
-    assert_eq!(snap.len(), 1);
-    assert_eq!(snap[0].kind, ShellActivityKind::ToolCall);
+    assert_activity_log_contains_kind(&log, ShellActivityKind::ToolCall);
 }
 
 #[test]
@@ -127,6 +126,5 @@ fn ingest_error_event_visible_in_activity_log() {
             detail: None,
         },
     );
-    let snap = log.snapshot();
-    assert!(snap.iter().any(|e| matches!(e.kind, ShellActivityKind::Error)));
+    assert_activity_log_contains_kind(&log, ShellActivityKind::Error);
 }

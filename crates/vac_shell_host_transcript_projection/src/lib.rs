@@ -44,7 +44,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use vac_session_engine::{ToolUseReplayError, ToolUseTranscriptView, read_tool_use_rows};
-use vac_shell_contracts::{Severity, ShellActivityEntry, ShellActivityKind};
+use vac_shell_contracts::{Severity, ShellActivityEntry, ShellActivityKind, ToolUseUiStatus};
 use vac_tool_core::ToolResultKind;
 
 #[derive(Debug, thiserror::Error)]
@@ -79,20 +79,17 @@ impl ToolUseStatus {
     }
 
     /// Severity used when emitting an [`ShellActivityEntry`].
+    /// Delegates to `ToolUseUiStatus` — single source of truth for
+    /// Ok/Warn/Error/Cancelled/Pending mapping across D9 + D10.
     pub fn severity(self) -> Severity {
-        match self {
-            Self::Ok => Severity::Ok,
-            Self::Warning => Severity::Warn,
-            Self::Error => Severity::Error,
-            // Cancelled is operator-visible but not a hard
-            // failure; promote to Warn so it stands out without
-            // implying a tool error.
-            Self::Cancelled => Severity::Warn,
-            // No result yet: Warn so the UI flags it but the
-            // operator does not see a red error before the
-            // result lands.
-            Self::Pending => Severity::Warn,
-        }
+        let ui = match self {
+            Self::Ok => ToolUseUiStatus::Ok,
+            Self::Warning => ToolUseUiStatus::Warning,
+            Self::Error => ToolUseUiStatus::Error,
+            Self::Cancelled => ToolUseUiStatus::Cancelled,
+            Self::Pending => ToolUseUiStatus::Pending,
+        };
+        ui.severity()
     }
 
     pub fn as_str(self) -> &'static str {

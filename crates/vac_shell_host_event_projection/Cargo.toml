@@ -19,3 +19,4 @@ tokio = { version = "1.43", features = ["rt", "rt-multi-thread", "macros"] }
 [dev-dependencies]
 tokio = { version = "1.43", features = ["rt", "rt-multi-thread", "macros"] }
 vac_shell_contracts = { path = "../vac_shell_contracts" }
+vac_shell_test_support = { path = "../vac_shell_test_support" }

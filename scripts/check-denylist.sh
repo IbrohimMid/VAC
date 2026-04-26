@@ -18,6 +18,18 @@ for term in "${TERMS[@]}"; do
            crates/vac_shell_runtime_loop \
            crates/vac_shell_keymap \
            crates/vac_shell_entrypoint \
+           crates/vac_shell_palette \
+           crates/vac_shell_popup \
+           crates/vac_shell_approval_bar \
+           crates/vac_shell_approval_detail \
+           crates/vac_shell_shortcuts \
+           crates/vac_shell_model_switcher \
+           crates/vac_shell_session_browser \
+           crates/vac_shell_diff_view \
+           crates/vac_shell_plan_view \
+           crates/vac_shell_activity \
+           crates/vac_shell_status_bar \
+           crates/vac_shell_plan \
            crates/vac_shell_host_approval \
            crates/vac_shell_host_sessions \
            crates/vac_shell_host_activity \
