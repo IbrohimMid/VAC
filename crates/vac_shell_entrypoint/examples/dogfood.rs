@@ -29,11 +29,27 @@ fn main() -> ExitCode {
     // itself stays free of `vac_session_engine`; only this
     // example pulls it in through the new
     // `vac_shell_host_vac_command_adapter` crate.
-    let adapter = vac_shell_host_vac_command_adapter::VacCommandExecutorAdapter::new(
-        vac_shell_host_vac_command_adapter::AdapterConfig::dogfood(root.clone()),
+    let adapter = Arc::new(
+        vac_shell_host_vac_command_adapter::VacCommandExecutorAdapter::new(
+            vac_shell_host_vac_command_adapter::AdapterConfig::dogfood(root.clone()),
+        ),
     );
-    let ctx = vac_shell_runtime_loop::ShellRuntimeContext::new(app)
-        .with_executor(Arc::new(adapter));
+
+    // D12B — wire the doctor command executor.
+    let doctor = Arc::new(vac_shell_host_doctor_command::DoctorCommandExecutor {
+        paths: Arc::new(vac_shell_host_paths::VacPathsImpl::new(root.clone())),
+        activity_log: app
+            .activity_log
+            .clone()
+            .expect("ActivityLog must be attached"),
+        config: vac_shell_host_doctor::DoctorConfig::default(),
+    });
+
+    let composite = Arc::new(vac_shell_host_doctor_command::CompositeExecutor {
+        executors: vec![adapter, doctor],
+    });
+
+    let ctx = vac_shell_runtime_loop::ShellRuntimeContext::new(app).with_executor(composite);
     match vac_shell_runtime_loop::run_shell_loop(
         ctx,
         vac_shell_runtime_loop::ShellLoopOptions::default(),

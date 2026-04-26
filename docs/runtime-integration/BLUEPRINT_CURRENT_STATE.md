@@ -78,8 +78,10 @@ Approval Detail
 
 Doctor / Readiness Command
   → vac_shell_host_doctor: pure read-only engine
+  → vac_shell_host_doctor_command: palette slash (/doctor) wiring
   → inputs: VacPaths + DoctorConfig
-  → outputs: DoctorReport DTO
+  → outputs: DoctorReport DTO -> ActivityLog rows
   → checks: .vac paths, model config snapshot, credentials, dispatcher mode, boundary gates
   → never exposes secret values or mutates filesystem
+  → accessible via palette / in-cockpit diagnostics
 ```

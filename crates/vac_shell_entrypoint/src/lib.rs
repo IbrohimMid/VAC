@@ -71,7 +71,9 @@ pub fn build_shell_app(project_root: impl AsRef<Path>) -> ShellApp {
                 // cockpit with a no-credentials active model.
                 let raw_active = src.active_model();
                 let sanitized = vac_shell_host_vac_config::sanitize_active_model(
-                    &providers, &models, raw_active.clone(),
+                    &providers,
+                    &models,
+                    raw_active.clone(),
                 );
                 if raw_active.is_some() && sanitized.is_none() {
                     let id = format!("config-warn-{}", now_unix());
@@ -136,10 +138,7 @@ fn fixture_inputs() -> (
         reasoning: true,
         cost_label: None,
     }];
-    let fallback_active = Some((
-        ProviderId("anthropic".into()),
-        "claude-sonnet-4.5".into(),
-    ));
+    let fallback_active = Some((ProviderId("anthropic".into()), "claude-sonnet-4.5".into()));
     (providers, models, fallback_active)
 }
 
@@ -201,11 +200,26 @@ fn default_commands() -> Vec<vac_shell_contracts::ShellCommandSpec> {
         category: Some("Dogfood".into()),
         ..Default::default()
     };
+    let diagnostics = |slash: &str, title: &str, description: &str| ShellCommandSpec {
+        id: slash.trim_start_matches('/').to_string(),
+        slash: slash.into(),
+        title: title.into(),
+        description: description.into(),
+        kind: ShellCommandKind::PromptTemplate,
+        palette_visible: true,
+        category: Some("Diagnostics".into()),
+        ..Default::default()
+    };
     vec![
         built_in("/chat", "Chat"),
         built_in("/runtime", "Runtime"),
         built_in("/model", "Model switcher"),
         built_in("/sessions", "Sessions"),
+        diagnostics(
+            "/doctor",
+            "Doctor",
+            "Run readiness checks for local environment",
+        ),
         dogfood(
             "/memorize",
             "Memorize",
