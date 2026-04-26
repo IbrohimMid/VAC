@@ -54,7 +54,6 @@ fn build_shell_app_registers_d7b_dogfood_custom_commands() {
 
 #[test]
 fn build_shell_app_registers_doctor_command_and_matches_spec() {
-    use vac_shell_contracts::ShellCommandKind;
     use vac_shell_host_doctor_command::doctor_command_spec;
 
     let tmp = tempfile::tempdir().unwrap();
@@ -67,6 +66,30 @@ fn build_shell_app_registers_doctor_command_and_matches_spec() {
         .expect("/doctor must be registered in the default registry");
 
     let spec = doctor_command_spec();
+
+    assert_eq!(registered.id, spec.id);
+    assert_eq!(registered.slash, spec.slash);
+    assert_eq!(registered.title, spec.title);
+    assert_eq!(registered.description, spec.description);
+    assert_eq!(registered.category, spec.category);
+    assert_eq!(registered.palette_visible, spec.palette_visible);
+    assert_eq!(registered.kind, spec.kind);
+}
+
+#[test]
+fn build_shell_app_registers_status_command_and_matches_spec() {
+    use vac_shell_host_status_command::status_command_spec;
+
+    let tmp = tempfile::tempdir().unwrap();
+    let app = build_shell_app(tmp.path());
+    let comp = app.composition().expect("composition attached");
+
+    let registered = comp
+        .command_registry
+        .by_slash("/status")
+        .expect("/status must be registered in the default registry");
+
+    let spec = status_command_spec();
 
     assert_eq!(registered.id, spec.id);
     assert_eq!(registered.slash, spec.slash);

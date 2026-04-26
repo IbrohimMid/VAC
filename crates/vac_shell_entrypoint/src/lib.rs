@@ -215,6 +215,7 @@ fn default_commands() -> Vec<vac_shell_contracts::ShellCommandSpec> {
         built_in("/runtime", "Runtime"),
         built_in("/model", "Model switcher"),
         built_in("/sessions", "Sessions"),
+        vac_shell_host_status_command::status_command_spec(),
         diagnostics(
             "/doctor",
             "Doctor",

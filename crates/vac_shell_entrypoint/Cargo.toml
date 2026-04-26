@@ -15,6 +15,7 @@ vac_shell_host_activity = { path = "../vac_shell_host_activity" }
 vac_shell_host_sessions = { path = "../vac_shell_host_sessions" }
 vac_shell_bridge = { path = "../vac_shell_bridge" }
 vac_shell_host_vac_config = { path = "../vac_shell_host_vac_config" }
+vac_shell_host_status_command = { path = "../vac_shell_host_status_command" }
 
 [dev-dependencies]
 tempfile = "3"
@@ -27,6 +28,7 @@ vac_shell_host_vac_command_adapter = { path = "../vac_shell_host_vac_command_ada
 vac_shell_host_vac_tool_dispatcher = { path = "../vac_shell_host_vac_tool_dispatcher" }
 vac_shell_host_doctor = { path = "../vac_shell_host_doctor" }
 vac_shell_host_doctor_command = { path = "../vac_shell_host_doctor_command" }
+vac_shell_host_status_command = { path = "../vac_shell_host_status_command" }
 vac_session_engine = { path = "../vac_session_engine" }
 vac_tools = { path = "../vac_tools" }
 vac_tool_core = { path = "../vac_tool_core" }

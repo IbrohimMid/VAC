@@ -14,6 +14,49 @@
 
 use std::process::ExitCode;
 use std::sync::Arc;
+use vac_shell_host_status_command::{StatusReport, StatusReportProvider};
+
+struct DogfoodStatusProvider {
+    sessions: Option<Arc<vac_shell_host_sessions::SessionsState>>,
+    composition: Option<Arc<vac_shell_composition::ShellComposition>>,
+    paths: Arc<dyn vac_shell_contracts::VacPaths>,
+}
+
+impl StatusReportProvider for DogfoodStatusProvider {
+    fn report(&self) -> StatusReport {
+        let sessions_count = self
+            .sessions
+            .as_ref()
+            .map(|s| s.list(self.paths.as_ref()).len())
+            .unwrap_or(0);
+        let approvals_count = self
+            .composition
+            .as_ref()
+            .map(|c| c.approval_queue.snapshot().len())
+            .unwrap_or(0);
+        let active_model_label = self
+            .composition
+            .as_ref()
+            .and_then(|c| c.model_state.active_model())
+            .map(|(_p, id)| id);
+
+        // Simple doctor check for example
+        let doctor_status = if self.paths.project_state_dir().exists() {
+            vac_shell_host_doctor::DoctorCheckStatus::Ok
+        } else {
+            vac_shell_host_doctor::DoctorCheckStatus::Warning
+        };
+
+        StatusReport {
+            cockpit_status: doctor_status.clone(),
+            active_model_label,
+            sessions_count,
+            approvals_count,
+            doctor_status,
+            next_action: "Ready for commands. Try /chat or /doctor.".into(),
+        }
+    }
+}
 
 fn main() -> ExitCode {
     let root = match std::env::current_dir() {
@@ -45,8 +88,19 @@ fn main() -> ExitCode {
         config: vac_shell_host_doctor::DoctorConfig::default(),
     });
 
+    // D13 — wire the status command executor.
+    let status_provider = Arc::new(DogfoodStatusProvider {
+        sessions: app.sessions.clone(),
+        composition: app.composition.clone(),
+        paths: Arc::new(vac_shell_host_paths::VacPathsImpl::new(root.clone())),
+    });
+    let status = Arc::new(vac_shell_host_status_command::StatusCommandExecutor {
+        activity_log: app.activity_log.clone().unwrap(),
+        report_provider: status_provider,
+    });
+
     let composite = Arc::new(vac_shell_host_doctor_command::CompositeExecutor {
-        executors: vec![adapter, doctor],
+        executors: vec![adapter, doctor, status],
     });
 
     let ctx = vac_shell_runtime_loop::ShellRuntimeContext::new(app).with_executor(composite);
