@@ -19,6 +19,7 @@
 | **D7D** | Same crate, tool-use round-tripping. `VilLlmRouterAdapter` translates each `vil_llm::ToolCall` into `vac_session_engine::ToolCallRequest` (`reason: None`, `estimated_tokens: 0`). Tool dispatch stays inert when the host has not attached a `ToolDispatcher` — the engine's `UnsupportedDispatcher` writes an error envelope without aborting the submit. | PASS after hardening — `submit_one` event-channel tests prove the engine emits `ToolRequested` → `ToolResult(error: "no ToolDispatcher attached…")` → `Finished` in order, including under provider fallback and for multi-tool batches |
 | **D7E** | `vac_session_engine::submit.rs` now appends `TranscriptKind::ToolCall` before dispatch and `TranscriptKind::ToolResult` after the envelope is built, so tool-use is observable from the transcript file alone — no event subscription required. Operator audit trail is honest end-to-end: unsupported-dispatcher path, gate-deny path, and dispatcher-success path all leave durable rows. | PASS after review (SHA `84fc3688cb51e7eb23afbbb7337d3af2a2bbc930`) |
 | **D8** | `vac_shell_host_vac_tool_dispatcher` (third ADR-sanctioned host-side exception) ships `VacToolDispatcher` over `vac_tools::ToolRegistry`. Adapter gains `with_tool_dispatcher(dispatcher, gate)` + `try_with_tool_dispatcher(...)` (pre-flight rejects dispatcher without `CompositeGate`). Default stays `UnsupportedDispatcher`; opt-in dogfood example `dogfood_tool_dispatch` wires a real registry. D8E `read_tool_use_rows` reads paired `tool_call`/`tool_result` views from the transcript. | PASS after hardening — dispatcher now goes through `ToolRegistry::execute` (inheriting result-spill semantics); panic-catch claims removed from docs; new `dogfood_tool_dispatch_smoke` example + integration test demonstrably produce a `tool_result.kind=ok` envelope from a real `GlobTool` call |
+| **D9** | `vac_shell_host_transcript_projection` (fourth ADR-sanctioned host-side exception) projects D7E/D8 `tool_call`/`tool_result` rows into operator-safe `ShellActivityEntry` and a `ToolUseActivitySummary` for the session browser tile. Read-only — never mutates the transcript. Severity map: `Ok→Info/Ok`, `Warning→Warn`, `Error→Error`, `Cancelled→Warn`, missing result→`Pending`/Warn. Operator redaction: only tool name / status / envelope summary / duration / transcript path land in activity rows; raw `payload` and `arguments` stay in the JSONL file on disk. | PASS pending review |
 | **RC gate** | This doc + `DOGFOOD_CHECKLIST.md` + map update | PASS (post-hardening) |
 
 ## Crate inventory after the batch
@@ -33,6 +34,7 @@ crates/vac_shell_host_commands        D5 + D5.1
 crates/vac_shell_host_vac_engine_probe D7A (host-side, vac_core exception)
 crates/vac_shell_host_vac_command_adapter D7B + D7C (host-side, vac_session_engine + vil_llm exceptions)
 crates/vac_shell_host_vac_tool_dispatcher D8 (host-side, vac_session_engine + vac_tools exception)
+crates/vac_shell_host_transcript_projection D9 (host-side, vac_session_engine read-only exception)
 ```
 
 Plus the cockpit layer landed before the D-track:
@@ -78,7 +80,7 @@ crates/vac_shell_host_diff            simple line-diff projector
 * No `vac_core`, `vac_session_engine`, `vac_tui_runtime`,
   `stakai`, donor crates, `SecretManager`, `AutoApproveManager`,
   or `.stakpak` path composition appears anywhere in the new
-  shell stack — **with three named exceptions**:
+  shell stack — **with four named exceptions**:
   * `vac_shell_host_vac_engine_probe` (D7A) is allowed to
     depend on `vac_core` because it is a host-side *producer
     crate* that writes the read-only
@@ -95,6 +97,13 @@ crates/vac_shell_host_diff            simple line-diff projector
     existing tool registry. Hosts opt in via the adapter's
     `with_tool_dispatcher(dispatcher, gate)`; default stays
     inert.
+  * `vac_shell_host_transcript_projection` (D9) is allowed to
+    depend on `vac_session_engine` (`read_tool_use_rows` +
+    `ToolUseTranscriptView`) because it is a read-only
+    host-side projection from the transcript JSONL into
+    `ShellActivityEntry` rows + a `ToolUseActivitySummary`. It
+    never mutates the transcript and never renders raw
+    `payload` / `arguments` into the projected text.
 
   Neither crate is reachable from any UI / widget / bridge /
   app / entrypoint / runtime-loop runtime graph; see the ADR

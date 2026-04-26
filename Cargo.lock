@@ -6659,6 +6659,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "vac_shell_host_transcript_projection"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 1.0.69",
+ "vac_session_engine",
+ "vac_shell_contracts",
+ "vac_tool_core",
+]
+
+[[package]]
 name = "vac_shell_host_vac_command_adapter"
 version = "0.1.0"
 dependencies = [

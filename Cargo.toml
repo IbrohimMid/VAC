@@ -60,6 +60,7 @@ members = [
     "crates/vac_shell_host_vac_engine_probe",
     "crates/vac_shell_host_vac_command_adapter",
     "crates/vac_shell_host_vac_tool_dispatcher",
+    "crates/vac_shell_host_transcript_projection",
 ]
 exclude = [
     # Wave 4 — Stakpak donor checkout. Treated as read-only reference;

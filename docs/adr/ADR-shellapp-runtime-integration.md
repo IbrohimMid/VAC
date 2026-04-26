@@ -330,6 +330,52 @@ What changed:
   * `dispatcher_ok_writes_ok_tool_result_row`
   * `d7e_tool_call_and_tool_result_rows_visible_via_execute_path`
     in the adapter crate (full execute path, no event sink)
+- **D9 — operator-visible tool-use projection (implemented,
+  read-only)**: new crate
+  `vac_shell_host_transcript_projection` (fourth
+  ADR-sanctioned host-side exception, depends on
+  `vac_session_engine` + `vac_shell_contracts` +
+  `vac_tool_core`). Public surface:
+  * `pub fn project_tool_use_activity(path) -> Result<Vec<ToolUseActivityProjection>>`
+  * `pub fn summarize_tool_use(path) -> Result<ToolUseActivitySummary>`
+  * `pub fn session_tool_use_summary(path) -> Result<ToolUseActivitySummary>`
+    (alias for the session-browser tile)
+  * `ToolUseStatus` enum (`Ok`, `Warning`, `Error`,
+    `Cancelled`, `Pending`) with `severity()` mapping into
+    `vac_shell_contracts::Severity`.
+
+  Severity map:
+  * `ToolResultKind::Ok` → `Severity::Ok` (status `Ok`)
+  * `ToolResultKind::Warning` → `Severity::Warn`
+  * `ToolResultKind::Error` → `Severity::Error`
+  * `ToolResultKind::Cancelled` → `Severity::Warn` (status
+    `Cancelled` — operator-visible but not a hard failure)
+  * missing result row → `ToolUseStatus::Pending` →
+    `Severity::Warn` (operator can see the call still
+    in-flight without an angry red error).
+
+  Operator redaction: every projected
+  `ShellActivityEntry::detail` carries only `summary`,
+  `duration_ms`, and the absolute transcript path. Raw
+  `envelope.payload` and the original tool `arguments` never
+  enter the projection text — they stay on disk in
+  `<root>/.vac/sessions/<uuid>.jsonl`. Pinned by
+  `projection_redacts_payload_and_arguments` and
+  `activity_entry_detail_only_shows_summary_duration_and_transcript_path`.
+
+  Read-only: every helper takes `impl AsRef<Path>` and reads
+  the file. No row is appended, rewritten, or deleted. Missing
+  file / pre-D7E transcript / partial transcript all yield an
+  empty projection without erroring (test:
+  `missing_transcript_returns_empty_projection_and_zeroed_summary`,
+  `old_transcript_without_tool_rows_returns_empty_projection`,
+  `missing_result_projects_to_pending_status`).
+
+  No new transcript variant. D9 consumes the existing D7E
+  `tool_call` / `tool_result` rows. Boundary: not reachable
+  from any UI / widget / bridge / app / runtime-loop /
+  entrypoint normal-dep graph; verified by `cargo tree`.
+
 - **D8 — host-attached `ToolDispatcher` (implemented)**: D7B–D7E
   left dispatch inert by default. D8 ships the bridge crate
   `vac_shell_host_vac_tool_dispatcher` (third ADR-sanctioned

@@ -84,6 +84,20 @@ migration note in this file plus a transcript-replay test.
 
 ## D8 note
 
+## D9 note
+
+D9 ships read-only transcript projection in
+`vac_shell_host_transcript_projection`
+(`project_tool_use_activity`, `summarize_tool_use`,
+`session_tool_use_summary`). It consumes the existing D7E/D8
+`tool_call` / `tool_result` rows — **no new TranscriptKind
+variant is introduced**. The projection deliberately renders
+only `tool name`, `status`, envelope `summary`, `duration_ms`,
+and the transcript path; raw `envelope.payload` and original
+`arguments` stay in the on-disk JSONL.
+
+## D8 note
+
 D8 wires real tool dispatch via
 `vac_shell_host_vac_tool_dispatcher::VacToolDispatcher`. It does
 **not** add a new `TranscriptKind` variant — the dispatcher's
