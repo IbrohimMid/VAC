@@ -10,24 +10,21 @@ ShellApp dogfood cockpit integration — consolidation.
 
 ## Completed baseline
 
-All D-slices D1–D10 are **PASS after hardening**.
+D1–D10.5, D12 core, and D12B are sealed; D11 remains unsealed unless separately reviewed.
 
 | Last sealed SHA | Description |
 |---|---|
-| `b6e3b572` | D10 PASS after hardening (boundary leak, arg redaction, severity, approval preview) |
+| `fcd55c60` | D12B closeout (docs: final seal) |
 | `53120faf` | D12B PASS after final seal nits (read-only diagnostic engine + /doctor slash) |
+| `5765416d` | D10.5 final consolidation accepted (net -414 LOC) |
+| `b6e3b572` | D10 PASS after hardening (boundary leak, arg redaction, severity, approval preview) |
 | `3ca3bb57` | Docs update: D10 ADR fifth exception + boundary tripwires |
 
-## What is allowed next (D10.5)
+## Current Backlog / Next Steps
 
-- Boundary automation scripts
-- LOC audit and docs consolidation
-- Test-support crate (dev-only)
-- Recursive redaction helper (contracts layer)
-- ShellAppProviders cleanup
-- Severity/status helper centralization
-- Docs archive/pruning
-- Cargo workspace grouping
+- **D11 Implementation Review**: implementation logic for Session Browser Tool-Use details needs final PASS review.
+- **Unified init/status/logs UX**: product maturity alignment.
+- **Resumability/checkpoint UX**: operator recovery flows.
 
 ## What is NOT allowed (explicit freeze)
 
