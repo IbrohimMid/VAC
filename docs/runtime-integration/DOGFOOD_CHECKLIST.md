@@ -26,7 +26,7 @@ entrypoint falls back to the fixture model
 
 | # | Step | Pass criteria |
 |---|---|---|
-| 0 | Pre-flight | Run `cargo run -p vac_shell_entrypoint --example dogfood_doctor` (or equivalent) to get a readiness report. Alternatively, type `/doctor` in the palette once the cockpit is launched. Confirm `.vac` paths are writable and model config is healthy. |
+| 0 | Pre-flight | Run `cargo run -p vac_shell_entrypoint --example dogfood_doctor` (or equivalent) to get a readiness report. Alternatively, type `/doctor` in the palette once the cockpit is launched. Confirm `.vac` path metadata is reported and missing directories/config are surfaced. |
 | 1 | Cockpit launches | Title row + status bar visible; no panic |
 | 2 | `Ctrl+P` | Palette overlay appears with `/chat`, `/runtime`, `/model`, `/sessions` |
 | 3 | Type `/runtime` `Enter` | Status bar surface chip flips to `RUNTIME` |

@@ -44,6 +44,12 @@ crates/vac_shell_host_event_projection     D10 (fifth ADR exception: SubmitStrea
 crates/vac_shell_host_approval             D10 (heuristic risk classification; contracts-only, no engine dep)
 crates/vac_shell_session_browser           D10/D11 (SessionTileView badge rendering; contracts-only)
 crates/vac_shell_host_doctor               D12 (read-only diagnostic engine; no app/widget/engine dep)
+crates/vac_shell_host_doctor_command       D12B (palette slash bridge; records to ActivityLog)
+
+## Activity Log semantcis for D12B
+`DoctorReport` rows currently reuse `ShellActivityKind::ToolResult` as a temporary mapping
+until a dedicated `Diagnostic` kind is added to contracts. This ensures doctor rows
+render with status symbols and durations in the live activity feed.
 ```
 
 Plus the cockpit layer landed before the D-track:

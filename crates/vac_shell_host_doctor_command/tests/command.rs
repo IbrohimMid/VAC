@@ -1,10 +1,13 @@
 use std::sync::Arc;
 use tempfile::tempdir;
-use vac_shell_contracts::{Severity, ShellCommandKind};
+use vac_shell_app::ShellApp;
+use vac_shell_contracts::{Severity, ShellCommandKind, ShellCommandSpec, VacPaths};
 use vac_shell_host_activity::ActivityLog;
-use vac_shell_host_commands::ShellCommandExecutor;
-use vac_shell_host_doctor::{DoctorConfig, ToolDispatcherMode};
-use vac_shell_host_doctor_command::{doctor_command_spec, DoctorCommandExecutor};
+use vac_shell_host_commands::{route_palette_command, ShellCommandExecutor};
+use vac_shell_host_doctor::{DoctorCheckStatus, DoctorConfig, DoctorReport, ToolDispatcherMode};
+use vac_shell_host_doctor_command::{
+    doctor_command_spec, record_doctor_report, CompositeExecutor, DoctorCommandExecutor,
+};
 use vac_shell_test_support::FakeVacPaths;
 
 #[test]
@@ -44,7 +47,6 @@ fn executor_writes_activity_log_on_success() {
     let paths = Arc::new(FakeVacPaths(tmp.path().join(".vac")));
     let activity_log = Arc::new(ActivityLog::new(100));
 
-    // We'll intentionally trigger a warning to test mapping
     let config = DoctorConfig {
         tool_dispatcher_mode: ToolDispatcherMode::Inert,
         check_boundary_gates: true,
@@ -62,21 +64,134 @@ fn executor_writes_activity_log_on_success() {
     let snapshot = activity_log.snapshot();
     assert!(!snapshot.is_empty(), "Should have written to activity log");
 
-    let mut found_warning = false;
-    let mut found_ok = false;
+    assert!(snapshot.iter().any(|e| e.id.starts_with("doctor-")));
+}
 
-    for entry in snapshot {
-        assert!(entry.id.starts_with("doctor-"));
-        if entry.severity == Severity::Warn {
-            found_warning = true;
-        }
-        if entry.severity == Severity::Ok {
-            found_ok = true;
+#[test]
+fn severity_mapping_is_correct() {
+    let activity_log = ActivityLog::new(100);
+    let report = DoctorReport {
+        overall_status: DoctorCheckStatus::Warning,
+        checks: vec![
+            vac_shell_host_doctor::DoctorCheck {
+                id: "check-ok".into(),
+                label: "Check Ok".into(),
+                status: DoctorCheckStatus::Ok,
+                summary: "ok".into(),
+                detail: None,
+            },
+            vac_shell_host_doctor::DoctorCheck {
+                id: "check-warn".into(),
+                label: "Check Warn".into(),
+                status: DoctorCheckStatus::Warning,
+                summary: "warn".into(),
+                detail: None,
+            },
+            vac_shell_host_doctor::DoctorCheck {
+                id: "check-err".into(),
+                label: "Check Err".into(),
+                status: DoctorCheckStatus::Error,
+                summary: "err".into(),
+                detail: None,
+            },
+            vac_shell_host_doctor::DoctorCheck {
+                id: "check-skipped".into(),
+                label: "Check Skipped".into(),
+                status: DoctorCheckStatus::Skipped,
+                summary: "skipped".into(),
+                detail: None,
+            },
+        ],
+    };
+
+    record_doctor_report(&activity_log, &report, 12345);
+    let snap = activity_log.snapshot();
+    assert_eq!(snap.len(), 4);
+
+    let ok = snap.iter().find(|e| e.id.contains("check-ok")).unwrap();
+    assert_eq!(ok.severity, Severity::Ok);
+
+    let warn = snap.iter().find(|e| e.id.contains("check-warn")).unwrap();
+    assert_eq!(warn.severity, Severity::Warn);
+
+    let err = snap.iter().find(|e| e.id.contains("check-err")).unwrap();
+    assert_eq!(err.severity, Severity::Error);
+
+    let skipped = snap
+        .iter()
+        .find(|e| e.id.contains("check-skipped"))
+        .unwrap();
+    assert_eq!(skipped.severity, Severity::Warn);
+}
+
+#[test]
+fn route_palette_integration_works() {
+    use vac_shell_composition::ShellCompositionBuilder;
+
+    let tmp = tempdir().unwrap();
+    let paths = Arc::new(FakeVacPaths(tmp.path().to_path_buf()));
+    let activity_log = Arc::new(ActivityLog::new(100));
+
+    let comp = Arc::new(
+        ShellCompositionBuilder::new(paths.clone())
+            .with_commands(vec![doctor_command_spec()])
+            .boot()
+            .unwrap(),
+    );
+
+    let mut app = ShellApp {
+        composition: Some(comp),
+        activity_log: Some(activity_log.clone()),
+        ..Default::default()
+    };
+
+    let executor: Arc<dyn ShellCommandExecutor> = Arc::new(DoctorCommandExecutor {
+        paths,
+        activity_log: activity_log.clone(),
+        config: DoctorConfig::default(),
+    });
+
+    route_palette_command(&mut app, Some(&executor), "/doctor").expect("route should succeed");
+
+    let snap = activity_log.snapshot();
+    assert!(!snap.is_empty());
+    assert!(snap.iter().any(|e| e.title.contains("doctor:")));
+}
+
+#[test]
+fn composite_executor_fallback_works() {
+    struct UnsupportedExecutor;
+    impl ShellCommandExecutor for UnsupportedExecutor {
+        fn execute(
+            &self,
+            _cmd: &ShellCommandSpec,
+        ) -> Result<(), vac_shell_host_commands::ShellCommandError> {
+            Err(vac_shell_host_commands::ShellCommandError::Unsupported(
+                "any".into(),
+            ))
         }
     }
 
-    assert!(found_warning);
-    assert!(found_ok);
+    let tmp = tempdir().unwrap();
+    let paths = Arc::new(FakeVacPaths(tmp.path().to_path_buf()));
+    let activity_log = Arc::new(ActivityLog::new(100));
+
+    let doctor_executor = Arc::new(DoctorCommandExecutor {
+        paths,
+        activity_log: activity_log.clone(),
+        config: DoctorConfig::default(),
+    });
+
+    let composite = CompositeExecutor {
+        executors: vec![Arc::new(UnsupportedExecutor), doctor_executor],
+    };
+
+    let spec = doctor_command_spec();
+    composite
+        .execute(&spec)
+        .expect("composite should delegate to doctor");
+
+    assert!(!activity_log.is_empty());
 }
 
 #[test]
@@ -92,7 +207,10 @@ fn secret_env_var_absent_from_activity_log() {
       "models": [
         {
           "provider": "anthropic",
-          "id": "claude-sonnet-4.5"
+          "id": "claude-sonnet-4.5",
+          "label": "Claude Sonnet 4.5",
+          "reasoning": false,
+          "cost_label": "N/A"
         }
       ],
       "active": {"provider": "anthropic", "id": "claude-sonnet-4.5"}

@@ -14,10 +14,7 @@ fn entrypoint_boots_shell_app_from_temp_project_root() {
     let comp = app.composition().expect("composition must attach");
     assert_eq!(
         comp.model_state.active_model(),
-        Some((
-            ProviderId("anthropic".into()),
-            "claude-sonnet-4.5".into()
-        ))
+        Some((ProviderId("anthropic".into()), "claude-sonnet-4.5".into()))
     );
     // Default commands should be seeded so the palette has
     // something to project on first open.
@@ -53,6 +50,29 @@ fn build_shell_app_registers_d7b_dogfood_custom_commands() {
         .expect("/ultraplan must be registered for the D7B dogfood adapter to reach it");
     assert_eq!(ultraplan.id, "ultraplan");
     assert_eq!(ultraplan.kind, ShellCommandKind::PromptTemplate);
+}
+
+#[test]
+fn build_shell_app_registers_doctor_command_and_matches_spec() {
+    use vac_shell_contracts::ShellCommandKind;
+    use vac_shell_host_doctor_command::doctor_command_spec;
+
+    let tmp = tempfile::tempdir().unwrap();
+    let app = build_shell_app(tmp.path());
+    let comp = app.composition().expect("composition attached");
+
+    let registered = comp
+        .command_registry
+        .by_slash("/doctor")
+        .expect("/doctor must be registered in the default registry");
+
+    let spec = doctor_command_spec();
+
+    assert_eq!(registered.id, spec.id);
+    assert_eq!(registered.title, spec.title);
+    assert_eq!(registered.category, spec.category);
+    assert_eq!(registered.palette_visible, spec.palette_visible);
+    assert_eq!(registered.kind, spec.kind);
 }
 
 #[test]
@@ -107,8 +127,10 @@ fn run_shell_app_returns_success_on_clean_boot() {
     // `ExitCode` lacks `Eq`; check via debug rep for SUCCESS.
     let code: ExitCode = run_shell_app(tmp.path());
     let dbg = format!("{code:?}");
-    assert!(dbg.contains("SUCCESS") || dbg == "ExitCode(unix_exit_status(0))",
-        "unexpected ExitCode: {dbg}");
+    assert!(
+        dbg.contains("SUCCESS") || dbg == "ExitCode(unix_exit_status(0))",
+        "unexpected ExitCode: {dbg}"
+    );
 }
 
 /// Drift tripwire — only host crates allowed by the ADR may be
@@ -260,7 +282,10 @@ fn entrypoint_model_switcher_contains_snapshot_model_not_fixture() {
         .iter()
         .map(|m| m.label.as_str())
         .collect();
-    assert!(labels.contains(&"GPT-4o"), "snapshot model missing: {labels:?}");
+    assert!(
+        labels.contains(&"GPT-4o"),
+        "snapshot model missing: {labels:?}"
+    );
     assert!(
         !labels.contains(&"Claude Sonnet 4.5"),
         "fixture model must not appear when snapshot is used: {labels:?}"
@@ -291,9 +316,7 @@ fn fallback_records_activity_warning_on_corrupt_snapshot() {
     let log = app.activity_log.as_ref().unwrap();
     let snap = log.snapshot();
     assert_eq!(snap.len(), 1);
-    assert!(snap[0]
-        .title
-        .contains("model config snapshot unreadable"));
+    assert!(snap[0].title.contains("model config snapshot unreadable"));
     // Boot did NOT fail.
     let comp = app.composition().unwrap();
     assert!(comp.model_state.active_model().is_some());
