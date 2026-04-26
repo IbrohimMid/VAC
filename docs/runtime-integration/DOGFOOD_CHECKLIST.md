@@ -84,12 +84,16 @@ Tag the report by slice:
   `ToolResult` whose envelope is `kind=error` with summary
   `"dispatch error for '<tool>'"` and message
   `"no ToolDispatcher attached — cannot run tool '<tool>'"`.
-  These envelopes are visible only when a host attaches an
-  event sink (`Some(tx)` to `submit_one`) — `ShellCommandExecutor::execute`
-  currently passes `None`, so the dogfood operator path
-  observes only that the submit completes (no panic). Real
-  tool dispatch goes live only when the host explicitly wires
-  a `ToolDispatcher` + `CompositeGate` on `CompactConfig`.
+  After **D7E** these envelopes are also persisted to the
+  transcript file: every tool call emits a
+  `TranscriptKind::ToolCall` row before dispatch and a
+  `TranscriptKind::ToolResult` row after the envelope is
+  built. The dogfood operator path (`ShellCommandExecutor::execute`,
+  `submit_one(..., None)`) can now read tool-use outcomes
+  straight from `<cwd>/.vac/sessions/<uuid>.jsonl` without
+  subscribing to an event sink. Real tool dispatch goes live
+  only when the host explicitly wires a `ToolDispatcher` +
+  `CompositeGate` on `CompactConfig`.
 * The legacy `vac_shell_host_commands::VacCommandExecutorAdapter`
   D5.1 stub is retained for tests and hosts that want the
   explicit "no engine wired" failure mode; the dogfood

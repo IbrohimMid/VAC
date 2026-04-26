@@ -491,6 +491,46 @@ impl LlmAdapter for ToolEmittingAdapter {
 }
 
 #[test]
+fn d7e_tool_call_and_tool_result_rows_visible_via_execute_path() {
+    // After D7E, the engine persists tool_call + tool_result
+    // rows directly to the transcript. That means the dogfood
+    // operator path (`ShellCommandExecutor::execute`, which
+    // passes None for events) can finally observe tool-use
+    // outcomes without subscribing to a SubmitEvent channel.
+    let tmp = tempfile::tempdir().unwrap();
+    let adapter = VacCommandExecutorAdapter::new(
+        mapped(tmp.path().to_path_buf()).with_llm(Arc::new(ToolEmittingAdapter)),
+    );
+    adapter.execute(&cmd("memorize", "/memorize")).unwrap();
+    let path = adapter.last_transcript().unwrap();
+    let body = std::fs::read_to_string(&path).unwrap();
+    let mut saw_tool_call = false;
+    let mut saw_tool_result = false;
+    let mut saw_finished = false;
+    for line in body.lines() {
+        let v: serde_json::Value = serde_json::from_str(line).unwrap();
+        match v["kind"].as_str().unwrap_or("") {
+            "tool_call" => {
+                assert_eq!(v["content"]["id"], "call-1");
+                assert_eq!(v["content"]["name"], "search");
+                saw_tool_call = true;
+            }
+            "tool_result" => {
+                assert_eq!(v["content"]["id"], "call-1");
+                assert_eq!(v["content"]["envelope"]["kind"], "error");
+                saw_tool_result = true;
+            }
+            "finished" => saw_finished = true,
+            _ => {}
+        }
+    }
+    assert!(
+        saw_tool_call && saw_tool_result && saw_finished,
+        "transcript must contain tool_call + tool_result + finished rows"
+    );
+}
+
+#[test]
 fn engine_remains_safe_when_tool_calls_arrive_without_a_dispatcher() {
     // The host has not attached a `ToolDispatcher` (CompactConfig
     // default), so each tool call should fall through to
@@ -690,9 +730,10 @@ async fn submit_one_preserves_tool_calls_under_provider_fallback() {
     let tmp = tempfile::tempdir().unwrap();
     let events = run_submit_with_bridge(tmp.path().to_path_buf(), router).await;
 
-    // LlmRequested or transcript provider should be `good`. The
-    // event uses the request-time provider id, so we check the
-    // transcript file for the satisfying provider directly.
+    // The transcript LlmResponse row records the satisfying
+    // provider via the D7C invariant (`complete_with_provider`
+    // returns the actual provider that succeeded under
+    // fallback). Read it directly to assert that.
     let session_files: Vec<_> = std::fs::read_dir(tmp.path().join(".vac").join("sessions"))
         .unwrap()
         .flatten()

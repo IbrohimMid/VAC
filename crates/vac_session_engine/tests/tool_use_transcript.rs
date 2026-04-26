@@ -1,0 +1,287 @@
+//! D7E — durable tool-use rows in the transcript.
+//!
+//! The engine now persists `TranscriptKind::ToolCall` before
+//! gate/dispatch and `TranscriptKind::ToolResult` after the
+//! envelope is computed. These tests pin every observable side
+//! of that contract:
+//!
+//! * unsupported-dispatcher path writes both rows + an error
+//!   envelope, then `Finished`.
+//! * multiple tool calls keep transcript order.
+//! * a `Deny`ing gate writes an error row whose summary mentions
+//!   "blocked by gate" and never invokes the dispatcher.
+//! * a real (test-double) dispatcher returning `Ok` writes an
+//!   `ok` envelope row.
+
+use async_trait::async_trait;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use uuid::Uuid;
+use vac_session_engine::{
+    CompactConfig, CompositeGate, EngineError, EngineResult, GateDecision, LlmAdapter, LlmRequest,
+    LlmResponse, SlashProcessor, SubmitContext, ToolCallRequest, ToolCheckCtx, ToolDispatcher,
+    TranscriptWriter, TrivialCompactBoundary, UsageTracker, submit_one,
+};
+
+// ---------------------------------------------------------------------
+// LlmAdapter that returns a fixed list of tool calls.
+// ---------------------------------------------------------------------
+
+struct ToolEmittingAdapter {
+    tool_calls: Vec<ToolCallRequest>,
+}
+
+#[async_trait]
+impl LlmAdapter for ToolEmittingAdapter {
+    async fn complete(&self, _req: LlmRequest) -> EngineResult<LlmResponse> {
+        Ok(LlmResponse {
+            provider: "test-provider".into(),
+            model: "test-model".into(),
+            content: "I want tools".into(),
+            input_tokens: 1,
+            output_tokens: 1,
+            tool_calls: self.tool_calls.clone(),
+        })
+    }
+}
+
+fn call(id: &str, name: &str, args: serde_json::Value) -> ToolCallRequest {
+    ToolCallRequest {
+        id: id.into(),
+        name: name.into(),
+        arguments: args,
+        reason: None,
+        estimated_tokens: 0,
+    }
+}
+
+async fn drive_with(
+    project_root: &std::path::Path,
+    adapter: ToolEmittingAdapter,
+    cfg: CompactConfig,
+) -> Vec<serde_json::Value> {
+    let writer = TranscriptWriter::new(project_root.to_path_buf());
+    let slash = SlashProcessor::new();
+    let compact = TrivialCompactBoundary::default();
+    let usage = UsageTracker::new();
+    let session_id = Uuid::new_v4();
+    let ctx = SubmitContext::new(session_id, "drive D7E");
+    submit_one(ctx, &writer, &slash, &compact, &usage, &adapter, cfg, None)
+        .await
+        .expect("submit_one must succeed");
+    let path = project_root.join(".vac").join("sessions").join(format!("{session_id}.jsonl"));
+    let body = std::fs::read_to_string(&path).expect("transcript file");
+    body.lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| serde_json::from_str(l).expect("valid jsonl"))
+        .collect()
+}
+
+fn kinds_in_order(rows: &[serde_json::Value]) -> Vec<String> {
+    rows.iter()
+        .map(|r| r["kind"].as_str().unwrap_or("").to_string())
+        .collect()
+}
+
+// ---------------------------------------------------------------------
+// 1. Unsupported dispatcher path persists tool_call + tool_result.
+// ---------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn unsupported_dispatcher_writes_tool_call_and_tool_result_rows() {
+    let tmp = tempfile::tempdir().unwrap();
+    let adapter = ToolEmittingAdapter {
+        tool_calls: vec![call(
+            "t1",
+            "search",
+            serde_json::json!({"q": "needle"}),
+        )],
+    };
+    let rows = drive_with(tmp.path(), adapter, CompactConfig::default()).await;
+    let kinds = kinds_in_order(&rows);
+
+    let tool_call_idx = kinds
+        .iter()
+        .position(|k| k == "tool_call")
+        .expect("tool_call row missing");
+    let tool_result_idx = kinds
+        .iter()
+        .position(|k| k == "tool_result")
+        .expect("tool_result row missing");
+    let finished_idx = kinds
+        .iter()
+        .position(|k| k == "finished")
+        .expect("finished row missing");
+
+    assert!(
+        tool_call_idx < tool_result_idx,
+        "tool_call must precede tool_result: {kinds:?}"
+    );
+    assert!(
+        tool_result_idx < finished_idx,
+        "tool_result must precede finished: {kinds:?}"
+    );
+
+    // Payload assertions.
+    let tool_call = &rows[tool_call_idx]["content"];
+    assert_eq!(tool_call["id"], "t1");
+    assert_eq!(tool_call["name"], "search");
+    assert_eq!(tool_call["arguments"], serde_json::json!({"q": "needle"}));
+    assert_eq!(tool_call["reason"], serde_json::Value::Null);
+    assert_eq!(tool_call["estimated_tokens"], 0);
+
+    let tool_result = &rows[tool_result_idx]["content"];
+    assert_eq!(tool_result["id"], "t1");
+    assert_eq!(tool_result["name"], "search");
+    let envelope = &tool_result["envelope"];
+    assert_eq!(envelope["kind"], "error");
+    let dump = serde_json::to_string(envelope).unwrap();
+    assert!(
+        dump.contains("no ToolDispatcher")
+            || dump.contains("cannot run tool")
+            || dump.contains("dispatch error"),
+        "envelope must mention the no-dispatcher / dispatch-error path: {dump}"
+    );
+}
+
+// ---------------------------------------------------------------------
+// 2. Multiple tool calls preserve transcript order.
+// ---------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn multiple_tool_calls_preserve_transcript_order() {
+    let tmp = tempfile::tempdir().unwrap();
+    let adapter = ToolEmittingAdapter {
+        tool_calls: vec![
+            call("a", "alpha", serde_json::json!({"i": 1})),
+            call("b", "beta", serde_json::json!({"i": 2})),
+            call("c", "gamma", serde_json::json!({"i": 3})),
+        ],
+    };
+    let rows = drive_with(tmp.path(), adapter, CompactConfig::default()).await;
+
+    let mut tool_call_ids = Vec::new();
+    let mut tool_result_ids = Vec::new();
+    for r in &rows {
+        match r["kind"].as_str() {
+            Some("tool_call") => tool_call_ids.push(r["content"]["id"].as_str().unwrap().to_string()),
+            Some("tool_result") => {
+                tool_result_ids.push(r["content"]["id"].as_str().unwrap().to_string())
+            }
+            _ => {}
+        }
+    }
+    assert_eq!(tool_call_ids, vec!["a", "b", "c"]);
+    assert_eq!(tool_result_ids, vec!["a", "b", "c"]);
+}
+
+// ---------------------------------------------------------------------
+// 3. Gate Deny writes an error tool_result and never invokes the dispatcher.
+// ---------------------------------------------------------------------
+
+#[derive(Debug)]
+struct AlwaysDenyGate;
+
+#[async_trait]
+impl vac_session_engine::ToolGate for AlwaysDenyGate {
+    fn label(&self) -> &'static str {
+        "deny"
+    }
+    async fn check(&self, _ctx: &ToolCheckCtx) -> GateDecision {
+        GateDecision::Deny {
+            reason: "policy refused".into(),
+        }
+    }
+}
+
+#[derive(Debug)]
+struct CountingDispatcher {
+    calls: Arc<AtomicUsize>,
+}
+
+#[async_trait]
+impl ToolDispatcher for CountingDispatcher {
+    async fn dispatch(
+        &self,
+        _call: &ToolCallRequest,
+    ) -> EngineResult<vac_tool_core::ToolResultEnvelope> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        Ok(vac_tool_core::ToolResultEnvelope::ok(
+            "ok",
+            serde_json::json!({"hit": true}),
+        ))
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn gate_deny_writes_error_tool_result_and_skips_dispatcher() {
+    let tmp = tempfile::tempdir().unwrap();
+    let adapter = ToolEmittingAdapter {
+        tool_calls: vec![call("d1", "search", serde_json::json!({}))],
+    };
+    let dispatch_calls = Arc::new(AtomicUsize::new(0));
+    let cfg = CompactConfig {
+        gate: Some(Arc::new(
+            CompositeGate::new().with_gate(Arc::new(AlwaysDenyGate)),
+        )),
+        dispatcher: Some(Arc::new(CountingDispatcher {
+            calls: dispatch_calls.clone(),
+        })),
+        ..CompactConfig::default()
+    };
+    let rows = drive_with(tmp.path(), adapter, cfg).await;
+    assert_eq!(
+        dispatch_calls.load(Ordering::SeqCst),
+        0,
+        "gate Deny must short-circuit dispatch"
+    );
+
+    let tr = rows
+        .iter()
+        .find(|r| r["kind"] == "tool_result")
+        .expect("tool_result row");
+    let envelope = &tr["content"]["envelope"];
+    assert_eq!(envelope["kind"], "error");
+    let dump = serde_json::to_string(envelope).unwrap();
+    assert!(
+        dump.contains("blocked by gate"),
+        "envelope must mention blocked-by-gate: {dump}"
+    );
+    assert!(
+        dump.contains("policy refused"),
+        "gate reason must propagate into envelope: {dump}"
+    );
+}
+
+// ---------------------------------------------------------------------
+// 4. Real dispatcher Ok writes an ok-kind tool_result.
+// ---------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn dispatcher_ok_writes_ok_tool_result_row() {
+    let tmp = tempfile::tempdir().unwrap();
+    let adapter = ToolEmittingAdapter {
+        tool_calls: vec![call("ok-1", "echo", serde_json::json!({"x": 42}))],
+    };
+    let dispatch_calls = Arc::new(AtomicUsize::new(0));
+    let cfg = CompactConfig {
+        dispatcher: Some(Arc::new(CountingDispatcher {
+            calls: dispatch_calls.clone(),
+        })),
+        ..CompactConfig::default()
+    };
+    let rows = drive_with(tmp.path(), adapter, cfg).await;
+    assert_eq!(
+        dispatch_calls.load(Ordering::SeqCst),
+        1,
+        "dispatcher must be called exactly once"
+    );
+
+    let tr = rows
+        .iter()
+        .find(|r| r["kind"] == "tool_result")
+        .expect("tool_result row");
+    let envelope = &tr["content"]["envelope"];
+    assert_eq!(envelope["kind"], "ok");
+    assert_eq!(envelope["payload"], serde_json::json!({"hit": true}));
+}

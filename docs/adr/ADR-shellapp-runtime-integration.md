@@ -312,6 +312,24 @@ What changed:
     in `vil_llm` (unit; no external creds)
   * `vil_llm_router_bridge_records_actual_fallback_provider_in_transcript`
     in the adapter crate (integration; fake providers)
+- **Transcript durability for tool-use (D7E)**: the engine
+  (`vac_session_engine::submit.rs`) now appends a
+  `TranscriptKind::ToolCall` row before gate / dispatch and a
+  `TranscriptKind::ToolResult` row carrying the full
+  `ToolResultEnvelope` after the envelope is built. Both
+  rows persist regardless of dispatcher / gate outcome, so
+  the unsupported-dispatcher path, gate-deny path, and
+  dispatcher-success path all leave a durable, replayable
+  trail. The dogfood operator path (`ShellCommandExecutor::execute`,
+  no event sink) reads tool-use outcomes directly from the
+  transcript file. Pinned by:
+  * `unsupported_dispatcher_writes_tool_call_and_tool_result_rows`
+    in `vac_session_engine`
+  * `multiple_tool_calls_preserve_transcript_order`
+  * `gate_deny_writes_error_tool_result_and_skips_dispatcher`
+  * `dispatcher_ok_writes_ok_tool_result_row`
+  * `d7e_tool_call_and_tool_result_rows_visible_via_execute_path`
+    in the adapter crate (full execute path, no event sink)
 - **Tool-use round-tripping (D7D)**: every
   `vil_llm::ToolCall { id, name, arguments }` is translated
   into `vac_session_engine::ToolCallRequest` with

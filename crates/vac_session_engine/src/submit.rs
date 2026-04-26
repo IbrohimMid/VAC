@@ -378,6 +378,21 @@ async fn submit_after_accepted(
     // consistent. Today's EchoAdapter emits zero tool calls, so
     // this loop is a no-op for the legacy path.
     for call in &resp.tool_calls {
+        // D7E — durable tool-call row. Persisted before
+        // gate / dispatch so a crash mid-dispatch leaves an
+        // honest record in the transcript.
+        let tool_call_row = TranscriptEntry::new(
+            submit.session_id,
+            TranscriptKind::ToolCall,
+            serde_json::json!({
+                "id": call.id,
+                "name": call.name,
+                "arguments": call.arguments,
+                "reason": call.reason,
+                "estimated_tokens": call.estimated_tokens,
+            }),
+        );
+        transcript.append(handle, &tool_call_row).await?;
         emit(
             events,
             SubmitEvent::ToolRequested {
@@ -422,6 +437,19 @@ async fn submit_after_accepted(
                 )
             }
         };
+        // D7E — durable tool-result row. Mirrors the
+        // SubmitEvent payload exactly so transcript replay
+        // and live event observation see the same envelope.
+        let tool_result_row = TranscriptEntry::new(
+            submit.session_id,
+            TranscriptKind::ToolResult,
+            serde_json::json!({
+                "id": call.id,
+                "name": call.name,
+                "envelope": envelope,
+            }),
+        );
+        transcript.append(handle, &tool_result_row).await?;
         emit(
             events,
             SubmitEvent::ToolResult {
