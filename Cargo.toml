@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    # VIL semantic plane
     "crates/vil_ir",
     "crates/vil_knowledge",
     "crates/vil_rag",
@@ -11,12 +12,22 @@ members = [
     "crates/vil_swarm",
     "crates/vil_llm",
     "crates/vil_metrics",
+    "crates/vil_vwfd",
+    "crates/vil_expr",
+
+    # VAC core / runtime / engine
     "crates/vac_core",
     "crates/vac_tools",
     "crates/vac_trace",
     "crates/vac_cli",
-    "crates/vac_runtime", "crates/vac_approvals", "crates/vac_changeset", "crates/vac_shell", "crates/vac_session_control", "crates/vac_tui_runtime",
-    "crates/vil_vwfd", "crates/vil_expr", "crates/vac_ingest", "crates/vac_trajectory",
+    "crates/vac_runtime",
+    "crates/vac_approvals",
+    "crates/vac_changeset",
+    "crates/vac_shell",
+    "crates/vac_session_control",
+    "crates/vac_tui_runtime",
+    "crates/vac_ingest",
+    "crates/vac_trajectory",
     "crates/vac_signal",
     "crates/vac_tool_core",
     "crates/vac_session_engine",
@@ -25,42 +36,57 @@ members = [
     "crates/vac_mcp_core",
     "crates/vac_bridge",
     "crates/vac_skill",
+
+    # Shell contracts (DTO layer — no engine dep)
     "crates/vac_shell_contracts",
+
+    # Shell widget crates (ratatui + contracts only)
     "crates/vac_shell_palette",
     "crates/vac_shell_bridge",
-    "crates/vac_shell_host_surface",
     "crates/vac_shell_popup",
     "crates/vac_shell_approval_bar",
-    "crates/vac_shell_host_approval",
+    "crates/vac_shell_approval_detail",
     "crates/vac_shell_shortcuts",
-    "crates/vac_shell_host_paths",
     "crates/vac_shell_model_switcher",
-    "crates/vac_shell_host_model",
-    "crates/vac_shell_composition",
+    "crates/vac_shell_session_browser",
     "crates/vac_shell_overlay",
     "crates/vac_shell_plan",
-    "crates/vac_shell_host_plan",
     "crates/vac_shell_plan_view",
-    "crates/vac_shell_session_browser",
-    "crates/vac_shell_host_sessions",
-    "crates/vac_shell_activity",
-    "crates/vac_shell_host_activity",
     "crates/vac_shell_diff_view",
-    "crates/vac_shell_host_diff",
-    "crates/vac_shell_approval_detail",
+    "crates/vac_shell_activity",
     "crates/vac_shell_status_bar",
+
+    # Shell host state (no engine dep)
+    "crates/vac_shell_host_surface",
+    "crates/vac_shell_host_approval",
+    "crates/vac_shell_host_paths",
+    "crates/vac_shell_host_model",
+    "crates/vac_shell_host_sessions",
+    "crates/vac_shell_host_activity",
+    "crates/vac_shell_host_diff",
+    "crates/vac_shell_host_plan",
     "crates/vac_shell_host_status",
-    "crates/vac_shell_app",
-    "crates/vac_shell_entrypoint",
-    "crates/vac_shell_keymap",
-    "crates/vac_shell_runtime_loop",
-    "crates/vac_shell_host_vac_config",
-    "crates/vac_shell_host_event_projection",
     "crates/vac_shell_host_commands",
+    "crates/vac_shell_host_vac_config",
+    "crates/vac_shell_composition",
+
+    # Shell app orchestrator
+    "crates/vac_shell_app",
+
+    # Shell host exceptions (ADR-sanctioned engine access — D7A/B/C/D8/D9/D10)
     "crates/vac_shell_host_vac_engine_probe",
     "crates/vac_shell_host_vac_command_adapter",
     "crates/vac_shell_host_vac_tool_dispatcher",
     "crates/vac_shell_host_transcript_projection",
+    "crates/vac_shell_host_event_projection",
+
+    # Runtime loop + entrypoint
+    "crates/vac_shell_keymap",
+    "crates/vac_shell_runtime_loop",
+    "crates/vac_shell_entrypoint",
+
+    # Dev-only test support (never a production dep)
+    "crates/vac_shell_test_support",
 ]
 exclude = [
     # Wave 4 — Stakpak donor checkout. Treated as read-only reference;

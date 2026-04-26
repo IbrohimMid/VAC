@@ -34,6 +34,8 @@ pub mod diff;
 pub mod shell;
 pub mod status;
 pub mod plan;
+pub mod redaction;
+pub mod tool_ui_status;
 
 pub use activity::{Severity, ShellActivityEntry, ShellActivityKind};
 pub use diff::{DiffFileView, DiffHunkView, DiffLineKind, DiffLineView, DiffReviewEvent};
@@ -48,3 +50,5 @@ pub use registry::{ShellCommandKind, ShellCommandSpec, VacCommandRegistry};
 pub use overlay::{OverlayIntent, ShellOverlay};
 pub use selection::{ModelKey, ModelSelectionSnapshot};
 pub use session::{SessionAction, SessionEntry, SessionPreview, SessionTileView, SessionToolSummary};
+pub use redaction::{RedactionConfig, redact_json_value, redacted_json_preview};
+pub use tool_ui_status::ToolUseUiStatus;

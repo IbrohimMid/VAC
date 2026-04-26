@@ -125,6 +125,16 @@ crates/vac_shell_host_diff            simple line-diff projector
   app / entrypoint / runtime-loop runtime graph; see the ADR
   appendices.
 
+## Active navigation
+
+- **Current active state** → [BLUEPRINT_CURRENT_STATE.md](BLUEPRINT_CURRENT_STATE.md)
+- **Crate boundary matrix** → [CRATE_BOUNDARY_MATRIX.md](CRATE_BOUNDARY_MATRIX.md)
+- **Consolidation backlog** → [CONSOLIDATION_BACKLOG.md](CONSOLIDATION_BACKLOG.md)
+- **Review checklist** → [DTRACK_REVIEW_CHECKLIST.md](DTRACK_REVIEW_CHECKLIST.md)
+- **Workspace map** → [WORKSPACE_MAP.md](WORKSPACE_MAP.md)
+- **LOC audit** → [LOC_AUDIT.md](LOC_AUDIT.md)
+- **Historical ledger** → [archive/DTRACK_HISTORY.md](archive/DTRACK_HISTORY.md)
+
 ## What is still deferred
 
 * `vac_cli`-grade dispatch reuse — the D7B adapter goes

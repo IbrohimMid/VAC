@@ -6506,6 +6506,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "serde",
+ "serde_json",
  "thiserror 1.0.69",
  "tokio",
  "uuid",
@@ -6865,6 +6866,16 @@ version = "0.1.0"
 dependencies = [
  "ratatui",
  "vac_shell_contracts",
+]
+
+[[package]]
+name = "vac_shell_test_support"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "tempfile",
+ "vac_shell_contracts",
+ "vac_shell_host_activity",
 ]
 
 [[package]]

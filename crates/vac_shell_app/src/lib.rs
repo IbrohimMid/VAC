@@ -54,6 +54,18 @@ use vac_shell_status_bar::render_status_bar;
 
 const RECENTS_LIMIT: usize = 5;
 
+/// D10.5 — groups injected provider/callback fields so ShellApp doesn't
+/// become an unbounded DI container. Hosts set these at construction time
+/// via the builder methods or direct field assignment.
+#[derive(Default)]
+pub struct ShellAppProviders {
+    /// Risk classification + command preview for the approval detail drawer.
+    pub approval_detail: Option<Arc<dyn vac_shell_host_approval::ApprovalDetailProvider>>,
+    /// D9 summary callback — injected by host entrypoint to avoid engine dep in ShellApp.
+    pub session_tool_summary:
+        Option<Arc<dyn Fn(&std::path::Path) -> Option<vac_shell_contracts::SessionToolSummary> + Send + Sync>>,
+}
+
 /// All view state owned by the app. Each widget's state is
 /// caller-owned per the boundary discipline; this is the caller.
 #[derive(Default)]
@@ -82,19 +94,8 @@ pub struct ShellApp {
     /// went wrong instead of staring at a silent UI. Optional so
     /// pure-render tests don't have to instantiate one.
     pub activity_log: Option<Arc<vac_shell_host_activity::ActivityLog>>,
-    /// D10 — populates the approval detail drawer with real risk
-    /// classification and command preview. Defaults to
-    /// `DefaultApprovalDetailProvider` (heuristic, no vac_core dep).
-    /// Hosts may replace with a policy-aware implementation.
-    pub approval_detail_provider:
-        Option<Arc<dyn vac_shell_host_approval::ApprovalDetailProvider>>,
-    /// D10-HARDENING — callback injected by the host to derive a
-    /// `SessionToolSummary` for each session file path. `ShellApp`
-    /// never holds a direct dep on `vac_shell_host_transcript_projection`
-    /// or any engine crate; the host wires the D9 projection here.
-    /// `None` means no summary is shown (pre-D7E sessions or test contexts).
-    pub session_tool_summary_provider:
-        Option<Arc<dyn Fn(&std::path::Path) -> Option<vac_shell_contracts::SessionToolSummary> + Send + Sync>>,
+    /// D10.5 — grouped provider/callback fields.
+    pub providers: ShellAppProviders,
 }
 
 /// Outbound app events the host loop consumes after a key press.
@@ -119,13 +120,28 @@ pub enum AppEvent {
 
 impl ShellApp {
     pub fn new(composition: Arc<ShellComposition>) -> Self {
-        Self {
-            composition: Some(composition),
-            approval_detail_provider: Some(Arc::new(
-                vac_shell_host_approval::DefaultApprovalDetailProvider,
-            )),
-            ..Default::default()
-        }
+        let mut app = Self::default();
+        app.composition = Some(composition);
+        app.providers.approval_detail = Some(Arc::new(
+            vac_shell_host_approval::DefaultApprovalDetailProvider,
+        ));
+        app
+    }
+
+    pub fn with_approval_detail_provider(
+        mut self,
+        p: Arc<dyn vac_shell_host_approval::ApprovalDetailProvider>,
+    ) -> Self {
+        self.providers.approval_detail = Some(p);
+        self
+    }
+
+    pub fn with_session_tool_summary_provider(
+        mut self,
+        f: Arc<dyn Fn(&std::path::Path) -> Option<vac_shell_contracts::SessionToolSummary> + Send + Sync>,
+    ) -> Self {
+        self.providers.session_tool_summary = Some(f);
+        self
     }
 
     pub fn composition(&self) -> Option<&ShellComposition> {
@@ -196,7 +212,7 @@ impl ShellApp {
                 // `session_tool_summary_provider`; ShellApp has no direct dep
                 // on vac_shell_host_transcript_projection.
                 if let (Some(comp), Some(sessions)) = (&self.composition, &self.sessions) {
-                    let provider = self.session_tool_summary_provider.clone();
+                    let provider = self.providers.session_tool_summary.clone();
                     self.session_browser.tiles = sessions.list_with_summaries(
                         comp.paths.as_ref(),
                         |path| provider.as_ref().and_then(|f| f(path)),
@@ -226,7 +242,7 @@ impl ShellApp {
                 self.refresh_approval_bar();
                 if let Some(action) = self.approval_bar.selected() {
                     let detail = if let (Some(comp), Some(provider)) =
-                        (&self.composition, &self.approval_detail_provider)
+                        (&self.composition, &self.providers.approval_detail)
                     {
                         let queue_snap = comp.approval_queue.snapshot();
                         queue_snap
@@ -506,7 +522,7 @@ impl ShellApp {
                     }
                     "/sessions" => {
                         if let Some(sessions) = &self.sessions {
-                            let provider = self.session_tool_summary_provider.clone();
+                            let provider = self.providers.session_tool_summary.clone();
                             self.session_browser.tiles = sessions.list_with_summaries(
                                 comp.paths.as_ref(),
                                 |path| provider.as_ref().and_then(|f| f(path)),

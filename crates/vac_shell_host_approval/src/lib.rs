@@ -186,7 +186,7 @@ impl ApprovalController for ApprovalQueueController {
 // D10 — ApprovalDetailProvider + DefaultApprovalDetailProvider
 // =====================================================================
 
-use vac_shell_contracts::{ApprovalDetailView, RiskLevel};
+use vac_shell_contracts::{ApprovalDetailView, RiskLevel, RedactionConfig, redacted_json_preview};
 
 /// Trait the app delegates to when opening the detail drawer.
 /// Implementors classify risk, derive a command preview, and fill
@@ -215,42 +215,11 @@ impl ApprovalDetailProvider for DefaultApprovalDetailProvider {
             command_preview: req
                 .arguments
                 .as_ref()
-                .map(redact_and_preview)
-                .filter(|s| !s.is_empty()),
+                .and_then(|a| redacted_json_preview(a, &RedactionConfig::DEFAULT)),
             file_preview: None,
             policy_source: None,
         }
     }
-}
-
-const SENSITIVE_KEYS: &[&str] = &[
-    "token", "secret", "password", "key", "auth", "credential",
-];
-
-const PREVIEW_CAP: usize = 500;
-
-/// Redact values for known-sensitive keys, then cap to PREVIEW_CAP chars.
-fn redact_and_preview(args: &serde_json::Value) -> String {
-    let sanitized = match args {
-        serde_json::Value::Object(map) => {
-            let mut out = serde_json::Map::new();
-            for (k, v) in map {
-                let lower = k.to_lowercase();
-                if SENSITIVE_KEYS.iter().any(|s| lower.contains(s)) {
-                    out.insert(k.clone(), serde_json::Value::String("[REDACTED]".into()));
-                } else {
-                    out.insert(k.clone(), v.clone());
-                }
-            }
-            serde_json::to_string_pretty(&serde_json::Value::Object(out))
-                .unwrap_or_default()
-        }
-        other => serde_json::to_string_pretty(other).unwrap_or_default(),
-    };
-    if sanitized.is_empty() || sanitized == "null" {
-        return String::new();
-    }
-    sanitized.chars().take(PREVIEW_CAP).collect()
 }
 
 fn classify_risk(name: &str) -> RiskLevel {
