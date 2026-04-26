@@ -3,21 +3,72 @@
 ## Goal
 Wire the `vac_shell_host_doctor` diagnostic engine into the operator surface so users can easily view the readiness report within the shell cockpit or via the CLI, bridging the remaining gap in the product lifecycle.
 
-## Preferred Route
-- Start by implementing the `/doctor` palette slash through the host command pipeline (`vac_shell_host_commands` or the command adapter).
-- When `/doctor` is invoked, run `vac_shell_host_doctor::run_doctor_checks` and format the `DoctorReport` into safe, operator-visible summary rows.
-- Output these summary rows into the `ActivityLog` so they appear directly in the live feed.
-- Defer modifying the root `vac_cli` binary unless the implementation is trivial and has a low blast radius.
+## Crate Plan
+To keep the D12 core pristine and isolate command wiring, a new crate will be created:
+- **New Crate:** `crates/vac_shell_host_doctor_command`
+- **Depends on:**
+  - `vac_shell_host_doctor`
+  - `vac_shell_host_commands`
+  - `vac_shell_host_activity`
+  - `vac_shell_contracts`
+- **MUST NOT depend on:**
+  - `vac_shell_app`
+  - `vac_session_engine`
+  - `vac_tools`
+  - `vil_llm`
+  - Any widget crates
 
-## Constraints & Boundary Rules
-- **Dependency Isolation:** `ShellApp` must have NO direct dependency on `vac_shell_host_doctor`. The doctor invocation must happen either via a callback or behind the existing host command pipeline (`ShellCommandExecutor`).
-- **Widget Purity:** Widget crates must maintain their strict dependency on `ratatui` and `vac_shell_contracts` only.
-- **No New Exceptions:** No new ADR exception is permitted unless wiring the command strictly requires pulling in forbidden dependencies (which it shouldn't, as the doctor engine is already safe).
-- **Absolute Redaction:** Secret values (e.g., API keys) MUST NOT appear in the `ActivityLog`, `DoctorReport`, or any operator-facing text.
+## Public API
+The new crate will expose the following:
+```rust
+pub struct DoctorCommandExecutor {
+    pub paths: Arc<dyn VacPaths>,
+    pub activity_log: Arc<ActivityLog>,
+    pub config: DoctorConfig,
+}
+
+impl vac_shell_host_commands::ShellCommandExecutor for DoctorCommandExecutor {
+    // Rejects non-"/doctor" commands.
+    // Runs run_doctor_checks and calls record_doctor_report.
+}
+
+pub fn record_doctor_report(activity_log: &ActivityLog, report: &DoctorReport) {
+    // Maps each DoctorCheck into an ActivityLog row.
+}
+
+pub fn doctor_command_spec() -> ShellCommandSpec {
+    // Returns the command spec for /doctor
+}
+```
+
+## /doctor Registration
+- Add `/doctor` to `vac_shell_entrypoint::default_commands()`.
+- **Category:** "Diagnostics"
+- **Kind:** `ShellCommandKind::Custom` (or best existing, like `PromptTemplate` if custom doesn't exist but custom is preferred).
+- **Palette Visible:** `true`
+
+## ActivityLog Row Contract
+For each `DoctorCheck` in the report, an activity log entry will be created:
+- **ID:** `doctor-<check.id>-<stable_suffix_or_timestamp>`
+- **Title:** `"doctor: <label> — <status>"` (e.g., `"doctor: .vac paths metadata — Ok"`)
+- **Detail:** `"<summary>\n<detail>"` (if detail is safe and present).
+- **Severity Mapping:**
+  - `DoctorCheckStatus::Ok` -> `Severity::Info` (or `Ok` if available)
+  - `DoctorCheckStatus::Warning` -> `Severity::Warn`
+  - `DoctorCheckStatus::Error` -> `Severity::Error`
+  - `DoctorCheckStatus::Skipped` -> `Severity::Info` (skipped checks are informational).
+
+## Redaction & Safety
+- **No env var values:** Values must never be collected or printed.
+- **No secret sentinels:** Ensure tests verify that secret values (e.g., dummy API keys used in tests) are absent.
+- **Detail safety:** Provider names can be included in the detail, but not secret values.
+- `ShellApp` remains entirely doctor-free. The invocation happens via the `ShellCommandExecutor` pipeline, and the result is pushed to `ActivityLog`, which `ShellApp` simply renders.
 
 ## Tests Required
-- Ensure the `/doctor` slash command is properly registered and routed to the executor.
-- Ensure the executor calls the doctor engine and successfully writes to the `ActivityLog`.
-- Ensure the written activity entries correctly summarize the doctor report.
-- Verify through automated assertions that NO secrets leak into the `ActivityLog` output.
-- Verify `check-dtrack-gates.sh` passes after the wiring is complete.
+- `doctor_command_spec` correctly defines and registers `/doctor`.
+- `DoctorCommandExecutor` successfully executes `/doctor` and writes expected rows to the `ActivityLog`.
+- `DoctorCommandExecutor` cleanly rejects any command slash other than `/doctor`.
+- Severity mapping correctly translates `DoctorCheckStatus` to `vac_shell_contracts::Severity`.
+- **Redaction:** `ActivityLog` entries must be asserted to NOT contain any secret env var values.
+- `route_palette_command` with `/doctor` successfully hits the executor from the registry.
+- `check-dtrack-gates.sh` passes (verifying no forbidden dependencies leaked).
