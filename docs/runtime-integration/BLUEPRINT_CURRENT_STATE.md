@@ -15,6 +15,7 @@ All D-slices D1–D10 are **PASS after hardening**.
 | Last sealed SHA | Description |
 |---|---|
 | `b6e3b572` | D10 PASS after hardening (boundary leak, arg redaction, severity, approval preview) |
+| `53120faf` | D12B PASS after final seal nits (read-only diagnostic engine + /doctor slash) |
 | `3ca3bb57` | Docs update: D10 ADR fifth exception + boundary tripwires |
 
 ## What is allowed next (D10.5)
