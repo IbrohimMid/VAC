@@ -25,6 +25,7 @@
 | **D11** | Session Browser Tool-Use Summary Surface. Extends right-hand preview panel to display tool call status, duration, and summary. No raw payload/arguments exposed. Preserves strict boundaries (widget uses only ratatui + vac_shell_contracts). | PASS after hardening (SHA `dfb5df5c91827f938a79651a2b9bb84aac94df76`) |
 | **D12** | VAC Dogfood Doctor / Readiness Command. A read-only diagnostic engine (`vac_shell_host_doctor`) to verify model config, path accessibility, credential presence, and dispatcher mode without leaking secrets or mutating state. | PASS after hardening (core engine only, `/doctor` wiring deferred to D12B) |
 | **D12B** | Wire Doctor Report into Operator Surface. Implementation of the `/doctor` palette slash via `vac_shell_host_doctor_command`. Registry updated to include `/doctor` in `vac_shell_entrypoint`. Safe report rows recorded into `ActivityLog`. | PASS after final seal nits (SHA `53120fafd329dce174b88abf2a592bf13dc3d1a2`) |
+| **D13** | Unified Status & Readiness Command. A cockpit-visible `/status` command that aggregates model, session, and approval state with doctor readiness summaries via a host-injected provider. | PROPOSAL accepted pending implementation review |
 | **RC gate** | This doc + `DOGFOOD_CHECKLIST.md` + map update | PASS (post-hardening) |
 
 ## Crate inventory after the batch

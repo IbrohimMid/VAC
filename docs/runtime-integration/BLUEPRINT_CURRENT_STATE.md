@@ -23,6 +23,7 @@ D1–D12B are sealed.
 
 ## Current Backlog / Next Steps
 
+- **D13 — Unified Status & Readiness Command**: next active candidate.
 - **Unified init/status/logs UX**: product maturity alignment.
 - **Resumability/checkpoint UX**: operator recovery flows.
 
