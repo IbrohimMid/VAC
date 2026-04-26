@@ -15,22 +15,22 @@ pub fn boot_comp() -> (
     tempfile::TempDir,
     Arc<vac_shell_composition::ShellComposition>,
 ) {
-    boot_comp_with_models(default_models())
-}
-
-pub fn boot_comp_with_models(
-    models: Vec<HostModel>,
-) -> (
-    tempfile::TempDir,
-    Arc<vac_shell_composition::ShellComposition>,
-) {
-    boot_composition(models, vec![])
+    boot_composition(default_models(), vec![])
 }
 
 pub fn boot_comp_with_commands() -> (
     tempfile::TempDir,
     Arc<vac_shell_composition::ShellComposition>,
 ) {
+    let make_command = |slash: &str| ShellCommandSpec {
+        id: slash.trim_start_matches('/').to_string(),
+        slash: slash.into(),
+        title: slash.into(),
+        description: String::new(),
+        kind: ShellCommandKind::BuiltInAction,
+        palette_visible: true,
+        ..Default::default()
+    };
     boot_composition(
         default_models(),
         vec![
@@ -84,18 +84,6 @@ pub fn screen(app: &ShellApp) -> String {
 
 pub fn seed_session_transcript(root: &std::path::Path, id: &str, body: &str) -> std::path::PathBuf {
     temp_session_transcript(root.join(format!("{id}.jsonl")), body)
-}
-
-fn make_command(slash: &str) -> ShellCommandSpec {
-    ShellCommandSpec {
-        id: slash.trim_start_matches('/').to_string(),
-        slash: slash.into(),
-        title: slash.into(),
-        description: String::new(),
-        kind: ShellCommandKind::BuiltInAction,
-        palette_visible: true,
-        ..Default::default()
-    }
 }
 
 fn default_models() -> Vec<HostModel> {

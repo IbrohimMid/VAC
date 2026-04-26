@@ -1,7 +1,5 @@
 mod common;
 
-// Slice 20.1 — ShellApp wiring proofs.
-
 use std::sync::Arc;
 
 use vac_shell_app::{AppEvent, GlobalKey, ShellApp};
@@ -21,23 +19,9 @@ use vac_shell_test_support::no_summary_provider;
 
 use common::{boot_comp, boot_comp_with_commands, screen, seed_session_transcript};
 
-fn boot() -> (
-    tempfile::TempDir,
-    Arc<vac_shell_composition::ShellComposition>,
-) {
-    boot_comp()
-}
-
-fn boot_with_commands() -> (
-    tempfile::TempDir,
-    Arc<vac_shell_composition::ShellComposition>,
-) {
-    boot_comp_with_commands()
-}
-
 #[test]
 fn shell_popup_overlay_lights_up_on_global_key() {
-    let (_t, comp) = boot();
+    let (_t, comp) = boot_comp();
     let mut app = ShellApp::new(comp);
     app.shell_popup.visible = false;
     app.handle_global_key(GlobalKey::OpenShellPopup);
@@ -47,7 +31,7 @@ fn shell_popup_overlay_lights_up_on_global_key() {
 
 #[test]
 fn approval_detail_overlay_renders_selected_approval() {
-    let (_t, comp) = boot();
+    let (_t, comp) = boot_comp();
     comp.approval_queue
         .enqueue(ApprovalRequest::new("a", "shell"));
     let mut app = ShellApp::new(comp);
@@ -62,7 +46,7 @@ fn approval_detail_overlay_renders_selected_approval() {
 
 #[test]
 fn approval_queue_renders_approval_bar_in_shell_app() {
-    let (_t, comp) = boot();
+    let (_t, comp) = boot_comp();
     comp.approval_queue
         .enqueue(ApprovalRequest::new("a", "run_command"));
     comp.approval_queue
@@ -77,9 +61,8 @@ fn approval_queue_renders_approval_bar_in_shell_app() {
 
 #[test]
 fn model_switcher_enter_routes_to_shell_action_select_model() {
-    let (_t, comp) = boot();
+    let (_t, comp) = boot_comp();
     let mut app = ShellApp::new(comp.clone());
-    // Open the switcher and seed its view with the live model list.
     app.handle_global_key(GlobalKey::OpenModelSwitcher);
     app.model_switcher.models = vec![vac_shell_contracts::VacModelView {
         provider: ProviderId("anthropic".into()),
@@ -99,15 +82,13 @@ fn model_switcher_enter_routes_to_shell_action_select_model() {
         }
         other => panic!("expected SelectModel, got {other:?}"),
     }
-    // Apply through the host — active model should flip.
     let _ = app.apply_event(event);
     assert_eq!(comp.model_state.active_model().unwrap().1, "claude-haiku-4");
 }
 
 #[test]
 fn session_browser_delete_routes_to_sessions_state_after_confirm() {
-    let (tmp, comp) = boot();
-    // Seed a transcript so SessionsState::apply finds it.
+    let (tmp, comp) = boot_comp();
     seed_session_transcript(tmp.path(), "alpha", "operator: hi\n");
 
     let sessions = Arc::new(vac_shell_host_sessions::SessionsState::new());
@@ -117,7 +98,6 @@ fn session_browser_delete_routes_to_sessions_state_after_confirm() {
     app.handle_global_key(GlobalKey::OpenSessionBrowser);
     app.session_browser.visible = true;
 
-    // First Delete primes; second commits.
     let primed = app.dispatch_session_browser_key(SessionBrowserKey::Delete);
     assert!(primed.is_none(), "first Delete must not emit an action");
     let committed = app
@@ -133,7 +113,7 @@ fn session_browser_delete_routes_to_sessions_state_after_confirm() {
 
 #[test]
 fn diff_review_approve_routes_event() {
-    let (_t, comp) = boot();
+    let (_t, comp) = boot_comp();
     let mut app = ShellApp::new(comp);
     app.diff_review.visible = true;
     app.diff_review.files = vec![DiffFileView {
@@ -159,7 +139,7 @@ fn diff_review_approve_routes_event() {
 
 #[test]
 fn approval_detail_approve_routes_controller() {
-    let (_t, comp) = boot();
+    let (_t, comp) = boot_comp();
     comp.approval_queue
         .enqueue(ApprovalRequest::new("a", "shell"));
     let mut app = ShellApp::new(comp.clone());
@@ -182,7 +162,7 @@ fn approval_detail_approve_routes_controller() {
 
 #[test]
 fn palette_enter_emits_palette_selected_app_event() {
-    let (_t, comp) = boot();
+    let (_t, comp) = boot_comp();
     let mut app = ShellApp::new(comp);
     app.handle_global_key(GlobalKey::OpenPalette);
     app.palette =
@@ -203,7 +183,7 @@ fn palette_enter_emits_palette_selected_app_event() {
 
 #[test]
 fn shortcuts_overlay_renders_default_catalogue() {
-    let (_t, comp) = boot();
+    let (_t, comp) = boot_comp();
     let mut app = ShellApp::new(comp);
     app.shortcuts = vac_shell_shortcuts::ShortcutsView::new(vec![], default_shortcuts());
     app.handle_global_key(GlobalKey::OpenShortcuts);
@@ -212,15 +192,9 @@ fn shortcuts_overlay_renders_default_catalogue() {
     assert!(s.contains("Shortcuts"));
 }
 
-// =====================================================================
-// Slice 20.2 — live projection on overlay open
-// =====================================================================
-
 #[test]
 fn opening_palette_populates_from_live_command_registry() {
-    let (_t, comp) = boot();
-    // Add another command at runtime so the test proves the
-    // projection reads the live registry, not a static seed.
+    let (_t, comp) = boot_comp();
     let mut app = ShellApp::new(comp.clone());
     app.handle_global_key(GlobalKey::OpenPalette);
     let slashes: Vec<String> = app.palette.all.iter().map(|s| s.slash.clone()).collect();
@@ -233,7 +207,7 @@ fn opening_palette_populates_from_live_command_registry() {
 
 #[test]
 fn opening_model_switcher_populates_from_live_model_state() {
-    let (_t, comp) = boot();
+    let (_t, comp) = boot_comp();
     let mut app = ShellApp::new(comp);
     app.handle_global_key(GlobalKey::OpenModelSwitcher);
     let labels: Vec<&str> = app
@@ -249,7 +223,7 @@ fn opening_model_switcher_populates_from_live_model_state() {
 
 #[test]
 fn opening_session_browser_populates_from_live_sessions_list() {
-    let (tmp, comp) = boot();
+    let (tmp, comp) = boot_comp();
     seed_session_transcript(tmp.path(), "alpha", "operator: hi\n");
     let mut app = ShellApp::new(comp);
     app.sessions = Some(Arc::new(vac_shell_host_sessions::SessionsState::new()));
@@ -263,13 +237,9 @@ fn opening_session_browser_populates_from_live_sessions_list() {
     assert_eq!(ids, vec!["alpha"]);
 }
 
-// =====================================================================
-// Slice 20.2 — approval detail does not drain queue
-// =====================================================================
-
 #[test]
 fn approval_detail_reject_marks_row_rejected_without_draining_queue() {
-    let (_t, comp) = boot();
+    let (_t, comp) = boot_comp();
     comp.approval_queue
         .enqueue(ApprovalRequest::new("a", "shell"));
     let mut app = ShellApp::new(comp.clone());
@@ -285,7 +255,7 @@ fn approval_detail_reject_marks_row_rejected_without_draining_queue() {
 
 #[test]
 fn approval_detail_approve_does_not_drain_queue() {
-    let (_t, comp) = boot();
+    let (_t, comp) = boot_comp();
     comp.approval_queue
         .enqueue(ApprovalRequest::new("a", "shell"));
     let mut app = ShellApp::new(comp.clone());
@@ -300,13 +270,9 @@ fn approval_detail_approve_does_not_drain_queue() {
     assert_eq!(snap[0].status, ApprovalStatus::Approved);
 }
 
-// =====================================================================
-// Slice 20.2 — built-in palette routing through apply_event
-// =====================================================================
-
 #[test]
 fn palette_runtime_slash_changes_surface_through_apply_event() {
-    let (_t, comp) = boot_with_commands();
+    let (_t, comp) = boot_comp_with_commands();
     let mut app = ShellApp::new(comp.clone());
     let _ = app.apply_event(AppEvent::PaletteSelected("/runtime".into()));
     assert_eq!(
@@ -318,7 +284,7 @@ fn palette_runtime_slash_changes_surface_through_apply_event() {
 
 #[test]
 fn palette_model_slash_opens_model_switcher_overlay() {
-    let (_t, comp) = boot_with_commands();
+    let (_t, comp) = boot_comp_with_commands();
     let mut app = ShellApp::new(comp);
     let _ = app.apply_event(AppEvent::PaletteSelected("/model".into()));
     assert_eq!(app.overlays.top(), ShellOverlay::ModelSwitcher);
@@ -328,7 +294,7 @@ fn palette_model_slash_opens_model_switcher_overlay() {
 
 #[test]
 fn palette_sessions_slash_opens_session_browser_overlay() {
-    let (tmp, comp) = boot_with_commands();
+    let (tmp, comp) = boot_comp_with_commands();
     seed_session_transcript(tmp.path(), "alpha", "operator: hi\n");
     let mut app = ShellApp::new(comp);
     app.sessions = Some(Arc::new(vac_shell_host_sessions::SessionsState::new()));
@@ -339,7 +305,7 @@ fn palette_sessions_slash_opens_session_browser_overlay() {
 
 #[test]
 fn palette_unknown_slash_only_closes_overlay() {
-    let (_t, comp) = boot_with_commands();
+    let (_t, comp) = boot_comp_with_commands();
     let mut app = ShellApp::new(comp.clone());
     app.handle_global_key(GlobalKey::OpenPalette);
     assert_eq!(app.overlays.top(), ShellOverlay::Palette);
@@ -351,17 +317,12 @@ fn palette_unknown_slash_only_closes_overlay() {
     );
 }
 
-// =====================================================================
-// Slice 20.2 — frame refresh contract
-// =====================================================================
-
 #[test]
 fn prepare_frame_projects_queue_into_approval_bar() {
-    let (_t, comp) = boot();
+    let (_t, comp) = boot_comp();
     comp.approval_queue
         .enqueue(ApprovalRequest::new("a", "shell"));
     let mut app = ShellApp::new(comp);
-    // No manual refresh: prepare_frame is the contract.
     app.prepare_frame();
     assert!(app.approval_bar.is_visible());
     let s = screen(&app);
@@ -369,13 +330,9 @@ fn prepare_frame_projects_queue_into_approval_bar() {
     assert!(s.contains("Shell"));
 }
 
-// =====================================================================
-// Slice 20.3 — production error reporting
-// =====================================================================
-
 #[test]
 fn apply_event_returns_err_when_session_action_targets_unknown_id() {
-    let (_t, comp) = boot();
+    let (_t, comp) = boot_comp();
     let mut app = ShellApp::new(comp);
     app.sessions = Some(Arc::new(vac_shell_host_sessions::SessionsState::new()));
     let result = app.apply_event(AppEvent::Session(
@@ -388,7 +345,7 @@ fn apply_event_returns_err_when_session_action_targets_unknown_id() {
 
 #[test]
 fn apply_event_records_error_into_activity_log_on_failure() {
-    let (_t, comp) = boot();
+    let (_t, comp) = boot_comp();
     let mut app = ShellApp::new(comp);
     app.sessions = Some(Arc::new(vac_shell_host_sessions::SessionsState::new()));
     let log = Arc::new(vac_shell_host_activity::ActivityLog::default());
@@ -408,7 +365,7 @@ fn apply_event_records_error_into_activity_log_on_failure() {
 
 #[test]
 fn apply_event_records_error_when_session_routed_without_sessions_state() {
-    let (_t, comp) = boot();
+    let (_t, comp) = boot_comp();
     let mut app = ShellApp::new(comp);
     let log = Arc::new(vac_shell_host_activity::ActivityLog::default());
     app.activity_log = Some(log.clone());
@@ -421,7 +378,7 @@ fn apply_event_records_error_when_session_routed_without_sessions_state() {
 
 #[test]
 fn apply_event_records_error_for_unknown_approval_id() {
-    let (_t, comp) = boot();
+    let (_t, comp) = boot_comp();
     let mut app = ShellApp::new(comp);
     let log = Arc::new(vac_shell_host_activity::ActivityLog::default());
     app.activity_log = Some(log.clone());
@@ -437,7 +394,7 @@ fn apply_event_records_error_for_unknown_approval_id() {
 
 #[test]
 fn apply_event_succeeds_silently_when_no_log_attached() {
-    let (_t, comp) = boot();
+    let (_t, comp) = boot_comp();
     comp.approval_queue
         .enqueue(ApprovalRequest::new("a", "shell"));
     let mut app = ShellApp::new(comp);
@@ -449,7 +406,7 @@ fn apply_event_succeeds_silently_when_no_log_attached() {
 
 #[test]
 fn pending_approvals_count_reflects_queue_length() {
-    let (_t, comp) = boot();
+    let (_t, comp) = boot_comp();
     comp.approval_queue
         .enqueue(ApprovalRequest::new("a", "shell"));
     comp.approval_queue

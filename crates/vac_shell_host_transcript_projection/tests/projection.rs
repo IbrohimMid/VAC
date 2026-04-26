@@ -1,15 +1,3 @@
-//! D9 — projection contract tests.
-//!
-//! Each test pins one operator-visible invariant:
-//!
-//! 1–4.  severity mapping (ok/warning/error/cancelled)
-//! 5.    pending status when result row missing
-//! 6.    payload + arguments are NEVER rendered into projection text
-//! 7.    multi-tool order preserved
-//! 8.    summary counts add up correctly
-//! 9.    missing transcript file → empty projection + zeroed summary
-//! 10.   pre-D7E transcript (no tool rows) → empty projection
-//! 11.   activity entry detail is operator-friendly + redaction-safe
 
 use vac_shell_contracts::{Severity, ShellActivityKind};
 use vac_shell_host_transcript_projection::{
@@ -21,9 +9,6 @@ use vac_shell_test_support::{
     write_transcript_rows,
 };
 
-// ---------------------------------------------------------------------
-// 1–4. Severity / status mapping.
-// ---------------------------------------------------------------------
 
 #[test]
 fn ok_envelope_projects_to_ok_status_and_severity_ok() {
@@ -74,9 +59,6 @@ fn cancelled_envelope_projects_to_cancelled_status_with_warn_severity() {
     );
 }
 
-// ---------------------------------------------------------------------
-// 5. Missing result → pending status.
-// ---------------------------------------------------------------------
 
 #[test]
 fn missing_result_projects_to_pending_status() {
@@ -93,16 +75,11 @@ fn missing_result_projects_to_pending_status() {
     assert_eq!(proj[0].to_activity_entry(0).severity, Severity::Warn);
 }
 
-// ---------------------------------------------------------------------
-// 6. Payload + arguments must NEVER appear in the projected text.
-// ---------------------------------------------------------------------
 
 #[test]
 fn projection_redacts_payload_and_arguments() {
     let tmp = tempfile::tempdir().unwrap();
     let path = tmp.path().join("redact.jsonl");
-    // The argument and the payload both contain a sentinel
-    // string that MUST NOT appear in any projected field.
     let secret_args = "ARGS_SECRET_NEEDLE_a9f3";
     let secret_payload = "PAYLOAD_SECRET_NEEDLE_b2c4";
     write_transcript_rows(
@@ -127,15 +104,11 @@ fn projection_redacts_payload_and_arguments() {
     let bag = format!("{title}|{detail}|{}|{}", proj[0].summary, proj[0].tool_name);
     assert_no_secret_in_debug(&bag, secret_args);
     assert_no_secret_in_debug(&bag, secret_payload);
-    // Sanity: the redacted-on-disk file still contains them.
     let on_disk = std::fs::read_to_string(&path).unwrap();
     assert!(on_disk.contains(secret_args));
     assert!(on_disk.contains(secret_payload));
 }
 
-// ---------------------------------------------------------------------
-// 7. Multi-tool order preserved.
-// ---------------------------------------------------------------------
 
 #[test]
 fn multi_tool_projection_preserves_transcript_order() {
@@ -146,8 +119,6 @@ fn multi_tool_projection_preserves_transcript_order() {
         body.push_str(&tool_call_line(id, id, serde_json::json!({})));
         body.push('\n');
     }
-    // Result rows out-of-order on purpose; pairing should
-    // still preserve call order (a, b, c).
     body.push_str(&tool_result_line(
         "c",
         "c",
@@ -187,9 +158,6 @@ fn multi_tool_projection_preserves_transcript_order() {
     assert_eq!(proj[2].status, ToolUseStatus::Ok);
 }
 
-// ---------------------------------------------------------------------
-// 8. Summary counts.
-// ---------------------------------------------------------------------
 
 #[test]
 fn summary_counts_each_status_correctly() {
@@ -220,7 +188,6 @@ fn summary_counts_each_status_correctly() {
         ));
         body.push('\n');
     }
-    // One pending: call without matching result.
     body.push_str(&tool_call_line("h", "t", serde_json::json!({})));
     body.push('\n');
     write_transcript_rows(&path, [body]);
@@ -232,13 +199,9 @@ fn summary_counts_each_status_correctly() {
     assert_eq!(s.error_count, 3);
     assert_eq!(s.cancelled_count, 1);
     assert_eq!(s.pending_count, 1);
-    // session_tool_use_summary is the convenience alias.
     assert_eq!(session_tool_use_summary(&path).unwrap(), s);
 }
 
-// ---------------------------------------------------------------------
-// 9. Missing transcript file is not an error.
-// ---------------------------------------------------------------------
 
 #[test]
 fn missing_transcript_returns_empty_projection_and_zeroed_summary() {
@@ -250,9 +213,6 @@ fn missing_transcript_returns_empty_projection_and_zeroed_summary() {
     assert_eq!(s.error_count, 0);
 }
 
-// ---------------------------------------------------------------------
-// 10. Pre-D7E transcript without tool rows still parses cleanly.
-// ---------------------------------------------------------------------
 
 #[test]
 fn old_transcript_without_tool_rows_returns_empty_projection() {
@@ -266,9 +226,6 @@ fn old_transcript_without_tool_rows_returns_empty_projection() {
     assert_eq!(s.total_calls, 0);
 }
 
-// ---------------------------------------------------------------------
-// 11. Activity entry detail is operator-friendly and bounded.
-// ---------------------------------------------------------------------
 
 #[test]
 fn activity_entry_detail_only_shows_summary_duration_and_transcript_path() {
@@ -302,22 +259,11 @@ fn activity_entry_detail_only_shows_summary_duration_and_transcript_path() {
     assert_eq!(entry.title, "alpha ok");
 }
 
-// ---------------------------------------------------------------------
-// 12. summary may contain text but raw payload + arguments stay redacted.
-//
-// D9 trusts envelope.summary (operator-written by the tool impl) but never
-// renders envelope.payload or view.arguments, even when they contain data
-// that looks like legitimate text.  This test ensures that the redaction
-// boundary holds even when summary is non-trivial.
-// ---------------------------------------------------------------------
 
 #[test]
 fn summary_can_contain_text_but_payload_arguments_still_redacted() {
     let tmp = tempfile::tempdir().unwrap();
     let path = tmp.path().join("summary_text.jsonl");
-    // arguments contain a "secret_token" field that must never appear.
-    // payload also contains a "secret_token" field that must never appear.
-    // summary is deliberately verbose but safe.
     let args = serde_json::json!({"secret_token": "hunter2", "path": "/tmp/x"});
     let payload = serde_json::json!({"secret_token": "hunter2", "lines": ["a", "b"]});
     write_transcript_rows(
@@ -339,13 +285,10 @@ fn summary_can_contain_text_but_payload_arguments_still_redacted() {
     assert_eq!(proj.len(), 1);
     let p = &proj[0];
 
-    // summary is forwarded verbatim — the tool impl owns it.
     assert_eq!(p.summary, "read_file returned 2 lines");
 
-    // raw secrets must not appear anywhere in the projection struct.
     assert_no_secret_in_debug(p, "hunter2");
 
-    // and not in the activity entry detail either.
     let entry = p.to_activity_entry(1_700_000_000);
     let detail = entry.detail.unwrap();
     assert_no_secret_in_debug(&detail, "hunter2");

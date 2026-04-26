@@ -1,18 +1,3 @@
-//! Slice 13 — host-side session lifecycle.
-//!
-//! Lists sessions through `VacPaths`, builds a read-only preview
-//! from the first few lines of a `.jsonl` transcript, and applies
-//! `SessionAction` values:
-//!
-//! * `Open`  — UI-side, no host effect.
-//! * `Resume` — records the requested resume id; consumer fetches
-//!   it via `take_resume_request()`.
-//! * `Archive` — moves the transcript file under a sibling
-//!   `archive/` directory.
-//! * `Delete` — removes the transcript file.
-//!
-//! All operations resolve their paths through `VacPaths`; nothing
-//! in this crate composes `.vac/...` or `.stakpak/...` itself.
 
 use std::sync::{Arc, Mutex};
 
@@ -52,10 +37,6 @@ impl SessionsState {
         enumerate_sessions(paths)
     }
 
-    /// D10 — like `list` but also calls `summarize` on each transcript
-    /// path and bundles the result into a `SessionTileView`. The closure
-    /// keeps this crate dep-free from `vac_shell_host_transcript_projection`;
-    /// the app or entrypoint wires the real projection fn.
     pub fn list_with_summaries(
         &self,
         paths: &dyn VacPaths,
@@ -75,7 +56,6 @@ impl SessionsState {
             .collect()
     }
 
-    /// Read the first few lines of the transcript as a preview.
     pub fn preview(
         &self,
         paths: &dyn VacPaths,

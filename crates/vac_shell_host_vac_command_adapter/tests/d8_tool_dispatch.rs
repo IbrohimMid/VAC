@@ -1,7 +1,3 @@
-//! D8F — adapter-level tool-dispatch tests.
-//!
-//! Cover the tests numbered 6–10 + the transcript replay
-//! tests 11–13 that the D8 brief listed.
 
 mod common;
 
@@ -22,9 +18,6 @@ use vac_tools::ToolError;
 use vac_tools::ToolRegistry;
 use vac_tools::registry::{ToolContext, VilTool};
 
-// ---------------------------------------------------------------------
-// LLM adapter that always emits one tool call.
-// ---------------------------------------------------------------------
 
 struct ToolEmittingLlm;
 
@@ -48,9 +41,6 @@ impl LlmAdapter for ToolEmittingLlm {
     }
 }
 
-// ---------------------------------------------------------------------
-// Fake tools — one OK, one InvalidArguments.
-// ---------------------------------------------------------------------
 
 struct OkEcho {
     counter: Arc<AtomicUsize>,
@@ -141,9 +131,6 @@ fn mapped_with_tool_emitting_llm(root: std::path::PathBuf) -> vac_shell_host_vac
     mapped(root).with_llm(Arc::new(ToolEmittingLlm))
 }
 
-// ---------------------------------------------------------------------
-// 6. Default path stays unsupported — no real tool execution.
-// ---------------------------------------------------------------------
 
 #[test]
 fn default_path_still_unsupported_no_real_tool_execution() {
@@ -155,8 +142,6 @@ fn default_path_still_unsupported_no_real_tool_execution() {
     adapter.execute(&cmd("memorize", "/memorize")).unwrap();
     let path = adapter.last_transcript().unwrap();
     let body = std::fs::read_to_string(&path).unwrap();
-    // tool_result envelope should be `error` because no
-    // dispatcher is wired and UnsupportedDispatcher answered.
     assert!(
         body.contains("\"kind\":\"error\""),
         "default path must produce error tool_result envelope: {body}"
@@ -167,9 +152,6 @@ fn default_path_still_unsupported_no_real_tool_execution() {
     );
 }
 
-// ---------------------------------------------------------------------
-// 7. With dispatcher + allowing gate, transcript writes ok envelope.
-// ---------------------------------------------------------------------
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn with_tool_dispatcher_and_gate_allow_writes_ok_tool_result_row() {
@@ -181,8 +163,6 @@ async fn with_tool_dispatcher_and_gate_allow_writes_ok_tool_result_row() {
     let adapter = VacCommandExecutorAdapter::new(cfg);
     assert!(adapter.has_live_tool_dispatcher());
 
-    // Wrap execute on a blocking thread so the inner adapter
-    // can use block_in_place on the multi-thread runtime.
     let result = tokio::task::spawn_blocking(move || {
         adapter.execute(&cmd("memorize", "/memorize")).unwrap();
         adapter.last_transcript().unwrap()
@@ -199,9 +179,6 @@ async fn with_tool_dispatcher_and_gate_allow_writes_ok_tool_result_row() {
     assert_eq!(counter.load(Ordering::SeqCst), 1);
 }
 
-// ---------------------------------------------------------------------
-// 8. Dispatcher without gate is rejected pre-flight.
-// ---------------------------------------------------------------------
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn with_tool_dispatcher_without_gate_rejected_preflight() {
@@ -215,9 +192,6 @@ async fn with_tool_dispatcher_without_gate_rejected_preflight() {
     ));
 }
 
-// ---------------------------------------------------------------------
-// 9. Gate Deny short-circuits dispatcher.
-// ---------------------------------------------------------------------
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn gate_deny_skips_dispatcher_and_writes_error_row() {
@@ -255,9 +229,6 @@ async fn gate_deny_skips_dispatcher_and_writes_error_row() {
     );
 }
 
-// ---------------------------------------------------------------------
-// 10. Live dispatcher visible through execute path.
-// ---------------------------------------------------------------------
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn execute_path_with_live_dispatcher_visible_in_transcript() {
@@ -274,7 +245,6 @@ async fn execute_path_with_live_dispatcher_visible_in_transcript() {
     .await
     .unwrap();
 
-    // D8E replay helper sees both rows.
     let views = read_tool_use_rows(&path).unwrap();
     assert_eq!(views.len(), 1);
     assert_eq!(views[0].id, "live-1");
@@ -284,14 +254,6 @@ async fn execute_path_with_live_dispatcher_visible_in_transcript() {
     assert_eq!(counter.load(Ordering::SeqCst), 1);
 }
 
-// ---------------------------------------------------------------------
-// 10b. D8 smoke equivalent — drive submit_one DIRECTLY (no TUI loop)
-//      with VacToolDispatcher over a real ToolRegistry seeded with
-//      the read-only GlobTool, then read tool-use rows and assert
-//      a kind=Ok envelope landed. This is the unit-testable shape
-//      of the dogfood_tool_dispatch_smoke example so CI proves
-//      live dispatch end-to-end without launching the runtime loop.
-// ---------------------------------------------------------------------
 
 struct GlobEmittingLlm;
 
@@ -322,7 +284,6 @@ async fn dogfood_tool_dispatch_smoke_writes_ok_tool_result_row() {
         submit_one,
     };
     let tmp = tempfile::tempdir().unwrap();
-    // Seed at least one matching file so `glob` returns non-empty.
     std::fs::write(tmp.path().join("Cargo.toml"), b"# fixture").unwrap();
 
     let registry = vac_tools::ToolRegistry::new();
@@ -373,9 +334,6 @@ async fn dogfood_tool_dispatch_smoke_writes_ok_tool_result_row() {
     );
 }
 
-// ---------------------------------------------------------------------
-// 11–13. Replay helper invariants.
-// ---------------------------------------------------------------------
 
 #[test]
 fn replay_tolerates_missing_transcript_file() {
@@ -399,8 +357,6 @@ fn replay_tolerates_old_transcript_without_tool_rows() {
 fn replay_pairs_call_and_result_in_transcript_order() {
     let tmp = tempfile::tempdir().unwrap();
     let path = tmp.path().join("multi.jsonl");
-    // Three calls in order a, b, c — results out-of-order to
-    // prove the helper pairs by id, not by row position.
     let body = r#"{"id":"r1","session_id":"s","kind":"tool_call","timestamp":"t","content":{"id":"a","name":"alpha","arguments":{},"reason":null,"estimated_tokens":0}}
 {"id":"r2","session_id":"s","kind":"tool_call","timestamp":"t","content":{"id":"b","name":"beta","arguments":{},"reason":null,"estimated_tokens":0}}
 {"id":"r3","session_id":"s","kind":"tool_call","timestamp":"t","content":{"id":"c","name":"gamma","arguments":{},"reason":null,"estimated_tokens":0}}
@@ -435,8 +391,6 @@ fn replay_keeps_call_when_result_row_is_missing() {
     assert!(views[0].result.is_none());
 }
 
-// Silence "unused" warnings emitted by the engine sweep when
-// running this single binary with --no-default-features.
 fn _suppress_unused() {
     let _ = EngineError::Other("noop".into());
 }

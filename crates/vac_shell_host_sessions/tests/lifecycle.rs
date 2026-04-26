@@ -44,7 +44,6 @@ fn resume_records_pending_id() {
         .apply(&paths, SessionAction::Resume { id: "alpha".into() })
         .unwrap();
     assert_eq!(state.take_resume_request().as_deref(), Some("alpha"));
-    // Take is one-shot.
     assert!(state.take_resume_request().is_none());
 }
 

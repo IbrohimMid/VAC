@@ -1,42 +1,9 @@
-//! Dev-only test helpers for the shell cockpit layer.
-//!
-//! IMPORTANT: This crate must NEVER be a production dependency.
-//! Only allowed in `[dev-dependencies]` of other crates.
 
 use std::fmt::Debug;
 use std::path::{Path, PathBuf};
-use vac_shell_contracts::{SessionToolSummary, ShellActivityEntry, ShellActivityKind, VacPaths};
+use vac_shell_contracts::{SessionToolSummary, ShellActivityKind, VacPaths};
 use vac_shell_host_activity::ActivityLog;
 
-// =====================================================================
-// Fake path helpers
-// =====================================================================
-
-/// Minimal VacPaths impl backed by a tempdir.
-pub struct FakeVacRoot {
-    pub dir: tempfile::TempDir,
-}
-
-impl FakeVacRoot {
-    pub fn new() -> Self {
-        Self {
-            dir: tempfile::tempdir().expect("tempdir"),
-        }
-    }
-
-    pub fn sessions_dir(&self) -> PathBuf {
-        let d = self.dir.path().join("sessions");
-        std::fs::create_dir_all(&d).ok();
-        d
-    }
-
-    pub fn path(&self) -> &Path {
-        self.dir.path()
-    }
-}
-
-/// Flat VacPaths impl: every path method returns `root` (or a child).
-/// Use when the test only needs a single directory for all paths.
 pub struct FakeVacPaths(pub PathBuf);
 
 impl VacPaths for FakeVacPaths {
@@ -63,8 +30,6 @@ impl VacPaths for FakeVacPaths {
     }
 }
 
-/// Write a transcript JSONL file to `path` for testing.
-/// Each row is written one per line with a trailing newline.
 pub fn write_transcript_rows<I, S>(path: &Path, rows: I)
 where
     I: IntoIterator<Item = S>,
@@ -87,17 +52,6 @@ where
     std::fs::write(path, content).expect("write transcript");
 }
 
-/// Write a multi-line JSONL body string to `path`.
-/// Non-empty lines are written as-is; blank lines are skipped.
-pub fn write_jsonl_body(path: &Path, body: &str) {
-    write_transcript_rows(path, body.lines().filter(|l| !l.is_empty()));
-}
-
-// =====================================================================
-// Transcript row builders
-// =====================================================================
-
-/// Build a minimal `tool_call` transcript row JSON string.
 pub fn tool_call_json_line(id: &str, name: &str, args: serde_json::Value) -> String {
     serde_json::json!({
         "id": format!("row-{id}"),
@@ -115,7 +69,6 @@ pub fn tool_call_json_line(id: &str, name: &str, args: serde_json::Value) -> Str
     .to_string()
 }
 
-/// Build a minimal `tool_result` transcript row JSON string.
 pub fn tool_result_json_line(
     id: &str,
     name: &str,
@@ -143,9 +96,6 @@ pub fn tool_result_json_line(
     .to_string()
 }
 
-/// Append a minimal `tool_call` + `tool_result` pair to `path`.
-/// The call uses empty arguments, and the result uses an empty payload
-/// with zero duration.
 pub fn write_tool_call_result_pair(path: &Path, id: &str, name: &str, kind: &str, summary: &str) {
     write_transcript_rows(
         path,
@@ -174,7 +124,6 @@ fn finished_json_line(via: &str) -> String {
     .to_string()
 }
 
-/// Append a minimal `finished` transcript row to `path`.
 pub fn write_finished_row(path: &Path, via: &str) {
     let row = finished_json_line(via);
     let mut file = std::fs::OpenOptions::new()
@@ -186,7 +135,6 @@ pub fn write_finished_row(path: &Path, via: &str) {
     writeln!(file, "{row}").expect("append finished row");
 }
 
-/// Read a JSONL transcript file into raw `serde_json::Value` rows.
 pub fn read_jsonl_rows(path: &Path) -> Vec<serde_json::Value> {
     let body = std::fs::read_to_string(path).expect("read transcript");
     body.lines()
@@ -195,7 +143,6 @@ pub fn read_jsonl_rows(path: &Path) -> Vec<serde_json::Value> {
         .collect()
 }
 
-/// Write a plain-text session transcript at `path`.
 pub fn temp_session_transcript(path: impl AsRef<Path>, body: &str) -> PathBuf {
     let path = path.as_ref();
     if let Some(parent) = path.parent() {
@@ -205,11 +152,6 @@ pub fn temp_session_transcript(path: impl AsRef<Path>, body: &str) -> PathBuf {
     path.to_path_buf()
 }
 
-// =====================================================================
-// Activity log assertions
-// =====================================================================
-
-/// Assert that no snapshot entry's debug representation contains `needle`.
 pub fn assert_activity_log_not_contains(log: &ActivityLog, needle: &str) {
     let snap = log.snapshot();
     let serialized = format!("{snap:?}");
@@ -219,7 +161,6 @@ pub fn assert_activity_log_not_contains(log: &ActivityLog, needle: &str) {
     );
 }
 
-/// Assert that at least one snapshot entry matches `kind`.
 pub fn assert_activity_log_contains_kind(log: &ActivityLog, kind: ShellActivityKind) {
     let snap = log.snapshot();
     assert!(
@@ -228,7 +169,6 @@ pub fn assert_activity_log_contains_kind(log: &ActivityLog, kind: ShellActivityK
     );
 }
 
-/// Assert that at least one snapshot entry of `kind` has `severity` matching expectation.
 pub fn assert_activity_log_kind_severity(
     log: &ActivityLog,
     kind: ShellActivityKind,
@@ -246,8 +186,6 @@ pub fn assert_activity_log_kind_severity(
     );
 }
 
-/// Assert that the `Debug` representation of `value` does not
-/// contain `secret`.
 pub fn assert_no_secret_in_debug<T: Debug>(value: &T, secret: &str) {
     let rendered = format!("{value:?}");
     assert!(
@@ -256,43 +194,14 @@ pub fn assert_no_secret_in_debug<T: Debug>(value: &T, secret: &str) {
     );
 }
 
-// =====================================================================
-// Session summary provider helpers
-// =====================================================================
-
-use std::collections::HashMap;
 use std::sync::Arc;
 
-/// Build a session_tool_summary_provider callback from a path→summary map.
-/// Useful for injecting into ShellApp in tests.
-pub fn session_summary_provider_from_map(
-    map: HashMap<PathBuf, SessionToolSummary>,
-) -> Arc<dyn Fn(&Path) -> Option<SessionToolSummary> + Send + Sync> {
-    Arc::new(move |path: &Path| map.get(path).cloned())
-}
-
-/// Build a session_tool_summary_provider that always returns the
-/// same value for every path.
 pub fn fake_session_summary_provider(
     summary: Option<SessionToolSummary>,
 ) -> Arc<dyn Fn(&Path) -> Option<SessionToolSummary> + Send + Sync> {
     Arc::new(move |_: &Path| summary.clone())
 }
 
-/// Build a session_tool_summary_provider that always returns None.
 pub fn no_summary_provider() -> Arc<dyn Fn(&Path) -> Option<SessionToolSummary> + Send + Sync> {
     fake_session_summary_provider(None)
-}
-
-// =====================================================================
-// Simple test assertions
-// =====================================================================
-
-/// Assert that the serialized form of `entries` does not contain `secret`.
-pub fn assert_entries_not_contain(entries: &[ShellActivityEntry], secret: &str) {
-    let s = format!("{entries:?}");
-    assert!(
-        !s.contains(secret),
-        "secret '{secret}' found in entries: {s}"
-    );
 }

@@ -19,9 +19,9 @@ pub fn cmd(id: &str, slash: &str) -> ShellCommandSpec {
 
 #[allow(dead_code)]
 pub fn mapped(root: std::path::PathBuf) -> AdapterConfig {
-    AdapterConfig::new(root).with_command(AdapterCommandSpec::new(
-        "memorize",
-        "/memorize",
-        "Memorize the current operator context.",
-    ))
+    mapped_with_prompt(root, "Memorize the current operator context.")
+}
+
+pub fn mapped_with_prompt(root: std::path::PathBuf, prompt: &str) -> AdapterConfig {
+    AdapterConfig::new(root).with_command(AdapterCommandSpec::new("memorize", "/memorize", prompt))
 }

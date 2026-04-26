@@ -1,17 +1,3 @@
-//! D7E — durable tool-use rows in the transcript.
-//!
-//! The engine now persists `TranscriptKind::ToolCall` before
-//! gate/dispatch and `TranscriptKind::ToolResult` after the
-//! envelope is computed. These tests pin every observable side
-//! of that contract:
-//!
-//! * unsupported-dispatcher path writes both rows + an error
-//!   envelope, then `Finished`.
-//! * multiple tool calls keep transcript order.
-//! * a `Deny`ing gate writes an error row whose summary mentions
-//!   "blocked by gate" and never invokes the dispatcher.
-//! * a real (test-double) dispatcher returning `Ok` writes an
-//!   `ok` envelope row.
 
 mod common;
 
@@ -27,9 +13,6 @@ use vac_session_engine::{
 };
 use vac_shell_test_support::read_jsonl_rows;
 
-// ---------------------------------------------------------------------
-// LlmAdapter that returns a fixed list of tool calls.
-// ---------------------------------------------------------------------
 
 async fn drive_with(
     project_root: &std::path::Path,
@@ -58,9 +41,6 @@ fn kinds_in_order(rows: &[serde_json::Value]) -> Vec<String> {
         .collect()
 }
 
-// ---------------------------------------------------------------------
-// 1. Unsupported dispatcher path persists tool_call + tool_result.
-// ---------------------------------------------------------------------
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn unsupported_dispatcher_writes_tool_call_and_tool_result_rows() {
@@ -93,7 +73,6 @@ async fn unsupported_dispatcher_writes_tool_call_and_tool_result_rows() {
         "tool_result must precede finished: {kinds:?}"
     );
 
-    // Payload assertions.
     let tool_call = &rows[tool_call_idx]["content"];
     assert_eq!(tool_call["id"], "t1");
     assert_eq!(tool_call["name"], "search");
@@ -115,9 +94,6 @@ async fn unsupported_dispatcher_writes_tool_call_and_tool_result_rows() {
     );
 }
 
-// ---------------------------------------------------------------------
-// 2. Multiple tool calls preserve transcript order.
-// ---------------------------------------------------------------------
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn multiple_tool_calls_preserve_transcript_order() {
@@ -148,9 +124,6 @@ async fn multiple_tool_calls_preserve_transcript_order() {
     assert_eq!(tool_result_ids, vec!["a", "b", "c"]);
 }
 
-// ---------------------------------------------------------------------
-// 3. Gate Deny writes an error tool_result and never invokes the dispatcher.
-// ---------------------------------------------------------------------
 
 #[derive(Debug)]
 struct AlwaysDenyGate;
@@ -226,9 +199,6 @@ async fn gate_deny_writes_error_tool_result_and_skips_dispatcher() {
     );
 }
 
-// ---------------------------------------------------------------------
-// 4. Real dispatcher Ok writes an ok-kind tool_result.
-// ---------------------------------------------------------------------
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn dispatcher_ok_writes_ok_tool_result_row() {
@@ -259,11 +229,6 @@ async fn dispatcher_ok_writes_ok_tool_result_row() {
     assert_eq!(envelope["payload"], serde_json::json!({"hit": true}));
 }
 
-// ---------------------------------------------------------------------
-// 5. Hardening — transcript invariants survive when the event
-//    receiver is dropped mid-flight, and when a real dispatcher
-//    returns Err.
-// ---------------------------------------------------------------------
 
 #[derive(Debug)]
 struct AlwaysErrDispatcher;
@@ -294,9 +259,6 @@ async fn tool_call_row_persists_when_dispatcher_returns_error() {
     let rows = drive_with(tmp.path(), adapter, cfg).await;
     let kinds = kinds_in_order(&rows);
 
-    // Both tool_call and tool_result must still be present even
-    // though the dispatcher errored — a dispatch error must not
-    // strip the tool_call audit row.
     assert!(
         kinds.iter().any(|k| k == "tool_call"),
         "tool_call row must remain even when dispatcher errors: {kinds:?}"
@@ -316,9 +278,6 @@ async fn tool_call_row_persists_when_dispatcher_returns_error() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn tool_result_row_appears_before_finished_when_event_receiver_dropped() {
-    // Drive submit_one with Some(tx) where the receiver has
-    // already been dropped. The engine must not abort or skip
-    // transcript rows just because nobody is listening.
     use vac_session_engine::{
         SlashProcessor, SubmitContext, TranscriptWriter, TrivialCompactBoundary, UsageTracker,
         submit_one,

@@ -1,23 +1,3 @@
-//! D7C — provider-backed LLM adapter contract tests.
-//!
-//! These tests prove that:
-//!
-//! * `AdapterLlm::Echo` is the default and matches D7B
-//!   behaviour byte-for-byte (transcript still lands).
-//! * A `Custom` adapter is reached by `submit_one`, sees the
-//!   exact prompt the host mapped, and its response shows up
-//!   in the transcript as the assistant turn.
-//! * A `Custom` adapter that returns `EngineError` surfaces as
-//!   `ShellCommandError::Failed` at the trait surface, with
-//!   the error string preserved for the operator-visible
-//!   activity log.
-//!
-//! Real `vil_llm` provider routing is **not** exercised here —
-//! that requires CI credentials and is handled in a separate
-//! provider-smoke matrix. What we DO pin: the
-//! `VilLlmRouterAdapter` bridge constructs cleanly from a
-//! router and threads through the same path.
-
 mod common;
 
 use std::sync::Arc;
@@ -27,14 +7,10 @@ use async_trait::async_trait;
 use vac_session_engine::{EngineError, LlmAdapter, LlmRequest, LlmResponse};
 use vac_shell_host_commands::{ShellCommandError, ShellCommandExecutor};
 use vac_shell_host_vac_command_adapter::{
-    AdapterCommandSpec, AdapterConfig, AdapterLlm, VacCommandExecutorAdapter, VilLlmRouterAdapter,
+    AdapterConfig, AdapterLlm, VacCommandExecutorAdapter, VilLlmRouterAdapter,
 };
 
-use common::cmd;
-
-// ---------------------------------------------------------------------
-// Stub LlmAdapter — captures the prompt + emits a fixed response.
-// ---------------------------------------------------------------------
+use common::{cmd, mapped_with_prompt};
 
 struct CapturingAdapter {
     seen_prompt: Arc<std::sync::Mutex<Vec<String>>>,
@@ -76,11 +52,6 @@ impl LlmAdapter for CapturingAdapter {
     }
 }
 
-// ---------------------------------------------------------------------
-// Stub LlmAdapter — always fails. Verifies operator-visible error
-// surface for the Custom path.
-// ---------------------------------------------------------------------
-
 struct FailingAdapter;
 
 #[async_trait]
@@ -92,18 +63,6 @@ impl LlmAdapter for FailingAdapter {
     }
 }
 
-fn mapped(root: std::path::PathBuf) -> AdapterConfig {
-    AdapterConfig::new(root).with_command(AdapterCommandSpec::new(
-        "memorize",
-        "/memorize",
-        "MEMORIZE-PROMPT-D7C",
-    ))
-}
-
-// ---------------------------------------------------------------------
-// 1. Default config keeps EchoAdapter (D7B behaviour preserved).
-// ---------------------------------------------------------------------
-
 #[test]
 fn default_adapter_llm_is_echo() {
     let cfg = AdapterConfig::new(std::path::PathBuf::from("/tmp"));
@@ -113,28 +72,30 @@ fn default_adapter_llm_is_echo() {
 #[test]
 fn echo_path_still_writes_transcript_after_d7c_refactor() {
     let tmp = tempfile::tempdir().unwrap();
-    let adapter = VacCommandExecutorAdapter::new(mapped(tmp.path().to_path_buf()));
+    let adapter = VacCommandExecutorAdapter::new(mapped_with_prompt(
+        tmp.path().to_path_buf(),
+        "MEMORIZE-PROMPT-D7C",
+    ));
     adapter.execute(&cmd("memorize", "/memorize")).unwrap();
     let path = adapter.last_transcript().unwrap();
     let body = std::fs::read_to_string(&path).unwrap();
-    // EchoAdapter prefixes its echo with "echo:" so the
-    // transcript must contain that substring somewhere.
     assert!(
         body.contains("echo:"),
         "EchoAdapter response missing from transcript: {body}"
     );
 }
 
-// ---------------------------------------------------------------------
-// 2. Custom adapter is invoked with the configured prompt.
-// ---------------------------------------------------------------------
 
 #[test]
 fn custom_adapter_receives_configured_prompt() {
     let capturer = Arc::new(CapturingAdapter::new("D7C-CUSTOM-RESPONSE"));
     let tmp = tempfile::tempdir().unwrap();
     let adapter =
-        VacCommandExecutorAdapter::new(mapped(tmp.path().to_path_buf()).with_llm(capturer.clone()));
+        VacCommandExecutorAdapter::new(mapped_with_prompt(
+            tmp.path().to_path_buf(),
+            "MEMORIZE-PROMPT-D7C",
+        )
+        .with_llm(capturer.clone()));
     adapter.execute(&cmd("memorize", "/memorize")).unwrap();
 
     assert_eq!(capturer.calls(), 1);
@@ -148,7 +109,11 @@ fn custom_adapter_response_lands_in_transcript() {
     let capturer = Arc::new(CapturingAdapter::new("D7C-RESPONSE-NEEDLE"));
     let tmp = tempfile::tempdir().unwrap();
     let adapter =
-        VacCommandExecutorAdapter::new(mapped(tmp.path().to_path_buf()).with_llm(capturer));
+        VacCommandExecutorAdapter::new(mapped_with_prompt(
+            tmp.path().to_path_buf(),
+            "MEMORIZE-PROMPT-D7C",
+        )
+        .with_llm(capturer));
     adapter.execute(&cmd("memorize", "/memorize")).unwrap();
 
     let path = adapter.last_transcript().unwrap();
@@ -159,15 +124,13 @@ fn custom_adapter_response_lands_in_transcript() {
     );
 }
 
-// ---------------------------------------------------------------------
-// 3. Custom adapter failure surfaces as ShellCommandError::Failed.
-// ---------------------------------------------------------------------
 
 #[test]
 fn custom_adapter_engine_error_surfaces_as_shell_command_failed() {
     let tmp = tempfile::tempdir().unwrap();
     let adapter = VacCommandExecutorAdapter::new(
-        mapped(tmp.path().to_path_buf()).with_llm(Arc::new(FailingAdapter)),
+        mapped_with_prompt(tmp.path().to_path_buf(), "MEMORIZE-PROMPT-D7C")
+            .with_llm(Arc::new(FailingAdapter)),
     );
     let err = adapter
         .execute(&cmd("memorize", "/memorize"))
@@ -184,11 +147,6 @@ fn custom_adapter_engine_error_surfaces_as_shell_command_failed() {
     assert!(adapter.last_transcript().is_none());
 }
 
-// ---------------------------------------------------------------------
-// 4. vil_llm router bridge — fake providers prove the actual provider
-//    that satisfied the request lands in the engine response and
-//    transcript, even under fallback. No live credentials required.
-// ---------------------------------------------------------------------
 
 struct VilOk {
     name: &'static str,
@@ -256,7 +214,6 @@ impl vil_llm::LlmProvider for VilFail {
 
 #[test]
 fn vil_llm_router_bridge_records_actual_provider_in_transcript() {
-    // Default-only success path: provider == default == "good".
     let mut router = vil_llm::LlmRouter::new("good", 1_000);
     router.add_provider_named(
         "good",
@@ -268,7 +225,8 @@ fn vil_llm_router_bridge_records_actual_provider_in_transcript() {
 
     let tmp = tempfile::tempdir().unwrap();
     let adapter = VacCommandExecutorAdapter::new(
-        mapped(tmp.path().to_path_buf()).with_vil_llm_router(router),
+        mapped_with_prompt(tmp.path().to_path_buf(), "MEMORIZE-PROMPT-D7C")
+            .with_vil_llm_router(router),
     );
     adapter.execute(&cmd("memorize", "/memorize")).unwrap();
 
@@ -284,8 +242,6 @@ fn vil_llm_router_bridge_records_actual_provider_in_transcript() {
 
 #[test]
 fn vil_llm_router_bridge_records_actual_fallback_provider_in_transcript() {
-    // Default `bad` always fails; fallback `good` satisfies the
-    // request. The transcript provider must be `good`, not `bad`.
     let mut router = vil_llm::LlmRouter::new("bad", 1_000);
     router.set_fallback_chain(vec!["bad".into(), "good".into()]);
     router.add_provider_named("bad", Arc::new(VilFail { name: "bad" }));
@@ -299,7 +255,8 @@ fn vil_llm_router_bridge_records_actual_fallback_provider_in_transcript() {
 
     let tmp = tempfile::tempdir().unwrap();
     let adapter = VacCommandExecutorAdapter::new(
-        mapped(tmp.path().to_path_buf()).with_vil_llm_router(router),
+        mapped_with_prompt(tmp.path().to_path_buf(), "MEMORIZE-PROMPT-D7C")
+            .with_vil_llm_router(router),
     );
     adapter.execute(&cmd("memorize", "/memorize")).unwrap();
 
@@ -323,7 +280,8 @@ fn vil_llm_router_bridge_propagates_failure_when_all_providers_fail() {
 
     let tmp = tempfile::tempdir().unwrap();
     let adapter = VacCommandExecutorAdapter::new(
-        mapped(tmp.path().to_path_buf()).with_vil_llm_router(router),
+        mapped_with_prompt(tmp.path().to_path_buf(), "MEMORIZE-PROMPT-D7C")
+            .with_vil_llm_router(router),
     );
     let err = adapter.execute(&cmd("memorize", "/memorize")).unwrap_err();
     match err {
@@ -338,12 +296,6 @@ fn vil_llm_router_bridge_propagates_failure_when_all_providers_fail() {
     assert!(adapter.last_transcript().is_none());
 }
 
-// ---------------------------------------------------------------------
-// 4c. D7D — tool-use round-tripping. vil_llm::ToolCall blocks survive
-//     translation into vac_session_engine::ToolCallRequest, and the
-//     engine's no-dispatcher path remains safe (writes error envelope
-//     via UnsupportedDispatcher, never panics).
-// ---------------------------------------------------------------------
 
 struct VilOkWithTools {
     name: &'static str,
@@ -392,8 +344,6 @@ fn fake_tool_call(id: &str, name: &str, args: serde_json::Value) -> vil_llm::pro
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn vil_llm_router_bridge_translates_tool_calls_into_engine_response() {
-    // Drive the bridge directly (no submit_one round-trip) so we
-    // can assert the translated `LlmResponse.tool_calls` exactly.
     let mut router = vil_llm::LlmRouter::new("good", 1_000);
     router.add_provider_named(
         "good",
@@ -452,11 +402,6 @@ async fn vil_llm_router_bridge_emits_empty_tool_calls_when_provider_emits_none()
     assert!(resp.tool_calls.is_empty());
 }
 
-/// Custom `LlmAdapter` that returns a synthetic tool call,
-/// proving the engine's no-dispatcher path stays safe (writes
-/// an error envelope via `UnsupportedDispatcher` and never
-/// panics) when D7D's translation produces a non-empty
-/// `tool_calls` vector.
 struct ToolEmittingAdapter;
 
 #[async_trait]
@@ -481,14 +426,10 @@ impl LlmAdapter for ToolEmittingAdapter {
 
 #[test]
 fn d7e_tool_call_and_tool_result_rows_visible_via_execute_path() {
-    // After D7E, the engine persists tool_call + tool_result
-    // rows directly to the transcript. That means the dogfood
-    // operator path (`ShellCommandExecutor::execute`, which
-    // passes None for events) can finally observe tool-use
-    // outcomes without subscribing to a SubmitEvent channel.
     let tmp = tempfile::tempdir().unwrap();
     let adapter = VacCommandExecutorAdapter::new(
-        mapped(tmp.path().to_path_buf()).with_llm(Arc::new(ToolEmittingAdapter)),
+        mapped_with_prompt(tmp.path().to_path_buf(), "MEMORIZE-PROMPT-D7C")
+            .with_llm(Arc::new(ToolEmittingAdapter)),
     );
     adapter.execute(&cmd("memorize", "/memorize")).unwrap();
     let path = adapter.last_transcript().unwrap();
@@ -521,21 +462,16 @@ fn d7e_tool_call_and_tool_result_rows_visible_via_execute_path() {
 
 #[test]
 fn engine_remains_safe_when_tool_calls_arrive_without_a_dispatcher() {
-    // The host has not attached a `ToolDispatcher` (CompactConfig
-    // default), so each tool call should fall through to
-    // `UnsupportedDispatcher` and produce a `ToolResult` error
-    // envelope without aborting the submit. Verifies the engine
-    // contract D7D relies on for safety.
     let tmp = tempfile::tempdir().unwrap();
     let adapter = VacCommandExecutorAdapter::new(
-        mapped(tmp.path().to_path_buf()).with_llm(Arc::new(ToolEmittingAdapter)),
+        mapped_with_prompt(tmp.path().to_path_buf(), "MEMORIZE-PROMPT-D7C")
+            .with_llm(Arc::new(ToolEmittingAdapter)),
     );
     adapter
         .execute(&cmd("memorize", "/memorize"))
         .expect("non-empty tool_calls without a dispatcher must not abort the submit");
     let path = adapter.last_transcript().unwrap();
     let body = std::fs::read_to_string(&path).unwrap();
-    // The Finished row is the engine's "submit completed" marker.
     assert!(
         body.contains("\"kind\":\"finished\"")
             || body.contains("\"kind\": \"finished\"")
@@ -544,14 +480,6 @@ fn engine_remains_safe_when_tool_calls_arrive_without_a_dispatcher() {
     );
 }
 
-// ---------------------------------------------------------------------
-// 4d. D7D-HARDENING — drive submit_one DIRECTLY with the bridge so we
-//     can subscribe to the event channel and prove the engine's
-//     dispatch/event loop receives the translated tool calls and
-//     produces an UnsupportedDispatcher error envelope when no
-//     dispatcher is attached. The adapter's `execute` path passes
-//     `None` for events; these tests bypass it on purpose.
-// ---------------------------------------------------------------------
 
 async fn drain_events(
     mut rx: tokio::sync::mpsc::UnboundedReceiver<vac_session_engine::SubmitEvent>,
@@ -613,7 +541,6 @@ async fn submit_one_emits_tool_requested_then_tool_result_when_no_dispatcher_att
     let tmp = tempfile::tempdir().unwrap();
     let events = run_submit_with_bridge(tmp.path().to_path_buf(), router).await;
 
-    // Find the ToolRequested with the exact id/name/arguments.
     let req_idx = events
         .iter()
         .position(|e| {
@@ -625,8 +552,6 @@ async fn submit_one_emits_tool_requested_then_tool_result_when_no_dispatcher_att
         })
         .expect("ToolRequested with translated id/name/arguments must appear");
 
-    // ToolResult must follow with the same id/name and an error
-    // envelope mentioning the no-dispatcher condition.
     let res_idx = events
         .iter()
         .enumerate()
@@ -652,7 +577,6 @@ async fn submit_one_emits_tool_requested_then_tool_result_when_no_dispatcher_att
         })
         .expect("ToolResult after ToolRequested must appear");
 
-    // Finished must come after ToolResult.
     let fin_idx = events
         .iter()
         .position(|e| matches!(e, SubmitEvent::Finished { .. }))
@@ -719,10 +643,6 @@ async fn submit_one_preserves_tool_calls_under_provider_fallback() {
     let tmp = tempfile::tempdir().unwrap();
     let events = run_submit_with_bridge(tmp.path().to_path_buf(), router).await;
 
-    // The transcript LlmResponse row records the satisfying
-    // provider via the D7C invariant (`complete_with_provider`
-    // returns the actual provider that succeeded under
-    // fallback). Read it directly to assert that.
     let session_files: Vec<_> = std::fs::read_dir(tmp.path().join(".vac").join("sessions"))
         .unwrap()
         .flatten()
@@ -734,7 +654,6 @@ async fn submit_one_preserves_tool_calls_under_provider_fallback() {
         "fallback provider must land in transcript: {body}"
     );
 
-    // Translated tool call must appear in the event stream.
     let saw_tool = events.iter().any(|e| {
         matches!(
             e,
@@ -748,10 +667,6 @@ async fn submit_one_preserves_tool_calls_under_provider_fallback() {
     );
 }
 
-// ---------------------------------------------------------------------
-// 4e. Strengthened mapping coverage — the original test only asserted
-// against the first translated call. Pin the second call's defaults too.
-// ---------------------------------------------------------------------
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn vil_llm_bridge_second_tool_call_keeps_conservative_defaults() {
@@ -785,17 +700,9 @@ async fn vil_llm_bridge_second_tool_call_keeps_conservative_defaults() {
     assert_eq!(second.estimated_tokens, 0);
 }
 
-// ---------------------------------------------------------------------
-// 4b. Construction-only test (kept from D7C v1) — the bridge plugs in
-//     even when the router has no providers attached.
-// ---------------------------------------------------------------------
 
 #[test]
 fn vil_llm_router_bridge_constructs_and_plugs_in() {
-    // Build a minimal LlmRouter with no providers attached. We
-    // do NOT execute it (no CI credentials); we only verify the
-    // bridge constructs and the AdapterConfig accepts it via
-    // the convenience helper.
     let router = vil_llm::LlmRouter::new("anthropic", 0);
     let bridge = VilLlmRouterAdapter::new(router);
     let dbg = format!("{bridge:?}");
@@ -806,9 +713,6 @@ fn vil_llm_router_bridge_constructs_and_plugs_in() {
     assert!(matches!(cfg.llm, AdapterLlm::Custom(_)));
 }
 
-// ---------------------------------------------------------------------
-// 5. AdapterLlm Debug is non-leaky.
-// ---------------------------------------------------------------------
 
 #[test]
 fn adapter_llm_debug_does_not_leak_inner_handle() {
