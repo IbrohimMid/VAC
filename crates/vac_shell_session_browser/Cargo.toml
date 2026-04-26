@@ -8,3 +8,6 @@ description = "Slice 13 — pure ratatui session browser widget over Vec<Session
 [dependencies]
 vac_shell_contracts = { path = "../vac_shell_contracts" }
 ratatui.workspace = true
+
+[dev-dependencies]
+ratatui = { workspace = true, features = [] }

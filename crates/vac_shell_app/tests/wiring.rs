@@ -157,7 +157,7 @@ fn session_browser_delete_routes_to_sessions_state_after_confirm() {
     let mut app = ShellApp::new(comp.clone());
     app.sessions = Some(sessions.clone());
     app.handle_global_key(GlobalKey::OpenSessionBrowser);
-    app.session_browser.entries = sessions.list(comp.paths.as_ref());
+    app.session_browser.tiles = sessions.list_with_summaries(comp.paths.as_ref(), |_| None);
     app.session_browser.visible = true;
 
     // First Delete primes; second commits.
@@ -298,9 +298,9 @@ fn opening_session_browser_populates_from_live_sessions_list() {
     app.handle_global_key(GlobalKey::OpenSessionBrowser);
     let ids: Vec<String> = app
         .session_browser
-        .entries
+        .tiles
         .iter()
-        .map(|e| e.id.clone())
+        .map(|t| t.entry.id.clone())
         .collect();
     assert_eq!(ids, vec!["alpha"]);
 }
@@ -419,7 +419,7 @@ fn palette_sessions_slash_opens_session_browser_overlay() {
     app.sessions = Some(Arc::new(vac_shell_host_sessions::SessionsState::new()));
     app.apply_event(AppEvent::PaletteSelected("/sessions".into()));
     assert_eq!(app.overlays.top(), ShellOverlay::SessionBrowser);
-    assert_eq!(app.session_browser.entries.len(), 1);
+    assert_eq!(app.session_browser.tiles.len(), 1);
 }
 
 #[test]

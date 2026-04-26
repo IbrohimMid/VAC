@@ -6450,6 +6450,7 @@ dependencies = [
  "vac_shell_host_sessions",
  "vac_shell_host_status",
  "vac_shell_host_surface",
+ "vac_shell_host_transcript_projection",
  "vac_shell_model_switcher",
  "vac_shell_overlay",
  "vac_shell_palette",
@@ -6557,8 +6558,10 @@ dependencies = [
 name = "vac_shell_host_approval"
 version = "0.1.0"
 dependencies = [
+ "serde_json",
  "vac_shell_approval_bar",
  "vac_shell_bridge",
+ "vac_shell_contracts",
 ]
 
 [[package]]
@@ -6588,9 +6591,14 @@ dependencies = [
 name = "vac_shell_host_event_projection"
 version = "0.1.0"
 dependencies = [
+ "futures",
  "serde",
+ "serde_json",
+ "tokio",
+ "vac_session_engine",
  "vac_shell_contracts",
  "vac_shell_host_activity",
+ "vac_tool_core",
 ]
 
 [[package]]
@@ -6677,10 +6685,12 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "crossterm",
+ "futures",
  "serde_json",
  "tempfile",
  "thiserror 1.0.69",
  "tokio",
+ "tokio-stream",
  "uuid",
  "vac_session_engine",
  "vac_shell_app",
@@ -6690,6 +6700,7 @@ dependencies = [
  "vac_shell_entrypoint",
  "vac_shell_host_activity",
  "vac_shell_host_commands",
+ "vac_shell_host_event_projection",
  "vac_shell_host_model",
  "vac_shell_host_paths",
  "vac_shell_host_vac_tool_dispatcher",

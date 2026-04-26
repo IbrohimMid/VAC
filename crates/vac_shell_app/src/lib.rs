@@ -82,6 +82,12 @@ pub struct ShellApp {
     /// went wrong instead of staring at a silent UI. Optional so
     /// pure-render tests don't have to instantiate one.
     pub activity_log: Option<Arc<vac_shell_host_activity::ActivityLog>>,
+    /// D10 — populates the approval detail drawer with real risk
+    /// classification and command preview. Defaults to
+    /// `DefaultApprovalDetailProvider` (heuristic, no vac_core dep).
+    /// Hosts may replace with a policy-aware implementation.
+    pub approval_detail_provider:
+        Option<Arc<dyn vac_shell_host_approval::ApprovalDetailProvider>>,
 }
 
 /// Outbound app events the host loop consumes after a key press.
@@ -108,6 +114,9 @@ impl ShellApp {
     pub fn new(composition: Arc<ShellComposition>) -> Self {
         Self {
             composition: Some(composition),
+            approval_detail_provider: Some(Arc::new(
+                vac_shell_host_approval::DefaultApprovalDetailProvider,
+            )),
             ..Default::default()
         }
     }
@@ -174,13 +183,25 @@ impl ShellApp {
                 None
             }
             GlobalKey::OpenSessionBrowser => {
-                // Slice 20.2 — populate session entries from the
-                // live SessionsState (if attached).
+                // Slice 20.2 / D10 — populate session tiles (with tool-use badges)
+                // from the live SessionsState (if attached).
                 if let (Some(comp), Some(sessions)) = (&self.composition, &self.sessions) {
-                    self.session_browser.entries = sessions.list(comp.paths.as_ref());
-                    if self.session_browser.selected
-                        >= self.session_browser.entries.len()
-                    {
+                    self.session_browser.tiles = sessions.list_with_summaries(
+                        comp.paths.as_ref(),
+                        |path| {
+                            vac_shell_host_transcript_projection::session_tool_use_summary(path)
+                                .ok()
+                                .map(|s| vac_shell_contracts::SessionToolSummary {
+                                    total_calls: s.total_calls,
+                                    ok_count: s.ok_count,
+                                    warning_count: s.warning_count,
+                                    error_count: s.error_count,
+                                    cancelled_count: s.cancelled_count,
+                                    pending_count: s.pending_count,
+                                })
+                        },
+                    );
+                    if self.session_browser.selected >= self.session_browser.tiles.len() {
                         self.session_browser.selected = 0;
                     }
                 }
@@ -200,20 +221,24 @@ impl ShellApp {
                 None
             }
             GlobalKey::OpenApprovalDetail => {
-                // Drawer reads from the live approval bar selection.
+                // D10 — drawer reads from the live approval bar selection,
+                // then enriches via the approval detail provider.
                 self.refresh_approval_bar();
                 if let Some(action) = self.approval_bar.selected() {
-                    self.approval_detail.detail = Some(
-                        vac_shell_contracts::ApprovalDetailView {
-                            id: action.id.clone(),
-                            tool_name: action.label.clone(),
-                            risk_level: vac_shell_contracts::RiskLevel::Medium,
-                            reason: "operator opened detail drawer".into(),
-                            command_preview: None,
-                            file_preview: None,
-                            policy_source: None,
-                        },
-                    );
+                    let detail = if let (Some(comp), Some(provider)) =
+                        (&self.composition, &self.approval_detail_provider)
+                    {
+                        let queue_snap = comp.approval_queue.snapshot();
+                        queue_snap
+                            .iter()
+                            .find(|r| r.id == action.id)
+                            .map(|req| provider.detail_for(req))
+                    } else {
+                        None
+                    };
+                    if let Some(d) = detail {
+                        self.approval_detail.detail = Some(d);
+                    }
                 }
                 self.toggle_overlay(ShellOverlay::ApprovalDetail);
                 None
@@ -481,8 +506,23 @@ impl ShellApp {
                     }
                     "/sessions" => {
                         if let Some(sessions) = &self.sessions {
-                            self.session_browser.entries =
-                                sessions.list(comp.paths.as_ref());
+                            self.session_browser.tiles = sessions.list_with_summaries(
+                                comp.paths.as_ref(),
+                                |path| {
+                                    vac_shell_host_transcript_projection::session_tool_use_summary(
+                                        path,
+                                    )
+                                    .ok()
+                                    .map(|s| vac_shell_contracts::SessionToolSummary {
+                                        total_calls: s.total_calls,
+                                        ok_count: s.ok_count,
+                                        warning_count: s.warning_count,
+                                        error_count: s.error_count,
+                                        cancelled_count: s.cancelled_count,
+                                        pending_count: s.pending_count,
+                                    })
+                                },
+                            );
                             self.session_browser.selected = 0;
                         }
                         self.overlays

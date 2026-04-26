@@ -296,6 +296,11 @@ pub struct VacCommandExecutorAdapter {
     /// successful submit so tests can assert engine reach
     /// without re-deriving the path.
     last_transcript: Arc<std::sync::Mutex<Option<PathBuf>>>,
+    /// D10 — optional activity log for live feed bridging.
+    /// When set, each submit spawns a background task that drains
+    /// `SubmitChunk` events into the log via
+    /// `vac_shell_host_event_projection::spawn_activity_feed_bridge`.
+    activity_log: Option<vac_shell_host_activity::ActivityLog>,
 }
 
 impl VacCommandExecutorAdapter {
@@ -314,6 +319,7 @@ impl VacCommandExecutorAdapter {
             tool_dispatcher: config.tool_dispatcher,
             gate: config.gate,
             last_transcript: Arc::new(std::sync::Mutex::new(None)),
+            activity_log: None,
         }
     }
 
@@ -321,6 +327,14 @@ impl VacCommandExecutorAdapter {
     /// Tests use this to assert default-config inertness.
     pub fn has_live_tool_dispatcher(&self) -> bool {
         self.tool_dispatcher.is_some()
+    }
+
+    /// D10 — attach an `ActivityLog`. When set, each `execute` call
+    /// spawns a fire-and-forget bridge task that forwards
+    /// `SubmitChunk` events into the log as `ShellActivityEntry` rows.
+    pub fn with_activity_log(mut self, log: vac_shell_host_activity::ActivityLog) -> Self {
+        self.activity_log = Some(log);
+        self
     }
 }
 
@@ -358,7 +372,11 @@ impl VacCommandExecutorAdapter {
             .or_else(|| self.by_slash.get(&command.slash))
     }
 
-    fn run_submit(&self, command: &ShellCommandSpec, mapping: &AdapterCommandSpec) -> Result<PathBuf, String> {
+    fn run_submit(
+        &self,
+        command: &ShellCommandSpec,
+        mapping: &AdapterCommandSpec,
+    ) -> Result<PathBuf, String> {
         let project_root = self.project_root.clone();
         let prompt = mapping.prompt.clone();
         let metadata = json!({
@@ -384,12 +402,35 @@ impl VacCommandExecutorAdapter {
         compact_cfg.gate = self.gate.clone();
 
         // D7C — pick the LLM adapter chosen at config time.
-        // The `Echo` arm holds an owned `EchoAdapter` so the
-        // future borrows it directly; the `Custom` arm holds an
-        // `Arc<dyn LlmAdapter>` cloned out of `self` so the
-        // future owns a stable reference for the entire submit.
+        // D10 — if an activity_log is wired, create a submit event channel
+        // and spawn the bridge before the submit starts.
         let llm_choice = self.llm.clone();
+        let activity_log = self.activity_log.clone();
+        let session_id_str = session_id.to_string();
         let fut = async move {
+            // D10 — build optional event sender for the live feed bridge.
+            let (event_tx, bridge_handle) = if let Some(log) = activity_log {
+                let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+                let stream = {
+                    use tokio_stream::wrappers::UnboundedReceiverStream;
+                    use vac_session_engine::stream::SubmitChunk;
+                    let raw: tokio_stream::wrappers::UnboundedReceiverStream<
+                        vac_session_engine::event::SubmitEvent,
+                    > = UnboundedReceiverStream::new(rx);
+                    use futures::StreamExt as _;
+                    let chunk_stream = raw.map(SubmitChunk::from);
+                    Box::pin(chunk_stream) as vac_session_engine::stream::SubmitStream
+                };
+                let handle = vac_shell_host_event_projection::spawn_activity_feed_bridge(
+                    stream,
+                    log,
+                    session_id_str,
+                );
+                (Some(tx), Some(handle))
+            } else {
+                (None, None)
+            };
+
             let echo;
             let llm_ref: &dyn LlmAdapter = match &llm_choice {
                 AdapterLlm::Echo => {
@@ -398,7 +439,7 @@ impl VacCommandExecutorAdapter {
                 }
                 AdapterLlm::Custom(arc) => arc.as_ref(),
             };
-            submit_one(
+            let result = submit_one(
                 ctx,
                 &writer,
                 &slash,
@@ -406,10 +447,16 @@ impl VacCommandExecutorAdapter {
                 &usage,
                 llm_ref,
                 compact_cfg,
-                None,
+                event_tx,
             )
             .await
-            .map(|_snapshot| ())
+            .map(|_snapshot| ());
+
+            // Wait for bridge to drain (fire-and-forget is also fine — drop handle).
+            if let Some(h) = bridge_handle {
+                let _ = h.await;
+            }
+            result
         };
 
         match Handle::try_current() {

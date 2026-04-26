@@ -16,14 +16,16 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph, Wrap},
 };
-use vac_shell_contracts::{SessionAction, SessionEntry, SessionPreview};
+use vac_shell_contracts::{SessionAction, SessionPreview, SessionTileView};
 
 #[derive(Debug, Clone, Default)]
 pub struct SessionBrowserView {
     pub visible: bool,
     pub search: String,
     pub selected: usize,
-    pub entries: Vec<SessionEntry>,
+    /// D10 — replaces `entries: Vec<SessionEntry>`. Each tile carries
+    /// the entry plus an optional tool-use badge summary.
+    pub tiles: Vec<SessionTileView>,
     pub preview: Option<SessionPreview>,
     pub delete_pending: bool,
 }
@@ -49,13 +51,15 @@ pub enum SessionBrowserEvent {
     Ignored,
 }
 
-pub fn filter_sessions<'a>(needle: &str, all: &'a [SessionEntry]) -> Vec<&'a SessionEntry> {
+pub fn filter_sessions<'a>(needle: &str, all: &'a [SessionTileView]) -> Vec<&'a SessionTileView> {
     let n = needle.trim().to_lowercase();
     if n.is_empty() {
         return all.iter().collect();
     }
     all.iter()
-        .filter(|s| s.id.to_lowercase().contains(&n) || s.label.to_lowercase().contains(&n))
+        .filter(|t| {
+            t.entry.id.to_lowercase().contains(&n) || t.entry.label.to_lowercase().contains(&n)
+        })
         .collect()
 }
 
@@ -63,7 +67,7 @@ pub fn on_key(view: &mut SessionBrowserView, key: SessionBrowserKey) -> SessionB
     if !view.visible {
         return SessionBrowserEvent::Ignored;
     }
-    let filtered = filter_sessions(&view.search, &view.entries);
+    let filtered = filter_sessions(&view.search, &view.tiles);
     let len = filtered.len();
     match key {
         SessionBrowserKey::Up => {
@@ -81,15 +85,19 @@ pub fn on_key(view: &mut SessionBrowserView, key: SessionBrowserKey) -> SessionB
             SessionBrowserEvent::Consumed
         }
         SessionBrowserKey::Enter => match filtered.get(view.selected) {
-            Some(s) => SessionBrowserEvent::Action(SessionAction::Open { id: s.id.clone() }),
+            Some(t) => SessionBrowserEvent::Action(SessionAction::Open { id: t.entry.id.clone() }),
             None => SessionBrowserEvent::Consumed,
         },
         SessionBrowserKey::Resume => match filtered.get(view.selected) {
-            Some(s) => SessionBrowserEvent::Action(SessionAction::Resume { id: s.id.clone() }),
+            Some(t) => {
+                SessionBrowserEvent::Action(SessionAction::Resume { id: t.entry.id.clone() })
+            }
             None => SessionBrowserEvent::Consumed,
         },
         SessionBrowserKey::Archive => match filtered.get(view.selected) {
-            Some(s) => SessionBrowserEvent::Action(SessionAction::Archive { id: s.id.clone() }),
+            Some(t) => {
+                SessionBrowserEvent::Action(SessionAction::Archive { id: t.entry.id.clone() })
+            }
             None => SessionBrowserEvent::Consumed,
         },
         SessionBrowserKey::Delete => {
@@ -99,8 +107,8 @@ pub fn on_key(view: &mut SessionBrowserView, key: SessionBrowserKey) -> SessionB
             } else {
                 view.delete_pending = false;
                 match filtered.get(view.selected) {
-                    Some(s) => SessionBrowserEvent::Action(SessionAction::Delete {
-                        id: s.id.clone(),
+                    Some(t) => SessionBrowserEvent::Action(SessionAction::Delete {
+                        id: t.entry.id.clone(),
                     }),
                     None => SessionBrowserEvent::Consumed,
                 }
@@ -146,7 +154,7 @@ pub fn render_session_browser(f: &mut Frame, view: &SessionBrowserView, area: Re
         .constraints([Constraint::Percentage(45), Constraint::Percentage(55)])
         .split(inner);
 
-    let filtered = filter_sessions(&view.search, &view.entries);
+    let filtered = filter_sessions(&view.search, &view.tiles);
     let mut left: Vec<Line<'static>> = Vec::new();
     left.push(Line::from(vec![
         Span::styled(" search ", Style::default().fg(Color::DarkGray)),
@@ -159,9 +167,9 @@ pub fn render_session_browser(f: &mut Frame, view: &SessionBrowserView, area: Re
             Style::default().fg(Color::DarkGray),
         )));
     } else {
-        for (i, s) in filtered.iter().enumerate() {
+        for (i, tile) in filtered.iter().enumerate() {
             let is_sel = i == view.selected;
-            let style = if is_sel {
+            let label_style = if is_sel {
                 Style::default()
                     .fg(Color::Black)
                     .bg(Color::Cyan)
@@ -169,11 +177,42 @@ pub fn render_session_browser(f: &mut Frame, view: &SessionBrowserView, area: Re
             } else {
                 Style::default().fg(Color::Gray)
             };
-            let label = if s.label.is_empty() { s.id.as_str() } else { s.label.as_str() };
+            let label = if tile.entry.label.is_empty() {
+                tile.entry.id.as_str()
+            } else {
+                tile.entry.label.as_str()
+            };
+            let badge = tile
+                .tool_summary
+                .as_ref()
+                .map(|s| s.badge_text())
+                .unwrap_or_default();
+            let badge_color = tile
+                .tool_summary
+                .as_ref()
+                .map(|s| {
+                    if s.error_count > 0 {
+                        Color::Red
+                    } else if s.total_calls > 0 {
+                        Color::Green
+                    } else {
+                        Color::DarkGray
+                    }
+                })
+                .unwrap_or(Color::DarkGray);
             left.push(Line::from(vec![
-                Span::styled(format!("  {label}"), style),
-                Span::styled(format!("   [{}]", s.id), Style::default().fg(Color::DarkGray)),
+                Span::styled(format!("  {label}"), label_style),
+                Span::styled(
+                    format!("   [{}]", tile.entry.id),
+                    Style::default().fg(Color::DarkGray),
+                ),
             ]));
+            if !badge.is_empty() {
+                left.push(Line::from(Span::styled(
+                    format!("    {badge}"),
+                    Style::default().fg(badge_color),
+                )));
+            }
         }
     }
     f.render_widget(

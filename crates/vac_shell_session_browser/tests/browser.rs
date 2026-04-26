@@ -1,22 +1,36 @@
 use ratatui::backend::TestBackend;
 use ratatui::Terminal;
-use vac_shell_contracts::{SessionAction, SessionEntry, SessionPreview};
+use vac_shell_contracts::{SessionAction, SessionEntry, SessionPreview, SessionTileView};
 use vac_shell_session_browser::{
     SessionBrowserEvent, SessionBrowserKey, SessionBrowserView, on_key,
     render_session_browser,
 };
 
-fn entries() -> Vec<SessionEntry> {
+fn tiles() -> Vec<SessionTileView> {
     vec![
-        SessionEntry { id: "abc".into(), label: "Refactor swarm".into(), last_active_unix: 200 },
-        SessionEntry { id: "def".into(), label: "Bump deps".into(), last_active_unix: 100 },
+        SessionTileView {
+            entry: SessionEntry {
+                id: "abc".into(),
+                label: "Refactor swarm".into(),
+                last_active_unix: 200,
+            },
+            tool_summary: None,
+        },
+        SessionTileView {
+            entry: SessionEntry {
+                id: "def".into(),
+                label: "Bump deps".into(),
+                last_active_unix: 100,
+            },
+            tool_summary: None,
+        },
     ]
 }
 
 fn open_view() -> SessionBrowserView {
     let mut v = SessionBrowserView::default();
     v.visible = true;
-    v.entries = entries();
+    v.tiles = tiles();
     v
 }
 

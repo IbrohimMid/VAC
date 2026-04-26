@@ -15,8 +15,11 @@
 //! # Boundary
 //!
 //! Allowed deps: `vac_shell_contracts`, `vac_shell_host_activity`,
-//! `serde`. No `vac_core`, no `vac_session_engine`, no
-//! `vac_tui_runtime`, no donor crates.
+//! `serde`. **D10 exception (fifth ADR-sanctioned host-side exception)**:
+//! `vac_session_engine` (for `SubmitStream` / `SubmitChunk`) and
+//! `vac_tool_core` (for `ToolResultEnvelope`) are added to support
+//! `spawn_activity_feed_bridge`. This crate is not reachable from any
+//! widget / bridge / app / entrypoint / runtime-loop runtime graph.
 
 use serde::{Deserialize, Serialize};
 use vac_shell_contracts::{Severity, ShellActivityEntry, ShellActivityKind};
@@ -243,4 +246,125 @@ pub fn project_runtime_event(event: RuntimeEventView) -> ShellActivityEntry {
 /// Project + record one event into the supplied activity log.
 pub fn record_projected_event(log: &ActivityLog, event: RuntimeEventView) {
     log.record(project_runtime_event(event));
+}
+
+// =====================================================================
+// D10 — live activity feed bridge
+// =====================================================================
+
+fn current_ts_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+fn args_summary(args: &serde_json::Value) -> Option<String> {
+    let s = serde_json::to_string(args).unwrap_or_default();
+    if s == "null" || s == "{}" || s.is_empty() {
+        None
+    } else {
+        Some(s.chars().take(200).collect())
+    }
+}
+
+/// D10 — spawn a background task that drains `stream` and records each
+/// meaningful chunk as a `ShellActivityEntry` in `log`.
+///
+/// Chunk → `RuntimeEventView` mapping:
+/// - `TextDelta / Accepted / SlashHandled / Compacted / SpeculationReady` → skipped
+/// - `LlmRequested` → `AgentThoughtSummary`
+/// - `ToolRequested` → `ToolStarted`
+/// - `ToolResult` → `ToolFinished`
+/// - `Finished` → `AgentThoughtSummary` with token counts
+/// - `Aborted` → `Error`
+///
+/// Returns a `JoinHandle` — caller can drop it (fire-and-forget) or
+/// `.await` it after the submit completes. The task ends when the
+/// stream is exhausted.
+pub fn spawn_activity_feed_bridge(
+    stream: vac_session_engine::stream::SubmitStream,
+    log: ActivityLog,
+    session_id: String,
+) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        use futures::StreamExt as _;
+        use vac_session_engine::stream::SubmitChunk;
+        use vac_tool_core::ToolResultKind;
+
+        let mut stream = stream;
+        let mut seq: u64 = 0;
+
+        while let Some(chunk) = stream.next().await {
+            let ts = current_ts_secs();
+            seq += 1;
+            let id = format!("bridge-{session_id}-{seq}");
+
+            let event: Option<RuntimeEventView> = match chunk {
+                SubmitChunk::TextDelta { .. }
+                | SubmitChunk::Accepted { .. }
+                | SubmitChunk::SlashHandled { .. }
+                | SubmitChunk::Compacted { .. }
+                | SubmitChunk::SpeculationReady { .. } => None,
+
+                SubmitChunk::LlmRequested { provider, model } => {
+                    Some(RuntimeEventView::AgentThoughtSummary {
+                        id,
+                        ts_unix: ts,
+                        summary: format!("contacting {provider} / {model}"),
+                    })
+                }
+
+                SubmitChunk::ToolRequested { id: tool_id, name, arguments } => {
+                    Some(RuntimeEventView::ToolStarted {
+                        id: format!("bridge-{session_id}-tool-{tool_id}"),
+                        ts_unix: ts,
+                        name,
+                        args_summary: args_summary(&arguments),
+                    })
+                }
+
+                SubmitChunk::ToolResult { id: tool_id, name, payload } => {
+                    let ok = matches!(payload.kind, ToolResultKind::Ok);
+                    let summary = if payload.summary.is_empty() {
+                        None
+                    } else {
+                        Some(payload.summary.clone())
+                    };
+                    Some(RuntimeEventView::ToolFinished {
+                        id: format!("bridge-{session_id}-result-{tool_id}"),
+                        ts_unix: ts,
+                        name,
+                        ok,
+                        summary,
+                    })
+                }
+
+                SubmitChunk::Finished { usage } => {
+                    Some(RuntimeEventView::AgentThoughtSummary {
+                        id,
+                        ts_unix: ts,
+                        summary: format!(
+                            "submit finished — {} in / {} out tokens",
+                            usage.input_tokens, usage.output_tokens
+                        ),
+                    })
+                }
+
+                SubmitChunk::Aborted { reason } => Some(RuntimeEventView::Error {
+                    id,
+                    ts_unix: ts,
+                    title: "submit aborted".into(),
+                    detail: Some(reason),
+                }),
+
+                // Future SubmitChunk variants — skip silently.
+                _ => None,
+            };
+
+            if let Some(ev) = event {
+                record_projected_event(&log, ev);
+            }
+        }
+    })
 }

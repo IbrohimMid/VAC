@@ -371,3 +371,46 @@ fn activity_entry_detail_only_shows_summary_duration_and_transcript_path() {
     );
     assert_eq!(entry.title, "alpha ok");
 }
+
+// ---------------------------------------------------------------------
+// 12. summary may contain text but raw payload + arguments stay redacted.
+//
+// D9 trusts envelope.summary (operator-written by the tool impl) but never
+// renders envelope.payload or view.arguments, even when they contain data
+// that looks like legitimate text.  This test ensures that the redaction
+// boundary holds even when summary is non-trivial.
+// ---------------------------------------------------------------------
+
+#[test]
+fn summary_can_contain_text_but_payload_arguments_still_redacted() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("summary_text.jsonl");
+    // arguments contain a "secret_token" field that must never appear.
+    // payload also contains a "secret_token" field that must never appear.
+    // summary is deliberately verbose but safe.
+    let args = serde_json::json!({"secret_token": "hunter2", "path": "/tmp/x"});
+    let payload = serde_json::json!({"secret_token": "hunter2", "lines": ["a", "b"]});
+    let body = format!(
+        "{}\n{}\n",
+        tool_call_line("s1", "read_file", args),
+        tool_result_line("s1", "read_file", "ok", "read_file returned 2 lines", payload, 7),
+    );
+    write_jsonl(&path, &body);
+
+    let proj = project_tool_use_activity(&path).unwrap();
+    assert_eq!(proj.len(), 1);
+    let p = &proj[0];
+
+    // summary is forwarded verbatim — the tool impl owns it.
+    assert_eq!(p.summary, "read_file returned 2 lines");
+
+    // raw secrets must not appear anywhere in the projection struct.
+    let rendered = format!("{:?} {:?}", p.summary, p.tool_name);
+    assert!(!rendered.contains("hunter2"), "secret_token leaked into projection: {rendered}");
+
+    // and not in the activity entry detail either.
+    let entry = p.to_activity_entry(1_700_000_000);
+    let detail = entry.detail.unwrap();
+    assert!(!detail.contains("hunter2"), "secret_token leaked into activity detail: {detail}");
+    assert!(detail.contains("read_file returned 2 lines"));
+}

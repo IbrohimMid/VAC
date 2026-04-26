@@ -52,6 +52,26 @@ impl SessionsState {
         enumerate_sessions(paths)
     }
 
+    /// D10 — like `list` but also calls `summarize` on each transcript
+    /// path and bundles the result into a `SessionTileView`. The closure
+    /// keeps this crate dep-free from `vac_shell_host_transcript_projection`;
+    /// the app or entrypoint wires the real projection fn.
+    pub fn list_with_summaries(
+        &self,
+        paths: &dyn VacPaths,
+        summarize: impl Fn(&std::path::Path) -> Option<vac_shell_contracts::SessionToolSummary>,
+    ) -> Vec<vac_shell_contracts::SessionTileView> {
+        let entries = enumerate_sessions(paths);
+        entries
+            .into_iter()
+            .map(|entry| {
+                let jsonl = paths.sessions_dir().join(format!("{}.jsonl", entry.id));
+                let tool_summary = summarize(&jsonl);
+                vac_shell_contracts::SessionTileView { entry, tool_summary }
+            })
+            .collect()
+    }
+
     /// Read the first few lines of the transcript as a preview.
     pub fn preview(
         &self,
@@ -142,5 +162,56 @@ impl SessionsState {
 
     pub fn deleted_ids(&self) -> Vec<String> {
         self.inner.lock().expect("sessions lock").deleted.clone()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+    use vac_shell_contracts::SessionToolSummary;
+
+    struct FakePaths(std::path::PathBuf);
+    impl VacPaths for FakePaths {
+        fn project_root(&self) -> std::path::PathBuf { self.0.clone() }
+        fn sessions_dir(&self) -> std::path::PathBuf { self.0.clone() }
+        fn project_state_dir(&self) -> std::path::PathBuf { self.0.clone() }
+        fn user_state_dir(&self) -> std::path::PathBuf { self.0.clone() }
+        fn plan_file(&self) -> std::path::PathBuf { self.0.join("plan.md") }
+        fn model_selection_file(&self) -> std::path::PathBuf { self.0.join("model_selection.json") }
+        fn commands_dir(&self) -> std::path::PathBuf { self.0.join("commands") }
+    }
+
+    #[test]
+    fn list_with_summaries_injects_summary_per_tile() {
+        let tmp = tempdir().unwrap();
+        let path = tmp.path().join("abc123.jsonl");
+        std::fs::write(&path, b"{}").unwrap();
+
+        let state = SessionsState::new();
+        let fake = FakePaths(tmp.path().to_path_buf());
+        let expected = SessionToolSummary {
+            total_calls: 3,
+            ok_count: 2,
+            error_count: 1,
+            ..Default::default()
+        };
+        let exp2 = expected.clone();
+        let tiles = state.list_with_summaries(&fake, move |_p| Some(exp2.clone()));
+        assert_eq!(tiles.len(), 1);
+        assert_eq!(tiles[0].entry.id, "abc123");
+        assert_eq!(tiles[0].tool_summary, Some(expected));
+    }
+
+    #[test]
+    fn list_with_summaries_none_when_closure_returns_none() {
+        let tmp = tempdir().unwrap();
+        std::fs::write(tmp.path().join("xyz.jsonl"), b"{}").unwrap();
+
+        let state = SessionsState::new();
+        let fake = FakePaths(tmp.path().to_path_buf());
+        let tiles = state.list_with_summaries(&fake, |_| None);
+        assert_eq!(tiles.len(), 1);
+        assert!(tiles[0].tool_summary.is_none());
     }
 }

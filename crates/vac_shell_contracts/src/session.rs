@@ -38,3 +38,36 @@ pub enum SessionAction {
     Archive { id: String },
     Delete { id: String },
 }
+
+/// D10 — aggregate tool-use counts for one session transcript.
+/// Populated by the host (via `vac_shell_host_transcript_projection`)
+/// when the session browser opens. `None` on the tile means the host
+/// could not produce a summary (missing file, pre-D7E transcript).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionToolSummary {
+    pub total_calls: usize,
+    pub ok_count: usize,
+    pub warning_count: usize,
+    pub error_count: usize,
+    pub cancelled_count: usize,
+    pub pending_count: usize,
+}
+
+impl SessionToolSummary {
+    pub fn badge_text(&self) -> String {
+        if self.total_calls == 0 {
+            "no tools".to_string()
+        } else {
+            format!("tools: {} ok / {} err", self.ok_count, self.error_count)
+        }
+    }
+}
+
+/// D10 — one tile in the session browser list. Wraps `SessionEntry`
+/// with an optional tool-use summary badge. Widget renders the badge;
+/// host populates it via the projection closure in `list_with_summaries`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionTileView {
+    pub entry: SessionEntry,
+    pub tool_summary: Option<SessionToolSummary>,
+}

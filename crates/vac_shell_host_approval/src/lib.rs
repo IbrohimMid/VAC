@@ -28,6 +28,9 @@ pub struct ApprovalRequest {
     pub tool_name: String,
     pub label: String,
     pub status: ApprovalStatus,
+    /// D10 — tool call arguments, forwarded to the detail provider for
+    /// `command_preview`. `None` when not yet populated by the gate.
+    pub arguments: Option<serde_json::Value>,
 }
 
 impl ApprovalRequest {
@@ -39,7 +42,14 @@ impl ApprovalRequest {
             tool_name,
             label,
             status: ApprovalStatus::Approved,
+            arguments: None,
         }
+    }
+
+    /// D10 — attach tool call arguments for detail enrichment.
+    pub fn with_arguments(mut self, args: serde_json::Value) -> Self {
+        self.arguments = Some(args);
+        self
     }
 }
 
@@ -170,6 +180,75 @@ impl ApprovalController for ApprovalQueueController {
         inner.last_outcome = Some(outcome);
         Ok(())
     }
+}
+
+// =====================================================================
+// D10 — ApprovalDetailProvider + DefaultApprovalDetailProvider
+// =====================================================================
+
+use vac_shell_contracts::{ApprovalDetailView, RiskLevel};
+
+/// Trait the app delegates to when opening the detail drawer.
+/// Implementors classify risk, derive a command preview, and fill
+/// the `ApprovalDetailView` DTO without touching the widget layer.
+pub trait ApprovalDetailProvider: Send + Sync {
+    fn detail_for(&self, req: &ApprovalRequest) -> ApprovalDetailView;
+}
+
+/// Heuristic-only provider. Classifies risk purely from tool name
+/// patterns — no `vac_core` dep needed.
+///
+/// Pattern table (longest-match, case-insensitive):
+/// - `*_delete`, `*_remove`, `rm_*`, `drop_*` → Critical
+/// - `*_write`, `*_create`, `*_exec`, `shell_*`, `bash_*` → High
+/// - `*_read`, `*_get`, `*_list`, `glob_*`, `ls_*` → Low
+/// - everything else → Medium
+pub struct DefaultApprovalDetailProvider;
+
+impl ApprovalDetailProvider for DefaultApprovalDetailProvider {
+    fn detail_for(&self, req: &ApprovalRequest) -> ApprovalDetailView {
+        ApprovalDetailView {
+            id: req.id.clone(),
+            tool_name: req.tool_name.clone(),
+            risk_level: classify_risk(&req.tool_name),
+            reason: format!("auto-classified from tool name: {}", req.tool_name),
+            command_preview: req
+                .arguments
+                .as_ref()
+                .and_then(|a| serde_json::to_string_pretty(a).ok())
+                .filter(|s| !s.is_empty() && s != "null"),
+            file_preview: None,
+            policy_source: None,
+        }
+    }
+}
+
+fn classify_risk(name: &str) -> RiskLevel {
+    let n = name.to_lowercase();
+    if n.ends_with("_delete")
+        || n.ends_with("_remove")
+        || n.starts_with("rm_")
+        || n.starts_with("drop_")
+    {
+        return RiskLevel::Critical;
+    }
+    if n.ends_with("_write")
+        || n.ends_with("_create")
+        || n.ends_with("_exec")
+        || n.starts_with("shell_")
+        || n.starts_with("bash_")
+    {
+        return RiskLevel::High;
+    }
+    if n.ends_with("_read")
+        || n.ends_with("_get")
+        || n.ends_with("_list")
+        || n.starts_with("glob_")
+        || n.starts_with("ls_")
+    {
+        return RiskLevel::Low;
+    }
+    RiskLevel::Medium
 }
 
 #[cfg(test)]
