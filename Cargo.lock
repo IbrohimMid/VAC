@@ -6538,6 +6538,8 @@ dependencies = [
  "vac_shell_contracts",
  "vac_shell_host_activity",
  "vac_shell_host_commands",
+ "vac_shell_host_doctor",
+ "vac_shell_host_doctor_command",
  "vac_shell_host_model",
  "vac_shell_host_paths",
  "vac_shell_host_sessions",
@@ -6597,6 +6599,20 @@ dependencies = [
  "tempfile",
  "vac_shell_contracts",
  "vac_shell_host_vac_config",
+ "vac_shell_test_support",
+]
+
+[[package]]
+name = "vac_shell_host_doctor_command"
+version = "0.1.0"
+dependencies = [
+ "tempfile",
+ "vac_shell_app",
+ "vac_shell_composition",
+ "vac_shell_contracts",
+ "vac_shell_host_activity",
+ "vac_shell_host_commands",
+ "vac_shell_host_doctor",
  "vac_shell_test_support",
 ]
 
