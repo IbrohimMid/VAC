@@ -1,7 +1,9 @@
 use std::sync::Arc;
 use tempfile::tempdir;
 use vac_shell_app::ShellApp;
-use vac_shell_contracts::{Severity, ShellCommandKind, ShellCommandSpec, VacPaths};
+use vac_shell_contracts::{
+    Severity, ShellActivityKind, ShellCommandKind, ShellCommandSpec, VacPaths,
+};
 use vac_shell_host_activity::ActivityLog;
 use vac_shell_host_commands::{route_palette_command, ShellCommandExecutor};
 use vac_shell_host_doctor::{DoctorCheckStatus, DoctorConfig, DoctorReport, ToolDispatcherMode};
@@ -107,6 +109,11 @@ fn severity_mapping_is_correct() {
     record_doctor_report(&activity_log, &report, 12345);
     let snap = activity_log.snapshot();
     assert_eq!(snap.len(), 4);
+
+    for entry in &snap {
+        assert!(entry.id.contains("12345"));
+        assert_eq!(entry.kind, ShellActivityKind::ToolResult);
+    }
 
     let ok = snap.iter().find(|e| e.id.contains("check-ok")).unwrap();
     assert_eq!(ok.severity, Severity::Ok);

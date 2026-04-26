@@ -69,7 +69,9 @@ fn build_shell_app_registers_doctor_command_and_matches_spec() {
     let spec = doctor_command_spec();
 
     assert_eq!(registered.id, spec.id);
+    assert_eq!(registered.slash, spec.slash);
     assert_eq!(registered.title, spec.title);
+    assert_eq!(registered.description, spec.description);
     assert_eq!(registered.category, spec.category);
     assert_eq!(registered.palette_visible, spec.palette_visible);
     assert_eq!(registered.kind, spec.kind);
