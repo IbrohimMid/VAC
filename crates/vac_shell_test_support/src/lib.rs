@@ -4,7 +4,7 @@
 //! Only allowed in `[dev-dependencies]` of other crates.
 
 use std::path::{Path, PathBuf};
-use vac_shell_contracts::{SessionToolSummary, ShellActivityEntry, ShellActivityKind};
+use vac_shell_contracts::{SessionToolSummary, ShellActivityEntry, ShellActivityKind, VacPaths};
 use vac_shell_host_activity::ActivityLog;
 
 // =====================================================================
@@ -12,7 +12,6 @@ use vac_shell_host_activity::ActivityLog;
 // =====================================================================
 
 /// Minimal VacPaths impl backed by a tempdir.
-/// Use `temp_vac_root()` to construct.
 pub struct FakeVacRoot {
     pub dir: tempfile::TempDir,
 }
@@ -35,11 +34,86 @@ impl FakeVacRoot {
     }
 }
 
+/// Flat VacPaths impl: every path method returns `root` (or a child).
+/// Use when the test only needs a single directory for all paths.
+pub struct FakeVacPaths(pub PathBuf);
+
+impl VacPaths for FakeVacPaths {
+    fn project_root(&self) -> PathBuf { self.0.clone() }
+    fn sessions_dir(&self) -> PathBuf { self.0.clone() }
+    fn project_state_dir(&self) -> PathBuf { self.0.clone() }
+    fn user_state_dir(&self) -> PathBuf { self.0.clone() }
+    fn plan_file(&self) -> PathBuf { self.0.join("plan.md") }
+    fn model_selection_file(&self) -> PathBuf { self.0.join("model_selection.json") }
+    fn commands_dir(&self) -> PathBuf { self.0.join("commands") }
+}
+
 /// Write a minimal transcript JSONL file to `path` for testing.
 /// Each `rows` entry is a raw JSON string (one per line).
 pub fn write_transcript_rows(path: &Path, rows: &[&str]) {
     let content = rows.join("\n") + "\n";
     std::fs::write(path, content).expect("write transcript");
+}
+
+/// Write a multi-line JSONL body string to `path`.
+/// Non-empty lines are written as-is; blank lines are skipped.
+pub fn write_jsonl_body(path: &Path, body: &str) {
+    let rows: Vec<&str> = body.lines().filter(|l| !l.is_empty()).collect();
+    if rows.is_empty() {
+        std::fs::write(path, b"").unwrap();
+    } else {
+        write_transcript_rows(path, &rows);
+    }
+}
+
+// =====================================================================
+// Transcript row builders
+// =====================================================================
+
+/// Build a minimal `tool_call` transcript row JSON string.
+pub fn tool_call_json_line(id: &str, name: &str, args: serde_json::Value) -> String {
+    serde_json::json!({
+        "id": format!("row-{id}"),
+        "session_id": "00000000-0000-0000-0000-000000000000",
+        "kind": "tool_call",
+        "timestamp": "2026-04-26T00:00:00Z",
+        "content": {
+            "id": id,
+            "name": name,
+            "arguments": args,
+            "reason": null,
+            "estimated_tokens": 0,
+        }
+    })
+    .to_string()
+}
+
+/// Build a minimal `tool_result` transcript row JSON string.
+pub fn tool_result_json_line(
+    id: &str,
+    name: &str,
+    kind: &str,
+    summary: &str,
+    payload: serde_json::Value,
+    duration_ms: u64,
+) -> String {
+    serde_json::json!({
+        "id": format!("row-r-{id}"),
+        "session_id": "00000000-0000-0000-0000-000000000000",
+        "kind": "tool_result",
+        "timestamp": "2026-04-26T00:00:00Z",
+        "content": {
+            "id": id,
+            "name": name,
+            "envelope": {
+                "kind": kind,
+                "payload": payload,
+                "summary": summary,
+                "duration_ms": duration_ms,
+            }
+        }
+    })
+    .to_string()
 }
 
 // =====================================================================

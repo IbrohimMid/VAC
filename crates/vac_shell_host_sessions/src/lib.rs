@@ -170,26 +170,15 @@ mod tests {
     use super::*;
     use tempfile::tempdir;
     use vac_shell_contracts::SessionToolSummary;
-
-    struct FakePaths(std::path::PathBuf);
-    impl VacPaths for FakePaths {
-        fn project_root(&self) -> std::path::PathBuf { self.0.clone() }
-        fn sessions_dir(&self) -> std::path::PathBuf { self.0.clone() }
-        fn project_state_dir(&self) -> std::path::PathBuf { self.0.clone() }
-        fn user_state_dir(&self) -> std::path::PathBuf { self.0.clone() }
-        fn plan_file(&self) -> std::path::PathBuf { self.0.join("plan.md") }
-        fn model_selection_file(&self) -> std::path::PathBuf { self.0.join("model_selection.json") }
-        fn commands_dir(&self) -> std::path::PathBuf { self.0.join("commands") }
-    }
+    use vac_shell_test_support::FakeVacPaths;
 
     #[test]
     fn list_with_summaries_injects_summary_per_tile() {
         let tmp = tempdir().unwrap();
-        let path = tmp.path().join("abc123.jsonl");
-        std::fs::write(&path, b"{}").unwrap();
+        std::fs::write(tmp.path().join("abc123.jsonl"), b"{}").unwrap();
 
         let state = SessionsState::new();
-        let fake = FakePaths(tmp.path().to_path_buf());
+        let fake = FakeVacPaths(tmp.path().to_path_buf());
         let expected = SessionToolSummary {
             total_calls: 3,
             ok_count: 2,
@@ -209,7 +198,7 @@ mod tests {
         std::fs::write(tmp.path().join("xyz.jsonl"), b"{}").unwrap();
 
         let state = SessionsState::new();
-        let fake = FakePaths(tmp.path().to_path_buf());
+        let fake = FakeVacPaths(tmp.path().to_path_buf());
         let tiles = state.list_with_summaries(&fake, |_| None);
         assert_eq!(tiles.len(), 1);
         assert!(tiles[0].tool_summary.is_none());

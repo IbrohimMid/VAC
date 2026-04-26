@@ -12,3 +12,4 @@ thiserror = "1"
 
 [dev-dependencies]
 tempfile = "3"
+vac_shell_test_support = { path = "../vac_shell_test_support" }

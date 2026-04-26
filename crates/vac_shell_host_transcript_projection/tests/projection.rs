@@ -15,64 +15,7 @@ use vac_shell_contracts::{Severity, ShellActivityKind};
 use vac_shell_host_transcript_projection::{
     ToolUseStatus, project_tool_use_activity, session_tool_use_summary, summarize_tool_use,
 };
-use vac_shell_test_support::write_transcript_rows;
-
-fn write_jsonl(path: &std::path::Path, body: &str) {
-    // Delegate to test_support — write_transcript_rows joins with newlines.
-    let rows: Vec<&str> = body.lines().filter(|l| !l.is_empty()).collect();
-    if rows.is_empty() {
-        std::fs::write(path, b"").unwrap();
-    } else {
-        write_transcript_rows(path, &rows);
-    }
-}
-
-// ---------------------------------------------------------------------
-// Helper — build a minimal transcript row line.
-// ---------------------------------------------------------------------
-fn tool_call_line(id: &str, name: &str, args: serde_json::Value) -> String {
-    serde_json::json!({
-        "id": format!("row-{id}"),
-        "session_id": "00000000-0000-0000-0000-000000000000",
-        "kind": "tool_call",
-        "timestamp": "2026-04-26T00:00:00Z",
-        "content": {
-            "id": id,
-            "name": name,
-            "arguments": args,
-            "reason": null,
-            "estimated_tokens": 0,
-        }
-    })
-    .to_string()
-}
-
-fn tool_result_line(
-    id: &str,
-    name: &str,
-    kind: &str,
-    summary: &str,
-    payload: serde_json::Value,
-    duration_ms: u64,
-) -> String {
-    serde_json::json!({
-        "id": format!("row-r-{id}"),
-        "session_id": "00000000-0000-0000-0000-000000000000",
-        "kind": "tool_result",
-        "timestamp": "2026-04-26T00:00:00Z",
-        "content": {
-            "id": id,
-            "name": name,
-            "envelope": {
-                "kind": kind,
-                "payload": payload,
-                "summary": summary,
-                "duration_ms": duration_ms,
-            }
-        }
-    })
-    .to_string()
-}
+use vac_shell_test_support::{tool_call_json_line as tool_call_line, tool_result_json_line as tool_result_line, write_jsonl_body as write_jsonl};
 
 // ---------------------------------------------------------------------
 // 1–4. Severity / status mapping.
