@@ -16,6 +16,11 @@ helpers — tracked in D10.5-HARDENING.
 - Remove duplicate severity mapping in D9/D10 → done in D10.5-HARDENING
 - Remove local `write_jsonl` in projection tests → done in D10.5-HARDENING
 
+**D10.5 final result:**
+- foundation commit was net-additive
+- hardening/final pass achieved net -414 LOC
+- total state now accepted
+
 ## Summary
 
 | Area | Rust LOC |
