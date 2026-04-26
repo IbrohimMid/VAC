@@ -61,7 +61,8 @@ use uuid::Uuid;
 use async_trait::async_trait;
 use vac_session_engine::{
     CompactConfig, EchoAdapter, LlmAdapter, LlmRequest, LlmResponse, SlashProcessor,
-    SubmitContext, TranscriptWriter, TrivialCompactBoundary, UsageTracker, submit_one,
+    SubmitContext, ToolCallRequest, TranscriptWriter, TrivialCompactBoundary, UsageTracker,
+    submit_one,
 };
 use vac_session_engine::EngineError;
 use vac_shell_contracts::ShellCommandSpec;
@@ -435,13 +436,37 @@ impl LlmAdapter for VilLlmRouterAdapter {
             .await
             .map_err(|e| EngineError::Other(format!("vil_llm router error: {e}")))?;
 
+        // D7D — tool-use round-tripping. Translate every
+        // `vil_llm::ToolCall` into the engine's
+        // `ToolCallRequest`. `reason` and `estimated_tokens`
+        // are not carried by `vil_llm::ToolCall` today; they
+        // are filled with conservative defaults (None / 0) so
+        // the engine's PolicyGate / ToolDispatcher seam treats
+        // each request as a generic call. When a host has not
+        // attached a dispatcher to `CompactConfig`, the engine
+        // already routes such calls through
+        // `UnsupportedDispatcher`, which writes an error
+        // `ToolResult` event without panicking — the host
+        // remains in control of when tool dispatch is live.
+        let tool_calls = vil_response
+            .tool_calls
+            .into_iter()
+            .map(|c| ToolCallRequest {
+                id: c.id,
+                name: c.name,
+                arguments: c.arguments,
+                reason: None,
+                estimated_tokens: 0,
+            })
+            .collect();
+
         Ok(LlmResponse {
             provider,
             model: vil_response.model,
             content: vil_response.content,
             input_tokens: vil_response.usage.prompt_tokens,
             output_tokens: vil_response.usage.completion_tokens,
-            tool_calls: Vec::new(),
+            tool_calls,
         })
     }
 }

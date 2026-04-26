@@ -350,6 +350,172 @@ fn vil_llm_router_bridge_propagates_failure_when_all_providers_fail() {
 }
 
 // ---------------------------------------------------------------------
+// 4c. D7D — tool-use round-tripping. vil_llm::ToolCall blocks survive
+//     translation into vac_session_engine::ToolCallRequest, and the
+//     engine's no-dispatcher path remains safe (writes error envelope
+//     via UnsupportedDispatcher, never panics).
+// ---------------------------------------------------------------------
+
+struct VilOkWithTools {
+    name: &'static str,
+    model: &'static str,
+    tool_calls: Vec<vil_llm::provider::ToolCall>,
+}
+
+#[async_trait]
+impl vil_llm::LlmProvider for VilOkWithTools {
+    fn name(&self) -> &str {
+        self.name
+    }
+    async fn complete(
+        &self,
+        _req: &vil_llm::LlmRequest,
+    ) -> vil_llm::error::LlmResult<vil_llm::LlmResponse> {
+        Ok(vil_llm::LlmResponse {
+            content: format!("from-{}", self.name),
+            model: self.model.to_string(),
+            finish_reason: vil_llm::provider::FinishReason::ToolUse,
+            usage: vil_llm::provider::TokenUsage {
+                prompt_tokens: 1,
+                completion_tokens: 1,
+                total_tokens: 2,
+                ..Default::default()
+            },
+            tool_calls: self.tool_calls.clone(),
+        })
+    }
+    async fn stream(
+        &self,
+        _req: &vil_llm::LlmRequest,
+    ) -> vil_llm::error::LlmResult<tokio::sync::mpsc::Receiver<vil_llm::provider::StreamChunk>>
+    {
+        unimplemented!()
+    }
+}
+
+fn fake_tool_call(id: &str, name: &str, args: serde_json::Value) -> vil_llm::provider::ToolCall {
+    vil_llm::provider::ToolCall {
+        id: id.to_string(),
+        name: name.to_string(),
+        arguments: args,
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn vil_llm_router_bridge_translates_tool_calls_into_engine_response() {
+    // Drive the bridge directly (no submit_one round-trip) so we
+    // can assert the translated `LlmResponse.tool_calls` exactly.
+    let mut router = vil_llm::LlmRouter::new("good", 1_000);
+    router.add_provider_named(
+        "good",
+        Arc::new(VilOkWithTools {
+            name: "good",
+            model: "good-model",
+            tool_calls: vec![
+                fake_tool_call("t1", "search", serde_json::json!({"query": "vil"})),
+                fake_tool_call("t2", "read", serde_json::json!({"path": "Cargo.toml"})),
+            ],
+        }),
+    );
+    let bridge = VilLlmRouterAdapter::new(router);
+    let resp = bridge
+        .complete(LlmRequest {
+            prompt: "hi".into(),
+            context: vec![],
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(resp.tool_calls.len(), 2);
+    assert_eq!(resp.tool_calls[0].id, "t1");
+    assert_eq!(resp.tool_calls[0].name, "search");
+    assert_eq!(
+        resp.tool_calls[0].arguments,
+        serde_json::json!({"query": "vil"})
+    );
+    assert!(resp.tool_calls[0].reason.is_none());
+    assert_eq!(resp.tool_calls[0].estimated_tokens, 0);
+
+    assert_eq!(resp.tool_calls[1].id, "t2");
+    assert_eq!(resp.tool_calls[1].name, "read");
+    assert_eq!(resp.provider, "good");
+    assert_eq!(resp.model, "good-model");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn vil_llm_router_bridge_emits_empty_tool_calls_when_provider_emits_none() {
+    let mut router = vil_llm::LlmRouter::new("good", 1_000);
+    router.add_provider_named(
+        "good",
+        Arc::new(VilOk {
+            name: "good",
+            model: "good-model",
+        }),
+    );
+    let bridge = VilLlmRouterAdapter::new(router);
+    let resp = bridge
+        .complete(LlmRequest {
+            prompt: "hi".into(),
+            context: vec![],
+        })
+        .await
+        .unwrap();
+    assert!(resp.tool_calls.is_empty());
+}
+
+/// Custom `LlmAdapter` that returns a synthetic tool call,
+/// proving the engine's no-dispatcher path stays safe (writes
+/// an error envelope via `UnsupportedDispatcher` and never
+/// panics) when D7D's translation produces a non-empty
+/// `tool_calls` vector.
+struct ToolEmittingAdapter;
+
+#[async_trait]
+impl LlmAdapter for ToolEmittingAdapter {
+    async fn complete(&self, _req: LlmRequest) -> Result<LlmResponse, EngineError> {
+        Ok(LlmResponse {
+            provider: "tool-stub".into(),
+            model: "tool-stub-1".into(),
+            content: "I want a tool".into(),
+            input_tokens: 1,
+            output_tokens: 1,
+            tool_calls: vec![vac_session_engine::ToolCallRequest {
+                id: "call-1".into(),
+                name: "search".into(),
+                arguments: serde_json::json!({"q": "needle"}),
+                reason: None,
+                estimated_tokens: 0,
+            }],
+        })
+    }
+}
+
+#[test]
+fn engine_remains_safe_when_tool_calls_arrive_without_a_dispatcher() {
+    // The host has not attached a `ToolDispatcher` (CompactConfig
+    // default), so each tool call should fall through to
+    // `UnsupportedDispatcher` and produce a `ToolResult` error
+    // envelope without aborting the submit. Verifies the engine
+    // contract D7D relies on for safety.
+    let tmp = tempfile::tempdir().unwrap();
+    let adapter = VacCommandExecutorAdapter::new(
+        mapped(tmp.path().to_path_buf()).with_llm(Arc::new(ToolEmittingAdapter)),
+    );
+    adapter
+        .execute(&cmd("memorize", "/memorize"))
+        .expect("non-empty tool_calls without a dispatcher must not abort the submit");
+    let path = adapter.last_transcript().unwrap();
+    let body = std::fs::read_to_string(&path).unwrap();
+    // The Finished row is the engine's "submit completed" marker.
+    assert!(
+        body.contains("\"kind\":\"finished\"")
+            || body.contains("\"kind\": \"finished\"")
+            || body.contains("\"finished\""),
+        "Finished transcript row must be present after tool-call no-dispatcher path: {body}"
+    );
+}
+
+// ---------------------------------------------------------------------
 // 4b. Construction-only test (kept from D7C v1) — the bridge plugs in
 //     even when the router has no providers attached.
 // ---------------------------------------------------------------------

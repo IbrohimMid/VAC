@@ -16,6 +16,7 @@
 | **D7A** | `vac_shell_host_vac_engine_probe` — host-side `VacConfig` → `.vac/model_config.json` projection (first ADR-sanctioned `vac_core` exception, allowlist-shaped, denylist-swept) | PASS after hardening — `EnvPresence::present_non_empty` + `ProcessEnvPresence`, `api_key_env=None` ⇒ ready (parity with `vil_llm::LlmConfig::provider_ready`), parent-dir fsync on Unix + Windows replace fallback |
 | **D7B** | `vac_shell_host_vac_command_adapter` — host-side `ShellCommandExecutor` impl that bridges custom palette slashes to `vac_session_engine::submit_one` (second ADR-sanctioned exception). Sync trait preserved via `block_in_place` / current-thread fallback. EchoAdapter LLM stub for v1; transcript durability proven. | PASS after hardening — entrypoint `default_commands()` registers `/memorize` + `/ultraplan` so the registry stays in sync with `AdapterConfig::dogfood`; `dogfood_entrypoint_registry_and_adapter_are_synchronized` end-to-end test pins it |
 | **D7C** | Same crate, real provider routing. `AdapterLlm::{Echo, Custom}` enum, `AdapterConfig::with_llm` + `with_vil_llm_router` helpers, `VilLlmRouterAdapter` bridge wrapping `vil_llm::LlmRouter` as `vac_session_engine::LlmAdapter`. Echo stays default. Custom-adapter failures surface as `ShellCommandError::Failed`. | PASS after hardening — bridge now uses `LlmRouter::complete_with_provider` so the actual provider that satisfied the request lands in the engine response and transcript, even under fallback; pinned by fake-provider unit tests in `vil_llm` and integration tests in the adapter crate |
+| **D7D** | Same crate, tool-use round-tripping. `VilLlmRouterAdapter` translates each `vil_llm::ToolCall` into `vac_session_engine::ToolCallRequest` (`reason: None`, `estimated_tokens: 0`). Tool dispatch stays inert when the host has not attached a `ToolDispatcher` — the engine's `UnsupportedDispatcher` writes an error envelope without aborting the submit. | PASS pending review |
 | **RC gate** | This doc + `DOGFOOD_CHECKLIST.md` + map update | PASS (post-hardening) |
 
 ## Crate inventory after the batch
@@ -92,10 +93,6 @@ crates/vac_shell_host_diff            simple line-diff projector
 
 ## What is still deferred
 
-* Tool-use round-tripping inside `VilLlmRouterAdapter` —
-  D7C v1 emits `tool_calls: vec![]` so every response is
-  treated as text by the engine. Tool-use propagation is a
-  later slice.
 * `vac_cli`-grade dispatch reuse — the D7B adapter goes
   directly to `vac_session_engine::submit_one`. If `vac_cli`
   exposes a reusable library entry point in a future slice,

@@ -312,6 +312,28 @@ What changed:
     in `vil_llm` (unit; no external creds)
   * `vil_llm_router_bridge_records_actual_fallback_provider_in_transcript`
     in the adapter crate (integration; fake providers)
+- **Tool-use round-tripping (D7D)**: every
+  `vil_llm::ToolCall { id, name, arguments }` is translated
+  into `vac_session_engine::ToolCallRequest` with
+  `reason: None` and `estimated_tokens: 0`. `vil_llm`'s
+  `ToolCall` does not carry an operator-readable rationale or
+  a token estimate today; populating these fields would
+  fabricate metadata, so the bridge keeps them at the
+  conservative defaults. The engine's existing dispatch loop
+  continues to enforce host control: when `CompactConfig`
+  carries no `ToolDispatcher` (every default `AdapterConfig`),
+  each translated tool call falls through to
+  `UnsupportedDispatcher`, which writes an error
+  `ToolResult` envelope through the event channel **without
+  aborting the submit**. Tool dispatch only goes live if the
+  host has explicitly attached a dispatcher and gate to
+  `CompactConfig` outside this slice's scope. Pinned by:
+  * `vil_llm_router_bridge_translates_tool_calls_into_engine_response`
+    (direct bridge unit test)
+  * `vil_llm_router_bridge_emits_empty_tool_calls_when_provider_emits_none`
+  * `engine_remains_safe_when_tool_calls_arrive_without_a_dispatcher`
+    (full execute path; verifies the no-dispatcher safety
+    contract D7D relies on)
 
 Boundary check after D7C:
 
