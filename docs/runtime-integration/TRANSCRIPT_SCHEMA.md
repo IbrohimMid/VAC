@@ -24,18 +24,35 @@ self-consistent prefix on disk.
 
 ## Row kinds
 
-| Kind              | When written                                                                | `content` shape                                                                                  |
-|-------------------|-----------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------|
-| `accepted`        | Synchronously, before the LLM is contacted. Durability checkpoint.          | `{ "input": String, "submitted_at": RFC3339, "metadata": Value }`                                |
-| `slash`           | A registered slash command handled the submit locally (no LLM round-trip). | `{ "command": String, "payload": Value }`                                                        |
-| `llm_request`     | (Reserved.) Currently not appended in the dogfood path; future engines may. | implementation-defined                                                                           |
-| `llm_response`    | Immediately after the `LlmAdapter::complete` future resolves successfully.  | `{ "provider": String, "model": String, "content": String, "input_tokens": u64, "output_tokens": u64 }` |
-| `tool_call`       | **D7E** — once per tool the LLM requested, before gate / dispatch.          | `{ "id": String, "name": String, "arguments": Value, "reason": Option<String>, "estimated_tokens": u64 }` |
-| `tool_result`     | **D7E** — once per tool, after the envelope is built (success or error).   | `{ "id": String, "name": String, "envelope": ToolResultEnvelope }`                               |
-| `compact_boundary`| Compact boundary fired before contacting the LLM.                           | `{ "kept": usize, "dropped": usize, "hint": Value }`                                             |
-| `finished`        | Final row on a clean submit.                                                | `{ "via": "llm" \| "slash", "usage": UsageSnapshot }`                                            |
-| `aborted`         | Final row on a cancelled / errored submit.                                  | `{ "reason": String }`                                                                           |
-| `sidechain`       | Per subagent run (B.1). The subagent has its own transcript file.           | `{ "subagent_id": Uuid, "subagent_type": String, "prompt": String, "result_summary": String }`   |
+| Kind              | When written                                                                                  | `content` shape                                                                                  |
+|-------------------|-----------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------|
+| `accepted`        | Synchronously, before the LLM is contacted. Durability checkpoint.                            | `{ "input": String, "submitted_at": RFC3339, "metadata": Value }`                                |
+| `slash`           | A registered slash command handled the submit locally (no LLM round-trip).                    | `{ "command": String, "args": String, "summary": String, "payload": Value }`                     |
+| `llm_request`     | Just before `LlmAdapter::complete` is called (LLM path only).                                 | `{ "prompt": String }`                                                                           |
+| `llm_response`    | Immediately after the `LlmAdapter::complete` future resolves successfully.                    | `{ "provider": String, "model": String, "content": String, "input_tokens": u64, "output_tokens": u64 }` |
+| `tool_call`       | **D7E** — once per tool the LLM requested, before gate / dispatch.                           | `{ "id": String, "name": String, "arguments": Value, "reason": Option<String>, "estimated_tokens": u64 }` |
+| `tool_result`     | **D7E** — once per tool, after the envelope is built (success or error).                     | `{ "id": String, "name": String, "envelope": ToolResultEnvelope }`                               |
+| `compact_boundary`| Compact boundary fired (regular path) or auto-compaction tripped before LLM contact.          | see "compact_boundary shapes" below                                                              |
+| `finished`        | Final row on a clean submit.                                                                  | `{ "via": "llm" \| "slash", "usage": UsageSnapshot }`                                            |
+| `aborted`         | Final row on a cancelled / errored submit.                                                    | `{ "reason": String, "kind": "budget_exceeded" \| "cancelled" \| "error" }`                      |
+| `sidechain`       | Per subagent run (B.1). The subagent has its own transcript file.                             | `{ "subagent_id": Uuid, "subagent_type": String, "prompt": String, "result_summary": String }`   |
+
+### `compact_boundary` shapes
+
+`compact_boundary` is written from three places in `submit.rs`. The `content` shape varies by trigger:
+
+```jsonc
+// Regular drop_oldest hint (CompactHint::DropOldest { n }).
+{ "kind": "drop_oldest", "n": usize }
+
+// Regular summarise hint (CompactHint::Summarise { n, summary }).
+{ "kind": "summarise", "n": usize, "summary": String }
+
+// Auto-compaction preemption (D7E-era, A.4 path).
+{ "trigger": "auto_compact", "used": u64, "ceiling": u64, "hint": String }
+```
+
+Parsers should treat `kind` and `trigger` as discriminants and tolerate either being absent — only one form is written per row.
 
 `ToolResultEnvelope` (from `vac_tool_core`):
 
