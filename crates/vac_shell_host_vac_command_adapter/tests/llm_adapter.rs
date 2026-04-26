@@ -18,33 +18,19 @@
 //! `VilLlmRouterAdapter` bridge constructs cleanly from a
 //! router and threads through the same path.
 
+mod common;
+
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use async_trait::async_trait;
 use vac_session_engine::{EngineError, LlmAdapter, LlmRequest, LlmResponse};
-use vac_shell_contracts::{ShellCommandKind, ShellCommandSpec};
 use vac_shell_host_commands::{ShellCommandError, ShellCommandExecutor};
 use vac_shell_host_vac_command_adapter::{
-    AdapterCommandSpec, AdapterConfig, AdapterLlm, VacCommandExecutorAdapter,
-    VilLlmRouterAdapter,
+    AdapterCommandSpec, AdapterConfig, AdapterLlm, VacCommandExecutorAdapter, VilLlmRouterAdapter,
 };
 
-fn cmd(id: &str, slash: &str) -> ShellCommandSpec {
-    ShellCommandSpec {
-        id: id.to_string(),
-        slash: slash.to_string(),
-        title: format!("{slash} title"),
-        description: format!("{slash} description"),
-        kind: ShellCommandKind::PromptTemplate,
-        palette_visible: true,
-        shortcut: None,
-        category: None,
-        aliases: vec![],
-        keywords: vec![],
-        disabled_reason: None,
-    }
-}
+use common::cmd;
 
 // ---------------------------------------------------------------------
 // Stub LlmAdapter — captures the prompt + emits a fixed response.
@@ -147,9 +133,8 @@ fn echo_path_still_writes_transcript_after_d7c_refactor() {
 fn custom_adapter_receives_configured_prompt() {
     let capturer = Arc::new(CapturingAdapter::new("D7C-CUSTOM-RESPONSE"));
     let tmp = tempfile::tempdir().unwrap();
-    let adapter = VacCommandExecutorAdapter::new(
-        mapped(tmp.path().to_path_buf()).with_llm(capturer.clone()),
-    );
+    let adapter =
+        VacCommandExecutorAdapter::new(mapped(tmp.path().to_path_buf()).with_llm(capturer.clone()));
     adapter.execute(&cmd("memorize", "/memorize")).unwrap();
 
     assert_eq!(capturer.calls(), 1);
@@ -162,9 +147,8 @@ fn custom_adapter_receives_configured_prompt() {
 fn custom_adapter_response_lands_in_transcript() {
     let capturer = Arc::new(CapturingAdapter::new("D7C-RESPONSE-NEEDLE"));
     let tmp = tempfile::tempdir().unwrap();
-    let adapter = VacCommandExecutorAdapter::new(
-        mapped(tmp.path().to_path_buf()).with_llm(capturer),
-    );
+    let adapter =
+        VacCommandExecutorAdapter::new(mapped(tmp.path().to_path_buf()).with_llm(capturer));
     adapter.execute(&cmd("memorize", "/memorize")).unwrap();
 
     let path = adapter.last_transcript().unwrap();
@@ -236,7 +220,8 @@ impl vil_llm::LlmProvider for VilOk {
     async fn stream(
         &self,
         _req: &vil_llm::LlmRequest,
-    ) -> vil_llm::error::LlmResult<tokio::sync::mpsc::Receiver<vil_llm::provider::StreamChunk>> {
+    ) -> vil_llm::error::LlmResult<tokio::sync::mpsc::Receiver<vil_llm::provider::StreamChunk>>
+    {
         unimplemented!()
     }
 }
@@ -263,7 +248,8 @@ impl vil_llm::LlmProvider for VilFail {
     async fn stream(
         &self,
         _req: &vil_llm::LlmRequest,
-    ) -> vil_llm::error::LlmResult<tokio::sync::mpsc::Receiver<vil_llm::provider::StreamChunk>> {
+    ) -> vil_llm::error::LlmResult<tokio::sync::mpsc::Receiver<vil_llm::provider::StreamChunk>>
+    {
         unimplemented!()
     }
 }
@@ -289,7 +275,10 @@ fn vil_llm_router_bridge_records_actual_provider_in_transcript() {
     let path = adapter.last_transcript().unwrap();
     let body = std::fs::read_to_string(&path).unwrap();
     assert!(body.contains("\"provider\":\"good\""), "transcript: {body}");
-    assert!(body.contains("\"model\":\"good-model\""), "transcript: {body}");
+    assert!(
+        body.contains("\"model\":\"good-model\""),
+        "transcript: {body}"
+    );
     assert!(body.contains("d7c-good-needle"), "transcript: {body}");
 }
 
@@ -579,8 +568,8 @@ async fn run_submit_with_bridge(
     router: vil_llm::LlmRouter,
 ) -> Vec<vac_session_engine::SubmitEvent> {
     use vac_session_engine::{
-        CompactConfig, SlashProcessor, SubmitContext, TranscriptWriter,
-        TrivialCompactBoundary, UsageTracker, submit_one,
+        CompactConfig, SlashProcessor, SubmitContext, TranscriptWriter, TrivialCompactBoundary,
+        UsageTracker, submit_one,
     };
     let bridge = VilLlmRouterAdapter::new(router);
     let writer = TranscriptWriter::new(project_root);
@@ -813,8 +802,7 @@ fn vil_llm_router_bridge_constructs_and_plugs_in() {
     assert!(dbg.contains("anthropic"));
 
     let router2 = vil_llm::LlmRouter::new("anthropic", 0);
-    let cfg = AdapterConfig::new(std::path::PathBuf::from("/tmp"))
-        .with_vil_llm_router(router2);
+    let cfg = AdapterConfig::new(std::path::PathBuf::from("/tmp")).with_vil_llm_router(router2);
     assert!(matches!(cfg.llm, AdapterLlm::Custom(_)));
 }
 

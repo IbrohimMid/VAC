@@ -1,74 +1,38 @@
-//! Slice 20.1 — ShellApp wiring proofs.
+mod common;
+
+// Slice 20.1 — ShellApp wiring proofs.
 
 use std::sync::Arc;
 
-use ratatui::backend::TestBackend;
-use ratatui::Terminal;
 use vac_shell_app::{AppEvent, GlobalKey, ShellApp};
-use vac_shell_approval_bar::{ApprovalBarKey, ApprovalStatus};
+use vac_shell_approval_bar::ApprovalStatus;
 use vac_shell_approval_detail::DetailKey;
-use vac_shell_bridge::{ProviderId, ShellAction, SurfaceTarget};
-use vac_shell_composition::ShellCompositionBuilder;
+use vac_shell_bridge::{ProviderId, ShellAction};
 use vac_shell_contracts::{
     DiffFileView, DiffHunkView, DiffLineKind, DiffLineView, DiffReviewEvent, ShellOverlay,
-    VacPaths,
 };
 use vac_shell_diff_view::DiffReviewKey;
 use vac_shell_host_approval::ApprovalRequest;
-use vac_shell_host_model::{HostModel, ProviderInfo};
-use vac_shell_host_paths::VacPathsImpl;
 use vac_shell_model_switcher::SwitcherKey;
 use vac_shell_palette::PaletteKey;
 use vac_shell_session_browser::SessionBrowserKey;
 use vac_shell_shortcuts::default_shortcuts;
+use vac_shell_test_support::no_summary_provider;
+
+use common::{boot_comp, boot_comp_with_commands, screen, seed_session_transcript};
 
 fn boot() -> (
     tempfile::TempDir,
     Arc<vac_shell_composition::ShellComposition>,
 ) {
-    let tmp = tempfile::tempdir().unwrap();
-    let paths: Arc<dyn VacPaths> = Arc::new(VacPathsImpl::new(tmp.path()));
-    let comp = ShellCompositionBuilder::new(paths)
-        .with_providers(vec![ProviderInfo {
-            id: ProviderId("anthropic".into()),
-            credentials_present: true,
-        }])
-        .with_models(vec![
-            HostModel {
-                provider: ProviderId("anthropic".into()),
-                id: "claude-sonnet-4.5".into(),
-                label: "Claude Sonnet 4.5".into(),
-                reasoning: true,
-                cost_label: None,
-            },
-            HostModel {
-                provider: ProviderId("anthropic".into()),
-                id: "claude-haiku-4".into(),
-                label: "Claude Haiku 4".into(),
-                reasoning: false,
-                cost_label: None,
-            },
-        ])
-        .with_fallback_active(Some((
-            ProviderId("anthropic".into()),
-            "claude-sonnet-4.5".into(),
-        )))
-        .boot()
-        .unwrap();
-    (tmp, Arc::new(comp))
+    boot_comp()
 }
 
-fn screen(app: &ShellApp) -> String {
-    let backend = TestBackend::new(120, 18);
-    let mut t = Terminal::new(backend).unwrap();
-    t.draw(|f| app.render(f, f.area())).unwrap();
-    let buf = t.backend().buffer();
-    let mut s = String::new();
-    for y in 0..buf.area.height {
-        for x in 0..buf.area.width { s.push_str(buf[(x, y)].symbol()); }
-        s.push('\n');
-    }
-    s
+fn boot_with_commands() -> (
+    tempfile::TempDir,
+    Arc<vac_shell_composition::ShellComposition>,
+) {
+    boot_comp_with_commands()
 }
 
 #[test]
@@ -117,17 +81,15 @@ fn model_switcher_enter_routes_to_shell_action_select_model() {
     let mut app = ShellApp::new(comp.clone());
     // Open the switcher and seed its view with the live model list.
     app.handle_global_key(GlobalKey::OpenModelSwitcher);
-    app.model_switcher.models = vec![
-        vac_shell_contracts::VacModelView {
-            provider: ProviderId("anthropic".into()),
-            id: "claude-haiku-4".into(),
-            label: "Claude Haiku 4".into(),
-            active: false,
-            credentials_present: true,
-            reasoning: false,
-            cost_label: None,
-        },
-    ];
+    app.model_switcher.models = vec![vac_shell_contracts::VacModelView {
+        provider: ProviderId("anthropic".into()),
+        id: "claude-haiku-4".into(),
+        label: "Claude Haiku 4".into(),
+        active: false,
+        credentials_present: true,
+        reasoning: false,
+        cost_label: None,
+    }];
     app.model_switcher.selected = 0;
     let event = app.dispatch_model_switcher_key(SwitcherKey::Enter).unwrap();
     match event.clone() {
@@ -138,26 +100,21 @@ fn model_switcher_enter_routes_to_shell_action_select_model() {
         other => panic!("expected SelectModel, got {other:?}"),
     }
     // Apply through the host — active model should flip.
-    app.apply_event(event);
-    assert_eq!(
-        comp.model_state.active_model().unwrap().1,
-        "claude-haiku-4"
-    );
+    let _ = app.apply_event(event);
+    assert_eq!(comp.model_state.active_model().unwrap().1, "claude-haiku-4");
 }
 
 #[test]
 fn session_browser_delete_routes_to_sessions_state_after_confirm() {
     let (tmp, comp) = boot();
     // Seed a transcript so SessionsState::apply finds it.
-    let dir = tmp.path().join(".vac").join("sessions");
-    std::fs::create_dir_all(&dir).unwrap();
-    std::fs::write(dir.join("alpha.jsonl"), "operator: hi\n").unwrap();
+    seed_session_transcript(tmp.path(), "alpha", "operator: hi\n");
 
     let sessions = Arc::new(vac_shell_host_sessions::SessionsState::new());
-    let mut app = ShellApp::new(comp.clone());
+    let mut app =
+        ShellApp::new(comp.clone()).with_session_tool_summary_provider(no_summary_provider());
     app.sessions = Some(sessions.clone());
     app.handle_global_key(GlobalKey::OpenSessionBrowser);
-    app.session_browser.tiles = sessions.list_with_summaries(comp.paths.as_ref(), |_| None);
     app.session_browser.visible = true;
 
     // First Delete primes; second commits.
@@ -167,7 +124,7 @@ fn session_browser_delete_routes_to_sessions_state_after_confirm() {
         .dispatch_session_browser_key(SessionBrowserKey::Delete)
         .unwrap();
     if let AppEvent::Session(action) = committed.clone() {
-        app.apply_event(AppEvent::Session(action));
+        let _ = app.apply_event(AppEvent::Session(action));
     } else {
         panic!("expected Session AppEvent, got {committed:?}");
     }
@@ -191,7 +148,9 @@ fn diff_review_approve_routes_event() {
             }],
         }],
     }];
-    let event = app.dispatch_diff_review_key(DiffReviewKey::Approve).unwrap();
+    let event = app
+        .dispatch_diff_review_key(DiffReviewKey::Approve)
+        .unwrap();
     assert_eq!(
         event,
         AppEvent::DiffReview(DiffReviewEvent::ApproveFile("a.rs".into()))
@@ -206,7 +165,9 @@ fn approval_detail_approve_routes_controller() {
     let mut app = ShellApp::new(comp.clone());
     app.refresh_approval_bar();
     app.handle_global_key(GlobalKey::OpenApprovalDetail);
-    let event = app.dispatch_approval_detail_key(DetailKey::Approve).unwrap();
+    let event = app
+        .dispatch_approval_detail_key(DetailKey::Approve)
+        .unwrap();
     match &event {
         AppEvent::ApprovalDecision { id, approve } => {
             assert_eq!(id, "a");
@@ -214,7 +175,7 @@ fn approval_detail_approve_routes_controller() {
         }
         other => panic!("expected ApprovalDecision, got {other:?}"),
     }
-    app.apply_event(event);
+    let _ = app.apply_event(event);
     let snap = comp.approval_queue.snapshot();
     assert_eq!(snap[0].status, ApprovalStatus::Approved);
 }
@@ -224,8 +185,8 @@ fn palette_enter_emits_palette_selected_app_event() {
     let (_t, comp) = boot();
     let mut app = ShellApp::new(comp);
     app.handle_global_key(GlobalKey::OpenPalette);
-    app.palette = vac_shell_palette::PaletteViewState::new(vec![
-        vac_shell_contracts::ShellCommandSpec {
+    app.palette =
+        vac_shell_palette::PaletteViewState::new(vec![vac_shell_contracts::ShellCommandSpec {
             id: "runtime".into(),
             slash: "/runtime".into(),
             title: "Runtime".into(),
@@ -233,8 +194,7 @@ fn palette_enter_emits_palette_selected_app_event() {
             kind: vac_shell_contracts::ShellCommandKind::BuiltInAction,
             palette_visible: true,
             ..Default::default()
-        },
-    ]);
+        }]);
     app.palette.visible = true;
     app.dispatch_palette_key(PaletteKey::Char('/'));
     let event = app.dispatch_palette_key(PaletteKey::Enter).unwrap();
@@ -290,9 +250,7 @@ fn opening_model_switcher_populates_from_live_model_state() {
 #[test]
 fn opening_session_browser_populates_from_live_sessions_list() {
     let (tmp, comp) = boot();
-    let dir = tmp.path().join(".vac").join("sessions");
-    std::fs::create_dir_all(&dir).unwrap();
-    std::fs::write(dir.join("alpha.jsonl"), "operator: hi\n").unwrap();
+    seed_session_transcript(tmp.path(), "alpha", "operator: hi\n");
     let mut app = ShellApp::new(comp);
     app.sessions = Some(Arc::new(vac_shell_host_sessions::SessionsState::new()));
     app.handle_global_key(GlobalKey::OpenSessionBrowser);
@@ -318,7 +276,7 @@ fn approval_detail_reject_marks_row_rejected_without_draining_queue() {
     app.refresh_approval_bar();
     app.handle_global_key(GlobalKey::OpenApprovalDetail);
     let event = app.dispatch_approval_detail_key(DetailKey::Reject).unwrap();
-    app.apply_event(event);
+    let _ = app.apply_event(event);
     let snap = comp.approval_queue.snapshot();
     assert_eq!(snap.len(), 1, "queue must NOT drain on detail reject");
     assert_eq!(snap[0].status, ApprovalStatus::Rejected);
@@ -333,8 +291,10 @@ fn approval_detail_approve_does_not_drain_queue() {
     let mut app = ShellApp::new(comp.clone());
     app.refresh_approval_bar();
     app.handle_global_key(GlobalKey::OpenApprovalDetail);
-    let event = app.dispatch_approval_detail_key(DetailKey::Approve).unwrap();
-    app.apply_event(event);
+    let event = app
+        .dispatch_approval_detail_key(DetailKey::Approve)
+        .unwrap();
+    let _ = app.apply_event(event);
     let snap = comp.approval_queue.snapshot();
     assert_eq!(snap.len(), 1, "queue must NOT drain on detail approve");
     assert_eq!(snap[0].status, ApprovalStatus::Approved);
@@ -344,54 +304,11 @@ fn approval_detail_approve_does_not_drain_queue() {
 // Slice 20.2 — built-in palette routing through apply_event
 // =====================================================================
 
-fn boot_with_commands() -> (
-    tempfile::TempDir,
-    Arc<vac_shell_composition::ShellComposition>,
-) {
-    use vac_shell_contracts::{ShellCommandKind, ShellCommandSpec};
-    let tmp = tempfile::tempdir().unwrap();
-    let paths: Arc<dyn VacPaths> = Arc::new(VacPathsImpl::new(tmp.path()));
-    let make_cmd = |slash: &str| ShellCommandSpec {
-        id: slash.trim_start_matches('/').to_string(),
-        slash: slash.into(),
-        title: slash.into(),
-        description: String::new(),
-        kind: ShellCommandKind::BuiltInAction,
-        palette_visible: true,
-        ..Default::default()
-    };
-    let comp = ShellCompositionBuilder::new(paths)
-        .with_providers(vec![ProviderInfo {
-            id: ProviderId("anthropic".into()),
-            credentials_present: true,
-        }])
-        .with_models(vec![HostModel {
-            provider: ProviderId("anthropic".into()),
-            id: "claude-sonnet-4.5".into(),
-            label: "Claude Sonnet 4.5".into(),
-            reasoning: true,
-            cost_label: None,
-        }])
-        .with_fallback_active(Some((
-            ProviderId("anthropic".into()),
-            "claude-sonnet-4.5".into(),
-        )))
-        .with_commands(vec![
-            make_cmd("/chat"),
-            make_cmd("/runtime"),
-            make_cmd("/model"),
-            make_cmd("/sessions"),
-        ])
-        .boot()
-        .unwrap();
-    (tmp, Arc::new(comp))
-}
-
 #[test]
 fn palette_runtime_slash_changes_surface_through_apply_event() {
     let (_t, comp) = boot_with_commands();
     let mut app = ShellApp::new(comp.clone());
-    app.apply_event(AppEvent::PaletteSelected("/runtime".into()));
+    let _ = app.apply_event(AppEvent::PaletteSelected("/runtime".into()));
     assert_eq!(
         comp.surface_state.current(),
         vac_shell_host_surface::Surface::Runtime
@@ -403,7 +320,7 @@ fn palette_runtime_slash_changes_surface_through_apply_event() {
 fn palette_model_slash_opens_model_switcher_overlay() {
     let (_t, comp) = boot_with_commands();
     let mut app = ShellApp::new(comp);
-    app.apply_event(AppEvent::PaletteSelected("/model".into()));
+    let _ = app.apply_event(AppEvent::PaletteSelected("/model".into()));
     assert_eq!(app.overlays.top(), ShellOverlay::ModelSwitcher);
     assert!(app.model_switcher.visible);
     assert!(!app.model_switcher.models.is_empty());
@@ -412,12 +329,10 @@ fn palette_model_slash_opens_model_switcher_overlay() {
 #[test]
 fn palette_sessions_slash_opens_session_browser_overlay() {
     let (tmp, comp) = boot_with_commands();
-    let dir = tmp.path().join(".vac").join("sessions");
-    std::fs::create_dir_all(&dir).unwrap();
-    std::fs::write(dir.join("alpha.jsonl"), "operator: hi\n").unwrap();
+    seed_session_transcript(tmp.path(), "alpha", "operator: hi\n");
     let mut app = ShellApp::new(comp);
     app.sessions = Some(Arc::new(vac_shell_host_sessions::SessionsState::new()));
-    app.apply_event(AppEvent::PaletteSelected("/sessions".into()));
+    let _ = app.apply_event(AppEvent::PaletteSelected("/sessions".into()));
     assert_eq!(app.overlays.top(), ShellOverlay::SessionBrowser);
     assert_eq!(app.session_browser.tiles.len(), 1);
 }
@@ -428,7 +343,7 @@ fn palette_unknown_slash_only_closes_overlay() {
     let mut app = ShellApp::new(comp.clone());
     app.handle_global_key(GlobalKey::OpenPalette);
     assert_eq!(app.overlays.top(), ShellOverlay::Palette);
-    app.apply_event(AppEvent::PaletteSelected("/never-registered".into()));
+    let _ = app.apply_event(AppEvent::PaletteSelected("/never-registered".into()));
     assert_eq!(app.overlays.top(), ShellOverlay::None);
     assert_eq!(
         comp.surface_state.current(),
@@ -526,9 +441,9 @@ fn apply_event_succeeds_silently_when_no_log_attached() {
     comp.approval_queue
         .enqueue(ApprovalRequest::new("a", "shell"));
     let mut app = ShellApp::new(comp);
-    let result = app.apply_event(AppEvent::ShellAction(
-        ShellAction::ToggleApproval { id: "a".into() },
-    ));
+    let result = app.apply_event(AppEvent::ShellAction(ShellAction::ToggleApproval {
+        id: "a".into(),
+    }));
     assert!(result.is_ok());
 }
 

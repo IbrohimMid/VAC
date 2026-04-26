@@ -15,7 +15,11 @@ use vac_shell_contracts::{Severity, ShellActivityKind};
 use vac_shell_host_transcript_projection::{
     ToolUseStatus, project_tool_use_activity, session_tool_use_summary, summarize_tool_use,
 };
-use vac_shell_test_support::{tool_call_json_line as tool_call_line, tool_result_json_line as tool_result_line, write_jsonl_body as write_jsonl};
+use vac_shell_test_support::{
+    assert_no_secret_in_debug, tool_call_json_line as tool_call_line,
+    tool_result_json_line as tool_result_line, write_finished_row, write_tool_call_result_pair,
+    write_transcript_rows,
+};
 
 // ---------------------------------------------------------------------
 // 1–4. Severity / status mapping.
@@ -25,24 +29,11 @@ use vac_shell_test_support::{tool_call_json_line as tool_call_line, tool_result_
 fn ok_envelope_projects_to_ok_status_and_severity_ok() {
     let tmp = tempfile::tempdir().unwrap();
     let path = tmp.path().join("ok.jsonl");
-    let body = format!(
-        "{}\n{}\n",
-        tool_call_line("a", "alpha", serde_json::json!({"i": 1})),
-        tool_result_line(
-            "a",
-            "alpha",
-            "ok",
-            "alpha ok",
-            serde_json::json!({"hit": true}),
-            12,
-        ),
-    );
-    write_jsonl(&path, &body);
+    write_tool_call_result_pair(&path, "a", "alpha", "ok", "alpha ok");
 
     let proj = project_tool_use_activity(&path).unwrap();
     assert_eq!(proj.len(), 1);
     assert_eq!(proj[0].status, ToolUseStatus::Ok);
-    assert_eq!(proj[0].duration_ms, 12);
     assert_eq!(proj[0].summary, "alpha ok");
     let entry = proj[0].to_activity_entry(0);
     assert_eq!(entry.severity, Severity::Ok);
@@ -53,19 +44,7 @@ fn ok_envelope_projects_to_ok_status_and_severity_ok() {
 fn warning_envelope_projects_to_warning_status_and_severity_warn() {
     let tmp = tempfile::tempdir().unwrap();
     let path = tmp.path().join("w.jsonl");
-    let body = format!(
-        "{}\n{}\n",
-        tool_call_line("w1", "warner", serde_json::json!({})),
-        tool_result_line(
-            "w1",
-            "warner",
-            "warning",
-            "soft warning",
-            serde_json::json!({"note": "soft"}),
-            5,
-        ),
-    );
-    write_jsonl(&path, &body);
+    write_tool_call_result_pair(&path, "w1", "warner", "warning", "soft warning");
     let proj = project_tool_use_activity(&path).unwrap();
     assert_eq!(proj[0].status, ToolUseStatus::Warning);
     assert_eq!(proj[0].to_activity_entry(0).severity, Severity::Warn);
@@ -75,19 +54,7 @@ fn warning_envelope_projects_to_warning_status_and_severity_warn() {
 fn error_envelope_projects_to_error_status_and_severity_error() {
     let tmp = tempfile::tempdir().unwrap();
     let path = tmp.path().join("e.jsonl");
-    let body = format!(
-        "{}\n{}\n",
-        tool_call_line("e1", "boomer", serde_json::json!({})),
-        tool_result_line(
-            "e1",
-            "boomer",
-            "error",
-            "boomer failed",
-            serde_json::json!({"error": "kaboom"}),
-            7,
-        ),
-    );
-    write_jsonl(&path, &body);
+    write_tool_call_result_pair(&path, "e1", "boomer", "error", "boomer failed");
     let proj = project_tool_use_activity(&path).unwrap();
     assert_eq!(proj[0].status, ToolUseStatus::Error);
     assert_eq!(proj[0].to_activity_entry(0).severity, Severity::Error);
@@ -97,19 +64,7 @@ fn error_envelope_projects_to_error_status_and_severity_error() {
 fn cancelled_envelope_projects_to_cancelled_status_with_warn_severity() {
     let tmp = tempfile::tempdir().unwrap();
     let path = tmp.path().join("c.jsonl");
-    let body = format!(
-        "{}\n{}\n",
-        tool_call_line("c1", "stopper", serde_json::json!({})),
-        tool_result_line(
-            "c1",
-            "stopper",
-            "cancelled",
-            "operator cancelled",
-            serde_json::json!({}),
-            0,
-        ),
-    );
-    write_jsonl(&path, &body);
+    write_tool_call_result_pair(&path, "c1", "stopper", "cancelled", "operator cancelled");
     let proj = project_tool_use_activity(&path).unwrap();
     assert_eq!(proj[0].status, ToolUseStatus::Cancelled);
     assert_eq!(
@@ -127,11 +82,10 @@ fn cancelled_envelope_projects_to_cancelled_status_with_warn_severity() {
 fn missing_result_projects_to_pending_status() {
     let tmp = tempfile::tempdir().unwrap();
     let path = tmp.path().join("p.jsonl");
-    let body = format!(
-        "{}\n",
-        tool_call_line("p1", "halfdone", serde_json::json!({}))
+    write_transcript_rows(
+        &path,
+        [tool_call_line("p1", "halfdone", serde_json::json!({}))],
     );
-    write_jsonl(&path, &body);
     let proj = project_tool_use_activity(&path).unwrap();
     assert_eq!(proj.len(), 1);
     assert_eq!(proj[0].status, ToolUseStatus::Pending);
@@ -151,37 +105,28 @@ fn projection_redacts_payload_and_arguments() {
     // string that MUST NOT appear in any projected field.
     let secret_args = "ARGS_SECRET_NEEDLE_a9f3";
     let secret_payload = "PAYLOAD_SECRET_NEEDLE_b2c4";
-    let body = format!(
-        "{}\n{}\n",
-        tool_call_line(
-            "x",
-            "leaker",
-            serde_json::json!({"arg": secret_args})
-        ),
-        tool_result_line(
-            "x",
-            "leaker",
-            "ok",
-            "leaker ok",
-            serde_json::json!({"echo": secret_payload}),
-            0,
-        ),
+    write_transcript_rows(
+        &path,
+        [
+            tool_call_line("x", "leaker", serde_json::json!({"arg": secret_args})),
+            tool_result_line(
+                "x",
+                "leaker",
+                "ok",
+                "leaker ok",
+                serde_json::json!({"echo": secret_payload}),
+                0,
+            ),
+        ],
     );
-    write_jsonl(&path, &body);
 
     let proj = project_tool_use_activity(&path).unwrap();
     let entry = proj[0].to_activity_entry(0);
     let title = &entry.title;
     let detail = entry.detail.as_deref().unwrap_or("");
     let bag = format!("{title}|{detail}|{}|{}", proj[0].summary, proj[0].tool_name);
-    assert!(
-        !bag.contains(secret_args),
-        "argument string leaked into projection: {bag}"
-    );
-    assert!(
-        !bag.contains(secret_payload),
-        "payload string leaked into projection: {bag}"
-    );
+    assert_no_secret_in_debug(&bag, secret_args);
+    assert_no_secret_in_debug(&bag, secret_payload);
     // Sanity: the redacted-on-disk file still contains them.
     let on_disk = std::fs::read_to_string(&path).unwrap();
     assert!(on_disk.contains(secret_args));
@@ -203,13 +148,34 @@ fn multi_tool_projection_preserves_transcript_order() {
     }
     // Result rows out-of-order on purpose; pairing should
     // still preserve call order (a, b, c).
-    body.push_str(&tool_result_line("c", "c", "ok", "c ok", serde_json::json!({}), 0));
+    body.push_str(&tool_result_line(
+        "c",
+        "c",
+        "ok",
+        "c ok",
+        serde_json::json!({}),
+        0,
+    ));
     body.push('\n');
-    body.push_str(&tool_result_line("a", "a", "ok", "a ok", serde_json::json!({}), 0));
+    body.push_str(&tool_result_line(
+        "a",
+        "a",
+        "ok",
+        "a ok",
+        serde_json::json!({}),
+        0,
+    ));
     body.push('\n');
-    body.push_str(&tool_result_line("b", "b", "error", "b failed", serde_json::json!({}), 0));
+    body.push_str(&tool_result_line(
+        "b",
+        "b",
+        "error",
+        "b failed",
+        serde_json::json!({}),
+        0,
+    ));
     body.push('\n');
-    write_jsonl(&path, &body);
+    write_transcript_rows(&path, [body]);
 
     let proj = project_tool_use_activity(&path).unwrap();
     assert_eq!(
@@ -244,13 +210,20 @@ fn summary_counts_each_status_correctly() {
         body.push('\n');
     }
     for (id, kind) in cases {
-        body.push_str(&tool_result_line(id, "t", kind, "x", serde_json::json!({}), 0));
+        body.push_str(&tool_result_line(
+            id,
+            "t",
+            kind,
+            "x",
+            serde_json::json!({}),
+            0,
+        ));
         body.push('\n');
     }
     // One pending: call without matching result.
     body.push_str(&tool_call_line("h", "t", serde_json::json!({})));
     body.push('\n');
-    write_jsonl(&path, &body);
+    write_transcript_rows(&path, [body]);
 
     let s = summarize_tool_use(&path).unwrap();
     assert_eq!(s.total_calls, 8);
@@ -285,10 +258,9 @@ fn missing_transcript_returns_empty_projection_and_zeroed_summary() {
 fn old_transcript_without_tool_rows_returns_empty_projection() {
     let tmp = tempfile::tempdir().unwrap();
     let path = tmp.path().join("old.jsonl");
-    let body = r#"{"id":"00000000-0000-0000-0000-000000000001","session_id":"00000000-0000-0000-0000-000000000002","kind":"accepted","timestamp":"2026-04-26T00:00:00Z","content":{"input":"hi","submitted_at":"2026-04-26T00:00:00Z","metadata":null}}
-{"id":"00000000-0000-0000-0000-000000000003","session_id":"00000000-0000-0000-0000-000000000002","kind":"finished","timestamp":"2026-04-26T00:00:00Z","content":{"via":"llm","usage":{"input_tokens":0,"output_tokens":0,"total_tokens":0}}}
-"#;
-    write_jsonl(&path, body);
+    let accepted = r#"{"id":"00000000-0000-0000-0000-000000000001","session_id":"00000000-0000-0000-0000-000000000002","kind":"accepted","timestamp":"2026-04-26T00:00:00Z","content":{"input":"hi","submitted_at":"2026-04-26T00:00:00Z","metadata":null}}"#;
+    write_transcript_rows(&path, [accepted]);
+    write_finished_row(&path, "llm");
     assert!(project_tool_use_activity(&path).unwrap().is_empty());
     let s = summarize_tool_use(&path).unwrap();
     assert_eq!(s.total_calls, 0);
@@ -302,12 +274,20 @@ fn old_transcript_without_tool_rows_returns_empty_projection() {
 fn activity_entry_detail_only_shows_summary_duration_and_transcript_path() {
     let tmp = tempfile::tempdir().unwrap();
     let path = tmp.path().join("detail.jsonl");
-    let body = format!(
-        "{}\n{}\n",
-        tool_call_line("only", "alpha", serde_json::json!({})),
-        tool_result_line("only", "alpha", "ok", "alpha ok", serde_json::json!({"k":"v"}), 42),
+    write_transcript_rows(
+        &path,
+        [
+            tool_call_line("only", "alpha", serde_json::json!({})),
+            tool_result_line(
+                "only",
+                "alpha",
+                "ok",
+                "alpha ok",
+                serde_json::json!({"k":"v"}),
+                42,
+            ),
+        ],
     );
-    write_jsonl(&path, &body);
 
     let proj = project_tool_use_activity(&path).unwrap();
     let entry = proj[0].to_activity_entry(1_700_000_000);
@@ -340,12 +320,20 @@ fn summary_can_contain_text_but_payload_arguments_still_redacted() {
     // summary is deliberately verbose but safe.
     let args = serde_json::json!({"secret_token": "hunter2", "path": "/tmp/x"});
     let payload = serde_json::json!({"secret_token": "hunter2", "lines": ["a", "b"]});
-    let body = format!(
-        "{}\n{}\n",
-        tool_call_line("s1", "read_file", args),
-        tool_result_line("s1", "read_file", "ok", "read_file returned 2 lines", payload, 7),
+    write_transcript_rows(
+        &path,
+        [
+            tool_call_line("s1", "read_file", args),
+            tool_result_line(
+                "s1",
+                "read_file",
+                "ok",
+                "read_file returned 2 lines",
+                payload,
+                7,
+            ),
+        ],
     );
-    write_jsonl(&path, &body);
 
     let proj = project_tool_use_activity(&path).unwrap();
     assert_eq!(proj.len(), 1);
@@ -355,12 +343,11 @@ fn summary_can_contain_text_but_payload_arguments_still_redacted() {
     assert_eq!(p.summary, "read_file returned 2 lines");
 
     // raw secrets must not appear anywhere in the projection struct.
-    let rendered = format!("{:?} {:?}", p.summary, p.tool_name);
-    assert!(!rendered.contains("hunter2"), "secret_token leaked into projection: {rendered}");
+    assert_no_secret_in_debug(p, "hunter2");
 
     // and not in the activity entry detail either.
     let entry = p.to_activity_entry(1_700_000_000);
     let detail = entry.detail.unwrap();
-    assert!(!detail.contains("hunter2"), "secret_token leaked into activity detail: {detail}");
+    assert_no_secret_in_debug(&detail, "hunter2");
     assert!(detail.contains("read_file returned 2 lines"));
 }

@@ -67,7 +67,10 @@ impl SessionsState {
             .map(|entry| {
                 let jsonl = paths.sessions_dir().join(format!("{}.jsonl", entry.id));
                 let tool_summary = summarize(&jsonl);
-                vac_shell_contracts::SessionTileView { entry, tool_summary }
+                vac_shell_contracts::SessionTileView {
+                    entry,
+                    tool_summary,
+                }
             })
             .collect()
     }
@@ -84,8 +87,11 @@ impl SessionsState {
             path: path.display().to_string(),
             source: e,
         })?;
-        let mut lines: Vec<String> =
-            bytes.lines().take(max_lines).map(|l| l.to_string()).collect();
+        let mut lines: Vec<String> = bytes
+            .lines()
+            .take(max_lines)
+            .map(|l| l.to_string())
+            .collect();
         let title = lines.first().cloned();
         if !lines.is_empty() {
             lines.remove(0);
@@ -97,11 +103,7 @@ impl SessionsState {
         })
     }
 
-    pub fn apply(
-        &self,
-        paths: &dyn VacPaths,
-        action: SessionAction,
-    ) -> Result<(), SessionsError> {
+    pub fn apply(&self, paths: &dyn VacPaths, action: SessionAction) -> Result<(), SessionsError> {
         match action {
             SessionAction::Open { .. } => Ok(()),
             SessionAction::Resume { id } => {
@@ -170,12 +172,12 @@ mod tests {
     use super::*;
     use tempfile::tempdir;
     use vac_shell_contracts::SessionToolSummary;
-    use vac_shell_test_support::FakeVacPaths;
+    use vac_shell_test_support::{FakeVacPaths, temp_session_transcript};
 
     #[test]
     fn list_with_summaries_injects_summary_per_tile() {
         let tmp = tempdir().unwrap();
-        std::fs::write(tmp.path().join("abc123.jsonl"), b"{}").unwrap();
+        temp_session_transcript(tmp.path().join("abc123.jsonl"), "{}");
 
         let state = SessionsState::new();
         let fake = FakeVacPaths(tmp.path().to_path_buf());
@@ -195,7 +197,7 @@ mod tests {
     #[test]
     fn list_with_summaries_none_when_closure_returns_none() {
         let tmp = tempdir().unwrap();
-        std::fs::write(tmp.path().join("xyz.jsonl"), b"{}").unwrap();
+        temp_session_transcript(tmp.path().join("xyz.jsonl"), "{}");
 
         let state = SessionsState::new();
         let fake = FakeVacPaths(tmp.path().to_path_buf());

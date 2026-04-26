@@ -1,38 +1,13 @@
 //! D7B — VacCommandExecutorAdapter contract tests.
 
+mod common;
+
 use std::sync::Arc;
 
-use vac_shell_contracts::{ShellCommandKind, ShellCommandSpec};
 use vac_shell_host_commands::{ShellCommandError, ShellCommandExecutor};
-use vac_shell_host_vac_command_adapter::{
-    AdapterCommandSpec, AdapterConfig, VacCommandExecutorAdapter,
-};
+use vac_shell_host_vac_command_adapter::{AdapterConfig, VacCommandExecutorAdapter};
 
-fn cmd(id: &str, slash: &str) -> ShellCommandSpec {
-    ShellCommandSpec {
-        id: id.to_string(),
-        slash: slash.to_string(),
-        title: format!("{slash} title"),
-        description: format!("{slash} description"),
-        kind: ShellCommandKind::PromptTemplate,
-        palette_visible: true,
-        shortcut: None,
-        category: None,
-        aliases: vec![],
-        keywords: vec![],
-        disabled_reason: None,
-    }
-}
-
-fn mapped_adapter(root: std::path::PathBuf) -> VacCommandExecutorAdapter {
-    VacCommandExecutorAdapter::new(
-        AdapterConfig::new(root).with_command(AdapterCommandSpec::new(
-            "memorize",
-            "/memorize",
-            "Memorize the current operator context.",
-        )),
-    )
-}
+use common::{cmd, mapped};
 
 // ---------------------------------------------------------------------
 // 1. Unmapped commands return Unsupported
@@ -41,10 +16,8 @@ fn mapped_adapter(root: std::path::PathBuf) -> VacCommandExecutorAdapter {
 #[test]
 fn adapter_rejects_unmapped_command() {
     let tmp = tempfile::tempdir().unwrap();
-    let adapter = mapped_adapter(tmp.path().to_path_buf());
-    let err = adapter
-        .execute(&cmd("unknown", "/unknown"))
-        .unwrap_err();
+    let adapter = VacCommandExecutorAdapter::new(mapped(tmp.path().to_path_buf()));
+    let err = adapter.execute(&cmd("unknown", "/unknown")).unwrap_err();
     match err {
         ShellCommandError::Unsupported(msg) => {
             assert!(msg.contains("/unknown"));
@@ -61,7 +34,7 @@ fn adapter_rejects_unmapped_command() {
 #[test]
 fn adapter_executes_mapped_prompt_and_writes_transcript() {
     let tmp = tempfile::tempdir().unwrap();
-    let adapter = mapped_adapter(tmp.path().to_path_buf());
+    let adapter = VacCommandExecutorAdapter::new(mapped(tmp.path().to_path_buf()));
     adapter.execute(&cmd("memorize", "/memorize")).unwrap();
 
     let path = adapter
@@ -84,7 +57,7 @@ fn adapter_executes_mapped_prompt_and_writes_transcript() {
 #[test]
 fn adapter_records_shell_palette_metadata_on_accepted_row() {
     let tmp = tempfile::tempdir().unwrap();
-    let adapter = mapped_adapter(tmp.path().to_path_buf());
+    let adapter = VacCommandExecutorAdapter::new(mapped(tmp.path().to_path_buf()));
     adapter.execute(&cmd("memorize", "/memorize")).unwrap();
 
     let path = adapter.last_transcript().unwrap();
@@ -111,7 +84,7 @@ fn adapter_records_shell_palette_metadata_on_accepted_row() {
 #[test]
 fn adapter_resolves_by_slash_when_id_mismatches() {
     let tmp = tempfile::tempdir().unwrap();
-    let adapter = mapped_adapter(tmp.path().to_path_buf());
+    let adapter = VacCommandExecutorAdapter::new(mapped(tmp.path().to_path_buf()));
     // Same slash, different id — slash fallback must hit.
     adapter
         .execute(&cmd("differently_named", "/memorize"))
@@ -132,7 +105,7 @@ fn adapter_failure_surfaces_as_shell_command_error_failed() {
     let blocking_file = tmp.path().join(".vac");
     std::fs::write(&blocking_file, b"not a directory").unwrap();
 
-    let adapter = mapped_adapter(tmp.path().to_path_buf());
+    let adapter = VacCommandExecutorAdapter::new(mapped(tmp.path().to_path_buf()));
     let err = adapter
         .execute(&cmd("memorize", "/memorize"))
         .expect_err("write must fail when .vac is a regular file");
@@ -153,9 +126,9 @@ fn dogfood_preset_maps_known_custom_commands() {
     let adapter = VacCommandExecutorAdapter::new(AdapterConfig::dogfood(tmp.path().to_path_buf()));
     for slash in ["/memorize", "/ultraplan"] {
         let id = slash.trim_start_matches('/').to_string();
-        adapter.execute(&cmd(&id, slash)).unwrap_or_else(|e| {
-            panic!("dogfood preset should map {slash}: {e:?}")
-        });
+        adapter
+            .execute(&cmd(&id, slash))
+            .unwrap_or_else(|e| panic!("dogfood preset should map {slash}: {e:?}"));
     }
 }
 
@@ -166,8 +139,9 @@ fn dogfood_preset_maps_known_custom_commands() {
 #[test]
 fn adapter_is_object_safe_through_executor_trait() {
     let tmp = tempfile::tempdir().unwrap();
-    let adapter: Arc<dyn ShellCommandExecutor> =
-        Arc::new(mapped_adapter(tmp.path().to_path_buf()));
+    let adapter: Arc<dyn ShellCommandExecutor> = Arc::new(VacCommandExecutorAdapter::new(mapped(
+        tmp.path().to_path_buf(),
+    )));
     adapter.execute(&cmd("memorize", "/memorize")).unwrap();
 }
 
@@ -184,7 +158,7 @@ fn adapter_works_inside_existing_multi_thread_runtime() {
         .unwrap();
     rt.block_on(async {
         let tmp = tempfile::tempdir().unwrap();
-        let adapter = mapped_adapter(tmp.path().to_path_buf());
+        let adapter = VacCommandExecutorAdapter::new(mapped(tmp.path().to_path_buf()));
         // Calling sync trait method from inside tokio runtime —
         // adapter must use block_in_place internally.
         adapter

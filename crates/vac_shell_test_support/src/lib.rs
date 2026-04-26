@@ -3,6 +3,7 @@
 //! IMPORTANT: This crate must NEVER be a production dependency.
 //! Only allowed in `[dev-dependencies]` of other crates.
 
+use std::fmt::Debug;
 use std::path::{Path, PathBuf};
 use vac_shell_contracts::{SessionToolSummary, ShellActivityEntry, ShellActivityKind, VacPaths};
 use vac_shell_host_activity::ActivityLog;
@@ -39,31 +40,57 @@ impl FakeVacRoot {
 pub struct FakeVacPaths(pub PathBuf);
 
 impl VacPaths for FakeVacPaths {
-    fn project_root(&self) -> PathBuf { self.0.clone() }
-    fn sessions_dir(&self) -> PathBuf { self.0.clone() }
-    fn project_state_dir(&self) -> PathBuf { self.0.clone() }
-    fn user_state_dir(&self) -> PathBuf { self.0.clone() }
-    fn plan_file(&self) -> PathBuf { self.0.join("plan.md") }
-    fn model_selection_file(&self) -> PathBuf { self.0.join("model_selection.json") }
-    fn commands_dir(&self) -> PathBuf { self.0.join("commands") }
+    fn project_root(&self) -> PathBuf {
+        self.0.clone()
+    }
+    fn sessions_dir(&self) -> PathBuf {
+        self.0.clone()
+    }
+    fn project_state_dir(&self) -> PathBuf {
+        self.0.clone()
+    }
+    fn user_state_dir(&self) -> PathBuf {
+        self.0.clone()
+    }
+    fn plan_file(&self) -> PathBuf {
+        self.0.join("plan.md")
+    }
+    fn model_selection_file(&self) -> PathBuf {
+        self.0.join("model_selection.json")
+    }
+    fn commands_dir(&self) -> PathBuf {
+        self.0.join("commands")
+    }
 }
 
-/// Write a minimal transcript JSONL file to `path` for testing.
-/// Each `rows` entry is a raw JSON string (one per line).
-pub fn write_transcript_rows(path: &Path, rows: &[&str]) {
-    let content = rows.join("\n") + "\n";
+/// Write a transcript JSONL file to `path` for testing.
+/// Each row is written one per line with a trailing newline.
+pub fn write_transcript_rows<I, S>(path: &Path, rows: I)
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>,
+{
+    let mut content = String::new();
+    for row in rows {
+        let row = row.as_ref();
+        if row.is_empty() {
+            continue;
+        }
+        if !content.is_empty() {
+            content.push('\n');
+        }
+        content.push_str(row);
+    }
+    if !content.is_empty() {
+        content.push('\n');
+    }
     std::fs::write(path, content).expect("write transcript");
 }
 
 /// Write a multi-line JSONL body string to `path`.
 /// Non-empty lines are written as-is; blank lines are skipped.
 pub fn write_jsonl_body(path: &Path, body: &str) {
-    let rows: Vec<&str> = body.lines().filter(|l| !l.is_empty()).collect();
-    if rows.is_empty() {
-        std::fs::write(path, b"").unwrap();
-    } else {
-        write_transcript_rows(path, &rows);
-    }
+    write_transcript_rows(path, body.lines().filter(|l| !l.is_empty()));
 }
 
 // =====================================================================
@@ -116,6 +143,68 @@ pub fn tool_result_json_line(
     .to_string()
 }
 
+/// Append a minimal `tool_call` + `tool_result` pair to `path`.
+/// The call uses empty arguments, and the result uses an empty payload
+/// with zero duration.
+pub fn write_tool_call_result_pair(path: &Path, id: &str, name: &str, kind: &str, summary: &str) {
+    write_transcript_rows(
+        path,
+        [
+            tool_call_json_line(id, name, serde_json::json!({})),
+            tool_result_json_line(id, name, kind, summary, serde_json::json!({}), 0),
+        ],
+    );
+}
+
+fn finished_json_line(via: &str) -> String {
+    serde_json::json!({
+        "id": "row-finished",
+        "session_id": "00000000-0000-0000-0000-000000000000",
+        "kind": "finished",
+        "timestamp": "2026-04-26T00:00:00Z",
+        "content": {
+            "via": via,
+            "usage": {
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "total_tokens": 0,
+            }
+        }
+    })
+    .to_string()
+}
+
+/// Append a minimal `finished` transcript row to `path`.
+pub fn write_finished_row(path: &Path, via: &str) {
+    let row = finished_json_line(via);
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .expect("open transcript");
+    use std::io::Write as _;
+    writeln!(file, "{row}").expect("append finished row");
+}
+
+/// Read a JSONL transcript file into raw `serde_json::Value` rows.
+pub fn read_jsonl_rows(path: &Path) -> Vec<serde_json::Value> {
+    let body = std::fs::read_to_string(path).expect("read transcript");
+    body.lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| serde_json::from_str(l).expect("valid jsonl"))
+        .collect()
+}
+
+/// Write a plain-text session transcript at `path`.
+pub fn temp_session_transcript(path: impl AsRef<Path>, body: &str) -> PathBuf {
+    let path = path.as_ref();
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).expect("create transcript parent");
+    }
+    std::fs::write(path, body).expect("write transcript");
+    path.to_path_buf()
+}
+
 // =====================================================================
 // Activity log assertions
 // =====================================================================
@@ -157,6 +246,16 @@ pub fn assert_activity_log_kind_severity(
     );
 }
 
+/// Assert that the `Debug` representation of `value` does not
+/// contain `secret`.
+pub fn assert_no_secret_in_debug<T: Debug>(value: &T, secret: &str) {
+    let rendered = format!("{value:?}");
+    assert!(
+        !rendered.contains(secret),
+        "secret '{secret}' found in debug output: {rendered}"
+    );
+}
+
 // =====================================================================
 // Session summary provider helpers
 // =====================================================================
@@ -172,10 +271,17 @@ pub fn session_summary_provider_from_map(
     Arc::new(move |path: &Path| map.get(path).cloned())
 }
 
-/// Build a session_tool_summary_provider that always returns None.
-pub fn no_summary_provider(
+/// Build a session_tool_summary_provider that always returns the
+/// same value for every path.
+pub fn fake_session_summary_provider(
+    summary: Option<SessionToolSummary>,
 ) -> Arc<dyn Fn(&Path) -> Option<SessionToolSummary> + Send + Sync> {
-    Arc::new(|_: &Path| None)
+    Arc::new(move |_: &Path| summary.clone())
+}
+
+/// Build a session_tool_summary_provider that always returns None.
+pub fn no_summary_provider() -> Arc<dyn Fn(&Path) -> Option<SessionToolSummary> + Send + Sync> {
+    fake_session_summary_provider(None)
 }
 
 // =====================================================================

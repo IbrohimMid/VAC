@@ -30,6 +30,7 @@ reqwest = { workspace = true }
 tempfile = "3.14"
 tokio = { workspace = true, features = ["full", "test-util"] }
 criterion = { workspace = true }
+vac_shell_test_support = { path = "../vac_shell_test_support" }
 
 [[bench]]
 name = "submit_one"

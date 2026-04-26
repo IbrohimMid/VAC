@@ -4,31 +4,22 @@
 //! test fails — the operator-facing schema doc and the engine MUST
 //! drift together.
 
+mod common;
+
 use async_trait::async_trait;
+use common::{ToolEmittingAdapter, call};
 use std::sync::Arc;
 use uuid::Uuid;
 use vac_session_engine::{
-    CompactConfig, EngineError, EngineResult, LlmAdapter, LlmRequest, LlmResponse, SlashCommand,
-    SlashProcessor, SubmitContext, ToolCallRequest, TranscriptWriter, TrivialCompactBoundary,
-    UsageTracker, submit_one,
+    CompactConfig, EngineError, EngineResult, SlashCommand, SlashProcessor, SubmitContext,
+    TranscriptWriter, TrivialCompactBoundary, UsageTracker, submit_one,
 };
-
-// ---------------------------------------------------------------------
-// Helpers shared with the D7E transcript test file.
-// ---------------------------------------------------------------------
+use vac_shell_test_support::read_jsonl_rows;
 
 fn keys(v: &serde_json::Value) -> Vec<String> {
     v.as_object()
         .map(|m| m.keys().cloned().collect())
         .unwrap_or_default()
-}
-
-async fn read_rows(path: &std::path::Path) -> Vec<serde_json::Value> {
-    let body = std::fs::read_to_string(path).expect("transcript file");
-    body.lines()
-        .filter(|l| !l.trim().is_empty())
-        .map(|l| serde_json::from_str(l).expect("valid jsonl"))
-        .collect()
 }
 
 fn find_one<'a>(rows: &'a [serde_json::Value], kind: &str) -> &'a serde_json::Value {
@@ -41,24 +32,6 @@ fn find_one<'a>(rows: &'a [serde_json::Value], kind: &str) -> &'a serde_json::Va
 // LLM adapter + slash command stubs.
 // ---------------------------------------------------------------------
 
-struct ToolEmittingAdapter {
-    tool_calls: Vec<ToolCallRequest>,
-}
-
-#[async_trait]
-impl LlmAdapter for ToolEmittingAdapter {
-    async fn complete(&self, _req: LlmRequest) -> EngineResult<LlmResponse> {
-        Ok(LlmResponse {
-            provider: "schema".into(),
-            model: "schema-1".into(),
-            content: "ack".into(),
-            input_tokens: 1,
-            output_tokens: 1,
-            tool_calls: self.tool_calls.clone(),
-        })
-    }
-}
-
 struct PingSlash;
 
 #[async_trait]
@@ -69,10 +42,7 @@ impl SlashCommand for PingSlash {
     fn description(&self) -> &str {
         "schema-test slash"
     }
-    async fn handle(
-        &self,
-        _args: &str,
-    ) -> EngineResult<vac_session_engine::slash::SlashResult> {
+    async fn handle(&self, _args: &str) -> EngineResult<vac_session_engine::slash::SlashResult> {
         Ok(vac_session_engine::slash::SlashResult {
             summary: "pong".into(),
             payload: serde_json::json!({ "pong": true }),
@@ -95,13 +65,7 @@ async fn llm_path_row_shapes_match_schema_doc() {
     let session_id = Uuid::new_v4();
     let ctx = SubmitContext::new(session_id, "schema check");
     let llm = ToolEmittingAdapter {
-        tool_calls: vec![ToolCallRequest {
-            id: "tc-1".into(),
-            name: "search".into(),
-            arguments: serde_json::json!({"q": "x"}),
-            reason: None,
-            estimated_tokens: 0,
-        }],
+        tool_calls: vec![call("tc-1", "search", serde_json::json!({"q": "x"}))],
     };
     submit_one(
         ctx,
@@ -115,8 +79,12 @@ async fn llm_path_row_shapes_match_schema_doc() {
     )
     .await
     .unwrap();
-    let path = tmp.path().join(".vac").join("sessions").join(format!("{session_id}.jsonl"));
-    let rows = read_rows(&path).await;
+    let path = tmp
+        .path()
+        .join(".vac")
+        .join("sessions")
+        .join(format!("{session_id}.jsonl"));
+    let rows = read_jsonl_rows(&path);
 
     // Wrapper shape: every row must have the documented top-level keys.
     for row in &rows {
@@ -133,8 +101,10 @@ async fn llm_path_row_shapes_match_schema_doc() {
     let accepted = find_one(&rows, "accepted");
     let acc = &accepted["content"];
     let acc_keys: std::collections::HashSet<_> = keys(acc).into_iter().collect();
-    let expected: std::collections::HashSet<_> =
-        ["input", "submitted_at", "metadata"].into_iter().map(String::from).collect();
+    let expected: std::collections::HashSet<_> = ["input", "submitted_at", "metadata"]
+        .into_iter()
+        .map(String::from)
+        .collect();
     assert_eq!(acc_keys, expected, "accepted content keys: {acc}");
 
     // llm_request
@@ -175,16 +145,17 @@ async fn llm_path_row_shapes_match_schema_doc() {
     // tool_result
     let tr = find_one(&rows, "tool_result");
     let tr_keys: std::collections::HashSet<_> = keys(&tr["content"]).into_iter().collect();
-    let expected_tr: std::collections::HashSet<_> =
-        ["id", "name", "envelope"].into_iter().map(String::from).collect();
+    let expected_tr: std::collections::HashSet<_> = ["id", "name", "envelope"]
+        .into_iter()
+        .map(String::from)
+        .collect();
     assert_eq!(tr_keys, expected_tr, "tool_result content");
     let env = &tr["content"]["envelope"];
     let env_keys: std::collections::HashSet<_> = keys(env).into_iter().collect();
-    let expected_env: std::collections::HashSet<_> =
-        ["kind", "payload", "summary", "duration_ms"]
-            .into_iter()
-            .map(String::from)
-            .collect();
+    let expected_env: std::collections::HashSet<_> = ["kind", "payload", "summary", "duration_ms"]
+        .into_iter()
+        .map(String::from)
+        .collect();
     assert_eq!(env_keys, expected_env, "tool_result.envelope keys");
 
     // finished
@@ -223,12 +194,19 @@ async fn slash_path_row_shapes_match_schema_doc() {
     )
     .await
     .unwrap();
-    let rows = read_rows(&tmp.path().join(".vac").join("sessions").join(format!("{session_id}.jsonl"))).await;
+    let rows = read_jsonl_rows(
+        &tmp.path()
+            .join(".vac")
+            .join("sessions")
+            .join(format!("{session_id}.jsonl")),
+    );
 
     let s = find_one(&rows, "slash");
     let s_keys: std::collections::HashSet<_> = keys(&s["content"]).into_iter().collect();
-    let expected_s: std::collections::HashSet<_> =
-        ["command", "args", "summary", "payload"].into_iter().map(String::from).collect();
+    let expected_s: std::collections::HashSet<_> = ["command", "args", "summary", "payload"]
+        .into_iter()
+        .map(String::from)
+        .collect();
     assert_eq!(s_keys, expected_s, "slash content");
     assert_eq!(s["content"]["command"], "ping");
 
@@ -263,7 +241,12 @@ async fn aborted_row_shape_includes_reason_and_kind() {
     let res = submit_one(ctx, &writer, &slash, &compact, &usage, &llm, cfg, None).await;
     assert!(matches!(res, Err(EngineError::BudgetExceeded { .. })));
 
-    let rows = read_rows(&tmp.path().join(".vac").join("sessions").join(format!("{session_id}.jsonl"))).await;
+    let rows = read_jsonl_rows(
+        &tmp.path()
+            .join(".vac")
+            .join("sessions")
+            .join(format!("{session_id}.jsonl")),
+    );
     let aborted = find_one(&rows, "aborted");
     let a_keys: std::collections::HashSet<_> = keys(&aborted["content"]).into_iter().collect();
     let expected_a: std::collections::HashSet<_> =

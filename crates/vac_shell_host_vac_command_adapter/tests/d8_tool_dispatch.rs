@@ -3,19 +3,19 @@
 //! Cover the tests numbered 6–10 + the transcript replay
 //! tests 11–13 that the D8 brief listed.
 
+mod common;
+
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use async_trait::async_trait;
+use common::{cmd, mapped};
 use vac_session_engine::{
     CompositeGate, EngineError, EngineResult, GateDecision, LlmAdapter, LlmRequest, LlmResponse,
     ToolCallRequest, ToolCheckCtx, ToolDispatcher, ToolGate, read_tool_use_rows,
 };
-use vac_shell_contracts::{ShellCommandKind, ShellCommandSpec};
-use vac_shell_host_commands::{ShellCommandError, ShellCommandExecutor};
-use vac_shell_host_vac_command_adapter::{
-    AdapterCommandSpec, AdapterConfig, AdapterConfigError, VacCommandExecutorAdapter,
-};
+use vac_shell_host_commands::ShellCommandExecutor;
+use vac_shell_host_vac_command_adapter::{AdapterConfigError, VacCommandExecutorAdapter};
 use vac_shell_host_vac_tool_dispatcher::VacToolDispatcher;
 use vac_tool_core::ToolResultKind;
 use vac_tools::ToolError;
@@ -118,28 +118,6 @@ impl ToolDispatcher for CountingDispatcher {
     }
 }
 
-fn cmd(id: &str, slash: &str) -> ShellCommandSpec {
-    ShellCommandSpec {
-        id: id.into(),
-        slash: slash.into(),
-        title: format!("{slash} title"),
-        description: format!("{slash} description"),
-        kind: ShellCommandKind::PromptTemplate,
-        palette_visible: true,
-        shortcut: None,
-        category: None,
-        aliases: vec![],
-        keywords: vec![],
-        disabled_reason: None,
-    }
-}
-
-fn mapped(root: std::path::PathBuf) -> AdapterConfig {
-    AdapterConfig::new(root)
-        .with_command(AdapterCommandSpec::new("memorize", "/memorize", "go"))
-        .with_llm(Arc::new(ToolEmittingLlm))
-}
-
 async fn make_registry_with_ok_echo() -> (Arc<ToolRegistry>, Arc<AtomicUsize>) {
     let reg = ToolRegistry::new();
     let counter = Arc::new(AtomicUsize::new(0));
@@ -159,6 +137,10 @@ fn build_dispatcher(
     Arc::new(VacToolDispatcher::new(registry, ctx))
 }
 
+fn mapped_with_tool_emitting_llm(root: std::path::PathBuf) -> vac_shell_host_vac_command_adapter::AdapterConfig {
+    mapped(root).with_llm(Arc::new(ToolEmittingLlm))
+}
+
 // ---------------------------------------------------------------------
 // 6. Default path stays unsupported — no real tool execution.
 // ---------------------------------------------------------------------
@@ -166,7 +148,9 @@ fn build_dispatcher(
 #[test]
 fn default_path_still_unsupported_no_real_tool_execution() {
     let tmp = tempfile::tempdir().unwrap();
-    let adapter = VacCommandExecutorAdapter::new(mapped(tmp.path().to_path_buf()));
+    let adapter = VacCommandExecutorAdapter::new(mapped_with_tool_emitting_llm(
+        tmp.path().to_path_buf(),
+    ));
     assert!(!adapter.has_live_tool_dispatcher());
     adapter.execute(&cmd("memorize", "/memorize")).unwrap();
     let path = adapter.last_transcript().unwrap();
@@ -192,7 +176,7 @@ async fn with_tool_dispatcher_and_gate_allow_writes_ok_tool_result_row() {
     let (registry, counter) = make_registry_with_ok_echo().await;
     let tmp = tempfile::tempdir().unwrap();
     let dispatcher = build_dispatcher(registry, tmp.path().to_path_buf());
-    let cfg = mapped(tmp.path().to_path_buf())
+    let cfg = mapped_with_tool_emitting_llm(tmp.path().to_path_buf())
         .with_tool_dispatcher(dispatcher, Arc::new(CompositeGate::new()));
     let adapter = VacCommandExecutorAdapter::new(cfg);
     assert!(adapter.has_live_tool_dispatcher());
@@ -224,9 +208,11 @@ async fn with_tool_dispatcher_without_gate_rejected_preflight() {
     let (registry, _) = make_registry_with_ok_echo().await;
     let tmp = tempfile::tempdir().unwrap();
     let dispatcher = build_dispatcher(registry, tmp.path().to_path_buf());
-    let res = mapped(tmp.path().to_path_buf())
-        .try_with_tool_dispatcher(dispatcher, None);
-    assert!(matches!(res, Err(AdapterConfigError::DispatcherWithoutGate)));
+    let res = mapped(tmp.path().to_path_buf()).try_with_tool_dispatcher(dispatcher, None);
+    assert!(matches!(
+        res,
+        Err(AdapterConfigError::DispatcherWithoutGate)
+    ));
 }
 
 // ---------------------------------------------------------------------
@@ -240,15 +226,13 @@ async fn gate_deny_skips_dispatcher_and_writes_error_row() {
     let inner = build_dispatcher(registry, tmp.path().to_path_buf());
     let dispatch_calls = Arc::new(AtomicUsize::new(0));
     let counting = Arc::new(CountingDispatcher {
-        inner: VacToolDispatcher::new(
-            inner.registry().clone(),
-            inner.context().clone(),
-        ),
+        inner: VacToolDispatcher::new(inner.registry().clone(), inner.context().clone()),
         calls: dispatch_calls.clone(),
     });
     let gate = Arc::new(CompositeGate::new().with_gate(Arc::new(AlwaysDenyGate)));
 
-    let cfg = mapped(tmp.path().to_path_buf()).with_tool_dispatcher(counting, gate);
+    let cfg = mapped_with_tool_emitting_llm(tmp.path().to_path_buf())
+        .with_tool_dispatcher(counting, gate);
     let adapter = VacCommandExecutorAdapter::new(cfg);
 
     let path = tokio::task::spawn_blocking(move || {
@@ -280,7 +264,7 @@ async fn execute_path_with_live_dispatcher_visible_in_transcript() {
     let (registry, counter) = make_registry_with_ok_echo().await;
     let tmp = tempfile::tempdir().unwrap();
     let dispatcher = build_dispatcher(registry, tmp.path().to_path_buf());
-    let cfg = mapped(tmp.path().to_path_buf())
+    let cfg = mapped_with_tool_emitting_llm(tmp.path().to_path_buf())
         .with_tool_dispatcher(dispatcher, Arc::new(CompositeGate::new()));
     let adapter = VacCommandExecutorAdapter::new(cfg);
     let path = tokio::task::spawn_blocking(move || {
@@ -395,8 +379,7 @@ async fn dogfood_tool_dispatch_smoke_writes_ok_tool_result_row() {
 
 #[test]
 fn replay_tolerates_missing_transcript_file() {
-    let views =
-        read_tool_use_rows(std::env::temp_dir().join("does-not-exist-d8.jsonl")).unwrap();
+    let views = read_tool_use_rows(std::env::temp_dir().join("does-not-exist-d8.jsonl")).unwrap();
     assert!(views.is_empty());
 }
 
@@ -427,10 +410,16 @@ fn replay_pairs_call_and_result_in_transcript_order() {
 "#;
     std::fs::write(&path, body).unwrap();
     let views = read_tool_use_rows(&path).unwrap();
-    assert_eq!(views.iter().map(|v| v.id.as_str()).collect::<Vec<_>>(), vec!["a", "b", "c"]);
+    assert_eq!(
+        views.iter().map(|v| v.id.as_str()).collect::<Vec<_>>(),
+        vec!["a", "b", "c"]
+    );
     assert_eq!(views[0].result.as_ref().unwrap().kind, ToolResultKind::Ok);
     assert_eq!(views[1].result.as_ref().unwrap().kind, ToolResultKind::Ok);
-    assert_eq!(views[2].result.as_ref().unwrap().kind, ToolResultKind::Error);
+    assert_eq!(
+        views[2].result.as_ref().unwrap().kind,
+        ToolResultKind::Error
+    );
 }
 
 #[test]

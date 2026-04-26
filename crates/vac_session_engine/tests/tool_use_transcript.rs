@@ -13,47 +13,23 @@
 //! * a real (test-double) dispatcher returning `Ok` writes an
 //!   `ok` envelope row.
 
+mod common;
+
 use async_trait::async_trait;
+use common::{ToolEmittingAdapter, call};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use uuid::Uuid;
 use vac_session_engine::{
-    CompactConfig, CompositeGate, EngineError, EngineResult, GateDecision, LlmAdapter, LlmRequest,
-    LlmResponse, SlashProcessor, SubmitContext, ToolCallRequest, ToolCheckCtx, ToolDispatcher,
-    TranscriptWriter, TrivialCompactBoundary, UsageTracker, submit_one,
+    CompactConfig, CompositeGate, EngineError, EngineResult, GateDecision, SlashProcessor,
+    SubmitContext, ToolCallRequest, ToolCheckCtx, ToolDispatcher, TranscriptWriter,
+    TrivialCompactBoundary, UsageTracker, submit_one,
 };
+use vac_shell_test_support::read_jsonl_rows;
 
 // ---------------------------------------------------------------------
 // LlmAdapter that returns a fixed list of tool calls.
 // ---------------------------------------------------------------------
-
-struct ToolEmittingAdapter {
-    tool_calls: Vec<ToolCallRequest>,
-}
-
-#[async_trait]
-impl LlmAdapter for ToolEmittingAdapter {
-    async fn complete(&self, _req: LlmRequest) -> EngineResult<LlmResponse> {
-        Ok(LlmResponse {
-            provider: "test-provider".into(),
-            model: "test-model".into(),
-            content: "I want tools".into(),
-            input_tokens: 1,
-            output_tokens: 1,
-            tool_calls: self.tool_calls.clone(),
-        })
-    }
-}
-
-fn call(id: &str, name: &str, args: serde_json::Value) -> ToolCallRequest {
-    ToolCallRequest {
-        id: id.into(),
-        name: name.into(),
-        arguments: args,
-        reason: None,
-        estimated_tokens: 0,
-    }
-}
 
 async fn drive_with(
     project_root: &std::path::Path,
@@ -69,12 +45,11 @@ async fn drive_with(
     submit_one(ctx, &writer, &slash, &compact, &usage, &adapter, cfg, None)
         .await
         .expect("submit_one must succeed");
-    let path = project_root.join(".vac").join("sessions").join(format!("{session_id}.jsonl"));
-    let body = std::fs::read_to_string(&path).expect("transcript file");
-    body.lines()
-        .filter(|l| !l.trim().is_empty())
-        .map(|l| serde_json::from_str(l).expect("valid jsonl"))
-        .collect()
+    let path = project_root
+        .join(".vac")
+        .join("sessions")
+        .join(format!("{session_id}.jsonl"));
+    read_jsonl_rows(&path)
 }
 
 fn kinds_in_order(rows: &[serde_json::Value]) -> Vec<String> {
@@ -91,11 +66,7 @@ fn kinds_in_order(rows: &[serde_json::Value]) -> Vec<String> {
 async fn unsupported_dispatcher_writes_tool_call_and_tool_result_rows() {
     let tmp = tempfile::tempdir().unwrap();
     let adapter = ToolEmittingAdapter {
-        tool_calls: vec![call(
-            "t1",
-            "search",
-            serde_json::json!({"q": "needle"}),
-        )],
+        tool_calls: vec![call("t1", "search", serde_json::json!({"q": "needle"}))],
     };
     let rows = drive_with(tmp.path(), adapter, CompactConfig::default()).await;
     let kinds = kinds_in_order(&rows);
@@ -164,7 +135,9 @@ async fn multiple_tool_calls_preserve_transcript_order() {
     let mut tool_result_ids = Vec::new();
     for r in &rows {
         match r["kind"].as_str() {
-            Some("tool_call") => tool_call_ids.push(r["content"]["id"].as_str().unwrap().to_string()),
+            Some("tool_call") => {
+                tool_call_ids.push(r["content"]["id"].as_str().unwrap().to_string())
+            }
             Some("tool_result") => {
                 tool_result_ids.push(r["content"]["id"].as_str().unwrap().to_string())
             }
@@ -380,12 +353,7 @@ async fn tool_result_row_appears_before_finished_when_event_receiver_dropped() {
         .join(".vac")
         .join("sessions")
         .join(format!("{session_id}.jsonl"));
-    let body = std::fs::read_to_string(&path).unwrap();
-    let rows: Vec<serde_json::Value> = body
-        .lines()
-        .filter(|l| !l.trim().is_empty())
-        .map(|l| serde_json::from_str(l).unwrap())
-        .collect();
+    let rows = read_jsonl_rows(&path);
     let kinds: Vec<String> = rows
         .iter()
         .map(|r| r["kind"].as_str().unwrap_or("").to_string())

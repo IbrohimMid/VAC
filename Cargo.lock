@@ -6387,6 +6387,7 @@ dependencies = [
  "uuid",
  "vac_core",
  "vac_session_primitives",
+ "vac_shell_test_support",
  "vac_tool_core",
 ]
 
@@ -6459,6 +6460,7 @@ dependencies = [
  "vac_shell_session_browser",
  "vac_shell_shortcuts",
  "vac_shell_status_bar",
+ "vac_shell_test_support",
 ]
 
 [[package]]
@@ -6642,6 +6644,7 @@ dependencies = [
  "thiserror 1.0.69",
  "vac_shell_contracts",
  "vac_shell_host_paths",
+ "vac_shell_test_support",
 ]
 
 [[package]]
