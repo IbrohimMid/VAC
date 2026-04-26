@@ -58,14 +58,21 @@ Tag the report by slice:
 * Live engine event bus is **not** connected — activity
   projections must be ingested by hosts manually
   (`vac_shell_host_event_projection::record_projected_event`).
-* The dogfood example now wires
+* The dogfood example wires
   `vac_shell_host_vac_command_adapter::VacCommandExecutorAdapter`
   with `AdapterConfig::dogfood(...)`. Mapped slashes
   (`/memorize`, `/ultraplan`) submit through
   `vac_session_engine::submit_one` with the `EchoAdapter` LLM
-  stub and write a durable transcript under
-  `<cwd>/.vac/sessions/<uuid>.jsonl`. Real provider routing is
-  a later slice.
+  stub by default and write a durable transcript under
+  `<cwd>/.vac/sessions/<uuid>.jsonl`.
+* **D7C** — hosts can opt into a real provider with
+  `AdapterConfig::with_vil_llm_router(router)` (or any
+  `LlmAdapter` via `with_llm(...)`). `EchoAdapter` is still the
+  default so dogfood operators do not need provider credentials
+  to exercise the cockpit. Provider-level errors (auth, network,
+  rate limit) surface as `ShellCommandError::Failed` and land
+  in the activity log; tool-use round-tripping inside the
+  `vil_llm` bridge is a later slice.
 * The legacy `vac_shell_host_commands::VacCommandExecutorAdapter`
   D5.1 stub is retained for tests and hosts that want the
   explicit "no engine wired" failure mode; the dogfood

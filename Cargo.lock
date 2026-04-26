@@ -6654,6 +6654,7 @@ dependencies = [
 name = "vac_shell_host_vac_command_adapter"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "crossterm",
  "serde_json",
  "tempfile",
@@ -6671,6 +6672,7 @@ dependencies = [
  "vac_shell_host_model",
  "vac_shell_host_paths",
  "vac_shell_runtime_loop",
+ "vil_llm",
 ]
 
 [[package]]

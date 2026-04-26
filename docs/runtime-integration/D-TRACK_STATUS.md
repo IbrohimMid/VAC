@@ -15,6 +15,7 @@
 | **D6**  | `cargo run -p vac_shell_entrypoint --example dogfood` | PASS — post-D7B the example wires the real `vac_shell_host_vac_command_adapter::VacCommandExecutorAdapter` (engine-backed via EchoAdapter) instead of the D5.1 stub; entrypoint command registry includes `/memorize` + `/ultraplan` so the dogfood preset reaches the adapter end-to-end (manual checklist) |
 | **D7A** | `vac_shell_host_vac_engine_probe` — host-side `VacConfig` → `.vac/model_config.json` projection (first ADR-sanctioned `vac_core` exception, allowlist-shaped, denylist-swept) | PASS after hardening — `EnvPresence::present_non_empty` + `ProcessEnvPresence`, `api_key_env=None` ⇒ ready (parity with `vil_llm::LlmConfig::provider_ready`), parent-dir fsync on Unix + Windows replace fallback |
 | **D7B** | `vac_shell_host_vac_command_adapter` — host-side `ShellCommandExecutor` impl that bridges custom palette slashes to `vac_session_engine::submit_one` (second ADR-sanctioned exception). Sync trait preserved via `block_in_place` / current-thread fallback. EchoAdapter LLM stub for v1; transcript durability proven. | PASS after hardening — entrypoint `default_commands()` registers `/memorize` + `/ultraplan` so the registry stays in sync with `AdapterConfig::dogfood`; `dogfood_entrypoint_registry_and_adapter_are_synchronized` end-to-end test pins it |
+| **D7C** | Same crate, real provider routing. `AdapterLlm::{Echo, Custom}` enum, `AdapterConfig::with_llm` + `with_vil_llm_router` helpers, `VilLlmRouterAdapter` bridge wrapping `vil_llm::LlmRouter` as `vac_session_engine::LlmAdapter`. Echo stays default. Custom-adapter failures surface as `ShellCommandError::Failed`. | PASS pending review |
 | **RC gate** | This doc + `DOGFOOD_CHECKLIST.md` + map update | PASS (post-hardening) |
 
 ## Crate inventory after the batch
@@ -27,7 +28,7 @@ crates/vac_shell_host_vac_config      D3
 crates/vac_shell_host_event_projection D4 + D4.1
 crates/vac_shell_host_commands        D5 + D5.1
 crates/vac_shell_host_vac_engine_probe D7A (host-side, vac_core exception)
-crates/vac_shell_host_vac_command_adapter D7B (host-side, vac_session_engine exception)
+crates/vac_shell_host_vac_command_adapter D7B + D7C (host-side, vac_session_engine + vil_llm exceptions)
 ```
 
 Plus the cockpit layer landed before the D-track:
@@ -78,10 +79,12 @@ crates/vac_shell_host_diff            simple line-diff projector
     depend on `vac_core` because it is a host-side *producer
     crate* that writes the read-only
     `.vac/model_config.json` snapshot.
-  * `vac_shell_host_vac_command_adapter` (D7B) is allowed to
-    depend on `vac_session_engine` because it is a host-side
-    *executor crate* that submits custom palette slashes
-    through `submit_one`.
+  * `vac_shell_host_vac_command_adapter` (D7B + D7C) is
+    allowed to depend on `vac_session_engine` and `vil_llm`
+    because it is a host-side *executor crate* that submits
+    custom palette slashes through `submit_one` and (D7C)
+    optionally routes those submits through a real provider
+    via `vil_llm::LlmRouter`.
 
   Neither crate is reachable from any UI / widget / bridge /
   app / entrypoint / runtime-loop runtime graph; see the ADR
@@ -89,10 +92,10 @@ crates/vac_shell_host_diff            simple line-diff projector
 
 ## What is still deferred
 
-* Real provider routing inside the D7B adapter — currently
-  `EchoAdapter` is the LLM stub. A later slice replaces it
-  with the production adapter set behind the same
-  `ShellCommandExecutor` seam.
+* Tool-use round-tripping inside `VilLlmRouterAdapter` —
+  D7C v1 emits `tool_calls: vec![]` so every response is
+  treated as text by the engine. Tool-use propagation is a
+  later slice.
 * `vac_cli`-grade dispatch reuse — the D7B adapter goes
   directly to `vac_session_engine::submit_one`. If `vac_cli`
   exposes a reusable library entry point in a future slice,

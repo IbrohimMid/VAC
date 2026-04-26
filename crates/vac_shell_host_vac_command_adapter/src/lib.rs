@@ -58,10 +58,12 @@ use serde_json::json;
 use tokio::runtime::{Builder, Handle, RuntimeFlavor};
 use uuid::Uuid;
 
+use async_trait::async_trait;
 use vac_session_engine::{
-    CompactConfig, EchoAdapter, SlashProcessor, SubmitContext, TranscriptWriter,
-    TrivialCompactBoundary, UsageTracker, submit_one,
+    CompactConfig, EchoAdapter, LlmAdapter, LlmRequest, LlmResponse, SlashProcessor,
+    SubmitContext, TranscriptWriter, TrivialCompactBoundary, UsageTracker, submit_one,
 };
+use vac_session_engine::EngineError;
 use vac_shell_contracts::ShellCommandSpec;
 use vac_shell_host_commands::{ShellCommandError, ShellCommandExecutor};
 
@@ -98,8 +100,43 @@ impl AdapterCommandSpec {
     }
 }
 
-/// Configuration for the real D7B adapter. Hosts construct one
-/// of these per session and pass it to
+/// LLM adapter selection for [`VacCommandExecutorAdapter`].
+///
+/// D7B v1 only shipped `Echo`. D7C adds `Custom`, which lets a
+/// host inject any `LlmAdapter` implementation — including the
+/// `vil_llm`-backed bridge produced by
+/// [`AdapterConfig::with_vil_llm_router`].
+#[derive(Clone)]
+pub enum AdapterLlm {
+    /// Default — `vac_session_engine::EchoAdapter`. Deterministic
+    /// echo response, useful for the dogfood example and any
+    /// host that wants engine-seam wiring without a provider
+    /// round-trip.
+    Echo,
+    /// Host-injected adapter. The provided implementation is
+    /// driven by `submit_one` exactly the same way `EchoAdapter`
+    /// is. Errors returned by the adapter become
+    /// `ShellCommandError::Failed` at the trait surface.
+    Custom(Arc<dyn LlmAdapter>),
+}
+
+impl Default for AdapterLlm {
+    fn default() -> Self {
+        Self::Echo
+    }
+}
+
+impl std::fmt::Debug for AdapterLlm {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AdapterLlm::Echo => f.write_str("AdapterLlm::Echo"),
+            AdapterLlm::Custom(_) => f.write_str("AdapterLlm::Custom(<dyn LlmAdapter>)"),
+        }
+    }
+}
+
+/// Configuration for the real D7B/D7C adapter. Hosts construct
+/// one of these per session and pass it to
 /// [`VacCommandExecutorAdapter::new`].
 #[derive(Debug, Clone)]
 pub struct AdapterConfig {
@@ -109,6 +146,10 @@ pub struct AdapterConfig {
     /// Explicit command map. Order is irrelevant; lookup is by
     /// id or slash.
     pub commands: Vec<AdapterCommandSpec>,
+    /// LLM adapter wired into `submit_one`. Defaults to
+    /// [`AdapterLlm::Echo`] so D7B behaviour is unchanged for
+    /// callers that do not opt in.
+    pub llm: AdapterLlm,
 }
 
 impl AdapterConfig {
@@ -116,12 +157,33 @@ impl AdapterConfig {
         Self {
             project_root: project_root.into(),
             commands: Vec::new(),
+            llm: AdapterLlm::Echo,
         }
     }
 
     pub fn with_command(mut self, spec: AdapterCommandSpec) -> Self {
         self.commands.push(spec);
         self
+    }
+
+    /// Inject any `LlmAdapter` implementation. Use this for
+    /// cassette playback in tests, custom routing in hosts, or
+    /// the `vil_llm` bridge via [`Self::with_vil_llm_router`].
+    pub fn with_llm(mut self, llm: Arc<dyn LlmAdapter>) -> Self {
+        self.llm = AdapterLlm::Custom(llm);
+        self
+    }
+
+    /// D7C — convenience wrapper that turns a `vil_llm::LlmRouter`
+    /// into a `LlmAdapter`. The host configures providers (and
+    /// implicitly env-var-based credentials) on the router; the
+    /// adapter just translates each `submit_one` request into a
+    /// single-message `vil_llm::LlmRequest` and forwards it.
+    /// Errors from the router become `EngineError::Other`, which
+    /// surface to the operator via the existing
+    /// `ShellCommandError::Failed` path.
+    pub fn with_vil_llm_router(self, router: vil_llm::LlmRouter) -> Self {
+        self.with_llm(Arc::new(VilLlmRouterAdapter::new(router)))
     }
 
     /// Convenience preset for the dogfood example. Maps two
@@ -156,6 +218,7 @@ pub struct VacCommandExecutorAdapter {
     project_root: PathBuf,
     by_id: HashMap<String, AdapterCommandSpec>,
     by_slash: HashMap<String, AdapterCommandSpec>,
+    llm: AdapterLlm,
     /// Last completed transcript path — recorded after a
     /// successful submit so tests can assert engine reach
     /// without re-deriving the path.
@@ -174,6 +237,7 @@ impl VacCommandExecutorAdapter {
             project_root: config.project_root,
             by_id,
             by_slash,
+            llm: config.llm,
             last_transcript: Arc::new(std::sync::Mutex::new(None)),
         }
     }
@@ -208,17 +272,30 @@ impl VacCommandExecutorAdapter {
         let slash = SlashProcessor::new();
         let compact = TrivialCompactBoundary::default();
         let usage = UsageTracker::new();
-        let llm = EchoAdapter;
         let ctx = SubmitContext::new(session_id, prompt).with_metadata(metadata);
 
+        // D7C — pick the LLM adapter chosen at config time.
+        // The `Echo` arm holds an owned `EchoAdapter` so the
+        // future borrows it directly; the `Custom` arm holds an
+        // `Arc<dyn LlmAdapter>` cloned out of `self` so the
+        // future owns a stable reference for the entire submit.
+        let llm_choice = self.llm.clone();
         let fut = async move {
+            let echo;
+            let llm_ref: &dyn LlmAdapter = match &llm_choice {
+                AdapterLlm::Echo => {
+                    echo = EchoAdapter;
+                    &echo
+                }
+                AdapterLlm::Custom(arc) => arc.as_ref(),
+            };
             submit_one(
                 ctx,
                 &writer,
                 &slash,
                 &compact,
                 &usage,
-                &llm,
+                llm_ref,
                 CompactConfig::default(),
                 None,
             )
@@ -299,5 +376,69 @@ impl ShellCommandExecutor for VacCommandExecutorAdapter {
             }
             Err(e) => Err(ShellCommandError::Failed(e)),
         }
+    }
+}
+
+// =====================================================================
+// D7C — vil_llm router → vac_session_engine::LlmAdapter bridge
+// =====================================================================
+
+/// Adapter that turns a `vil_llm::LlmRouter` into a
+/// `vac_session_engine::LlmAdapter`. The translation is
+/// deliberately small: each `submit_one` request becomes a
+/// single-message `vil_llm::LlmRequest` (role = user). The
+/// router is responsible for provider selection, credential
+/// resolution, retry, and fallback.
+pub struct VilLlmRouterAdapter {
+    router: vil_llm::LlmRouter,
+}
+
+impl std::fmt::Debug for VilLlmRouterAdapter {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("VilLlmRouterAdapter")
+            .field("default_provider", &self.router.default_provider())
+            .finish()
+    }
+}
+
+impl VilLlmRouterAdapter {
+    pub fn new(router: vil_llm::LlmRouter) -> Self {
+        Self { router }
+    }
+}
+
+#[async_trait]
+impl LlmAdapter for VilLlmRouterAdapter {
+    async fn complete(&self, req: LlmRequest) -> Result<LlmResponse, EngineError> {
+        let prompt_text = if req.context.is_empty() {
+            req.prompt.clone()
+        } else {
+            let mut buf = String::new();
+            for line in &req.context {
+                buf.push_str(line);
+                buf.push('\n');
+            }
+            buf.push_str(&req.prompt);
+            buf
+        };
+
+        let vil_request =
+            vil_llm::LlmRequest::new(vec![vil_llm::Message::user(prompt_text.clone())]);
+        let vil_response = self
+            .router
+            .complete(&vil_request)
+            .await
+            .map_err(|e| EngineError::Other(format!("vil_llm router error: {e}")))?;
+
+        let provider = self.router.default_provider().to_string();
+
+        Ok(LlmResponse {
+            provider,
+            model: vil_response.model,
+            content: vil_response.content,
+            input_tokens: vil_response.usage.prompt_tokens,
+            output_tokens: vil_response.usage.completion_tokens,
+            tool_calls: Vec::new(),
+        })
     }
 }

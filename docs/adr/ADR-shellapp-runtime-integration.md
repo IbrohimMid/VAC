@@ -258,3 +258,79 @@ is the LLM. The slice proves the engine seam, transcript
 durability, and operator-visible routing direction. Real
 provider adapters and `vac_cli`-grade dispatch remain a later
 slice and require their own ADR appendix entry.
+
+## Appendix — D7C `vil_llm` host-side exception (2026-04-26)
+
+D7C extends `vac_shell_host_vac_command_adapter` (the existing
+D7B exception crate) to support real provider routing without
+crossing a new boundary. The crate already lives outside the
+shell-stack runtime graph, so adding `vil_llm` here does not
+add a back-edge into UI / widget / bridge / app / runtime-loop
+crates. `cargo tree -p vac_shell_entrypoint -e normal --depth 4
+| grep vil_llm` is empty after this slice.
+
+What changed:
+
+- **`AdapterLlm` enum**: `Echo` (default — preserves D7B
+  behaviour byte-for-byte) and `Custom(Arc<dyn LlmAdapter>)`
+  (host-injected). Default stays `Echo` so existing call sites
+  are unaffected.
+- **`AdapterConfig::with_llm(Arc<dyn LlmAdapter>)`**: accept any
+  `vac_session_engine::LlmAdapter` implementation —
+  `CassetteAdapter`, a custom routing layer, or the
+  `vil_llm`-backed bridge below. Errors returned by the
+  injected adapter become `EngineError::Other` inside
+  `submit_one`, which `VacCommandExecutorAdapter::execute`
+  surfaces to the operator as `ShellCommandError::Failed`.
+- **`AdapterConfig::with_vil_llm_router(vil_llm::LlmRouter)`**:
+  convenience helper that wraps the router in
+  `VilLlmRouterAdapter`. Each `submit_one` request becomes a
+  single-message `vil_llm::LlmRequest` (role = user) including
+  any `LlmRequest::context` lines prefixed onto the prompt.
+  Provider selection, credential resolution (env-var driven),
+  retry, rate-limiting, and fallback all stay inside
+  `vil_llm::LlmRouter`.
+- **`VilLlmRouterAdapter`**: pub bridge type. Holds an owned
+  `vil_llm::LlmRouter`, impls
+  `vac_session_engine::LlmAdapter`. Translates the response
+  back into the engine's `LlmResponse` shape (provider, model,
+  content, prompt/completion tokens). Tool-use is **not**
+  translated — D7C v1 emits `tool_calls: vec![]` so the
+  engine treats every response as text. Tool-use round-tripping
+  is a later slice.
+
+Boundary check after D7C:
+
+```text
+vac_shell_host_vac_command_adapter (depth 1):
+├── async-trait
+├── serde_json, thiserror, tokio, uuid
+├── vac_session_engine        (D7B exception)
+├── vac_shell_contracts
+├── vac_shell_host_commands
+└── vil_llm                    (D7C exception)
+```
+
+Nothing else in the shell-stack runtime graph (entrypoint
+library, runtime loop, app, every UI/widget/bridge crate)
+gains an edge to `vil_llm` — verified by `cargo tree`.
+
+Sync trait surface: unchanged. The `block_in_place` /
+helper-thread / private-runtime triad introduced in D7B
+continues to handle the sync-to-async impedance. The Custom
+arm clones the `Arc<dyn LlmAdapter>` out of `self` into the
+future, so the future owns a stable reference for the entire
+`submit_one` lifetime.
+
+Operator-visible failure: pinned by
+`custom_adapter_engine_error_surfaces_as_shell_command_failed`
+in `tests/llm_adapter.rs`. Any provider-level error (auth,
+network, rate limit) becomes a `ShellCommandError::Failed`
+with the underlying message preserved, which the existing
+`route_palette_command` reporter writes into `ActivityLog`.
+
+Rollback: drop the new `AdapterLlm` enum and the bridge type;
+revert `with_llm` / `with_vil_llm_router` helpers; delete the
+`vil_llm` dep from the adapter crate. The default
+`AdapterLlm::Echo` path means no host wiring breaks during
+rollback.
