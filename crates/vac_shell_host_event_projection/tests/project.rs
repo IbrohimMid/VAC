@@ -24,7 +24,7 @@ fn tool_finished_error_projects_error_severity() {
         id: "y".into(),
         ts_unix: 2,
         name: "shell".into(),
-        ok: false,
+        severity: Severity::Error,
         summary: Some("nonzero exit".into()),
     });
     assert_eq!(entry.severity, Severity::Error);

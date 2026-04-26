@@ -27,7 +27,6 @@ vac_shell_host_model = { path = "../vac_shell_host_model" }
 vac_shell_host_approval = { path = "../vac_shell_host_approval" }
 vac_shell_host_sessions = { path = "../vac_shell_host_sessions" }
 vac_shell_host_activity = { path = "../vac_shell_host_activity" }
-vac_shell_host_transcript_projection = { path = "../vac_shell_host_transcript_projection" }
 ratatui.workspace = true
 
 [dev-dependencies]

@@ -110,3 +110,52 @@ fn reason_contains_tool_name() {
         detail.reason
     );
 }
+
+// D10-HARDENING: sensitive key values must be redacted from command_preview.
+#[test]
+fn secret_keys_are_redacted_in_command_preview() {
+    let req = ApprovalRequest::new("id14", "api_call").with_arguments(
+        serde_json::json!({"token": "gh_super_secret_abc123", "url": "https://api.example.com"}),
+    );
+    let detail = provider().detail_for(&req);
+    let preview = detail.command_preview.expect("command_preview should be set");
+    assert!(
+        !preview.contains("gh_super_secret_abc123"),
+        "secret token must be redacted, got: {preview}"
+    );
+    assert!(
+        preview.contains("[REDACTED]"),
+        "expected [REDACTED] placeholder, got: {preview}"
+    );
+    // Non-sensitive key value should still be present.
+    assert!(
+        preview.contains("https://api.example.com"),
+        "non-sensitive value must be visible, got: {preview}"
+    );
+}
+
+#[test]
+fn long_arguments_are_truncated_in_command_preview() {
+    let long_val = "x".repeat(1000);
+    let req = ApprovalRequest::new("id15", "bash_exec")
+        .with_arguments(serde_json::json!({"cmd": long_val}));
+    let detail = provider().detail_for(&req);
+    let preview = detail.command_preview.expect("command_preview should be set");
+    assert!(
+        preview.len() <= 500,
+        "command_preview must be capped at 500 chars, got {} chars",
+        preview.len()
+    );
+}
+
+#[test]
+fn normal_command_argument_visible_in_preview() {
+    let req = ApprovalRequest::new("id16", "bash_exec")
+        .with_arguments(serde_json::json!({"cmd": "git status"}));
+    let detail = provider().detail_for(&req);
+    let preview = detail.command_preview.expect("command_preview should be set");
+    assert!(
+        preview.contains("git status"),
+        "safe command must be visible in preview, got: {preview}"
+    );
+}

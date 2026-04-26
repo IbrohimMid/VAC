@@ -88,6 +88,13 @@ pub struct ShellApp {
     /// Hosts may replace with a policy-aware implementation.
     pub approval_detail_provider:
         Option<Arc<dyn vac_shell_host_approval::ApprovalDetailProvider>>,
+    /// D10-HARDENING — callback injected by the host to derive a
+    /// `SessionToolSummary` for each session file path. `ShellApp`
+    /// never holds a direct dep on `vac_shell_host_transcript_projection`
+    /// or any engine crate; the host wires the D9 projection here.
+    /// `None` means no summary is shown (pre-D7E sessions or test contexts).
+    pub session_tool_summary_provider:
+        Option<Arc<dyn Fn(&std::path::Path) -> Option<vac_shell_contracts::SessionToolSummary> + Send + Sync>>,
 }
 
 /// Outbound app events the host loop consumes after a key press.
@@ -183,23 +190,16 @@ impl ShellApp {
                 None
             }
             GlobalKey::OpenSessionBrowser => {
-                // Slice 20.2 / D10 — populate session tiles (with tool-use badges)
-                // from the live SessionsState (if attached).
+                // Slice 20.2 / D10-HARDENING — populate session tiles (with
+                // tool-use badges) from the live SessionsState (if attached).
+                // The summarize closure is injected by the host via
+                // `session_tool_summary_provider`; ShellApp has no direct dep
+                // on vac_shell_host_transcript_projection.
                 if let (Some(comp), Some(sessions)) = (&self.composition, &self.sessions) {
+                    let provider = self.session_tool_summary_provider.clone();
                     self.session_browser.tiles = sessions.list_with_summaries(
                         comp.paths.as_ref(),
-                        |path| {
-                            vac_shell_host_transcript_projection::session_tool_use_summary(path)
-                                .ok()
-                                .map(|s| vac_shell_contracts::SessionToolSummary {
-                                    total_calls: s.total_calls,
-                                    ok_count: s.ok_count,
-                                    warning_count: s.warning_count,
-                                    error_count: s.error_count,
-                                    cancelled_count: s.cancelled_count,
-                                    pending_count: s.pending_count,
-                                })
-                        },
+                        |path| provider.as_ref().and_then(|f| f(path)),
                     );
                     if self.session_browser.selected >= self.session_browser.tiles.len() {
                         self.session_browser.selected = 0;
@@ -506,22 +506,10 @@ impl ShellApp {
                     }
                     "/sessions" => {
                         if let Some(sessions) = &self.sessions {
+                            let provider = self.session_tool_summary_provider.clone();
                             self.session_browser.tiles = sessions.list_with_summaries(
                                 comp.paths.as_ref(),
-                                |path| {
-                                    vac_shell_host_transcript_projection::session_tool_use_summary(
-                                        path,
-                                    )
-                                    .ok()
-                                    .map(|s| vac_shell_contracts::SessionToolSummary {
-                                        total_calls: s.total_calls,
-                                        ok_count: s.ok_count,
-                                        warning_count: s.warning_count,
-                                        error_count: s.error_count,
-                                        cancelled_count: s.cancelled_count,
-                                        pending_count: s.pending_count,
-                                    })
-                                },
+                                |path| provider.as_ref().and_then(|f| f(path)),
                             );
                             self.session_browser.selected = 0;
                         }

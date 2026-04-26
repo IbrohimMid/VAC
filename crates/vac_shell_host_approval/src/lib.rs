@@ -215,12 +215,42 @@ impl ApprovalDetailProvider for DefaultApprovalDetailProvider {
             command_preview: req
                 .arguments
                 .as_ref()
-                .and_then(|a| serde_json::to_string_pretty(a).ok())
-                .filter(|s| !s.is_empty() && s != "null"),
+                .map(redact_and_preview)
+                .filter(|s| !s.is_empty()),
             file_preview: None,
             policy_source: None,
         }
     }
+}
+
+const SENSITIVE_KEYS: &[&str] = &[
+    "token", "secret", "password", "key", "auth", "credential",
+];
+
+const PREVIEW_CAP: usize = 500;
+
+/// Redact values for known-sensitive keys, then cap to PREVIEW_CAP chars.
+fn redact_and_preview(args: &serde_json::Value) -> String {
+    let sanitized = match args {
+        serde_json::Value::Object(map) => {
+            let mut out = serde_json::Map::new();
+            for (k, v) in map {
+                let lower = k.to_lowercase();
+                if SENSITIVE_KEYS.iter().any(|s| lower.contains(s)) {
+                    out.insert(k.clone(), serde_json::Value::String("[REDACTED]".into()));
+                } else {
+                    out.insert(k.clone(), v.clone());
+                }
+            }
+            serde_json::to_string_pretty(&serde_json::Value::Object(out))
+                .unwrap_or_default()
+        }
+        other => serde_json::to_string_pretty(other).unwrap_or_default(),
+    };
+    if sanitized.is_empty() || sanitized == "null" {
+        return String::new();
+    }
+    sanitized.chars().take(PREVIEW_CAP).collect()
 }
 
 fn classify_risk(name: &str) -> RiskLevel {

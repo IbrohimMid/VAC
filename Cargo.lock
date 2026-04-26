@@ -6450,7 +6450,6 @@ dependencies = [
  "vac_shell_host_sessions",
  "vac_shell_host_status",
  "vac_shell_host_surface",
- "vac_shell_host_transcript_projection",
  "vac_shell_model_switcher",
  "vac_shell_overlay",
  "vac_shell_palette",

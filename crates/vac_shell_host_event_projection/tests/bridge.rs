@@ -116,3 +116,111 @@ async fn bridge_maps_llm_requested_to_thought_summary() {
         "expected provider name in thought summary, got: {thoughts:?}"
     );
 }
+
+// D10-HARDENING: raw tool arguments must never reach the ActivityLog.
+#[tokio::test]
+async fn bridge_never_leaks_tool_arguments_to_log() {
+    const SECRET: &str = "SUPER_SECRET_TOKEN_XYZ";
+    let log = ActivityLog::default();
+    let chunks = vec![
+        SubmitChunk::ToolRequested {
+            id: "t1".into(),
+            name: "bash_exec".into(),
+            arguments: serde_json::json!({"cmd": SECRET}),
+        },
+        SubmitChunk::Finished {
+            usage: UsageSnapshot::default(),
+        },
+    ];
+
+    let handle = spawn_activity_feed_bridge(make_stream(chunks), log.clone(), "s5".into());
+    handle.await.unwrap();
+
+    let snap = log.snapshot();
+    let serialized = format!("{snap:?}");
+    assert!(
+        !serialized.contains(SECRET),
+        "secret must not appear in activity log, got: {serialized}"
+    );
+}
+
+// D10-HARDENING: Warning and Cancelled ToolResultKind → Severity::Warn (not Error).
+#[tokio::test]
+async fn bridge_maps_warning_result_to_warn_severity() {
+    let log = ActivityLog::default();
+    let chunks = vec![
+        SubmitChunk::ToolRequested {
+            id: "t2".into(),
+            name: "scan".into(),
+            arguments: serde_json::json!({}),
+        },
+        SubmitChunk::ToolResult {
+            id: "t2".into(),
+            name: "scan".into(),
+            payload: vac_tool_core::ToolResultEnvelope {
+                kind: vac_tool_core::ToolResultKind::Warning,
+                payload: serde_json::json!({}),
+                summary: "partial match".into(),
+                duration_ms: 0,
+            },
+        },
+        SubmitChunk::Finished {
+            usage: UsageSnapshot::default(),
+        },
+    ];
+
+    let handle = spawn_activity_feed_bridge(make_stream(chunks), log.clone(), "s6".into());
+    handle.await.unwrap();
+
+    let snap = log.snapshot();
+    let result_entry = snap
+        .iter()
+        .find(|e| e.kind == ShellActivityKind::ToolResult)
+        .expect("expected ToolResult entry");
+    assert_eq!(
+        result_entry.severity,
+        vac_shell_contracts::Severity::Warn,
+        "Warning kind must project to Severity::Warn, got: {:?}",
+        result_entry.severity
+    );
+}
+
+#[tokio::test]
+async fn bridge_maps_cancelled_result_to_warn_severity() {
+    let log = ActivityLog::default();
+    let chunks = vec![
+        SubmitChunk::ToolRequested {
+            id: "t3".into(),
+            name: "long_op".into(),
+            arguments: serde_json::json!({}),
+        },
+        SubmitChunk::ToolResult {
+            id: "t3".into(),
+            name: "long_op".into(),
+            payload: vac_tool_core::ToolResultEnvelope {
+                kind: vac_tool_core::ToolResultKind::Cancelled,
+                payload: serde_json::json!({}),
+                summary: "operator abort".into(),
+                duration_ms: 0,
+            },
+        },
+        SubmitChunk::Finished {
+            usage: UsageSnapshot::default(),
+        },
+    ];
+
+    let handle = spawn_activity_feed_bridge(make_stream(chunks), log.clone(), "s7".into());
+    handle.await.unwrap();
+
+    let snap = log.snapshot();
+    let result_entry = snap
+        .iter()
+        .find(|e| e.kind == ShellActivityKind::ToolResult)
+        .expect("expected ToolResult entry");
+    assert_eq!(
+        result_entry.severity,
+        vac_shell_contracts::Severity::Warn,
+        "Cancelled kind must project to Severity::Warn, got: {:?}",
+        result_entry.severity
+    );
+}

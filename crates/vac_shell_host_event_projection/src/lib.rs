@@ -49,7 +49,10 @@ pub enum RuntimeEventView {
         id: String,
         ts_unix: u64,
         name: String,
-        ok: bool,
+        /// D10-HARDENING: severity derived from ToolResultKind (Ok→Ok,
+        /// Warning/Cancelled→Warn, Error→Error). Replaces the old `ok: bool`
+        /// that collapsed Warning and Cancelled into Error.
+        severity: Severity,
         summary: Option<String>,
     },
     FileEdited {
@@ -159,7 +162,7 @@ pub fn project_runtime_event(event: RuntimeEventView) -> ShellActivityEntry {
             id,
             ts_unix,
             name,
-            ok,
+            severity,
             summary,
         } => ShellActivityEntry {
             id,
@@ -167,7 +170,7 @@ pub fn project_runtime_event(event: RuntimeEventView) -> ShellActivityEntry {
             kind: ShellActivityKind::ToolResult,
             title: name,
             detail: summary,
-            severity: if ok { Severity::Ok } else { Severity::Error },
+            severity,
         },
         RuntimeEventView::FileEdited { id, ts_unix, path } => ShellActivityEntry {
             id,
@@ -259,15 +262,6 @@ fn current_ts_secs() -> u64 {
         .unwrap_or(0)
 }
 
-fn args_summary(args: &serde_json::Value) -> Option<String> {
-    let s = serde_json::to_string(args).unwrap_or_default();
-    if s == "null" || s == "{}" || s.is_empty() {
-        None
-    } else {
-        Some(s.chars().take(200).collect())
-    }
-}
-
 /// D10 — spawn a background task that drains `stream` and records each
 /// meaningful chunk as a `ShellActivityEntry` in `log`.
 ///
@@ -315,17 +309,26 @@ pub fn spawn_activity_feed_bridge(
                     })
                 }
 
-                SubmitChunk::ToolRequested { id: tool_id, name, arguments } => {
+                SubmitChunk::ToolRequested { id: tool_id, name, .. } => {
+                    // D10-HARDENING: arguments are never forwarded to the
+                    // activity log — they may contain secrets. The tool name
+                    // alone is sufficient for the operator activity stream.
                     Some(RuntimeEventView::ToolStarted {
                         id: format!("bridge-{session_id}-tool-{tool_id}"),
                         ts_unix: ts,
                         name,
-                        args_summary: args_summary(&arguments),
+                        args_summary: None,
                     })
                 }
 
                 SubmitChunk::ToolResult { id: tool_id, name, payload } => {
-                    let ok = matches!(payload.kind, ToolResultKind::Ok);
+                    // D10-HARDENING: map ToolResultKind faithfully.
+                    // Warning and Cancelled → Severity::Warn (not Error).
+                    let severity = match payload.kind {
+                        ToolResultKind::Ok => Severity::Ok,
+                        ToolResultKind::Warning | ToolResultKind::Cancelled => Severity::Warn,
+                        ToolResultKind::Error => Severity::Error,
+                    };
                     let summary = if payload.summary.is_empty() {
                         None
                     } else {
@@ -335,7 +338,7 @@ pub fn spawn_activity_feed_bridge(
                         id: format!("bridge-{session_id}-result-{tool_id}"),
                         ts_unix: ts,
                         name,
-                        ok,
+                        severity,
                         summary,
                     })
                 }
