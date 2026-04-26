@@ -10,10 +10,11 @@ ShellApp dogfood cockpit integration — consolidation.
 
 ## Completed baseline
 
-D1–D10.5, D12 core, and D12B are sealed; D11 remains unsealed unless separately reviewed.
+D1–D12B are sealed.
 
 | Last sealed SHA | Description |
 |---|---|
+| `dfb5df5c` | D11 PASS after hardening (Session browser tool details + provider wiring) |
 | `fcd55c60` | D12B closeout (docs: final seal) |
 | `53120faf` | D12B PASS after final seal nits (read-only diagnostic engine + /doctor slash) |
 | `5765416d` | D10.5 final consolidation accepted (net -414 LOC) |
@@ -22,7 +23,6 @@ D1–D10.5, D12 core, and D12B are sealed; D11 remains unsealed unless separatel
 
 ## Current Backlog / Next Steps
 
-- **D11 Implementation Review**: implementation logic for Session Browser Tool-Use details needs final PASS review.
 - **Unified init/status/logs UX**: product maturity alignment.
 - **Resumability/checkpoint UX**: operator recovery flows.
 
