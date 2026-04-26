@@ -6590,6 +6590,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "vac_shell_host_doctor"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tempfile",
+ "vac_shell_contracts",
+ "vac_shell_host_paths",
+ "vac_shell_host_vac_config",
+ "vac_shell_test_support",
+]
+
+[[package]]
 name = "vac_shell_host_event_projection"
 version = "0.1.0"
 dependencies = [
