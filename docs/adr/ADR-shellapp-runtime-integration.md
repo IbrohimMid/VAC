@@ -330,6 +330,41 @@ What changed:
   * `dispatcher_ok_writes_ok_tool_result_row`
   * `d7e_tool_call_and_tool_result_rows_visible_via_execute_path`
     in the adapter crate (full execute path, no event sink)
+- **D8 planning — host-attached `ToolDispatcher` (no code yet)**:
+  D7B–D7E intentionally left dispatch inert by default. D8 will
+  let hosts opt into a real dispatcher, with the same boundary
+  discipline as D7B–D7E:
+  * **Bridge crate (proposed)**: a new host-side exception
+    `vac_shell_host_vac_tool_dispatcher`. May depend on
+    `vac_session_engine`, `vac_shell_contracts`, and
+    `vac_tools` (the existing tool registry). May NOT be
+    reached from any UI / widget / bridge / app /
+    runtime-loop / entrypoint normal-dep graph; this is
+    enforced by `cargo tree` exactly as the D7B/D7C/D7E
+    exceptions are.
+  * **API shape (target)**: `pub struct VacToolDispatcher`
+    implementing `vac_session_engine::ToolDispatcher`. Hosts
+    construct it from a `vac_tools::ToolRegistry` and attach
+    via `CompactConfig::dispatcher = Some(Arc::new(...))`.
+  * **Default stays inert**: `AdapterConfig` does not attach
+    a dispatcher unless the host calls a new
+    `with_tool_dispatcher(...)` helper. The dogfood example
+    keeps the unsupported-dispatcher path because dogfood
+    operators must not run real tools without explicit
+    opt-in.
+  * **Gate is mandatory once dispatch is live**: the host
+    builder MUST also attach a `CompositeGate`
+    (`PolicyGate` + `HookGate` etc. — already in
+    `vac_session_engine`) on `CompactConfig::gate`. A live
+    dispatcher with no gate is a pre-flight error in the
+    builder helper.
+  * **Transcript durability is mandatory**: D7E's
+    `TranscriptKind::ToolCall` / `ToolResult` rows are
+    already produced unconditionally. D8 reuses the same
+    rows; no new transcript variants are introduced.
+  * **Out of scope for D8 v1**: tool approval UI, sandbox
+    escalation, MCP-backed dispatchers — each gets its own
+    later slice and ADR appendix.
 - **Tool-use round-tripping (D7D)**: every
   `vil_llm::ToolCall { id, name, arguments }` is translated
   into `vac_session_engine::ToolCallRequest` with

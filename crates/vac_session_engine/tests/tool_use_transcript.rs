@@ -285,3 +285,122 @@ async fn dispatcher_ok_writes_ok_tool_result_row() {
     assert_eq!(envelope["kind"], "ok");
     assert_eq!(envelope["payload"], serde_json::json!({"hit": true}));
 }
+
+// ---------------------------------------------------------------------
+// 5. Hardening — transcript invariants survive when the event
+//    receiver is dropped mid-flight, and when a real dispatcher
+//    returns Err.
+// ---------------------------------------------------------------------
+
+#[derive(Debug)]
+struct AlwaysErrDispatcher;
+
+#[async_trait]
+impl ToolDispatcher for AlwaysErrDispatcher {
+    async fn dispatch(
+        &self,
+        call: &ToolCallRequest,
+    ) -> EngineResult<vac_tool_core::ToolResultEnvelope> {
+        Err(EngineError::Other(format!(
+            "synthetic dispatcher failure for `{}`",
+            call.name
+        )))
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn tool_call_row_persists_when_dispatcher_returns_error() {
+    let tmp = tempfile::tempdir().unwrap();
+    let adapter = ToolEmittingAdapter {
+        tool_calls: vec![call("e1", "search", serde_json::json!({}))],
+    };
+    let cfg = CompactConfig {
+        dispatcher: Some(Arc::new(AlwaysErrDispatcher)),
+        ..CompactConfig::default()
+    };
+    let rows = drive_with(tmp.path(), adapter, cfg).await;
+    let kinds = kinds_in_order(&rows);
+
+    // Both tool_call and tool_result must still be present even
+    // though the dispatcher errored — a dispatch error must not
+    // strip the tool_call audit row.
+    assert!(
+        kinds.iter().any(|k| k == "tool_call"),
+        "tool_call row must remain even when dispatcher errors: {kinds:?}"
+    );
+    let tr = rows
+        .iter()
+        .find(|r| r["kind"] == "tool_result")
+        .expect("tool_result row");
+    let envelope = &tr["content"]["envelope"];
+    assert_eq!(envelope["kind"], "error");
+    let dump = serde_json::to_string(envelope).unwrap();
+    assert!(
+        dump.contains("synthetic dispatcher failure"),
+        "envelope must preserve the dispatcher error message: {dump}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn tool_result_row_appears_before_finished_when_event_receiver_dropped() {
+    // Drive submit_one with Some(tx) where the receiver has
+    // already been dropped. The engine must not abort or skip
+    // transcript rows just because nobody is listening.
+    use vac_session_engine::{
+        SlashProcessor, SubmitContext, TranscriptWriter, TrivialCompactBoundary, UsageTracker,
+        submit_one,
+    };
+    let tmp = tempfile::tempdir().unwrap();
+    let writer = TranscriptWriter::new(tmp.path().to_path_buf());
+    let slash = SlashProcessor::new();
+    let compact = TrivialCompactBoundary::default();
+    let usage = UsageTracker::new();
+    let session_id = Uuid::new_v4();
+    let ctx = SubmitContext::new(session_id, "drive D7E hardening");
+    let llm = ToolEmittingAdapter {
+        tool_calls: vec![call("d-recv", "search", serde_json::json!({}))],
+    };
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+    drop(rx); // receiver gone before submit_one even starts
+    submit_one(
+        ctx,
+        &writer,
+        &slash,
+        &compact,
+        &usage,
+        &llm,
+        CompactConfig::default(),
+        Some(tx),
+    )
+    .await
+    .expect("submit_one must succeed even when the event receiver is dropped");
+
+    let path = tmp
+        .path()
+        .join(".vac")
+        .join("sessions")
+        .join(format!("{session_id}.jsonl"));
+    let body = std::fs::read_to_string(&path).unwrap();
+    let rows: Vec<serde_json::Value> = body
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect();
+    let kinds: Vec<String> = rows
+        .iter()
+        .map(|r| r["kind"].as_str().unwrap_or("").to_string())
+        .collect();
+
+    let tr_idx = kinds
+        .iter()
+        .position(|k| k == "tool_result")
+        .expect("tool_result row must persist when event receiver is dropped");
+    let fin_idx = kinds
+        .iter()
+        .position(|k| k == "finished")
+        .expect("finished row must persist when event receiver is dropped");
+    assert!(
+        tr_idx < fin_idx,
+        "tool_result must precede finished even when nobody is listening: {kinds:?}"
+    );
+}
