@@ -1,6 +1,16 @@
 use serde::{Deserialize, Serialize};
-use std::os::unix::fs::PermissionsExt;
 use vac_shell_contracts::VacPaths;
+
+#[cfg(unix)]
+fn is_executable(meta: &std::fs::Metadata) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    meta.permissions().mode() & 0o111 != 0
+}
+
+#[cfg(not(unix))]
+fn is_executable(_meta: &std::fs::Metadata) -> bool {
+    true // Assume true on non-Unix for D12 v1
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DoctorCheckStatus {
@@ -215,7 +225,7 @@ pub fn run_doctor_checks(paths: &dyn VacPaths, config: &DoctorConfig) -> DoctorR
         let (bg_status, bg_summary) = if script_path.exists() {
             let meta = std::fs::metadata(&script_path);
             if let Ok(m) = meta {
-                if m.permissions().mode() & 0o111 != 0 {
+                if is_executable(&m) {
                     (
                         DoctorCheckStatus::Ok,
                         "Boundary gate script available and executable".to_string(),
