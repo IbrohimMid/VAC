@@ -176,7 +176,7 @@ pub fn run_shell_app(project_root: impl AsRef<Path>) -> ExitCode {
 /// supplying its own list yet.
 fn default_commands() -> Vec<vac_shell_contracts::ShellCommandSpec> {
     use vac_shell_contracts::{ShellCommandKind, ShellCommandSpec};
-    let mk = |slash: &str, title: &str| ShellCommandSpec {
+    let built_in = |slash: &str, title: &str| ShellCommandSpec {
         id: slash.trim_start_matches('/').to_string(),
         slash: slash.into(),
         title: title.into(),
@@ -185,10 +185,36 @@ fn default_commands() -> Vec<vac_shell_contracts::ShellCommandSpec> {
         palette_visible: true,
         ..Default::default()
     };
+    // D7B — register the two dogfood custom commands so the
+    // registry stays in sync with `AdapterConfig::dogfood`. The
+    // entrypoint library only adds metadata; no engine dep is
+    // pulled in. Hosts that prefer a leaner registry can still
+    // drop these by passing their own command list to
+    // `ShellCompositionBuilder` directly.
+    let dogfood = |slash: &str, title: &str, description: &str| ShellCommandSpec {
+        id: slash.trim_start_matches('/').to_string(),
+        slash: slash.into(),
+        title: title.into(),
+        description: description.into(),
+        kind: ShellCommandKind::PromptTemplate,
+        palette_visible: true,
+        category: Some("Dogfood".into()),
+        ..Default::default()
+    };
     vec![
-        mk("/chat", "Chat"),
-        mk("/runtime", "Runtime"),
-        mk("/model", "Model switcher"),
-        mk("/sessions", "Sessions"),
+        built_in("/chat", "Chat"),
+        built_in("/runtime", "Runtime"),
+        built_in("/model", "Model switcher"),
+        built_in("/sessions", "Sessions"),
+        dogfood(
+            "/memorize",
+            "Memorize",
+            "Submit a memory-oriented dogfood prompt through the D7B command adapter.",
+        ),
+        dogfood(
+            "/ultraplan",
+            "Ultraplan",
+            "Submit a planning-oriented dogfood prompt through the D7B command adapter.",
+        ),
     ]
 }

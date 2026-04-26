@@ -143,6 +143,35 @@ fn runtime_loop_unmapped_command_records_unsupported_in_activity_log() {
 }
 
 #[test]
+fn dogfood_entrypoint_registry_and_adapter_are_synchronized() {
+    // End-to-end: real `build_shell_app` registry, real
+    // `AdapterConfig::dogfood`, drive `/memorize` through the
+    // runtime loop, assert a transcript lands on disk. Catches
+    // any future drift between the entrypoint command registry
+    // and the adapter preset.
+    let tmp = tempfile::tempdir().unwrap();
+    let app = vac_shell_entrypoint::build_shell_app(tmp.path());
+    let adapter = Arc::new(VacCommandExecutorAdapter::new(
+        AdapterConfig::dogfood(tmp.path().to_path_buf()),
+    ));
+    let exec_handle = adapter.clone();
+    let mut ctx = ShellRuntimeContext::new(app).with_executor(adapter);
+
+    handle_key_event_once(&mut ctx, ctrl('p')).unwrap();
+    handle_key_event_once(&mut ctx, plain(KeyCode::Char('/'))).unwrap();
+    for ch in "memorize".chars() {
+        handle_key_event_once(&mut ctx, plain(KeyCode::Char(ch))).unwrap();
+    }
+    handle_key_event_once(&mut ctx, plain(KeyCode::Enter))
+        .expect("dogfood /memorize must reach the real adapter via build_shell_app registry");
+
+    let path = exec_handle
+        .last_transcript()
+        .expect("adapter wrote a transcript path");
+    assert!(path.exists(), "transcript file must exist: {path:?}");
+}
+
+#[test]
 fn runtime_loop_built_in_runtime_does_not_invoke_real_adapter() {
     let tmp = tempfile::tempdir().unwrap();
     let adapter = Arc::new(VacCommandExecutorAdapter::new(

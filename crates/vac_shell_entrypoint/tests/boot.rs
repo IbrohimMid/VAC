@@ -32,6 +32,30 @@ fn entrypoint_boots_shell_app_from_temp_project_root() {
 }
 
 #[test]
+fn build_shell_app_registers_d7b_dogfood_custom_commands() {
+    use vac_shell_contracts::ShellCommandKind;
+
+    let tmp = tempfile::tempdir().unwrap();
+    let app = build_shell_app(tmp.path());
+    let comp = app.composition().expect("composition attached");
+
+    let memorize = comp
+        .command_registry
+        .by_slash("/memorize")
+        .expect("/memorize must be registered for the D7B dogfood adapter to reach it");
+    assert_eq!(memorize.id, "memorize");
+    assert_eq!(memorize.kind, ShellCommandKind::PromptTemplate);
+    assert!(memorize.palette_visible);
+
+    let ultraplan = comp
+        .command_registry
+        .by_slash("/ultraplan")
+        .expect("/ultraplan must be registered for the D7B dogfood adapter to reach it");
+    assert_eq!(ultraplan.id, "ultraplan");
+    assert_eq!(ultraplan.kind, ShellCommandKind::PromptTemplate);
+}
+
+#[test]
 fn entrypoint_attaches_activity_log() {
     let tmp = tempfile::tempdir().unwrap();
     let app = build_shell_app(tmp.path());

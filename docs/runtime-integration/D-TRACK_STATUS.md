@@ -12,9 +12,9 @@
 | **D4.1**| `record_projected_event` ingest helper | PASS |
 | **D5**  | `vac_shell_host_commands` (`ShellCommandExecutor` + `route_palette_command`) | PASS (after hardening: actually wired into `handle_key_event_once` via `ShellRuntimeContext`) |
 | **D5.1**| `VacCommandExecutorAdapter` stub | PASS |
-| **D6**  | `cargo run -p vac_shell_entrypoint --example dogfood` | PASS — example now constructs `ShellRuntimeContext` with the adapter stub (manual checklist) |
+| **D6**  | `cargo run -p vac_shell_entrypoint --example dogfood` | PASS — post-D7B the example wires the real `vac_shell_host_vac_command_adapter::VacCommandExecutorAdapter` (engine-backed via EchoAdapter) instead of the D5.1 stub; entrypoint command registry includes `/memorize` + `/ultraplan` so the dogfood preset reaches the adapter end-to-end (manual checklist) |
 | **D7A** | `vac_shell_host_vac_engine_probe` — host-side `VacConfig` → `.vac/model_config.json` projection (first ADR-sanctioned `vac_core` exception, allowlist-shaped, denylist-swept) | PASS after hardening — `EnvPresence::present_non_empty` + `ProcessEnvPresence`, `api_key_env=None` ⇒ ready (parity with `vil_llm::LlmConfig::provider_ready`), parent-dir fsync on Unix + Windows replace fallback |
-| **D7B** | `vac_shell_host_vac_command_adapter` — host-side `ShellCommandExecutor` impl that bridges custom palette slashes to `vac_session_engine::submit_one` (second ADR-sanctioned exception). Sync trait preserved via `block_in_place` / current-thread fallback. EchoAdapter LLM stub for v1; transcript durability proven. | PASS pending review |
+| **D7B** | `vac_shell_host_vac_command_adapter` — host-side `ShellCommandExecutor` impl that bridges custom palette slashes to `vac_session_engine::submit_one` (second ADR-sanctioned exception). Sync trait preserved via `block_in_place` / current-thread fallback. EchoAdapter LLM stub for v1; transcript durability proven. | PASS after hardening — entrypoint `default_commands()` registers `/memorize` + `/ultraplan` so the registry stays in sync with `AdapterConfig::dogfood`; `dogfood_entrypoint_registry_and_adapter_are_synchronized` end-to-end test pins it |
 | **RC gate** | This doc + `DOGFOOD_CHECKLIST.md` + map update | PASS (post-hardening) |
 
 ## Crate inventory after the batch

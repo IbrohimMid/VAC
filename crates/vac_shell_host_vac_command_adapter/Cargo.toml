@@ -22,5 +22,6 @@ vac_shell_host_activity = { path = "../vac_shell_host_activity" }
 vac_shell_host_model = { path = "../vac_shell_host_model" }
 vac_shell_host_paths = { path = "../vac_shell_host_paths" }
 vac_shell_runtime_loop = { path = "../vac_shell_runtime_loop" }
+vac_shell_entrypoint = { path = "../vac_shell_entrypoint" }
 crossterm = "0.28"
 tempfile = "3"

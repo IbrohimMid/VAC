@@ -6665,6 +6665,7 @@ dependencies = [
  "vac_shell_bridge",
  "vac_shell_composition",
  "vac_shell_contracts",
+ "vac_shell_entrypoint",
  "vac_shell_host_activity",
  "vac_shell_host_commands",
  "vac_shell_host_model",
