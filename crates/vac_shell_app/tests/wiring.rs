@@ -7,7 +7,8 @@ use vac_shell_approval_bar::ApprovalStatus;
 use vac_shell_approval_detail::DetailKey;
 use vac_shell_bridge::{ProviderId, ShellAction};
 use vac_shell_contracts::{
-    DiffFileView, DiffHunkView, DiffLineKind, DiffLineView, DiffReviewEvent, ShellOverlay,
+    DiffFileView, DiffHunkView, DiffLineKind, DiffLineView, DiffReviewEvent, SessionToolUseDetail,
+    SessionToolUseSurface, ShellOverlay, ToolUseUiStatus,
 };
 use vac_shell_diff_view::DiffReviewKey;
 use vac_shell_host_approval::ApprovalRequest;
@@ -15,9 +16,43 @@ use vac_shell_model_switcher::SwitcherKey;
 use vac_shell_palette::PaletteKey;
 use vac_shell_session_browser::SessionBrowserKey;
 use vac_shell_shortcuts::default_shortcuts;
-use vac_shell_test_support::no_tool_use_provider;
+use vac_shell_test_support::{fake_session_tool_use_provider, no_tool_use_provider};
 
 use common::{boot_comp, boot_comp_with_commands, screen, seed_session_transcript};
+
+#[test]
+fn session_browser_populates_with_tool_use_details() {
+    let (tmp, comp) = boot_comp();
+    seed_session_transcript(tmp.path(), "alpha", "operator: hi\n");
+
+    let detail = SessionToolUseDetail {
+        call_id: "c1".into(),
+        tool_name: "glob".into(),
+        status: ToolUseUiStatus::Ok,
+        summary: "found files".into(),
+        duration_ms: 12,
+    };
+    let surface = SessionToolUseSurface {
+        summary: vac_shell_contracts::SessionToolSummary {
+            total_calls: 1,
+            ok_count: 1,
+            ..Default::default()
+        },
+        calls: vec![detail.clone()],
+    };
+
+    let mut app = ShellApp::new(comp.clone())
+        .with_session_tool_use_provider(fake_session_tool_use_provider(Some(surface)));
+    app.sessions = Some(Arc::new(vac_shell_host_sessions::SessionsState::new()));
+
+    app.handle_global_key(GlobalKey::OpenSessionBrowser);
+
+    assert_eq!(app.session_browser.tiles.len(), 1);
+    let tile = &app.session_browser.tiles[0];
+    assert_eq!(tile.tool_summary.as_ref().unwrap().total_calls, 1);
+    assert_eq!(tile.tool_details.len(), 1);
+    assert_eq!(tile.tool_details[0].tool_name, "glob");
+}
 
 #[test]
 fn shell_popup_overlay_lights_up_on_global_key() {

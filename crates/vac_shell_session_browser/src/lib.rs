@@ -257,6 +257,11 @@ pub fn render_session_browser(f: &mut Frame, view: &SessionBrowserView, area: Re
                     "  no tool calls recorded",
                     Style::default().fg(Color::DarkGray),
                 )));
+            } else if selected_tile.tool_details.is_empty() {
+                right.push(Line::from(Span::styled(
+                    "  tool details unavailable",
+                    Style::default().fg(Color::DarkGray),
+                )));
             } else {
                 for call in selected_tile.tool_details.iter().take(8) {
                     let marker = match call.status {
