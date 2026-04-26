@@ -82,6 +82,22 @@ non-breaking change for parsers that match exhaustively only on the
 kinds they care about. Removing or renaming a variant requires a
 migration note in this file plus a transcript-replay test.
 
+## D8 note
+
+D8 wires real tool dispatch via
+`vac_shell_host_vac_tool_dispatcher::VacToolDispatcher`. It does
+**not** add a new `TranscriptKind` variant — the dispatcher's
+output flows through the existing D7E `tool_result` row. The
+envelope's `kind`/`payload`/`summary` are written verbatim by
+the dispatcher, so transcripts produced under live dispatch
+remain schema-compatible with transcripts produced under
+`UnsupportedDispatcher`.
+
+`vac_session_engine::read_tool_use_rows` is the canonical
+helper for parsing these rows back; it pairs every `tool_call`
+row with its matching `tool_result` row by id and is tolerant
+of pre-D7E transcripts.
+
 ## Pinning tests
 
 | Invariant                                          | Test                                                              | Crate                              |

@@ -60,9 +60,9 @@ use uuid::Uuid;
 
 use async_trait::async_trait;
 use vac_session_engine::{
-    CompactConfig, EchoAdapter, LlmAdapter, LlmRequest, LlmResponse, SlashProcessor,
-    SubmitContext, ToolCallRequest, TranscriptWriter, TrivialCompactBoundary, UsageTracker,
-    submit_one,
+    CompactConfig, CompositeGate, EchoAdapter, LlmAdapter, LlmRequest, LlmResponse,
+    SlashProcessor, SubmitContext, ToolCallRequest, ToolDispatcher, TranscriptWriter,
+    TrivialCompactBoundary, UsageTracker, submit_one,
 };
 use vac_session_engine::EngineError;
 use vac_shell_contracts::ShellCommandSpec;
@@ -136,10 +136,23 @@ impl std::fmt::Debug for AdapterLlm {
     }
 }
 
-/// Configuration for the real D7B/D7C adapter. Hosts construct
-/// one of these per session and pass it to
+/// D8 — error returned by the pre-flight checks that guard
+/// [`AdapterConfig::try_with_tool_dispatcher`]. Live tool
+/// dispatch without a `CompositeGate` is rejected here so a
+/// host cannot accidentally turn on real tool execution
+/// without a policy / hook gate path attached.
+#[derive(Debug, thiserror::Error)]
+pub enum AdapterConfigError {
+    #[error(
+        "live tool dispatcher attached without a CompositeGate — D8 requires a gate to enforce policy/hook checks"
+    )]
+    DispatcherWithoutGate,
+}
+
+/// Configuration for the real D7B/D7C/D8 adapter. Hosts
+/// construct one of these per session and pass it to
 /// [`VacCommandExecutorAdapter::new`].
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct AdapterConfig {
     /// Project root used for transcript persistence
     /// (`<root>/.vac/sessions/<session_id>.jsonl`).
@@ -151,6 +164,31 @@ pub struct AdapterConfig {
     /// [`AdapterLlm::Echo`] so D7B behaviour is unchanged for
     /// callers that do not opt in.
     pub llm: AdapterLlm,
+    /// D8 — opt-in `ToolDispatcher`. Default `None` keeps the
+    /// engine on `UnsupportedDispatcher` so unmapped tools
+    /// continue to write `tool_result.kind=error` envelopes
+    /// without aborting the submit. Must be paired with `gate`
+    /// — `try_with_tool_dispatcher` enforces that.
+    pub tool_dispatcher: Option<Arc<dyn ToolDispatcher>>,
+    /// D8 — opt-in `CompositeGate`. Required whenever
+    /// `tool_dispatcher` is `Some`. Hosts compose the gate
+    /// (PolicyGate + HookGate + …) before passing it in.
+    pub gate: Option<Arc<CompositeGate>>,
+}
+
+impl std::fmt::Debug for AdapterConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AdapterConfig")
+            .field("project_root", &self.project_root)
+            .field("commands", &self.commands)
+            .field("llm", &self.llm)
+            .field(
+                "tool_dispatcher",
+                &self.tool_dispatcher.as_ref().map(|_| "<dyn ToolDispatcher>"),
+            )
+            .field("gate", &self.gate.as_ref().map(|_| "<CompositeGate>"))
+            .finish()
+    }
 }
 
 impl AdapterConfig {
@@ -159,7 +197,40 @@ impl AdapterConfig {
             project_root: project_root.into(),
             commands: Vec::new(),
             llm: AdapterLlm::Echo,
+            tool_dispatcher: None,
+            gate: None,
         }
+    }
+
+    /// D8 — attach a live `ToolDispatcher` together with a
+    /// `CompositeGate`. Both are mandatory: a live dispatcher
+    /// without a gate is rejected by `try_with_tool_dispatcher`
+    /// so this infallible variant simply takes both.
+    pub fn with_tool_dispatcher(
+        mut self,
+        dispatcher: Arc<dyn ToolDispatcher>,
+        gate: Arc<CompositeGate>,
+    ) -> Self {
+        self.tool_dispatcher = Some(dispatcher);
+        self.gate = Some(gate);
+        self
+    }
+
+    /// D8 — fallible variant used by builders that may produce
+    /// a `None` gate (e.g. config files where the gate is
+    /// optional). Returns `Err(DispatcherWithoutGate)` when a
+    /// dispatcher is supplied without a gate.
+    pub fn try_with_tool_dispatcher(
+        mut self,
+        dispatcher: Arc<dyn ToolDispatcher>,
+        gate: Option<Arc<CompositeGate>>,
+    ) -> Result<Self, AdapterConfigError> {
+        let Some(gate) = gate else {
+            return Err(AdapterConfigError::DispatcherWithoutGate);
+        };
+        self.tool_dispatcher = Some(dispatcher);
+        self.gate = Some(gate);
+        Ok(self)
     }
 
     pub fn with_command(mut self, spec: AdapterCommandSpec) -> Self {
@@ -214,12 +285,13 @@ impl AdapterConfig {
 /// Real engine-backed `ShellCommandExecutor`. Replaces the D5.1
 /// stub in `vac_shell_host_commands` for hosts that opt into
 /// the engine bridge.
-#[derive(Debug)]
 pub struct VacCommandExecutorAdapter {
     project_root: PathBuf,
     by_id: HashMap<String, AdapterCommandSpec>,
     by_slash: HashMap<String, AdapterCommandSpec>,
     llm: AdapterLlm,
+    tool_dispatcher: Option<Arc<dyn ToolDispatcher>>,
+    gate: Option<Arc<CompositeGate>>,
     /// Last completed transcript path — recorded after a
     /// successful submit so tests can assert engine reach
     /// without re-deriving the path.
@@ -239,9 +311,37 @@ impl VacCommandExecutorAdapter {
             by_id,
             by_slash,
             llm: config.llm,
+            tool_dispatcher: config.tool_dispatcher,
+            gate: config.gate,
             last_transcript: Arc::new(std::sync::Mutex::new(None)),
         }
     }
+
+    /// Whether this adapter has a live `ToolDispatcher` attached.
+    /// Tests use this to assert default-config inertness.
+    pub fn has_live_tool_dispatcher(&self) -> bool {
+        self.tool_dispatcher.is_some()
+    }
+}
+
+impl std::fmt::Debug for VacCommandExecutorAdapter {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("VacCommandExecutorAdapter")
+            .field("project_root", &self.project_root)
+            .field("commands_by_id", &self.by_id.keys().collect::<Vec<_>>())
+            .field("llm", &self.llm)
+            .field(
+                "tool_dispatcher",
+                &self.tool_dispatcher.as_ref().map(|_| "<dyn ToolDispatcher>"),
+            )
+            .field("gate", &self.gate.as_ref().map(|_| "<CompositeGate>"))
+            .finish()
+    }
+}
+
+// (Inner-impl placeholder closed by the explicit Debug impl above.)
+#[allow(dead_code)]
+impl VacCommandExecutorAdapter {
 
     /// Path to the most recently written transcript, if any. Set
     /// by `execute` after a successful `submit_one`.
@@ -275,6 +375,14 @@ impl VacCommandExecutorAdapter {
         let usage = UsageTracker::new();
         let ctx = SubmitContext::new(session_id, prompt).with_metadata(metadata);
 
+        // D8 — thread the optional tool dispatcher + gate
+        // through to CompactConfig. When neither is attached
+        // (D7B–D7E default), the engine continues to use
+        // UnsupportedDispatcher.
+        let mut compact_cfg = CompactConfig::default();
+        compact_cfg.dispatcher = self.tool_dispatcher.clone();
+        compact_cfg.gate = self.gate.clone();
+
         // D7C — pick the LLM adapter chosen at config time.
         // The `Echo` arm holds an owned `EchoAdapter` so the
         // future borrows it directly; the `Custom` arm holds an
@@ -297,7 +405,7 @@ impl VacCommandExecutorAdapter {
                 &compact,
                 &usage,
                 llm_ref,
-                CompactConfig::default(),
+                compact_cfg,
                 None,
             )
             .await

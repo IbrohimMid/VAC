@@ -84,6 +84,18 @@ Tag the report by slice:
   `ToolResult` whose envelope is `kind=error` with summary
   `"dispatch error for '<tool>'"` and message
   `"no ToolDispatcher attached — cannot run tool '<tool>'"`.
+  After **D8** hosts can opt into live tool execution by
+  attaching a `vac_shell_host_vac_tool_dispatcher::VacToolDispatcher`
+  + `CompositeGate` via
+  `AdapterConfig::with_tool_dispatcher(...)`. The default
+  dogfood example keeps the unsupported path; explicit live
+  dispatch is reachable via
+  `cargo run -p vac_shell_entrypoint --example
+  dogfood_tool_dispatch`. Dispatcher without gate is rejected
+  pre-flight by `try_with_tool_dispatcher`, so a host cannot
+  accidentally turn on real dispatch with no policy/hook
+  enforcement path attached.
+
   After **D7E** these envelopes are also persisted to the
   transcript file: every tool call emits a
   `TranscriptKind::ToolCall` row before dispatch and a

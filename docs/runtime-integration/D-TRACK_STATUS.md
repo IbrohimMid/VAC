@@ -18,6 +18,7 @@
 | **D7C** | Same crate, real provider routing. `AdapterLlm::{Echo, Custom}` enum, `AdapterConfig::with_llm` + `with_vil_llm_router` helpers, `VilLlmRouterAdapter` bridge wrapping `vil_llm::LlmRouter` as `vac_session_engine::LlmAdapter`. Echo stays default. Custom-adapter failures surface as `ShellCommandError::Failed`. | PASS after hardening — bridge now uses `LlmRouter::complete_with_provider` so the actual provider that satisfied the request lands in the engine response and transcript, even under fallback; pinned by fake-provider unit tests in `vil_llm` and integration tests in the adapter crate |
 | **D7D** | Same crate, tool-use round-tripping. `VilLlmRouterAdapter` translates each `vil_llm::ToolCall` into `vac_session_engine::ToolCallRequest` (`reason: None`, `estimated_tokens: 0`). Tool dispatch stays inert when the host has not attached a `ToolDispatcher` — the engine's `UnsupportedDispatcher` writes an error envelope without aborting the submit. | PASS after hardening — `submit_one` event-channel tests prove the engine emits `ToolRequested` → `ToolResult(error: "no ToolDispatcher attached…")` → `Finished` in order, including under provider fallback and for multi-tool batches |
 | **D7E** | `vac_session_engine::submit.rs` now appends `TranscriptKind::ToolCall` before dispatch and `TranscriptKind::ToolResult` after the envelope is built, so tool-use is observable from the transcript file alone — no event subscription required. Operator audit trail is honest end-to-end: unsupported-dispatcher path, gate-deny path, and dispatcher-success path all leave durable rows. | PASS after review (SHA `84fc3688cb51e7eb23afbbb7337d3af2a2bbc930`) |
+| **D8** | `vac_shell_host_vac_tool_dispatcher` (third ADR-sanctioned host-side exception) ships `VacToolDispatcher` over `vac_tools::ToolRegistry`. Adapter gains `with_tool_dispatcher(dispatcher, gate)` + `try_with_tool_dispatcher(...)` (pre-flight rejects dispatcher without `CompositeGate`). Default stays `UnsupportedDispatcher`; opt-in dogfood example `dogfood_tool_dispatch` wires a real registry. D8E `read_tool_use_rows` reads paired `tool_call`/`tool_result` views from the transcript. | PASS pending review |
 | **RC gate** | This doc + `DOGFOOD_CHECKLIST.md` + map update | PASS (post-hardening) |
 
 ## Crate inventory after the batch
@@ -31,6 +32,7 @@ crates/vac_shell_host_event_projection D4 + D4.1
 crates/vac_shell_host_commands        D5 + D5.1
 crates/vac_shell_host_vac_engine_probe D7A (host-side, vac_core exception)
 crates/vac_shell_host_vac_command_adapter D7B + D7C (host-side, vac_session_engine + vil_llm exceptions)
+crates/vac_shell_host_vac_tool_dispatcher D8 (host-side, vac_session_engine + vac_tools exception)
 ```
 
 Plus the cockpit layer landed before the D-track:
@@ -76,7 +78,7 @@ crates/vac_shell_host_diff            simple line-diff projector
 * No `vac_core`, `vac_session_engine`, `vac_tui_runtime`,
   `stakai`, donor crates, `SecretManager`, `AutoApproveManager`,
   or `.stakpak` path composition appears anywhere in the new
-  shell stack — **with two named exceptions**:
+  shell stack — **with three named exceptions**:
   * `vac_shell_host_vac_engine_probe` (D7A) is allowed to
     depend on `vac_core` because it is a host-side *producer
     crate* that writes the read-only
@@ -87,6 +89,12 @@ crates/vac_shell_host_diff            simple line-diff projector
     custom palette slashes through `submit_one` and (D7C)
     optionally routes those submits through a real provider
     via `vil_llm::LlmRouter`.
+  * `vac_shell_host_vac_tool_dispatcher` (D8) is allowed to
+    depend on `vac_session_engine` and `vac_tools` because it
+    is the host-side bridge from `ToolDispatcher` into the
+    existing tool registry. Hosts opt in via the adapter's
+    `with_tool_dispatcher(dispatcher, gate)`; default stays
+    inert.
 
   Neither crate is reachable from any UI / widget / bridge /
   app / entrypoint / runtime-loop runtime graph; see the ADR

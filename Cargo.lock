@@ -6524,6 +6524,8 @@ name = "vac_shell_entrypoint"
 version = "0.1.0"
 dependencies = [
  "tempfile",
+ "tokio",
+ "vac_session_engine",
  "vac_shell_app",
  "vac_shell_bridge",
  "vac_shell_composition",
@@ -6535,7 +6537,9 @@ dependencies = [
  "vac_shell_host_sessions",
  "vac_shell_host_vac_command_adapter",
  "vac_shell_host_vac_config",
+ "vac_shell_host_vac_tool_dispatcher",
  "vac_shell_runtime_loop",
+ "vac_tools",
 ]
 
 [[package]]
@@ -6671,7 +6675,10 @@ dependencies = [
  "vac_shell_host_commands",
  "vac_shell_host_model",
  "vac_shell_host_paths",
+ "vac_shell_host_vac_tool_dispatcher",
  "vac_shell_runtime_loop",
+ "vac_tool_core",
+ "vac_tools",
  "vil_llm",
 ]
 
@@ -6703,6 +6710,21 @@ dependencies = [
  "vac_shell_host_model",
  "vac_shell_host_paths",
  "vac_shell_host_vac_config",
+]
+
+[[package]]
+name = "vac_shell_host_vac_tool_dispatcher"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "serde_json",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
+ "uuid",
+ "vac_session_engine",
+ "vac_tool_core",
+ "vac_tools",
 ]
 
 [[package]]

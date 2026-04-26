@@ -330,7 +330,40 @@ What changed:
   * `dispatcher_ok_writes_ok_tool_result_row`
   * `d7e_tool_call_and_tool_result_rows_visible_via_execute_path`
     in the adapter crate (full execute path, no event sink)
-- **D8 planning — host-attached `ToolDispatcher` (no code yet)**:
+- **D8 — host-attached `ToolDispatcher` (implemented)**: D7B–D7E
+  left dispatch inert by default. D8 ships the bridge crate
+  `vac_shell_host_vac_tool_dispatcher` (third ADR-sanctioned
+  host-side exception, may depend on `vac_session_engine` +
+  `vac_tools` + `vac_tool_core`) with `pub struct
+  VacToolDispatcher` impl `vac_session_engine::ToolDispatcher`.
+  Failure semantics: every error path becomes
+  `ToolResultEnvelope::error` — unknown tool name, malformed
+  arguments (`InvalidArguments`/`SerializationError` summarised
+  as `<tool> rejected arguments`), generic execution failure
+  (`<tool> failed`). Never panics. Adapter wiring lives in
+  `vac_shell_host_vac_command_adapter`:
+  * `AdapterConfig::with_tool_dispatcher(dispatcher, gate)`
+    (infallible — both required).
+  * `AdapterConfig::try_with_tool_dispatcher(dispatcher,
+    Option<gate>)` returns `AdapterConfigError::DispatcherWithoutGate`
+    when the gate is `None` — pre-flight ensures live dispatch
+    cannot bypass `CompositeGate`.
+  * `AdapterConfig.tool_dispatcher` and `.gate` thread directly
+    into `CompactConfig::dispatcher` / `.gate` at submit time.
+  * Default config keeps both `None`, so the engine continues to
+    use `UnsupportedDispatcher` and the dogfood operator path
+    remains inert. The opt-in
+    `cargo run -p vac_shell_entrypoint --example
+    dogfood_tool_dispatch` example exists for explicit
+    operator dogfooding with a real (read-only) tool registry.
+  * `vac_session_engine::read_tool_use_rows(transcript)`
+    (D8E) — pure-Rust replay helper that pairs every
+    `tool_call` row with its matching `tool_result` row by id.
+    Tolerates missing files, transcripts that predate D7E,
+    and partial transcripts (result `None`). Used by adapter
+    integration tests + intended for the session browser /
+    activity surface in a later slice.
+- **D8 planning notes (kept as historical context)**:
   D7B–D7E intentionally left dispatch inert by default. D8 will
   let hosts opt into a real dispatcher, with the same boundary
   discipline as D7B–D7E:

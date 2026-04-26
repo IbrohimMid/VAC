@@ -24,3 +24,7 @@ tempfile = "3"
 vac_shell_runtime_loop = { path = "../vac_shell_runtime_loop" }
 vac_shell_host_commands = { path = "../vac_shell_host_commands" }
 vac_shell_host_vac_command_adapter = { path = "../vac_shell_host_vac_command_adapter" }
+vac_shell_host_vac_tool_dispatcher = { path = "../vac_shell_host_vac_tool_dispatcher" }
+vac_session_engine = { path = "../vac_session_engine" }
+vac_tools = { path = "../vac_tools" }
+tokio = { version = "1.43", features = ["rt"] }

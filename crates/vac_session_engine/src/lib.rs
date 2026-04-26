@@ -43,6 +43,7 @@ pub mod slash;
 pub mod stream;
 pub mod subagent;
 pub mod submit;
+pub mod tool_use_replay;
 pub mod transcript;
 pub mod usage;
 
@@ -101,5 +102,6 @@ pub use subagent::{
     SubagentDispatchContext, SubagentKind, SubagentRunner, SubagentSpec,
 };
 pub use submit::{CompactConfig, submit_one};
+pub use tool_use_replay::{ToolUseReplayError, ToolUseTranscriptView, read_tool_use_rows};
 pub use transcript::{TranscriptEntry, TranscriptHandle, TranscriptKind, TranscriptWriter};
 pub use usage::{UsageSnapshot, UsageTracker};

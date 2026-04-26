@@ -1,0 +1,19 @@
+[package]
+name = "vac_shell_host_vac_tool_dispatcher"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "D8 — host-side ToolDispatcher bridge from vac_session_engine into the existing vac_tools ToolRegistry. Third ADR-sanctioned host-side exception (after D7A vac_core and D7B/D7C/D7D vac_session_engine + vil_llm). Not reachable from any UI / widget / bridge / app / runtime-loop / entrypoint normal-dep graph; intended to be installed by hosts (CLI bootstrap, opt-in dogfood example) before submit_one runs."
+
+[dependencies]
+vac_session_engine = { path = "../vac_session_engine" }
+vac_tool_core = { path = "../vac_tool_core" }
+vac_tools = { path = "../vac_tools" }
+async-trait = "0.1"
+serde_json = "1"
+thiserror = "1"
+tokio = { version = "1.43", features = ["sync"] }
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+tempfile = "3"
