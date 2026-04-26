@@ -71,8 +71,25 @@ Tag the report by slice:
   default so dogfood operators do not need provider credentials
   to exercise the cockpit. Provider-level errors (auth, network,
   rate limit) surface as `ShellCommandError::Failed` and land
-  in the activity log; tool-use round-tripping inside the
-  `vil_llm` bridge is a later slice.
+  in the activity log.
+* **D7D** — `VilLlmRouterAdapter` translates each
+  `vil_llm::ToolCall` into the engine's `ToolCallRequest`
+  (`reason: None`, `estimated_tokens: 0`). The translated calls
+  flow into the engine's existing dispatch loop, so tool-use is
+  observable end-to-end through the `SubmitEvent` stream
+  (`ToolRequested` → `ToolResult` → `Finished`).
+  **Dogfood default still does not attach a real
+  `ToolDispatcher`**: the engine routes each translated call
+  through `UnsupportedDispatcher`, which produces a
+  `ToolResult` whose envelope is `kind=error` with summary
+  `"dispatch error for '<tool>'"` and message
+  `"no ToolDispatcher attached — cannot run tool '<tool>'"`.
+  These envelopes are visible only when a host attaches an
+  event sink (`Some(tx)` to `submit_one`) — `ShellCommandExecutor::execute`
+  currently passes `None`, so the dogfood operator path
+  observes only that the submit completes (no panic). Real
+  tool dispatch goes live only when the host explicitly wires
+  a `ToolDispatcher` + `CompositeGate` on `CompactConfig`.
 * The legacy `vac_shell_host_commands::VacCommandExecutorAdapter`
   D5.1 stub is retained for tests and hosts that want the
   explicit "no engine wired" failure mode; the dogfood

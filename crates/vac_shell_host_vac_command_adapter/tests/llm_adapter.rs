@@ -516,6 +516,246 @@ fn engine_remains_safe_when_tool_calls_arrive_without_a_dispatcher() {
 }
 
 // ---------------------------------------------------------------------
+// 4d. D7D-HARDENING — drive submit_one DIRECTLY with the bridge so we
+//     can subscribe to the event channel and prove the engine's
+//     dispatch/event loop receives the translated tool calls and
+//     produces an UnsupportedDispatcher error envelope when no
+//     dispatcher is attached. The adapter's `execute` path passes
+//     `None` for events; these tests bypass it on purpose.
+// ---------------------------------------------------------------------
+
+async fn drain_events(
+    mut rx: tokio::sync::mpsc::UnboundedReceiver<vac_session_engine::SubmitEvent>,
+) -> Vec<vac_session_engine::SubmitEvent> {
+    let mut out = Vec::new();
+    while let Some(ev) = rx.recv().await {
+        out.push(ev);
+    }
+    out
+}
+
+async fn run_submit_with_bridge(
+    project_root: std::path::PathBuf,
+    router: vil_llm::LlmRouter,
+) -> Vec<vac_session_engine::SubmitEvent> {
+    use vac_session_engine::{
+        CompactConfig, SlashProcessor, SubmitContext, TranscriptWriter,
+        TrivialCompactBoundary, UsageTracker, submit_one,
+    };
+    let bridge = VilLlmRouterAdapter::new(router);
+    let writer = TranscriptWriter::new(project_root);
+    let slash = SlashProcessor::new();
+    let compact = TrivialCompactBoundary::default();
+    let usage = UsageTracker::new();
+    let session_id = uuid::Uuid::new_v4();
+    let ctx = SubmitContext::new(session_id, "drive D7D bridge");
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+    submit_one(
+        ctx,
+        &writer,
+        &slash,
+        &compact,
+        &usage,
+        &bridge,
+        CompactConfig::default(),
+        Some(tx),
+    )
+    .await
+    .expect("submit_one must succeed even when tool calls fall through to UnsupportedDispatcher");
+    drain_events(rx).await
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn submit_one_emits_tool_requested_then_tool_result_when_no_dispatcher_attached() {
+    use vac_session_engine::SubmitEvent;
+    let mut router = vil_llm::LlmRouter::new("good", 1_000);
+    router.add_provider_named(
+        "good",
+        Arc::new(VilOkWithTools {
+            name: "good",
+            model: "good-model",
+            tool_calls: vec![fake_tool_call(
+                "t-only",
+                "search",
+                serde_json::json!({"q": "needle"}),
+            )],
+        }),
+    );
+    let tmp = tempfile::tempdir().unwrap();
+    let events = run_submit_with_bridge(tmp.path().to_path_buf(), router).await;
+
+    // Find the ToolRequested with the exact id/name/arguments.
+    let req_idx = events
+        .iter()
+        .position(|e| {
+            matches!(
+                e,
+                SubmitEvent::ToolRequested { id, name, arguments }
+                    if id == "t-only" && name == "search" && arguments == &serde_json::json!({"q": "needle"})
+            )
+        })
+        .expect("ToolRequested with translated id/name/arguments must appear");
+
+    // ToolResult must follow with the same id/name and an error
+    // envelope mentioning the no-dispatcher condition.
+    let res_idx = events
+        .iter()
+        .enumerate()
+        .skip(req_idx + 1)
+        .find_map(|(i, e)| match e {
+            SubmitEvent::ToolResult { id, name, payload }
+                if id == "t-only" && name == "search" =>
+            {
+                let dump = serde_json::to_string(payload).unwrap();
+                assert!(
+                    dump.contains("no ToolDispatcher")
+                        || dump.contains("cannot run tool")
+                        || dump.contains("dispatch error"),
+                    "ToolResult envelope must mention the no-dispatcher / dispatch-error path: {dump}"
+                );
+                assert!(
+                    dump.contains("\"kind\":\"error\""),
+                    "ToolResult envelope kind must be `error`: {dump}"
+                );
+                Some(i)
+            }
+            _ => None,
+        })
+        .expect("ToolResult after ToolRequested must appear");
+
+    // Finished must come after ToolResult.
+    let fin_idx = events
+        .iter()
+        .position(|e| matches!(e, SubmitEvent::Finished { .. }))
+        .expect("Finished event must appear");
+    assert!(fin_idx > res_idx, "Finished must follow ToolResult");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn submit_one_preserves_order_for_multiple_tool_calls() {
+    use vac_session_engine::SubmitEvent;
+    let mut router = vil_llm::LlmRouter::new("good", 1_000);
+    router.add_provider_named(
+        "good",
+        Arc::new(VilOkWithTools {
+            name: "good",
+            model: "good-model",
+            tool_calls: vec![
+                fake_tool_call("a", "alpha", serde_json::json!({"i": 1})),
+                fake_tool_call("b", "beta", serde_json::json!({"i": 2})),
+                fake_tool_call("c", "gamma", serde_json::json!({"i": 3})),
+            ],
+        }),
+    );
+    let tmp = tempfile::tempdir().unwrap();
+    let events = run_submit_with_bridge(tmp.path().to_path_buf(), router).await;
+
+    let requested_ids: Vec<String> = events
+        .iter()
+        .filter_map(|e| match e {
+            SubmitEvent::ToolRequested { id, .. } => Some(id.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(requested_ids, vec!["a", "b", "c"]);
+
+    let result_ids: Vec<String> = events
+        .iter()
+        .filter_map(|e| match e {
+            SubmitEvent::ToolResult { id, .. } => Some(id.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(result_ids, vec!["a", "b", "c"]);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn submit_one_preserves_tool_calls_under_provider_fallback() {
+    use vac_session_engine::SubmitEvent;
+    let mut router = vil_llm::LlmRouter::new("bad", 1_000);
+    router.set_fallback_chain(vec!["bad".into(), "good".into()]);
+    router.add_provider_named("bad", Arc::new(VilFail { name: "bad" }));
+    router.add_provider_named(
+        "good",
+        Arc::new(VilOkWithTools {
+            name: "good",
+            model: "good-model",
+            tool_calls: vec![fake_tool_call(
+                "fallback-1",
+                "lookup",
+                serde_json::json!({"k": "v"}),
+            )],
+        }),
+    );
+    let tmp = tempfile::tempdir().unwrap();
+    let events = run_submit_with_bridge(tmp.path().to_path_buf(), router).await;
+
+    // LlmRequested or transcript provider should be `good`. The
+    // event uses the request-time provider id, so we check the
+    // transcript file for the satisfying provider directly.
+    let session_files: Vec<_> = std::fs::read_dir(tmp.path().join(".vac").join("sessions"))
+        .unwrap()
+        .flatten()
+        .collect();
+    assert_eq!(session_files.len(), 1);
+    let body = std::fs::read_to_string(session_files[0].path()).unwrap();
+    assert!(
+        body.contains("\"provider\":\"good\""),
+        "fallback provider must land in transcript: {body}"
+    );
+
+    // Translated tool call must appear in the event stream.
+    let saw_tool = events.iter().any(|e| {
+        matches!(
+            e,
+            SubmitEvent::ToolRequested { id, name, .. }
+                if id == "fallback-1" && name == "lookup"
+        )
+    });
+    assert!(
+        saw_tool,
+        "translated tool call must survive provider fallback"
+    );
+}
+
+// ---------------------------------------------------------------------
+// 4e. Strengthened mapping coverage — the original test only asserted
+// against the first translated call. Pin the second call's defaults too.
+// ---------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn vil_llm_bridge_second_tool_call_keeps_conservative_defaults() {
+    let mut router = vil_llm::LlmRouter::new("good", 1_000);
+    router.add_provider_named(
+        "good",
+        Arc::new(VilOkWithTools {
+            name: "good",
+            model: "good-model",
+            tool_calls: vec![
+                fake_tool_call("first", "alpha", serde_json::json!({"k": 1})),
+                fake_tool_call("second", "beta", serde_json::json!({"k": 2})),
+            ],
+        }),
+    );
+    let bridge = VilLlmRouterAdapter::new(router);
+    let resp = bridge
+        .complete(LlmRequest {
+            prompt: "hi".into(),
+            context: vec![],
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(resp.tool_calls.len(), 2);
+    let second = &resp.tool_calls[1];
+    assert_eq!(second.id, "second");
+    assert_eq!(second.name, "beta");
+    assert_eq!(second.arguments, serde_json::json!({"k": 2}));
+    assert!(second.reason.is_none());
+    assert_eq!(second.estimated_tokens, 0);
+}
+
+// ---------------------------------------------------------------------
 // 4b. Construction-only test (kept from D7C v1) — the bridge plugs in
 //     even when the router has no providers attached.
 // ---------------------------------------------------------------------
