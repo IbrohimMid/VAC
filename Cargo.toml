@@ -88,9 +88,10 @@ members = [
     # Shell host diagnostics
     "crates/vac_shell_host_doctor",
     "crates/vac_shell_host_doctor_command",
+    "crates/vac_shell_host_status_command",
 
     # Dev-only test support (never a production dep)
-    "crates/vac_shell_test_support", "crates/vac_shell_host_status_command",
+    "crates/vac_shell_test_support",
 ]
 exclude = [
     # Wave 4 — Stakpak donor checkout. Treated as read-only reference;

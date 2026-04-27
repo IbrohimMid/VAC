@@ -37,7 +37,7 @@ fn status_command_spec_is_correct() {
     assert_eq!(spec.category.as_deref(), Some("Diagnostics"));
     assert_eq!(spec.kind, ShellCommandKind::PromptTemplate);
     assert!(spec.palette_visible);
-    assert!(!spec.description.is_empty());
+    assert_eq!(spec.description, "Show cockpit status and readiness summary");
 }
 
 #[test]

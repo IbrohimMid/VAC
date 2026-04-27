@@ -19,6 +19,7 @@
 //! * `vac_shell_host_sessions` — `SessionsState`
 //! * `vac_shell_bridge`        — `ProviderId`
 //! * `vac_shell_contracts`     — `VacPaths`
+//! * `vac_shell_host_status_command` — `/status` command metadata only; provider-driven executor is wired by host/example.
 //!
 //! Forbidden: `vac_core`, `vac_session_engine`, `vac_tui_runtime`,
 //! `stakai`, donor crates, `.stakpak` path composition, secret
