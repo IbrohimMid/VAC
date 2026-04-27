@@ -44,7 +44,9 @@ entrypoint falls back to the fixture model
 | 15 | Type `/memorize` `Enter` (mapped in D7B dogfood preset) | A transcript file lands at `<cwd>/.vac/sessions/<uuid>.jsonl`; first row's `metadata.source` is `shell_palette`. Confirms the D7B real engine adapter is wired through `ShellRuntimeContext`. |
 | 16 | Type `/unknown` `Enter` (no adapter mapping) | Activity log records "no adapter mapping for command id `unknown`" — confirms the `Unsupported` path still surfaces operator-visible errors. |
 | 17 | Run `cargo run -p vac_shell_entrypoint --example dogfood_tool_dispatch_smoke`, then call `vac_shell_host_transcript_projection::summarize_tool_use(transcript_path)` against the printed JSONL path. | Returns `ToolUseActivitySummary { total_calls: 1, ok_count: 1, .. }`; `project_tool_use_activity` yields a `ShellActivityEntry` whose `title` is `"glob ok"` and whose `detail` contains `summary: glob ok` + `duration_ms: …` + the transcript path, with NO raw payload or arguments. Confirms D9 projection is operator-safe. |
-| 18 | Type `/status` `Enter` | ActivityLog displays six rows: cockpit status, active model label, session count, approval count, doctor status, next action hint. Each row uses `ShellActivityKind::ToolResult` temporarily (readiness/status projection, not tool execution result). No secrets exposed. |
+| 18 | Type `/doctor` `Enter` | ActivityLog displays diagnostic rows with "diag" label. No secrets exposed. |
+| 19 | Type `/status` `Enter` | ActivityLog displays six rows with "status" label: cockpit, model, sessions, approvals, doctor, next-action. No secrets exposed. |
+| 20 | Run tool smoke (e.g. `glob *` via `/memorize` if dispatcher attached) | ActivityLog displays tool result rows with "tool·ok" label. Confirms true tool execution rows remain `ToolResult`. |
 
 ## Reporting issues
 
@@ -57,6 +59,7 @@ Tag the report by slice:
 * `D6` — example wiring itself.
 * `D12 / D12B` — doctor diagnostics.
 * `D13` — status readiness summary.
+* `D14` — dedicated Diagnostic/Status activity kinds.
 
 ## Known limitations (April 2026)
 

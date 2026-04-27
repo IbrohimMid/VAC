@@ -67,3 +67,24 @@ fn scroll_advances_window() {
     assert!(s.contains("line 25"));
     assert!(!s.contains("line 0"));
 }
+
+#[test]
+fn renders_diagnostic_and_status_labels() {
+    let v = ActivityView {
+        entries: vec![
+            entry(ShellActivityKind::Diagnostic, Severity::Ok, "doctor: model config — Ok"),
+            entry(ShellActivityKind::Status, Severity::Ok, "status: cockpit ok"),
+            entry(ShellActivityKind::ToolResult, Severity::Ok, "glob ok"),
+        ],
+        scroll: 0,
+    };
+    let s = render(&v);
+
+    assert!(s.contains("diag"), "Diagnostic rows should render as 'diag'");
+    assert!(s.contains("status"), "Status rows should render as 'status'");
+    assert!(s.contains("tool·ok"), "ToolResult rows should render as 'tool·ok'");
+
+    assert!(s.contains("doctor: model config"));
+    assert!(s.contains("status: cockpit ok"));
+    assert!(s.contains("glob ok"));
+}

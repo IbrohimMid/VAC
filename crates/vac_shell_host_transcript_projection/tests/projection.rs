@@ -294,3 +294,15 @@ fn summary_can_contain_text_but_payload_arguments_still_redacted() {
     assert_no_secret_in_debug(&detail, "hunter2");
     assert!(detail.contains("read_file returned 2 lines"));
 }
+
+#[test]
+fn tool_projection_still_uses_tool_result_kind() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("tool_result_kind.jsonl");
+    write_tool_call_result_pair(&path, "t1", "read_file", "ok", "found 3 lines");
+
+    let proj = project_tool_use_activity(&path).unwrap();
+    assert_eq!(proj.len(), 1);
+    let entry = proj[0].to_activity_entry(0);
+    assert_eq!(entry.kind, ShellActivityKind::ToolResult, "true tool-use rows must remain ToolResult");
+}

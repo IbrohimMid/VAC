@@ -21,6 +21,8 @@ fn kind_label(k: ShellActivityKind) -> &'static str {
         ShellActivityKind::AgentThoughtSummary => "think",
         ShellActivityKind::ToolCall => "tool",
         ShellActivityKind::ToolResult => "tool·ok",
+        ShellActivityKind::Diagnostic => "diag",
+        ShellActivityKind::Status => "status",
         ShellActivityKind::FileEdit => "edit",
         ShellActivityKind::ShellCommand => "shell",
         ShellActivityKind::ApprovalRequested => "approve?",

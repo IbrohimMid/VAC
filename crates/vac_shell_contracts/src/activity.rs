@@ -9,6 +9,8 @@ pub enum ShellActivityKind {
     AgentThoughtSummary,
     ToolCall,
     ToolResult,
+    Diagnostic,
+    Status,
     FileEdit,
     ShellCommand,
     ApprovalRequested,

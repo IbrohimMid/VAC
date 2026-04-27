@@ -26,6 +26,7 @@
 | **D12** | VAC Dogfood Doctor / Readiness Command. A read-only diagnostic engine (`vac_shell_host_doctor`) to verify model config, path accessibility, credential presence, and dispatcher mode without leaking secrets or mutating state. | PASS after hardening (core engine only, `/doctor` wiring deferred to D12B) |
 | **D12B** | Wire Doctor Report into Operator Surface. Implementation of the `/doctor` palette slash via `vac_shell_host_doctor_command`. Registry updated to include `/doctor` in `vac_shell_entrypoint`. Safe report rows recorded into `ActivityLog`. | PASS after final seal nits (SHA `53120fafd329dce174b88abf2a592bf13dc3d1a2`) |
 | **D13** | Unified Status & Readiness Command. A cockpit-visible `/status` command that aggregates model, session, and approval state with doctor readiness summaries via a host-injected provider. | PASS after final seal nits (SHA `022bcde02dfe07d9a4893e6510f2260336527f5c`) |
+| **D14** | Dedicated Diagnostic/Status Activity Kinds. Replaces temporary ToolResult reuse for /doctor and /status rows with `ShellActivityKind::Diagnostic` and `ShellActivityKind::Status`; true tool-use rows remain `ToolResult`. | IMPLEMENTED — pending review |
 | **RC gate** | This doc + `DOGFOOD_CHECKLIST.md` + map update | PASS (post-hardening) |
 
 ## Crate inventory after the batch
@@ -51,11 +52,16 @@ crates/vac_shell_host_status_command       D13 (/status palette readiness bridge
 
 ## Activity Log semantics for D12B
 
-`DoctorReport` rows currently reuse `ShellActivityKind::ToolResult` as a temporary operator activity kind until a dedicated `Diagnostic` kind is introduced.
+`DoctorReport` rows use `ShellActivityKind::Diagnostic`. D14 replaces the temporary `ToolResult` reuse:
+- DoctorReport rows use `ShellActivityKind::Diagnostic`.
+- ToolResult remains reserved for actual tool execution results.
 
 ## Activity Log semantics for D13
 
-`StatusReport` rows currently reuse `ShellActivityKind::ToolResult` as a temporary operator activity kind until a dedicated `Diagnostic` or `Status` kind is introduced. `/status` rows are readiness/status projections, not tool execution results.
+D14 replaces the temporary `ToolResult` reuse for status rows:
+- StatusReport rows use `ShellActivityKind::Status`.
+- `/status` rows are readiness/status projections, not tool execution results.
+- `ToolResult` remains reserved for actual tool execution results (live event projection, transcript projection).
 
 Plus the cockpit layer landed before the D-track:
 

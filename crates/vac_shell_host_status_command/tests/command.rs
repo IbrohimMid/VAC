@@ -123,7 +123,7 @@ fn record_status_report_writes_exact_rows() {
     assert_eq!(snap.len(), 6);
     for entry in &snap {
         assert!(entry.id.contains(&ts.to_string()));
-        assert_eq!(entry.kind, ShellActivityKind::ToolResult);
+        assert_eq!(entry.kind, ShellActivityKind::Status);
     }
 
     let find_title = |id: &str| {
@@ -140,6 +140,29 @@ fn record_status_report_writes_exact_rows() {
     assert_eq!(find_title("approvals"), "status: approvals 1");
     assert_eq!(find_title("doctor"), "status: doctor ok");
     assert_eq!(find_title("next-action"), "status: next action fix it");
+}
+
+#[test]
+fn status_report_rows_use_status_kind() {
+    let log = ActivityLog::new(10);
+    let report = StatusReport {
+        cockpit_status: DoctorCheckStatus::Ok,
+        active_model_label: Some("test-model".into()),
+        sessions_count: 3,
+        approvals_count: 0,
+        doctor_status: DoctorCheckStatus::Ok,
+        next_action: "idle".into(),
+    };
+
+    let ts = 77777;
+    record_status_report(&log, &report, ts);
+    let snap = log.snapshot();
+
+    for entry in &snap {
+        assert_eq!(entry.kind, ShellActivityKind::Status, "every status row must be Status");
+        assert!(entry.id.starts_with("status-"), "id must start with status-");
+        assert!(entry.title.starts_with("status:"), "title must start with status:");
+    }
 }
 
 #[test]

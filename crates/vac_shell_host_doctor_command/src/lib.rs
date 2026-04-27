@@ -60,7 +60,7 @@ pub fn record_doctor_report(activity_log: &ActivityLog, report: &DoctorReport, t
         activity_log.record(ShellActivityEntry {
             id,
             ts_unix,
-            kind: ShellActivityKind::ToolResult, // Reusing existing kind or we could add DoctorReport? Using ToolResult to fit nicely into activity
+            kind: ShellActivityKind::Diagnostic,
             title,
             detail: Some(detail),
             severity,

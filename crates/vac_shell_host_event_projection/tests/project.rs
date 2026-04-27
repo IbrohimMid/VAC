@@ -128,3 +128,15 @@ fn ingest_error_event_visible_in_activity_log() {
     );
     assert_activity_log_contains_kind(&log, ShellActivityKind::Error);
 }
+
+#[test]
+fn event_projection_tool_finished_still_uses_tool_result_kind() {
+    let entry = project_runtime_event(RuntimeEventView::ToolFinished {
+        id: "x".into(),
+        ts_unix: 1,
+        name: "glob".into(),
+        severity: Severity::Ok,
+        summary: Some("found 5 files".into()),
+    });
+    assert_eq!(entry.kind, ShellActivityKind::ToolResult, "true tool execution must stay ToolResult");
+}

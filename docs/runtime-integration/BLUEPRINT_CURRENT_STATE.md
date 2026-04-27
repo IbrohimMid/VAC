@@ -10,7 +10,7 @@ ShellApp dogfood cockpit integration — consolidation.
 
 ## Completed baseline
 
-D1–D12B are sealed.
+D1–D13 are sealed.
 
 | Last sealed SHA | Description |
 |---|---|
@@ -24,7 +24,7 @@ D1–D12B are sealed.
 
 ## Current Backlog / Next Steps
 
-- **D13 — Unified Status & Readiness Command**: sealed (SHA `022bcde0`).
+- **D14 — Dedicated Diagnostic/Status Activity Kinds**: implementation pending review.
 - **Unified init/status/logs UX**: product maturity alignment.
 - **Resumability/checkpoint UX**: operator recovery flows.
 
@@ -85,12 +85,15 @@ Doctor / Readiness Command
   → never exposes secret values or mutates filesystem
   → accessible via palette / in-cockpit diagnostics
 
+Doctor / Readiness Command
+  → ActivityLog rows use ShellActivityKind::Diagnostic
+  → renders with "diag" label in activity widget
+
 Status / Readiness Summary
-  → vac_shell_host_status_command: palette slash (/status) wiring via provider-injected executor
-  → status_command_spec() provides registry metadata
-  → StatusCommandExecutor receives StatusReportProvider trait object
-  → record_status_report() writes six ActivityLog rows: cockpit, model, sessions, approvals, doctor, next-action
-  → each row uses ShellActivityKind::ToolResult temporarily (until dedicated Diagnostic/Status kind)
-  → operator-safe: no raw arguments, no engine/memory dependency
-  → accessible via palette Ctrl+P → /status
+  → ActivityLog rows use ShellActivityKind::Status
+  → renders with "status" label in activity widget
+
+True tool-use rows (live events, transcript projection)
+  → remain ShellActivityKind::ToolResult
+  → renders with "tool·ok" label in activity widget
 ```

@@ -109,7 +109,7 @@ pub fn record_status_report(activity_log: &ActivityLog, report: &StatusReport, t
         activity_log.record(ShellActivityEntry {
             id: format!("status-{ts_unix}-{id_part}"),
             ts_unix,
-            kind: ShellActivityKind::ToolResult, // temporary reuse per D12B pattern
+            kind: ShellActivityKind::Status,
             title,
             detail,
             severity,
