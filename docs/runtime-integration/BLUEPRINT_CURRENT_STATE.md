@@ -24,10 +24,13 @@ D1–D15 are sealed.
 | `b6e3b572` | D10 PASS after hardening (boundary leak, arg redaction, severity, approval preview) |
 | `3ca3bb57` | Docs update: D10 ADR fifth exception + boundary tripwires |
 
+## Implementation In Progress
+
+- **D16 — Checkpoint-Aware Session Recovery Surface**: Session browser displays checkpoint readiness badges and details; resume outcomes logged to ActivityLog. No engine execution.
+
 ## Current Backlog / Next Steps
 
 - **Unified init/status/logs UX**: product maturity alignment.
-- **Resumability/checkpoint UX**: operator recovery flows.
 
 ## What is NOT allowed (explicit freeze)
 

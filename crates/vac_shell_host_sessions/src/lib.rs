@@ -1,6 +1,8 @@
 use std::sync::{Arc, Mutex};
 
-use vac_shell_contracts::{SessionAction, SessionEntry, SessionPreview, VacPaths};
+use vac_shell_contracts::{
+    SessionAction, SessionEntry, SessionPreview, SessionRecoverySummary, VacPaths,
+};
 use vac_shell_host_paths::enumerate_sessions;
 
 #[derive(Debug, thiserror::Error)]
@@ -51,6 +53,7 @@ impl SessionsState {
                     entry,
                     tool_summary,
                     tool_details: Vec::new(),
+                    recovery: None,
                 }
             })
             .collect()
@@ -74,6 +77,35 @@ impl SessionsState {
                     entry,
                     tool_summary,
                     tool_details,
+                    recovery: None,
+                }
+            })
+            .collect()
+    }
+
+    pub fn list_with_tool_use_and_recovery(
+        &self,
+        paths: &dyn VacPaths,
+        project_tool_use: impl Fn(
+            &std::path::Path,
+        ) -> Option<vac_shell_contracts::SessionToolUseSurface>,
+        project_recovery: impl Fn(&str) -> Option<vac_shell_contracts::SessionRecoverySummary>,
+    ) -> Vec<vac_shell_contracts::SessionTileView> {
+        let entries = enumerate_sessions(paths);
+        entries
+            .into_iter()
+            .map(|entry| {
+                let jsonl = paths.sessions_dir().join(format!("{}.jsonl", entry.id));
+                let (tool_summary, tool_details) = match project_tool_use(&jsonl) {
+                    Some(surface) => (Some(surface.summary), surface.calls),
+                    None => (None, Vec::new()),
+                };
+                let recovery = project_recovery(&entry.id);
+                vac_shell_contracts::SessionTileView {
+                    entry,
+                    tool_summary,
+                    tool_details,
+                    recovery,
                 }
             })
             .collect()

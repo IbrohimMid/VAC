@@ -49,8 +49,8 @@ pub use redaction::{RedactionConfig, redact_json_value, redacted_json_preview};
 pub use registry::{ShellCommandKind, ShellCommandSpec, VacCommandRegistry};
 pub use selection::{ModelKey, ModelSelectionSnapshot};
 pub use session::{
-    SessionAction, SessionEntry, SessionPreview, SessionTileView, SessionToolSummary,
-    SessionToolUseDetail, SessionToolUseSurface,
+    SessionAction, SessionEntry, SessionPreview, SessionRecoveryStatus, SessionRecoverySummary,
+    SessionTileView, SessionToolSummary, SessionToolUseDetail, SessionToolUseSurface,
 };
 pub use shell::{ShellCommandView, ShellStatus};
 pub use status::ShellStatusView;

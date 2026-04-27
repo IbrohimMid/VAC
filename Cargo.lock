@@ -6437,6 +6437,7 @@ version = "0.1.0"
 dependencies = [
  "ratatui",
  "tempfile",
+ "uuid",
  "vac_shell_activity",
  "vac_shell_approval_bar",
  "vac_shell_approval_detail",
@@ -6662,6 +6663,18 @@ dependencies = [
  "vac_shell_contracts",
  "vac_shell_host_paths",
  "vac_shell_plan",
+]
+
+[[package]]
+name = "vac_shell_host_recovery"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "vac_shell_contracts",
+ "vac_shell_host_paths",
 ]
 
 [[package]]

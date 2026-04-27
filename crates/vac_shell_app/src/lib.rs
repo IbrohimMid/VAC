@@ -62,6 +62,10 @@ pub struct ShellAppProviders {
                 + Sync,
         >,
     >,
+    /// D16 checkpoint recovery callback — injected by host entrypoint.
+    pub session_recovery_provider: Option<
+        Arc<dyn Fn(&str) -> Option<vac_shell_contracts::SessionRecoverySummary> + Send + Sync>,
+    >,
 }
 
 /// All view state owned by the app. Each widget's state is
@@ -146,6 +150,14 @@ impl ShellApp {
         self
     }
 
+    pub fn with_session_recovery_provider(
+        mut self,
+        f: Arc<dyn Fn(&str) -> Option<vac_shell_contracts::SessionRecoverySummary> + Send + Sync>,
+    ) -> Self {
+        self.providers.session_recovery_provider = Some(f);
+        self
+    }
+
     pub fn composition(&self) -> Option<&ShellComposition> {
         self.composition.as_deref()
     }
@@ -209,12 +221,15 @@ impl ShellApp {
                 // The summarize closure is injected by the host via
                 // `session_tool_use_provider`; ShellApp has no direct dep
                 // on vac_shell_host_transcript_projection.
+                // D16 — also inject checkpoint recovery via `session_recovery_provider`.
                 if let (Some(comp), Some(sessions)) = (&self.composition, &self.sessions) {
-                    let provider = self.providers.session_tool_use_provider.clone();
-                    self.session_browser.tiles = sessions
-                        .list_with_tool_use(comp.paths.as_ref(), |path| {
-                            provider.as_ref().and_then(|f| f(path))
-                        });
+                    let tool_provider = self.providers.session_tool_use_provider.clone();
+                    let recovery_provider = self.providers.session_recovery_provider.clone();
+                    self.session_browser.tiles = sessions.list_with_tool_use_and_recovery(
+                        comp.paths.as_ref(),
+                        |path| tool_provider.as_ref().and_then(|f| f(path)),
+                        |id| recovery_provider.as_ref().and_then(|f| f(id)),
+                    );
                     if self.session_browser.selected >= self.session_browser.tiles.len() {
                         self.session_browser.selected = 0;
                     }
@@ -406,11 +421,63 @@ impl ShellApp {
             AppEvent::Session(action) => {
                 if let Some(sessions) = &self.sessions {
                     let label = describe_session_action(&action);
-                    if let Err(e) = sessions.apply(comp.paths.as_ref(), action) {
+                    if let Err(e) = sessions.apply(comp.paths.as_ref(), action.clone()) {
                         return Err(self.report_error(
                             &format!("session action failed: {label}"),
                             Some(e.to_string()),
                         ));
+                    }
+                    // D16 — log resume outcome to ActivityLog
+                    if let SessionAction::Resume { id } = action {
+                        if let Some(ref activity_log) = self.activity_log {
+                            let recovery = self
+                                .providers
+                                .session_recovery_provider
+                                .as_ref()
+                                .and_then(|f| f(&id));
+                            let (kind, severity, detail) =
+                                match recovery.as_ref().map(|r| &r.status) {
+                                    Some(vac_shell_contracts::SessionRecoveryStatus::Ready) => (
+                                        vac_shell_contracts::ShellActivityKind::Status,
+                                        vac_shell_contracts::Severity::Ok,
+                                        Some(format!(
+                                            "checkpoint ready: {}",
+                                            recovery
+                                                .as_ref()
+                                                .and_then(|r| r.checkpoint_label.as_deref())
+                                                .unwrap_or("unknown")
+                                        )),
+                                    ),
+                                    Some(vac_shell_contracts::SessionRecoveryStatus::Missing) => (
+                                        vac_shell_contracts::ShellActivityKind::Status,
+                                        vac_shell_contracts::Severity::Warn,
+                                        Some("checkpoint missing".to_string()),
+                                    ),
+                                    Some(vac_shell_contracts::SessionRecoveryStatus::Corrupt) => (
+                                        vac_shell_contracts::ShellActivityKind::Error,
+                                        vac_shell_contracts::Severity::Error,
+                                        Some("checkpoint corrupt".to_string()),
+                                    ),
+                                    Some(vac_shell_contracts::SessionRecoveryStatus::Unknown)
+                                    | None => (
+                                        vac_shell_contracts::ShellActivityKind::Status,
+                                        vac_shell_contracts::Severity::Warn,
+                                        Some("checkpoint status unknown".to_string()),
+                                    ),
+                                };
+                            let entry = vac_shell_contracts::ShellActivityEntry {
+                                id: uuid::Uuid::new_v4().to_string(),
+                                ts_unix: std::time::SystemTime::now()
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .map(|d| d.as_secs())
+                                    .unwrap_or(0),
+                                kind,
+                                title: format!("resume requested: {id}"),
+                                detail,
+                                severity,
+                            };
+                            activity_log.record(entry);
+                        }
                     }
                     Ok(())
                 } else {
@@ -510,12 +577,15 @@ impl ShellApp {
                         self.sync_visibility();
                     }
                     "/sessions" => {
-                        if let Some(sessions) = &self.sessions {
-                            let provider = self.providers.session_tool_use_provider.clone();
-                            self.session_browser.tiles = sessions
-                                .list_with_tool_use(comp.paths.as_ref(), move |p| {
-                                    provider.as_ref().and_then(|f| f(p))
-                                });
+                        if let (Some(comp), Some(sessions)) = (&self.composition, &self.sessions) {
+                            let tool_provider = self.providers.session_tool_use_provider.clone();
+                            let recovery_provider =
+                                self.providers.session_recovery_provider.clone();
+                            self.session_browser.tiles = sessions.list_with_tool_use_and_recovery(
+                                comp.paths.as_ref(),
+                                move |p| tool_provider.as_ref().and_then(|f| f(p)),
+                                move |id| recovery_provider.as_ref().and_then(|f| f(id)),
+                            );
                         }
                         self.overlays
                             .apply_intent(OverlayIntent::Open(ShellOverlay::SessionBrowser));

@@ -84,6 +84,25 @@ pub struct SessionToolUseSurface {
     pub calls: Vec<SessionToolUseDetail>,
 }
 
+/// D16 — operator-visible recovery status.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SessionRecoveryStatus {
+    Ready,
+    Missing,
+    Corrupt,
+    Unknown,
+}
+
+/// D16 — summary of a checkpoint's recovery readiness.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionRecoverySummary {
+    pub status: SessionRecoveryStatus,
+    pub checkpoint_label: Option<String>,
+    pub checkpoint_path_display: Option<String>,
+    pub updated_at_unix: Option<u64>,
+    pub message: Option<String>,
+}
+
 /// D10 — one tile in the session browser list. Wraps `SessionEntry`
 /// with an optional tool-use summary badge and (in D11) a list of tool call details.
 /// Widget renders the badge and detail preview; host populates them via a closure.
@@ -93,4 +112,6 @@ pub struct SessionTileView {
     pub tool_summary: Option<SessionToolSummary>,
     #[serde(default)]
     pub tool_details: Vec<SessionToolUseDetail>,
+    #[serde(default)]
+    pub recovery: Option<SessionRecoverySummary>,
 }

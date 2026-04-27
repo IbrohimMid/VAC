@@ -28,6 +28,7 @@ vac_shell_host_approval = { path = "../vac_shell_host_approval" }
 vac_shell_host_sessions = { path = "../vac_shell_host_sessions" }
 vac_shell_host_activity = { path = "../vac_shell_host_activity" }
 ratatui.workspace = true
+uuid.workspace = true
 
 [dev-dependencies]
 vac_shell_test_support = { path = "../vac_shell_test_support" }

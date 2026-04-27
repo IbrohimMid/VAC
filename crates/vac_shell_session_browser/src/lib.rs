@@ -215,6 +215,27 @@ pub fn render_session_browser(f: &mut Frame, view: &SessionBrowserView, area: Re
                     Style::default().fg(badge_color),
                 )));
             }
+            // D16 — recovery badge
+            if let Some(ref recovery) = tile.recovery {
+                let (badge_text, badge_color) = match recovery.status {
+                    vac_shell_contracts::SessionRecoveryStatus::Ready => {
+                        ("resume: ready".to_string(), Color::Green)
+                    }
+                    vac_shell_contracts::SessionRecoveryStatus::Missing => {
+                        ("resume: missing".to_string(), Color::Yellow)
+                    }
+                    vac_shell_contracts::SessionRecoveryStatus::Corrupt => {
+                        ("resume: corrupt".to_string(), Color::Red)
+                    }
+                    vac_shell_contracts::SessionRecoveryStatus::Unknown => {
+                        ("resume: unknown".to_string(), Color::DarkGray)
+                    }
+                };
+                left.push(Line::from(Span::styled(
+                    format!("    {badge_text}"),
+                    Style::default().fg(badge_color),
+                )));
+            }
         }
     }
     f.render_widget(Paragraph::new(left).wrap(Wrap { trim: false }), chunks[0]);
@@ -311,6 +332,55 @@ pub fn render_session_browser(f: &mut Frame, view: &SessionBrowserView, area: Re
                         Style::default().fg(Color::DarkGray),
                     )));
                 }
+            }
+        }
+        // D16 — recovery section in right panel
+        if let Some(ref recovery) = selected_tile.recovery {
+            right.push(Line::raw(""));
+            right.push(Line::from(Span::styled(
+                " Recovery",
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            )));
+            let status_str = match recovery.status {
+                vac_shell_contracts::SessionRecoveryStatus::Ready => "Ready",
+                vac_shell_contracts::SessionRecoveryStatus::Missing => "Missing",
+                vac_shell_contracts::SessionRecoveryStatus::Corrupt => "Corrupt",
+                vac_shell_contracts::SessionRecoveryStatus::Unknown => "Unknown",
+            };
+            right.push(Line::from(Span::styled(
+                format!("  status: {status_str}"),
+                Style::default().fg(Color::Gray),
+            )));
+            if let Some(ref label) = recovery.checkpoint_label {
+                right.push(Line::from(Span::styled(
+                    format!("  checkpoint: {label}"),
+                    Style::default().fg(Color::Gray),
+                )));
+            }
+            if let Some(ref path) = recovery.checkpoint_path_display {
+                right.push(Line::from(Span::styled(
+                    format!("  path: {path}"),
+                    Style::default().fg(Color::DarkGray),
+                )));
+            }
+            if let Some(ref msg) = recovery.message {
+                right.push(Line::from(Span::styled(
+                    format!("  {msg}"),
+                    Style::default().fg(Color::DarkGray),
+                )));
+            }
+            // Hint for R resume
+            if matches!(
+                recovery.status,
+                vac_shell_contracts::SessionRecoveryStatus::Ready
+                    | vac_shell_contracts::SessionRecoveryStatus::Unknown
+            ) {
+                right.push(Line::from(Span::styled(
+                    "  R — resume",
+                    Style::default().fg(Color::DarkGray),
+                )));
             }
         }
     }

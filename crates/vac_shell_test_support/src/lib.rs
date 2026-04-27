@@ -1,7 +1,14 @@
 use std::fmt::Debug;
 use std::path::{Path, PathBuf};
-use vac_shell_contracts::{SessionToolSummary, ShellActivityKind, VacPaths};
+use vac_shell_contracts::{
+    SessionRecoverySummary, SessionToolSummary, SessionToolUseSurface, ShellActivityKind, VacPaths,
+};
 use vac_shell_host_activity::ActivityLog;
+
+pub type SessionRecoveryProvider =
+    Arc<dyn Fn(&str) -> Option<SessionRecoverySummary> + Send + Sync>;
+pub type SessionToolUseProvider = Arc<dyn Fn(&Path) -> Option<SessionToolUseSurface> + Send + Sync>;
+pub type SessionSummaryProvider = Arc<dyn Fn(&Path) -> Option<SessionToolSummary> + Send + Sync>;
 
 pub struct FakeVacPaths(pub PathBuf);
 
@@ -197,21 +204,30 @@ use std::sync::Arc;
 
 pub fn fake_session_summary_provider(
     summary: Option<SessionToolSummary>,
-) -> Arc<dyn Fn(&Path) -> Option<SessionToolSummary> + Send + Sync> {
+) -> SessionSummaryProvider {
     Arc::new(move |_: &Path| summary.clone())
 }
 
-pub fn no_summary_provider() -> Arc<dyn Fn(&Path) -> Option<SessionToolSummary> + Send + Sync> {
+pub fn no_summary_provider() -> SessionSummaryProvider {
     fake_session_summary_provider(None)
 }
 
 pub fn fake_session_tool_use_provider(
-    surface: Option<vac_shell_contracts::SessionToolUseSurface>,
-) -> Arc<dyn Fn(&Path) -> Option<vac_shell_contracts::SessionToolUseSurface> + Send + Sync> {
+    surface: Option<SessionToolUseSurface>,
+) -> SessionToolUseProvider {
     Arc::new(move |_: &Path| surface.clone())
 }
 
-pub fn no_tool_use_provider()
--> Arc<dyn Fn(&Path) -> Option<vac_shell_contracts::SessionToolUseSurface> + Send + Sync> {
+pub fn no_tool_use_provider() -> SessionToolUseProvider {
     fake_session_tool_use_provider(None)
+}
+
+pub fn fake_session_recovery_provider(
+    summary: Option<SessionRecoverySummary>,
+) -> SessionRecoveryProvider {
+    Arc::new(move |_: &str| summary.clone())
+}
+
+pub fn no_recovery_provider() -> SessionRecoveryProvider {
+    fake_session_recovery_provider(None)
 }
