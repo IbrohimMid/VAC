@@ -14,6 +14,7 @@ D1–D12B are sealed.
 
 | Last sealed SHA | Description |
 |---|---|
+| `022bcde0` | D13 PASS after final seal nits (unified /status command) |
 | `dfb5df5c` | D11 PASS after hardening (Session browser tool details + provider wiring) |
 | `fcd55c60` | D12B closeout (docs: final seal) |
 | `53120faf` | D12B PASS after final seal nits (read-only diagnostic engine + /doctor slash) |
@@ -23,7 +24,7 @@ D1–D12B are sealed.
 
 ## Current Backlog / Next Steps
 
-- **D13 — Unified Status & Readiness Command**: implementation pending review.
+- **D13 — Unified Status & Readiness Command**: sealed (SHA `022bcde0`).
 - **Unified init/status/logs UX**: product maturity alignment.
 - **Resumability/checkpoint UX**: operator recovery flows.
 
@@ -83,4 +84,13 @@ Doctor / Readiness Command
   → checks: .vac paths, model config snapshot, credentials, dispatcher mode, boundary gates
   → never exposes secret values or mutates filesystem
   → accessible via palette / in-cockpit diagnostics
+
+Status / Readiness Summary
+  → vac_shell_host_status_command: palette slash (/status) wiring via provider-injected executor
+  → status_command_spec() provides registry metadata
+  → StatusCommandExecutor receives StatusReportProvider trait object
+  → record_status_report() writes six ActivityLog rows: cockpit, model, sessions, approvals, doctor, next-action
+  → each row uses ShellActivityKind::ToolResult temporarily (until dedicated Diagnostic/Status kind)
+  → operator-safe: no raw arguments, no engine/memory dependency
+  → accessible via palette Ctrl+P → /status
 ```

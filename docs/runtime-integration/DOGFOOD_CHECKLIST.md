@@ -44,6 +44,7 @@ entrypoint falls back to the fixture model
 | 15 | Type `/memorize` `Enter` (mapped in D7B dogfood preset) | A transcript file lands at `<cwd>/.vac/sessions/<uuid>.jsonl`; first row's `metadata.source` is `shell_palette`. Confirms the D7B real engine adapter is wired through `ShellRuntimeContext`. |
 | 16 | Type `/unknown` `Enter` (no adapter mapping) | Activity log records "no adapter mapping for command id `unknown`" — confirms the `Unsupported` path still surfaces operator-visible errors. |
 | 17 | Run `cargo run -p vac_shell_entrypoint --example dogfood_tool_dispatch_smoke`, then call `vac_shell_host_transcript_projection::summarize_tool_use(transcript_path)` against the printed JSONL path. | Returns `ToolUseActivitySummary { total_calls: 1, ok_count: 1, .. }`; `project_tool_use_activity` yields a `ShellActivityEntry` whose `title` is `"glob ok"` and whose `detail` contains `summary: glob ok` + `duration_ms: …` + the transcript path, with NO raw payload or arguments. Confirms D9 projection is operator-safe. |
+| 18 | Type `/status` `Enter` | ActivityLog displays six rows: cockpit status, active model label, session count, approval count, doctor status, next action hint. Each row uses `ShellActivityKind::ToolResult` temporarily (readiness/status projection, not tool execution result). No secrets exposed. |
 
 ## Reporting issues
 
@@ -54,6 +55,8 @@ Tag the report by slice:
 * `D4 / D4.1` — event projection / activity log.
 * `D5 / D5.1` — palette commands beyond the four built-ins.
 * `D6` — example wiring itself.
+* `D12 / D12B` — doctor diagnostics.
+* `D13` — status readiness summary.
 
 ## Known limitations (April 2026)
 
