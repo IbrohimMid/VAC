@@ -26,7 +26,7 @@
 | **D12** | VAC Dogfood Doctor / Readiness Command. A read-only diagnostic engine (`vac_shell_host_doctor`) to verify model config, path accessibility, credential presence, and dispatcher mode without leaking secrets or mutating state. | PASS after hardening (core engine only, `/doctor` wiring deferred to D12B) |
 | **D12B** | Wire Doctor Report into Operator Surface. Implementation of the `/doctor` palette slash via `vac_shell_host_doctor_command`. Registry updated to include `/doctor` in `vac_shell_entrypoint`. Safe report rows recorded into `ActivityLog`. | PASS after final seal nits (SHA `53120fafd329dce174b88abf2a592bf13dc3d1a2`) |
 | **D13** | Unified Status & Readiness Command. A cockpit-visible `/status` command that aggregates model, session, and approval state with doctor readiness summaries via a host-injected provider. | PASS after final seal nits (SHA `022bcde02dfe07d9a4893e6510f2260336527f5c`) |
-| **D14** | Dedicated Diagnostic/Status Activity Kinds. Replaces temporary ToolResult reuse for /doctor and /status rows with `ShellActivityKind::Diagnostic` and `ShellActivityKind::Status`; true tool-use rows remain `ToolResult`. | IMPLEMENTED — pending review |
+| **D14** | Dedicated Diagnostic/Status Activity Kinds. Replaces temporary ToolResult reuse for /doctor and /status rows with `ShellActivityKind::Diagnostic` and `ShellActivityKind::Status`; true tool-use rows remain `ToolResult`. | PASS after review (SHA `4e1b01030c9c10fbd1eb392a4d16a0c1e29df3e2`) |
 | **RC gate** | This doc + `DOGFOOD_CHECKLIST.md` + map update | PASS (post-hardening) |
 
 ## Crate inventory after the batch

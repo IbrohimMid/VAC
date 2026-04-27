@@ -17,23 +17,25 @@ fn activity_kind_serializes_diagnostic_and_status() {
 }
 
 #[test]
-fn all_activity_kinds_have_known_names() {
-    let known = [
-        "UserInput",
-        "AgentThoughtSummary",
-        "ToolCall",
-        "ToolResult",
-        "Diagnostic",
-        "Status",
-        "FileEdit",
-        "ShellCommand",
-        "ApprovalRequested",
-        "ApprovalResolved",
-        "ModelChanged",
-        "Error",
+fn all_activity_kind_variants_serialize_and_deserialize() {
+    let variants = [
+        ShellActivityKind::UserInput,
+        ShellActivityKind::AgentThoughtSummary,
+        ShellActivityKind::ToolCall,
+        ShellActivityKind::ToolResult,
+        ShellActivityKind::Diagnostic,
+        ShellActivityKind::Status,
+        ShellActivityKind::FileEdit,
+        ShellActivityKind::ShellCommand,
+        ShellActivityKind::ApprovalRequested,
+        ShellActivityKind::ApprovalResolved,
+        ShellActivityKind::ModelChanged,
+        ShellActivityKind::Error,
     ];
 
-    let json_all = serde_json::to_string(&known).expect("must serialize");
-    assert!(json_all.contains("Diagnostic"));
-    assert!(json_all.contains("Status"));
+    for variant in variants {
+        let json = serde_json::to_string(&variant).expect("must serialize");
+        let roundtrip: ShellActivityKind = serde_json::from_str(&json).expect("must deserialize");
+        assert_eq!(variant, roundtrip, "roundtrip must preserve {:?}", variant);
+    }
 }
