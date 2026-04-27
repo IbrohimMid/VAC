@@ -10,10 +10,11 @@ ShellApp dogfood cockpit integration — consolidation.
 
 ## Completed baseline
 
-D1–D14 are sealed.
+D1–D15 are sealed.
 
 | Last sealed SHA | Description |
 |---|---|
+| `60cc7859` | D15 PASS after review (approval detail recursive redaction hardening) |
 | `4e1b0103` | D14 PASS after review (Dedicated Diagnostic/Status activity kinds) |
 | `022bcde0` | D13 PASS after final seal nits (unified /status command) |
 | `dfb5df5c` | D11 PASS after hardening (Session browser tool details + provider wiring) |
@@ -25,7 +26,6 @@ D1–D14 are sealed.
 
 ## Current Backlog / Next Steps
 
-- **D15 — Approval Detail Recursive Redaction Hardening**: implementation pending review.
 - **Unified init/status/logs UX**: product maturity alignment.
 - **Resumability/checkpoint UX**: operator recovery flows.
 
