@@ -60,6 +60,7 @@ Tag the report by slice:
 * `D12 / D12B` — doctor diagnostics.
 * `D13` — status readiness summary.
 * `D14` — dedicated Diagnostic/Status activity kinds.
+* `D15` — approval detail recursive redaction hardening.
 
 ## Known limitations (April 2026)
 

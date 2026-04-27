@@ -159,3 +159,128 @@ fn normal_command_argument_visible_in_preview() {
         "safe command must be visible in preview, got: {preview}"
     );
 }
+
+// D15 — Approval Detail Recursive Redaction Hardening.
+// All nested, array, and mixed safe/secret structures must be redacted
+// at any depth through DefaultApprovalDetailProvider.command_preview.
+
+#[test]
+fn nested_secret_in_command_preview_is_redacted() {
+    let req = ApprovalRequest::new("id17", "api_call").with_arguments(
+        serde_json::json!({
+            "config": {
+                "api_key": "sk_nested_secret",
+                "host": "api.example.com"
+            }
+        }),
+    );
+    let detail = provider().detail_for(&req);
+    let preview = detail.command_preview.expect("command_preview should be set");
+    assert!(
+        !preview.contains("sk_nested_secret"),
+        "nested api_key must be redacted, got: {preview}"
+    );
+    assert!(
+        preview.contains("[REDACTED]"),
+        "[REDACTED] placeholder must appear, got: {preview}"
+    );
+    assert!(
+        preview.contains("api.example.com"),
+        "non-sensitive nested value must be visible, got: {preview}"
+    );
+}
+
+#[test]
+fn array_of_objects_with_secrets_redacted_in_command_preview() {
+    let req = ApprovalRequest::new("id18", "batch_request").with_arguments(
+        serde_json::json!({
+            "requests": [
+                { "token": "tok_1", "path": "/safe/a" },
+                { "password": "pw_2", "path": "/safe/b" }
+            ]
+        }),
+    );
+    let detail = provider().detail_for(&req);
+    let preview = detail.command_preview.expect("command_preview should be set");
+    assert!(
+        !preview.contains("tok_1"),
+        "token in array object must be redacted, got: {preview}"
+    );
+    assert!(
+        !preview.contains("pw_2"),
+        "password in array object must be redacted, got: {preview}"
+    );
+    assert!(
+        preview.contains("[REDACTED]"),
+        "[REDACTED] placeholder must appear, got: {preview}"
+    );
+    assert!(
+        preview.contains("/safe/a") && preview.contains("/safe/b"),
+        "safe path values must be visible, got: {preview}"
+    );
+}
+
+#[test]
+fn mixed_safe_and_secret_fields_preserve_safe_values() {
+    let req = ApprovalRequest::new("id19", "deploy").with_arguments(
+        serde_json::json!({
+            "host": "api.example.com",
+            "auth": {
+                "bearer": "bearer-secret",
+                "mode": "oauth"
+            },
+            "config": {
+                "private_key": "private-secret",
+                "name": "my-key"
+            }
+        }),
+    );
+    let detail = provider().detail_for(&req);
+    let preview = detail.command_preview.expect("command_preview should be set");
+    assert!(
+        !preview.contains("bearer-secret"),
+        "bearer secret must be redacted, got: {preview}"
+    );
+    assert!(
+        !preview.contains("private-secret"),
+        "private_key secret must be redacted, got: {preview}"
+    );
+    assert!(
+        preview.contains("[REDACTED]"),
+        "[REDACTED] placeholder must appear, got: {preview}"
+    );
+    assert!(
+        preview.contains("api.example.com"),
+        "safe top-level value must be visible, got: {preview}"
+    );
+    assert!(
+        preview.contains("my-key"),
+        "safe value inside sensitive-keyed object must be visible, got: {preview}"
+    );
+}
+
+#[test]
+fn case_insensitive_nested_secret_keys_are_redacted_in_command_preview() {
+    let req = ApprovalRequest::new("id20", "config_tool").with_arguments(
+        serde_json::json!({
+            "Config": {
+                "API_KEY": "UPPER_SECRET",
+                "AuthHeader": "Bearer abc"
+            }
+        }),
+    );
+    let detail = provider().detail_for(&req);
+    let preview = detail.command_preview.expect("command_preview should be set");
+    assert!(
+        !preview.contains("UPPER_SECRET"),
+        "uppercase API_KEY value must be redacted, got: {preview}"
+    );
+    assert!(
+        !preview.contains("Bearer abc"),
+        "AuthHeader value must be redacted, got: {preview}"
+    );
+    assert!(
+        preview.contains("[REDACTED]"),
+        "[REDACTED] placeholder must appear, got: {preview}"
+    );
+}

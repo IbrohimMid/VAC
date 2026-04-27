@@ -27,6 +27,7 @@
 | **D12B** | Wire Doctor Report into Operator Surface. Implementation of the `/doctor` palette slash via `vac_shell_host_doctor_command`. Registry updated to include `/doctor` in `vac_shell_entrypoint`. Safe report rows recorded into `ActivityLog`. | PASS after final seal nits (SHA `53120fafd329dce174b88abf2a592bf13dc3d1a2`) |
 | **D13** | Unified Status & Readiness Command. A cockpit-visible `/status` command that aggregates model, session, and approval state with doctor readiness summaries via a host-injected provider. | PASS after final seal nits (SHA `022bcde02dfe07d9a4893e6510f2260336527f5c`) |
 | **D14** | Dedicated Diagnostic/Status Activity Kinds. Replaces temporary ToolResult reuse for /doctor and /status rows with `ShellActivityKind::Diagnostic` and `ShellActivityKind::Status`; true tool-use rows remain `ToolResult`. | PASS after review (SHA `4e1b01030c9c10fbd1eb392a4d16a0c1e29df3e2`) |
+| **D15** | Approval Detail Recursive Redaction Hardening. Provider-level approval detail tests now pin recursive redaction for nested objects, arrays, mixed safe/secret fields, and case-insensitive nested keys. | IMPLEMENTED — pending review |
 | **RC gate** | This doc + `DOGFOOD_CHECKLIST.md` + map update | PASS (post-hardening) |
 
 ## Crate inventory after the batch

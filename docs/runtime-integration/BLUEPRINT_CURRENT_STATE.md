@@ -25,6 +25,7 @@ D1–D14 are sealed.
 
 ## Current Backlog / Next Steps
 
+- **D15 — Approval Detail Recursive Redaction Hardening**: implementation pending review.
 - **Unified init/status/logs UX**: product maturity alignment.
 - **Resumability/checkpoint UX**: operator recovery flows.
 
@@ -73,8 +74,10 @@ Live Activity Feed
 
 Approval Detail
   → DefaultApprovalDetailProvider: heuristic risk from tool name
-  → command preview: bounded 500 chars, top-level sensitive keys redacted
-  → D11 target: recursive redaction for nested objects
+  → command preview: bounded 500 chars
+  → recursive sensitive-key redaction for nested objects and arrays
+  → safe values remain visible
+  → no raw token/password/api_key/private_key/auth/bearer values exposed
 
 Doctor / Readiness Command
   → vac_shell_host_doctor: pure read-only engine
