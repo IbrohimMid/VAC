@@ -103,6 +103,14 @@ impl OpenAiCompatProvider {
         self
     }
 
+    pub fn new_ollama() -> Self {
+        Self::new()
+            .with_name("ollama")
+            .with_base_url("http://127.0.0.1:11434/v1")
+            .with_base_url_env("OLLAMA_BASE_URL")
+            .with_model("llama3.2")
+    }
+
     // -----------------------------------------------------------------
     // Cloud gateway presets (all OpenAI-wire, differ only in base URL /
     // default model / required env var). Use these when you want a ready-
@@ -182,6 +190,40 @@ impl OpenAiCompatProvider {
             .with_model("meta-llama/Llama-3.3-70B-Instruct-Turbo")
     }
 
+    fn map_transport_error(provider_name: &str, endpoint: &str, err: reqwest::Error) -> LlmError {
+        if provider_name == "ollama" && (err.is_connect() || err.is_timeout()) {
+            return LlmError::Provider {
+                provider: provider_name.to_string(),
+                status: None,
+                message: format!(
+                    "Gagal terhubung ke Ollama ({endpoint}). Pastikan Ollama berjalan dengan `ollama serve`."
+                ),
+            };
+        }
+        LlmError::Request(err)
+    }
+
+    fn map_api_error_message(
+        provider_name: &str,
+        status: reqwest::StatusCode,
+        body: &str,
+        model: &str,
+    ) -> String {
+        let mut msg = format!("API error {}: {}", status, body);
+
+        if provider_name == "ollama" && matches!(status.as_u16(), 400 | 404) && !model.is_empty() {
+            let body_lc = body.to_lowercase();
+            let model_lc = model.to_lowercase();
+            if body_lc.contains("model") && body_lc.contains(&model_lc) {
+                msg.push_str(&format!(
+                    "\n\nModel '{model}' tampaknya belum tersedia. Coba `ollama pull {model}`."
+                ));
+            }
+        }
+
+        msg
+    }
+
     fn build_headers(&self) -> LlmResult<HeaderMap> {
         if self.api_key.is_empty() {
             if let Some(env) = &self.required_api_key_env {
@@ -230,13 +272,15 @@ impl OpenAiCompatProvider {
 
         debug!(model = %request.model, provider = %self.provider_name, "Sending OpenAI-compat request");
 
+        let endpoint = self.endpoint()?;
         let response = self
             .http_client
-            .post(self.endpoint()?)
+            .post(&endpoint)
             .headers(self.build_headers()?)
             .body(body)
             .send()
-            .await?;
+            .await
+            .map_err(|e| Self::map_transport_error(&self.provider_name, &endpoint, e))?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -245,7 +289,12 @@ impl OpenAiCompatProvider {
             return Err(LlmError::Provider {
                 provider: self.provider_name.clone(),
                 status: Some(status.as_u16()),
-                message: format!("API error {}: {}", status, body),
+                message: Self::map_api_error_message(
+                    &self.provider_name,
+                    status,
+                    &body,
+                    &request.model,
+                ),
             });
         }
 
@@ -489,15 +538,22 @@ pub(crate) async fn openai_stream(
         .headers(headers)
         .body(body)
         .send()
-        .await?;
+        .await
+        .map_err(|e| OpenAiCompatProvider::map_transport_error(&provider_name, endpoint, e))?;
 
     if !response.status().is_success() {
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
+        let message = OpenAiCompatProvider::map_api_error_message(
+            &provider_name,
+            status,
+            &body,
+            &wire_request.model,
+        );
         return Err(LlmError::Provider {
             provider: provider_name,
             status: Some(status.as_u16()),
-            message: format!("API error {}: {}", status, body),
+            message,
         });
     }
 
@@ -757,6 +813,45 @@ mod tests {
         assert_eq!(resp.model, "llama3.1");
         assert_eq!(resp.usage.total_tokens, 7);
         assert_eq!(provider.name(), "ollama");
+    }
+
+    #[test]
+    fn ollama_preset_has_expected_config() {
+        let provider = OpenAiCompatProvider::new_ollama();
+        assert_eq!(provider.name(), "ollama");
+        assert_eq!(provider.base_url, "http://127.0.0.1:11434/v1");
+        assert_eq!(provider.base_url_env, "OLLAMA_BASE_URL");
+    }
+
+    #[tokio::test]
+    async fn ollama_connect_error_suggests_serve() {
+        let provider = OpenAiCompatProvider::new_ollama().with_base_url("http://127.0.0.1:1/v1");
+        let req = LlmRequest::new(vec![Message::user("ping")]);
+        let err = provider.complete(&req).await.unwrap_err();
+        let msg = format!("{err}");
+        assert!(msg.contains("ollama serve"), "got: {msg}");
+    }
+
+    #[tokio::test]
+    async fn ollama_model_not_found_suggests_pull() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(
+                ResponseTemplate::new(404).set_body_string("model llama3.1 tidak ditemukan"),
+            )
+            .mount(&server)
+            .await;
+
+        let provider = OpenAiCompatProvider::new()
+            .with_base_url(&format!("{}/v1", server.uri()))
+            .with_model("llama3.1")
+            .with_name("ollama");
+
+        let req = LlmRequest::new(vec![Message::user("ping")]);
+        let err = provider.complete(&req).await.unwrap_err();
+        let msg = format!("{err}");
+        assert!(msg.contains("ollama pull llama3.1"), "got: {msg}");
     }
 
     // ---------------------------------------------------------------------

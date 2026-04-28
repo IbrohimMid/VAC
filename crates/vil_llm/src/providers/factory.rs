@@ -156,6 +156,29 @@ fn build_preset_openai_compat(
     Some(Arc::new(provider))
 }
 
+fn build_ollama_provider(cfg: &ProviderConfig) -> Option<Arc<dyn LlmProvider>> {
+    let mut provider = OpenAiCompatProvider::new_ollama();
+
+    if let Some(base_url) = trim_to_none(cfg.base_url.as_deref()) {
+        provider = provider.with_base_url(base_url);
+    }
+    if let Some(model) = trim_to_none(cfg.model.as_deref()) {
+        provider = provider.with_model(model);
+    }
+
+    if let Some(api_key) = resolve_api_key(
+        cfg.api_key_env.as_deref(),
+        &["OLLAMA_API_KEY", "OPENAI_COMPAT_API_KEY"],
+    ) {
+        provider = provider.with_api_key(&api_key);
+    } else if cfg.api_key_env.is_some() {
+        provider_missing("ollama", "missing configured API key");
+        return None;
+    }
+
+    Some(Arc::new(provider))
+}
+
 fn build_xai_provider(cfg: &ProviderConfig) -> Option<Arc<dyn LlmProvider>> {
     let api_key = resolve_api_key(cfg.api_key_env.as_deref(), &["XAI_API_KEY"])?;
     let mut provider = xai::new().with_api_key(&api_key);
@@ -200,6 +223,7 @@ pub(crate) fn build_provider_from_config(
         "kilo" | "kilo_gateway" | "groq" | "openrouter" | "deepseek" | "together" => {
             build_preset_openai_compat(provider_key, cfg)
         }
+        "ollama" => build_ollama_provider(cfg),
         "openai" => build_openai_provider(cfg),
         "gemini" => build_gemini_provider(cfg),
         "openai_compat" => build_openai_compat_provider(provider_key, cfg),
@@ -209,5 +233,19 @@ pub(crate) fn build_provider_from_config(
             provider_missing(other, "no provider factory is registered for this key");
             None
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn factory_builds_ollama_without_explicit_base_url() {
+        let cfg = ProviderConfig::default();
+        let Some(provider) = build_provider_from_config("ollama", &cfg) else {
+            panic!("provider")
+        };
+        assert_eq!(provider.name(), "ollama");
     }
 }

@@ -289,7 +289,12 @@ pub(super) fn render_command_palette(f: &mut Frame, state: &mut AppState) {
     );
     f.render_widget(input, chunks[0]);
 
-    let query = state.layout.command_palette.input.trim().to_ascii_lowercase();
+    let query = state
+        .layout
+        .command_palette
+        .input
+        .trim()
+        .to_ascii_lowercase();
     let filtered: Vec<&crate::app::HelperCommand> = if query.is_empty() {
         state.layout.commands.iter().collect()
     } else {

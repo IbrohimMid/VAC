@@ -7,6 +7,8 @@ mod output;
 mod telemetry;
 
 use clap::{Parser, Subcommand};
+use std::collections::HashSet;
+use std::path::Path;
 use std::path::PathBuf;
 
 const VAC_AFTER_HELP: &str = "\
@@ -75,9 +77,9 @@ enum Commands {
         /// Ephemeral run (disables trajectory)
         #[arg(long)]
         ephemeral: bool,
-        /// Provider adapter (today only `mock`/`echo`; real providers land later).
-        #[arg(long, default_value = "mock")]
-        provider: String,
+        /// Override LLM provider for this command (sets VAC_LLM_DEFAULT_PROVIDER).
+        #[arg(long, value_name = "NAME")]
+        provider: Option<String>,
         /// Sandbox mode (Codex-grade spelling).
         #[arg(long)]
         sandbox: Option<String>,
@@ -87,6 +89,9 @@ enum Commands {
     Interactive {
         #[arg(long)]
         resume: bool,
+        /// Override LLM provider for this process (sets VAC_LLM_DEFAULT_PROVIDER).
+        #[arg(long, value_name = "NAME")]
+        provider: Option<String>,
         /// Explicitly set the user sandbox mode: read-only, workspace-write, or danger-full-access.
         #[arg(long)]
         sandbox_mode: Option<String>,
@@ -641,6 +646,74 @@ pub enum ScheduleAction {
     },
 }
 
+struct EnvVarGuard {
+    key: &'static str,
+    prev: Option<std::ffi::OsString>,
+}
+
+impl EnvVarGuard {
+    fn set(key: &'static str, value: &str) -> Self {
+        let prev = std::env::var_os(key);
+        unsafe {
+            std::env::set_var(key, value);
+        }
+        Self { key, prev }
+    }
+}
+
+impl Drop for EnvVarGuard {
+    fn drop(&mut self) {
+        match self.prev.take() {
+            Some(v) => unsafe {
+                std::env::set_var(self.key, v);
+            },
+            None => unsafe {
+                std::env::remove_var(self.key);
+            },
+        }
+    }
+}
+
+struct FileRestoreGuard {
+    path: PathBuf,
+    prev: Option<String>,
+}
+
+impl FileRestoreGuard {
+    fn capture(path: PathBuf) -> Self {
+        let prev = std::fs::read_to_string(&path).ok();
+        Self { path, prev }
+    }
+}
+
+impl Drop for FileRestoreGuard {
+    fn drop(&mut self) {
+        match self.prev.take() {
+            Some(content) => {
+                let _ = std::fs::write(&self.path, content);
+            }
+            None => {
+                let _ = std::fs::remove_file(&self.path);
+            }
+        }
+    }
+}
+
+fn list_session_transcripts(project_root: &Path) -> HashSet<PathBuf> {
+    let mut out = HashSet::new();
+    let dir = project_root.join(".vac").join("sessions");
+    let Ok(rd) = std::fs::read_dir(&dir) else {
+        return out;
+    };
+    for entry in rd.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|s| s.to_str()) == Some("jsonl") {
+            out.insert(path);
+        }
+    }
+    out
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli =
@@ -724,49 +797,76 @@ async fn main() -> anyhow::Result<()> {
                         sandbox,
                         provider,
                     } => {
-                        let provider_kind = commands::session::ProviderKind::parse(&provider)
-                            .map_err(|e| anyhow::anyhow!("invalid --provider: {e}"))?;
+                        let _provider_guard = provider
+                            .as_deref()
+                            .map(|p| EnvVarGuard::set(vil_llm::config::ENV_DEFAULT_PROVIDER, p));
 
-                        let docker_image = if let Some(mode) = sandbox {
-                            let sandbox_mode = vac_core::config::UserSandboxMode::parse_user(&mode)
+                        let _sandbox_guard = if let Some(mode) = sandbox.as_deref() {
+                            let sandbox_mode = vac_core::config::UserSandboxMode::parse_user(mode)
                                 .map_err(|e| anyhow::anyhow!("invalid --sandbox: {e}"))?;
-                            match sandbox_mode {
-                                vac_core::config::UserSandboxMode::DangerFullAccess => None,
-                                vac_core::config::UserSandboxMode::ReadOnly
-                                | vac_core::config::UserSandboxMode::WorkspaceWrite => {
-                                    let cfg = vac_core::VacConfig::load_with_fallback(&project_root)?;
-                                    let image = cfg
-                                        .runtime
-                                        .container_image
-                                        .as_deref()
-                                        .unwrap_or_default()
-                                        .trim();
-                                    if image.is_empty() {
-                                        anyhow::bail!(
-                                            "sandbox '{}' requires runtime.container_image to be set (see .vac/config.toml)",
-                                            sandbox_mode.as_cli_str()
-                                        );
-                                    }
-                                    Some(image.to_string())
+                            if sandbox_mode != vac_core::config::UserSandboxMode::DangerFullAccess {
+                                let config_path = project_root.join(".vac/config.toml");
+                                let guard = FileRestoreGuard::capture(config_path);
+                                let mut config = vac_core::VacConfig::load_with_fallback(&project_root)?;
+                                config.runtime.sandbox_mode = sandbox_mode;
+                                sandbox_mode.apply_to_runtime(&mut config.runtime);
+                                if config
+                                    .runtime
+                                    .container_image
+                                    .as_deref()
+                                    .unwrap_or_default()
+                                    .trim()
+                                    .is_empty()
+                                {
+                                    anyhow::bail!(
+                                        "sandbox '{}' requires runtime.container_image to be set (see .vac/config.toml)",
+                                        sandbox_mode.as_cli_str()
+                                    );
                                 }
+                                config.validate()?;
+                                vac_core::VacConfig::save(&project_root, &config)?;
+                                Some(guard)
+                            } else {
+                                None
                             }
                         } else {
                             None
                         };
-                        let opts = commands::session::SessionRunOptions {
-                            input: prompt,
-                            provider: provider_kind,
-                            trajectory: !ephemeral,
-                            docker_image,
+
+                        let sessions_before = if ephemeral {
+                            Some(list_session_transcripts(&project_root))
+                        } else {
+                            None
                         };
-                        commands::session::execute(project_root, opts).await?
+                        let res = commands::run::execute(
+                            project_root.clone(),
+                            prompt,
+                            "normal".to_string(),
+                            "default".to_string(),
+                            false,
+                            Vec::new(),
+                            None,
+                            None,
+                        )
+                        .await;
+                        if let Some(before) = sessions_before {
+                            let after = list_session_transcripts(&project_root);
+                            for path in after.difference(&before) {
+                                let _ = std::fs::remove_file(path);
+                            }
+                        }
+                        res?
                     }
                     Commands::Interactive {
                         resume,
+                        provider,
                         sandbox_mode,
                         record,
                         replay,
                     } => {
+                        let _provider_guard = provider
+                            .as_deref()
+                            .map(|p| EnvVarGuard::set(vil_llm::config::ENV_DEFAULT_PROVIDER, p));
                         commands::interactive::execute(
                             project_root,
                             resume,

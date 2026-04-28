@@ -110,6 +110,7 @@ pub async fn execute(
 
     // If auto-approve is enabled, tools shouldn't require approval anyway (policy="allow").
     tokio::spawn(async move {
+        use std::io::Write;
         while let Some(update) = update_rx.recv().await {
             match update {
                 vac_core::engine::RuntimeUpdate::Status(msg) => {
@@ -128,6 +129,10 @@ pub async fn execute(
                         println!("❌ Tool failed: {}", name);
                     }
                 }
+                vac_core::engine::RuntimeUpdate::AssistantChunk(chunk) => {
+                    print!("{chunk}");
+                    let _ = std::io::stdout().flush();
+                }
                 vac_core::engine::RuntimeUpdate::ApprovalRequired {
                     tool_call_id,
                     tool_name,
@@ -140,8 +145,6 @@ pub async fn execute(
 
                     println!("\n[!] Tool requires approval: {}", tool_name);
 
-                    // Prompt user for approval interactively
-                    use std::io::Write;
                     print!("Approve? [Y/n]: ");
                     let _ = std::io::stdout().flush();
 
