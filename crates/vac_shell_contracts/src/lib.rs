@@ -25,6 +25,7 @@ pub mod activity;
 pub mod approval;
 pub mod diff;
 pub mod events;
+pub mod init;
 pub mod model;
 pub mod overlay;
 pub mod paths;
@@ -41,6 +42,9 @@ pub use activity::{Severity, ShellActivityEntry, ShellActivityFilter, ShellActiv
 pub use approval::{ApprovalDetailView, RiskLevel, VacApprovalBridge};
 pub use diff::{DiffFileView, DiffHunkView, DiffLineKind, DiffLineView, DiffReviewEvent};
 pub use events::{VacShellEvent, VacSubmitRequest};
+pub use init::{
+    InitChecklistAction, InitChecklistRow, InitChecklistStatus, InitChecklistViewModel,
+};
 pub use model::{ProviderId, VacModelView};
 pub use overlay::{OverlayIntent, ShellOverlay};
 pub use paths::VacPaths;

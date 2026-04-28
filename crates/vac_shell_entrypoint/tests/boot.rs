@@ -369,7 +369,10 @@ fn entrypoint_session_browser_populates_recovery_on_key() {
     app.handle_global_key(vac_shell_app::GlobalKey::OpenSessionBrowser);
 
     // Verify browser opened
-    assert!(app.session_browser.visible, "session browser should be visible");
+    assert!(
+        app.session_browser.visible,
+        "session browser should be visible"
+    );
 
     // Verify tiles populated with recovery
     let tiles = &app.session_browser.tiles;
@@ -397,7 +400,11 @@ fn entrypoint_session_browser_populates_recovery_on_palette() {
 
     let checkpoints_dir = paths.project_state_dir().join("checkpoints");
     std::fs::create_dir_all(&checkpoints_dir).unwrap();
-    std::fs::write(checkpoints_dir.join("palette-session.json"), r#"{"state":1}"#).unwrap();
+    std::fs::write(
+        checkpoints_dir.join("palette-session.json"),
+        r#"{"state":1}"#,
+    )
+    .unwrap();
 
     let mut app = build_shell_app(tmp.path());
 
@@ -463,7 +470,12 @@ fn entrypoint_wires_recovery_provider() {
         let tiles = sessions.list_with_tool_use_and_recovery(
             &paths,
             |_| None,
-            |sid| app.providers.session_recovery_provider.as_ref().and_then(|f| f(sid)),
+            |sid| {
+                app.providers
+                    .session_recovery_provider
+                    .as_ref()
+                    .and_then(|f| f(sid))
+            },
         );
         assert!(!tiles.is_empty(), "at least one session tile should exist");
         let first = &tiles[0];
@@ -493,7 +505,12 @@ fn entrypoint_recovery_missing_when_no_checkpoint() {
         let tiles = sessions.list_with_tool_use_and_recovery(
             &paths,
             |_| None,
-            |sid| app.providers.session_recovery_provider.as_ref().and_then(|f| f(sid)),
+            |sid| {
+                app.providers
+                    .session_recovery_provider
+                    .as_ref()
+                    .and_then(|f| f(sid))
+            },
         );
         assert!(!tiles.is_empty());
         let first = &tiles[0];

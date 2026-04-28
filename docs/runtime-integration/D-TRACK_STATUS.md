@@ -30,6 +30,7 @@
 | **D15** | Approval Detail Recursive Redaction Hardening. Provider-level approval detail tests now pin recursive redaction for nested objects, arrays, mixed safe/secret fields, and case-insensitive nested keys. | PASS after review (SHA `60cc7859d4c07a1d308858793bd99500995de5cb`) |
 | **D16** | Checkpoint-Aware Session Recovery Surface. Session browser now displays recovery badges (Ready/Missing/Corrupt/Unknown) per tile, shows checkpoint details in right panel, and logs resume outcomes to ActivityLog. Recovery provider wired in build_shell_app(). No engine resume execution — surface only. | PASS after final seal nits (SHA `c46e4cffa8032cb31e93895ea3e88e0a7fd0a264`) |
 | **D17** | Unified Logs Browser Surface. A cockpit-visible `/logs` overlay that reads from existing `ActivityLog::snapshot()`, with filter (All/Errors/Warnings/Status/Diagnostics/Tools/Approvals), search, and scroll. Uses ShellActivityFilter enum in contracts. No persistent log backend added. Opens with fresh snapshot on each `/logs` call. | PASS after clean hardening (SHA `3b3b8bd7096d78b47eca02bece42118c0493f266`) |
+| **D18** | Init Checklist Surface. A cockpit-visible `/init` overlay that aggregates doctor/status/model state into checklist rows with suggested actions (OpenDoctor, OpenStatus, OpenLogs, OpenSessions, OpenModelSwitcher). No filesystem mutation, no engine/tool/LLM deps in widget. Opens via `/init` palette route; Esc closes. | IMPLEMENTED — pending review |
 | **RC gate** | This doc + `DOGFOOD_CHECKLIST.md` + map update | PASS (post-hardening) |
 
 ## Crate inventory after the batch
@@ -52,6 +53,8 @@ crates/vac_shell_host_doctor               D12 (read-only diagnostic engine; no 
 crates/vac_shell_host_doctor_command       D12B (palette slash bridge; records to ActivityLog)
 crates/vac_shell_host_status_command       D13 (/status palette readiness bridge; provider-injected; no app/engine dep)
 crates/vac_shell_host_recovery             D16 (checkpoint recovery projector; read-only file scan; no engine dep)
+crates/vac_shell_init_checklist            D18 (init checklist widget; no engine/app dep)
+crates/vac_shell_host_init                 D18 (init checklist host projection; provider-injected; no engine dep)
 ```
 
 ## Activity Log semantics for D12B

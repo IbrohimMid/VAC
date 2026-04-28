@@ -28,6 +28,7 @@ use vac_shell_approval_bar::ApprovalBarKey;
 use vac_shell_approval_detail::DetailKey;
 use vac_shell_contracts::ShellOverlay;
 use vac_shell_diff_view::DiffReviewKey;
+use vac_shell_init_checklist::InitChecklistKey;
 use vac_shell_model_switcher::SwitcherKey;
 use vac_shell_palette::PaletteKey;
 use vac_shell_session_browser::SessionBrowserKey;
@@ -45,6 +46,7 @@ pub enum RoutedKey {
     ApprovalBar(ApprovalBarKey),
     ApprovalDetail(DetailKey),
     Logs(LogsBrowserKey),
+    Init(InitChecklistKey),
     Ignored,
 }
 
@@ -78,6 +80,9 @@ pub fn route_key(event: KeyEvent, active_overlay: ShellOverlay) -> RoutedKey {
             .unwrap_or(RoutedKey::Ignored),
         ShellOverlay::Logs => match_logs_browser(event)
             .map(RoutedKey::Logs)
+            .unwrap_or(RoutedKey::Ignored),
+        ShellOverlay::Init => match_init_checklist(event)
+            .map(RoutedKey::Init)
             .unwrap_or(RoutedKey::Ignored),
         ShellOverlay::Shortcuts
         | ShellOverlay::ShellPopup
@@ -212,6 +217,16 @@ fn match_logs_browser(ev: KeyEvent) -> Option<LogsBrowserKey> {
     }
 }
 
+fn match_init_checklist(ev: KeyEvent) -> Option<InitChecklistKey> {
+    match ev.code {
+        KeyCode::Up => Some(InitChecklistKey::Up),
+        KeyCode::Down => Some(InitChecklistKey::Down),
+        KeyCode::Enter => Some(InitChecklistKey::Enter),
+        KeyCode::Esc => Some(InitChecklistKey::Escape),
+        _ => None,
+    }
+}
+
 // =====================================================================
 // D2.1 — dispatch adapter
 // =====================================================================
@@ -239,6 +254,7 @@ pub fn dispatch_routed_key(
         RoutedKey::ApprovalBar(k) => Ok(app.dispatch_approval_bar_key(k)),
         RoutedKey::ApprovalDetail(k) => Ok(app.dispatch_approval_detail_key(k)),
         RoutedKey::Logs(k) => Ok(app.dispatch_logs_browser_key(k)),
+        RoutedKey::Init(k) => Ok(app.dispatch_init_checklist_key(k)),
         RoutedKey::Ignored => Ok(None),
     }
 }

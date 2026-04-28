@@ -1,0 +1,15 @@
+[package]
+name = "vac_shell_host_init"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "D18 — read-only init checklist projection. Aggregates doctor/status/model state into InitChecklistViewModel without filesystem mutation."
+
+[dependencies]
+vac_shell_contracts = { path = "../vac_shell_contracts" }
+vac_shell_host_doctor = { path = "../vac_shell_host_doctor" }
+vac_shell_host_status = { path = "../vac_shell_host_status" }
+vac_shell_host_status_command = { path = "../vac_shell_host_status_command" }
+
+[dev-dependencies]
+vac_shell_host_paths = { path = "../vac_shell_host_paths" }

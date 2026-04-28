@@ -16,7 +16,9 @@ use vac_shell_model_switcher::SwitcherKey;
 use vac_shell_palette::PaletteKey;
 use vac_shell_session_browser::SessionBrowserKey;
 use vac_shell_shortcuts::default_shortcuts;
-use vac_shell_test_support::{fake_session_recovery_provider, fake_session_tool_use_provider, no_tool_use_provider};
+use vac_shell_test_support::{
+    fake_session_recovery_provider, fake_session_tool_use_provider, no_tool_use_provider,
+};
 
 use common::{boot_comp, boot_comp_with_commands, screen, seed_session_transcript};
 
@@ -458,13 +460,14 @@ fn pending_approvals_count_reflects_queue_length() {
 fn session_recovery_provider_is_attached() {
     let (_t, comp) = boot_comp();
 
-    let recovery = fake_session_recovery_provider(Some(vac_shell_contracts::SessionRecoverySummary {
-        status: vac_shell_contracts::SessionRecoveryStatus::Ready,
-        checkpoint_label: Some("beta.json".to_string()),
-        checkpoint_path_display: Some(".vac/checkpoints/beta.json".to_string()),
-        updated_at_unix: Some(1234567890),
-        message: Some("checkpoint ready".to_string()),
-    }));
+    let recovery =
+        fake_session_recovery_provider(Some(vac_shell_contracts::SessionRecoverySummary {
+            status: vac_shell_contracts::SessionRecoveryStatus::Ready,
+            checkpoint_label: Some("beta.json".to_string()),
+            checkpoint_path_display: Some(".vac/checkpoints/beta.json".to_string()),
+            updated_at_unix: Some(1234567890),
+            message: Some("checkpoint ready".to_string()),
+        }));
 
     let app = ShellApp::new(comp).with_session_recovery_provider(recovery);
 
@@ -484,34 +487,42 @@ fn session_recovery_provider_is_attached() {
 #[test]
 fn resume_action_logs_activity_with_checkpoint_status_ready() {
     // Simplified: just verify provider is attached and returns expected data
-    let recovery = fake_session_recovery_provider(Some(vac_shell_contracts::SessionRecoverySummary {
-        status: vac_shell_contracts::SessionRecoveryStatus::Ready,
-        checkpoint_label: Some("test.json".to_string()),
-        checkpoint_path_display: None,
-        updated_at_unix: None,
-        message: Some("checkpoint ready".to_string()),
-    }));
+    let recovery =
+        fake_session_recovery_provider(Some(vac_shell_contracts::SessionRecoverySummary {
+            status: vac_shell_contracts::SessionRecoveryStatus::Ready,
+            checkpoint_label: Some("test.json".to_string()),
+            checkpoint_path_display: None,
+            updated_at_unix: None,
+            message: Some("checkpoint ready".to_string()),
+        }));
 
     let provider = recovery.clone();
     let result = provider("any-session");
     assert!(result.is_some());
-    assert_eq!(result.unwrap().status, vac_shell_contracts::SessionRecoveryStatus::Ready);
+    assert_eq!(
+        result.unwrap().status,
+        vac_shell_contracts::SessionRecoveryStatus::Ready
+    );
 }
 
 #[test]
 fn resume_action_logs_activity_with_checkpoint_status_missing() {
-    let recovery = fake_session_recovery_provider(Some(vac_shell_contracts::SessionRecoverySummary {
-        status: vac_shell_contracts::SessionRecoveryStatus::Missing,
-        checkpoint_label: None,
-        checkpoint_path_display: None,
-        updated_at_unix: None,
-        message: Some("no checkpoint".to_string()),
-    }));
+    let recovery =
+        fake_session_recovery_provider(Some(vac_shell_contracts::SessionRecoverySummary {
+            status: vac_shell_contracts::SessionRecoveryStatus::Missing,
+            checkpoint_label: None,
+            checkpoint_path_display: None,
+            updated_at_unix: None,
+            message: Some("no checkpoint".to_string()),
+        }));
 
     let provider = recovery.clone();
     let result = provider("missing");
     assert!(result.is_some());
-    assert_eq!(result.unwrap().status, vac_shell_contracts::SessionRecoveryStatus::Missing);
+    assert_eq!(
+        result.unwrap().status,
+        vac_shell_contracts::SessionRecoveryStatus::Missing
+    );
 }
 
 #[test]
@@ -522,17 +533,20 @@ fn resume_action_logs_activity_with_checkpoint_status_corrupt() {
     app.sessions = Some(Arc::new(vac_shell_host_sessions::SessionsState::new()));
     app.activity_log = Some(log.clone());
 
-    let recovery = fake_session_recovery_provider(Some(vac_shell_contracts::SessionRecoverySummary {
-        status: vac_shell_contracts::SessionRecoveryStatus::Corrupt,
-        checkpoint_label: Some("bad.json".to_string()),
-        checkpoint_path_display: None,
-        updated_at_unix: None,
-        message: Some("unreadable".to_string()),
-    }));
+    let recovery =
+        fake_session_recovery_provider(Some(vac_shell_contracts::SessionRecoverySummary {
+            status: vac_shell_contracts::SessionRecoveryStatus::Corrupt,
+            checkpoint_label: Some("bad.json".to_string()),
+            checkpoint_path_display: None,
+            updated_at_unix: None,
+            message: Some("unreadable".to_string()),
+        }));
     app.providers.session_recovery_provider = Some(recovery);
 
     let _ = app.apply_event(AppEvent::Session(
-        vac_shell_contracts::SessionAction::Resume { id: "corrupt-session".to_string() },
+        vac_shell_contracts::SessionAction::Resume {
+            id: "corrupt-session".to_string(),
+        },
     ));
 
     // With corrupt status, should log error

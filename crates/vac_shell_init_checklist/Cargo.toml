@@ -1,0 +1,10 @@
+[package]
+name = "vac_shell_init_checklist"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "D18 — pure ratatui widget for the init checklist overlay. Renders InitChecklistViewModel with status badges and detail panel."
+
+[dependencies]
+vac_shell_contracts = { path = "../vac_shell_contracts" }
+ratatui.workspace = true

@@ -38,6 +38,10 @@ use vac_shell_composition::ShellComposition;
 use vac_shell_contracts::{OverlayIntent, SessionAction, ShellOverlay};
 use vac_shell_diff_view::{DiffReviewKey, DiffReviewKeyEvent, DiffReviewView};
 use vac_shell_host_status::{StatusInputs, project_status};
+use vac_shell_init_checklist::{
+    InitChecklistAction, InitChecklistEvent, InitChecklistKey, InitChecklistView, on_init_key,
+    render_init_checklist,
+};
 use vac_shell_model_switcher::{ModelSwitcherView, SwitcherEvent, SwitcherKey};
 use vac_shell_overlay::OverlayStack;
 use vac_shell_palette::{PaletteEvent, PaletteKey, PaletteViewState};
@@ -68,6 +72,9 @@ pub struct ShellAppProviders {
     pub session_recovery_provider: Option<
         Arc<dyn Fn(&str) -> Option<vac_shell_contracts::SessionRecoverySummary> + Send + Sync>,
     >,
+    /// D18 init checklist provider — injected by host entrypoint.
+    pub init_checklist_provider:
+        Option<Arc<dyn Fn() -> vac_shell_contracts::InitChecklistViewModel + Send + Sync>>,
 }
 
 /// All view state owned by the app. Each widget's state is
@@ -85,6 +92,7 @@ pub struct ShellApp {
     pub diff_review: DiffReviewView,
     pub activity: ActivityView,
     pub logs_browser: ActivityLogBrowserView,
+    pub init_checklist: InitChecklistView,
     pub plan: Option<vac_shell_plan::PlanMetadata>,
     pub shell_popup: ShellPopupViewState,
     pub status_inputs: StatusInputs,
@@ -203,6 +211,22 @@ impl ShellApp {
         self.refresh_logs_browser();
         self.overlays
             .apply_intent(OverlayIntent::Open(ShellOverlay::Logs));
+        self.sync_visibility();
+    }
+
+    /// D18 — open init checklist with provider output.
+    fn open_init_checklist(&mut self) {
+        if let Some(provider) = &self.providers.init_checklist_provider {
+            self.init_checklist.model = provider();
+        } else {
+            self.init_checklist.model = vac_shell_contracts::InitChecklistViewModel {
+                title: "Init Checklist".to_string(),
+                rows: vec![],
+                next_action: Some("No init provider attached".to_string()),
+            };
+        }
+        self.overlays
+            .apply_intent(OverlayIntent::Open(ShellOverlay::Init));
         self.sync_visibility();
     }
 
@@ -326,6 +350,7 @@ impl ShellApp {
         self.shell_popup.visible = top == ShellOverlay::ShellPopup;
         self.approval_detail.visible = top == ShellOverlay::ApprovalDetail;
         self.logs_browser.visible = top == ShellOverlay::Logs;
+        self.init_checklist.visible = top == ShellOverlay::Init;
     }
 
     // -----------------------------------------------------------
@@ -424,6 +449,46 @@ impl ShellApp {
                 None
             }
             _ => None,
+        }
+    }
+
+    pub fn dispatch_init_checklist_key(&mut self, key: InitChecklistKey) -> Option<AppEvent> {
+        let event = on_init_key(&mut self.init_checklist, key);
+        match event {
+            InitChecklistEvent::Action(action) => match action {
+                InitChecklistAction::OpenDoctor => {
+                    self.overlays.apply_intent(OverlayIntent::CloseTop);
+                    self.sync_visibility();
+                    Some(AppEvent::PaletteSelected("/doctor".to_string()))
+                }
+                InitChecklistAction::OpenStatus => {
+                    self.overlays.apply_intent(OverlayIntent::CloseTop);
+                    self.sync_visibility();
+                    Some(AppEvent::PaletteSelected("/status".to_string()))
+                }
+                InitChecklistAction::OpenLogs => {
+                    self.open_logs_browser();
+                    None
+                }
+                InitChecklistAction::OpenSessions => {
+                    self.overlays.apply_intent(OverlayIntent::CloseTop);
+                    self.sync_visibility();
+                    Some(AppEvent::PaletteSelected("/sessions".to_string()))
+                }
+                InitChecklistAction::OpenModelSwitcher => {
+                    self.toggle_overlay(ShellOverlay::ModelSwitcher);
+                    None
+                }
+                InitChecklistAction::None => None,
+            },
+            InitChecklistEvent::Consumed => match key {
+                InitChecklistKey::Escape => {
+                    self.overlays.apply_intent(OverlayIntent::CloseTop);
+                    self.sync_visibility();
+                    None
+                }
+                _ => None,
+            },
         }
     }
 
@@ -627,6 +692,9 @@ impl ShellApp {
                     "/logs" => {
                         self.open_logs_browser();
                     }
+                    "/init" => {
+                        self.open_init_checklist();
+                    }
                     _ => {
                         // Unknown / non-built-in slash — observed
                         // by the host loop via `dispatch_palette_key`;
@@ -705,6 +773,9 @@ impl ShellApp {
             }
             ShellOverlay::Logs => {
                 vac_shell_activity::render_logs_browser(f, &self.logs_browser, overlay_area);
+            }
+            ShellOverlay::Init => {
+                render_init_checklist(f, &self.init_checklist, overlay_area);
             }
         }
     }

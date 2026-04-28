@@ -19,6 +19,8 @@ pub enum ShellOverlay {
     SessionBrowser,
     /// D17 — logs browser overlay.
     Logs,
+    /// D18 — init checklist overlay.
+    Init,
     /// Slice 20.1 — approval detail drawer on top of the compact bar.
     ApprovalDetail,
 }

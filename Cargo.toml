@@ -53,6 +53,7 @@ members = [
     "crates/vac_shell_plan",
     "crates/vac_shell_plan_view",
     "crates/vac_shell_diff_view",
+    "crates/vac_shell_init_checklist",
     "crates/vac_shell_activity",
     "crates/vac_shell_status_bar",
 
@@ -67,6 +68,7 @@ members = [
     "crates/vac_shell_host_plan",
     "crates/vac_shell_host_status",
     "crates/vac_shell_host_commands",
+    "crates/vac_shell_host_init",
     "crates/vac_shell_host_vac_config",
     "crates/vac_shell_composition",
 

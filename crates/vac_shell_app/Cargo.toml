@@ -22,6 +22,7 @@ vac_shell_plan_view = { path = "../vac_shell_plan_view" }
 vac_shell_diff_view = { path = "../vac_shell_diff_view" }
 vac_shell_activity = { path = "../vac_shell_activity" }
 vac_shell_approval_detail = { path = "../vac_shell_approval_detail" }
+vac_shell_init_checklist = { path = "../vac_shell_init_checklist" }
 vac_shell_popup = { path = "../vac_shell_popup" }
 vac_shell_host_model = { path = "../vac_shell_host_model" }
 vac_shell_host_approval = { path = "../vac_shell_host_approval" }
