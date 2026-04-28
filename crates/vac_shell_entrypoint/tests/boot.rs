@@ -3,7 +3,7 @@
 use std::process::ExitCode;
 
 use vac_shell_bridge::ProviderId;
-use vac_shell_contracts::{SessionRecoveryStatus, SessionRecoverySummary, VacPaths};
+use vac_shell_contracts::{SessionRecoveryStatus, VacPaths};
 use vac_shell_entrypoint::{build_shell_app, run_shell_app};
 use vac_shell_host_paths::VacPathsImpl;
 
@@ -337,7 +337,7 @@ fn fallback_records_activity_warning_on_corrupt_snapshot() {
     let path = paths.model_config_file();
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     std::fs::write(&path, b"{ this is not json").unwrap();
-    let mut app = build_shell_app(tmp.path());
+    let app = build_shell_app(tmp.path());
     let log = app.activity_log.as_ref().unwrap();
     let snap = log.snapshot();
     assert_eq!(snap.len(), 1);
@@ -345,6 +345,75 @@ fn fallback_records_activity_warning_on_corrupt_snapshot() {
     // Boot did NOT fail.
     let comp = app.composition().unwrap();
     assert!(comp.model_state.active_model().is_some());
+}
+
+// D16 — real cockpit path via OpenSessionBrowser key
+#[test]
+fn entrypoint_session_browser_populates_recovery_on_key() {
+    let tmp = tempfile::tempdir().unwrap();
+    let paths = VacPathsImpl::new(tmp.path());
+
+    // Create session transcript
+    let sessions_dir = paths.sessions_dir();
+    std::fs::create_dir_all(&sessions_dir).unwrap();
+    std::fs::write(sessions_dir.join("test-session.jsonl"), "operator: test").unwrap();
+
+    // Create checkpoint
+    let checkpoints_dir = paths.project_state_dir().join("checkpoints");
+    std::fs::create_dir_all(&checkpoints_dir).unwrap();
+    std::fs::write(checkpoints_dir.join("test-session.json"), r#"{"state":1}"#).unwrap();
+
+    let mut app = build_shell_app(tmp.path());
+
+    // Trigger session browser via GlobalKey
+    app.handle_global_key(vac_shell_app::GlobalKey::OpenSessionBrowser);
+
+    // Verify browser opened
+    assert!(app.session_browser.visible, "session browser should be visible");
+
+    // Verify tiles populated with recovery
+    let tiles = &app.session_browser.tiles;
+    assert!(!tiles.is_empty(), "at least one tile should exist");
+    assert!(
+        tiles[0].recovery.is_some(),
+        "tile should have recovery data"
+    );
+    assert_eq!(
+        tiles[0].recovery.as_ref().unwrap().status,
+        SessionRecoveryStatus::Ready,
+        "checkpoint should be Ready"
+    );
+}
+
+// D16 — real cockpit path via /sessions palette
+#[test]
+fn entrypoint_session_browser_populates_recovery_on_palette() {
+    let tmp = tempfile::tempdir().unwrap();
+    let paths = VacPathsImpl::new(tmp.path());
+
+    let sessions_dir = paths.sessions_dir();
+    std::fs::create_dir_all(&sessions_dir).unwrap();
+    std::fs::write(sessions_dir.join("palette-session.jsonl"), "operator: test").unwrap();
+
+    let checkpoints_dir = paths.project_state_dir().join("checkpoints");
+    std::fs::create_dir_all(&checkpoints_dir).unwrap();
+    std::fs::write(checkpoints_dir.join("palette-session.json"), r#"{"state":1}"#).unwrap();
+
+    let mut app = build_shell_app(tmp.path());
+
+    // Trigger via palette /sessions
+    app.apply_event(vac_shell_app::AppEvent::PaletteSelected("/sessions".into()))
+        .unwrap();
+
+    // Verify browser opened
+    assert!(app.session_browser.visible);
+
+    let tiles = &app.session_browser.tiles;
+    assert!(!tiles.is_empty());
+    assert_eq!(
+        tiles[0].recovery.as_ref().unwrap().status,
+        SessionRecoveryStatus::Ready
+    );
 }
 
 #[test]

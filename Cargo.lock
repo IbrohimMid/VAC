@@ -6549,7 +6549,6 @@ dependencies = [
  "vac_shell_host_vac_command_adapter",
  "vac_shell_host_vac_config",
  "vac_shell_host_vac_tool_dispatcher",
- "vac_shell_keymap",
  "vac_shell_runtime_loop",
  "vac_tool_core",
  "vac_tools",
