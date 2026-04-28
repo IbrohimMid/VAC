@@ -75,9 +75,12 @@ enum Commands {
         /// Ephemeral run (disables trajectory)
         #[arg(long)]
         ephemeral: bool,
-        /// Run in a sandbox
+        /// Provider adapter (today only `mock`/`echo`; real providers land later).
+        #[arg(long, default_value = "mock")]
+        provider: String,
+        /// Sandbox mode (Codex-grade spelling).
         #[arg(long)]
-        sandbox: bool,
+        sandbox: Option<String>,
     },
     /// Interactive REPL mode
     #[command(next_help_heading = "Run", visible_alias = "chat")]
@@ -719,17 +722,40 @@ async fn main() -> anyhow::Result<()> {
                         prompt,
                         ephemeral,
                         sandbox,
+                        provider,
                     } => {
-                        // C-TRACK Blueprint: Use existing run/session-run path
-                        // Map `exec` to `session-run` internally.
-                        let docker_image = if sandbox {
-                            Some("default".to_string())
+                        let provider_kind = commands::session::ProviderKind::parse(&provider)
+                            .map_err(|e| anyhow::anyhow!("invalid --provider: {e}"))?;
+
+                        let docker_image = if let Some(mode) = sandbox {
+                            let sandbox_mode = vac_core::config::UserSandboxMode::parse_user(&mode)
+                                .map_err(|e| anyhow::anyhow!("invalid --sandbox: {e}"))?;
+                            match sandbox_mode {
+                                vac_core::config::UserSandboxMode::DangerFullAccess => None,
+                                vac_core::config::UserSandboxMode::ReadOnly
+                                | vac_core::config::UserSandboxMode::WorkspaceWrite => {
+                                    let cfg = vac_core::VacConfig::load_with_fallback(&project_root)?;
+                                    let image = cfg
+                                        .runtime
+                                        .container_image
+                                        .as_deref()
+                                        .unwrap_or_default()
+                                        .trim();
+                                    if image.is_empty() {
+                                        anyhow::bail!(
+                                            "sandbox '{}' requires runtime.container_image to be set (see .vac/config.toml)",
+                                            sandbox_mode.as_cli_str()
+                                        );
+                                    }
+                                    Some(image.to_string())
+                                }
+                            }
                         } else {
                             None
                         };
                         let opts = commands::session::SessionRunOptions {
                             input: prompt,
-                            provider: commands::session::ProviderKind::Mock,
+                            provider: provider_kind,
                             trajectory: !ephemeral,
                             docker_image,
                         };
