@@ -14,7 +14,7 @@ D1–D18 are sealed.
 
 | Last sealed SHA | Description |
 |---|---|
-| `6f581b21` | D18 PASS after hardening (Init Checklist Surface) |
+| `7360b24b` | D18 PASS after hardening (Init Checklist Surface) |
 | `3b3b8bd7` | D17 PASS after clean hardening (Unified Logs Browser Surface) |
 | `c46e4cff` | D16 PASS after final seal nits (checkpoint-aware session recovery surface) |
 | `60cc7859` | D15 PASS after review (approval detail recursive redaction hardening) |
