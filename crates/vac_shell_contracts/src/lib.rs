@@ -37,7 +37,7 @@ pub mod shell;
 pub mod status;
 pub mod tool_ui_status;
 
-pub use activity::{Severity, ShellActivityEntry, ShellActivityKind};
+pub use activity::{Severity, ShellActivityEntry, ShellActivityFilter, ShellActivityKind};
 pub use approval::{ApprovalDetailView, RiskLevel, VacApprovalBridge};
 pub use diff::{DiffFileView, DiffHunkView, DiffLineKind, DiffLineView, DiffReviewEvent};
 pub use events::{VacShellEvent, VacSubmitRequest};

@@ -29,6 +29,7 @@
 | **D14** | Dedicated Diagnostic/Status Activity Kinds. Replaces temporary ToolResult reuse for /doctor and /status rows with `ShellActivityKind::Diagnostic` and `ShellActivityKind::Status`; true tool-use rows remain `ToolResult`. | PASS after review (SHA `4e1b01030c9c10fbd1eb392a4d16a0c1e29df3e2`) |
 | **D15** | Approval Detail Recursive Redaction Hardening. Provider-level approval detail tests now pin recursive redaction for nested objects, arrays, mixed safe/secret fields, and case-insensitive nested keys. | PASS after review (SHA `60cc7859d4c07a1d308858793bd99500995de5cb`) |
 | **D16** | Checkpoint-Aware Session Recovery Surface. Session browser now displays recovery badges (Ready/Missing/Corrupt/Unknown) per tile, shows checkpoint details in right panel, and logs resume outcomes to ActivityLog. Recovery provider wired in build_shell_app(). No engine resume execution — surface only. | PASS after final seal nits (SHA `c46e4cffa8032cb31e93895ea3e88e0a7fd0a264`) |
+| **D17** | Unified Logs Browser Surface. A cockpit-visible `/logs` overlay that reads from existing `ActivityLog::snapshot()`, with filter (All/Errors/Warnings/Status/Diagnostics/Tools/Approvals), search, and scroll. Uses ShellActivityFilter enum in contracts. No persistent log backend added. | IMPLEMENTED — pending review |
 | **RC gate** | This doc + `DOGFOOD_CHECKLIST.md` + map update | PASS (post-hardening) |
 
 ## Crate inventory after the batch

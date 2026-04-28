@@ -44,7 +44,7 @@ pub trait ShellCommandExecutor: Send + Sync {
 /// Built-in slashes handled directly by `ShellApp::apply_event`.
 /// Kept here so the executor router can shortcut without going
 /// through the app on every keystroke.
-const BUILT_IN_SLASHES: &[&str] = &["/chat", "/runtime", "/model", "/sessions"];
+const BUILT_IN_SLASHES: &[&str] = &["/chat", "/runtime", "/model", "/sessions", "/logs"];
 
 fn is_built_in(slash: &str) -> bool {
     BUILT_IN_SLASHES.contains(&slash)

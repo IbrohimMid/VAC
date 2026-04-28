@@ -25,6 +25,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use vac_shell_app::{AppError, AppEvent, GlobalKey, ShellApp};
 use vac_shell_approval_bar::ApprovalBarKey;
 use vac_shell_approval_detail::DetailKey;
+use vac_shell_activity::LogsBrowserKey;
 use vac_shell_contracts::ShellOverlay;
 use vac_shell_diff_view::DiffReviewKey;
 use vac_shell_model_switcher::SwitcherKey;
@@ -43,6 +44,7 @@ pub enum RoutedKey {
     DiffReview(DiffReviewKey),
     ApprovalBar(ApprovalBarKey),
     ApprovalDetail(DetailKey),
+    Logs(LogsBrowserKey),
     Ignored,
 }
 
@@ -73,6 +75,9 @@ pub fn route_key(event: KeyEvent, active_overlay: ShellOverlay) -> RoutedKey {
             .unwrap_or(RoutedKey::Ignored),
         ShellOverlay::ApprovalDetail => match_approval_detail(event)
             .map(RoutedKey::ApprovalDetail)
+            .unwrap_or(RoutedKey::Ignored),
+        ShellOverlay::Logs => match_logs_browser(event)
+            .map(RoutedKey::Logs)
             .unwrap_or(RoutedKey::Ignored),
         ShellOverlay::Shortcuts
         | ShellOverlay::ShellPopup
@@ -196,6 +201,25 @@ fn match_approval_detail(ev: KeyEvent) -> Option<DetailKey> {
     }
 }
 
+fn match_logs_browser(ev: KeyEvent) -> Option<LogsBrowserKey> {
+    match ev.code {
+        KeyCode::Up => Some(LogsBrowserKey::ScrollUp),
+        KeyCode::Down => Some(LogsBrowserKey::ScrollDown),
+        KeyCode::Char('1') => Some(LogsBrowserKey::FilterAll),
+        KeyCode::Char('2') => Some(LogsBrowserKey::FilterErrors),
+        KeyCode::Char('3') => Some(LogsBrowserKey::FilterWarnings),
+        KeyCode::Char('4') => Some(LogsBrowserKey::FilterStatus),
+        KeyCode::Char('5') => Some(LogsBrowserKey::FilterDiagnostics),
+        KeyCode::Char('6') => Some(LogsBrowserKey::FilterTools),
+        KeyCode::Char('7') => Some(LogsBrowserKey::FilterApprovals),
+        KeyCode::Char('/') => Some(LogsBrowserKey::Search),
+        KeyCode::Char(c) => Some(LogsBrowserKey::Char(c)),
+        KeyCode::Backspace => Some(LogsBrowserKey::Backspace),
+        KeyCode::Esc => Some(LogsBrowserKey::Escape),
+        _ => None,
+    }
+}
+
 // =====================================================================
 // D2.1 — dispatch adapter
 // =====================================================================
@@ -222,6 +246,7 @@ pub fn dispatch_routed_key(
         RoutedKey::DiffReview(k) => Ok(app.dispatch_diff_review_key(k)),
         RoutedKey::ApprovalBar(k) => Ok(app.dispatch_approval_bar_key(k)),
         RoutedKey::ApprovalDetail(k) => Ok(app.dispatch_approval_detail_key(k)),
+        RoutedKey::Logs(k) => Ok(app.dispatch_logs_browser_key(k)),
         RoutedKey::Ignored => Ok(None),
     }
 }

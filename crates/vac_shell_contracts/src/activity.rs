@@ -3,6 +3,18 @@
 
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+pub enum ShellActivityFilter {
+    #[default]
+    All,
+    Errors,
+    Warnings,
+    Status,
+    Diagnostics,
+    Tools,
+    Approvals,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ShellActivityKind {
     UserInput,

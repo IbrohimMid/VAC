@@ -17,6 +17,8 @@ pub enum ShellOverlay {
     Plan,
     DiffReview,
     SessionBrowser,
+    /// D17 — logs browser overlay.
+    Logs,
     /// Slice 20.1 — approval detail drawer on top of the compact bar.
     ApprovalDetail,
 }

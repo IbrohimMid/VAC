@@ -26,7 +26,7 @@ use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
 };
-use vac_shell_activity::ActivityView;
+use vac_shell_activity::{ActivityLogBrowserView, ActivityView, LogsBrowserKey, on_logs_browser_key};
 use vac_shell_approval_bar::{
     ApprovalActionView, ApprovalBarEvent, ApprovalBarKey, ApprovalBarViewState, ApprovalStatus,
 };
@@ -82,6 +82,7 @@ pub struct ShellApp {
     pub session_browser: SessionBrowserView,
     pub diff_review: DiffReviewView,
     pub activity: ActivityView,
+    pub logs_browser: ActivityLogBrowserView,
     pub plan: Option<vac_shell_plan::PlanMetadata>,
     pub shell_popup: ShellPopupViewState,
     pub status_inputs: StatusInputs,
@@ -183,6 +184,13 @@ impl ShellApp {
         self.approval_bar.visible = !self.approval_bar.actions.is_empty();
         if self.approval_bar.selected_index >= self.approval_bar.actions.len() {
             self.approval_bar.selected_index = 0;
+        }
+    }
+
+    /// D17 — refresh logs browser from the activity log snapshot.
+    pub fn refresh_logs_browser(&mut self) {
+        if let Some(ref log) = self.activity_log {
+            self.logs_browser.entries = log.snapshot();
         }
     }
 
@@ -305,6 +313,7 @@ impl ShellApp {
         self.diff_review.visible = top == ShellOverlay::DiffReview;
         self.shell_popup.visible = top == ShellOverlay::ShellPopup;
         self.approval_detail.visible = top == ShellOverlay::ApprovalDetail;
+        self.logs_browser.visible = top == ShellOverlay::Logs;
     }
 
     // -----------------------------------------------------------
@@ -386,6 +395,18 @@ impl ShellApp {
             DetailEvent::Approve(id) => Some(AppEvent::ApprovalDecision { id, approve: true }),
             DetailEvent::Reject(id) => Some(AppEvent::ApprovalDecision { id, approve: false }),
             DetailEvent::Dismissed => {
+                self.overlays.apply_intent(OverlayIntent::CloseTop);
+                self.sync_visibility();
+                None
+            }
+            _ => None,
+        }
+    }
+
+    pub fn dispatch_logs_browser_key(&mut self, key: LogsBrowserKey) -> Option<AppEvent> {
+        on_logs_browser_key(&mut self.logs_browser, key);
+        match key {
+            LogsBrowserKey::Escape => {
                 self.overlays.apply_intent(OverlayIntent::CloseTop);
                 self.sync_visibility();
                 None
@@ -591,6 +612,10 @@ impl ShellApp {
                             .apply_intent(OverlayIntent::Open(ShellOverlay::SessionBrowser));
                         self.sync_visibility();
                     }
+                    "/logs" => {
+                        self.overlays.apply_intent(OverlayIntent::Open(ShellOverlay::Logs));
+                        self.sync_visibility();
+                    }
                     _ => {
                         // Unknown / non-built-in slash — observed
                         // by the host loop via `dispatch_palette_key`;
@@ -666,6 +691,9 @@ impl ShellApp {
                     &self.approval_detail,
                     overlay_area,
                 );
+            }
+            ShellOverlay::Logs => {
+                vac_shell_activity::render_logs_browser(f, &self.logs_browser, overlay_area);
             }
         }
     }

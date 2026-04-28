@@ -6822,6 +6822,7 @@ version = "0.1.0"
 dependencies = [
  "crossterm",
  "tempfile",
+ "vac_shell_activity",
  "vac_shell_app",
  "vac_shell_approval_bar",
  "vac_shell_approval_detail",
