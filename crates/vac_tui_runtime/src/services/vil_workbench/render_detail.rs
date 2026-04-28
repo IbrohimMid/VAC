@@ -145,20 +145,27 @@ pub fn render_lineage_panel(f: &mut Frame, state: &AppState, area: Rect, view: &
         ]),
         Line::from(vec![
             Span::styled("Source: ", Style::default().add_modifier(Modifier::BOLD)),
-            Span::styled(issue.source.clone(), state.core.theme.style(StyleKey::Muted)),
+            Span::styled(
+                issue.source.clone(),
+                state.core.theme.style(StyleKey::Muted),
+            ),
         ]),
     ];
     if let (Some(f), Some(l)) = (&issue.file, issue.line) {
         meta_lines.push(Line::from(vec![
             Span::styled("Location: ", Style::default().add_modifier(Modifier::BOLD)),
-            Span::styled(format!("{}:{}", f, l), state.core.theme.style(StyleKey::Accent)),
+            Span::styled(
+                format!("{}:{}", f, l),
+                state.core.theme.style(StyleKey::Accent),
+            ),
         ]));
     }
     if issue.inferred {
         meta_lines.push(Line::from(Span::styled(
             "[inferred]",
             state
-                .core.theme
+                .core
+                .theme
                 .style(StyleKey::Muted)
                 .add_modifier(Modifier::ITALIC),
         )));
@@ -173,7 +180,8 @@ pub fn render_lineage_panel(f: &mut Frame, state: &AppState, area: Rect, view: &
         let mut lines = vec![Line::from(Span::styled(
             "Repair suggestion:",
             state
-                .core.theme
+                .core
+                .theme
                 .style(StyleKey::Success)
                 .add_modifier(Modifier::BOLD),
         ))];

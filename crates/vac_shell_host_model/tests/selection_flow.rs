@@ -18,18 +18,14 @@
 
 use std::sync::Arc;
 
-use ratatui::backend::TestBackend;
 use ratatui::Terminal;
-use vac_shell_bridge::{
-    CompositeShellHost, ModelController, ProviderId, ShellAction, ShellHost,
-};
+use ratatui::backend::TestBackend;
+use vac_shell_bridge::{CompositeShellHost, ModelController, ProviderId, ShellAction, ShellHost};
 use vac_shell_host_model::{
-    HostModel, ModelSelectionController, ModelSelectionState, ProviderInfo,
-    build_switcher_view, switcher_event_to_action,
+    HostModel, ModelSelectionController, ModelSelectionState, ProviderInfo, build_switcher_view,
+    switcher_event_to_action,
 };
-use vac_shell_model_switcher::{
-    SwitcherEvent, SwitcherKey, on_key, render_model_switcher,
-};
+use vac_shell_model_switcher::{SwitcherEvent, SwitcherKey, on_key, render_model_switcher};
 
 fn seed_state() -> ModelSelectionState {
     let providers = vec![
@@ -61,16 +57,12 @@ fn seed_state() -> ModelSelectionState {
     ModelSelectionState::new(
         providers,
         models,
-        Some((
-            ProviderId("anthropic".into()),
-            "claude-sonnet-4.5".into(),
-        )),
+        Some((ProviderId("anthropic".into()), "claude-sonnet-4.5".into())),
     )
 }
 
 fn build_host(state: ModelSelectionState) -> Arc<dyn ShellHost> {
-    let controller: Arc<dyn ModelController> =
-        Arc::new(ModelSelectionController::new(state));
+    let controller: Arc<dyn ModelController> = Arc::new(ModelSelectionController::new(state));
     Arc::new(CompositeShellHost::new().with_model(controller))
 }
 
@@ -88,8 +80,7 @@ fn widget_event_to_host_mutation_to_render_active_tag() {
     on_key(&mut view, SwitcherKey::Down);
     let event = on_key(&mut view, SwitcherKey::Enter);
 
-    let action =
-        switcher_event_to_action(event).expect("Selected event must produce an action");
+    let action = switcher_event_to_action(event).expect("Selected event must produce an action");
     match &action {
         ShellAction::SelectModel { provider, id } => {
             assert_eq!(provider, &ProviderId("openai".into()));
@@ -150,10 +141,7 @@ fn dismissed_event_does_not_produce_an_action_or_mutate_host() {
     // exactly where it started.
     assert_eq!(
         state.active_model(),
-        Some((
-            ProviderId("anthropic".into()),
-            "claude-sonnet-4.5".into()
-        ))
+        Some((ProviderId("anthropic".into()), "claude-sonnet-4.5".into()))
     );
     assert!(state.recent_snapshot().is_empty());
 

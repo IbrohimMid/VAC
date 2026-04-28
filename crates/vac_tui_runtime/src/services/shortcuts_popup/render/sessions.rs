@@ -38,7 +38,8 @@ pub fn render_sessions_section(
             Span::styled(
                 search_term.clone(),
                 state
-                    .core.theme
+                    .core
+                    .theme
                     .style(StyleKey::Text)
                     .add_modifier(Modifier::BOLD),
             ),
@@ -51,7 +52,8 @@ pub fn render_sessions_section(
     // Filter sessions by search term
     let search_lower = search_term.to_lowercase();
     let filtered_sessions: Vec<(usize, &crate::app::SessionInfo)> = state
-        .session.sessions
+        .session
+        .sessions
         .iter()
         .enumerate()
         .filter(|(_, s)| search_term.is_empty() || s.title.to_lowercase().contains(&search_lower))
@@ -74,7 +76,9 @@ pub fn render_sessions_section(
         f.render_widget(Paragraph::new(""), scroll_area);
     } else {
         let selected_in_filtered = state
-            .operator_config.operator.sessions_selected_idx
+            .operator_config
+            .operator
+            .sessions_selected_idx
             .min(total_filtered.saturating_sub(1));
 
         let max_scroll = total_filtered.saturating_sub(height);
@@ -120,12 +124,14 @@ pub fn render_sessions_section(
 
             let style = if is_selected {
                 let fg = state
-                    .core.theme
+                    .core
+                    .theme
                     .style(StyleKey::HighlightFg)
                     .fg
                     .unwrap_or(C::Reset);
                 let bg = state
-                    .core.theme
+                    .core
+                    .theme
                     .style(StyleKey::HighlightBg)
                     .fg
                     .unwrap_or(C::Reset);

@@ -10,10 +10,13 @@ use crate::services::textarea::TextArea;
 use crate::types::*;
 
 use super::{
-    ActivityItem, ActivityKind, AppState, ApprovalsState, AskUserState, AtMentionState, BannerState, ChangesetUiState, CommandPaletteState, FileIndexState, FilePickerState, HelperCommand, LoadingStateManager, LspUiState, MessageUiState, OperatorState, PasteState, PinsState, QuitState, ScrollState, SessionResumeState, SidePanelState, StreamingState, SwitchersState, TaskTrayState, ViewFlagsState, VilDevState, WorkbenchChromeState,
-    Message, QueueMetrics, RenderMetrics, ReviewItem, ReviewItemStatus, ReviewState, RuntimeState,
-    ShellState, StartupSnapshot, TokenUsage, VilLogEntry, VilState,
-    WorkbenchTab, WorkspaceFocus,
+    ActivityItem, ActivityKind, AppState, ApprovalsState, AskUserState, AtMentionState,
+    BannerState, ChangesetUiState, CommandPaletteState, FileIndexState, FilePickerState,
+    HelperCommand, LoadingStateManager, LspUiState, Message, MessageUiState, OperatorState,
+    PasteState, PinsState, QueueMetrics, QuitState, RenderMetrics, ReviewItem, ReviewItemStatus,
+    ReviewState, RuntimeState, ScrollState, SessionResumeState, ShellState, SidePanelState,
+    StartupSnapshot, StreamingState, SwitchersState, TaskTrayState, TokenUsage, ViewFlagsState,
+    VilDevState, VilLogEntry, VilState, WorkbenchChromeState, WorkbenchTab, WorkspaceFocus,
 };
 
 /// Options for creating AppState
@@ -92,7 +95,9 @@ impl AppState {
                 rate_limit: crate::services::rate_limit::RateLimitState::default(),
             },
             session: super::SessionDomainState {
-                session_id: options.session_id.unwrap_or_else(|| Uuid::new_v4().to_string()),
+                session_id: options
+                    .session_id
+                    .unwrap_or_else(|| Uuid::new_v4().to_string()),
                 sessions: Vec::new(),
                 session_meta: super::SessionMetaState {
                     title: None,
@@ -153,7 +158,11 @@ impl AppState {
     /// `messages` rather than denormalized so revert/reset operations don't
     /// need to remember to adjust a counter.
     pub fn user_message_count(&self) -> usize {
-        self.transcript.messages.iter().filter(|m| m.role == "user").count()
+        self.transcript
+            .messages
+            .iter()
+            .filter(|m| m.role == "user")
+            .count()
     }
 
     /// Replace any pasted-content placeholder tokens in `raw` with the real
@@ -207,13 +216,15 @@ impl AppState {
 
     pub fn filtered_commands(&self) -> Vec<HelperCommand> {
         let mut cmds: Vec<_> = if self.layout.command_palette.input.is_empty() {
-            self.layout.commands
+            self.layout
+                .commands
                 .iter()
                 .filter(|c| c.surface != crate::services::commands::CommandSurface::Hidden)
                 .cloned()
                 .collect()
         } else {
-            self.layout.commands
+            self.layout
+                .commands
                 .iter()
                 .filter(|c| {
                     c.surface != crate::services::commands::CommandSurface::Hidden
@@ -231,13 +242,17 @@ impl AppState {
 
         cmds.sort_by_key(|cmd| {
             let freq = self
-                .layout.command_palette.recent_commands
+                .layout
+                .command_palette
+                .recent_commands
                 .frequencies
                 .get(&cmd.command)
                 .copied()
                 .unwrap_or(0);
             let recent_idx = self
-                .layout.command_palette.recent_commands
+                .layout
+                .command_palette
+                .recent_commands
                 .history
                 .iter()
                 .position(|h| h == &cmd.command)
@@ -251,7 +266,9 @@ impl AppState {
     pub fn model_switcher_filtered(&self) -> Vec<Model> {
         let q = self.layout.switchers.model_filter.trim().to_lowercase();
         let mut out = self
-            .layout.switchers.available_models
+            .layout
+            .switchers
+            .available_models
             .iter()
             .filter(|m| {
                 q.is_empty()
@@ -263,7 +280,9 @@ impl AppState {
             .collect::<Vec<_>>();
         out.sort_by_key(|m| {
             let recent_idx = self
-                .layout.command_palette.recent_commands
+                .layout
+                .command_palette
+                .recent_commands
                 .recent_models
                 .iter()
                 .position(|r| r == &m.id)
@@ -275,7 +294,9 @@ impl AppState {
 
     pub fn profile_switcher_filtered(&self) -> Vec<String> {
         let q = self.layout.switchers.profile_search.trim().to_lowercase();
-        self.layout.switchers.available_profiles
+        self.layout
+            .switchers
+            .available_profiles
             .iter()
             .filter(|p| q.is_empty() || p.to_lowercase().contains(&q))
             .cloned()
@@ -284,7 +305,9 @@ impl AppState {
 
     pub fn rulebook_switcher_filtered(&self) -> Vec<crate::types::ListRuleBook> {
         let q = self.layout.switchers.rulebook_search.trim().to_lowercase();
-        self.layout.switchers.available_rulebooks
+        self.layout
+            .switchers
+            .available_rulebooks
             .iter()
             .filter(|r| {
                 q.is_empty()
@@ -302,13 +325,15 @@ impl AppState {
         let session_id = uuid::Uuid::parse_str(&self.session.session_id).ok();
         // Use changeset_store as primary source - active entries only
         let active_paths: std::collections::HashSet<String> = self
-            .workspace.changeset_store
+            .workspace
+            .changeset_store
             .active_entries()
             .iter()
             .map(|e| e.path.clone())
             .collect();
 
-        self.workspace.review
+        self.workspace
+            .review
             .items
             .retain(|k, v| active_paths.contains(k) || v.status != ReviewItemStatus::Pending);
 
@@ -316,11 +341,13 @@ impl AppState {
             let path = &entry.path;
             let has_snapshot = session_id
                 .map(|sid| {
-                    crate::services::review::snapshot_path(&self.core.project_root, sid, path).exists()
+                    crate::services::review::snapshot_path(&self.core.project_root, sid, path)
+                        .exists()
                 })
                 .unwrap_or(false);
 
-            self.workspace.review
+            self.workspace
+                .review
                 .items
                 .entry(path.clone())
                 .and_modify(|it| {
@@ -352,7 +379,8 @@ impl AppState {
 
         // Include any review_items not in store (e.g. Restored/Failed still visible)
         let mut extra: Vec<String> = self
-            .workspace.review
+            .workspace
+            .review
             .items
             .keys()
             .filter(|k| !seen.contains(*k))
@@ -392,7 +420,8 @@ impl AppState {
         if self.workspace.review.selected_idx >= paths.len() {
             self.workspace.review.selected_idx = paths.len() - 1;
         }
-        self.workspace.review.selected_path = Some(paths[self.workspace.review.selected_idx].clone());
+        self.workspace.review.selected_path =
+            Some(paths[self.workspace.review.selected_idx].clone());
     }
 
     pub fn review_select_by_delta(&mut self, delta: isize) {
@@ -413,7 +442,8 @@ impl AppState {
             idx = len - 1;
         }
         self.workspace.review.selected_idx = idx as usize;
-        self.workspace.review.selected_path = Some(paths[self.workspace.review.selected_idx].clone());
+        self.workspace.review.selected_path =
+            Some(paths[self.workspace.review.selected_idx].clone());
     }
 
     pub fn approval_normalize_selection(&mut self) {
@@ -422,8 +452,11 @@ impl AppState {
             self.approval_reset_detail();
             return;
         }
-        if self.execution.approvals.approval_selected_idx >= self.execution.approvals.pending_approvals.len() {
-            self.execution.approvals.approval_selected_idx = self.execution.approvals.pending_approvals.len() - 1;
+        if self.execution.approvals.approval_selected_idx
+            >= self.execution.approvals.pending_approvals.len()
+        {
+            self.execution.approvals.approval_selected_idx =
+                self.execution.approvals.pending_approvals.len() - 1;
             self.approval_reset_detail();
         }
     }
@@ -452,8 +485,18 @@ impl AppState {
     pub fn signal_registry(&self) -> vac_signal::SignalRegistry<'_> {
         let mut reg = vac_signal::SignalRegistry::new();
         reg.register("vil_dev", &self.vil_domain.vil_dev.output);
-        for (idx, session) in self.execution.shell.session_store.sessions.iter().enumerate() {
-            reg.register(format!("shell:{idx}:{}", session.id), &session.output_signal);
+        for (idx, session) in self
+            .execution
+            .shell
+            .session_store
+            .sessions
+            .iter()
+            .enumerate()
+        {
+            reg.register(
+                format!("shell:{idx}:{}", session.id),
+                &session.output_signal,
+            );
         }
         for (name, buf) in &self.execution.mcp_maps.server_signals {
             reg.register(format!("mcp:{name}"), buf);
@@ -482,8 +525,16 @@ mod tests {
     fn signal_registry_includes_vil_dev_and_shell_sessions() {
         let mut state = AppState::default();
         state.vil_domain.vil_dev.output.push_line("boot ok");
-        state.execution.shell.session_store.push_new("shell-0".to_string());
-        state.execution.shell.session_store.push_new("shell-1".to_string());
+        state
+            .execution
+            .shell
+            .session_store
+            .push_new("shell-0".to_string());
+        state
+            .execution
+            .shell
+            .session_store
+            .push_new("shell-1".to_string());
 
         let reg = state.signal_registry();
         let ids: Vec<_> = reg.ids().collect();
@@ -496,7 +547,11 @@ mod tests {
     fn vil_dev_distilled_is_none_when_empty_else_some() {
         let mut state = AppState::default();
         assert!(state.vil_dev_distilled(10).is_none());
-        state.vil_domain.vil_dev.output.push_line("Error: something");
+        state
+            .vil_domain
+            .vil_dev
+            .output
+            .push_line("Error: something");
         let view = state.vil_dev_distilled(5).expect("present");
         assert!(view.key_lines.iter().any(|l| l.contains("Error")));
     }

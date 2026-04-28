@@ -156,10 +156,8 @@ impl ChordKeymap {
         // (WorkbenchApprovals scope) leaked into the global keymap
         // and stole `Enter` everywhere — including the slash
         // dropdown's submit. Dogfood F6 root cause.
-        let scope_of: HashMap<ActionId, ActionContext> = ACTION_SPECS
-            .iter()
-            .map(|s| (s.id, s.scope))
-            .collect();
+        let scope_of: HashMap<ActionId, ActionContext> =
+            ACTION_SPECS.iter().map(|s| (s.id, s.scope)).collect();
         // Collect all (chord, id) pairs first so we can detect duplicate
         // chord bindings before the last-writer-wins `HashMap::insert`
         // hides them. We sort by ActionId enum order for deterministic
@@ -319,7 +317,9 @@ mod tests {
         let effective = crate::services::keybindings_loader::resolve_effective(&overrides);
         let keymap = ChordKeymap::from_effective(&effective);
         assert!(
-            keymap.lookup(&press(KeyCode::Enter, KeyModifiers::NONE)).is_none(),
+            keymap
+                .lookup(&press(KeyCode::Enter, KeyModifiers::NONE))
+                .is_none(),
             "Workbench-scoped Enter chord must not appear in global lookup",
         );
         // The accepted bindings list should NOT contain

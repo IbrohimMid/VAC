@@ -49,12 +49,7 @@ pub async fn execute(project_root: PathBuf) -> anyhow::Result<()> {
             Some(s) => format!("  → {s}"),
             None => String::new(),
         };
-        println!(
-            "[{}]  {}{}",
-            item.status.glyph(),
-            item.label,
-            suggestion
-        );
+        println!("[{}]  {}{}", item.status.glyph(), item.label, suggestion);
     }
     println!();
     let missing = items
@@ -178,10 +173,7 @@ async fn check_lsp_server_with_env(name: &str, env_var: &str) -> OnboardItem {
     // Operator override via env takes precedence in the probe.
     let bin = std::env::var(env_var).unwrap_or_else(|_| name.to_string());
     let on_path = std::env::var_os("PATH")
-        .and_then(|p| {
-            std::env::split_paths(&p)
-                .find(|dir| dir.join(&bin).is_file())
-        })
+        .and_then(|p| std::env::split_paths(&p).find(|dir| dir.join(&bin).is_file()))
         .is_some();
     if on_path {
         OnboardItem {
@@ -193,9 +185,7 @@ async fn check_lsp_server_with_env(name: &str, env_var: &str) -> OnboardItem {
         OnboardItem {
             status: OnboardStatus::Info,
             label: format!("LSP: {bin} not on PATH (language degraded)"),
-            suggestion: Some(format!(
-                "install {bin} or set {env_var} to an alternative"
-            )),
+            suggestion: Some(format!("install {bin} or set {env_var} to an alternative")),
         }
     }
 }
@@ -241,8 +231,12 @@ mod tests {
     #[tokio::test]
     async fn config_present_reports_ok() {
         let tmp = tempfile::tempdir().unwrap();
-        tokio::fs::create_dir_all(tmp.path().join(".vac")).await.unwrap();
-        tokio::fs::write(tmp.path().join(".vac/config.toml"), "").await.unwrap();
+        tokio::fs::create_dir_all(tmp.path().join(".vac"))
+            .await
+            .unwrap();
+        tokio::fs::write(tmp.path().join(".vac/config.toml"), "")
+            .await
+            .unwrap();
         let item = check_config_toml(tmp.path()).await;
         assert_eq!(item.status, OnboardStatus::Ok);
     }

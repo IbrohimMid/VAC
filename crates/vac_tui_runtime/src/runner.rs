@@ -291,12 +291,18 @@ pub async fn run_vac_tui_with_io(
                         };
                         if result.result.contains("\"yes\"") {
                             let mut task_prompt = String::new();
-                            let writer = vac_session_engine::TranscriptWriter::new(runtime_project_root.clone());
+                            let writer = vac_session_engine::TranscriptWriter::new(
+                                runtime_project_root.clone(),
+                            );
                             if let Ok(rows) = writer.read(sid).await {
-                                if let Some(accepted) = rows.iter().find(|r| r.kind == vac_session_engine::TranscriptKind::Accepted) {
+                                if let Some(accepted) = rows.iter().find(|r| {
+                                    r.kind == vac_session_engine::TranscriptKind::Accepted
+                                }) {
                                     if let Some(prompt) = accepted.content.as_str() {
                                         task_prompt = prompt.to_string();
-                                    } else if let Some(prompt) = accepted.content.get("prompt").and_then(|v| v.as_str()) {
+                                    } else if let Some(prompt) =
+                                        accepted.content.get("prompt").and_then(|v| v.as_str())
+                                    {
                                         task_prompt = prompt.to_string();
                                     }
                                 }
@@ -311,9 +317,12 @@ pub async fn run_vac_tui_with_io(
                                 active_update_tx_clone.clone(),
                                 task_prompt,
                                 vec![],
-                            ).await;
+                            )
+                            .await;
                         } else {
-                            let writer = vac_session_engine::TranscriptWriter::new(runtime_project_root.clone());
+                            let writer = vac_session_engine::TranscriptWriter::new(
+                                runtime_project_root.clone(),
+                            );
                             let aborted = vac_session_engine::TranscriptEntry::new(
                                 sid,
                                 vac_session_engine::TranscriptKind::Aborted,

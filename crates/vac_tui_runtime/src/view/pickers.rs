@@ -20,7 +20,12 @@ pub(super) fn render_file_picker(f: &mut Frame, state: &mut AppState) {
         .constraints([Constraint::Length(3), Constraint::Min(1)])
         .split(area);
 
-    let cwd_label = state.workspace.file_picker.cwd.to_string_lossy().to_string();
+    let cwd_label = state
+        .workspace
+        .file_picker
+        .cwd
+        .to_string_lossy()
+        .to_string();
     let title = format!(
         " Files  {}  (Space=select  Tab=enter  Bsp=up  Enter=confirm  Esc) ",
         cwd_label
@@ -46,7 +51,9 @@ pub(super) fn render_file_picker(f: &mut Frame, state: &mut AppState) {
     f.render_widget(list_block, split[0]);
 
     let items: Vec<ListItem> = state
-        .workspace.file_picker.results
+        .workspace
+        .file_picker
+        .results
         .iter()
         .enumerate()
         .map(|(i, path)| {
@@ -85,7 +92,9 @@ pub(super) fn render_file_picker(f: &mut Frame, state: &mut AppState) {
     let preview_inner = preview_block.inner(split[1]);
     f.render_widget(preview_block, split[1]);
     let preview_text = state
-        .workspace.file_picker.preview
+        .workspace
+        .file_picker
+        .preview
         .as_deref()
         .unwrap_or("(select a file to preview)");
     let preview_para = Paragraph::new(preview_text)
@@ -119,7 +128,8 @@ pub(super) fn render_task_tray(f: &mut Frame, state: &mut AppState) {
     let width = 52u16.min(area.width.saturating_sub(2));
     let jobs: Vec<_> = if state.execution.task_tray.filter_active_only {
         state
-            .execution.runtime
+            .execution
+            .runtime
             .jobs
             .iter()
             .filter(|j| matches!(j.status, JobStatus::Running | JobStatus::Queued))
@@ -185,12 +195,16 @@ pub(super) fn render_task_tray(f: &mut Frame, state: &mut AppState) {
         if row_y >= inner.y.saturating_add(inner.height) {
             break;
         }
-        state.layout.workbench_chrome.task_tray_row_regions.push(Rect {
-            x: inner.x,
-            y: row_y,
-            width: inner.width,
-            height: 1,
-        });
+        state
+            .layout
+            .workbench_chrome
+            .task_tray_row_regions
+            .push(Rect {
+                x: inner.x,
+                y: row_y,
+                width: inner.width,
+                height: 1,
+            });
     }
 }
 
@@ -275,7 +289,9 @@ pub(super) fn render_session_resume(f: &mut Frame, state: &mut AppState) {
         .enumerate()
         .filter_map(|(display_i, &list_i)| {
             state
-                .layout.session_resume.list
+                .layout
+                .session_resume
+                .list
                 .get(list_i)
                 .map(|e| (display_i, e))
         })

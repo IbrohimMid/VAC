@@ -145,11 +145,7 @@ impl HookStore {
     }
 
     /// Select entries matching an event + tool name.
-    pub fn matches<'a>(
-        &'a self,
-        event: HookEvent,
-        tool_name: &str,
-    ) -> Vec<&'a HookEntry> {
+    pub fn matches<'a>(&'a self, event: HookEvent, tool_name: &str) -> Vec<&'a HookEntry> {
         self.entries
             .iter()
             .filter(|e| e.event == event)
@@ -284,10 +280,7 @@ pub fn validate_hook_store(store: &HookStore) -> EngineResult<()> {
         }
         if !entry.matcher.is_empty() {
             regex::Regex::new(&entry.matcher).map_err(|e| {
-                EngineError::Other(format!(
-                    "hook '{}' matcher regex invalid: {e}",
-                    entry.id
-                ))
+                EngineError::Other(format!("hook '{}' matcher regex invalid: {e}", entry.id))
             })?;
         }
         match &entry.command {
@@ -515,10 +508,7 @@ pub async fn exec_hook(entry: &HookEntry) -> EngineResult<HookDecision> {
 /// failure so `pre_exec` aborts the spawn — a silently dropped
 /// limit would defeat the sandbox.
 #[cfg(unix)]
-fn apply_rlimit(
-    resource: RlimitResource,
-    soft: u64,
-) -> std::io::Result<()> {
+fn apply_rlimit(resource: RlimitResource, soft: u64) -> std::io::Result<()> {
     if soft == 0 {
         return Ok(());
     }
@@ -616,9 +606,7 @@ mod tests {
     fn create_rejects_duplicate_id() {
         let mut s = HookStore::default();
         s.create(entry("a", vec!["true".into()])).unwrap();
-        let err = s
-            .create(entry("a", vec!["true".into()]))
-            .unwrap_err();
+        let err = s.create(entry("a", vec!["true".into()])).unwrap_err();
         assert!(format!("{err}").contains("already registered"));
     }
 
@@ -698,7 +686,9 @@ mod tests {
                 id: "h1".into(),
                 event: HookEvent::PreToolUse,
                 matcher: "(unclosed".into(),
-                command: HookCommand::Command { argv: vec!["true".into()] },
+                command: HookCommand::Command {
+                    argv: vec!["true".into()],
+                },
                 description: String::new(),
             }],
         };
@@ -714,10 +704,14 @@ mod tests {
             id: "p1".into(),
             event: HookEvent::UserPromptSubmit,
             matcher: String::new(),
-            command: HookCommand::Prompt { prompt: "system".into() },
+            command: HookCommand::Prompt {
+                prompt: "system".into(),
+            },
             description: String::new(),
         };
-        let d = exec_hook_sandboxed(&e, &HookSandbox::permissive()).await.unwrap();
+        let d = exec_hook_sandboxed(&e, &HookSandbox::permissive())
+            .await
+            .unwrap();
         match d {
             HookDecision::Deny { reason } => {
                 assert!(reason.contains("not yet implemented"), "{reason}");
@@ -739,7 +733,9 @@ mod tests {
             },
             description: String::new(),
         };
-        let d = exec_hook_sandboxed(&e, &HookSandbox::permissive()).await.unwrap();
+        let d = exec_hook_sandboxed(&e, &HookSandbox::permissive())
+            .await
+            .unwrap();
         match d {
             HookDecision::Deny { reason } => {
                 assert!(reason.contains("kind=agent"), "{reason}");
@@ -759,7 +755,9 @@ mod tests {
             },
             description: String::new(),
         };
-        let d = exec_hook_sandboxed(&e, &HookSandbox::permissive()).await.unwrap();
+        let d = exec_hook_sandboxed(&e, &HookSandbox::permissive())
+            .await
+            .unwrap();
         match d {
             HookDecision::Deny { reason } => {
                 assert!(reason.contains("kind=http"), "{reason}");
@@ -797,10 +795,7 @@ mod tests {
                     description: String::new(),
                 }],
             };
-            assert!(
-                validate_hook_store(&store).is_ok(),
-                "should accept {url}"
-            );
+            assert!(validate_hook_store(&store).is_ok(), "should accept {url}");
         }
     }
 
@@ -843,7 +838,10 @@ mod tests {
         assert!(op.cpu_secs > strict.cpu_secs);
         assert!(op.wall_clock > strict.wall_clock);
         assert!(op.nofile > strict.nofile);
-        assert!(op.env_allowlist.is_some(), "operator tier keeps env allowlist");
+        assert!(
+            op.env_allowlist.is_some(),
+            "operator tier keeps env allowlist"
+        );
     }
 
     #[test]
@@ -853,7 +851,9 @@ mod tests {
                 id: "bad id!".into(),
                 event: HookEvent::PreToolUse,
                 matcher: String::new(),
-                command: HookCommand::Command { argv: vec!["true".into()] },
+                command: HookCommand::Command {
+                    argv: vec!["true".into()],
+                },
                 description: String::new(),
             }],
         };

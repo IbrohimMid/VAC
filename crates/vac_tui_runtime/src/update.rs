@@ -17,7 +17,10 @@ pub fn flush_pending_user_messages_if_idle(
     input_tx: &Sender<InputEvent>,
     output_tx: &Sender<OutputEvent>,
 ) {
-    if state.core.loading_manager.is_loading() || state.core.loading || state.transcript.streaming.is_streaming {
+    if state.core.loading_manager.is_loading()
+        || state.core.loading
+        || state.transcript.streaming.is_streaming
+    {
         return;
     }
 
@@ -79,12 +82,18 @@ pub fn flush_pending_user_messages_if_idle(
 
             // On repeated flush failure (3+ retries), push a toast to notify the operator
             if state.execution.queue_metrics.flush_retries >= 3 {
-                state.layout.toasts.push(crate::services::Toast::error(format!(
-                    "Message queue flush failing ({} retries): {}",
-                    state.execution.queue_metrics.flush_retries, error_msg
-                )));
+                state
+                    .layout
+                    .toasts
+                    .push(crate::services::Toast::error(format!(
+                        "Message queue flush failing ({} retries): {}",
+                        state.execution.queue_metrics.flush_retries, error_msg
+                    )));
                 if state.layout.toasts.len() > 3 {
-                    state.layout.toasts.drain(0..state.layout.toasts.len().saturating_sub(3));
+                    state
+                        .layout
+                        .toasts
+                        .drain(0..state.layout.toasts.len().saturating_sub(3));
                 }
             }
         }
@@ -144,7 +153,13 @@ pub fn handle_backend_event(
             state.transcript.streaming.tokens = 0;
             // Stream/LLM turns end here; scan the most recent assistant message
             // for a `<todo>` block and refresh the side-panel surface.
-            if let Some(last) = state.transcript.messages.iter().rev().find(|m| m.role == "assistant") {
+            if let Some(last) = state
+                .transcript
+                .messages
+                .iter()
+                .rev()
+                .find(|m| m.role == "assistant")
+            {
                 let extracted = crate::services::todo_extractor::extract_todos(&last.content);
                 if !extracted.is_empty() {
                     state.transcript.todos = extracted;
@@ -169,10 +184,14 @@ pub fn handle_backend_event(
             }
             state.add_assistant_message(format!("Error: {}", msg));
             state
-                .layout.toasts
+                .layout
+                .toasts
                 .push(crate::services::Toast::error(msg.clone()));
             if state.layout.toasts.len() > 3 {
-                state.layout.toasts.drain(0..state.layout.toasts.len().saturating_sub(3));
+                state
+                    .layout
+                    .toasts
+                    .drain(0..state.layout.toasts.len().saturating_sub(3));
             }
             state.core.loading = false;
             state.transcript.streaming.is_streaming = false;
@@ -214,7 +233,10 @@ pub fn handle_backend_event(
             }
             state.layout.toasts.push(toast);
             if state.layout.toasts.len() > 3 {
-                state.layout.toasts.drain(0..state.layout.toasts.len().saturating_sub(3));
+                state
+                    .layout
+                    .toasts
+                    .drain(0..state.layout.toasts.len().saturating_sub(3));
             }
         }
         InputEvent::SetSessions(sessions) => {
@@ -230,7 +252,8 @@ pub fn handle_backend_event(
         InputEvent::SetAgentTasks(tasks) => {
             state.execution.runtime.agent_tasks = tasks;
             if state.execution.runtime.agent_selected >= state.execution.runtime.agent_tasks.len() {
-                state.execution.runtime.agent_selected = state.execution.runtime.agent_tasks.len().saturating_sub(1);
+                state.execution.runtime.agent_selected =
+                    state.execution.runtime.agent_tasks.len().saturating_sub(1);
             }
             state.push_activity(crate::app::ActivityKind::Status, "Agent queue updated");
         }
@@ -244,13 +267,12 @@ pub fn handle_backend_event(
             // transition log the MCP signal_tail tool can recall.
             for job in &jobs {
                 let buf = state
-                    .execution.mcp_maps.runtime_signals
+                    .execution
+                    .mcp_maps
+                    .runtime_signals
                     .entry(job.id)
                     .or_insert_with(|| {
-                        vac_signal::SignalBuffer::new(
-                            vac_signal::SignalStreamKind::RuntimeJob,
-                            200,
-                        )
+                        vac_signal::SignalBuffer::new(vac_signal::SignalStreamKind::RuntimeJob, 200)
                     });
                 buf.push_line(format!(
                     "{:?} kind={:?} retries={}",
@@ -259,7 +281,8 @@ pub fn handle_backend_event(
             }
             state.execution.runtime.jobs = jobs;
             if state.execution.runtime.selected_idx >= state.execution.runtime.jobs.len() {
-                state.execution.runtime.selected_idx = state.execution.runtime.jobs.len().saturating_sub(1);
+                state.execution.runtime.selected_idx =
+                    state.execution.runtime.jobs.len().saturating_sub(1);
             }
             state.push_activity(crate::app::ActivityKind::Status, "Runtime jobs updated");
         }
@@ -274,14 +297,24 @@ pub fn handle_backend_event(
         InputEvent::FileIndexReady(files, bm25_index) => {
             state.workspace.file_index.all_files = files;
             state.workspace.file_index.bm25_index = bm25_index;
-            state.workspace.file_index.search_results = state.workspace.file_index.all_files.iter().take(50).cloned().collect();
+            state.workspace.file_index.search_results = state
+                .workspace
+                .file_index
+                .all_files
+                .iter()
+                .take(50)
+                .cloned()
+                .collect();
             state.layout.toasts.push(crate::services::Toast::success(
-                "File index ready".to_string()
+                "File index ready".to_string(),
             ));
         }
         InputEvent::ShellStarted(shell) => {
             let label = if shell.command.trim().is_empty() {
-                format!("shell-{}", state.execution.shell.session_store.sessions.len() + 1)
+                format!(
+                    "shell-{}",
+                    state.execution.shell.session_store.sessions.len() + 1
+                )
             } else {
                 shell.command.clone()
             };
@@ -308,7 +341,11 @@ pub fn handle_backend_event(
             let target = if id == "system" {
                 state.execution.shell.session_store.active_mut()
             } else {
-                state.execution.shell.session_store.find_by_command_id_mut(&id)
+                state
+                    .execution
+                    .shell
+                    .session_store
+                    .find_by_command_id_mut(&id)
             };
             if let Some(session) = target {
                 session.output.push_str(&text);
@@ -339,7 +376,11 @@ pub fn handle_backend_event(
             let target = if id == "system" {
                 state.execution.shell.session_store.active_mut()
             } else {
-                state.execution.shell.session_store.find_by_command_id_mut(&id)
+                state
+                    .execution
+                    .shell
+                    .session_store
+                    .find_by_command_id_mut(&id)
             };
             if let Some(session) = target {
                 if !session.output.ends_with('\n') && !session.output.is_empty() {
@@ -347,7 +388,9 @@ pub fn handle_backend_event(
                 }
                 let err_line = format!("[shell error] {text}\n");
                 session.output.push_str(&err_line);
-                session.output_signal.push_line(format!("[shell error] {text}"));
+                session
+                    .output_signal
+                    .push_line(format!("[shell error] {text}"));
 
                 let max_size = 1024 * 1024;
                 if session.output.len() > max_size {
@@ -373,7 +416,11 @@ pub fn handle_backend_event(
             let target = if id == "system" {
                 state.execution.shell.session_store.active_mut()
             } else {
-                state.execution.shell.session_store.find_by_command_id_mut(&id)
+                state
+                    .execution
+                    .shell
+                    .session_store
+                    .find_by_command_id_mut(&id)
             };
             if let Some(session) = target {
                 session.exit_code = Some(code);
@@ -397,7 +444,11 @@ pub fn handle_backend_event(
             let target = if id == "system" {
                 state.execution.shell.session_store.active_mut()
             } else {
-                state.execution.shell.session_store.find_by_command_id_mut(&id)
+                state
+                    .execution
+                    .shell
+                    .session_store
+                    .find_by_command_id_mut(&id)
             };
             if let Some(session) = target {
                 session.waiting_for_input = true;
@@ -431,13 +482,19 @@ pub fn handle_backend_event(
             // L5 — also route status into the signal pipeline so
             // `vac signal tail --stream mcp:<name>` can recall it.
             let buf = state
-                .execution.mcp_maps.server_signals
+                .execution
+                .mcp_maps
+                .server_signals
                 .entry(name.clone())
                 .or_insert_with(|| {
                     vac_signal::SignalBuffer::new(vac_signal::SignalStreamKind::Mcp, 200)
                 });
             buf.push_line(format!("status: {:?}", conn_state.state));
-            state.execution.mcp_maps.server_states.insert(name, conn_state);
+            state
+                .execution
+                .mcp_maps
+                .server_states
+                .insert(name, conn_state);
         }
         InputEvent::VilStatusUpdated(snapshot) => {
             state.record_vil_score(snapshot.validation_score);
@@ -488,8 +545,17 @@ pub fn handle_backend_event(
                 return;
             }
             state.execution.approvals.pending_approvals.push(tc.clone());
-            state.execution.approvals.approval_selected_idx = state.execution.approvals.pending_approvals.len().saturating_sub(1);
-            state.execution.approvals.approval_explanations.insert(tc.id.clone(), None);
+            state.execution.approvals.approval_selected_idx = state
+                .execution
+                .approvals
+                .pending_approvals
+                .len()
+                .saturating_sub(1);
+            state
+                .execution
+                .approvals
+                .approval_explanations
+                .insert(tc.id.clone(), None);
             state.approval_normalize_selection();
             state.layout.workbench_tab = crate::app::WorkbenchTab::Approvals;
             state.layout.focus = crate::app::WorkspaceFocus::Workbench;
@@ -512,9 +578,15 @@ pub fn handle_backend_event(
                 );
             } else {
                 state.execution.approvals.pending_approvals.push(tc.clone());
-                state.execution.approvals.approval_selected_idx = state.execution.approvals.pending_approvals.len().saturating_sub(1);
+                state.execution.approvals.approval_selected_idx = state
+                    .execution
+                    .approvals
+                    .pending_approvals
+                    .len()
+                    .saturating_sub(1);
                 state
-                    .execution.approvals
+                    .execution
+                    .approvals
                     .approval_explanations
                     .insert(tc.id.clone(), explanation);
                 state.approval_normalize_selection();
@@ -527,7 +599,11 @@ pub fn handle_backend_event(
             }
         }
         InputEvent::RunToolCall(tc) => {
-            state.execution.approvals.pending_tool_calls.push(tc.clone());
+            state
+                .execution
+                .approvals
+                .pending_tool_calls
+                .push(tc.clone());
             state.push_activity(
                 crate::app::ActivityKind::Tool,
                 format!("Tool started: {}", tc.function.name),
@@ -549,8 +625,9 @@ pub fn handle_backend_event(
                         crate::app::ActivityKind::Status,
                         format!("vil dev: started (PID {pid})"),
                     );
-                    let mut job =
-                        Job::new(JobKind::RunTask { description: "vil dev".to_string() });
+                    let mut job = Job::new(JobKind::RunTask {
+                        description: "vil dev".to_string(),
+                    });
                     job.status = JobStatus::Running;
                     state.vil_domain.vil_dev.job_id = Some(job.id);
                     state.execution.runtime.jobs.push(job);
@@ -560,7 +637,11 @@ pub fn handle_backend_event(
                 }
                 RunnerEvent::Stderr(line) => {
                     let first_line = line.lines().next().unwrap_or(&line).to_string();
-                    state.vil_domain.vil_dev.output.push_line(format!("[stderr] {line}"));
+                    state
+                        .vil_domain
+                        .vil_dev
+                        .output
+                        .push_line(format!("[stderr] {line}"));
                     state.push_activity(
                         crate::app::ActivityKind::Error,
                         format!("vil dev: {first_line}"),
@@ -568,7 +649,8 @@ pub fn handle_backend_event(
                 }
                 RunnerEvent::Checkpoint { session_id, ts } => {
                     state
-                        .vil_domain.vil_dev
+                        .vil_domain
+                        .vil_dev
                         .checkpoints
                         .push((session_id.clone(), ts.clone()));
                     state.push_activity(
@@ -591,8 +673,12 @@ pub fn handle_backend_event(
                     };
                     state.push_activity(kind, msg.clone());
                     if let Some(job_id) = state.vil_domain.vil_dev.job_id.take() {
-                        if let Some(job) =
-                            state.execution.runtime.jobs.iter_mut().find(|j| j.id == job_id)
+                        if let Some(job) = state
+                            .execution
+                            .runtime
+                            .jobs
+                            .iter_mut()
+                            .find(|j| j.id == job_id)
                         {
                             job.status = if is_error {
                                 JobStatus::Failed(msg)
@@ -608,8 +694,12 @@ pub fn handle_backend_event(
                         format!("vil dev: error — {msg}"),
                     );
                     if let Some(job_id) = state.vil_domain.vil_dev.job_id.take() {
-                        if let Some(job) =
-                            state.execution.runtime.jobs.iter_mut().find(|j| j.id == job_id)
+                        if let Some(job) = state
+                            .execution
+                            .runtime
+                            .jobs
+                            .iter_mut()
+                            .find(|j| j.id == job_id)
                         {
                             job.status = JobStatus::Failed(msg.clone());
                         }

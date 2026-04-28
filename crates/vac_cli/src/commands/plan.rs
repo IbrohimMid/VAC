@@ -20,8 +20,8 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use vac_session_engine::{
-    CompactConfig, EchoAdapter, SlashProcessor, SubmitContext, SubmitEvent,
-    TranscriptWriter, TrivialCompactBoundary, UsageTracker, submit_one,
+    CompactConfig, EchoAdapter, SlashProcessor, SubmitContext, SubmitEvent, TranscriptWriter,
+    TrivialCompactBoundary, UsageTracker, submit_one,
 };
 
 /// Structured plan — serialised alongside the markdown render so the
@@ -116,22 +116,20 @@ fn steps_from_reply(prompt: &str, reply_content: &str) -> Vec<PlanStep> {
         PlanStep {
             id: 2,
             title: format!("Draft: {}", first_words(subject, 8)),
-            detail:
-                "Write or modify the target file(s) to land the change. \
+            detail: "Write or modify the target file(s) to land the change. \
                  Every edit goes through `FileEditTool` so the backup \
                  (R2.a) + journal hooks fire automatically."
-                    .into(),
+                .into(),
             target: None,
         },
         PlanStep {
             id: 3,
             title: "Verify".into(),
-            detail:
-                "`cargo check --workspace --tests` + targeted \
+            detail: "`cargo check --workspace --tests` + targeted \
                  `cargo nextest run -p <touched-crate>`. Transcript \
                  under `.vac/sessions/<plan-id>.jsonl` carries the \
                  durability record."
-                    .into(),
+                .into(),
             target: None,
         },
     ]
@@ -147,7 +145,9 @@ fn render_markdown(plan: &PlanDocument) -> String {
     if let Some(r) = &plan.remote {
         out.push_str(&format!("> Remote endpoint: `{}`\n", r));
     } else {
-        out.push_str("> Local mock plan (EchoAdapter). Pass `--remote <uri>` for a real planner.\n");
+        out.push_str(
+            "> Local mock plan (EchoAdapter). Pass `--remote <uri>` for a real planner.\n",
+        );
     }
     out.push_str(&format!(
         "> Generated: {}\n\n",
@@ -202,10 +202,9 @@ pub async fn generate_plan(
     // mock path never silently swallows a real remote request.
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
     let _snap = if let Some(uri) = &remote {
-        let remote_adapter =
-            crate::commands::plan_remote::RemoteSessionAdapter::spawn_stdio(uri)
-                .await
-                .map_err(|e| anyhow::anyhow!("remote planner: {e}"))?;
+        let remote_adapter = crate::commands::plan_remote::RemoteSessionAdapter::spawn_stdio(uri)
+            .await
+            .map_err(|e| anyhow::anyhow!("remote planner: {e}"))?;
         submit_one(
             ctx,
             &writer,
@@ -250,7 +249,10 @@ pub async fn generate_plan(
         summary: if reply_content.is_empty() {
             "No adapter reply captured.".into()
         } else {
-            format!("Adapter reply: {}", reply_content.chars().take(200).collect::<String>())
+            format!(
+                "Adapter reply: {}",
+                reply_content.chars().take(200).collect::<String>()
+            )
         },
         steps,
         transcript_path,
@@ -286,7 +288,11 @@ pub async fn execute(
         .join("plans")
         .join(format!("{}.json", plan.id));
     println!("📝 Plan: {}", md_path.display());
-    println!("📦 Steps: {} (JSON sidecar at {})", plan.steps.len(), json_path.display());
+    println!(
+        "📦 Steps: {} (JSON sidecar at {})",
+        plan.steps.len(),
+        json_path.display()
+    );
     println!("📓 Transcript: {}", plan.transcript_path.display());
     println!("▶  Apply: vac plan apply {}", plan.id);
     Ok(())
@@ -304,8 +310,8 @@ pub async fn execute_apply(project_root: PathBuf, plan_id: String) -> anyhow::Re
         );
     }
     let raw = tokio::fs::read(&json_path).await?;
-    let plan: PlanDocument = serde_json::from_slice(&raw)
-        .map_err(|e| anyhow::anyhow!("plan json parse: {e}"))?;
+    let plan: PlanDocument =
+        serde_json::from_slice(&raw).map_err(|e| anyhow::anyhow!("plan json parse: {e}"))?;
     println!("📋 Applying plan {} ({} steps)", plan.id, plan.steps.len());
     println!("   Prompt: {}", plan.prompt);
     for step in &plan.steps {
@@ -327,13 +333,9 @@ mod tests {
     #[tokio::test]
     async fn generate_plan_writes_both_md_and_json() {
         let tmp = tempfile::tempdir().unwrap();
-        let plan = generate_plan(
-            tmp.path(),
-            "refactor auth module".into(),
-            None,
-        )
-        .await
-        .unwrap();
+        let plan = generate_plan(tmp.path(), "refactor auth module".into(), None)
+            .await
+            .unwrap();
         assert_eq!(plan.prompt, "refactor auth module");
         assert_eq!(plan.steps.len(), 3);
         assert!(plan.steps[0].title.contains("Investigate"));
@@ -403,7 +405,8 @@ mod tests {
 
     #[test]
     fn structured_steps_wrapped_parses() {
-        let reply = r#"{"steps":[{"title":"A","detail":"do a","target":"src/a.rs"},{"title":"B"}]}"#;
+        let reply =
+            r#"{"steps":[{"title":"A","detail":"do a","target":"src/a.rs"},{"title":"B"}]}"#;
         let steps = parse_structured_steps(reply).unwrap();
         assert_eq!(steps.len(), 2);
         assert_eq!(steps[0].id, 1);

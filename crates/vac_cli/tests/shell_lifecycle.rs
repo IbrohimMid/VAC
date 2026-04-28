@@ -79,7 +79,11 @@ async fn test_shell_state_cleanup() {
     assert!(state.execution.shell.session_store.active().is_none());
     assert!(!state.execution.shell.session_store.popup_visible);
 
-    let idx = state.execution.shell.session_store.push_new("shell-1".to_string());
+    let idx = state
+        .execution
+        .shell
+        .session_store
+        .push_new("shell-1".to_string());
     state.execution.shell.session_store.popup_visible = true;
     let session = &mut state.execution.shell.session_store.sessions[idx];
     session.output = "test output".to_string();

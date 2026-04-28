@@ -168,8 +168,7 @@ pub struct ToolContext {
     /// tool delegates to it; when None, `agent_run` returns an
     /// explicit error rather than silently failing. Populated by
     /// the live session wiring in `vac_tui_runtime::runner`.
-    pub agent_dispatcher:
-        Option<Arc<dyn vac_session_primitives::AgentDispatcher>>,
+    pub agent_dispatcher: Option<Arc<dyn vac_session_primitives::AgentDispatcher>>,
     /// ADR-002 — depth in the subagent delegation tree.
     /// 0 = parent, 1 = first-level subagent (supported),
     /// ≥ 2 = nested (hard-denied by `agent_run`). Live drivers
@@ -330,12 +329,7 @@ impl ToolRegistry {
     /// (session engine, bridge) that need the full contract, not just
     /// the legacy `ToolDefinition` shape.
     pub async fn list_specs(&self) -> Vec<vac_tool_core::ToolSpec> {
-        self.tools
-            .read()
-            .await
-            .values()
-            .map(|t| t.spec())
-            .collect()
+        self.tools.read().await.values().map(|t| t.spec()).collect()
     }
 
     /// W2.2 — Initial tool manifest sent to the model on turn 1.
@@ -424,10 +418,7 @@ impl ToolRegistry {
         let raw = tool.execute(args, context).await?;
         // W2.3 — spill oversized results. Root lives under the
         // caller's working dir so each project owns its spill space.
-        let spill_root = context
-            .working_dir
-            .join(".vac")
-            .join("tool-results");
+        let spill_root = context.working_dir.join(".vac").join("tool-results");
         match crate::result_spill::maybe_spill_result(raw, threshold, &spill_root).await {
             Ok(v) => Ok(v),
             Err(e) => Err(ToolError::ExecutionFailed(format!(
@@ -443,7 +434,10 @@ impl ToolRegistry {
 /// exporting a subset) and want the same invariant without touching
 /// the registry lock.
 pub fn read_only_specs(specs: Vec<vac_tool_core::ToolSpec>) -> Vec<vac_tool_core::ToolSpec> {
-    specs.into_iter().filter(|s| s.capability.read_only).collect()
+    specs
+        .into_iter()
+        .filter(|s| s.capability.read_only)
+        .collect()
 }
 
 /// W1.2 — Classify a bash command as read-only. `BashTool` is the one
@@ -470,9 +464,7 @@ pub fn is_read_only_bash_command(cmd: &str) -> bool {
     }
     // `|` is allowed only when every segment is read-only.
     if trimmed.contains('|') {
-        return trimmed
-            .split('|')
-            .all(|seg| is_read_only_bash_command(seg));
+        return trimmed.split('|').all(|seg| is_read_only_bash_command(seg));
     }
     let first = trimmed.split_whitespace().next().unwrap_or("");
     // Per-tool hazards that the whitelist alone won't catch. Ordering
@@ -480,8 +472,7 @@ pub fn is_read_only_bash_command(cmd: &str) -> bool {
     if first == "find" {
         // `find` is a search utility but its action args can mutate:
         // -exec / -execdir / -ok / -okdir / -delete all write.
-        const FIND_MUTATING_ACTIONS: &[&str] =
-            &["-exec", "-execdir", "-ok", "-okdir", "-delete"];
+        const FIND_MUTATING_ACTIONS: &[&str] = &["-exec", "-execdir", "-ok", "-okdir", "-delete"];
         for token in trimmed.split_whitespace() {
             if FIND_MUTATING_ACTIONS.contains(&token) {
                 return false;
@@ -492,9 +483,22 @@ pub fn is_read_only_bash_command(cmd: &str) -> bool {
         // Only the read-only `git` subcommands pass. Anything else
         // (commit, push, reset, stash, …) mutates.
         const GIT_READ_ONLY_SUBS: &[&str] = &[
-            "log", "diff", "status", "show", "blame", "branch",
-            "remote", "tag", "describe", "rev-parse", "rev-list",
-            "ls-files", "ls-tree", "cat-file", "shortlog", "reflog",
+            "log",
+            "diff",
+            "status",
+            "show",
+            "blame",
+            "branch",
+            "remote",
+            "tag",
+            "describe",
+            "rev-parse",
+            "rev-list",
+            "ls-files",
+            "ls-tree",
+            "cat-file",
+            "shortlog",
+            "reflog",
         ];
         let sub = trimmed.split_whitespace().nth(1).unwrap_or("");
         return GIT_READ_ONLY_SUBS.contains(&sub);
@@ -508,11 +512,10 @@ pub fn is_read_only_bash_command(cmd: &str) -> bool {
     }
     // Whitelisted utilities. Anything else returns false.
     const READ_ONLY_BINS: &[&str] = &[
-        "ls", "cat", "head", "tail", "wc", "grep", "rg", "find", "fd",
-        "du", "df", "stat", "file", "which", "echo", "pwd", "id",
-        "uname", "hostname", "date", "printf", "tree", "awk", "sed",
-        "sort", "uniq", "cut", "tr", "column", "less", "more", "git",
-        "ps", "env", "history", "jobs", "whoami",
+        "ls", "cat", "head", "tail", "wc", "grep", "rg", "find", "fd", "du", "df", "stat", "file",
+        "which", "echo", "pwd", "id", "uname", "hostname", "date", "printf", "tree", "awk", "sed",
+        "sort", "uniq", "cut", "tr", "column", "less", "more", "git", "ps", "env", "history",
+        "jobs", "whoami",
     ];
     READ_ONLY_BINS.contains(&first)
 }
@@ -636,11 +639,21 @@ mod tests {
 
     #[async_trait]
     impl VilTool for CapProbe {
-        fn name(&self) -> &str { "probe" }
-        fn description(&self) -> &str { "probe" }
-        fn input_schema(&self) -> serde_json::Value { serde_json::json!({"type":"object"}) }
-        fn trust_requirement(&self) -> &str { "safe" }
-        fn risk_level(&self) -> &str { "low" }
+        fn name(&self) -> &str {
+            "probe"
+        }
+        fn description(&self) -> &str {
+            "probe"
+        }
+        fn input_schema(&self) -> serde_json::Value {
+            serde_json::json!({"type":"object"})
+        }
+        fn trust_requirement(&self) -> &str {
+            "safe"
+        }
+        fn risk_level(&self) -> &str {
+            "low"
+        }
         fn spec(&self) -> vac_tool_core::ToolSpec {
             make_spec(
                 "probe",
@@ -663,7 +676,11 @@ mod tests {
 
     #[test]
     fn per_input_defaults_match_spec_defaults() {
-        let t = CapProbe { read: true, dest: false, conc: true };
+        let t = CapProbe {
+            read: true,
+            dest: false,
+            conc: true,
+        };
         let empty = serde_json::json!({});
         assert!(t.is_input_read_only(&empty));
         assert!(!t.is_input_destructive(&empty));
@@ -672,7 +689,11 @@ mod tests {
 
     #[test]
     fn per_input_defaults_reflect_mutating_spec() {
-        let t = CapProbe { read: false, dest: true, conc: false };
+        let t = CapProbe {
+            read: false,
+            dest: true,
+            conc: false,
+        };
         let empty = serde_json::json!({});
         assert!(!t.is_input_read_only(&empty));
         assert!(t.is_input_destructive(&empty));
@@ -681,7 +702,11 @@ mod tests {
 
     #[test]
     fn backfill_observable_input_is_noop_by_default() {
-        let t = CapProbe { read: true, dest: false, conc: true };
+        let t = CapProbe {
+            read: true,
+            dest: false,
+            conc: true,
+        };
         let mut v = serde_json::json!({"a": 1});
         let before = v.clone();
         t.backfill_observable_input(&mut v);
@@ -690,7 +715,11 @@ mod tests {
 
     #[test]
     fn defer_flags_default_false() {
-        let t = CapProbe { read: true, dest: false, conc: true };
+        let t = CapProbe {
+            read: true,
+            dest: false,
+            conc: true,
+        };
         assert!(!t.should_defer());
         assert!(!t.always_load());
         assert_eq!(t.max_result_size_chars(), 256 * 1024);
@@ -704,16 +733,30 @@ mod tests {
 
     #[async_trait]
     impl VilTool for DeferProbe {
-        fn name(&self) -> &str { self.name }
-        fn description(&self) -> &str { self.name }
-        fn input_schema(&self) -> serde_json::Value { serde_json::json!({"type":"object"}) }
-        fn trust_requirement(&self) -> &str { "safe" }
-        fn risk_level(&self) -> &str { "low" }
+        fn name(&self) -> &str {
+            self.name
+        }
+        fn description(&self) -> &str {
+            self.name
+        }
+        fn input_schema(&self) -> serde_json::Value {
+            serde_json::json!({"type":"object"})
+        }
+        fn trust_requirement(&self) -> &str {
+            "safe"
+        }
+        fn risk_level(&self) -> &str {
+            "low"
+        }
         fn spec(&self) -> vac_tool_core::ToolSpec {
             make_spec(self.name, ToolCapability::default())
         }
-        fn should_defer(&self) -> bool { self.defer }
-        fn always_load(&self) -> bool { self.always }
+        fn should_defer(&self) -> bool {
+            self.defer
+        }
+        fn always_load(&self) -> bool {
+            self.always
+        }
         async fn execute(
             &self,
             _args: serde_json::Value,
@@ -725,10 +768,34 @@ mod tests {
 
     async fn mk_mixed_registry() -> ToolRegistry {
         let reg = ToolRegistry::new();
-        reg.register(DeferProbe { name: "eager", defer: false, always: false }).await.unwrap();
-        reg.register(DeferProbe { name: "Grep", defer: true, always: false }).await.unwrap();
-        reg.register(DeferProbe { name: "Glob", defer: true, always: false }).await.unwrap();
-        reg.register(DeferProbe { name: "CriticalSearch", defer: true, always: true }).await.unwrap();
+        reg.register(DeferProbe {
+            name: "eager",
+            defer: false,
+            always: false,
+        })
+        .await
+        .unwrap();
+        reg.register(DeferProbe {
+            name: "Grep",
+            defer: true,
+            always: false,
+        })
+        .await
+        .unwrap();
+        reg.register(DeferProbe {
+            name: "Glob",
+            defer: true,
+            always: false,
+        })
+        .await
+        .unwrap();
+        reg.register(DeferProbe {
+            name: "CriticalSearch",
+            defer: true,
+            always: true,
+        })
+        .await
+        .unwrap();
         reg
     }
 
@@ -742,7 +809,10 @@ mod tests {
             .map(|s| s.name)
             .collect();
         assert!(names.contains("eager"));
-        assert!(names.contains("CriticalSearch"), "always_load overrides defer");
+        assert!(
+            names.contains("CriticalSearch"),
+            "always_load overrides defer"
+        );
         assert!(!names.contains("Grep"));
         assert!(!names.contains("Glob"));
     }
@@ -784,13 +854,21 @@ mod tests {
 
     #[async_trait]
     impl VilTool for GiantOutputTool {
-        fn name(&self) -> &str { "giant" }
-        fn description(&self) -> &str { "emits large payload" }
+        fn name(&self) -> &str {
+            "giant"
+        }
+        fn description(&self) -> &str {
+            "emits large payload"
+        }
         fn input_schema(&self) -> serde_json::Value {
             serde_json::json!({"type": "object"})
         }
-        fn trust_requirement(&self) -> &str { "safe" }
-        fn risk_level(&self) -> &str { "low" }
+        fn trust_requirement(&self) -> &str {
+            "safe"
+        }
+        fn risk_level(&self) -> &str {
+            "low"
+        }
         fn spec(&self) -> vac_tool_core::ToolSpec {
             make_spec("giant", ToolCapability::default())
         }

@@ -124,7 +124,9 @@ impl ToolUseActivityProjection {
     pub fn to_activity_entry(&self, ts_unix: u64) -> ShellActivityEntry {
         let severity = self.status.severity();
         let kind = match self.status {
-            ToolUseStatus::Ok | ToolUseStatus::Warning | ToolUseStatus::Cancelled
+            ToolUseStatus::Ok
+            | ToolUseStatus::Warning
+            | ToolUseStatus::Cancelled
             | ToolUseStatus::Pending => ShellActivityKind::ToolResult,
             // Error rows still tag as ToolResult — the kind
             // names the source of the activity, the severity
@@ -212,10 +214,7 @@ pub fn session_tool_use_summary(
     summarize_tool_use(transcript_path)
 }
 
-fn project_one(
-    view: ToolUseTranscriptView,
-    transcript_path: PathBuf,
-) -> ToolUseActivityProjection {
+fn project_one(view: ToolUseTranscriptView, transcript_path: PathBuf) -> ToolUseActivityProjection {
     let (status, summary, duration_ms) = match &view.result {
         Some(env) => (
             ToolUseStatus::from_envelope_kind(env.kind),

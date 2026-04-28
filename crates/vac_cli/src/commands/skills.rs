@@ -56,9 +56,7 @@ mod tests {
 
     #[tokio::test]
     async fn show_unknown_skill_errors() {
-        let err = execute_show("does-not-exist".into())
-            .await
-            .unwrap_err();
+        let err = execute_show("does-not-exist".into()).await.unwrap_err();
         assert!(format!("{err}").contains("skill not found"));
     }
 }

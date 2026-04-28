@@ -35,10 +35,7 @@ impl VacToolsDispatcher {
 
 #[async_trait]
 impl ToolDispatcher for VacToolsDispatcher {
-    async fn dispatch(
-        &self,
-        call: &ToolCallRequest,
-    ) -> EngineResult<ToolResultEnvelope> {
+    async fn dispatch(&self, call: &ToolCallRequest) -> EngineResult<ToolResultEnvelope> {
         let started = Instant::now();
         let tool = self.registry.get(&call.name).await.ok_or_else(|| {
             EngineError::Other(format!(
@@ -81,8 +78,7 @@ pub fn live_compact_config(
     ctx: Arc<ToolContext>,
     gate: Option<Arc<vac_session_engine::CompositeGate>>,
 ) -> CompactConfig {
-    let dispatcher: Arc<dyn ToolDispatcher> =
-        Arc::new(VacToolsDispatcher::new(registry, ctx));
+    let dispatcher: Arc<dyn ToolDispatcher> = Arc::new(VacToolsDispatcher::new(registry, ctx));
     CompactConfig {
         dispatcher: Some(dispatcher),
         gate,
@@ -124,15 +120,12 @@ pub async fn build_live_gate_with(
     plan_active: Option<Arc<std::sync::atomic::AtomicBool>>,
 ) -> anyhow::Result<Arc<vac_session_engine::CompositeGate>> {
     use vac_session_engine::{CompositeGate, PlanModeGate, PolicyGate};
-    use vac_session_primitives::{
-        HookSandbox, HookStore, hooks::validate_hook_store,
-    };
+    use vac_session_primitives::{HookSandbox, HookStore, hooks::validate_hook_store};
 
     let store = HookStore::load(project_root)
         .await
         .map_err(|e| anyhow::anyhow!("load .vac/hooks.json: {e}"))?;
-    validate_hook_store(&store)
-        .map_err(|e| anyhow::anyhow!(".vac/hooks.json validation: {e}"))?;
+    validate_hook_store(&store).map_err(|e| anyhow::anyhow!(".vac/hooks.json validation: {e}"))?;
     let hook_gate = Arc::new(vac_session_engine::HookGate::with_sandbox(
         store,
         HookSandbox::operator_default(),
@@ -156,8 +149,8 @@ pub async fn build_live_gate_with(
 mod tests {
     use super::*;
     use async_trait::async_trait;
-    use vac_tools::registry::VilTool;
     use vac_tools::error::ToolError;
+    use vac_tools::registry::VilTool;
 
     struct OkTool;
     #[async_trait]
@@ -165,11 +158,21 @@ mod tests {
         fn spec(&self) -> vac_tool_core::ToolSpec {
             vac_tools::registry::default_spec(self)
         }
-        fn name(&self) -> &str { "ok_tool" }
-        fn description(&self) -> &str { "" }
-        fn input_schema(&self) -> serde_json::Value { serde_json::json!({}) }
-        fn trust_requirement(&self) -> &str { "safe" }
-        fn risk_level(&self) -> &str { "safe" }
+        fn name(&self) -> &str {
+            "ok_tool"
+        }
+        fn description(&self) -> &str {
+            ""
+        }
+        fn input_schema(&self) -> serde_json::Value {
+            serde_json::json!({})
+        }
+        fn trust_requirement(&self) -> &str {
+            "safe"
+        }
+        fn risk_level(&self) -> &str {
+            "safe"
+        }
         async fn execute(
             &self,
             _args: serde_json::Value,
@@ -185,11 +188,21 @@ mod tests {
         fn spec(&self) -> vac_tool_core::ToolSpec {
             vac_tools::registry::default_spec(self)
         }
-        fn name(&self) -> &str { "err_tool" }
-        fn description(&self) -> &str { "" }
-        fn input_schema(&self) -> serde_json::Value { serde_json::json!({}) }
-        fn trust_requirement(&self) -> &str { "safe" }
-        fn risk_level(&self) -> &str { "safe" }
+        fn name(&self) -> &str {
+            "err_tool"
+        }
+        fn description(&self) -> &str {
+            ""
+        }
+        fn input_schema(&self) -> serde_json::Value {
+            serde_json::json!({})
+        }
+        fn trust_requirement(&self) -> &str {
+            "safe"
+        }
+        fn risk_level(&self) -> &str {
+            "safe"
+        }
         async fn execute(
             &self,
             _args: serde_json::Value,
@@ -274,7 +287,10 @@ mod tests {
     async fn build_live_gate_fail_soft_on_missing_hooks_file() {
         let tmp = tempfile::tempdir().unwrap();
         let gate = build_live_gate(tmp.path()).await.unwrap();
-        assert!(!gate.is_empty(), "HookGate still composed even with no hooks");
+        assert!(
+            !gate.is_empty(),
+            "HookGate still composed even with no hooks"
+        );
     }
 
     /// Audit M2: malformed hooks.json must surface a crisp
@@ -304,13 +320,9 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let tracker = Arc::new(PolicyTracker::new(PolicyLimits::default()));
         let plan = Arc::new(AtomicBool::new(false));
-        let full = build_live_gate_with(
-            tmp.path(),
-            Some(tracker),
-            Some(plan),
-        )
-        .await
-        .unwrap();
+        let full = build_live_gate_with(tmp.path(), Some(tracker), Some(plan))
+            .await
+            .unwrap();
         let hooks_only = build_live_gate(tmp.path()).await.unwrap();
         assert!(
             full.len() > hooks_only.len(),
@@ -336,13 +348,9 @@ mod tests {
         // Mirror the adapter's exact construction.
         let limits = PolicyLimits::load(tmp.path()).await.unwrap();
         let tracker = Arc::new(PolicyTracker::new(limits));
-        let shipped_gate = build_live_gate_with(
-            tmp.path(),
-            Some(tracker),
-            None,
-        )
-        .await
-        .unwrap();
+        let shipped_gate = build_live_gate_with(tmp.path(), Some(tracker), None)
+            .await
+            .unwrap();
         assert!(
             shipped_gate.len() >= 2,
             "shipped live path must include PolicyGate + HookGate; got {} gates",

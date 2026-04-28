@@ -29,12 +29,12 @@ pub use config::{
 };
 pub use detector::{VilArchetype, VilProjectProfile};
 pub use engine::{EngineStatus, RuntimeUpdate, TaskHistoryEntry, VacEngine};
-pub use policy_limits::{
-    PolicyDecision, PolicyError, PolicyLimits, PolicySnapshot, PolicyTracker,
-    SubmitIntent, DEFAULT_POLICY_FILENAME, POLICY_ENV_VAR, POLICY_WINDOW_SECS,
-};
 pub use error::VacError;
 pub use policy_gate::{PolicyGateAction, PolicyGateDecision, PolicyGateMode};
+pub use policy_limits::{
+    DEFAULT_POLICY_FILENAME, POLICY_ENV_VAR, POLICY_WINDOW_SECS, PolicyDecision, PolicyError,
+    PolicyLimits, PolicySnapshot, PolicyTracker, SubmitIntent,
+};
 pub use profile::{ProfileName, ProfileOverride};
 pub use security::{SecretDetector, SecretSubstitution};
 pub use session::Session;

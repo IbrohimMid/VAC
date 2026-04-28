@@ -106,9 +106,7 @@ impl McpConnection {
         reason: impl Into<String>,
     ) -> McpCoreResult<()> {
         let next = match (self.state, event) {
-            (McpConnectionState::Disabled, StateTransition::Enable) => {
-                McpConnectionState::Pending
-            }
+            (McpConnectionState::Disabled, StateTransition::Enable) => McpConnectionState::Pending,
             (_, StateTransition::Disable) => McpConnectionState::Disabled,
             (McpConnectionState::Pending, StateTransition::ConnectOk) => {
                 McpConnectionState::Connected
@@ -131,9 +129,7 @@ impl McpConnection {
             }
             // Live reconnect from Connected back into Pending, e.g.
             // after a soft restart request.
-            (McpConnectionState::Connected, StateTransition::Enable) => {
-                McpConnectionState::Pending
-            }
+            (McpConnectionState::Connected, StateTransition::Enable) => McpConnectionState::Pending,
             (McpConnectionState::Connected, StateTransition::Disconnect) => {
                 McpConnectionState::Failed
             }
@@ -168,7 +164,8 @@ mod tests {
     fn failed_can_retry_via_enable() {
         let mut c = McpConnection::new("n");
         c.transition(StateTransition::Enable, "").unwrap();
-        c.transition(StateTransition::ConnectFail, "tcp reset").unwrap();
+        c.transition(StateTransition::ConnectFail, "tcp reset")
+            .unwrap();
         assert_eq!(c.state, McpConnectionState::Failed);
         c.transition(StateTransition::Enable, "retry").unwrap();
         assert_eq!(c.state, McpConnectionState::Pending);
@@ -184,7 +181,8 @@ mod tests {
         ] {
             let mut c = McpConnection::new("n");
             c.state = initial_state;
-            c.transition(StateTransition::Disable, "operator off").unwrap();
+            c.transition(StateTransition::Disable, "operator off")
+                .unwrap();
             assert_eq!(c.state, McpConnectionState::Disabled);
         }
     }
@@ -210,7 +208,8 @@ mod tests {
         c.transition(StateTransition::Enable, "").unwrap();
         c.transition(StateTransition::AuthNeeded, "401").unwrap();
         assert_eq!(c.state, McpConnectionState::NeedsAuth);
-        c.transition(StateTransition::ConnectOk, "creds ok").unwrap();
+        c.transition(StateTransition::ConnectOk, "creds ok")
+            .unwrap();
         assert_eq!(c.state, McpConnectionState::Connected);
     }
 
@@ -220,7 +219,8 @@ mod tests {
         c.transition(StateTransition::Enable, "").unwrap();
         c.transition(StateTransition::ConnectOk, "").unwrap();
         assert_eq!(c.state, McpConnectionState::Connected);
-        c.transition(StateTransition::Enable, "soft reconnect").unwrap();
+        c.transition(StateTransition::Enable, "soft reconnect")
+            .unwrap();
         assert_eq!(c.state, McpConnectionState::Pending);
     }
 
@@ -238,7 +238,8 @@ mod tests {
         let mut c = McpConnection::new("n");
         c.transition(StateTransition::Enable, "").unwrap();
         c.transition(StateTransition::ConnectOk, "").unwrap();
-        c.transition(StateTransition::Disconnect, "peer closed").unwrap();
+        c.transition(StateTransition::Disconnect, "peer closed")
+            .unwrap();
         assert_eq!(c.state, McpConnectionState::Failed);
         assert_eq!(c.reason, "peer closed");
     }

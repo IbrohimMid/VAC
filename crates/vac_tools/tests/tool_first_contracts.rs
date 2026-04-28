@@ -34,12 +34,7 @@ async fn registry_with_builtins() -> Arc<ToolRegistry> {
 #[tokio::test]
 async fn contract_fase1_tools_are_registered() {
     let r = registry_with_builtins().await;
-    let names: std::collections::HashSet<_> = r
-        .list()
-        .await
-        .into_iter()
-        .map(|d| d.name)
-        .collect();
+    let names: std::collections::HashSet<_> = r.list().await.into_iter().map(|d| d.name).collect();
 
     for expected in [
         "enter_plan_mode",
@@ -72,7 +67,11 @@ async fn contract_every_tool_has_nonempty_spec() {
     assert!(!specs.is_empty());
     for spec in specs {
         assert!(!spec.name.is_empty(), "empty tool name");
-        assert!(!spec.description.is_empty(), "empty description for {}", spec.name);
+        assert!(
+            !spec.description.is_empty(),
+            "empty description for {}",
+            spec.name
+        );
         assert_eq!(
             spec.input_schema["type"], "object",
             "{} schema root must be object",
@@ -126,10 +125,8 @@ async fn contract_schedule_cron_writes_parseable_toml() {
     .await
     .unwrap();
 
-    let toml_text = std::fs::read_to_string(
-        tmp.path().join(".vac/autopilot.schedules.toml"),
-    )
-    .unwrap();
+    let toml_text =
+        std::fs::read_to_string(tmp.path().join(".vac/autopilot.schedules.toml")).unwrap();
     assert!(toml_text.contains("nightly"));
     assert!(toml_text.contains("0 2 * * *"));
 
@@ -193,11 +190,7 @@ async fn contract_task_suite_roundtrip_via_registry() {
         .unwrap();
 
     let listed2 = r
-        .execute(
-            "task_list",
-            serde_json::json!({ "state": "stopped" }),
-            &c,
-        )
+        .execute("task_list", serde_json::json!({ "state": "stopped" }), &c)
         .await
         .unwrap();
     assert_eq!(listed2["total"], 1);

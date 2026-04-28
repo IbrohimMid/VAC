@@ -9,8 +9,8 @@ pub mod server;
 /// connected/unreachable state and is kept for existing callers.
 pub mod core {
     pub use vac_mcp_core::{
-        McpConfigScope, McpConnection, McpConnectionState as CoreConnectionState,
-        McpCoreError, McpCoreResult, McpTransportKind, StateTransition,
+        McpConfigScope, McpConnection, McpConnectionState as CoreConnectionState, McpCoreError,
+        McpCoreResult, McpTransportKind, StateTransition,
     };
 }
 
@@ -104,7 +104,9 @@ pub async fn probe_mcp_server(config: &McpServerConfig) -> McpConnectionState {
             if matches!(host, "localhost" | "127.0.0.1" | "::1") {
                 McpConnectionStatus::Connected
             } else {
-                McpConnectionStatus::Unreachable("Remote WebSocket currently mocked as unreachable".into())
+                McpConnectionStatus::Unreachable(
+                    "Remote WebSocket currently mocked as unreachable".into(),
+                )
             }
         }
     };

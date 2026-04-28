@@ -13,9 +13,7 @@ use std::path::Path;
 
 use async_trait::async_trait;
 
-use crate::engine::{
-    BackendKind, InferenceBackend, InferenceRequest, LoadedModel,
-};
+use crate::engine::{BackendKind, InferenceBackend, InferenceRequest, LoadedModel};
 use crate::error::{InferenceError, InferenceResult};
 
 /// Behaviour switch for the mock.
@@ -129,17 +127,17 @@ mod tests {
     #[tokio::test]
     async fn echo_returns_prompt_prefixed() {
         let b = MockBackend::echo();
-        let out = b
-            .infer(&InferenceRequest::new("hello", 128))
-            .await
-            .unwrap();
+        let out = b.infer(&InferenceRequest::new("hello", 128)).await.unwrap();
         assert_eq!(out, "mock:hello");
     }
 
     #[tokio::test]
     async fn echo_clamps_to_max_tokens_as_chars() {
         let b = MockBackend::echo();
-        let out = b.infer(&InferenceRequest::new("hello world", 6)).await.unwrap();
+        let out = b
+            .infer(&InferenceRequest::new("hello world", 6))
+            .await
+            .unwrap();
         // "mock:h" = 6 chars.
         assert_eq!(out.chars().count(), 6, "expected 6 chars, got {out:?}");
     }
@@ -159,7 +157,10 @@ mod tests {
     #[tokio::test]
     async fn echo_max_tokens_zero_means_no_cap() {
         let b = MockBackend::echo();
-        let out = b.infer(&InferenceRequest::new("long prompt here", 0)).await.unwrap();
+        let out = b
+            .infer(&InferenceRequest::new("long prompt here", 0))
+            .await
+            .unwrap();
         assert_eq!(out, "mock:long prompt here");
     }
 
@@ -167,7 +168,8 @@ mod tests {
     async fn canned_ignores_prompt() {
         let b = MockBackend::canned("always the same");
         let a = b.infer(&InferenceRequest::new("x", 100)).await.unwrap();
-        let c = b.infer(&InferenceRequest::new("completely different", 100))
+        let c = b
+            .infer(&InferenceRequest::new("completely different", 100))
             .await
             .unwrap();
         assert_eq!(a, c);

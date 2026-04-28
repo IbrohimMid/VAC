@@ -42,11 +42,7 @@ pub struct Prediction {
 
 #[async_trait]
 pub trait NextSubmitPredictor: Send + Sync {
-    async fn predict(
-        &self,
-        last_submit: &str,
-        history: &PromptHistory,
-    ) -> Option<Prediction>;
+    async fn predict(&self, last_submit: &str, history: &PromptHistory) -> Option<Prediction>;
 }
 
 /// Heuristic predictor — no LLM. Rules:
@@ -67,11 +63,7 @@ pub struct HeuristicPredictor;
 
 #[async_trait]
 impl NextSubmitPredictor for HeuristicPredictor {
-    async fn predict(
-        &self,
-        last_submit: &str,
-        history: &PromptHistory,
-    ) -> Option<Prediction> {
+    async fn predict(&self, last_submit: &str, history: &PromptHistory) -> Option<Prediction> {
         let trimmed = last_submit.trim();
         if trimmed.is_empty() {
             return None;
@@ -154,11 +146,7 @@ pub struct ForkSpeculationDriver {
 }
 
 impl ForkSpeculationDriver {
-    pub fn new(
-        adapter: Arc<dyn LlmAdapter>,
-        overlay_root: PathBuf,
-        parent_session: Uuid,
-    ) -> Self {
+    pub fn new(adapter: Arc<dyn LlmAdapter>, overlay_root: PathBuf, parent_session: Uuid) -> Self {
         Self {
             runner: ForkedAgentRunner::new(adapter),
             overlay_root,
@@ -303,7 +291,7 @@ mod tests {
                 content: "ok".into(),
                 input_tokens: 0,
                 output_tokens: 0,
-            tool_calls: Vec::new(),
+                tool_calls: Vec::new(),
             })
         }
     }
@@ -321,7 +309,10 @@ mod tests {
     async fn fix_rule_predicts_root_cause() {
         let p = HeuristicPredictor;
         let h = PromptHistory::default();
-        let out = p.predict("fix the panic in session engine", &h).await.unwrap();
+        let out = p
+            .predict("fix the panic in session engine", &h)
+            .await
+            .unwrap();
         assert!(out.prompt.contains("root cause"));
     }
 
@@ -391,9 +382,7 @@ mod tests {
             tmp.path().to_path_buf(),
             Uuid::new_v4(),
         );
-        let _ = driver
-            .speculate("p", vec![PathBuf::from("a.rs")])
-            .await;
+        let _ = driver.speculate("p", vec![PathBuf::from("a.rs")]).await;
         // Overlay root should exist but be empty — each per-fork
         // subdir was RAII-cleaned (and cleanup_async on success path).
         let mut rd = tokio::fs::read_dir(tmp.path()).await.unwrap();
@@ -420,9 +409,7 @@ mod tests {
         });
         // CannedAdapter returns 0 tokens so budget doesn't trip —
         // prediction still lands.
-        let pred = driver
-            .speculate("p", vec![PathBuf::from("x.rs")])
-            .await;
+        let pred = driver.speculate("p", vec![PathBuf::from("x.rs")]).await;
         assert!(pred.is_some());
     }
 }

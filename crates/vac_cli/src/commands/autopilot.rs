@@ -348,7 +348,12 @@ pub async fn execute_schedule(
                 }
             }
         }
-        crate::ScheduleAction::Add { id, cron, task, rulebook } => {
+        crate::ScheduleAction::Add {
+            id,
+            cron,
+            task,
+            rulebook,
+        } => {
             if doc.schedules.iter().any(|s| s.id == id) {
                 anyhow::bail!("Schedule ID '{}' already exists", id);
             }

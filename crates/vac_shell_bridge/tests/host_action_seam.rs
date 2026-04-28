@@ -95,9 +95,8 @@ impl ModelController for RecordingModelController {
 #[test]
 fn select_model_routes_through_unified_seam() {
     let ctrl = Arc::new(RecordingModelController::default());
-    let host: Arc<dyn ShellHost> = Arc::new(
-        CompositeShellHost::new().with_model(ctrl.clone() as Arc<dyn ModelController>),
-    );
+    let host: Arc<dyn ShellHost> =
+        Arc::new(CompositeShellHost::new().with_model(ctrl.clone() as Arc<dyn ModelController>));
     host.handle(ShellAction::SelectModel {
         provider: ProviderId("anthropic".into()),
         id: "claude-sonnet-4.5".into(),
@@ -131,8 +130,7 @@ fn unbound_subcontroller_returns_host_error_not_panic() {
     let surface_state = SurfaceState::new(VacSurface::Chat);
     let surface_ctrl: Arc<dyn SurfaceController> =
         Arc::new(SurfaceStateController::new(surface_state.clone()));
-    let host: Arc<dyn ShellHost> =
-        Arc::new(CompositeShellHost::new().with_surface(surface_ctrl));
+    let host: Arc<dyn ShellHost> = Arc::new(CompositeShellHost::new().with_surface(surface_ctrl));
 
     let err = host
         .handle(ShellAction::ToggleApproval { id: "a".into() })
@@ -155,7 +153,7 @@ fn host_dispatcher_routes_runtime_and_chat_through_unified_seam() {
             kind: ShellCommandKind::BuiltInAction,
             palette_visible: true,
             shortcut: None,
-        ..Default::default()
+            ..Default::default()
         },
         ShellCommandSpec {
             id: "chat".into(),
@@ -165,7 +163,7 @@ fn host_dispatcher_routes_runtime_and_chat_through_unified_seam() {
             kind: ShellCommandKind::BuiltInAction,
             palette_visible: true,
             shortcut: None,
-        ..Default::default()
+            ..Default::default()
         },
     ]));
     let dispatcher = CommandDispatcher::new(registry, host_dispatcher(host));

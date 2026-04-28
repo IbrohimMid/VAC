@@ -22,9 +22,9 @@ use uuid::Uuid;
 
 use async_trait::async_trait;
 use vac_session_engine::{
-    CompactConfig, EchoAdapter, EngineResult, LlmAdapter, LlmRequest, LlmResponse,
-    SlashProcessor, SubmitContext, TranscriptKind, TranscriptWriter,
-    TrivialCompactBoundary, UsageTracker, submit_one,
+    CompactConfig, EchoAdapter, EngineResult, LlmAdapter, LlmRequest, LlmResponse, SlashProcessor,
+    SubmitContext, TranscriptKind, TranscriptWriter, TrivialCompactBoundary, UsageTracker,
+    submit_one,
 };
 
 use vac_memory::{

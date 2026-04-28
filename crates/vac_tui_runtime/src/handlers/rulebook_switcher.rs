@@ -53,10 +53,20 @@ pub fn update_filter(ctx: &mut HandlerContext, filter: String) -> HandlerResult 
 pub fn toggle_selected(ctx: &mut HandlerContext) -> HandlerResult {
     let filtered = ctx.state.rulebook_switcher_filtered();
     if let Some(r) = filtered.get(ctx.state.layout.switchers.rulebook_selected) {
-        if ctx.state.layout.switchers.selected_rulebooks.contains(&r.id) {
+        if ctx
+            .state
+            .layout
+            .switchers
+            .selected_rulebooks
+            .contains(&r.id)
+        {
             ctx.state.layout.switchers.selected_rulebooks.remove(&r.id);
         } else {
-            ctx.state.layout.switchers.selected_rulebooks.insert(r.id.clone());
+            ctx.state
+                .layout
+                .switchers
+                .selected_rulebooks
+                .insert(r.id.clone());
         }
     }
     Ok(())
@@ -67,20 +77,33 @@ pub fn select_next(ctx: &mut HandlerContext) -> HandlerResult {
     let filtered = ctx.state.rulebook_switcher_filtered();
     if !filtered.is_empty() {
         ctx.state.layout.switchers.rulebook_selected =
-            (ctx.state.layout.switchers.rulebook_selected + 1).min(filtered.len().saturating_sub(1));
+            (ctx.state.layout.switchers.rulebook_selected + 1)
+                .min(filtered.len().saturating_sub(1));
     }
     Ok(())
 }
 
 /// Select previous rulebook.
 pub fn select_prev(ctx: &mut HandlerContext) -> HandlerResult {
-    ctx.state.layout.switchers.rulebook_selected = ctx.state.layout.switchers.rulebook_selected.saturating_sub(1);
+    ctx.state.layout.switchers.rulebook_selected = ctx
+        .state
+        .layout
+        .switchers
+        .rulebook_selected
+        .saturating_sub(1);
     Ok(())
 }
 
 /// Submit selected rulebooks.
 pub fn submit_selected(ctx: &mut HandlerContext) -> HandlerResult {
-    let selected: Vec<String> = ctx.state.layout.switchers.selected_rulebooks.iter().cloned().collect();
+    let selected: Vec<String> = ctx
+        .state
+        .layout
+        .switchers
+        .selected_rulebooks
+        .iter()
+        .cloned()
+        .collect();
     let _ = ctx
         .output_tx
         .try_send(OutputEvent::ApplyRulebooks(selected));

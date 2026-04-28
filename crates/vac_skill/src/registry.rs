@@ -71,11 +71,7 @@ impl SkillRegistry {
 
     /// Dispatch — look up + run in one call. Returns `NotFound` when
     /// the name isn't registered.
-    pub async fn run(
-        &self,
-        name: &str,
-        ctx: SkillContext,
-    ) -> SkillResult<SkillOutcome> {
+    pub async fn run(&self, name: &str, ctx: SkillContext) -> SkillResult<SkillOutcome> {
         let skill = self
             .get(name)
             .await
@@ -155,10 +151,7 @@ mod tests {
     async fn run_dispatches_by_name() {
         let reg = SkillRegistry::new();
         reg.register(Arc::new(Noop("x"))).await.unwrap();
-        let ctx = SkillContext::new(
-            serde_json::json!({}),
-            std::path::PathBuf::from("."),
-        );
+        let ctx = SkillContext::new(serde_json::json!({}), std::path::PathBuf::from("."));
         let out = reg.run("x", ctx).await.unwrap();
         assert_eq!(out.summary, "noop");
     }
@@ -166,10 +159,7 @@ mod tests {
     #[tokio::test]
     async fn run_missing_name_returns_not_found() {
         let reg = SkillRegistry::new();
-        let ctx = SkillContext::new(
-            serde_json::json!({}),
-            std::path::PathBuf::from("."),
-        );
+        let ctx = SkillContext::new(serde_json::json!({}), std::path::PathBuf::from("."));
         let err = reg.run("nope", ctx).await.unwrap_err();
         assert!(matches!(err, SkillError::NotFound(_)));
     }

@@ -28,7 +28,7 @@ fn fixture() -> Vec<ShellCommandSpec> {
             kind: ShellCommandKind::OverlayRoute,
             palette_visible: true,
             shortcut: None,
-        ..Default::default()
+            ..Default::default()
         },
         ShellCommandSpec {
             id: "memorize".into(),
@@ -38,7 +38,7 @@ fn fixture() -> Vec<ShellCommandSpec> {
             kind: ShellCommandKind::PromptTemplate,
             palette_visible: true,
             shortcut: None,
-        ..Default::default()
+            ..Default::default()
         },
         ShellCommandSpec {
             id: "runtime".into(),
@@ -48,7 +48,7 @@ fn fixture() -> Vec<ShellCommandSpec> {
             kind: ShellCommandKind::BuiltInAction,
             palette_visible: true,
             shortcut: None,
-        ..Default::default()
+            ..Default::default()
         },
     ]
 }
@@ -79,8 +79,14 @@ fn palette_enter_drives_bridge_dispatch() {
     // and `/model` sorts first by registry order. We use one Down to
     // hit `/memorize` and confirm the bridge resolves the slash that
     // *the operator selected*, not the input string.
-    assert_eq!(on_key(&mut view, PaletteKey::Char('/')), PaletteEvent::Consumed);
-    assert_eq!(on_key(&mut view, PaletteKey::Char('m')), PaletteEvent::Consumed);
+    assert_eq!(
+        on_key(&mut view, PaletteKey::Char('/')),
+        PaletteEvent::Consumed
+    );
+    assert_eq!(
+        on_key(&mut view, PaletteKey::Char('m')),
+        PaletteEvent::Consumed
+    );
     assert_eq!(on_key(&mut view, PaletteKey::Down), PaletteEvent::Consumed);
     let event = on_key(&mut view, PaletteKey::Enter);
 

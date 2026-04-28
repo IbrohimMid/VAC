@@ -85,17 +85,14 @@ fn echo_path_still_writes_transcript_after_d7c_refactor() {
     );
 }
 
-
 #[test]
 fn custom_adapter_receives_configured_prompt() {
     let capturer = Arc::new(CapturingAdapter::new("D7C-CUSTOM-RESPONSE"));
     let tmp = tempfile::tempdir().unwrap();
-    let adapter =
-        VacCommandExecutorAdapter::new(mapped_with_prompt(
-            tmp.path().to_path_buf(),
-            "MEMORIZE-PROMPT-D7C",
-        )
-        .with_llm(capturer.clone()));
+    let adapter = VacCommandExecutorAdapter::new(
+        mapped_with_prompt(tmp.path().to_path_buf(), "MEMORIZE-PROMPT-D7C")
+            .with_llm(capturer.clone()),
+    );
     adapter.execute(&cmd("memorize", "/memorize")).unwrap();
 
     assert_eq!(capturer.calls(), 1);
@@ -108,12 +105,9 @@ fn custom_adapter_receives_configured_prompt() {
 fn custom_adapter_response_lands_in_transcript() {
     let capturer = Arc::new(CapturingAdapter::new("D7C-RESPONSE-NEEDLE"));
     let tmp = tempfile::tempdir().unwrap();
-    let adapter =
-        VacCommandExecutorAdapter::new(mapped_with_prompt(
-            tmp.path().to_path_buf(),
-            "MEMORIZE-PROMPT-D7C",
-        )
-        .with_llm(capturer));
+    let adapter = VacCommandExecutorAdapter::new(
+        mapped_with_prompt(tmp.path().to_path_buf(), "MEMORIZE-PROMPT-D7C").with_llm(capturer),
+    );
     adapter.execute(&cmd("memorize", "/memorize")).unwrap();
 
     let path = adapter.last_transcript().unwrap();
@@ -123,7 +117,6 @@ fn custom_adapter_response_lands_in_transcript() {
         "custom adapter content missing from transcript: {body}"
     );
 }
-
 
 #[test]
 fn custom_adapter_engine_error_surfaces_as_shell_command_failed() {
@@ -146,7 +139,6 @@ fn custom_adapter_engine_error_surfaces_as_shell_command_failed() {
     }
     assert!(adapter.last_transcript().is_none());
 }
-
 
 struct VilOk {
     name: &'static str,
@@ -295,7 +287,6 @@ fn vil_llm_router_bridge_propagates_failure_when_all_providers_fail() {
     }
     assert!(adapter.last_transcript().is_none());
 }
-
 
 struct VilOkWithTools {
     name: &'static str,
@@ -479,7 +470,6 @@ fn engine_remains_safe_when_tool_calls_arrive_without_a_dispatcher() {
         "Finished transcript row must be present after tool-call no-dispatcher path: {body}"
     );
 }
-
 
 async fn drain_events(
     mut rx: tokio::sync::mpsc::UnboundedReceiver<vac_session_engine::SubmitEvent>,
@@ -667,7 +657,6 @@ async fn submit_one_preserves_tool_calls_under_provider_fallback() {
     );
 }
 
-
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn vil_llm_bridge_second_tool_call_keeps_conservative_defaults() {
     let mut router = vil_llm::LlmRouter::new("good", 1_000);
@@ -700,7 +689,6 @@ async fn vil_llm_bridge_second_tool_call_keeps_conservative_defaults() {
     assert_eq!(second.estimated_tokens, 0);
 }
 
-
 #[test]
 fn vil_llm_router_bridge_constructs_and_plugs_in() {
     let router = vil_llm::LlmRouter::new("anthropic", 0);
@@ -712,7 +700,6 @@ fn vil_llm_router_bridge_constructs_and_plugs_in() {
     let cfg = AdapterConfig::new(std::path::PathBuf::from("/tmp")).with_vil_llm_router(router2);
     assert!(matches!(cfg.llm, AdapterLlm::Custom(_)));
 }
-
 
 #[test]
 fn adapter_llm_debug_does_not_leak_inner_handle() {

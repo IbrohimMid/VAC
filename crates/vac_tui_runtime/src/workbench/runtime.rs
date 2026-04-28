@@ -41,7 +41,8 @@ impl WorkbenchTabView for RuntimeTab {
         }
 
         let items: Vec<ListItem> = state
-            .execution.runtime
+            .execution
+            .runtime
             .jobs
             .iter()
             .enumerate()
@@ -49,7 +50,8 @@ impl WorkbenchTabView for RuntimeTab {
                 let selected = idx == state.execution.runtime.selected_idx;
                 let style = if selected {
                     state
-                        .core.theme
+                        .core
+                        .theme
                         .style(StyleKey::Warning)
                         .add_modifier(Modifier::BOLD)
                 } else {
@@ -94,16 +96,25 @@ impl WorkbenchTabView for RuntimeTab {
         let mut lines: Vec<Line> = Vec::new();
         lines.push(Line::from(vec![
             Span::styled("Jobs: ", Style::default().add_modifier(Modifier::BOLD)),
-            Span::styled(format!("Q {queued}"), state.core.theme.style(StyleKey::Muted)),
+            Span::styled(
+                format!("Q {queued}"),
+                state.core.theme.style(StyleKey::Muted),
+            ),
             Span::raw("  "),
-            Span::styled(format!("R {running}"), state.core.theme.style(StyleKey::Accent)),
+            Span::styled(
+                format!("R {running}"),
+                state.core.theme.style(StyleKey::Accent),
+            ),
             Span::raw("  "),
             Span::styled(
                 format!("C {completed}"),
                 state.core.theme.style(StyleKey::Success),
             ),
             Span::raw("  "),
-            Span::styled(format!("F {failed}"), state.core.theme.style(StyleKey::Error)),
+            Span::styled(
+                format!("F {failed}"),
+                state.core.theme.style(StyleKey::Error),
+            ),
             Span::raw("  "),
             Span::styled(
                 format!("X {cancelled}"),
@@ -171,7 +182,10 @@ impl WorkbenchTabView for RuntimeTab {
                 vac_runtime::AutopilotState::WaitingApproval { tool_call_id } => {
                     lines.push(Line::from(vec![
                         Span::styled("Approval: ", Style::default().add_modifier(Modifier::BOLD)),
-                        Span::styled(tool_call_id.clone(), state.core.theme.style(StyleKey::Warning)),
+                        Span::styled(
+                            tool_call_id.clone(),
+                            state.core.theme.style(StyleKey::Warning),
+                        ),
                     ]));
                 }
                 vac_runtime::AutopilotState::Backoff { until } => {
@@ -197,11 +211,12 @@ impl WorkbenchTabView for RuntimeTab {
                 Style::default().add_modifier(Modifier::BOLD),
             )]));
             for (name, conn_state) in &state.execution.mcp_maps.server_states {
-                let (status, status_key) = if conn_state.state == vac_mcp_core::McpConnectionState::Connected {
-                    ("✅ connected", StyleKey::Success)
-                } else {
-                    ("❌ unreachable", StyleKey::Error)
-                };
+                let (status, status_key) =
+                    if conn_state.state == vac_mcp_core::McpConnectionState::Connected {
+                        ("✅ connected", StyleKey::Success)
+                    } else {
+                        ("❌ unreachable", StyleKey::Error)
+                    };
                 lines.push(Line::from(vec![
                     Span::raw("  "),
                     Span::styled(name.clone(), state.core.theme.style(StyleKey::Warning)),
@@ -232,7 +247,9 @@ impl WorkbenchTabView for RuntimeTab {
             ]));
             for node in projection.nodes.iter().take(5) {
                 let status_style = match &node.status {
-                    vac_core::engine::TaskNodeStatus::Pending => state.core.theme.style(StyleKey::Muted),
+                    vac_core::engine::TaskNodeStatus::Pending => {
+                        state.core.theme.style(StyleKey::Muted)
+                    }
                     vac_core::engine::TaskNodeStatus::Running => {
                         state.core.theme.style(StyleKey::TaskRunning)
                     }
@@ -257,7 +274,10 @@ impl WorkbenchTabView for RuntimeTab {
                 lines.push(Line::from(vec![
                     Span::styled(format!("    [{}] ", status_label), status_style),
                     Span::raw(node.label.chars().take(24).collect::<String>()),
-                    Span::styled(approval.to_string(), state.core.theme.style(StyleKey::Warning)),
+                    Span::styled(
+                        approval.to_string(),
+                        state.core.theme.style(StyleKey::Warning),
+                    ),
                 ]));
             }
             if projection.nodes.len() > 5 {
@@ -269,7 +289,12 @@ impl WorkbenchTabView for RuntimeTab {
             lines.push(Line::raw(""));
         }
 
-        if let Some(job) = state.execution.runtime.jobs.get(state.execution.runtime.selected_idx) {
+        if let Some(job) = state
+            .execution
+            .runtime
+            .jobs
+            .get(state.execution.runtime.selected_idx)
+        {
             lines.push(Line::from(vec![
                 Span::styled("Job: ", Style::default().add_modifier(Modifier::BOLD)),
                 Span::raw(job.id.to_string()),

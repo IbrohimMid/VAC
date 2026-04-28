@@ -27,7 +27,13 @@ pub const KIND_ORDER: &[VilIssueKind] = &[
 
 /// Group all issues from state.
 pub fn classify_issues(state: &AppState) -> Vec<&VilIssue> {
-    state.vil_domain.vil.status.validation_issues.iter().collect()
+    state
+        .vil_domain
+        .vil
+        .status
+        .validation_issues
+        .iter()
+        .collect()
 }
 
 /// Count issues per kind.
@@ -87,7 +93,8 @@ pub fn detect_rulebook_conflicts(active_rulebooks: &[String]) -> Vec<(String, St
 pub fn selected_issue(state: &AppState) -> Option<VilIssue> {
     let issues = classify_issues(state);
     let view = filtered(state, &issues);
-    view.get(state.vil_domain.vil.workbench_selected).map(|i| (*i).clone())
+    view.get(state.vil_domain.vil.workbench_selected)
+        .map(|i| (*i).clone())
 }
 
 /// Return the issue at the given filtered index, if any. Used by hover
@@ -112,7 +119,8 @@ mod tests {
             checkpoint_path: None,
             project_root: std::env::current_dir().unwrap_or_default(),
         });
-        s.vil_domain.vil.status.validation_issues = issues.into_iter().map(VilIssue::from_raw).collect();
+        s.vil_domain.vil.status.validation_issues =
+            issues.into_iter().map(VilIssue::from_raw).collect();
         s
     }
 

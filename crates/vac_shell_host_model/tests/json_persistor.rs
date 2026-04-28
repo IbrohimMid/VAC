@@ -11,8 +11,7 @@ use vac_shell_bridge::{
     ModelController, ModelKey, ModelSelectionPersistor, ModelSelectionSnapshot, ProviderId,
 };
 use vac_shell_host_model::{
-    HostModel, JsonFilePersistor, ModelSelectionController, ModelSelectionState,
-    ProviderInfo,
+    HostModel, JsonFilePersistor, ModelSelectionController, ModelSelectionState, ProviderInfo,
 };
 
 fn seed() -> ModelSelectionState {
@@ -45,10 +44,7 @@ fn seed() -> ModelSelectionState {
     ModelSelectionState::new(
         providers,
         models,
-        Some((
-            ProviderId("anthropic".into()),
-            "claude-sonnet-4.5".into(),
-        )),
+        Some((ProviderId("anthropic".into()), "claude-sonnet-4.5".into())),
     )
 }
 
@@ -102,7 +98,10 @@ fn corrupt_json_propagates_as_host_error() {
     let err = persistor.load().unwrap_err();
     match err {
         vac_shell_bridge::DispatchError::Host(msg) => {
-            assert!(msg.contains("parse"), "host error must mention parse: {msg}");
+            assert!(
+                msg.contains("parse"),
+                "host error must mention parse: {msg}"
+            );
         }
         other => panic!("expected Host(...), got {other:?}"),
     }

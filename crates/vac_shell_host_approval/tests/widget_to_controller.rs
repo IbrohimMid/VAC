@@ -27,9 +27,7 @@ fn apply(controller: &ApprovalQueueController, event: ApprovalBarEvent) {
         ApprovalBarEvent::Toggle(id) => controller.toggle(&id).unwrap(),
         ApprovalBarEvent::SubmitAll => controller.submit_all().unwrap(),
         ApprovalBarEvent::RejectAll => controller.reject_all().unwrap(),
-        ApprovalBarEvent::EscPrimed
-        | ApprovalBarEvent::Consumed
-        | ApprovalBarEvent::Ignored => {}
+        ApprovalBarEvent::EscPrimed | ApprovalBarEvent::Consumed | ApprovalBarEvent::Ignored => {}
     }
 }
 

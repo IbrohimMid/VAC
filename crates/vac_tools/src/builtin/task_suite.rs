@@ -453,10 +453,7 @@ mod tests {
         let ctx = make_ctx(tmp.path().to_path_buf(), uuid::Uuid::new_v4());
 
         let out = TaskCreateTool::new()
-            .execute(
-                serde_json::json!({"title": "x", "prompt": "y"}),
-                &ctx,
-            )
+            .execute(serde_json::json!({"title": "x", "prompt": "y"}), &ctx)
             .await
             .unwrap();
         let id = out["id"].as_str().unwrap().to_string();

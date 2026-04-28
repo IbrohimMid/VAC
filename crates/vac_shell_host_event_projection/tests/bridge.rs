@@ -75,7 +75,11 @@ async fn bridge_skips_text_delta_chunks() {
     handle.await.unwrap();
 
     let snap = log.snapshot();
-    assert_eq!(snap.len(), 1, "expected exactly 1 entry (Finished), got: {snap:?}");
+    assert_eq!(
+        snap.len(),
+        1,
+        "expected exactly 1 entry (Finished), got: {snap:?}"
+    );
     assert_eq!(snap[0].kind, ShellActivityKind::AgentThoughtSummary);
 }
 

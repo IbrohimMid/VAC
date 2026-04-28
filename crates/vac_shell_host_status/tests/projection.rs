@@ -8,10 +8,7 @@ use vac_shell_host_model::{HostModel, ProviderInfo};
 use vac_shell_host_paths::VacPathsImpl;
 use vac_shell_host_status::{StatusInputs, project_status};
 
-fn make_comp() -> (
-    tempfile::TempDir,
-    vac_shell_composition::ShellComposition,
-) {
+fn make_comp() -> (tempfile::TempDir, vac_shell_composition::ShellComposition) {
     let tmp = tempfile::tempdir().unwrap();
     let paths: Arc<dyn VacPaths> = Arc::new(VacPathsImpl::new(tmp.path()));
     let comp = ShellCompositionBuilder::new(paths)
@@ -54,8 +51,10 @@ fn render_model_state_from_model_selection() {
 #[test]
 fn render_pending_approval_count() {
     let (_t, comp) = make_comp();
-    comp.approval_queue.enqueue(ApprovalRequest::new("a", "shell"));
-    comp.approval_queue.enqueue(ApprovalRequest::new("b", "shell"));
+    comp.approval_queue
+        .enqueue(ApprovalRequest::new("a", "shell"));
+    comp.approval_queue
+        .enqueue(ApprovalRequest::new("b", "shell"));
     let view = project_status(
         &comp,
         &StatusInputs {

@@ -3,7 +3,7 @@
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use vac_tui_runtime::app::{AppState, WorkbenchTab};
-use vac_tui_runtime::workbench::{SignalTab, WorkbenchTabView, tab_from_index, active_tab_index};
+use vac_tui_runtime::workbench::{SignalTab, WorkbenchTabView, active_tab_index, tab_from_index};
 
 #[test]
 fn contract_tab_index_roundtrips() {
@@ -24,7 +24,11 @@ fn contract_label_reflects_stream_count() {
     // Default state registers vil_dev (+ 0 shell, 0 mcp, 0 runtime) = 1.
     assert_eq!(SignalTab::tab_label(&state), "Signal (1)");
 
-    state.execution.shell.session_store.push_new("shell-a".to_string());
+    state
+        .execution
+        .shell
+        .session_store
+        .push_new("shell-a".to_string());
     // Registry now has vil_dev + 1 shell = 2.
     assert_eq!(SignalTab::tab_label(&state), "Signal (2)");
 }
@@ -47,7 +51,11 @@ fn contract_render_with_mixed_streams() {
     let mut state = AppState::default();
     state.vil_domain.vil_dev.output.push_line("WARN: slow");
     state.vil_domain.vil_dev.output.push_line("Error: boom");
-    state.execution.shell.session_store.push_new("shell-1".to_string());
+    state
+        .execution
+        .shell
+        .session_store
+        .push_new("shell-1".to_string());
     let backend = TestBackend::new(120, 30);
     let mut terminal = Terminal::new(backend).unwrap();
     terminal

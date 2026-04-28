@@ -1,9 +1,9 @@
-use crate::rust_analysis::{AnalysisHost, AnalysisRequest, AnalysisResponse};
-use std::path::PathBuf;
-use std::sync::Arc;
 use crate::error::ToolError;
 use crate::registry::{ToolContext, VilTool};
+use crate::rust_analysis::{AnalysisHost, AnalysisRequest, AnalysisResponse};
 use serde_json::Value;
+use std::path::PathBuf;
+use std::sync::Arc;
 
 pub struct RustSymbolLookup {
     host: Arc<dyn AnalysisHost>,
@@ -48,30 +48,47 @@ impl VilTool for RustSymbolLookup {
     }
 
     async fn execute(&self, args: Value, _ctx: &ToolContext) -> Result<Value, ToolError> {
-        let args = args.as_object().ok_or(ToolError::InvalidArguments("args must be object".into()))?;
-        
+        let args = args
+            .as_object()
+            .ok_or(ToolError::InvalidArguments("args must be object".into()))?;
+
         let response = if let Some(name) = args.get("symbol_name").and_then(|n| n.as_str()) {
-            self.host.analyze(AnalysisRequest::ResolveSymbol { name: name.into() }).await
+            self.host
+                .analyze(AnalysisRequest::ResolveSymbol { name: name.into() })
+                .await
         } else if let Some(path) = args.get("file_path").and_then(|p| p.as_str()) {
-            self.host.analyze(AnalysisRequest::FileSymbols { path: PathBuf::from(path) }).await
+            self.host
+                .analyze(AnalysisRequest::FileSymbols {
+                    path: PathBuf::from(path),
+                })
+                .await
         } else {
-            return Err(ToolError::InvalidArguments("Must provide symbol_name or file_path".into()));
+            return Err(ToolError::InvalidArguments(
+                "Must provide symbol_name or file_path".into(),
+            ));
         };
 
         match response {
             Ok(AnalysisResponse::ResolveSymbol(syms)) | Ok(AnalysisResponse::FileSymbols(syms)) => {
-                let json = serde_json::to_value(syms.iter().map(|s| {
-                    serde_json::json!({
-                        "name": s.name,
-                        "kind": s.kind,
-                        "file": s.file,
-                        "line": s.line,
-                        "column": s.column
-                    })
-                }).collect::<Vec<_>>()).unwrap();
+                let json = serde_json::to_value(
+                    syms.iter()
+                        .map(|s| {
+                            serde_json::json!({
+                                "name": s.name,
+                                "kind": s.kind,
+                                "file": s.file,
+                                "line": s.line,
+                                "column": s.column
+                            })
+                        })
+                        .collect::<Vec<_>>(),
+                )
+                .unwrap();
                 Ok(json)
             }
-            Ok(_) => Err(ToolError::ExecutionFailed("Unexpected response type".into())),
+            Ok(_) => Err(ToolError::ExecutionFailed(
+                "Unexpected response type".into(),
+            )),
             Err(e) => Err(ToolError::ExecutionFailed(e.to_string())),
         }
     }
@@ -117,11 +134,17 @@ impl VilTool for RustDiagnostics {
     }
 
     async fn execute(&self, _args: Value, _ctx: &ToolContext) -> Result<Value, ToolError> {
-        match self.host.analyze(AnalysisRequest::WorkspaceDiagnostics).await {
+        match self
+            .host
+            .analyze(AnalysisRequest::WorkspaceDiagnostics)
+            .await
+        {
             Ok(AnalysisResponse::WorkspaceDiagnostics(diags)) => {
                 Ok(serde_json::to_value(diags).unwrap())
             }
-            Ok(_) => Err(ToolError::ExecutionFailed("Unexpected response type".into())),
+            Ok(_) => Err(ToolError::ExecutionFailed(
+                "Unexpected response type".into(),
+            )),
             Err(e) => Err(ToolError::ExecutionFailed(e.to_string())),
         }
     }

@@ -45,7 +45,9 @@ fn mouse_dispatch_tab_click_is_pure_state_transition() {
     state.layout.focus = WorkspaceFocus::Input;
     state.layout.workbench_tab = WorkbenchTab::Sessions;
     state
-        .layout.workbench_chrome.tab_regions
+        .layout
+        .workbench_chrome
+        .tab_regions
         .push((WorkbenchTab::Review, rect(0, 0, 10, 1)));
 
     let handled = dispatch_click(&mut state, &tx, 3, 0);

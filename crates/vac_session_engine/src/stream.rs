@@ -116,19 +116,19 @@ impl From<SubmitEvent> for SubmitChunk {
             SubmitEvent::SlashHandled { command, payload } => {
                 Self::SlashHandled { command, payload }
             }
-            SubmitEvent::Compacted { kept, dropped } => {
-                Self::Compacted { kept, dropped }
-            }
-            SubmitEvent::LlmRequested { provider, model } => {
-                Self::LlmRequested { provider, model }
-            }
+            SubmitEvent::Compacted { kept, dropped } => Self::Compacted { kept, dropped },
+            SubmitEvent::LlmRequested { provider, model } => Self::LlmRequested { provider, model },
             SubmitEvent::LlmChunk { text } => Self::TextDelta { text },
-            SubmitEvent::ToolRequested { id, name, arguments } => {
-                Self::ToolRequested { id, name, arguments }
-            }
-            SubmitEvent::ToolResult { id, name, payload } => {
-                Self::ToolResult { id, name, payload }
-            }
+            SubmitEvent::ToolRequested {
+                id,
+                name,
+                arguments,
+            } => Self::ToolRequested {
+                id,
+                name,
+                arguments,
+            },
+            SubmitEvent::ToolResult { id, name, payload } => Self::ToolResult { id, name, payload },
             SubmitEvent::Finished { usage } => Self::Finished { usage },
             SubmitEvent::Aborted { reason } => Self::Aborted { reason },
             SubmitEvent::SpeculationReady {
@@ -152,8 +152,7 @@ impl From<SubmitEvent> for SubmitChunk {
 /// The shape returned by `submit_stream`. Boxed so callers that
 /// want a concrete type can `pin_mut!` it or store it without
 /// re-deriving the generator's opaque type.
-pub type SubmitStream =
-    Pin<Box<dyn Stream<Item = SubmitChunk> + Send + 'static>>;
+pub type SubmitStream = Pin<Box<dyn Stream<Item = SubmitChunk> + Send + 'static>>;
 
 /// Audit fix: cap on buffered chunks between the producing task
 /// and the consumer. A slow TUI renderer can no longer OOM by
@@ -276,8 +275,7 @@ mod tests {
         let compact2: std::sync::Arc<dyn CompactBoundary> =
             std::sync::Arc::new(TrivialCompactBoundary::default());
         let usage2 = std::sync::Arc::new(UsageTracker::new());
-        let llm2: std::sync::Arc<dyn LlmAdapter> =
-            std::sync::Arc::new(EchoAdapter);
+        let llm2: std::sync::Arc<dyn LlmAdapter> = std::sync::Arc::new(EchoAdapter);
         let mut stream = submit_stream(
             SubmitContext::new(Uuid::new_v4(), "hi"),
             w2,
@@ -309,8 +307,7 @@ mod tests {
         let compact: std::sync::Arc<dyn CompactBoundary> =
             std::sync::Arc::new(TrivialCompactBoundary::default());
         let usage = std::sync::Arc::new(UsageTracker::new());
-        let llm: std::sync::Arc<dyn LlmAdapter> =
-            std::sync::Arc::new(EchoAdapter);
+        let llm: std::sync::Arc<dyn LlmAdapter> = std::sync::Arc::new(EchoAdapter);
         let mut stream = submit_stream(
             SubmitContext::new(Uuid::new_v4(), "hi"),
             w,
@@ -337,18 +334,59 @@ mod tests {
     /// `Aborted` — that's the drift guard here.
     #[test]
     fn every_submit_event_has_a_dedicated_chunk_variant() {
-        use serde_json::json;
         use crate::event::SubmitEvent;
+        use serde_json::json;
         let cases: &[(SubmitEvent, &'static str)] = &[
-            (SubmitEvent::Accepted { entry_id: uuid::Uuid::nil() }, "accepted"),
-            (SubmitEvent::SlashHandled { command: "x".into(), payload: json!({}) }, "slash"),
-            (SubmitEvent::Compacted { kept: 1, dropped: 2 }, "compact"),
-            (SubmitEvent::LlmRequested { provider: "p".into(), model: "m".into() }, "llm.request"),
+            (
+                SubmitEvent::Accepted {
+                    entry_id: uuid::Uuid::nil(),
+                },
+                "accepted",
+            ),
+            (
+                SubmitEvent::SlashHandled {
+                    command: "x".into(),
+                    payload: json!({}),
+                },
+                "slash",
+            ),
+            (
+                SubmitEvent::Compacted {
+                    kept: 1,
+                    dropped: 2,
+                },
+                "compact",
+            ),
+            (
+                SubmitEvent::LlmRequested {
+                    provider: "p".into(),
+                    model: "m".into(),
+                },
+                "llm.request",
+            ),
             (SubmitEvent::LlmChunk { text: "t".into() }, "llm.chunk"),
-            (SubmitEvent::ToolRequested { id: "i".into(), name: "n".into(), arguments: json!({}) }, "tool.request"),
-            (SubmitEvent::Finished { usage: crate::usage::UsageSnapshot::default() }, "finished"),
+            (
+                SubmitEvent::ToolRequested {
+                    id: "i".into(),
+                    name: "n".into(),
+                    arguments: json!({}),
+                },
+                "tool.request",
+            ),
+            (
+                SubmitEvent::Finished {
+                    usage: crate::usage::UsageSnapshot::default(),
+                },
+                "finished",
+            ),
             (SubmitEvent::Aborted { reason: "r".into() }, "aborted"),
-            (SubmitEvent::SpeculationReady { predicted_prompt: "p".into(), precomputed_context: Default::default() }, "speculation_ready"),
+            (
+                SubmitEvent::SpeculationReady {
+                    predicted_prompt: "p".into(),
+                    precomputed_context: Default::default(),
+                },
+                "speculation_ready",
+            ),
         ];
         for (ev, expected_label) in cases {
             let chunk = SubmitChunk::from(ev.clone());

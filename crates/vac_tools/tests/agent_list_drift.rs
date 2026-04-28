@@ -19,10 +19,7 @@ use vac_tools::registry::{ToolContext, VilTool};
 async fn agent_list_tool_matches_session_engine_built_ins() {
     let tool = AgentListTool::new();
     let ctx = ToolContext::new(std::env::temp_dir());
-    let out = tool
-        .execute(serde_json::json!({}), &ctx)
-        .await
-        .unwrap();
+    let out = tool.execute(serde_json::json!({}), &ctx).await.unwrap();
 
     let emitted: Vec<String> = out["agents"]
         .as_array()

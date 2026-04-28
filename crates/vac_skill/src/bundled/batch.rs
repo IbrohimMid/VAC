@@ -98,10 +98,7 @@ impl Skill for BatchSkill {
             })
             .collect();
         let summary = format!("batch: {} step(s)", normalised.len());
-        Ok(SkillOutcome::new(
-            summary,
-            json!({ "steps": normalised }),
-        ))
+        Ok(SkillOutcome::new(summary, json!({ "steps": normalised })))
     }
 }
 

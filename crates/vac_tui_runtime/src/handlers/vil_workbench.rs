@@ -28,14 +28,24 @@ pub fn select_next(ctx: &mut HandlerContext) -> HandlerResult {
         ctx.state.vil_domain.vil.workbench_selected = 0;
         return Ok(());
     }
-    let next = ctx.state.vil_domain.vil.workbench_selected.saturating_add(1);
+    let next = ctx
+        .state
+        .vil_domain
+        .vil
+        .workbench_selected
+        .saturating_add(1);
     ctx.state.vil_domain.vil.workbench_selected = next.min(view_len - 1);
     Ok(())
 }
 
 /// Select previous issue within the active filter.
 pub fn select_prev(ctx: &mut HandlerContext) -> HandlerResult {
-    ctx.state.vil_domain.vil.workbench_selected = ctx.state.vil_domain.vil.workbench_selected.saturating_sub(1);
+    ctx.state.vil_domain.vil.workbench_selected = ctx
+        .state
+        .vil_domain
+        .vil
+        .workbench_selected
+        .saturating_sub(1);
     Ok(())
 }
 
@@ -67,7 +77,8 @@ pub fn cycle_filter(ctx: &mut HandlerContext, forward: bool) -> HandlerResult {
 pub fn run_repair(ctx: &mut HandlerContext) -> HandlerResult {
     let Some(issue) = vil_workbench::selected_issue(ctx.state) else {
         ctx.state
-            .layout.toasts
+            .layout
+            .toasts
             .push(Toast::info("No VIL issue selected.".to_string()));
         return Ok(());
     };
@@ -84,7 +95,8 @@ pub fn run_repair(ctx: &mut HandlerContext) -> HandlerResult {
 pub fn run_audit(ctx: &mut HandlerContext) -> HandlerResult {
     let Some(issue) = vil_workbench::selected_issue(ctx.state) else {
         ctx.state
-            .layout.toasts
+            .layout
+            .toasts
             .push(Toast::info("No VIL issue selected.".to_string()));
         return Ok(());
     };
@@ -149,7 +161,8 @@ pub fn run_batch_campaign(ctx: &mut HandlerContext) -> HandlerResult {
 pub fn run_ir_diff(ctx: &mut HandlerContext) -> HandlerResult {
     let Some(issue) = vil_workbench::selected_issue(ctx.state) else {
         ctx.state
-            .layout.toasts
+            .layout
+            .toasts
             .push(Toast::info("No VIL issue selected.".to_string()));
         return Ok(());
     };
@@ -177,7 +190,8 @@ pub fn open_in_editor(ctx: &mut HandlerContext) -> HandlerResult {
 
     let Some(issue) = vil_workbench::selected_issue(ctx.state) else {
         ctx.state
-            .layout.toasts
+            .layout
+            .toasts
             .push(Toast::info("No VIL issue selected.".to_string()));
         return Ok(());
     };
@@ -323,8 +337,14 @@ mod tests {
         let (mut state, tx, _rx) = make_ctx();
         let mut ctx = HandlerContext::new(&mut state, &tx);
         assert!(open(&mut ctx).is_ok());
-        assert_eq!(ctx.state.layout.workbench_tab, crate::app::WorkbenchTab::Vil);
-        assert_eq!(ctx.state.layout.focus, crate::app::WorkspaceFocus::Workbench);
+        assert_eq!(
+            ctx.state.layout.workbench_tab,
+            crate::app::WorkbenchTab::Vil
+        );
+        assert_eq!(
+            ctx.state.layout.focus,
+            crate::app::WorkspaceFocus::Workbench
+        );
     }
 
     #[test]

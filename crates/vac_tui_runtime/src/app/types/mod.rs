@@ -15,93 +15,92 @@ pub mod billing;
 pub mod bridge;
 pub mod changeset_ui;
 pub mod command_palette;
+pub mod commands;
 pub mod file_index;
 pub mod file_picker;
+pub mod helpers;
+pub mod image_render;
 pub mod lsp_ui;
-pub mod scroll;
-pub mod session_meta;
+pub mod mcp_maps;
 pub mod message_ui;
+pub mod messages;
 pub mod operator;
 pub mod paste;
 pub mod pins;
 pub mod quit;
-pub mod session_resume;
-pub mod side_panel;
-pub mod streaming;
-pub mod task_tray;
-pub mod team;
-pub mod speculation;
-pub mod switchers;
-pub mod view_flags;
-pub mod vil_dev;
-pub mod workbench_ui;
-pub mod commands;
-pub mod helpers;
-pub mod image_render;
-pub mod mcp_maps;
-pub mod messages;
 pub mod rendering;
 pub mod runtime;
+pub mod scroll;
+pub mod session_meta;
+pub mod session_resume;
 pub mod shell;
+pub mod side_panel;
+pub mod speculation;
+pub mod streaming;
 pub mod support;
+pub mod switchers;
+pub mod task_tray;
+pub mod team;
+pub mod view_flags;
+pub mod vil_dev;
 pub mod workbench;
+pub mod workbench_ui;
 
 pub use approvals::ApprovalsState;
 pub use ask_user::AskUserState;
 pub use at_mention::AtMentionState;
 pub use banner::BannerState;
-pub use bridge::BridgeState;
-pub use changeset_ui::ChangesetUiState;
-pub use command_palette::CommandPaletteState;
-pub use file_index::FileIndexState;
-pub use file_picker::FilePickerState;
-pub use lsp_ui::LspUiState;
-pub use scroll::ScrollState;
-pub use session_meta::SessionMetaState;
-pub use message_ui::MessageUiState;
-pub use operator::{OperatorState, OutputStyle};
-pub use paste::PasteState;
-pub use pins::PinsState;
-pub use quit::QuitState;
-pub use session_resume::SessionResumeState;
-pub use side_panel::SidePanelState;
-pub use streaming::StreamingState;
-pub use task_tray::{TaskEntry, TaskKind, TaskStatus, TaskTrayState};
-pub use team::TeamContext;
-pub use speculation::SpeculationCache;
-pub use switchers::SwitchersState;
-pub use view_flags::ViewFlagsState;
-pub use vil_dev::VilDevState;
-pub use workbench_ui::WorkbenchChromeState;
 pub use billing::{
     BillingInfo, BillingState, LoadingOperation, LoadingStateManager, SessionInfo,
     ShortcutsPopupMode, TokenUsage, ToolCallStatus,
 };
-pub use image_render::ImageRenderState;
-pub use mcp_maps::McpMapsState;
+pub use bridge::BridgeState;
+pub use changeset_ui::ChangesetUiState;
+pub use command_palette::CommandPaletteState;
 pub use commands::{
     CommandSource, ExistingPlanPrompt, HelperCommand, PendingUserMessage, PlanComment,
 };
+pub use file_index::FileIndexState;
+pub use file_picker::FilePickerState;
 pub use helpers::AppStateOptions;
+pub use image_render::ImageRenderState;
+pub use lsp_ui::LspUiState;
+pub use mcp_maps::McpMapsState;
+pub use message_ui::MessageUiState;
 pub use messages::Message;
+pub use operator::{OperatorState, OutputStyle};
+pub use paste::PasteState;
+pub use pins::PinsState;
+pub use quit::QuitState;
 pub use rendering::{
     MessageLinesCache, PerMessageCache, QueueMetrics, RenderMetrics, RenderedMessageCache,
     VisibleLinesCache,
 };
 pub use runtime::{
     ActivityItem, ActivityKind, RuntimeState, TodoState, VilIssue, VilIssueKind, VilLogEntry,
-    VilSeverity, format_todo_message, parse_todo_message,
-    VilState, VilStatusSnapshot,
+    VilSeverity, VilState, VilStatusSnapshot, format_todo_message, parse_todo_message,
 };
+pub use scroll::ScrollState;
+pub use session_meta::SessionMetaState;
+pub use session_resume::SessionResumeState;
 pub use shell::{ShellSession, ShellSessionStore, ShellState};
+pub use side_panel::SidePanelState;
+pub use speculation::SpeculationCache;
+pub use streaming::StreamingState;
 pub use support::{
     ChipNamespace, ContextChip, SessionResumeEntry, SidePanelRowAction, SidePanelSection,
     StartupSnapshot,
 };
+pub use switchers::SwitchersState;
+pub use task_tray::{TaskEntry, TaskKind, TaskStatus, TaskTrayState};
+pub use team::TeamContext;
+pub use view_flags::ViewFlagsState;
+pub use vil_dev::VilDevState;
 pub use workbench::{
     PlanState, ReviewDiffState, ReviewItem, ReviewItemStatus, ReviewState, Surface, WorkbenchTab,
     WorkspaceFocus,
 };
+pub use workbench_ui::WorkbenchChromeState;
 
 /// Main application state for TUI.
 ///

@@ -21,8 +21,16 @@ impl RedactionConfig {
     /// Default config used by shell surfaces (approval preview, activity log).
     pub const DEFAULT: RedactionConfig = RedactionConfig {
         sensitive_key_fragments: &[
-            "token", "secret", "password", "key", "auth", "credential",
-            "apikey", "api_key", "bearer", "private",
+            "token",
+            "secret",
+            "password",
+            "key",
+            "auth",
+            "credential",
+            "apikey",
+            "api_key",
+            "bearer",
+            "private",
         ],
         preview_cap: 500,
     };
@@ -80,7 +88,9 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    fn cfg() -> RedactionConfig { RedactionConfig::DEFAULT }
+    fn cfg() -> RedactionConfig {
+        RedactionConfig::DEFAULT
+    }
 
     #[test]
     fn redacts_top_level_secret() {
@@ -119,7 +129,10 @@ mod tests {
     fn caps_preview_after_redaction() {
         let long = "x".repeat(1000);
         let v = json!({"cmd": long});
-        let cap = RedactionConfig { preview_cap: 50, ..cfg() };
+        let cap = RedactionConfig {
+            preview_cap: 50,
+            ..cfg()
+        };
         let preview = redacted_json_preview(&v, &cap).unwrap();
         assert!(preview.len() <= 50);
     }

@@ -94,15 +94,21 @@ pub fn handle_ask_user(state: &mut AppState, output_tx: &Sender<OutputEvent>, ev
                     && !filtered.is_empty()
                 {
                     if state
-                        .layout.ask_user.multi_selected
+                        .layout
+                        .ask_user
+                        .multi_selected
                         .contains(&state.layout.ask_user.selected)
                     {
                         state
-                            .layout.ask_user.multi_selected
+                            .layout
+                            .ask_user
+                            .multi_selected
                             .remove(&state.layout.ask_user.selected);
                     } else {
                         state
-                            .layout.ask_user.multi_selected
+                            .layout
+                            .ask_user
+                            .multi_selected
                             .insert(state.layout.ask_user.selected);
                     }
                 } else {

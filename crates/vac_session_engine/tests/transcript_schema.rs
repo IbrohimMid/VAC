@@ -1,4 +1,3 @@
-
 mod common;
 
 use async_trait::async_trait;
@@ -23,7 +22,6 @@ fn find_one<'a>(rows: &'a [serde_json::Value], kind: &str) -> &'a serde_json::Va
         .unwrap_or_else(|| panic!("missing row of kind `{kind}`: {rows:?}"))
 }
 
-
 struct PingSlash;
 
 #[async_trait]
@@ -41,7 +39,6 @@ impl SlashCommand for PingSlash {
         })
     }
 }
-
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn llm_path_row_shapes_match_schema_doc() {
@@ -148,7 +145,6 @@ async fn llm_path_row_shapes_match_schema_doc() {
     assert_eq!(fin["content"]["via"], "llm");
 }
 
-
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn slash_path_row_shapes_match_schema_doc() {
     let tmp = tempfile::tempdir().unwrap();
@@ -191,7 +187,6 @@ async fn slash_path_row_shapes_match_schema_doc() {
     let fin = find_one(&rows, "finished");
     assert_eq!(fin["content"]["via"], "slash");
 }
-
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn aborted_row_shape_includes_reason_and_kind() {

@@ -28,11 +28,7 @@ impl SpeculationCache {
     /// Install a new prediction. Callers typically run inside a
     /// `tokio::spawn` after `SubmitEvent::Finished` so the warming
     /// work doesn't block the UI frame.
-    pub fn set_predicted(
-        &mut self,
-        prompt: impl Into<String>,
-        context: HashMap<String, String>,
-    ) {
+    pub fn set_predicted(&mut self, prompt: impl Into<String>, context: HashMap<String, String>) {
         self.predicted_submit = Some(prompt.into());
         self.precomputed_context = context;
         self.prediction_hits = self.prediction_hits.saturating_add(1);

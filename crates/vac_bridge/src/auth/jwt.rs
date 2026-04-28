@@ -14,8 +14,8 @@
 
 use std::collections::HashMap;
 
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
@@ -159,11 +159,7 @@ pub enum JwtError {
 }
 
 /// Mint a token signed by the key named `kid`.
-pub fn mint(
-    keys: &JwtKeySet,
-    kid: &str,
-    claims: &Claims,
-) -> Result<String, JwtError> {
+pub fn mint(keys: &JwtKeySet, kid: &str, claims: &Claims) -> Result<String, JwtError> {
     let secret = keys
         .get(kid)
         .ok_or_else(|| JwtError::UnknownKid(kid.to_string()))?;
@@ -175,8 +171,7 @@ pub fn mint(
     let header_b64 = URL_SAFE_NO_PAD.encode(serde_json::to_vec(&header)?);
     let payload_b64 = URL_SAFE_NO_PAD.encode(serde_json::to_vec(claims)?);
     let signing_input = format!("{header_b64}.{payload_b64}");
-    let mut mac = HmacSha256::new_from_slice(secret.bytes())
-        .expect("HMAC accepts any key length");
+    let mut mac = HmacSha256::new_from_slice(secret.bytes()).expect("HMAC accepts any key length");
     mac.update(signing_input.as_bytes());
     let sig = URL_SAFE_NO_PAD.encode(mac.finalize().into_bytes());
     Ok(format!("{signing_input}.{sig}"))
@@ -184,11 +179,7 @@ pub fn mint(
 
 /// Verify and parse a token. Returns the claims on success. The
 /// `now_unix` parameter is injected so tests are deterministic.
-pub fn verify(
-    keys: &JwtKeySet,
-    token: &str,
-    now_unix: i64,
-) -> Result<Claims, JwtError> {
+pub fn verify(keys: &JwtKeySet, token: &str, now_unix: i64) -> Result<Claims, JwtError> {
     let mut parts = token.splitn(3, '.');
     let header_b64 = parts
         .next()
@@ -211,8 +202,7 @@ pub fn verify(
         .get(&header.kid)
         .ok_or_else(|| JwtError::UnknownKid(header.kid.clone()))?;
     let signing_input = format!("{header_b64}.{payload_b64}");
-    let mut mac = HmacSha256::new_from_slice(secret.bytes())
-        .expect("HMAC accepts any key length");
+    let mut mac = HmacSha256::new_from_slice(secret.bytes()).expect("HMAC accepts any key length");
     mac.update(signing_input.as_bytes());
     let want = mac.finalize().into_bytes();
     let got = URL_SAFE_NO_PAD.decode(sig_b64.as_bytes())?;
@@ -317,10 +307,7 @@ mod tests {
         assert!(verify(&keys, &t2, 0).is_ok());
         // After rotating k1 out, t1 must fail with UnknownKid.
         keys.remove("k1");
-        matches!(
-            verify(&keys, &t1, 0).unwrap_err(),
-            JwtError::UnknownKid(_)
-        );
+        matches!(verify(&keys, &t1, 0).unwrap_err(), JwtError::UnknownKid(_));
         assert!(verify(&keys, &t2, 0).is_ok());
     }
 
@@ -344,7 +331,10 @@ mod tests {
         let s_b64 = URL_SAFE_NO_PAD.encode(b"nope");
         let tok = format!("{h_b64}.{p_b64}.{s_b64}");
         let keys = keys_with("k1", b"s");
-        matches!(verify(&keys, &tok, 0).unwrap_err(), JwtError::UnsupportedAlg(_));
+        matches!(
+            verify(&keys, &tok, 0).unwrap_err(),
+            JwtError::UnsupportedAlg(_)
+        );
     }
 
     #[test]

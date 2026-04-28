@@ -83,10 +83,7 @@ impl CandleBackend {
     /// accessor to avoid leaking the mutex shape outside this module.
     #[doc(hidden)]
     pub fn is_loaded(&self) -> bool {
-        self.state
-            .lock()
-            .map(|g| g.is_some())
-            .unwrap_or(false)
+        self.state.lock().map(|g| g.is_some()).unwrap_or(false)
     }
 
     /// Blocking model load path. Separated so both the async `load()` and
@@ -101,7 +98,7 @@ impl CandleBackend {
         }
         let tokenizer_path = model_dir.join("tokenizer.json");
         let model_path = model_dir.join("model.gguf");
-        
+
         if !tokenizer_path.exists() {
             return Err(InferenceError::ModelNotFound(format!(
                 "candle: missing tokenizer.json at {}",
@@ -115,24 +112,19 @@ impl CandleBackend {
             )));
         }
 
-        let tokenizer = Tokenizer::from_file(&tokenizer_path).map_err(|e| {
-            InferenceError::InferenceFailed(format!("candle: tokenizer load: {e}"))
-        })?;
+        let tokenizer = Tokenizer::from_file(&tokenizer_path)
+            .map_err(|e| InferenceError::InferenceFailed(format!("candle: tokenizer load: {e}")))?;
 
-        let mut file = std::fs::File::open(&model_path).map_err(|e| {
-            InferenceError::InferenceFailed(format!("candle: model read: {e}"))
-        })?;
+        let mut file = std::fs::File::open(&model_path)
+            .map_err(|e| InferenceError::InferenceFailed(format!("candle: model read: {e}")))?;
 
         let model = candle_transformers::models::quantized_llama::ModelWeights::from_gguf(
-            candle_core::quantized::gguf_file::Content::read(&mut file).map_err(|e| {
-                InferenceError::InferenceFailed(format!("candle: gguf parse: {e}"))
-            })?,
+            candle_core::quantized::gguf_file::Content::read(&mut file)
+                .map_err(|e| InferenceError::InferenceFailed(format!("candle: gguf parse: {e}")))?,
             &mut file,
             &device,
         )
-        .map_err(|e| {
-            InferenceError::InferenceFailed(format!("candle: llama load: {e}"))
-        })?;
+        .map_err(|e| InferenceError::InferenceFailed(format!("candle: llama load: {e}")))?;
 
         Ok(LoadedLlama {
             model,
@@ -145,7 +137,9 @@ impl CandleBackend {
     /// Resolve the EOS token id from the model config, falling back to a
     /// sensible default when unspecified.
     fn resolve_eos(tokenizer: &Tokenizer) -> u32 {
-        tokenizer.token_to_id("</s>").unwrap_or(EOS_TOKEN_ID_DEFAULT)
+        tokenizer
+            .token_to_id("</s>")
+            .unwrap_or(EOS_TOKEN_ID_DEFAULT)
     }
 
     /// Greedy decoding loop. Runs entirely in a `spawn_blocking` worker.
@@ -153,21 +147,17 @@ impl CandleBackend {
         state: Arc<Mutex<Option<LoadedLlama>>>,
         request: InferenceRequest,
     ) -> InferenceResult<String> {
-        let mut guard = state.lock().map_err(|_| {
-            InferenceError::InferenceFailed("candle: mutex poisoned".into())
-        })?;
+        let mut guard = state
+            .lock()
+            .map_err(|_| InferenceError::InferenceFailed("candle: mutex poisoned".into()))?;
         let loaded = guard.as_mut().ok_or_else(|| {
-            InferenceError::InferenceFailed(
-                "candle: no model loaded — call load() first".into(),
-            )
+            InferenceError::InferenceFailed("candle: no model loaded — call load() first".into())
         })?;
 
         let encoding = loaded
             .tokenizer
             .encode(request.prompt.as_str(), true)
-            .map_err(|e| {
-                InferenceError::InferenceFailed(format!("candle: tokenize: {e}"))
-            })?;
+            .map_err(|e| InferenceError::InferenceFailed(format!("candle: tokenize: {e}")))?;
         let mut tokens: Vec<u32> = encoding.get_ids().to_vec();
         if tokens.is_empty() {
             return Err(InferenceError::InferenceFailed(
@@ -189,26 +179,22 @@ impl CandleBackend {
             let input = Tensor::new(ctx, &loaded.device).map_err(|e| {
                 InferenceError::InferenceFailed(format!("candle: input tensor: {e}"))
             })?;
-            let input = input.unsqueeze(0).map_err(|e| {
-                InferenceError::InferenceFailed(format!("candle: unsqueeze: {e}"))
-            })?;
+            let input = input
+                .unsqueeze(0)
+                .map_err(|e| InferenceError::InferenceFailed(format!("candle: unsqueeze: {e}")))?;
             let logits = loaded
                 .model
                 .forward(&input, index_pos)
-                .map_err(|e| {
-                    InferenceError::InferenceFailed(format!("candle: forward: {e}"))
-                })?;
-            let logits = logits.squeeze(0).map_err(|e| {
-                InferenceError::InferenceFailed(format!("candle: squeeze: {e}"))
-            })?;
+                .map_err(|e| InferenceError::InferenceFailed(format!("candle: forward: {e}")))?;
+            let logits = logits
+                .squeeze(0)
+                .map_err(|e| InferenceError::InferenceFailed(format!("candle: squeeze: {e}")))?;
             index_pos += ctx_size;
 
             let last_logits = if logits.dims().len() == 2 {
                 let seq_len = logits.dims()[0];
                 logits.get(seq_len - 1).map_err(|e| {
-                    InferenceError::InferenceFailed(format!(
-                        "candle: last-row logits: {e}"
-                    ))
+                    InferenceError::InferenceFailed(format!("candle: last-row logits: {e}"))
                 })?
             } else {
                 logits
@@ -216,21 +202,18 @@ impl CandleBackend {
 
             let next_token = last_logits
                 .argmax(candle_core::D::Minus1)
-                .map_err(|e| {
-                    InferenceError::InferenceFailed(format!("candle: argmax: {e}"))
-                })?
+                .map_err(|e| InferenceError::InferenceFailed(format!("candle: argmax: {e}")))?
                 .to_scalar::<u32>()
-                .map_err(|e| {
-                    InferenceError::InferenceFailed(format!("candle: scalar: {e}"))
-                })?;
+                .map_err(|e| InferenceError::InferenceFailed(format!("candle: scalar: {e}")))?;
 
             tokens.push(next_token);
             if next_token == eos_id {
                 break;
             }
-            let piece = loaded.tokenizer.decode(&[next_token], true).map_err(|e| {
-                InferenceError::InferenceFailed(format!("candle: decode: {e}"))
-            })?;
+            let piece = loaded
+                .tokenizer
+                .decode(&[next_token], true)
+                .map_err(|e| InferenceError::InferenceFailed(format!("candle: decode: {e}")))?;
             generated.push_str(&piece);
         }
 
@@ -248,19 +231,18 @@ impl InferenceBackend for CandleBackend {
         let device = self.device.clone();
         let model_dir = path.to_path_buf();
         let state = Arc::clone(&self.state);
-        let loaded = tokio::task::spawn_blocking(move || {
-            Self::load_blocking(device, model_dir)
-        })
-        .await
-        .map_err(|e| {
-            InferenceError::InferenceFailed(format!("candle: join load task: {e}"))
-        })??;
+        let loaded = tokio::task::spawn_blocking(move || Self::load_blocking(device, model_dir))
+            .await
+            .map_err(|e| {
+                InferenceError::InferenceFailed(format!("candle: join load task: {e}"))
+            })??;
 
         let path = loaded.model_dir.clone();
         let max_ctx = Some(4096);
-        *state.lock().map_err(|_| {
-            InferenceError::InferenceFailed("candle: mutex poisoned".into())
-        })? = Some(loaded);
+        *state
+            .lock()
+            .map_err(|_| InferenceError::InferenceFailed("candle: mutex poisoned".into()))? =
+            Some(loaded);
 
         tracing::info!(
             path = %path.display(),
@@ -287,11 +269,7 @@ impl InferenceBackend for CandleBackend {
         let req = request.clone();
         tokio::task::spawn_blocking(move || Self::infer_blocking(state, req))
             .await
-            .map_err(|e| {
-                InferenceError::InferenceFailed(format!(
-                    "candle: join infer task: {e}"
-                ))
-            })?
+            .map_err(|e| InferenceError::InferenceFailed(format!("candle: join infer task: {e}")))?
     }
 }
 
@@ -368,10 +346,7 @@ mod tests {
     #[tokio::test]
     async fn infer_without_load_surfaces_clear_error() {
         let b = CandleBackend::new_cpu();
-        let err = b
-            .infer(&InferenceRequest::new("hi", 4))
-            .await
-            .unwrap_err();
+        let err = b.infer(&InferenceRequest::new("hi", 4)).await.unwrap_err();
         match err {
             InferenceError::InferenceFailed(msg) => {
                 assert!(

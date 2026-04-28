@@ -14,9 +14,8 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use uuid::Uuid;
 use vac_session_engine::{
     CompactBoundary, CompactConfig, CompactHint, CompactInput, EngineError, EngineResult,
-    LlmAdapter, LlmRequest, LlmResponse, SlashCommand, SlashProcessor, SubmitContext,
-    SubmitEvent, TranscriptKind, TranscriptWriter, TrivialCompactBoundary, UsageTracker,
-    submit_one,
+    LlmAdapter, LlmRequest, LlmResponse, SlashCommand, SlashProcessor, SubmitContext, SubmitEvent,
+    TranscriptKind, TranscriptWriter, TrivialCompactBoundary, UsageTracker, submit_one,
 };
 
 /// LLM adapter that records whether it was called and asserts the
@@ -53,7 +52,7 @@ impl LlmAdapter for RecordingAdapter {
             content: format!("ack: {}", req.prompt),
             input_tokens: 1,
             output_tokens: 1,
-        tool_calls: Vec::new(),
+            tool_calls: Vec::new(),
         })
     }
 }
@@ -72,10 +71,7 @@ impl SlashCommand for Counter {
     fn description(&self) -> &str {
         "test"
     }
-    async fn handle(
-        &self,
-        _args: &str,
-    ) -> EngineResult<vac_session_engine::slash::SlashResult> {
+    async fn handle(&self, _args: &str) -> EngineResult<vac_session_engine::slash::SlashResult> {
         self.hits.fetch_add(1, Ordering::SeqCst);
         Ok(vac_session_engine::slash::SlashResult {
             summary: "pong".into(),
@@ -133,7 +129,13 @@ async fn resume_detects_only_crashed_sessions() {
     )
     .await
     .unwrap();
-    assert!(writer.last_pending_submit(sid_clean).await.unwrap().is_none());
+    assert!(
+        writer
+            .last_pending_submit(sid_clean)
+            .await
+            .unwrap()
+            .is_none()
+    );
 
     // Crashed session: Accepted only.
     let sid_crash = Uuid::new_v4();
@@ -261,7 +263,10 @@ async fn compact_boundary_fires_through_submit_one() {
         "Compacted event missing: {events:?}",
     );
     let rows = writer.read(sid).await.unwrap();
-    assert!(rows.iter().any(|r| r.kind == TranscriptKind::CompactBoundary));
+    assert!(
+        rows.iter()
+            .any(|r| r.kind == TranscriptKind::CompactBoundary)
+    );
 }
 
 /// Adapter that always fails — used to exercise the Aborted path.
@@ -344,7 +349,7 @@ async fn budget_gate_aborts_submit_when_exceeded() {
 
     let usage = UsageTracker::new();
     usage.add_input_tokens(10); // used 10
-    
+
     let mut compact_cfg = CompactConfig::default();
     compact_cfg.max_budget_tokens = Some(10); // budget 10 -> exceeded
 
@@ -365,12 +370,12 @@ async fn budget_gate_aborts_submit_when_exceeded() {
 
     let rows = writer.read(sid).await.unwrap();
     let kinds: Vec<_> = rows.iter().map(|r| r.kind).collect();
-    
+
     // Should be Accepted -> Aborted (never reached LLMRequest)
     assert_eq!(kinds[0], TranscriptKind::Accepted);
     assert_eq!(*kinds.last().unwrap(), TranscriptKind::Aborted);
     assert!(!kinds.contains(&TranscriptKind::LlmRequest));
-    
+
     let aborted = rows.last().unwrap();
     assert_eq!(aborted.content["kind"], "budget_exceeded");
 }
@@ -510,8 +515,14 @@ async fn tool_dispatch_runs_through_composite_gate_allow_path() {
         }
         v
     };
-    assert!(labels.contains(&"tool.request"), "ToolRequested emitted: {labels:?}");
-    assert!(labels.contains(&"tool.result"), "ToolResult emitted: {labels:?}");
+    assert!(
+        labels.contains(&"tool.request"),
+        "ToolRequested emitted: {labels:?}"
+    );
+    assert!(
+        labels.contains(&"tool.result"),
+        "ToolResult emitted: {labels:?}"
+    );
     assert_eq!(labels.last().copied(), Some("finished"));
 }
 

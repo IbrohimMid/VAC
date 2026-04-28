@@ -6,9 +6,9 @@
 //! `vac_tui_runtime`, the donor PTY layer, or any other VAC engine
 //! crate into this widget crate.
 
+use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::text::{Line, Span};
-use ratatui::Terminal;
 
 use vac_shell_popup::{
     SHELL_POPUP_MAX_HEIGHT_PERCENT, SHELL_POPUP_MIN_HEIGHT, ShellPopupViewState,
@@ -112,7 +112,10 @@ fn invisible_popup_does_not_render_anything() {
     let any_non_space = (0..buf.area.width)
         .flat_map(|x| (0..buf.area.height).map(move |y| (x, y)))
         .any(|(x, y)| !buf[(x, y)].symbol().trim().is_empty());
-    assert!(!any_non_space, "invisible popup should produce empty buffer");
+    assert!(
+        !any_non_space,
+        "invisible popup should produce empty buffer"
+    );
 }
 
 #[test]
@@ -141,7 +144,10 @@ fn visible_popup_renders_borders_and_title() {
         }
         all.push('\n');
     }
-    assert!(all.contains("ls -la"), "title must include the command name; got:\n{all}");
+    assert!(
+        all.contains("ls -la"),
+        "title must include the command name; got:\n{all}"
+    );
 }
 
 #[test]

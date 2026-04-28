@@ -75,18 +75,13 @@ impl AcpServer {
     ///
     /// Re-entrancy: a session that is already `Attached` or
     /// `Detached` rejects a second handshake with `BridgeError::Protocol`.
-    pub async fn handshake(
-        &self,
-        session: &mut RemoteSession,
-    ) -> BridgeResult<AcpHandshake> {
+    pub async fn handshake(&self, session: &mut RemoteSession) -> BridgeResult<AcpHandshake> {
         let handle = session.handle();
         // Re-entrancy guard.
         match handle.state().await {
             SessionAttachState::Connecting => {}
             SessionAttachState::Attached => {
-                return Err(BridgeError::Protocol(
-                    "handshake already complete".into(),
-                ));
+                return Err(BridgeError::Protocol("handshake already complete".into()));
             }
             SessionAttachState::Detached => {
                 return Err(BridgeError::Protocol(
@@ -95,17 +90,10 @@ impl AcpServer {
             }
         }
 
-        let ev = match tokio::time::timeout(
-            self.handshake_timeout,
-            session.next_inbound(),
-        )
-        .await
-        {
+        let ev = match tokio::time::timeout(self.handshake_timeout, session.next_inbound()).await {
             Ok(Some(ev)) => ev,
             Ok(None) => {
-                return Err(BridgeError::Handshake(
-                    "client hung up before hello".into(),
-                ));
+                return Err(BridgeError::Handshake("client hung up before hello".into()));
             }
             Err(_) => {
                 return Err(BridgeError::HandshakeTimeout(
@@ -127,9 +115,9 @@ impl AcpServer {
                     );
                     // Best-effort notify; a closed client shouldn't
                     // pull us further off the happy path.
-                    let _ = handle
-                        .outbound_tx
-                        .try_send(OutboundEvent::Error { reason: msg.clone() });
+                    let _ = handle.outbound_tx.try_send(OutboundEvent::Error {
+                        reason: msg.clone(),
+                    });
                     return Err(BridgeError::Handshake(msg));
                 }
                 AcpHandshake {
@@ -145,11 +133,9 @@ impl AcpServer {
                         .and_then(|v| v["kind"].as_str().map(|s| s.to_string()))
                         .unwrap_or_else(|| "?".into()),
                 );
-                let _ = handle
-                    .outbound_tx
-                    .try_send(OutboundEvent::Error {
-                        reason: msg.clone(),
-                    });
+                let _ = handle.outbound_tx.try_send(OutboundEvent::Error {
+                    reason: msg.clone(),
+                });
                 return Err(BridgeError::Handshake(msg));
             }
         };
@@ -262,8 +248,8 @@ mod tests {
         // Keep the handle alive so the channel isn't closed; just
         // never send a Hello.
         let h = s.handle();
-        let srv = AcpServer::new("0.1-test")
-            .with_handshake_timeout(std::time::Duration::from_millis(50));
+        let srv =
+            AcpServer::new("0.1-test").with_handshake_timeout(std::time::Duration::from_millis(50));
         let err = srv.handshake(&mut s).await.unwrap_err();
         assert!(matches!(err, BridgeError::HandshakeTimeout(50)));
         // Session must NOT have flipped to Attached on timeout.

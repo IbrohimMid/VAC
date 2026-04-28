@@ -195,6 +195,9 @@ mod tests {
         assert!(results.len() >= 2);
         // Top result must have "signal" in the name.
         let top = &results[0]["name"].as_str().unwrap();
-        assert!(top.contains("signal"), "expected signal tool on top, got {top}");
+        assert!(
+            top.contains("signal"),
+            "expected signal tool on top, got {top}"
+        );
     }
 }

@@ -1,8 +1,6 @@
 use std::sync::{Arc, Mutex};
 
-use vac_shell_contracts::{
-    SessionAction, SessionEntry, SessionPreview, VacPaths,
-};
+use vac_shell_contracts::{SessionAction, SessionEntry, SessionPreview, VacPaths};
 use vac_shell_host_paths::enumerate_sessions;
 
 #[derive(Debug, thiserror::Error)]

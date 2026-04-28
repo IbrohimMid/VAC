@@ -88,21 +88,24 @@ fn operator_surfaces_hide_passthrough_commands_and_match_parity() {
 #[test]
 fn popup_precedence_blocks_lower_priority_open_requests() {
     let mut state = AppState::default();
-    state
-        .layout.overlay_manager
-        .push(vac_tui_runtime::overlay::OverlayId::AskUser, state.layout.focus);
+    state.layout.overlay_manager.push(
+        vac_tui_runtime::overlay::OverlayId::AskUser,
+        state.layout.focus,
+    );
 
     let (output_tx, _output_rx) = mpsc::channel(8);
     input_core::handle_input_event(&mut state, &output_tx, InputEvent::ShowProfileSwitcher);
 
     assert!(
         state
-            .layout.overlay_manager
+            .layout
+            .overlay_manager
             .is_active(vac_tui_runtime::overlay::OverlayId::AskUser)
     );
     assert!(
         !state
-            .layout.overlay_manager
+            .layout
+            .overlay_manager
             .is_active(vac_tui_runtime::overlay::OverlayId::ProfileSwitcher)
     );
 }
@@ -110,9 +113,10 @@ fn popup_precedence_blocks_lower_priority_open_requests() {
 #[test]
 fn shortcuts_popup_swallows_input_without_touching_editor_state() {
     let mut state = AppState::default();
-    state
-        .layout.overlay_manager
-        .push(vac_tui_runtime::overlay::OverlayId::Shortcuts, state.layout.focus);
+    state.layout.overlay_manager.push(
+        vac_tui_runtime::overlay::OverlayId::Shortcuts,
+        state.layout.focus,
+    );
     state.composer.input.set_content("seed");
 
     let (output_tx, _output_rx) = mpsc::channel(8);
@@ -120,7 +124,8 @@ fn shortcuts_popup_swallows_input_without_touching_editor_state() {
 
     assert!(
         state
-            .layout.overlay_manager
+            .layout
+            .overlay_manager
             .is_active(vac_tui_runtime::overlay::OverlayId::Shortcuts)
     );
     assert_eq!(state.composer.input.get_content(), "seed");
@@ -129,9 +134,10 @@ fn shortcuts_popup_swallows_input_without_touching_editor_state() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn shortcuts_popup_executes_slash_commands_directly() {
     let mut state = AppState::default();
-    state
-        .layout.overlay_manager
-        .push(vac_tui_runtime::overlay::OverlayId::Shortcuts, state.layout.focus);
+    state.layout.overlay_manager.push(
+        vac_tui_runtime::overlay::OverlayId::Shortcuts,
+        state.layout.focus,
+    );
     state.layout.command_palette.shortcuts_mode = ShortcutsPopupMode::Commands;
     state.composer.input.set_content("seed");
 
@@ -152,12 +158,14 @@ async fn shortcuts_popup_executes_slash_commands_directly() {
 
     assert!(
         state
-            .layout.overlay_manager
+            .layout
+            .overlay_manager
             .is_active(vac_tui_runtime::overlay::OverlayId::ModelSwitcher)
     );
     assert!(
         !state
-            .layout.overlay_manager
+            .layout
+            .overlay_manager
             .is_active(vac_tui_runtime::overlay::OverlayId::Shortcuts)
     );
     assert_eq!(state.composer.input.get_content(), "seed");
@@ -166,9 +174,10 @@ async fn shortcuts_popup_executes_slash_commands_directly() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn shortcuts_popup_can_switch_tabs_without_closing() {
     let mut state = AppState::default();
-    state
-        .layout.overlay_manager
-        .push(vac_tui_runtime::overlay::OverlayId::Shortcuts, state.layout.focus);
+    state.layout.overlay_manager.push(
+        vac_tui_runtime::overlay::OverlayId::Shortcuts,
+        state.layout.focus,
+    );
     state.layout.command_palette.shortcuts_mode = ShortcutsPopupMode::Commands;
     state.layout.command_palette.input = "stale filter".to_string();
 
@@ -184,10 +193,14 @@ async fn shortcuts_popup_can_switch_tabs_without_closing() {
 
     assert!(
         state
-            .layout.overlay_manager
+            .layout
+            .overlay_manager
             .is_active(vac_tui_runtime::overlay::OverlayId::Shortcuts)
     );
-    assert_eq!(state.layout.command_palette.shortcuts_mode, ShortcutsPopupMode::Sessions);
+    assert_eq!(
+        state.layout.command_palette.shortcuts_mode,
+        ShortcutsPopupMode::Sessions
+    );
     assert_eq!(state.layout.command_palette.shortcuts_scroll, 0);
     assert!(state.layout.command_palette.input.is_empty());
 }
@@ -196,7 +209,8 @@ async fn shortcuts_popup_can_switch_tabs_without_closing() {
 async fn buffered_messages_flush_as_a_single_user_message() {
     let mut state = AppState::default();
     state
-        .transcript.pending_user_messages
+        .transcript
+        .pending_user_messages
         .push_back(PendingUserMessage::new(
             "first".to_string(),
             None,
@@ -204,7 +218,8 @@ async fn buffered_messages_flush_as_a_single_user_message() {
             "first".to_string(),
         ));
     state
-        .transcript.pending_user_messages
+        .transcript
+        .pending_user_messages
         .push_back(PendingUserMessage::new(
             "second".to_string(),
             None,
@@ -257,7 +272,8 @@ async fn profile_switcher_request_on_open_and_submit_is_deterministic() {
         let mut ctx = HandlerContext::new(&mut state, &output_tx);
         assert!(
             ctx.state
-                .layout.overlay_manager
+                .layout
+                .overlay_manager
                 .is_active(vac_tui_runtime::overlay::OverlayId::ProfileSwitcher)
         );
         let filtered = ctx.state.profile_switcher_filtered();
@@ -265,7 +281,10 @@ async fn profile_switcher_request_on_open_and_submit_is_deterministic() {
             filtered.iter().any(|p| p == "migration"),
             "profile switcher should preselect from the active profile set"
         );
-        assert_eq!(filtered[ctx.state.layout.switchers.profile_selected], "migration");
+        assert_eq!(
+            filtered[ctx.state.layout.switchers.profile_selected],
+            "migration"
+        );
         profile_switcher::submit_selected(&mut ctx).unwrap();
     }
 
@@ -275,7 +294,8 @@ async fn profile_switcher_request_on_open_and_submit_is_deterministic() {
     }
     assert!(
         !state
-            .layout.overlay_manager
+            .layout
+            .overlay_manager
             .is_active(vac_tui_runtime::overlay::OverlayId::ProfileSwitcher)
     );
 }
@@ -306,7 +326,11 @@ severity = "warn"
         checkpoint_path: None,
         project_root: root.to_path_buf(),
     });
-    state.layout.switchers.selected_rulebooks.insert("workspace".to_string());
+    state
+        .layout
+        .switchers
+        .selected_rulebooks
+        .insert("workspace".to_string());
 
     let (output_tx, mut output_rx) = mpsc::channel(8);
 
@@ -315,11 +339,15 @@ severity = "warn"
         let mut ctx = HandlerContext::new(&mut state, &output_tx);
         assert!(
             ctx.state
-                .layout.overlay_manager
+                .layout
+                .overlay_manager
                 .is_active(vac_tui_runtime::overlay::OverlayId::RulebookSwitcher)
         );
         assert_eq!(ctx.state.layout.switchers.available_rulebooks.len(), 1);
-        assert_eq!(ctx.state.layout.switchers.available_rulebooks[0].id, "workspace");
+        assert_eq!(
+            ctx.state.layout.switchers.available_rulebooks[0].id,
+            "workspace"
+        );
         assert_eq!(ctx.state.layout.switchers.rulebook_selected, 0);
         rulebook_switcher::submit_selected(&mut ctx).unwrap();
     }
@@ -332,7 +360,8 @@ severity = "warn"
     }
     assert!(
         !state
-            .layout.overlay_manager
+            .layout
+            .overlay_manager
             .is_active(vac_tui_runtime::overlay::OverlayId::RulebookSwitcher)
     );
 }
@@ -462,10 +491,14 @@ mod pr_t16_mouse_dispatch_e2e {
         state.layout.focus = WorkspaceFocus::Input;
         state.layout.workbench_tab = WorkbenchTab::Sessions;
         state
-            .layout.workbench_chrome.review_file_row_regions
+            .layout
+            .workbench_chrome
+            .review_file_row_regions
             .push(("src/lib.rs".to_string(), Rect::new(2, 5, 40, 1)));
         state
-            .layout.workbench_chrome.review_file_row_regions
+            .layout
+            .workbench_chrome
+            .review_file_row_regions
             .push(("src/main.rs".to_string(), Rect::new(2, 6, 40, 1)));
 
         let handled = dispatch_click(&mut state, &tx, 10, 6);
@@ -485,10 +518,14 @@ mod pr_t16_mouse_dispatch_e2e {
         state.layout.focus = WorkspaceFocus::Input;
         state.layout.workbench_tab = WorkbenchTab::Review;
         state
-            .layout.workbench_chrome.approvals_row_regions
+            .layout
+            .workbench_chrome
+            .approvals_row_regions
             .push((0, Rect::new(4, 8, 30, 1)));
         state
-            .layout.workbench_chrome.approvals_row_regions
+            .layout
+            .workbench_chrome
+            .approvals_row_regions
             .push((2, Rect::new(4, 10, 30, 1)));
 
         let handled = dispatch_click(&mut state, &tx, 5, 10);
@@ -504,7 +541,9 @@ mod pr_t16_mouse_dispatch_e2e {
         state.layout.focus = WorkspaceFocus::Input;
         state.layout.workbench_tab = WorkbenchTab::Review;
         state
-            .layout.workbench_chrome.vil_issue_row_regions
+            .layout
+            .workbench_chrome
+            .vil_issue_row_regions
             .push((3, Rect::new(2, 12, 60, 1)));
 
         let handled = dispatch_click(&mut state, &tx, 5, 12);
@@ -555,9 +594,21 @@ mod pr_t16_mouse_dispatch_e2e {
             make_session("gamma"),
         ];
         state.operator_config.operator.sessions_selected_idx = 0;
-        state.layout.workbench_chrome.sessions_row_regions.push((0, Rect::new(2, 5, 30, 1)));
-        state.layout.workbench_chrome.sessions_row_regions.push((1, Rect::new(2, 6, 30, 1)));
-        state.layout.workbench_chrome.sessions_row_regions.push((2, Rect::new(2, 7, 30, 1)));
+        state
+            .layout
+            .workbench_chrome
+            .sessions_row_regions
+            .push((0, Rect::new(2, 5, 30, 1)));
+        state
+            .layout
+            .workbench_chrome
+            .sessions_row_regions
+            .push((1, Rect::new(2, 6, 30, 1)));
+        state
+            .layout
+            .workbench_chrome
+            .sessions_row_regions
+            .push((2, Rect::new(2, 7, 30, 1)));
 
         let handled = dispatch_click(&mut state, &tx, 10, 7);
         assert!(handled, "click inside sessions row region must be consumed");
@@ -575,7 +626,11 @@ mod pr_t16_mouse_dispatch_e2e {
         state.layout.focus = WorkspaceFocus::Input;
         state.layout.workbench_tab = WorkbenchTab::Review;
         state.session.sessions.clear();
-        state.layout.workbench_chrome.sessions_row_regions.push((5, Rect::new(2, 5, 30, 1)));
+        state
+            .layout
+            .workbench_chrome
+            .sessions_row_regions
+            .push((5, Rect::new(2, 5, 30, 1)));
 
         let handled = dispatch_click(&mut state, &tx, 10, 5);
         assert!(
@@ -591,7 +646,9 @@ mod pr_t16_mouse_dispatch_e2e {
         let (mut state, tx, _rx) = make_state();
         state.layout.focus = WorkspaceFocus::Input;
         state
-            .layout.workbench_chrome.review_file_row_regions
+            .layout
+            .workbench_chrome
+            .review_file_row_regions
             .push(("a.rs".to_string(), Rect::new(0, 0, 10, 1)));
         state.layout.workbench_chrome.body_region = Some(Rect::new(0, 5, 20, 5));
 
@@ -729,7 +786,9 @@ mod pr_t15_hover_popup_e2e {
         state.layout.lsp_ui.active_hover = None;
         state.layout.lsp_ui.hover_popup_region = None;
         state
-            .layout.workbench_chrome.vil_issue_row_regions
+            .layout
+            .workbench_chrome
+            .vil_issue_row_regions
             .push((2, Rect::new(2, 12, 60, 1)));
 
         let handled = dispatch_click(&mut state, &tx, 5, 12);
@@ -805,8 +864,14 @@ mod pr_t15_hover_move_e2e {
 
         let changed = dispatch_hover(&mut state, 30, 13);
         assert!(!changed, "hover over popup must be a no-op repaint-wise");
-        assert!(state.layout.lsp_ui.active_hover.is_some(), "hover must stay alive");
-        assert_eq!(state.layout.lsp_ui.hover_popup_region, Some(Rect::new(20, 10, 40, 7)));
+        assert!(
+            state.layout.lsp_ui.active_hover.is_some(),
+            "hover must stay alive"
+        );
+        assert_eq!(
+            state.layout.lsp_ui.hover_popup_region,
+            Some(Rect::new(20, 10, 40, 7))
+        );
     }
 
     #[test]
@@ -819,7 +884,9 @@ mod pr_t15_hover_move_e2e {
         state.layout.lsp_ui.active_hover = Some(seeded_hover());
         state.layout.lsp_ui.hover_popup_region = Some(Rect::new(20, 10, 40, 7));
         state
-            .layout.workbench_chrome.vil_issue_row_regions
+            .layout
+            .workbench_chrome
+            .vil_issue_row_regions
             .push((0, Rect::new(2, 20, 60, 1)));
         assert!(
             state.layout.lsp_ui.lsp_diagnostics.is_none(),
@@ -854,7 +921,9 @@ mod pr_t15_hover_move_e2e {
         let mut state = AppState::default();
         state.vil_domain.vil.workbench_selected = 1;
         state
-            .layout.workbench_chrome.vil_issue_row_regions
+            .layout
+            .workbench_chrome
+            .vil_issue_row_regions
             .push((3, Rect::new(2, 30, 60, 1)));
 
         let _ = dispatch_hover(&mut state, 5, 30);

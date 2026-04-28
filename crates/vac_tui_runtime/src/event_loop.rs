@@ -38,7 +38,10 @@ pub struct RulebookConfig {
 /// Run the TUI
 #[allow(clippy::too_many_arguments)]
 use crate::services::memory_consolidator::run_and_banner;
-use vac_memory::{Consolidator, ConsolidatorConfig, MemoryScanner, policy::builtin_policy_set, policy::ConsolidationInput};
+use vac_memory::{
+    Consolidator, ConsolidatorConfig, MemoryScanner, policy::ConsolidationInput,
+    policy::builtin_policy_set,
+};
 
 pub async fn run_tui(
     mut input_rx: Receiver<InputEvent>,
@@ -77,12 +80,16 @@ pub async fn run_tui(
     // and the probe's short (200ms) deadline runs once per startup. The
     // helper is TTY-gated internally so non-interactive runs (pipes,
     // CI) short-circuit to `false` without emitting bytes.
-    let kitty_graphics_supported = vac_core::boot::boot_profile().record("boot_kitty_probe", vac_core::boot::BootPhase::Critical, || {
-        let _s = tracing::info_span!("boot_kitty_probe").entered();
-        crate::services::kitty_image::probe_terminal_kitty_support(
-            crate::services::kitty_image::DEFAULT_PROBE_TIMEOUT,
-        )
-    });
+    let kitty_graphics_supported = vac_core::boot::boot_profile().record(
+        "boot_kitty_probe",
+        vac_core::boot::BootPhase::Critical,
+        || {
+            let _s = tracing::info_span!("boot_kitty_probe").entered();
+            crate::services::kitty_image::probe_terminal_kitty_support(
+                crate::services::kitty_image::DEFAULT_PROBE_TIMEOUT,
+            )
+        },
+    );
 
     execute!(
         std::io::stdout(),
@@ -117,7 +124,14 @@ pub async fn run_tui(
         }
         if !project_context.file_index.is_empty() {
             state.workspace.file_index.all_files = project_context.file_index;
-            state.workspace.file_index.search_results = state.workspace.file_index.all_files.iter().take(50).cloned().collect();
+            state.workspace.file_index.search_results = state
+                .workspace
+                .file_index
+                .all_files
+                .iter()
+                .take(50)
+                .cloned()
+                .collect();
         }
         if !project_context.pending_changes.is_empty() {
             state.workspace.modified_files = project_context.pending_changes;
@@ -147,10 +161,14 @@ pub async fn run_tui(
         state.core.startup.active_profile = Some(_current_profile_name.clone());
     }
     // Load config once; reused below for MCP probe + theme + vil dev.
-    let boot_config = vac_core::boot::boot_profile().record("boot_config_load", vac_core::boot::BootPhase::Critical, || {
-        let _s = tracing::info_span!("boot_config_load").entered();
-        vac_core::VacConfig::load_with_fallback(&project_root).unwrap_or_default()
-    });
+    let boot_config = vac_core::boot::boot_profile().record(
+        "boot_config_load",
+        vac_core::boot::BootPhase::Critical,
+        || {
+            let _s = tracing::info_span!("boot_config_load").entered();
+            vac_core::VacConfig::load_with_fallback(&project_root).unwrap_or_default()
+        },
+    );
     state.core.startup.mcp_server_count = boot_config.mcp_servers.as_ref().map_or(0, |s| s.len());
     // Provider status from auth_display_info
     state.core.startup.provider_status = match &state.operator_config.billing.auth_display.0 {
@@ -194,14 +212,21 @@ pub async fn run_tui(
                 }
             }
 
-            state.layout.ask_user.question = Some(format!("Session crashed mid-submit ({} hours ago). Resume?", hours_ago));
-            state.layout.ask_user.question_kind = crate::services::ask_user::AskUserQuestionKind::SingleSelect;
+            state.layout.ask_user.question = Some(format!(
+                "Session crashed mid-submit ({} hours ago). Resume?",
+                hours_ago
+            ));
+            state.layout.ask_user.question_kind =
+                crate::services::ask_user::AskUserQuestionKind::SingleSelect;
             state.layout.ask_user.options = vec![
                 crate::services::ask_user::AskUserOption {
                     id: "yes".to_string(),
                     label: "Yes".to_string(),
                     description: Some(format!("Resume submit {}", entry_id)),
-                    metadata: std::collections::HashMap::from([("entry_id".to_string(), entry_id.to_string())]),
+                    metadata: std::collections::HashMap::from([(
+                        "entry_id".to_string(),
+                        entry_id.to_string(),
+                    )]),
                 },
                 crate::services::ask_user::AskUserOption {
                     id: "no".to_string(),
@@ -347,10 +372,15 @@ pub async fn run_tui(
                     let reg = state.signal_registry();
                     for id in reg.ids() {
                         if let Some(buf) = reg.get(id) {
-                            input.raw_lines.extend(buf.tail(100).into_iter().map(String::from));
+                            input
+                                .raw_lines
+                                .extend(buf.tail(100).into_iter().map(String::from));
                         }
                     }
-                    if let Ok(rep) = run_and_banner(&consolidator, &policies, &input, &mut state.layout.banner).await {
+                    if let Ok(rep) =
+                        run_and_banner(&consolidator, &policies, &input, &mut state.layout.banner)
+                            .await
+                    {
                         if !rep.was_skipped() {
                             session_count_since_consolidation = 0;
                             last_consolidation_check = Instant::now();
@@ -391,12 +421,14 @@ pub async fn run_tui(
                 let summary_streams: Vec<serde_json::Value> = reg
                     .summary()
                     .into_iter()
-                    .map(|s| serde_json::json!({
-                        "id": s.id,
-                        "kind": s.kind,
-                        "lines": s.lines,
-                        "dropped": s.dropped,
-                    }))
+                    .map(|s| {
+                        serde_json::json!({
+                            "id": s.id,
+                            "kind": s.kind,
+                            "lines": s.lines,
+                            "dropped": s.dropped,
+                        })
+                    })
                     .collect();
                 let summary_path = db_path.with_extension("summary.json");
                 let summary_doc = serde_json::json!({
@@ -436,7 +468,8 @@ pub async fn run_tui(
 
         // Tick vil-expr linter — runs the actual lint if debounce window has elapsed (PR-T12.1).
         state
-            .composer.vil_expr_lint
+            .composer
+            .vil_expr_lint
             .tick(&vil_expr::SymbolTable::new(), std::time::Instant::now());
 
         // Cron consolidation trigger
@@ -448,10 +481,14 @@ pub async fn run_tui(
             let reg = state.signal_registry();
             for id in reg.ids() {
                 if let Some(buf) = reg.get(id) {
-                    input.raw_lines.extend(buf.tail(100).into_iter().map(String::from));
+                    input
+                        .raw_lines
+                        .extend(buf.tail(100).into_iter().map(String::from));
                 }
             }
-            if let Ok(rep) = run_and_banner(&consolidator, &policies, &input, &mut state.layout.banner).await {
+            if let Ok(rep) =
+                run_and_banner(&consolidator, &policies, &input, &mut state.layout.banner).await
+            {
                 if !rep.was_skipped() {
                     session_count_since_consolidation = 0;
                 }
@@ -471,7 +508,10 @@ pub async fn run_tui(
 
         state.layout.toasts.retain(|t| !t.is_expired());
         if state.layout.toasts.len() > 3 {
-            state.layout.toasts.drain(0..state.layout.toasts.len().saturating_sub(3));
+            state
+                .layout
+                .toasts
+                .drain(0..state.layout.toasts.len().saturating_sub(3));
         }
 
         // PR-T17 / M1 — drain completed image-preview loads before the next
@@ -637,11 +677,12 @@ pub async fn run_tui(
         let render_us = render_start.elapsed().as_micros() as u64;
         state.core.render_metrics.last_render_time_us = render_us;
         // Exponential moving average (α ≈ 0.1)
-        state.core.render_metrics.ema_render_time_us = if state.core.render_metrics.ema_render_time_us == 0 {
-            render_us
-        } else {
-            (state.core.render_metrics.ema_render_time_us * 9 + render_us) / 10
-        };
+        state.core.render_metrics.ema_render_time_us =
+            if state.core.render_metrics.ema_render_time_us == 0 {
+                render_us
+            } else {
+                (state.core.render_metrics.ema_render_time_us * 9 + render_us) / 10
+            };
         if render_us > 16_000 {
             log::debug!(
                 "render over budget: {}µs (avg {}µs)",
@@ -658,7 +699,7 @@ pub async fn run_tui(
         // Check for quit
         if state.core.quit.cancel_requested {
             persist_session_snapshot(&state).await;
-            
+
             // Session close consolidation trigger
             let mut input = ConsolidationInput {
                 raw_lines: Vec::new(),
@@ -667,10 +708,13 @@ pub async fn run_tui(
             let reg = state.signal_registry();
             for id in reg.ids() {
                 if let Some(buf) = reg.get(id) {
-                    input.raw_lines.extend(buf.tail(100).into_iter().map(String::from));
+                    input
+                        .raw_lines
+                        .extend(buf.tail(100).into_iter().map(String::from));
                 }
             }
-            let _ = run_and_banner(&consolidator, &policies, &input, &mut state.layout.banner).await;
+            let _ =
+                run_and_banner(&consolidator, &policies, &input, &mut state.layout.banner).await;
 
             break;
         }

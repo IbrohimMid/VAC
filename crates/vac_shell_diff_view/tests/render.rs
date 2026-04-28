@@ -1,5 +1,5 @@
-use ratatui::backend::TestBackend;
 use ratatui::Terminal;
+use ratatui::backend::TestBackend;
 use vac_shell_contracts::{
     DiffFileView, DiffHunkView, DiffLineKind, DiffLineView, DiffReviewEvent,
 };
@@ -15,11 +15,26 @@ fn fixture() -> DiffReviewView {
         hunks: vec![DiffHunkView {
             header: "@@ -1,3 +1,5 @@".into(),
             lines: vec![
-                DiffLineView { kind: DiffLineKind::Context, text: "fn foo() {".into() },
-                DiffLineView { kind: DiffLineKind::Removed, text: "    old();".into() },
-                DiffLineView { kind: DiffLineKind::Added, text: "    new();".into() },
-                DiffLineView { kind: DiffLineKind::Added, text: "    second();".into() },
-                DiffLineView { kind: DiffLineKind::Added, text: "}".into() },
+                DiffLineView {
+                    kind: DiffLineKind::Context,
+                    text: "fn foo() {".into(),
+                },
+                DiffLineView {
+                    kind: DiffLineKind::Removed,
+                    text: "    old();".into(),
+                },
+                DiffLineView {
+                    kind: DiffLineKind::Added,
+                    text: "    new();".into(),
+                },
+                DiffLineView {
+                    kind: DiffLineKind::Added,
+                    text: "    second();".into(),
+                },
+                DiffLineView {
+                    kind: DiffLineKind::Added,
+                    text: "}".into(),
+                },
             ],
         }],
     };
@@ -44,7 +59,9 @@ fn render(view: &DiffReviewView) -> String {
     let buf = t.backend().buffer();
     let mut s = String::new();
     for y in 0..buf.area.height {
-        for x in 0..buf.area.width { s.push_str(buf[(x, y)].symbol()); }
+        for x in 0..buf.area.width {
+            s.push_str(buf[(x, y)].symbol());
+        }
         s.push('\n');
     }
     s
@@ -52,7 +69,10 @@ fn render(view: &DiffReviewView) -> String {
 
 #[test]
 fn empty_diff_shows_placeholder() {
-    let v = DiffReviewView { visible: true, ..Default::default() };
+    let v = DiffReviewView {
+        visible: true,
+        ..Default::default()
+    };
     let s = render(&v);
     assert!(s.contains("no pending changes"));
 }

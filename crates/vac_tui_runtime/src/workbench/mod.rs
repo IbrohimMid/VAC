@@ -6,22 +6,22 @@
 
 pub mod agents;
 pub mod approvals;
+pub mod memory_panel;
 pub mod plan;
 pub mod review;
 pub mod runtime;
 pub mod sessions;
-pub mod memory_panel;
 pub mod signal_panel;
 pub mod vil;
 pub mod vwfd;
 
 pub use agents::AgentsTab;
 pub use approvals::ApprovalsTab;
+pub use memory_panel::MemoryTab;
 pub use plan::PlanTab;
 pub use review::ReviewTab;
 pub use runtime::RuntimeTab;
 pub use sessions::SessionsTab;
-pub use memory_panel::MemoryTab;
 pub use signal_panel::SignalTab;
 pub use vil::VilTab;
 pub use vwfd::VwfdTab;

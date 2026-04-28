@@ -448,8 +448,10 @@ mod uri_tests {
     #[test]
     fn resolve_missing_returns_none() {
         let pool = vec![rb("core")];
-        assert!(resolve_rulebook_uri("vac://rulebook/absent", &pool)
-            .unwrap()
-            .is_none());
+        assert!(
+            resolve_rulebook_uri("vac://rulebook/absent", &pool)
+                .unwrap()
+                .is_none()
+        );
     }
 }

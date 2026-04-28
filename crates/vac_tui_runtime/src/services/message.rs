@@ -432,18 +432,19 @@ pub fn render_approval_card(
             err,
             "shell command · effects outside sandbox",
         ),
-        "file_write" | "file_edit" | "write" | "edit" | "apply_patch" => (
-            "WRITES",
-            warn,
-            "modifies files in the working tree",
-        ),
+        "file_write" | "file_edit" | "write" | "edit" | "apply_patch" => {
+            ("WRITES", warn, "modifies files in the working tree")
+        }
         "file_read" | "read" | "grep" | "glob" | "search" => {
             ("READ", ok, "read-only · no side effects")
         }
         _ => ("ELEVATED", warn, "requires operator confirmation"),
     };
 
-    let top = format!("┌ approval required {}┐", "─".repeat(inner_w.saturating_sub(18)));
+    let top = format!(
+        "┌ approval required {}┐",
+        "─".repeat(inner_w.saturating_sub(18))
+    );
     let bottom_label = if total > 1 {
         format!("─ batch {}/{} ", idx + 1, total)
     } else {
@@ -475,7 +476,10 @@ pub fn render_approval_card(
     lines.push(lead(Line::from(Span::styled(top, warn))));
 
     // Header row: BASH badge + human sentence.
-    let header_content = format!(" {:<6}  the agent wants to run this {}", tool_badge, tool_tag);
+    let header_content = format!(
+        " {:<6}  the agent wants to run this {}",
+        tool_badge, tool_tag
+    );
     lines.push(lead(Line::from(vec![
         Span::styled("│", warn),
         Span::styled(pad(&header_content), accent),
@@ -514,10 +518,7 @@ pub fn render_approval_card(
     ])));
 
     // policy row — placeholder until ToolCall carries a clause.
-    let policy_line = format!(
-        " policy vil.core · {} requires explicit approval",
-        tool_tag
-    );
+    let policy_line = format!(" policy vil.core · {} requires explicit approval", tool_tag);
     lines.push(lead(Line::from(vec![
         Span::styled("│", warn),
         Span::styled(pad(&policy_line), muted),
@@ -525,8 +526,7 @@ pub fn render_approval_card(
     ])));
 
     // actions row.
-    let actions_line =
-        " [enter] approve  [shift+a] approve all  [x] reject  [esc] defer";
+    let actions_line = " [enter] approve  [shift+a] approve all  [x] reject  [esc] defer";
     lines.push(lead(Line::from(vec![
         Span::styled("│", warn),
         Span::styled(pad(actions_line), accent),

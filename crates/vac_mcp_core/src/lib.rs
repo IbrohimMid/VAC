@@ -9,8 +9,8 @@
 //! connection can be in — so both the interactive runtime and the
 //! headless/bridge paths see the same semantics.
 
-pub mod config;
 pub mod channel;
+pub mod config;
 pub mod elicitation;
 pub mod error;
 pub mod state;
@@ -19,9 +19,8 @@ pub mod transport;
 pub use channel::ChannelAcl;
 pub use config::{McpConfigScope, McpServerConfig, resolve_config};
 pub use elicitation::{
-    ElicitationHandler, ElicitationRequest, ElicitationResult,
-    FailingElicitationHandler, McpElicitationRegistry,
-    UnsupportedElicitationHandler,
+    ElicitationHandler, ElicitationRequest, ElicitationResult, FailingElicitationHandler,
+    McpElicitationRegistry, UnsupportedElicitationHandler,
 };
 pub use error::{McpCoreError, McpCoreResult};
 pub use state::{McpConnection, McpConnectionState, StateTransition};

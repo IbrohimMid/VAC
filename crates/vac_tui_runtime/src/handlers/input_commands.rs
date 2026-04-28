@@ -12,25 +12,35 @@ pub fn handle_paste_tray_key(state: &mut AppState, c: char) -> bool {
     let len = state.layout.paste.pending_pastes.len();
     match c {
         'j' if !state.layout.paste.pending_paste_reorder_mode => {
-            state.layout.paste.pending_paste_selected = cp::select_next(state.layout.paste.pending_paste_selected, len);
+            state.layout.paste.pending_paste_selected =
+                cp::select_next(state.layout.paste.pending_paste_selected, len);
             true
         }
         'k' if !state.layout.paste.pending_paste_reorder_mode => {
-            state.layout.paste.pending_paste_selected = cp::select_prev(state.layout.paste.pending_paste_selected, len);
+            state.layout.paste.pending_paste_selected =
+                cp::select_prev(state.layout.paste.pending_paste_selected, len);
             true
         }
         'J' if state.layout.paste.pending_paste_reorder_mode => {
-            state.layout.paste.pending_paste_selected =
-                cp::swap_with_next(&mut state.layout.paste.pending_pastes, state.layout.paste.pending_paste_selected);
+            state.layout.paste.pending_paste_selected = cp::swap_with_next(
+                &mut state.layout.paste.pending_pastes,
+                state.layout.paste.pending_paste_selected,
+            );
             true
         }
         'K' if state.layout.paste.pending_paste_reorder_mode => {
-            state.layout.paste.pending_paste_selected =
-                cp::swap_with_prev(&mut state.layout.paste.pending_pastes, state.layout.paste.pending_paste_selected);
+            state.layout.paste.pending_paste_selected = cp::swap_with_prev(
+                &mut state.layout.paste.pending_pastes,
+                state.layout.paste.pending_paste_selected,
+            );
             true
         }
         'd' | 'x' => {
-            let sel = state.layout.paste.pending_paste_selected.min(len.saturating_sub(1));
+            let sel = state
+                .layout
+                .paste
+                .pending_paste_selected
+                .min(len.saturating_sub(1));
             if sel < state.layout.paste.pending_pastes.len() {
                 let placeholder = state.layout.paste.pending_pastes[sel].placeholder.clone();
                 if !state.composer.input.is_empty() {
@@ -38,7 +48,8 @@ pub fn handle_paste_tray_key(state: &mut AppState, c: char) -> bool {
                     state.composer.input.clear();
                     state.composer.input.insert_str(&stripped);
                 }
-                state.layout.paste.pending_paste_selected = cp::remove_at(&mut state.layout.paste.pending_pastes, sel);
+                state.layout.paste.pending_paste_selected =
+                    cp::remove_at(&mut state.layout.paste.pending_pastes, sel);
                 if state.layout.paste.pending_pastes.is_empty() {
                     state.layout.paste.pending_paste_reorder_mode = false;
                     state.layout.paste.pending_paste_selected = 0;
@@ -47,7 +58,8 @@ pub fn handle_paste_tray_key(state: &mut AppState, c: char) -> bool {
             true
         }
         'r' => {
-            state.layout.paste.pending_paste_reorder_mode = !state.layout.paste.pending_paste_reorder_mode;
+            state.layout.paste.pending_paste_reorder_mode =
+                !state.layout.paste.pending_paste_reorder_mode;
             true
         }
         _ => false,
@@ -89,7 +101,8 @@ pub fn execute_shortcuts_command(
         CommandAction::ClearScreen => {
             state.transcript.messages.clear();
             state
-                .transcript.messages
+                .transcript
+                .messages
                 .extend(crate::services::helper_block::welcome_messages(None, state));
             true
         }
@@ -136,7 +149,8 @@ pub fn dispatch_builtin_command(
     }
 
     if let Some(cmd) = state
-        .layout.commands
+        .layout
+        .commands
         .iter()
         .find(|c| c.command == cmd_word)
         .cloned()
@@ -161,26 +175,16 @@ pub fn dispatch_builtin_command(
                     Some(args) => format!("{}\n\n{}", prompt_content, args),
                     None => prompt_content,
                 };
-                state
-                    .transcript.pending_user_messages
-                    .push_back(crate::app::PendingUserMessage::new(
-                        prompt,
-                        None,
-                        vec![],
-                        trimmed.clone(),
-                    ));
+                state.transcript.pending_user_messages.push_back(
+                    crate::app::PendingUserMessage::new(prompt, None, vec![], trimmed.clone()),
+                );
             }
             crate::app::CommandSource::Passthrough => {
                 let expanded = state.expand_pending_pastes(&trimmed);
                 let parts = std::mem::take(&mut state.composer.pending_image_parts);
-                state
-                    .transcript.pending_user_messages
-                    .push_back(crate::app::PendingUserMessage::new(
-                        expanded.clone(),
-                        None,
-                        parts,
-                        expanded,
-                    ));
+                state.transcript.pending_user_messages.push_back(
+                    crate::app::PendingUserMessage::new(expanded.clone(), None, parts, expanded),
+                );
             }
         }
         return true;
@@ -204,7 +208,8 @@ fn dispatch_action(
         ActionId::Clear => {
             state.transcript.messages.clear();
             state
-                .transcript.messages
+                .transcript
+                .messages
                 .extend(crate::services::helper_block::welcome_messages(None, state));
         }
         ActionId::Sessions => {
@@ -245,26 +250,30 @@ fn dispatch_action(
                         state.core.project_root.join(&resolved)
                     };
                     match std::fs::read_to_string(&resolved) {
-                        Ok(yaml) => match state.vil_domain.vwfd_inspector.load_yaml(&yaml) {
-                            Ok(()) => {
-                                state.vil_domain.vwfd_inspector.source_path =
-                                    Some(resolved.display().to_string());
-                                state.layout.toasts.push(crate::services::Toast::info(format!(
-                                    "Loaded VWFD: {}",
+                        Ok(yaml) => {
+                            match state.vil_domain.vwfd_inspector.load_yaml(&yaml) {
+                                Ok(()) => {
+                                    state.vil_domain.vwfd_inspector.source_path =
+                                        Some(resolved.display().to_string());
+                                    state.layout.toasts.push(crate::services::Toast::info(
+                                        format!("Loaded VWFD: {}", resolved.display()),
+                                    ));
+                                }
+                                Err(err) => {
+                                    state.layout.toasts.push(crate::services::Toast::error(
+                                        format!("VWFD parse error: {err}"),
+                                    ));
+                                }
+                            }
+                        }
+                        Err(err) => {
+                            state
+                                .layout
+                                .toasts
+                                .push(crate::services::Toast::error(format!(
+                                    "Failed to read {}: {err}",
                                     resolved.display()
                                 )));
-                            }
-                            Err(err) => {
-                                state.layout.toasts.push(crate::services::Toast::error(format!(
-                                    "VWFD parse error: {err}"
-                                )));
-                            }
-                        },
-                        Err(err) => {
-                            state.layout.toasts.push(crate::services::Toast::error(format!(
-                                "Failed to read {}: {err}",
-                                resolved.display()
-                            )));
                         }
                     }
                 }
@@ -326,7 +335,12 @@ fn dispatch_action(
                         state.core.project_root.join(p)
                     }
                 })
-                .unwrap_or_else(|| state.core.project_root.join(".vac/exports/session.bundle.json"));
+                .unwrap_or_else(|| {
+                    state
+                        .core
+                        .project_root
+                        .join(".vac/exports/session.bundle.json")
+                });
             state.layout.toasts.push(crate::services::Toast::info(
                 "Mengekspor bundle...".to_string(),
             ));
@@ -385,14 +399,17 @@ fn dispatch_action(
                 state.workspace.plan.draft = content;
             } else {
                 let title = state
-                    .session.session_meta.title
+                    .session
+                    .session_meta
+                    .title
                     .clone()
                     .unwrap_or_else(|| "Session Plan".to_string());
                 let tmpl = crate::services::plan::new_plan_template(&title);
                 if let Err(e) = crate::services::plan::write_plan_file(&project_root, &tmpl) {
                     state.add_assistant_message(format!("Failed to create plan: {}", e));
                 } else {
-                    state.workspace.plan.metadata = crate::services::plan::parse_plan_front_matter(&tmpl);
+                    state.workspace.plan.metadata =
+                        crate::services::plan::parse_plan_front_matter(&tmpl);
                     state.workspace.plan.draft = tmpl;
                 }
             }
@@ -453,10 +470,7 @@ fn dispatch_action(
             crate::overlay::open_overlay(state, crate::overlay::OverlayId::ThemePicker);
         }
         ActionId::OpenContextInspector => {
-            crate::overlay::open_overlay(
-                state,
-                crate::overlay::OverlayId::ContextInspector,
-            );
+            crate::overlay::open_overlay(state, crate::overlay::OverlayId::ContextInspector);
         }
         ActionId::Thinkback => {
             // D.6 — the full scrub UI lands when RewindStore is
@@ -519,10 +533,7 @@ fn dispatch_action(
                 format!("vac {subcmd} {extra}")
             };
             state.add_user_message(trimmed.to_string());
-            state.push_activity(
-                crate::app::ActivityKind::Status,
-                format!("spawn: {full}"),
-            );
+            state.push_activity(crate::app::ActivityKind::Status, format!("spawn: {full}"));
             let _ = output_tx.try_send(OutputEvent::ExecuteCommand(
                 full,
                 state.layout.switchers.active_isolation_mode.clone(),
@@ -549,7 +560,8 @@ fn show_unknown_slash_suggestions(state: &mut AppState, cmd_word: &str) {
     let query = cmd_word.trim_start_matches('/').to_lowercase();
 
     let mut scored: Vec<(u32, String)> = state
-        .layout.commands
+        .layout
+        .commands
         .iter()
         .filter_map(|c| {
             let name = c.command.trim_start_matches('/').to_lowercase();

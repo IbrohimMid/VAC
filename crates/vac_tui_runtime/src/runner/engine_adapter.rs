@@ -43,8 +43,7 @@ use vac_session_engine::{
 /// sessions. Cache is fine because `ToolRegistry::register` is
 /// additive and no builtin tool holds per-submit state — per-call
 /// context lives on `ToolContext`.
-static SHARED_TOOL_REGISTRY: OnceCell<Arc<vac_tools::ToolRegistry>> =
-    OnceCell::const_new();
+static SHARED_TOOL_REGISTRY: OnceCell<Arc<vac_tools::ToolRegistry>> = OnceCell::const_new();
 
 async fn shared_registry() -> anyhow::Result<Arc<vac_tools::ToolRegistry>> {
     SHARED_TOOL_REGISTRY
@@ -93,8 +92,8 @@ pub async fn run_via_session_engine_with_broadcast(
 ) -> anyhow::Result<vac_core::TaskResult> {
     use futures::StreamExt;
     use vac_session_engine::{
-        SlashProcessor, SubmitContext, TranscriptWriter, TrivialCompactBoundary,
-        UsageTracker, submit_stream,
+        SlashProcessor, SubmitContext, TranscriptWriter, TrivialCompactBoundary, UsageTracker,
+        submit_stream,
     };
     use vac_tools::registry::ToolContext;
 
@@ -138,15 +137,10 @@ pub async fn run_via_session_engine_with_broadcast(
     let policy_limits = vac_core::policy_limits::PolicyLimits::load(&project_root)
         .await
         .map_err(|e| anyhow::anyhow!(".vac/policy.toml: {e}"))?;
-    let policy_tracker = std::sync::Arc::new(
-        vac_core::policy_limits::PolicyTracker::new(policy_limits),
-    );
-    let gate = super::dispatcher::build_live_gate_with(
-        &project_root,
-        Some(policy_tracker),
-        None,
-    )
-    .await?;
+    let policy_tracker =
+        std::sync::Arc::new(vac_core::policy_limits::PolicyTracker::new(policy_limits));
+    let gate =
+        super::dispatcher::build_live_gate_with(&project_root, Some(policy_tracker), None).await?;
 
     // B4 + H1 audit fix: build the agent dispatcher with a
     // `compact_cfg` that carries the parent's dispatcher + gate so
@@ -165,8 +159,7 @@ pub async fn run_via_session_engine_with_broadcast(
     // Note: subagent's ctx re-uses the parent's `agent_dispatcher`
     // handle — agent_run can invoke another level of subagent up
     // to the budget cap `SubagentRunner` enforces upstream.
-    let parent_ctx_base = ToolContext::new(project_root.clone())
-        .with_session_id(session_id);
+    let parent_ctx_base = ToolContext::new(project_root.clone()).with_session_id(session_id);
     // ADR-002: subagent ctx runs at depth=1 so nested
     // `agent_run` inside the subagent hard-denies. `depth` field
     // is the enforcement seam; agent_run checks it at execute
@@ -185,20 +178,13 @@ pub async fn run_via_session_engine_with_broadcast(
         subagent_llm,
     )
     .with_compact_cfg(subagent_cfg);
-    let agent_dispatcher: Arc<
-        dyn vac_session_primitives::AgentDispatcher,
-    > = Arc::new(vac_session_engine::EngineAgentDispatcher::new(
-        subagent_dispatch_ctx,
-    ));
+    let agent_dispatcher: Arc<dyn vac_session_primitives::AgentDispatcher> = Arc::new(
+        vac_session_engine::EngineAgentDispatcher::new(subagent_dispatch_ctx),
+    );
 
-    let ctx = Arc::new(
-        parent_ctx_base.with_agent_dispatcher(agent_dispatcher),
-    );
-    let mut compact_cfg = super::dispatcher::live_compact_config(
-        registry.clone(),
-        ctx.clone(),
-        Some(gate),
-    );
+    let ctx = Arc::new(parent_ctx_base.with_agent_dispatcher(agent_dispatcher));
+    let mut compact_cfg =
+        super::dispatcher::live_compact_config(registry.clone(), ctx.clone(), Some(gate));
     compact_cfg.max_budget_tokens = max_budget_tokens;
 
     // NS.2 — drive the submit through `submit_stream` and pump each
@@ -310,7 +296,8 @@ pub async fn run_via_session_engine_with_broadcast(
     };
 
     // Run the predictor after submit finishes
-    if let Ok(predicted) = vil_swarm::planner::Planner::predict_next_submit(task_description).await {
+    if let Ok(predicted) = vil_swarm::planner::Planner::predict_next_submit(task_description).await
+    {
         let _ = update_tx.send(vac_core::engine::RuntimeUpdate::SpeculationReady {
             predicted_prompt: predicted,
             precomputed_context: std::collections::HashMap::new(),
@@ -340,7 +327,11 @@ fn chunk_to_outbound(chunk: &SubmitChunk) -> Option<vac_bridge::remote::Outbound
         SubmitChunk::TextDelta { text } => {
             OutboundEvent::new("text", serde_json::json!({ "text": text }))
         }
-        SubmitChunk::ToolRequested { id, name, arguments } => OutboundEvent::new(
+        SubmitChunk::ToolRequested {
+            id,
+            name,
+            arguments,
+        } => OutboundEvent::new(
             "tool.request",
             serde_json::json!({ "id": id, "name": name, "arguments": arguments }),
         ),
@@ -370,9 +361,15 @@ fn chunk_to_runtime_update(chunk: SubmitChunk) -> Option<RuntimeUpdate> {
             Some(RuntimeUpdate::ModelInfo { provider, model })
         }
         SubmitChunk::TextDelta { text } => Some(RuntimeUpdate::AssistantChunk(text)),
-        SubmitChunk::ToolRequested { id, name, arguments } => {
-            Some(RuntimeUpdate::ToolCall { id, name, arguments })
-        }
+        SubmitChunk::ToolRequested {
+            id,
+            name,
+            arguments,
+        } => Some(RuntimeUpdate::ToolCall {
+            id,
+            name,
+            arguments,
+        }),
         SubmitChunk::ToolResult { id, name, payload } => {
             let success = payload.kind == vac_tool_core::ToolResultKind::Ok
                 || payload.kind == vac_tool_core::ToolResultKind::Warning;
@@ -480,7 +477,11 @@ fn translate(update: RuntimeUpdate) -> Option<SubmitEvent> {
             id,
             name,
             payload: envelope.unwrap_or_else(|| vac_tool_core::ToolResultEnvelope {
-                kind: if success { vac_tool_core::ToolResultKind::Ok } else { vac_tool_core::ToolResultKind::Error },
+                kind: if success {
+                    vac_tool_core::ToolResultKind::Ok
+                } else {
+                    vac_tool_core::ToolResultKind::Error
+                },
                 payload: serde_json::json!({ "result": content }),
                 summary: content,
                 duration_ms: 0,
@@ -490,9 +491,13 @@ fn translate(update: RuntimeUpdate) -> Option<SubmitEvent> {
         RuntimeUpdate::Cancelled => Some(SubmitEvent::Aborted {
             reason: "cancelled".into(),
         }),
-        RuntimeUpdate::SpeculationReady { predicted_prompt, precomputed_context } => {
-            Some(SubmitEvent::SpeculationReady { predicted_prompt, precomputed_context })
-        },
+        RuntimeUpdate::SpeculationReady {
+            predicted_prompt,
+            precomputed_context,
+        } => Some(SubmitEvent::SpeculationReady {
+            predicted_prompt,
+            precomputed_context,
+        }),
         // Completed is handled by submit_one's own Finished emission.
         // Status / LspStatus / LspDiagnostics / ValidationResult /
         // ApprovalRequired are surfaced through other channels (the
@@ -628,8 +633,13 @@ mod tests {
         use vac_session_engine::SubmitChunk;
         let mut aborted: Option<String> = None;
         let chunks = [
-            SubmitChunk::LlmRequested { provider: "p".into(), model: "m".into() },
-            SubmitChunk::Aborted { reason: "budget exhausted".into() },
+            SubmitChunk::LlmRequested {
+                provider: "p".into(),
+                model: "m".into(),
+            },
+            SubmitChunk::Aborted {
+                reason: "budget exhausted".into(),
+            },
         ];
         for chunk in chunks {
             if let SubmitChunk::Aborted { reason } = &chunk {
@@ -670,14 +680,18 @@ mod tests {
             Some(RuntimeUpdate::Failed(_))
         ));
         // Non-forwarded chunks (no TUI-side RuntimeUpdate analog).
-        assert!(chunk_to_runtime_update(SubmitChunk::Accepted {
-            entry_id: uuid::Uuid::nil(),
-        })
-        .is_none());
-        assert!(chunk_to_runtime_update(SubmitChunk::Finished {
-            usage: vac_session_engine::UsageSnapshot::default(),
-        })
-        .is_none());
+        assert!(
+            chunk_to_runtime_update(SubmitChunk::Accepted {
+                entry_id: uuid::Uuid::nil(),
+            })
+            .is_none()
+        );
+        assert!(
+            chunk_to_runtime_update(SubmitChunk::Finished {
+                usage: vac_session_engine::UsageSnapshot::default(),
+            })
+            .is_none()
+        );
     }
 
     #[test]

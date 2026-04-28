@@ -9,11 +9,11 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use async_trait::async_trait;
 use vac_session_engine::{ToolCallRequest, ToolDispatcher};
+use vac_shell_host_vac_tool_dispatcher::VacToolDispatcher;
 use vac_tool_core::ToolResultKind;
 use vac_tools::ToolError;
 use vac_tools::ToolRegistry;
 use vac_tools::registry::{ToolContext, VilTool};
-use vac_shell_host_vac_tool_dispatcher::VacToolDispatcher;
 
 // ---------------------------------------------------------------------
 // Fake tools — exhaustive failure modes for envelope mapping.
@@ -279,10 +279,7 @@ async fn no_panic_on_bad_tool_call_payload() {
     assert!(matches!(env.kind, ToolResultKind::Ok));
     // And bad-target with same payload still returns Error, not panic.
     let env_unknown = dispatcher
-        .dispatch(&call(
-            "ghost",
-            serde_json::json!({"any": "shape"}),
-        ))
+        .dispatch(&call("ghost", serde_json::json!({"any": "shape"})))
         .await
         .unwrap();
     assert_eq!(env_unknown.kind, ToolResultKind::Error);

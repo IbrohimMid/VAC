@@ -25,7 +25,7 @@ fn fixture() -> Vec<ShellCommandSpec> {
             kind: ShellCommandKind::BuiltInAction,
             palette_visible: true,
             shortcut: None,
-        ..Default::default()
+            ..Default::default()
         },
         ShellCommandSpec {
             id: "chat".into(),
@@ -35,7 +35,7 @@ fn fixture() -> Vec<ShellCommandSpec> {
             kind: ShellCommandKind::BuiltInAction,
             palette_visible: true,
             shortcut: None,
-        ..Default::default()
+            ..Default::default()
         },
     ]
 }
@@ -68,7 +68,11 @@ fn slash_runtime_flips_surface_through_full_chain() {
 
     let spec = dispatcher.dispatch(&slash).expect("dispatch must succeed");
     assert_eq!(spec.id, "runtime");
-    assert_eq!(state.current(), Surface::Runtime, "real VAC effect must land");
+    assert_eq!(
+        state.current(),
+        Surface::Runtime,
+        "real VAC effect must land"
+    );
 }
 
 #[test]

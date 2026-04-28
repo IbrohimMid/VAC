@@ -124,20 +124,11 @@ pub fn render_diff_review(f: &mut Frame, view: &DiffReviewView, area: Rect) {
         };
         left.push(Line::from(vec![
             Span::styled(format!(" {}", f.path), style),
-            Span::styled(
-                format!(" +{} ", f.added),
-                Style::default().fg(Color::Green),
-            ),
-            Span::styled(
-                format!("-{}", f.removed),
-                Style::default().fg(Color::Red),
-            ),
+            Span::styled(format!(" +{} ", f.added), Style::default().fg(Color::Green)),
+            Span::styled(format!("-{}", f.removed), Style::default().fg(Color::Red)),
         ]));
     }
-    f.render_widget(
-        Paragraph::new(left).wrap(Wrap { trim: false }),
-        chunks[0],
-    );
+    f.render_widget(Paragraph::new(left).wrap(Wrap { trim: false }), chunks[0]);
 
     // Hunks for the selected file
     let mut right: Vec<Line<'static>> = Vec::new();
@@ -145,7 +136,9 @@ pub fn render_diff_review(f: &mut Frame, view: &DiffReviewView, area: Rect) {
         for hunk in &file.hunks {
             right.push(Line::from(Span::styled(
                 hunk.header.clone(),
-                Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
             )));
             for line in &hunk.lines {
                 let (prefix, color) = match line.kind {
@@ -165,8 +158,5 @@ pub fn render_diff_review(f: &mut Frame, view: &DiffReviewView, area: Rect) {
     let max_scroll = total.saturating_sub(height);
     let scroll = view.scroll.min(max_scroll);
     let window: Vec<Line<'static>> = right.into_iter().skip(scroll).take(height).collect();
-    f.render_widget(
-        Paragraph::new(window).wrap(Wrap { trim: false }),
-        chunks[1],
-    );
+    f.render_widget(Paragraph::new(window).wrap(Wrap { trim: false }), chunks[1]);
 }

@@ -39,7 +39,9 @@ enum McpConnection {
         http: reqwest::Client,
     },
     WebSocket {
-        ws: tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>,
+        ws: tokio_tungstenite::WebSocketStream<
+            tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+        >,
     },
 }
 
@@ -98,11 +100,15 @@ impl McpClient {
                 http: self.build_sse_client(url, trust_class)?,
             },
             McpTransport::WebSocket { url } => {
-                let req = tokio_tungstenite::tungstenite::client::IntoClientRequest::into_client_request(url.clone())
+                let req =
+                    tokio_tungstenite::tungstenite::client::IntoClientRequest::into_client_request(
+                        url.clone(),
+                    )
                     .map_err(|e| ToolError::McpError(format!("Invalid WS URL '{}': {e}", url)))?;
-                let (ws_stream, _response) = tokio_tungstenite::connect_async(req)
-                    .await
-                    .map_err(|e| ToolError::McpError(format!("WS connection failed for '{}': {e}", url)))?;
+                let (ws_stream, _response) =
+                    tokio_tungstenite::connect_async(req).await.map_err(|e| {
+                        ToolError::McpError(format!("WS connection failed for '{}': {e}", url))
+                    })?;
                 McpConnection::WebSocket { ws: ws_stream }
             }
         };
@@ -295,23 +301,33 @@ impl McpClient {
                     .ok_or_else(|| ToolError::McpError("No result".into()))
             }
             McpConnection::WebSocket { ws } => {
-                ws.send(Message::Text(request_json.into())).await.map_err(|e| ToolError::McpError(format!("WS send error: {}", e)))?;
-                
+                ws.send(Message::Text(request_json.into()))
+                    .await
+                    .map_err(|e| ToolError::McpError(format!("WS send error: {}", e)))?;
+
                 while let Some(msg_result) = ws.next().await {
-                    let msg = msg_result.map_err(|e| ToolError::McpError(format!("WS receive error: {}", e)))?;
+                    let msg = msg_result
+                        .map_err(|e| ToolError::McpError(format!("WS receive error: {}", e)))?;
                     if let Message::Text(text) = msg {
                         let response: JsonRpcResponse = serde_json::from_str(&text)
                             .map_err(|e| ToolError::McpError(format!("Parse error: {}", e)))?;
-                        
+
                         if response.id == Some(id) {
                             if let Some(err) = response.error {
-                                return Err(ToolError::McpError(format!("{}: {}", err.code, err.message)));
+                                return Err(ToolError::McpError(format!(
+                                    "{}: {}",
+                                    err.code, err.message
+                                )));
                             }
-                            return response.result.ok_or_else(|| ToolError::McpError("No result".into()));
+                            return response
+                                .result
+                                .ok_or_else(|| ToolError::McpError("No result".into()));
                         }
                     }
                 }
-                Err(ToolError::McpError("WS stream closed before response".into()))
+                Err(ToolError::McpError(
+                    "WS stream closed before response".into(),
+                ))
             }
         }
     }
@@ -357,7 +373,8 @@ impl McpClient {
                 "stdio MCP server '{}' cannot use trust class {:?}",
                 self.config.name, other
             ))),
-            (McpTransport::Sse { url }, trust_class) | (McpTransport::WebSocket { url }, trust_class) => {
+            (McpTransport::Sse { url }, trust_class)
+            | (McpTransport::WebSocket { url }, trust_class) => {
                 let parsed = reqwest::Url::parse(url).map_err(|e| {
                     ToolError::McpError(format!("Invalid MCP URL for '{}': {e}", self.config.name))
                 })?;
@@ -514,15 +531,9 @@ impl VilTool for McpProxyTool {
         // invocation of an MCP tool goes through the same gate
         // `vac_tools::router` uses, so remote + local tools share
         // one trust model.
-        let env_mode = crate::trust_gate::EnvironmentMode::from_label(
-            &context.environment_mode,
-        );
+        let env_mode = crate::trust_gate::EnvironmentMode::from_label(&context.environment_mode);
         let spec = self.spec();
-        match crate::trust_gate::TrustGate::check_mcp_tool(
-            env_mode,
-            self.mcp_trust,
-            &spec,
-        ) {
+        match crate::trust_gate::TrustGate::check_mcp_tool(env_mode, self.mcp_trust, &spec) {
             crate::trust_gate::GateDecision::Allow => {}
             crate::trust_gate::GateDecision::Deny(reason) => {
                 return Err(ToolError::PermissionDenied(format!(
@@ -618,23 +629,33 @@ impl VilTool for McpProxyTool {
                     .ok_or_else(|| ToolError::McpError("No result".into()))
             }
             McpConnection::WebSocket { ws } => {
-                ws.send(Message::Text(request_json.into())).await.map_err(|e| ToolError::McpError(format!("WS send error: {}", e)))?;
-                
+                ws.send(Message::Text(request_json.into()))
+                    .await
+                    .map_err(|e| ToolError::McpError(format!("WS send error: {}", e)))?;
+
                 while let Some(msg_result) = ws.next().await {
-                    let msg = msg_result.map_err(|e| ToolError::McpError(format!("WS receive error: {}", e)))?;
+                    let msg = msg_result
+                        .map_err(|e| ToolError::McpError(format!("WS receive error: {}", e)))?;
                     if let Message::Text(text) = msg {
                         let response: JsonRpcResponse = serde_json::from_str(&text)
                             .map_err(|e| ToolError::McpError(format!("Parse error: {}", e)))?;
-                        
+
                         if response.id == Some(id) {
                             if let Some(err) = response.error {
-                                return Err(ToolError::McpError(format!("{}: {}", err.code, err.message)));
+                                return Err(ToolError::McpError(format!(
+                                    "{}: {}",
+                                    err.code, err.message
+                                )));
                             }
-                            return response.result.ok_or_else(|| ToolError::McpError("No result".into()));
+                            return response
+                                .result
+                                .ok_or_else(|| ToolError::McpError("No result".into()));
                         }
                     }
                 }
-                Err(ToolError::McpError("WS stream closed before response".into()))
+                Err(ToolError::McpError(
+                    "WS stream closed before response".into(),
+                ))
             }
         }
     }

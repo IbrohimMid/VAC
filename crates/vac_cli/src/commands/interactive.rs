@@ -20,12 +20,15 @@ pub async fn execute(
                     hours_ago = diff.num_hours();
                 }
             }
-            
-            println!("Session crashed mid-submit ({} hours ago). Resume? [Y/n]", hours_ago);
+
+            println!(
+                "Session crashed mid-submit ({} hours ago). Resume? [Y/n]",
+                hours_ago
+            );
             let mut buf = String::new();
             let _ = std::io::stdin().read_line(&mut buf);
             let ans = buf.trim().to_lowercase();
-            
+
             if ans.is_empty() || ans == "y" || ans == "yes" {
                 println!("Resuming submit {}...", entry_id);
                 // Call submit_one with the stored Accepted row's content

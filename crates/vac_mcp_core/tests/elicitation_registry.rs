@@ -4,8 +4,7 @@
 use std::sync::Arc;
 
 use vac_mcp_core::{
-    ElicitationRequest, ElicitationResult, McpElicitationRegistry,
-    UnsupportedElicitationHandler,
+    ElicitationRequest, ElicitationResult, McpElicitationRegistry, UnsupportedElicitationHandler,
 };
 
 #[tokio::test]

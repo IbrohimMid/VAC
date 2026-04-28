@@ -136,24 +136,32 @@ fn doctor_report_rows_use_diagnostic_kind() {
     let activity_log = ActivityLog::new(100);
     let report = DoctorReport {
         overall_status: DoctorCheckStatus::Ok,
-        checks: vec![
-            vac_shell_host_doctor::DoctorCheck {
-                id: "model-config".into(),
-                label: "Model Config".into(),
-                status: DoctorCheckStatus::Ok,
-                summary: "loaded".into(),
-                detail: None,
-            },
-        ],
+        checks: vec![vac_shell_host_doctor::DoctorCheck {
+            id: "model-config".into(),
+            label: "Model Config".into(),
+            status: DoctorCheckStatus::Ok,
+            summary: "loaded".into(),
+            detail: None,
+        }],
     };
 
     record_doctor_report(&activity_log, &report, 99999);
     let snap = activity_log.snapshot();
 
     for entry in &snap {
-        assert_eq!(entry.kind, ShellActivityKind::Diagnostic, "every doctor row must be Diagnostic");
-        assert!(entry.id.starts_with("doctor-"), "id must start with doctor-");
-        assert!(entry.title.starts_with("doctor:"), "title must start with doctor:");
+        assert_eq!(
+            entry.kind,
+            ShellActivityKind::Diagnostic,
+            "every doctor row must be Diagnostic"
+        );
+        assert!(
+            entry.id.starts_with("doctor-"),
+            "id must start with doctor-"
+        );
+        assert!(
+            entry.title.starts_with("doctor:"),
+            "title must start with doctor:"
+        );
     }
 }
 

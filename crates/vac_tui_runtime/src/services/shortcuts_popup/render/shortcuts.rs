@@ -70,7 +70,11 @@ pub fn render_shortcuts_section(
     // Calculate scroll position
     let max_scroll = total_lines.saturating_sub(height.saturating_sub(SCROLL_BUFFER_LINES));
 
-    state.layout.command_palette.shortcuts_scroll = state.layout.command_palette.shortcuts_scroll.min(max_scroll);
+    state.layout.command_palette.shortcuts_scroll = state
+        .layout
+        .command_palette
+        .shortcuts_scroll
+        .min(max_scroll);
     let scroll = state.layout.command_palette.shortcuts_scroll;
 
     // Add top arrow indicator if there are hidden items above
@@ -175,7 +179,8 @@ fn build_filtered_shortcuts(
     for category_name in &category_order {
         if let Some(category_shortcuts) = categories.get(category_name) {
             let category_style = state
-                .core.theme
+                .core
+                .theme
                 .style(StyleKey::CategoryHeader)
                 .add_modifier(Modifier::BOLD);
             let category_width = area.width.saturating_sub(category_name.len() as u16 + 5) as usize;
@@ -195,11 +200,15 @@ fn build_filtered_shortcuts(
                     Span::styled(
                         key_formatted,
                         state
-                            .core.theme
+                            .core
+                            .theme
                             .style(StyleKey::KeybindBadge)
                             .add_modifier(Modifier::BOLD),
                     ),
-                    Span::styled(description_formatted, state.core.theme.style(StyleKey::Text)),
+                    Span::styled(
+                        description_formatted,
+                        state.core.theme.style(StyleKey::Text),
+                    ),
                 ]));
             }
             lines.push(Line::from(""));

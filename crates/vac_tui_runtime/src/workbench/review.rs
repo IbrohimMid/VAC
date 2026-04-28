@@ -15,7 +15,10 @@ pub struct ReviewTab;
 
 impl WorkbenchTabView for ReviewTab {
     fn tab_label(state: &AppState) -> String {
-        format!("Review ({})", state.workspace.changeset_store.active_entries().len())
+        format!(
+            "Review ({})",
+            state.workspace.changeset_store.active_entries().len()
+        )
     }
 
     fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
@@ -51,7 +54,11 @@ impl WorkbenchTabView for ReviewTab {
         let files = state.review_filtered_paths();
         // PR-T16 P1 — record per-row click regions. List inner area begins
         // at (body[0].x + 1, body[0].y + 1) and each row occupies 1 line.
-        state.layout.workbench_chrome.review_file_row_regions.clear();
+        state
+            .layout
+            .workbench_chrome
+            .review_file_row_regions
+            .clear();
         if body[0].width > 2 && body[0].height > 2 {
             let inner_x = body[0].x + 1;
             let inner_y = body[0].y + 1;
@@ -62,7 +69,11 @@ impl WorkbenchTabView for ReviewTab {
                     break;
                 }
                 let rect = ratatui::layout::Rect::new(inner_x, inner_y + idx as u16, inner_w, 1);
-                state.layout.workbench_chrome.review_file_row_regions.push((path.clone(), rect));
+                state
+                    .layout
+                    .workbench_chrome
+                    .review_file_row_regions
+                    .push((path.clone(), rect));
             }
         }
         let items: Vec<ListItem> = files
@@ -72,7 +83,8 @@ impl WorkbenchTabView for ReviewTab {
                 let is_selected = idx == state.workspace.review.selected_idx;
                 let style = if is_selected {
                     state
-                        .core.theme
+                        .core
+                        .theme
                         .style(StyleKey::Warning)
                         .add_modifier(Modifier::BOLD)
                 } else {
@@ -146,7 +158,8 @@ impl WorkbenchTabView for ReviewTab {
         // `pending_kitty_emission` so the post-draw flush can emit a
         // native Kitty DCS sequence on top of the ASCII fallback.
         let image_branch: Option<(Vec<Line>, Option<Vec<u8>>)> = state
-            .workspace.review
+            .workspace
+            .review
             .selected_path
             .as_ref()
             .filter(|p| crate::services::review_preview::is_image_path(p))
@@ -159,7 +172,13 @@ impl WorkbenchTabView for ReviewTab {
                 let inner_w = body[1].width.saturating_sub(2).max(4);
                 let inner_h = body[1].height.saturating_sub(2).max(3);
                 use crate::services::image_preview_cache::ImagePreviewCacheEntry;
-                match state.layout.image_render.preview_cache.get(&abs_path).cloned() {
+                match state
+                    .layout
+                    .image_render
+                    .preview_cache
+                    .get(&abs_path)
+                    .cloned()
+                {
                     Some(ImagePreviewCacheEntry::Ready(Ok(preview))) => {
                         let label = format!("{} ({}x{})", path, preview.width, preview.height);
                         let lines: Vec<Line> = crate::services::kitty_image::render_ascii_fallback(
@@ -181,7 +200,11 @@ impl WorkbenchTabView for ReviewTab {
                         // Schedule the load on first sight; subsequent
                         // frames observe `Loading` and short-circuit the
                         // spawn inside `request_load`.
-                        state.layout.image_render.preview_cache.request_load(abs_path.clone());
+                        state
+                            .layout
+                            .image_render
+                            .preview_cache
+                            .request_load(abs_path.clone());
                         let label = format!("{} (loading…)", path);
                         let lines: Vec<Line> = crate::services::kitty_image::render_ascii_fallback(
                             inner_w, inner_h, &label,
@@ -207,7 +230,8 @@ impl WorkbenchTabView for ReviewTab {
             {
                 // T13: VIL-aware diff for .vwfd.yaml files
                 let is_vwfd = state
-                    .workspace.review
+                    .workspace
+                    .review
                     .selected_path
                     .as_deref()
                     .map(|p| p.ends_with(".vwfd.yaml") || p.ends_with(".vwfd.yml"))
@@ -217,17 +241,20 @@ impl WorkbenchTabView for ReviewTab {
                         (vil_vwfd::from_yaml(old), vil_vwfd::from_yaml(new))
                     {
                         let vwfd_diff = vac_changeset::formats::vwfd::diff(&old_doc, &new_doc);
-                        crate::services::vwfd_diff_render::build_lines(&vwfd_diff, &state.core.theme)
-                            .into_iter()
-                            .map(|l| {
-                                Line::from(
-                                    l.spans
-                                        .into_iter()
-                                        .map(|s| Span::styled(s.content.into_owned(), s.style))
-                                        .collect::<Vec<_>>(),
-                                )
-                            })
-                            .collect()
+                        crate::services::vwfd_diff_render::build_lines(
+                            &vwfd_diff,
+                            &state.core.theme,
+                        )
+                        .into_iter()
+                        .map(|l| {
+                            Line::from(
+                                l.spans
+                                    .into_iter()
+                                    .map(|s| Span::styled(s.content.into_owned(), s.style))
+                                    .collect::<Vec<_>>(),
+                            )
+                        })
+                        .collect()
                     } else {
                         // Fallback to generic diff if VWFD parse fails
                         let selected_path = state.workspace.review.selected_path.clone();

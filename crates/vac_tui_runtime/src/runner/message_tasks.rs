@@ -68,7 +68,8 @@ pub(super) async fn handle_user_message(
                 engine.clone(),
                 &msg,
                 update_tx,
-            ).await;
+            )
+            .await;
         } else {
             let mut eng = engine.lock().await;
             let _ = eng

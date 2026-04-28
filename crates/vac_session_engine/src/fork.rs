@@ -303,8 +303,7 @@ mod tests {
     #[async_trait]
     impl LlmAdapter for CountingAdapter {
         async fn complete(&self, _req: LlmRequest) -> EngineResult<LlmResponse> {
-            self.count
-                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            self.count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             Ok(LlmResponse {
                 provider: "test".into(),
                 model: "counting".into(),
@@ -359,7 +358,10 @@ mod tests {
             .await
             .unwrap_err();
         match err {
-            EngineError::BudgetExceeded { tokens_used, budget } => {
+            EngineError::BudgetExceeded {
+                tokens_used,
+                budget,
+            } => {
                 assert!(tokens_used >= budget);
             }
             other => panic!("expected BudgetExceeded, got {other:?}"),
@@ -374,7 +376,12 @@ mod tests {
         let params = CacheSafeParams::new(Uuid::new_v4(), tmp.path().to_path_buf());
         let reads = vec![PathBuf::from("src/auth/mod.rs")];
         let out = runner
-            .speculate(&params, "summarise auth", reads.clone(), ForkBudget::default())
+            .speculate(
+                &params,
+                "summarise auth",
+                reads.clone(),
+                ForkBudget::default(),
+            )
             .await
             .unwrap();
         assert_eq!(out.reads, reads);
@@ -431,7 +438,7 @@ mod tests {
                     content: String::new(),
                     input_tokens: 0,
                     output_tokens: 0,
-                tool_calls: Vec::new(),
+                    tool_calls: Vec::new(),
                 })
             }
         }
@@ -448,7 +455,10 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(out.turns, 3, "turn cap must bite when content is empty");
-        assert_eq!(out.tool_calls, 0, "no tool calls when content never arrives");
+        assert_eq!(
+            out.tool_calls, 0,
+            "no tool calls when content never arrives"
+        );
     }
 
     #[tokio::test]
@@ -491,7 +501,7 @@ mod tests {
                     content: "".into(),
                     input_tokens: 0,
                     output_tokens: 0,
-                tool_calls: Vec::new(),
+                    tool_calls: Vec::new(),
                 })
             }
         }

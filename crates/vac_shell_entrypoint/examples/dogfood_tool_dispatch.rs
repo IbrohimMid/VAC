@@ -48,7 +48,10 @@ fn main() -> ExitCode {
         }
     };
     let ctx = Arc::new(ToolContext::new(root.clone()));
-    let dispatcher = Arc::new(VacToolDispatcher::new(Arc::clone(&registry), Arc::clone(&ctx)));
+    let dispatcher = Arc::new(VacToolDispatcher::new(
+        Arc::clone(&registry),
+        Arc::clone(&ctx),
+    ));
     // Empty CompositeGate satisfies the D8 pre-flight check —
     // the engine still runs every tool through the gate, but
     // an empty composite returns Allow for everything. Hosts
@@ -58,8 +61,8 @@ fn main() -> ExitCode {
     let app = vac_shell_entrypoint::build_shell_app(&root);
     let adapter_cfg = AdapterConfig::dogfood(root.clone()).with_tool_dispatcher(dispatcher, gate);
     let adapter = VacCommandExecutorAdapter::new(adapter_cfg);
-    let ctx_runtime = vac_shell_runtime_loop::ShellRuntimeContext::new(app)
-        .with_executor(Arc::new(adapter));
+    let ctx_runtime =
+        vac_shell_runtime_loop::ShellRuntimeContext::new(app).with_executor(Arc::new(adapter));
     match vac_shell_runtime_loop::run_shell_loop(
         ctx_runtime,
         vac_shell_runtime_loop::ShellLoopOptions::default(),

@@ -17,12 +17,18 @@ async fn test_autopilot_cron_fires() {
         task = "cron-task"
     "#;
     std::fs::write(root.join("autopilot.toml"), config_toml).unwrap();
-    
+
     // Create VacConfig
     let config = vac_core::VacConfig::default();
-    std::fs::write(root.join(".vac/config.toml"), toml::to_string(&config).unwrap()).unwrap();
+    std::fs::write(
+        root.join(".vac/config.toml"),
+        toml::to_string(&config).unwrap(),
+    )
+    .unwrap();
 
-    let controller = vac_runtime::AutopilotController::new(root.clone()).await.unwrap();
+    let controller = vac_runtime::AutopilotController::new(root.clone())
+        .await
+        .unwrap();
     let (tx, rx) = tokio::sync::watch::channel(false);
 
     tokio::spawn(async move {
@@ -34,5 +40,9 @@ async fn test_autopilot_cron_fires() {
 
     let queue = vac_runtime::TaskQueue::with_storage(root.join(".vac/queue.json"));
     let jobs = queue.list().await;
-    assert!(jobs.len() >= 2, "Expected at least 2 jobs enqueued by cron, found {}", jobs.len());
+    assert!(
+        jobs.len() >= 2,
+        "Expected at least 2 jobs enqueued by cron, found {}",
+        jobs.len()
+    );
 }

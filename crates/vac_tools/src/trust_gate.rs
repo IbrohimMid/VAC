@@ -187,11 +187,7 @@ impl TrustGate {
         decision
     }
 
-    fn check_tool_typed(
-        mode: EnvironmentMode,
-        trust: TrustClass,
-        spec: &ToolSpec,
-    ) -> GateDecision {
+    fn check_tool_typed(mode: EnvironmentMode, trust: TrustClass, spec: &ToolSpec) -> GateDecision {
         // 1. Restricted-offline denies any remote MCP.
         if mode == EnvironmentMode::RestrictedOffline
             && matches!(
@@ -204,9 +200,7 @@ impl TrustGate {
         // 2. Isolated denies LocalTrusted MCP (the whole point of
         //    isolation is to revoke local-trusted access).
         if mode == EnvironmentMode::Isolated && trust == TrustClass::LocalTrusted {
-            return GateDecision::Deny(
-                "LocalTrusted MCP denied in isolated mode".into(),
-            );
+            return GateDecision::Deny("LocalTrusted MCP denied in isolated mode".into());
         }
         // 3. TrustedNetworked + Isolated explicitly deny
         //    RemoteUntrusted. (Host + RestrictedOffline handled
@@ -217,9 +211,7 @@ impl TrustGate {
                 EnvironmentMode::TrustedNetworked | EnvironmentMode::Isolated
             )
         {
-            return GateDecision::Deny(
-                "RemoteUntrusted MCP blocked in this environment".into(),
-            );
+            return GateDecision::Deny("RemoteUntrusted MCP blocked in this environment".into());
         }
         // 4. RemoteUntrusted (on host) asks for approval.
         if trust == TrustClass::RemoteUntrusted {
@@ -456,7 +448,10 @@ mod tests {
         // Unknown label must NOT silently become a stricter mode;
         // falls back to Host. A stricter fallback would lock out
         // valid configs on a typo.
-        assert_eq!(EnvironmentMode::from_label("nonsense"), EnvironmentMode::Host);
+        assert_eq!(
+            EnvironmentMode::from_label("nonsense"),
+            EnvironmentMode::Host
+        );
     }
 
     #[test]

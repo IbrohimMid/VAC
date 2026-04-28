@@ -78,7 +78,10 @@ impl SignalBuffer {
             self.lines.pop_front();
             self.dropped = self.dropped.saturating_add(1);
         }
-        self.lines.push_back(SignalLine { seq, text: text.into() });
+        self.lines.push_back(SignalLine {
+            seq,
+            text: text.into(),
+        });
         seq
     }
 
@@ -104,7 +107,11 @@ impl SignalBuffer {
     /// tail rendering.
     pub fn tail(&self, n: usize) -> Vec<&str> {
         let skip = self.lines.len().saturating_sub(n);
-        self.lines.iter().skip(skip).map(|l| l.text.as_str()).collect()
+        self.lines
+            .iter()
+            .skip(skip)
+            .map(|l| l.text.as_str())
+            .collect()
     }
 
     /// Distill this buffer using default heuristics (`RegexScorer` +

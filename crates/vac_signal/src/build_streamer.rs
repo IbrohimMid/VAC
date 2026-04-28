@@ -158,7 +158,10 @@ mod tests {
     use super::*;
 
     fn buf() -> std::sync::Arc<Mutex<SignalBuffer>> {
-        std::sync::Arc::new(Mutex::new(SignalBuffer::new(crate::buffer::SignalStreamKind::Other, 1024)))
+        std::sync::Arc::new(Mutex::new(SignalBuffer::new(
+            crate::buffer::SignalStreamKind::Other,
+            1024,
+        )))
     }
 
     #[tokio::test]
@@ -185,12 +188,7 @@ mod tests {
         assert!(outcome.success);
         // Give pumpers a moment post-exit.
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        let buf_lines: Vec<String> = b
-            .lock()
-            .await
-            .iter()
-            .map(|e| e.text.clone())
-            .collect();
+        let buf_lines: Vec<String> = b.lock().await.iter().map(|e| e.text.clone()).collect();
         assert!(buf_lines.iter().any(|l| l.contains("first")));
         assert!(buf_lines.iter().any(|l| l.contains("second")));
     }
@@ -211,15 +209,16 @@ mod tests {
         let b = buf();
         let mut cmd = Command::new("sh");
         cmd.args(["-c", "echo oops >&2"]);
-        let mut s = BuildStreamer::spawn("stderr", cmd, b.clone()).await.unwrap();
+        let mut s = BuildStreamer::spawn("stderr", cmd, b.clone())
+            .await
+            .unwrap();
         s.wait().await.unwrap();
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        let buf_lines: Vec<String> = b
-            .lock()
-            .await
-            .iter()
-            .map(|e| e.text.clone())
-            .collect();
-        assert!(buf_lines.iter().any(|l| l.contains("[stderr]") && l.contains("oops")));
+        let buf_lines: Vec<String> = b.lock().await.iter().map(|e| e.text.clone()).collect();
+        assert!(
+            buf_lines
+                .iter()
+                .any(|l| l.contains("[stderr]") && l.contains("oops"))
+        );
     }
 }

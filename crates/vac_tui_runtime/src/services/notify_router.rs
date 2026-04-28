@@ -21,7 +21,7 @@
 //! Severity maps mechanically to a lane; subsystem string is the
 //! shared grammar with `SystemPulse::label`.
 
-use crate::app::{AppState, ActivityKind};
+use crate::app::{ActivityKind, AppState};
 
 /// Upper bounds on NotifyEvent string fields. Prevents a buggy
 /// producer from pushing a multi-MB message into the activity ring
@@ -152,12 +152,10 @@ fn push_toast(state: &mut AppState, msg: &str) {
 fn push_banner(state: &mut AppState, msg: &str) {
     // Banner single-slot: overwrite whatever's there. The Error
     // style gives the usual red top-strip rendering.
-    state.layout.banner.message = Some(
-        crate::services::banner::BannerMessage::new(
-            msg,
-            crate::services::banner::BannerStyle::Error,
-        ),
-    );
+    state.layout.banner.message = Some(crate::services::banner::BannerMessage::new(
+        msg,
+        crate::services::banner::BannerStyle::Error,
+    ));
 }
 
 #[cfg(test)]
@@ -173,11 +171,12 @@ mod tests {
         let mut state = fresh();
         route(&mut state, NotifyEvent::info("approvals", "one pending"));
         assert_eq!(state.execution.activity.len(), 1);
-        assert!(state.execution.activity[0].message.starts_with("[approvals]"));
-        assert_eq!(
-            state.execution.activity[0].kind,
-            ActivityKind::Status
+        assert!(
+            state.execution.activity[0]
+                .message
+                .starts_with("[approvals]")
         );
+        assert_eq!(state.execution.activity[0].kind, ActivityKind::Status);
         assert!(state.layout.banner.message.is_none());
     }
 
@@ -189,10 +188,7 @@ mod tests {
         // Warn folds into Status at the activity layer — see
         // NotifySeverity::to_activity_kind docs. Toast does the
         // attention-grabbing part.
-        assert_eq!(
-            state.execution.activity[0].kind,
-            ActivityKind::Status
-        );
+        assert_eq!(state.execution.activity[0].kind, ActivityKind::Status);
         assert_eq!(state.layout.toasts.len(), 1);
         assert!(state.layout.toasts[0].message.contains("runtime"));
     }
@@ -205,10 +201,7 @@ mod tests {
             NotifyEvent::critical("mcp", "github server failed").with_detail("401"),
         );
         assert_eq!(state.execution.activity.len(), 1);
-        assert_eq!(
-            state.execution.activity[0].kind,
-            ActivityKind::Error
-        );
+        assert_eq!(state.execution.activity[0].kind, ActivityKind::Error);
         assert!(state.layout.banner.message.is_some());
         assert!(
             state

@@ -7,7 +7,7 @@
 
 use std::path::Path;
 
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 use thiserror::Error;
 
 use crate::buffer::{SignalLine, SignalStreamKind};
@@ -80,10 +80,15 @@ impl RewindStore {
             "SELECT seq, text FROM signal_lines WHERE stream_id = ? ORDER BY seq DESC LIMIT ?",
         )?;
         let rows = stmt.query_map(params![stream_id, limit], |row| {
-            Ok(SignalLine { seq: row.get::<_, i64>(0)? as u64, text: row.get(1)? })
+            Ok(SignalLine {
+                seq: row.get::<_, i64>(0)? as u64,
+                text: row.get(1)?,
+            })
         })?;
         let mut out = Vec::new();
-        for r in rows { out.push(r?); }
+        for r in rows {
+            out.push(r?);
+        }
         out.reverse();
         Ok(out)
     }
@@ -103,7 +108,10 @@ mod tests {
                 .append(
                     "shell-1",
                     SignalStreamKind::Shell,
-                    &SignalLine { seq: i, text: format!("line {i}") },
+                    &SignalLine {
+                        seq: i,
+                        text: format!("line {i}"),
+                    },
                     1_700_000_000 + i as i64,
                 )
                 .unwrap();

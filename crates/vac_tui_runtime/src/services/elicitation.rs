@@ -87,10 +87,7 @@ impl TuiElicitationHandler {
 
 #[async_trait]
 impl ElicitationHandler for TuiElicitationHandler {
-    async fn handle(
-        &self,
-        request: ElicitationRequest,
-    ) -> McpCoreResult<ElicitationResult> {
+    async fn handle(&self, request: ElicitationRequest) -> McpCoreResult<ElicitationResult> {
         match request {
             ElicitationRequest::OpenUrl { url, prompt } => {
                 let (tx, rx) = oneshot::channel();
@@ -113,8 +110,7 @@ impl ElicitationHandler for TuiElicitationHandler {
                             "elicitation: pre-empting in-flight prompt with newer request",
                         );
                     }
-                    guard.layout.elicitation =
-                        Some(ElicitationPrompt::new(url, prompt, tx));
+                    guard.layout.elicitation = Some(ElicitationPrompt::new(url, prompt, tx));
                     crate::overlay::open_overlay(
                         &mut guard,
                         crate::overlay::OverlayId::Elicitation,
@@ -144,8 +140,7 @@ impl ElicitationHandler for TuiElicitationHandler {
                     }
                 }
             }
-            ElicitationRequest::Text { prompt, .. }
-            | ElicitationRequest::Confirm { prompt } => {
+            ElicitationRequest::Text { prompt, .. } | ElicitationRequest::Confirm { prompt } => {
                 // TODO: render Text / Confirm modals. Current build
                 // ships OpenUrl only; the other variants degrade
                 // cleanly via Cancelled + a warn on the A1 channel.
@@ -194,9 +189,7 @@ pub fn cancel_current(state: &mut AppState) -> bool {
 /// Best-effort browser launch. Returns Err only if `open::that`
 /// reports a hard failure. Called from the Enter handler.
 pub fn launch_url(url: &str) -> McpCoreResult<()> {
-    open::that(url).map_err(|e| {
-        McpCoreError::Protocol(format!("failed to open url '{url}': {e}"))
-    })
+    open::that(url).map_err(|e| McpCoreError::Protocol(format!("failed to open url '{url}': {e}")))
 }
 
 #[cfg(test)]
@@ -256,15 +249,8 @@ mod tests {
         let (tx, mut rx) = oneshot::channel();
         {
             let mut guard = state.lock().await;
-            guard.layout.elicitation = Some(ElicitationPrompt::new(
-                "https://first.test",
-                None,
-                tx,
-            ));
-            crate::overlay::open_overlay(
-                &mut guard,
-                crate::overlay::OverlayId::Elicitation,
-            );
+            guard.layout.elicitation = Some(ElicitationPrompt::new("https://first.test", None, tx));
+            crate::overlay::open_overlay(&mut guard, crate::overlay::OverlayId::Elicitation);
         }
 
         let task = tokio::spawn(async move {
@@ -300,18 +286,14 @@ mod tests {
         {
             let mut guard = state.lock().await;
             accept_current(&mut guard);
-            crate::overlay::close_overlay(
-                &mut guard,
-                crate::overlay::OverlayId::Elicitation,
-            );
+            crate::overlay::close_overlay(&mut guard, crate::overlay::OverlayId::Elicitation);
         }
         let _ = task.await;
     }
 
     #[tokio::test]
     async fn handler_open_url_pushes_overlay_and_resolves_on_accept() {
-        let state: SharedState =
-            Arc::new(Mutex::new(make_state()));
+        let state: SharedState = Arc::new(Mutex::new(make_state()));
         let handler = TuiElicitationHandler::new(state.clone());
 
         // Drive the handler in the background.
@@ -337,10 +319,7 @@ mod tests {
             let mut guard = state.lock().await;
             assert!(guard.layout.elicitation.is_some());
             assert!(accept_current(&mut guard));
-            crate::overlay::close_overlay(
-                &mut guard,
-                crate::overlay::OverlayId::Elicitation,
-            );
+            crate::overlay::close_overlay(&mut guard, crate::overlay::OverlayId::Elicitation);
         }
 
         let result = task.await.unwrap().unwrap();

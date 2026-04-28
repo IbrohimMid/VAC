@@ -32,8 +32,7 @@ impl AgentDispatcher for EngineAgentDispatcher {
         &'a self,
         input: AgentDispatchInput,
         parent_session_id: Uuid,
-    ) -> Pin<Box<dyn Future<Output = EngineResult<ToolResultEnvelope>> + Send + 'a>>
-    {
+    ) -> Pin<Box<dyn Future<Output = EngineResult<ToolResultEnvelope>> + Send + 'a>> {
         Box::pin(async move {
             let started = std::time::Instant::now();
             let subagent_type = input.subagent_type.clone();
@@ -43,12 +42,9 @@ impl AgentDispatcher for EngineAgentDispatcher {
                 prompt: input.prompt,
                 isolation: input.isolation,
             };
-            let mut stream = dispatch_agent_tool(
-                engine_input,
-                parent_session_id,
-                self.dispatch_ctx.clone(),
-            )
-            .await?;
+            let mut stream =
+                dispatch_agent_tool(engine_input, parent_session_id, self.dispatch_ctx.clone())
+                    .await?;
 
             let mut tool_calls: Vec<serde_json::Value> = Vec::new();
             let mut content = String::new();
@@ -75,9 +71,7 @@ impl AgentDispatcher for EngineAgentDispatcher {
             if let Some(reason) = aborted {
                 return Ok(ToolResultEnvelope {
                     kind: ToolResultKind::Error,
-                    summary: format!(
-                        "subagent {subagent_type} aborted"
-                    ),
+                    summary: format!("subagent {subagent_type} aborted"),
                     payload: serde_json::json!({
                         "subagent_type": subagent_type,
                         "error": reason,
@@ -140,6 +134,11 @@ mod tests {
             .unwrap();
         assert_eq!(envelope.kind, ToolResultKind::Ok);
         assert_eq!(envelope.payload["subagent_type"], "explore");
-        assert!(envelope.payload["content"].as_str().unwrap().contains("echo"));
+        assert!(
+            envelope.payload["content"]
+                .as_str()
+                .unwrap()
+                .contains("echo")
+        );
     }
 }

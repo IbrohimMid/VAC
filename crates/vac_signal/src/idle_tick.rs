@@ -93,9 +93,8 @@ where
             // until drop. Catch-unwind keeps the loop running and
             // surfaces the panic via tracing so the operator sees
             // the failure rather than silent cessation.
-            let result = std::panic::catch_unwind(
-                std::panic::AssertUnwindSafe(|| observe(samples)),
-            );
+            let result =
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| observe(samples)));
             if let Err(e) = result {
                 tracing::error!(
                     target: "vac_signal::idle_tick",

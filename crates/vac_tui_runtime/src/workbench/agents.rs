@@ -40,7 +40,8 @@ impl WorkbenchTabView for AgentsTab {
         }
 
         let items: Vec<ListItem> = state
-            .execution.runtime
+            .execution
+            .runtime
             .agent_tasks
             .iter()
             .enumerate()
@@ -48,7 +49,8 @@ impl WorkbenchTabView for AgentsTab {
                 let selected = idx == state.execution.runtime.agent_selected;
                 let style = if selected {
                     state
-                        .core.theme
+                        .core
+                        .theme
                         .style(StyleKey::Warning)
                         .add_modifier(Modifier::BOLD)
                 } else {
@@ -74,7 +76,8 @@ impl WorkbenchTabView for AgentsTab {
                 let role = Span::styled(
                     task.role.label(),
                     state
-                        .core.theme
+                        .core
+                        .theme
                         .style(StyleKey::AppTitle)
                         .add_modifier(Modifier::BOLD),
                 );
@@ -101,16 +104,25 @@ impl WorkbenchTabView for AgentsTab {
         let mut lines: Vec<Line> = Vec::new();
         lines.push(Line::from(vec![
             Span::styled("Tasks: ", Style::default().add_modifier(Modifier::BOLD)),
-            Span::styled(format!("Q {queued}"), state.core.theme.style(StyleKey::Muted)),
+            Span::styled(
+                format!("Q {queued}"),
+                state.core.theme.style(StyleKey::Muted),
+            ),
             Span::raw("  "),
-            Span::styled(format!("R {running}"), state.core.theme.style(StyleKey::Accent)),
+            Span::styled(
+                format!("R {running}"),
+                state.core.theme.style(StyleKey::Accent),
+            ),
             Span::raw("  "),
             Span::styled(
                 format!("C {completed}"),
                 state.core.theme.style(StyleKey::Success),
             ),
             Span::raw("  "),
-            Span::styled(format!("F {failed}"), state.core.theme.style(StyleKey::Error)),
+            Span::styled(
+                format!("F {failed}"),
+                state.core.theme.style(StyleKey::Error),
+            ),
             Span::raw("  "),
             Span::styled(
                 format!("X {cancelled}"),
@@ -128,7 +140,8 @@ impl WorkbenchTabView for AgentsTab {
                 let role = Span::styled(
                     w.role.label(),
                     state
-                        .core.theme
+                        .core
+                        .theme
                         .style(StyleKey::AppTitle)
                         .add_modifier(Modifier::BOLD),
                 );
@@ -182,7 +195,12 @@ impl WorkbenchTabView for AgentsTab {
             lines.push(Line::raw(""));
         }
 
-        if let Some(task) = state.execution.runtime.agent_tasks.get(state.execution.runtime.agent_selected) {
+        if let Some(task) = state
+            .execution
+            .runtime
+            .agent_tasks
+            .get(state.execution.runtime.agent_selected)
+        {
             lines.push(Line::styled(
                 "Selected:",
                 Style::default().add_modifier(Modifier::BOLD),

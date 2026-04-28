@@ -63,10 +63,7 @@ pub enum SubmitEvent {
     Compacted { kept: usize, dropped: usize },
 
     /// LLM request was issued. Driver wires provider/model metadata.
-    LlmRequested {
-        provider: String,
-        model: String,
-    },
+    LlmRequested { provider: String, model: String },
 
     /// LLM streamed a chunk of assistant text.
     LlmChunk { text: String },

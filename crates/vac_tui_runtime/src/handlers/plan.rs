@@ -20,7 +20,8 @@ pub fn handle_plan_review_key(state: &mut AppState, event: &InputEvent) -> bool 
             state.workspace.plan.review_open = false;
         }
         InputEvent::Up | InputEvent::ScrollUp => {
-            state.workspace.plan.review_selected = state.workspace.plan.review_selected.saturating_sub(1);
+            state.workspace.plan.review_selected =
+                state.workspace.plan.review_selected.saturating_sub(1);
             if state.workspace.plan.review_selected < state.workspace.plan.review_scroll {
                 state.workspace.plan.review_scroll = state.workspace.plan.review_selected;
             }
@@ -31,14 +32,22 @@ pub fn handle_plan_review_key(state: &mut AppState, event: &InputEvent) -> bool 
             }
         }
         InputEvent::PageUp => {
-            state.workspace.plan.review_scroll = state.workspace.plan.review_scroll.saturating_sub(10);
-            state.workspace.plan.review_selected = state.workspace.plan.review_selected.saturating_sub(10);
+            state.workspace.plan.review_scroll =
+                state.workspace.plan.review_scroll.saturating_sub(10);
+            state.workspace.plan.review_selected =
+                state.workspace.plan.review_selected.saturating_sub(10);
         }
         InputEvent::PageDown => {
             let max_scroll = line_count.saturating_sub(1);
-            state.workspace.plan.review_scroll = state.workspace.plan.review_scroll.saturating_add(10).min(max_scroll);
+            state.workspace.plan.review_scroll = state
+                .workspace
+                .plan
+                .review_scroll
+                .saturating_add(10)
+                .min(max_scroll);
             if line_count > 0 {
-                state.workspace.plan.review_selected = (state.workspace.plan.review_selected + 10).min(line_count - 1);
+                state.workspace.plan.review_selected =
+                    (state.workspace.plan.review_selected + 10).min(line_count - 1);
             }
         }
         InputEvent::InputChanged('a') => {
@@ -63,7 +72,9 @@ pub fn write_plan_status(state: &mut AppState, new_status: crate::services::plan
     use crate::services::plan;
     let on_disk = std::fs::read_to_string(plan::plan_file_path(&state.core.project_root)).ok();
     if let Some(disk_content) = on_disk.as_ref() {
-        if plan::compute_plan_hash(disk_content) != plan::compute_plan_hash(&state.workspace.plan.draft) {
+        if plan::compute_plan_hash(disk_content)
+            != plan::compute_plan_hash(&state.workspace.plan.draft)
+        {
             state.add_assistant_message(
                 "Plan file changed on disk since it was loaded. Reload with /plan-review first."
                     .to_string(),
@@ -108,7 +119,9 @@ pub fn open_editor(state: &mut AppState) {
     // Seed a minimal template if no plan file exists yet.
     if !plan_path.exists() {
         let title = state
-            .session.session_meta.title
+            .session
+            .session_meta
+            .title
             .clone()
             .unwrap_or_else(|| "Session Plan".to_string());
         let tmpl = crate::services::plan::new_plan_template(&title);

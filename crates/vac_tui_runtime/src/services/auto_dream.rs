@@ -64,10 +64,7 @@ impl Default for FakeClock {
 }
 impl Clock for FakeClock {
     fn now(&self) -> SystemTime {
-        self.base
-            + Duration::from_secs(
-                self.offset.load(std::sync::atomic::Ordering::SeqCst),
-            )
+        self.base + Duration::from_secs(self.offset.load(std::sync::atomic::Ordering::SeqCst))
     }
 }
 
@@ -140,13 +137,11 @@ impl AutoDreamService {
     /// of when the operator last pressed a key / submitted. Returns
     /// the outcome so the driver can surface a notification on
     /// `Wrote`.
-    pub async fn tick(
-        &self,
-        last_activity_at: SystemTime,
-    ) -> anyhow::Result<TickOutcome> {
+    pub async fn tick(&self, last_activity_at: SystemTime) -> anyhow::Result<TickOutcome> {
         let now = self.clock.now();
-        let elapsed_since_activity =
-            now.duration_since(last_activity_at).unwrap_or(Duration::ZERO);
+        let elapsed_since_activity = now
+            .duration_since(last_activity_at)
+            .unwrap_or(Duration::ZERO);
         if elapsed_since_activity < self.idle_threshold {
             return Ok(TickOutcome::Skipped {
                 reason: SkipReason::NotIdleYet,
@@ -155,8 +150,7 @@ impl AutoDreamService {
 
         // Pick the newest transcript under .vac/sessions.
         let sessions_dir = self.project_root.join(".vac").join("sessions");
-        let Some((transcript_path, transcript_size)) =
-            newest_transcript(&sessions_dir).await?
+        let Some((transcript_path, transcript_size)) = newest_transcript(&sessions_dir).await?
         else {
             return Ok(TickOutcome::Skipped {
                 reason: SkipReason::NoTranscript,
@@ -275,9 +269,7 @@ impl AutoDreamService {
 
 /// Pick the newest `.jsonl` in `sessions_dir` plus its size. Returns
 /// `None` when the dir is missing or empty.
-async fn newest_transcript(
-    sessions_dir: &Path,
-) -> anyhow::Result<Option<(PathBuf, u64)>> {
+async fn newest_transcript(sessions_dir: &Path) -> anyhow::Result<Option<(PathBuf, u64)>> {
     if !sessions_dir.is_dir() {
         return Ok(None);
     }
@@ -377,7 +369,12 @@ mod tests {
         // Activity just now; clock hasn't advanced → not idle.
         let now = clock.now();
         let out = svc.tick(now).await.unwrap();
-        assert_eq!(out, TickOutcome::Skipped { reason: SkipReason::NotIdleYet });
+        assert_eq!(
+            out,
+            TickOutcome::Skipped {
+                reason: SkipReason::NotIdleYet
+            }
+        );
     }
 
     #[tokio::test]
@@ -389,7 +386,12 @@ mod tests {
         let last_activity = clock.now();
         clock.advance(30);
         let out = svc.tick(last_activity).await.unwrap();
-        assert_eq!(out, TickOutcome::Skipped { reason: SkipReason::NoTranscript });
+        assert_eq!(
+            out,
+            TickOutcome::Skipped {
+                reason: SkipReason::NoTranscript
+            }
+        );
     }
 
     #[tokio::test]
@@ -420,8 +422,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let clock = Arc::new(FakeClock::new());
         let svc = mk_service(&tmp, clock.clone());
-        seed_transcript(tmp.path(), b"lots of content for the first dream\n")
-            .await;
+        seed_transcript(tmp.path(), b"lots of content for the first dream\n").await;
         let initial_activity = clock.now();
         clock.advance(30);
         let first = svc.tick(initial_activity).await.unwrap();
@@ -435,7 +436,9 @@ mod tests {
         let second = svc.tick(still_active).await.unwrap();
         assert_eq!(
             second,
-            TickOutcome::Skipped { reason: SkipReason::NotIdleYet },
+            TickOutcome::Skipped {
+                reason: SkipReason::NotIdleYet
+            },
         );
         // Now go idle again with no new transcript content: exact
         // reason must be NoActivityDelta, not "any skip".
@@ -443,7 +446,9 @@ mod tests {
         let third = svc.tick(initial_activity).await.unwrap();
         assert_eq!(
             third,
-            TickOutcome::Skipped { reason: SkipReason::NoActivityDelta },
+            TickOutcome::Skipped {
+                reason: SkipReason::NoActivityDelta
+            },
         );
     }
 
@@ -499,7 +504,9 @@ mod tests {
         let out = svc.tick(activity).await.unwrap();
         assert_eq!(
             out,
-            TickOutcome::Skipped { reason: SkipReason::UnsafeArchiveDir },
+            TickOutcome::Skipped {
+                reason: SkipReason::UnsafeArchiveDir
+            },
         );
         // And nothing landed in the outside dir.
         let mut rd = tokio::fs::read_dir(outside.path()).await.unwrap();

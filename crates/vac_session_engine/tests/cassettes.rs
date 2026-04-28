@@ -11,9 +11,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use uuid::Uuid;
 use vac_session_engine::{
-    CassetteAdapter, CompactConfig, LlmAdapter, LlmRequest, SlashProcessor,
-    SubmitContext, SubmitEvent, TranscriptKind, TranscriptWriter,
-    TrivialCompactBoundary, UsageTracker, submit_one,
+    CassetteAdapter, CompactConfig, LlmAdapter, LlmRequest, SlashProcessor, SubmitContext,
+    SubmitEvent, TranscriptKind, TranscriptWriter, TrivialCompactBoundary, UsageTracker,
+    submit_one,
 };
 
 fn cassette_path(name: &str) -> PathBuf {
@@ -63,11 +63,17 @@ async fn assert_cassette_submits_cleanly(provider: &str) {
 
     let mut saw_terminal = false;
     while let Ok(ev) = rx.try_recv() {
-        if matches!(ev, SubmitEvent::Finished { .. } | SubmitEvent::Aborted { .. }) {
+        if matches!(
+            ev,
+            SubmitEvent::Finished { .. } | SubmitEvent::Aborted { .. }
+        ) {
             saw_terminal = true;
         }
     }
-    assert!(saw_terminal, "{provider} cassette must end on Finished/Aborted");
+    assert!(
+        saw_terminal,
+        "{provider} cassette must end on Finished/Aborted"
+    );
 }
 
 #[tokio::test]

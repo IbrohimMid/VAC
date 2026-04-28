@@ -1,7 +1,9 @@
 //! D10 — ApprovalDetailProvider contract tests.
 
 use vac_shell_contracts::RiskLevel;
-use vac_shell_host_approval::{ApprovalDetailProvider, ApprovalRequest, DefaultApprovalDetailProvider};
+use vac_shell_host_approval::{
+    ApprovalDetailProvider, ApprovalRequest, DefaultApprovalDetailProvider,
+};
 
 fn provider() -> DefaultApprovalDetailProvider {
     DefaultApprovalDetailProvider
@@ -82,7 +84,9 @@ fn arguments_appear_as_command_preview() {
     let req = ApprovalRequest::new("id11", "bash_exec")
         .with_arguments(serde_json::json!({"cmd": "ls -la /tmp"}));
     let detail = provider().detail_for(&req);
-    let preview = detail.command_preview.expect("command_preview should be set");
+    let preview = detail
+        .command_preview
+        .expect("command_preview should be set");
     assert!(
         preview.contains("ls -la /tmp"),
         "expected cmd in preview, got: {preview}"
@@ -118,7 +122,9 @@ fn secret_keys_are_redacted_in_command_preview() {
         serde_json::json!({"token": "gh_super_secret_abc123", "url": "https://api.example.com"}),
     );
     let detail = provider().detail_for(&req);
-    let preview = detail.command_preview.expect("command_preview should be set");
+    let preview = detail
+        .command_preview
+        .expect("command_preview should be set");
     assert!(
         !preview.contains("gh_super_secret_abc123"),
         "secret token must be redacted, got: {preview}"
@@ -140,7 +146,9 @@ fn long_arguments_are_truncated_in_command_preview() {
     let req = ApprovalRequest::new("id15", "bash_exec")
         .with_arguments(serde_json::json!({"cmd": long_val}));
     let detail = provider().detail_for(&req);
-    let preview = detail.command_preview.expect("command_preview should be set");
+    let preview = detail
+        .command_preview
+        .expect("command_preview should be set");
     assert!(
         preview.len() <= 500,
         "command_preview must be capped at 500 chars, got {} chars",
@@ -153,7 +161,9 @@ fn normal_command_argument_visible_in_preview() {
     let req = ApprovalRequest::new("id16", "bash_exec")
         .with_arguments(serde_json::json!({"cmd": "git status"}));
     let detail = provider().detail_for(&req);
-    let preview = detail.command_preview.expect("command_preview should be set");
+    let preview = detail
+        .command_preview
+        .expect("command_preview should be set");
     assert!(
         preview.contains("git status"),
         "safe command must be visible in preview, got: {preview}"
@@ -166,16 +176,16 @@ fn normal_command_argument_visible_in_preview() {
 
 #[test]
 fn nested_secret_in_command_preview_is_redacted() {
-    let req = ApprovalRequest::new("id17", "api_call").with_arguments(
-        serde_json::json!({
-            "config": {
-                "api_key": "sk_nested_secret",
-                "host": "api.example.com"
-            }
-        }),
-    );
+    let req = ApprovalRequest::new("id17", "api_call").with_arguments(serde_json::json!({
+        "config": {
+            "api_key": "sk_nested_secret",
+            "host": "api.example.com"
+        }
+    }));
     let detail = provider().detail_for(&req);
-    let preview = detail.command_preview.expect("command_preview should be set");
+    let preview = detail
+        .command_preview
+        .expect("command_preview should be set");
     assert!(
         !preview.contains("sk_nested_secret"),
         "nested api_key must be redacted, got: {preview}"
@@ -192,16 +202,16 @@ fn nested_secret_in_command_preview_is_redacted() {
 
 #[test]
 fn array_of_objects_with_secrets_redacted_in_command_preview() {
-    let req = ApprovalRequest::new("id18", "batch_request").with_arguments(
-        serde_json::json!({
-            "requests": [
-                { "token": "tok_1", "path": "/safe/a" },
-                { "password": "pw_2", "path": "/safe/b" }
-            ]
-        }),
-    );
+    let req = ApprovalRequest::new("id18", "batch_request").with_arguments(serde_json::json!({
+        "requests": [
+            { "token": "tok_1", "path": "/safe/a" },
+            { "password": "pw_2", "path": "/safe/b" }
+        ]
+    }));
     let detail = provider().detail_for(&req);
-    let preview = detail.command_preview.expect("command_preview should be set");
+    let preview = detail
+        .command_preview
+        .expect("command_preview should be set");
     assert!(
         !preview.contains("tok_1"),
         "token in array object must be redacted, got: {preview}"
@@ -222,21 +232,21 @@ fn array_of_objects_with_secrets_redacted_in_command_preview() {
 
 #[test]
 fn mixed_safe_and_secret_fields_preserve_safe_values() {
-    let req = ApprovalRequest::new("id19", "deploy").with_arguments(
-        serde_json::json!({
-            "host": "api.example.com",
-            "auth": {
-                "bearer": "bearer-secret",
-                "mode": "oauth"
-            },
-            "config": {
-                "private_key": "private-secret",
-                "name": "my-key"
-            }
-        }),
-    );
+    let req = ApprovalRequest::new("id19", "deploy").with_arguments(serde_json::json!({
+        "host": "api.example.com",
+        "auth": {
+            "bearer": "bearer-secret",
+            "mode": "oauth"
+        },
+        "config": {
+            "private_key": "private-secret",
+            "name": "my-key"
+        }
+    }));
     let detail = provider().detail_for(&req);
-    let preview = detail.command_preview.expect("command_preview should be set");
+    let preview = detail
+        .command_preview
+        .expect("command_preview should be set");
     assert!(
         !preview.contains("bearer-secret"),
         "bearer secret must be redacted, got: {preview}"
@@ -261,16 +271,16 @@ fn mixed_safe_and_secret_fields_preserve_safe_values() {
 
 #[test]
 fn case_insensitive_nested_secret_keys_are_redacted_in_command_preview() {
-    let req = ApprovalRequest::new("id20", "config_tool").with_arguments(
-        serde_json::json!({
-            "Config": {
-                "API_KEY": "UPPER_SECRET",
-                "AuthHeader": "Bearer abc"
-            }
-        }),
-    );
+    let req = ApprovalRequest::new("id20", "config_tool").with_arguments(serde_json::json!({
+        "Config": {
+            "API_KEY": "UPPER_SECRET",
+            "AuthHeader": "Bearer abc"
+        }
+    }));
     let detail = provider().detail_for(&req);
-    let preview = detail.command_preview.expect("command_preview should be set");
+    let preview = detail
+        .command_preview
+        .expect("command_preview should be set");
     assert!(
         !preview.contains("UPPER_SECRET"),
         "uppercase API_KEY value must be redacted, got: {preview}"

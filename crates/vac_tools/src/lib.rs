@@ -20,6 +20,6 @@ pub use approvals::{ScopePolicy, ShellApprovalPolicy};
 pub use error::ToolError;
 pub use privacy::PrivacyVault;
 pub use registry::{ToolDefinition, ToolRegistry, VilTool};
-pub use result_spill::{maybe_spill_result, prune_spill_dir, PreviewStub};
+pub use result_spill::{PreviewStub, maybe_spill_result, prune_spill_dir};
 pub use router::ToolRouter;
 pub mod trust_gate;

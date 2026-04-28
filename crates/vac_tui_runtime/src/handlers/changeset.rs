@@ -55,7 +55,8 @@ pub fn select_next(ctx: &mut HandlerContext) -> HandlerResult {
     let entries = ctx.state.workspace.changeset_store.active_entries();
     if !entries.is_empty() {
         ctx.state.workspace.changeset_ui.selected_idx =
-            (ctx.state.workspace.changeset_ui.selected_idx + 1).min(entries.len().saturating_sub(1));
+            (ctx.state.workspace.changeset_ui.selected_idx + 1)
+                .min(entries.len().saturating_sub(1));
         load_diff_for_selected(ctx)?;
     }
     Ok(())
@@ -63,20 +64,35 @@ pub fn select_next(ctx: &mut HandlerContext) -> HandlerResult {
 
 /// Select previous file in changeset.
 pub fn select_prev(ctx: &mut HandlerContext) -> HandlerResult {
-    ctx.state.workspace.changeset_ui.selected_idx = ctx.state.workspace.changeset_ui.selected_idx.saturating_sub(1);
+    ctx.state.workspace.changeset_ui.selected_idx = ctx
+        .state
+        .workspace
+        .changeset_ui
+        .selected_idx
+        .saturating_sub(1);
     load_diff_for_selected(ctx)?;
     Ok(())
 }
 
 /// Scroll diff preview down.
 pub fn scroll_down(ctx: &mut HandlerContext) -> HandlerResult {
-    ctx.state.workspace.changeset_ui.diff_scroll = ctx.state.workspace.changeset_ui.diff_scroll.saturating_add(1);
+    ctx.state.workspace.changeset_ui.diff_scroll = ctx
+        .state
+        .workspace
+        .changeset_ui
+        .diff_scroll
+        .saturating_add(1);
     Ok(())
 }
 
 /// Scroll diff preview up.
 pub fn scroll_up(ctx: &mut HandlerContext) -> HandlerResult {
-    ctx.state.workspace.changeset_ui.diff_scroll = ctx.state.workspace.changeset_ui.diff_scroll.saturating_sub(1);
+    ctx.state.workspace.changeset_ui.diff_scroll = ctx
+        .state
+        .workspace
+        .changeset_ui
+        .diff_scroll
+        .saturating_sub(1);
     Ok(())
 }
 

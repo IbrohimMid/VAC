@@ -74,7 +74,11 @@ pub fn find_relevant(
                 )
             })
             .collect();
-            scored.sort_by(|a, b| b.1.blended.partial_cmp(&a.1.blended).unwrap_or(std::cmp::Ordering::Equal));
+        scored.sort_by(|a, b| {
+            b.1.blended
+                .partial_cmp(&a.1.blended)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         if k > 0 {
             scored.truncate(k);
         }
@@ -126,7 +130,11 @@ pub fn find_relevant(
         .filter(|(_, s)| s.tfidf > 0.0)
         .collect();
 
-    scored.sort_by(|a, b| b.1.blended.partial_cmp(&a.1.blended).unwrap_or(std::cmp::Ordering::Equal));
+    scored.sort_by(|a, b| {
+        b.1.blended
+            .partial_cmp(&a.1.blended)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     if k > 0 {
         scored.truncate(k);
     }

@@ -1,10 +1,10 @@
 //! VAC CLI — Vastar Agentic CLI entry point.
 
+pub mod boot;
 mod commands;
 mod io;
 mod output;
 mod telemetry;
-pub mod boot;
 
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
@@ -303,9 +303,7 @@ enum Commands {
     /// Print a plan skeleton for a goal (offline; `vac plan --remote`
     /// is the LLM-backed version).
     #[command(next_help_heading = "Plan & Memory")]
-    Ultraplan {
-        goal: String,
-    },
+    Ultraplan { goal: String },
     /// Cycle `environment_mode` through host → isolated → restricted-
     /// offline → trusted-networked → host.
     #[command(next_help_heading = "Plan & Memory", name = "sandbox-toggle")]
@@ -613,7 +611,10 @@ pub enum ScheduleAction {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let cli = crate::boot::boot_profile().record("parse_args", crate::boot::BootPhase::Critical, || Cli::parse());
+    let cli =
+        crate::boot::boot_profile().record("parse_args", crate::boot::BootPhase::Critical, || {
+            Cli::parse()
+        });
     let interactive_mode = matches!(&cli.command, Commands::Interactive { .. });
 
     // Telemetry init — previously skipped entirely for interactive
@@ -622,305 +623,354 @@ async fn main() -> anyhow::Result<()> {
     // tracing works under interactive too. Interactive mode bypasses
     // stderr via the `tui_mode` flag so the TUI repaint stays clean;
     // file layer still fires when VAC_TUI_LOG is set.
-    crate::boot::boot_profile().record("telemetry_init", crate::boot::BootPhase::Critical, || {
-        telemetry::init(
-            cli.verbose,
-            &cli.log_format,
-            cli.otel_endpoint.as_deref(),
-            cli.metrics_addr.as_deref(),
-            interactive_mode,
-        )
-    })?;
+    crate::boot::boot_profile().record(
+        "telemetry_init",
+        crate::boot::BootPhase::Critical,
+        || {
+            telemetry::init(
+                cli.verbose,
+                &cli.log_format,
+                cli.otel_endpoint.as_deref(),
+                cli.metrics_addr.as_deref(),
+                interactive_mode,
+            )
+        },
+    )?;
 
     let project_root = cli.project.clone().unwrap_or_else(|| {
         #[allow(clippy::expect_used)]
         std::env::current_dir().expect("Failed to get current directory")
     });
 
-    let result = crate::boot::boot_profile().record_async("execute_command", crate::boot::BootPhase::Critical, async move {
-        match cli.command {
-            Commands::Doctor {
-            strict,
-            fix,
-            interactive,
-        } => commands::doctor::execute(project_root, &cli.format, strict, fix, interactive).await?,
-        Commands::Init { force } => commands::init::execute(project_root, force).await?,
-        Commands::Run {
-            task,
-            priority,
-            profile,
-            approve,
-            target,
-            budget_tokens,
-            backend,
-        } => {
-            commands::run::execute(
-                project_root,
-                task,
-                priority,
-                profile,
-                approve,
-                target,
-                budget_tokens,
-                backend,
-            )
-            .await?;
-        }
-        Commands::Interactive {
-            resume,
-            record,
-            replay,
-        } => commands::interactive::execute(project_root, resume, record, replay).await?,
-        Commands::Assistant { session } => {
-            commands::assistant::execute(project_root, session).await?
-        }
-        Commands::Plan { prompt, remote } => {
-            commands::plan::execute(project_root, prompt, remote).await?
-        }
-        Commands::PlanApply { plan_id } => {
-            commands::plan::execute_apply(project_root, plan_id).await?
-        }
-        Commands::Resume { checkpoint } => {
-            commands::resume::execute(project_root, checkpoint).await?
-        }
-        Commands::SessionRun {
-            input,
-            provider,
-            no_trajectory,
-            docker,
-        } => {
-            let provider_kind =
-                commands::session::ProviderKind::parse(&provider).map_err(|e| {
-                    anyhow::anyhow!("invalid --provider: {e}")
-                })?;
-            let opts = commands::session::SessionRunOptions {
-                input,
-                provider: provider_kind,
-                trajectory: !no_trajectory,
-                docker_image: docker,
-            };
-            commands::session::execute(project_root, opts).await?
-        }
-        Commands::Restore { file, submit } => commands::restore::execute(project_root, file, submit).await?,
-        Commands::Status => commands::status::execute(project_root, &cli.format).await?,
-        Commands::Signal(cmd) => commands::signal::dispatch(project_root, &cli.format, cmd).await?,
-        Commands::Skills(cmd) => match cmd {
-            SkillsCommand::List => commands::skills::execute_list().await?,
-            SkillsCommand::Show { name } => commands::skills::execute_show(name).await?,
-        },
+    let result = crate::boot::boot_profile()
+        .record_async(
+            "execute_command",
+            crate::boot::BootPhase::Critical,
+            async move {
+                match cli.command {
+                    Commands::Doctor {
+                        strict,
+                        fix,
+                        interactive,
+                    } => {
+                        commands::doctor::execute(
+                            project_root,
+                            &cli.format,
+                            strict,
+                            fix,
+                            interactive,
+                        )
+                        .await?
+                    }
+                    Commands::Init { force } => {
+                        commands::init::execute(project_root, force).await?
+                    }
+                    Commands::Run {
+                        task,
+                        priority,
+                        profile,
+                        approve,
+                        target,
+                        budget_tokens,
+                        backend,
+                    } => {
+                        commands::run::execute(
+                            project_root,
+                            task,
+                            priority,
+                            profile,
+                            approve,
+                            target,
+                            budget_tokens,
+                            backend,
+                        )
+                        .await?;
+                    }
+                    Commands::Interactive {
+                        resume,
+                        record,
+                        replay,
+                    } => {
+                        commands::interactive::execute(project_root, resume, record, replay).await?
+                    }
+                    Commands::Assistant { session } => {
+                        commands::assistant::execute(project_root, session).await?
+                    }
+                    Commands::Plan { prompt, remote } => {
+                        commands::plan::execute(project_root, prompt, remote).await?
+                    }
+                    Commands::PlanApply { plan_id } => {
+                        commands::plan::execute_apply(project_root, plan_id).await?
+                    }
+                    Commands::Resume { checkpoint } => {
+                        commands::resume::execute(project_root, checkpoint).await?
+                    }
+                    Commands::SessionRun {
+                        input,
+                        provider,
+                        no_trajectory,
+                        docker,
+                    } => {
+                        let provider_kind = commands::session::ProviderKind::parse(&provider)
+                            .map_err(|e| anyhow::anyhow!("invalid --provider: {e}"))?;
+                        let opts = commands::session::SessionRunOptions {
+                            input,
+                            provider: provider_kind,
+                            trajectory: !no_trajectory,
+                            docker_image: docker,
+                        };
+                        commands::session::execute(project_root, opts).await?
+                    }
+                    Commands::Restore { file, submit } => {
+                        commands::restore::execute(project_root, file, submit).await?
+                    }
+                    Commands::Status => {
+                        commands::status::execute(project_root, &cli.format).await?
+                    }
+                    Commands::Signal(cmd) => {
+                        commands::signal::dispatch(project_root, &cli.format, cmd).await?
+                    }
+                    Commands::Skills(cmd) => match cmd {
+                        SkillsCommand::List => commands::skills::execute_list().await?,
+                        SkillsCommand::Show { name } => {
+                            commands::skills::execute_show(name).await?
+                        }
+                    },
 
-        // ── W8 dispatch ───────────────────────────────────────────
-        Commands::Advisor { format } => {
-            commands::review::advisor(
-                project_root,
-                commands::review::ReviewFormat::from_str(&format),
-            )
-            .await?
-        }
-        Commands::AutofixPr { format } => {
-            commands::review::autofix_pr(
-                project_root,
-                commands::review::ReviewFormat::from_str(&format),
-            )
-            .await?
-        }
-        Commands::Bughunter { format } => {
-            commands::review::bughunter(
-                project_root,
-                commands::review::ReviewFormat::from_str(&format),
-            )
-            .await?
-        }
-        Commands::SecurityReview { format } => {
-            commands::review::security_review(
-                project_root,
-                commands::review::ReviewFormat::from_str(&format),
-            )
-            .await?
-        }
-        Commands::PerfIssue { format } => {
-            commands::review::perf_issue(
-                project_root,
-                commands::review::ReviewFormat::from_str(&format),
-            )
-            .await?
-        }
-        Commands::InstallGithubApp => {
-            commands::integrations::install_github_app(project_root).await?
-        }
-        Commands::InstallSlackApp => {
-            commands::integrations::install_slack_app(project_root).await?
-        }
-        Commands::ReloadPlugins => {
-            commands::integrations::reload_plugins(project_root).await?
-        }
-        Commands::Teleport { serve, bind, label, insecure, attach, url } => {
-            if serve {
-                commands::teleport::teleport_serve(project_root, bind, label, insecure).await?
-            } else if let Some(token) = attach {
-                commands::teleport::teleport_attach(token, url).await?
-            } else {
-                // Legacy behaviour: list recent sessions.
-                commands::integrations::teleport(project_root).await?
-            }
-        }
-        Commands::DebugToolCall => {
-            commands::diagnostics::debug_tool_call(project_root).await?
-        }
-        Commands::Heapdump => commands::diagnostics::heapdump(project_root).await?,
-        Commands::Statusline => {
-            commands::diagnostics::statusline(project_root).await?
-        }
-        Commands::GoodClaude => {
-            commands::diagnostics::good_claude(project_root).await?
-        }
-        Commands::Onboard => {
-            commands::onboard::execute(project_root).await?
-        }
-        Commands::Thinkback { limit } => {
-            commands::plan_memory::thinkback(project_root, limit).await?
-        }
-        Commands::Ultraplan { goal } => {
-            commands::plan_memory::ultraplan(project_root, goal).await?
-        }
-        Commands::SandboxToggle => {
-            commands::plan_memory::sandbox_toggle(project_root).await?
-        }
-        Commands::Rewind { limit } => {
-            commands::plan_memory::rewind(project_root, limit).await?
-        }
-        Commands::Observe { limit } => {
-            commands::trajectory::observe(project_root, &cli.format, limit).await?
-        }
-        Commands::Decisions { path } => {
-            commands::trajectory::decisions(project_root, &cli.format, path).await?
-        }
-        Commands::Eval {
-            path,
-            succeeded,
-            duration_ms,
-            golden,
-            minimal,
-        } => {
-            commands::trajectory::eval(
-                project_root,
-                &cli.format,
-                path,
-                succeeded,
-                duration_ms,
-                golden,
-                minimal,
-            )
-            .await?
-        }
-        Commands::Explain { target } => {
-            commands::trajectory::explain(project_root, &cli.format, target).await?
-        }
-        Commands::Why { path, trajectory } => {
-            commands::trajectory::why(project_root, &cli.format, path, trajectory).await?
-        }
-        Commands::Config { action } => commands::config::execute(project_root, action).await?,
-        Commands::Auth { action } => commands::auth::execute(action).await?,
-        Commands::Export {
-            output,
-            format,
-            sign,
-        } => {
-            commands::export::execute(project_root, output, format, sign).await?;
-        }
-        Commands::Import {
-            input,
-            format,
-            require_signed,
-            overwrite_session,
-            trust_approvals,
-            redact,
-        } => {
-            commands::import::execute(
-                project_root,
-                input,
-                format,
-                require_signed,
-                overwrite_session,
-                trust_approvals,
-                redact,
-            )
-            .await?;
-        }
-        Commands::Rulebook { action } => match action {
-            RulebookAction::List => commands::rulebook::execute_list(project_root).await?,
-            RulebookAction::Validate => commands::rulebook::execute_validate(project_root).await?,
-            RulebookAction::Apply { path } => {
-                commands::rulebook::execute_apply(project_root, path).await?
-            }
-        },
-        Commands::Vil { action } => {
-            commands::vil::execute(project_root, &cli.format, action).await?;
-        }
-        Commands::Acp { port } => commands::acp::execute(project_root, port).await?,
-        Commands::Runtime { action } => match action {
-            RuntimeAction::Status => {
-                commands::runtime::execute_status(project_root, &cli.format).await?
-            }
-            RuntimeAction::Jobs => {
-                commands::runtime::execute_jobs(project_root, &cli.format).await?
-            }
-            RuntimeAction::Start => commands::runtime::execute_start(project_root).await?,
-            RuntimeAction::Cancel { id } => {
-                commands::runtime::execute_cancel(project_root, id).await?
-            }
-            RuntimeAction::Retry { id } => {
-                commands::runtime::execute_retry(project_root, id).await?
-            }
-            RuntimeAction::Inspect { id } => {
-                commands::runtime::execute_inspect(project_root, id, &cli.format).await?
-            }
-        },
-        Commands::Isolation { action } => match action {
-            IsolationAction::Status => {
-                commands::isolation::execute_status(project_root, &cli.format).await?
-            }
-            IsolationAction::Logs => commands::isolation::execute_logs(project_root).await?,
-            IsolationAction::Run { tty, command } => {
-                commands::isolation::execute_run(project_root, command, tty).await?
-            }
-            IsolationAction::Wrap { command } => {
-                commands::isolation::execute_wrap(project_root, command).await?
-            }
-            IsolationAction::ClearLogs => {
-                commands::isolation::execute_clear_logs(project_root).await?
-            }
-            IsolationAction::Doctor => {
-                commands::isolation::execute_doctor(project_root, &cli.format).await?
-            }
-        },
-        Commands::Mcp { action } => match action {
-            McpAction::List => commands::mcp::list(&project_root)?,
-            McpAction::Status => commands::mcp::status(&project_root).await?,
-        },
-        Commands::Autopilot { action } => match action {
-            AutopilotAction::Up { execute } => {
-                commands::autopilot::execute_up(project_root, execute).await?
-            }
-            AutopilotAction::Down => commands::autopilot::execute_down(project_root).await?,
-            AutopilotAction::Status => {
-                commands::autopilot::execute_status(project_root, &cli.format).await?
-            }
-            AutopilotAction::Schedule { action } => {
-                commands::autopilot::execute_schedule(project_root, action).await?
-            }
-            AutopilotAction::Run => commands::autopilot::execute_run(project_root).await?,
-        },
-        Commands::Migrate => {
-            commands::migrate::execute(project_root).await?;
-        }
-        Commands::Ingest => {
-            commands::ingest::execute(project_root).await?;
-        }
-    }
+                    // ── W8 dispatch ───────────────────────────────────────────
+                    Commands::Advisor { format } => {
+                        commands::review::advisor(
+                            project_root,
+                            commands::review::ReviewFormat::from_str(&format),
+                        )
+                        .await?
+                    }
+                    Commands::AutofixPr { format } => {
+                        commands::review::autofix_pr(
+                            project_root,
+                            commands::review::ReviewFormat::from_str(&format),
+                        )
+                        .await?
+                    }
+                    Commands::Bughunter { format } => {
+                        commands::review::bughunter(
+                            project_root,
+                            commands::review::ReviewFormat::from_str(&format),
+                        )
+                        .await?
+                    }
+                    Commands::SecurityReview { format } => {
+                        commands::review::security_review(
+                            project_root,
+                            commands::review::ReviewFormat::from_str(&format),
+                        )
+                        .await?
+                    }
+                    Commands::PerfIssue { format } => {
+                        commands::review::perf_issue(
+                            project_root,
+                            commands::review::ReviewFormat::from_str(&format),
+                        )
+                        .await?
+                    }
+                    Commands::InstallGithubApp => {
+                        commands::integrations::install_github_app(project_root).await?
+                    }
+                    Commands::InstallSlackApp => {
+                        commands::integrations::install_slack_app(project_root).await?
+                    }
+                    Commands::ReloadPlugins => {
+                        commands::integrations::reload_plugins(project_root).await?
+                    }
+                    Commands::Teleport {
+                        serve,
+                        bind,
+                        label,
+                        insecure,
+                        attach,
+                        url,
+                    } => {
+                        if serve {
+                            commands::teleport::teleport_serve(project_root, bind, label, insecure)
+                                .await?
+                        } else if let Some(token) = attach {
+                            commands::teleport::teleport_attach(token, url).await?
+                        } else {
+                            // Legacy behaviour: list recent sessions.
+                            commands::integrations::teleport(project_root).await?
+                        }
+                    }
+                    Commands::DebugToolCall => {
+                        commands::diagnostics::debug_tool_call(project_root).await?
+                    }
+                    Commands::Heapdump => commands::diagnostics::heapdump(project_root).await?,
+                    Commands::Statusline => commands::diagnostics::statusline(project_root).await?,
+                    Commands::GoodClaude => {
+                        commands::diagnostics::good_claude(project_root).await?
+                    }
+                    Commands::Onboard => commands::onboard::execute(project_root).await?,
+                    Commands::Thinkback { limit } => {
+                        commands::plan_memory::thinkback(project_root, limit).await?
+                    }
+                    Commands::Ultraplan { goal } => {
+                        commands::plan_memory::ultraplan(project_root, goal).await?
+                    }
+                    Commands::SandboxToggle => {
+                        commands::plan_memory::sandbox_toggle(project_root).await?
+                    }
+                    Commands::Rewind { limit } => {
+                        commands::plan_memory::rewind(project_root, limit).await?
+                    }
+                    Commands::Observe { limit } => {
+                        commands::trajectory::observe(project_root, &cli.format, limit).await?
+                    }
+                    Commands::Decisions { path } => {
+                        commands::trajectory::decisions(project_root, &cli.format, path).await?
+                    }
+                    Commands::Eval {
+                        path,
+                        succeeded,
+                        duration_ms,
+                        golden,
+                        minimal,
+                    } => {
+                        commands::trajectory::eval(
+                            project_root,
+                            &cli.format,
+                            path,
+                            succeeded,
+                            duration_ms,
+                            golden,
+                            minimal,
+                        )
+                        .await?
+                    }
+                    Commands::Explain { target } => {
+                        commands::trajectory::explain(project_root, &cli.format, target).await?
+                    }
+                    Commands::Why { path, trajectory } => {
+                        commands::trajectory::why(project_root, &cli.format, path, trajectory)
+                            .await?
+                    }
+                    Commands::Config { action } => {
+                        commands::config::execute(project_root, action).await?
+                    }
+                    Commands::Auth { action } => commands::auth::execute(action).await?,
+                    Commands::Export {
+                        output,
+                        format,
+                        sign,
+                    } => {
+                        commands::export::execute(project_root, output, format, sign).await?;
+                    }
+                    Commands::Import {
+                        input,
+                        format,
+                        require_signed,
+                        overwrite_session,
+                        trust_approvals,
+                        redact,
+                    } => {
+                        commands::import::execute(
+                            project_root,
+                            input,
+                            format,
+                            require_signed,
+                            overwrite_session,
+                            trust_approvals,
+                            redact,
+                        )
+                        .await?;
+                    }
+                    Commands::Rulebook { action } => match action {
+                        RulebookAction::List => {
+                            commands::rulebook::execute_list(project_root).await?
+                        }
+                        RulebookAction::Validate => {
+                            commands::rulebook::execute_validate(project_root).await?
+                        }
+                        RulebookAction::Apply { path } => {
+                            commands::rulebook::execute_apply(project_root, path).await?
+                        }
+                    },
+                    Commands::Vil { action } => {
+                        commands::vil::execute(project_root, &cli.format, action).await?;
+                    }
+                    Commands::Acp { port } => commands::acp::execute(project_root, port).await?,
+                    Commands::Runtime { action } => match action {
+                        RuntimeAction::Status => {
+                            commands::runtime::execute_status(project_root, &cli.format).await?
+                        }
+                        RuntimeAction::Jobs => {
+                            commands::runtime::execute_jobs(project_root, &cli.format).await?
+                        }
+                        RuntimeAction::Start => {
+                            commands::runtime::execute_start(project_root).await?
+                        }
+                        RuntimeAction::Cancel { id } => {
+                            commands::runtime::execute_cancel(project_root, id).await?
+                        }
+                        RuntimeAction::Retry { id } => {
+                            commands::runtime::execute_retry(project_root, id).await?
+                        }
+                        RuntimeAction::Inspect { id } => {
+                            commands::runtime::execute_inspect(project_root, id, &cli.format)
+                                .await?
+                        }
+                    },
+                    Commands::Isolation { action } => match action {
+                        IsolationAction::Status => {
+                            commands::isolation::execute_status(project_root, &cli.format).await?
+                        }
+                        IsolationAction::Logs => {
+                            commands::isolation::execute_logs(project_root).await?
+                        }
+                        IsolationAction::Run { tty, command } => {
+                            commands::isolation::execute_run(project_root, command, tty).await?
+                        }
+                        IsolationAction::Wrap { command } => {
+                            commands::isolation::execute_wrap(project_root, command).await?
+                        }
+                        IsolationAction::ClearLogs => {
+                            commands::isolation::execute_clear_logs(project_root).await?
+                        }
+                        IsolationAction::Doctor => {
+                            commands::isolation::execute_doctor(project_root, &cli.format).await?
+                        }
+                    },
+                    Commands::Mcp { action } => match action {
+                        McpAction::List => commands::mcp::list(&project_root)?,
+                        McpAction::Status => commands::mcp::status(&project_root).await?,
+                    },
+                    Commands::Autopilot { action } => match action {
+                        AutopilotAction::Up { execute } => {
+                            commands::autopilot::execute_up(project_root, execute).await?
+                        }
+                        AutopilotAction::Down => {
+                            commands::autopilot::execute_down(project_root).await?
+                        }
+                        AutopilotAction::Status => {
+                            commands::autopilot::execute_status(project_root, &cli.format).await?
+                        }
+                        AutopilotAction::Schedule { action } => {
+                            commands::autopilot::execute_schedule(project_root, action).await?
+                        }
+                        AutopilotAction::Run => {
+                            commands::autopilot::execute_run(project_root).await?
+                        }
+                    },
+                    Commands::Migrate => {
+                        commands::migrate::execute(project_root).await?;
+                    }
+                    Commands::Ingest => {
+                        commands::ingest::execute(project_root).await?;
+                    }
+                }
 
-    Ok(())
-    }).await;
+                Ok(())
+            },
+        )
+        .await;
 
     crate::boot::boot_profile().print_if_requested();
     result

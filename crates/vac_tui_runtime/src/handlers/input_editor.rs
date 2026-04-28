@@ -7,14 +7,22 @@ pub fn message_at_row(state: &AppState, row: u16) -> Option<uuid::Uuid> {
         .checked_sub(1)?;
     let line_idx = row_in_area + state.layout.scroll.messages;
 
-    if let Some(id) = state.layout.message_ui.line_to_message_map.get(line_idx).copied() {
+    if let Some(id) = state
+        .layout
+        .message_ui
+        .line_to_message_map
+        .get(line_idx)
+        .copied()
+    {
         return Some(id);
     }
 
     let mut cumulative = 0usize;
     for msg in &state.transcript.messages {
         let msg_lines = state
-            .layout.message_ui.per_message_cache
+            .layout
+            .message_ui
+            .per_message_cache
             .get(&msg.id)
             .map(|c| c.rendered_lines.len() + 1)
             .unwrap_or(1);

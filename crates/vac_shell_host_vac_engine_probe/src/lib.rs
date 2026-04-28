@@ -200,11 +200,7 @@ pub fn build_snapshot_with_env(config: &VacConfig, env: &dyn EnvPresence) -> Sna
 
     // Sort models by (provider, id) — deterministic regardless
     // of provider iteration order above.
-    models.sort_by(|a, b| {
-        a.provider
-            .cmp(&b.provider)
-            .then_with(|| a.id.cmp(&b.id))
-    });
+    models.sort_by(|a, b| a.provider.cmp(&b.provider).then_with(|| a.id.cmp(&b.id)));
 
     let active = build_active(config);
 

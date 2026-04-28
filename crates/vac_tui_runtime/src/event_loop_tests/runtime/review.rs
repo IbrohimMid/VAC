@@ -8,10 +8,12 @@ fn review_selection_normalizes_when_filter_excludes_selected() {
     let dir = tempfile::tempdir().unwrap();
     let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
     state
-        .workspace.changeset_store
+        .workspace
+        .changeset_store
         .file_modified("a.txt".to_string(), "agent".to_string(), false);
     state
-        .workspace.changeset_store
+        .workspace
+        .changeset_store
         .file_modified("b.txt".to_string(), "agent".to_string(), false);
     state.workspace.modified_files = state.workspace.changeset_store.modified_files();
     state.workspace.review.open = true;
@@ -20,7 +22,10 @@ fn review_selection_normalizes_when_filter_excludes_selected() {
     state.workspace.review.filter = "a".to_string();
     state.review_sync_items();
     state.review_normalize_selection();
-    assert_eq!(state.workspace.review.selected_path, Some("a.txt".to_string()));
+    assert_eq!(
+        state.workspace.review.selected_path,
+        Some("a.txt".to_string())
+    );
     assert_eq!(state.workspace.review.selected_idx, 0);
 }
 
@@ -83,7 +88,8 @@ async fn revert_selected_updates_status_and_working_tree() {
     let (tx, _rx) = tokio::sync::mpsc::channel(4);
     let mut state = make_state(root.clone(), session_id);
     state
-        .workspace.changeset_store
+        .workspace
+        .changeset_store
         .file_modified(file_rel.to_string(), "agent".to_string(), true);
     state.workspace.modified_files = state.workspace.changeset_store.modified_files();
     state.workspace.review.open = true;
@@ -97,7 +103,12 @@ async fn revert_selected_updates_status_and_working_tree() {
 
     let content = std::fs::read_to_string(root.join(file_rel)).unwrap();
     assert_eq!(content, "old");
-    assert!(!state.workspace.modified_files.contains(&file_rel.to_string()));
+    assert!(
+        !state
+            .workspace
+            .modified_files
+            .contains(&file_rel.to_string())
+    );
     let it = state.workspace.review.items.get(file_rel).unwrap();
     assert_eq!(it.status, crate::app::ReviewItemStatus::Restored);
 }
@@ -121,10 +132,12 @@ async fn revert_filtered_only_affects_filtered_modified_files() {
     let (tx, _rx) = tokio::sync::mpsc::channel(4);
     let mut state = make_state(root.clone(), session_id);
     state
-        .workspace.changeset_store
+        .workspace
+        .changeset_store
         .file_modified("a.txt".to_string(), "agent".to_string(), true);
     state
-        .workspace.changeset_store
+        .workspace
+        .changeset_store
         .file_modified("b.txt".to_string(), "agent".to_string(), true);
     state.workspace.modified_files = state.workspace.changeset_store.modified_files();
     state.workspace.review.open = true;
@@ -145,8 +158,18 @@ async fn revert_filtered_only_affects_filtered_modified_files() {
         std::fs::read_to_string(root.join("b.txt")).unwrap(),
         "new-b"
     );
-    assert!(!state.workspace.modified_files.contains(&"a.txt".to_string()));
-    assert!(state.workspace.modified_files.contains(&"b.txt".to_string()));
+    assert!(
+        !state
+            .workspace
+            .modified_files
+            .contains(&"a.txt".to_string())
+    );
+    assert!(
+        state
+            .workspace
+            .modified_files
+            .contains(&"b.txt".to_string())
+    );
 }
 
 #[tokio::test]
@@ -168,10 +191,12 @@ async fn revert_all_clears_modified_files_and_marks_status() {
     let (tx, _rx) = tokio::sync::mpsc::channel(4);
     let mut state = make_state(root.clone(), session_id);
     state
-        .workspace.changeset_store
+        .workspace
+        .changeset_store
         .file_modified("a.txt".to_string(), "agent".to_string(), true);
     state
-        .workspace.changeset_store
+        .workspace
+        .changeset_store
         .file_modified("b.txt".to_string(), "agent".to_string(), true);
     state.workspace.modified_files = state.workspace.changeset_store.modified_files();
     state.workspace.review.open = true;
@@ -208,15 +233,20 @@ fn modified_files_is_derived_from_changeset_store() {
     let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
 
     state
-        .workspace.changeset_store
+        .workspace
+        .changeset_store
         .file_modified("a.rs".to_string(), "agent".to_string(), true);
     state
-        .workspace.changeset_store
+        .workspace
+        .changeset_store
         .file_created("b.rs".to_string(), "agent".to_string());
     state.workspace.modified_files = state.workspace.changeset_store.modified_files();
 
     // modified_files must equal store's derived view
-    assert_eq!(state.workspace.modified_files, state.workspace.changeset_store.modified_files());
+    assert_eq!(
+        state.workspace.modified_files,
+        state.workspace.changeset_store.modified_files()
+    );
     assert_eq!(state.workspace.modified_files.len(), 2);
 }
 

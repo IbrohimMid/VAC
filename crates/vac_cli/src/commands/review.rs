@@ -70,7 +70,10 @@ pub struct AdvisorReport {
 impl ReportRender for AdvisorReport {
     fn render(&self) {
         println!("─ vac advisor ───────────────────────────────");
-        println!("  branch: {}", self.branch.as_deref().unwrap_or("<detached>"));
+        println!(
+            "  branch: {}",
+            self.branch.as_deref().unwrap_or("<detached>")
+        );
         println!("  uncommitted files: {}", self.uncommitted_files);
         if let Some(last) = &self.last_commit {
             println!("  last commit: {last}");
@@ -123,10 +126,7 @@ impl ReportRender for AutofixReport {
     }
 }
 
-pub async fn autofix_pr(
-    project_root: PathBuf,
-    format: ReviewFormat,
-) -> anyhow::Result<()> {
+pub async fn autofix_pr(project_root: PathBuf, format: ReviewFormat) -> anyhow::Result<()> {
     let diff = git_unstaged_diff(&project_root).await;
     let candidates = scan_autofix(&diff);
     print_report(format, &AutofixReport { candidates })
@@ -220,10 +220,7 @@ impl ReportRender for BughunterReport {
     }
 }
 
-pub async fn bughunter(
-    project_root: PathBuf,
-    format: ReviewFormat,
-) -> anyhow::Result<()> {
+pub async fn bughunter(project_root: PathBuf, format: ReviewFormat) -> anyhow::Result<()> {
     let diff = git_last_commit_diff(&project_root).await;
     let findings = scan_bughunter(&diff);
     print_report(format, &BughunterReport { findings })
@@ -271,15 +268,18 @@ impl ReportRender for SecurityReport {
             return;
         }
         for h in &self.hits {
-            println!("  {}:{} [{}] {}…", h.file.display(), h.line, h.kind, head(&h.excerpt, 40));
+            println!(
+                "  {}:{} [{}] {}…",
+                h.file.display(),
+                h.line,
+                h.kind,
+                head(&h.excerpt, 40)
+            );
         }
     }
 }
 
-pub async fn security_review(
-    project_root: PathBuf,
-    format: ReviewFormat,
-) -> anyhow::Result<()> {
+pub async fn security_review(project_root: PathBuf, format: ReviewFormat) -> anyhow::Result<()> {
     let diff = git_staged_diff(&project_root).await;
     let hits = scan_security(&diff);
     print_report(format, &SecurityReport { hits })
@@ -347,13 +347,16 @@ impl ReportRender for PerfReport {
     }
 }
 
-pub async fn perf_issue(
-    project_root: PathBuf,
-    format: ReviewFormat,
-) -> anyhow::Result<()> {
+pub async fn perf_issue(project_root: PathBuf, format: ReviewFormat) -> anyhow::Result<()> {
     let large_files = find_large_files(&project_root, 1 * 1024 * 1024).await;
     let slow_test_markers = find_slow_test_markers(&project_root).await;
-    print_report(format, &PerfReport { large_files, slow_test_markers })
+    print_report(
+        format,
+        &PerfReport {
+            large_files,
+            slow_test_markers,
+        },
+    )
 }
 
 // ── shared helpers ───────────────────────────────────────────────────
@@ -449,7 +452,9 @@ async fn git_unstaged_diff(root: &Path) -> String {
 }
 
 async fn git_staged_diff(root: &Path) -> String {
-    run_git(root, &["diff", "--cached"]).await.unwrap_or_default()
+    run_git(root, &["diff", "--cached"])
+        .await
+        .unwrap_or_default()
 }
 
 async fn git_last_commit_diff(root: &Path) -> String {
@@ -640,9 +645,13 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
         // A big file inside `target/` must not appear in the report.
-        tokio::fs::create_dir_all(root.join("target")).await.unwrap();
+        tokio::fs::create_dir_all(root.join("target"))
+            .await
+            .unwrap();
         let big = root.join("target/huge.bin");
-        tokio::fs::write(&big, vec![0u8; 2 * 1024 * 1024]).await.unwrap();
+        tokio::fs::write(&big, vec![0u8; 2 * 1024 * 1024])
+            .await
+            .unwrap();
         let out = find_large_files(root, 1 * 1024 * 1024).await;
         assert!(
             out.iter().all(|f| !f.path.starts_with(root.join("target"))),
@@ -655,7 +664,9 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
         let big = root.join("data.bin");
-        tokio::fs::write(&big, vec![0u8; 2 * 1024 * 1024]).await.unwrap();
+        tokio::fs::write(&big, vec![0u8; 2 * 1024 * 1024])
+            .await
+            .unwrap();
         let out = find_large_files(root, 1 * 1024 * 1024).await;
         assert!(out.iter().any(|f| f.path == big));
     }
@@ -668,7 +679,9 @@ mod tests {
         let root = tmp.path();
         // Large real file inside root.
         let real = root.join("real.bin");
-        tokio::fs::write(&real, vec![0u8; 2 * 1024 * 1024]).await.unwrap();
+        tokio::fs::write(&real, vec![0u8; 2 * 1024 * 1024])
+            .await
+            .unwrap();
         // Symlink inside root pointing at the SAME file — if the
         // walker follows links, we'd see two hits and the symlink
         // path would show up in the report.
@@ -687,7 +700,9 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
         let real = root.join("lib.rs");
-        tokio::fs::write(&real, "#[ignore] fn x() {}").await.unwrap();
+        tokio::fs::write(&real, "#[ignore] fn x() {}")
+            .await
+            .unwrap();
         let link = root.join("link.rs");
         symlink(&real, &link).unwrap();
         let out = find_slow_test_markers(root).await;

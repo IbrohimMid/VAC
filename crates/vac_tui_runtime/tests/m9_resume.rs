@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 use uuid::Uuid;
-use vac_session_engine::{TranscriptWriter, TranscriptEntry, TranscriptKind};
+use vac_session_engine::{TranscriptEntry, TranscriptKind, TranscriptWriter};
 
 #[tokio::test]
 async fn test_m9_resume_aborted_submit() {
@@ -11,7 +11,7 @@ async fn test_m9_resume_aborted_submit() {
     // 1. Simulate a crashed mid-submit
     let writer = TranscriptWriter::new(root.clone());
     let handle = writer.open(session_id).await.unwrap();
-    
+
     let accepted = TranscriptEntry::new(
         session_id,
         TranscriptKind::Accepted,
@@ -23,7 +23,7 @@ async fn test_m9_resume_aborted_submit() {
 
     // 2. Boot TUI (simulate event loop)
     let (_tx, _rx) = tokio::sync::mpsc::channel::<()>(10);
-    
+
     // We can't easily start the whole crossterm app in a unit test, but we can test
     // that `last_pending_submit` correctly finds it, and that sending a "yes" tool result
     // triggers the resume.

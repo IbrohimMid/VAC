@@ -110,7 +110,10 @@ pub fn read_tool_use_rows(
                         .and_then(|v| v.as_str())
                         .unwrap_or("")
                         .to_string(),
-                    arguments: content.get("arguments").cloned().unwrap_or(serde_json::Value::Null),
+                    arguments: content
+                        .get("arguments")
+                        .cloned()
+                        .unwrap_or(serde_json::Value::Null),
                     reason: content
                         .get("reason")
                         .and_then(|v| v.as_str())

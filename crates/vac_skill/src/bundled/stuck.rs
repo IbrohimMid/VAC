@@ -28,11 +28,7 @@ pub(crate) fn classify(recent: &[String], threshold: usize) -> (bool, String) {
         return (false, "no tool history".into());
     }
     let tail = recent.last().unwrap();
-    let run = recent
-        .iter()
-        .rev()
-        .take_while(|n| *n == tail)
-        .count();
+    let run = recent.iter().rev().take_while(|n| *n == tail).count();
     if run >= threshold {
         (
             true,
@@ -140,12 +136,7 @@ mod tests {
     #[test]
     fn classify_counts_run_from_end_only() {
         // Same name earlier in history shouldn't inflate the run.
-        let hist = vec![
-            "grep".into(),
-            "read".into(),
-            "grep".into(),
-            "grep".into(),
-        ];
+        let hist = vec!["grep".into(), "read".into(), "grep".into(), "grep".into()];
         let (stuck, _) = classify(&hist, 3);
         assert!(!stuck, "run from tail is 2, below threshold 3");
     }

@@ -15,7 +15,10 @@ pub struct ApprovalsTab;
 
 impl WorkbenchTabView for ApprovalsTab {
     fn tab_label(state: &AppState) -> String {
-        format!("Approvals ({})", state.execution.approvals.pending_approvals.len())
+        format!(
+            "Approvals ({})",
+            state.execution.approvals.pending_approvals.len()
+        )
     }
 
     fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
@@ -44,14 +47,17 @@ impl WorkbenchTabView for ApprovalsTab {
         }
 
         let items: Vec<ListItem> = state
-            .execution.approvals.pending_approvals
+            .execution
+            .approvals
+            .pending_approvals
             .iter()
             .enumerate()
             .map(|(idx, tc)| {
                 let selected = idx == state.execution.approvals.approval_selected_idx;
                 let style = if selected {
                     state
-                        .core.theme
+                        .core
+                        .theme
                         .style(StyleKey::Warning)
                         .add_modifier(Modifier::BOLD)
                 } else {
@@ -70,7 +76,12 @@ impl WorkbenchTabView for ApprovalsTab {
         f.render_widget(list, body[0]);
 
         let mut lines: Vec<Line> = Vec::new();
-        if let Some(tc) = state.execution.approvals.pending_approvals.get(state.execution.approvals.approval_selected_idx) {
+        if let Some(tc) = state
+            .execution
+            .approvals
+            .pending_approvals
+            .get(state.execution.approvals.approval_selected_idx)
+        {
             lines.push(Line::from(vec![
                 Span::styled("Tool: ", Style::default().add_modifier(Modifier::BOLD)),
                 Span::styled(
@@ -81,7 +92,9 @@ impl WorkbenchTabView for ApprovalsTab {
             lines.push(Line::raw(""));
 
             if let Some(expl) = state
-            .execution.approvals.approval_explanations
+                .execution
+                .approvals
+                .approval_explanations
                 .get(&tc.id)
                 .and_then(|v| v.clone())
             {

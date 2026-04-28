@@ -21,7 +21,9 @@ fn synth_vec(seed: u64, dim: usize) -> Vec<f32> {
     let mut state = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
     let mut v = Vec::with_capacity(dim);
     for _ in 0..dim {
-        state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        state = state
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         // Map the high bits into [-1.0, 1.0].
         let bits = (state >> 33) as u32;
         let f = (bits as f32 / u32::MAX as f32) * 2.0 - 1.0;
@@ -39,11 +41,7 @@ fn top_k_cosine(query: &[f32], corpus: &[(String, Vec<f32>)], k: usize) -> Vec<(
     let mut scored: Vec<(String, f32)> = corpus
         .iter()
         .map(|(id, emb)| {
-            let dot: f32 = query
-                .iter()
-                .zip(emb.iter())
-                .map(|(a, b)| a * b)
-                .sum();
+            let dot: f32 = query.iter().zip(emb.iter()).map(|(a, b)| a * b).sum();
             (id.clone(), dot)
         })
         .collect();

@@ -59,12 +59,12 @@ use tokio::runtime::{Builder, Handle, RuntimeFlavor};
 use uuid::Uuid;
 
 use async_trait::async_trait;
-use vac_session_engine::{
-    CompactConfig, CompositeGate, EchoAdapter, LlmAdapter, LlmRequest, LlmResponse,
-    SlashProcessor, SubmitContext, ToolCallRequest, ToolDispatcher, TranscriptWriter,
-    TrivialCompactBoundary, UsageTracker, submit_one,
-};
 use vac_session_engine::EngineError;
+use vac_session_engine::{
+    CompactConfig, CompositeGate, EchoAdapter, LlmAdapter, LlmRequest, LlmResponse, SlashProcessor,
+    SubmitContext, ToolCallRequest, ToolDispatcher, TranscriptWriter, TrivialCompactBoundary,
+    UsageTracker, submit_one,
+};
 use vac_shell_contracts::ShellCommandSpec;
 use vac_shell_host_commands::{ShellCommandError, ShellCommandExecutor};
 
@@ -88,11 +88,7 @@ pub struct AdapterCommandSpec {
 }
 
 impl AdapterCommandSpec {
-    pub fn new(
-        id: impl Into<String>,
-        slash: impl Into<String>,
-        prompt: impl Into<String>,
-    ) -> Self {
+    pub fn new(id: impl Into<String>, slash: impl Into<String>, prompt: impl Into<String>) -> Self {
         Self {
             id: id.into(),
             slash: slash.into(),
@@ -184,7 +180,10 @@ impl std::fmt::Debug for AdapterConfig {
             .field("llm", &self.llm)
             .field(
                 "tool_dispatcher",
-                &self.tool_dispatcher.as_ref().map(|_| "<dyn ToolDispatcher>"),
+                &self
+                    .tool_dispatcher
+                    .as_ref()
+                    .map(|_| "<dyn ToolDispatcher>"),
             )
             .field("gate", &self.gate.as_ref().map(|_| "<CompositeGate>"))
             .finish()
@@ -346,7 +345,10 @@ impl std::fmt::Debug for VacCommandExecutorAdapter {
             .field("llm", &self.llm)
             .field(
                 "tool_dispatcher",
-                &self.tool_dispatcher.as_ref().map(|_| "<dyn ToolDispatcher>"),
+                &self
+                    .tool_dispatcher
+                    .as_ref()
+                    .map(|_| "<dyn ToolDispatcher>"),
             )
             .field("gate", &self.gate.as_ref().map(|_| "<CompositeGate>"))
             .finish()
@@ -356,14 +358,10 @@ impl std::fmt::Debug for VacCommandExecutorAdapter {
 // (Inner-impl placeholder closed by the explicit Debug impl above.)
 #[allow(dead_code)]
 impl VacCommandExecutorAdapter {
-
     /// Path to the most recently written transcript, if any. Set
     /// by `execute` after a successful `submit_one`.
     pub fn last_transcript(&self) -> Option<PathBuf> {
-        self.last_transcript
-            .lock()
-            .ok()
-            .and_then(|g| g.clone())
+        self.last_transcript.lock().ok().and_then(|g| g.clone())
     }
 
     fn resolve(&self, command: &ShellCommandSpec) -> Option<&AdapterCommandSpec> {

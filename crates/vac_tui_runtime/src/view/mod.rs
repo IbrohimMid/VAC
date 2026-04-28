@@ -134,70 +134,80 @@ pub fn view(f: &mut Frame, state: &mut AppState) {
     popups::render_footer(f, state, chunks[4]);
 
     if state
-        .layout.overlay_manager
+        .layout
+        .overlay_manager
         .is_active(crate::overlay::OverlayId::CommandPalette)
     {
         overlays::render_command_palette(f, state);
     }
 
     if state
-        .layout.overlay_manager
+        .layout
+        .overlay_manager
         .is_active(crate::overlay::OverlayId::Shortcuts)
     {
         overlays::render_shortcuts(f, state);
     }
 
     if state
-        .layout.overlay_manager
+        .layout
+        .overlay_manager
         .is_active(crate::overlay::OverlayId::IsolationSwitcher)
     {
         crate::services::isolation_switcher::render_isolation_switcher(f, state);
     }
 
     if state
-        .layout.overlay_manager
+        .layout
+        .overlay_manager
         .is_active(crate::overlay::OverlayId::ProfileSwitcher)
     {
         crate::services::profile_switcher::render_profile_switcher(f, state);
     }
 
     if state
-        .layout.overlay_manager
+        .layout
+        .overlay_manager
         .is_active(crate::overlay::OverlayId::RulebookSwitcher)
     {
         crate::services::rulebook_switcher::render_rulebook_switcher(f, state);
     }
 
     if state
-        .layout.overlay_manager
+        .layout
+        .overlay_manager
         .is_active(crate::overlay::OverlayId::MessageAction)
     {
         crate::services::message_action_popup::render_message_action_popup(f, state);
     }
 
     if state
-        .layout.overlay_manager
+        .layout
+        .overlay_manager
         .is_active(crate::overlay::OverlayId::ModelSwitcher)
     {
         overlays::render_model_switcher(f, state);
     }
 
     if state
-        .layout.overlay_manager
+        .layout
+        .overlay_manager
         .is_active(crate::overlay::OverlayId::FileSearch)
     {
         overlays::render_file_search(f, state);
     }
 
     if state
-        .layout.overlay_manager
+        .layout
+        .overlay_manager
         .is_active(crate::overlay::OverlayId::Changeset)
     {
         overlays::render_changeset(f, state);
     }
 
     if state
-        .layout.overlay_manager
+        .layout
+        .overlay_manager
         .is_active(crate::overlay::OverlayId::FileChanges)
     {
         crate::services::file_changes_popup::render_file_changes_popup(f, state);
@@ -208,21 +218,24 @@ pub fn view(f: &mut Frame, state: &mut AppState) {
     }
 
     if state
-        .layout.overlay_manager
+        .layout
+        .overlay_manager
         .is_active(crate::overlay::OverlayId::AskUser)
     {
         crate::services::ask_user::render_ask_user_popup(f, state);
     }
 
     if state
-        .layout.overlay_manager
+        .layout
+        .overlay_manager
         .is_active(crate::overlay::OverlayId::Elicitation)
     {
         overlays::render_elicitation(f, state);
     }
 
     if state
-        .layout.overlay_manager
+        .layout
+        .overlay_manager
         .is_active(crate::overlay::OverlayId::ContextInspector)
     {
         overlays::render_context_inspector(f, state);
@@ -237,7 +250,8 @@ pub fn view(f: &mut Frame, state: &mut AppState) {
     }
 
     if state
-        .layout.overlay_manager
+        .layout
+        .overlay_manager
         .is_active(crate::overlay::OverlayId::HelperDropdown)
     {
         let area = f.area();
@@ -290,30 +304,36 @@ pub fn view(f: &mut Frame, state: &mut AppState) {
         };
         f.render_widget(ratatui::widgets::Clear, rect);
         crate::services::helper_dropdown::render_file_search_dropdown(f, state, rect);
-    } else if state.composer.at_mention.trigger_active && !state.composer.at_mention.results.is_empty() {
+    } else if state.composer.at_mention.trigger_active
+        && !state.composer.at_mention.results.is_empty()
+    {
         popups::render_at_dropdown(f, state);
     }
 
     if state
-        .layout.overlay_manager
+        .layout
+        .overlay_manager
         .is_active(crate::overlay::OverlayId::FilePicker)
     {
         pickers::render_file_picker(f, state);
     }
     if state
-        .layout.overlay_manager
+        .layout
+        .overlay_manager
         .is_active(crate::overlay::OverlayId::TaskTray)
     {
         pickers::render_task_tray(f, state);
     }
     if state
-        .layout.overlay_manager
+        .layout
+        .overlay_manager
         .is_active(crate::overlay::OverlayId::ThemePicker)
     {
         pickers::render_theme_picker(f, state);
     }
     if state
-        .layout.overlay_manager
+        .layout
+        .overlay_manager
         .is_active(crate::overlay::OverlayId::SessionResume)
     {
         pickers::render_session_resume(f, state);
@@ -364,15 +384,19 @@ mod tests {
             project_root: std::env::current_dir().unwrap(),
         });
 
-        state.execution.approvals.pending_approvals.push(crate::ToolCall {
-            id: "tc-1".to_string(),
-            r#type: "function".to_string(),
-            function: crate::FunctionCall {
-                name: "file_write".to_string(),
-                arguments: r#"{\"file_path\":\"src/lib.rs\"}"#.to_string(),
-            },
-            metadata: None,
-        });
+        state
+            .execution
+            .approvals
+            .pending_approvals
+            .push(crate::ToolCall {
+                id: "tc-1".to_string(),
+                r#type: "function".to_string(),
+                function: crate::FunctionCall {
+                    name: "file_write".to_string(),
+                    arguments: r#"{\"file_path\":\"src/lib.rs\"}"#.to_string(),
+                },
+                metadata: None,
+            });
         state.layout.switchers.available_models.push(crate::Model {
             id: "kilo-auto/free".to_string(),
             name: "kilo-auto/free".to_string(),
@@ -384,9 +408,11 @@ mod tests {
         open_overlay(&mut state, OverlayId::FileSearch);
         state.workspace.file_index.search_results = vec!["src/main.rs".to_string()];
         open_overlay(&mut state, OverlayId::Changeset);
-        state
-            .workspace.changeset_store
-            .file_modified("src/main.rs".to_string(), "agent".to_string(), false);
+        state.workspace.changeset_store.file_modified(
+            "src/main.rs".to_string(),
+            "agent".to_string(),
+            false,
+        );
         state.workspace.modified_files = state.workspace.changeset_store.modified_files();
 
         terminal.draw(|f| view(f, &mut state)).unwrap();
@@ -406,7 +432,11 @@ mod tests {
         state.core.hydrated = true;
         state.layout.side_panel.visible = true;
         state.layout.pins.files.push("src/lib.rs".to_string());
-        state.layout.pins.diagnostics.push("src/main.rs".to_string());
+        state
+            .layout
+            .pins
+            .diagnostics
+            .push("src/main.rs".to_string());
 
         terminal.draw(|f| view(f, &mut state)).unwrap();
         let rendered = render_to_string(&terminal);

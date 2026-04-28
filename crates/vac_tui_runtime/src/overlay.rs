@@ -263,10 +263,20 @@ mod tests {
         let mut state = make_state();
         assert!(!state.workspace.plan.review_open);
         open_overlay(&mut state, OverlayId::PlanReview);
-        assert!(state.layout.overlay_manager.is_active(OverlayId::PlanReview));
+        assert!(
+            state
+                .layout
+                .overlay_manager
+                .is_active(OverlayId::PlanReview)
+        );
         assert!(state.workspace.plan.review_open);
         close_overlay(&mut state, OverlayId::PlanReview);
-        assert!(!state.layout.overlay_manager.is_active(OverlayId::PlanReview));
+        assert!(
+            !state
+                .layout
+                .overlay_manager
+                .is_active(OverlayId::PlanReview)
+        );
         assert!(!state.workspace.plan.review_open);
     }
 
@@ -275,10 +285,20 @@ mod tests {
         let mut state = make_state();
         assert!(!state.execution.shell.session_store.popup_visible);
         open_overlay(&mut state, OverlayId::ShellPopup);
-        assert!(state.layout.overlay_manager.is_active(OverlayId::ShellPopup));
+        assert!(
+            state
+                .layout
+                .overlay_manager
+                .is_active(OverlayId::ShellPopup)
+        );
         assert!(state.execution.shell.session_store.popup_visible);
         close_overlay(&mut state, OverlayId::ShellPopup);
-        assert!(!state.layout.overlay_manager.is_active(OverlayId::ShellPopup));
+        assert!(
+            !state
+                .layout
+                .overlay_manager
+                .is_active(OverlayId::ShellPopup)
+        );
         assert!(!state.execution.shell.session_store.popup_visible);
     }
 
@@ -287,10 +307,20 @@ mod tests {
         let mut state = make_state();
         assert!(!state.composer.at_mention.trigger_active);
         open_overlay(&mut state, OverlayId::AtDropdown);
-        assert!(state.layout.overlay_manager.is_active(OverlayId::AtDropdown));
+        assert!(
+            state
+                .layout
+                .overlay_manager
+                .is_active(OverlayId::AtDropdown)
+        );
         assert!(state.composer.at_mention.trigger_active);
         close_overlay(&mut state, OverlayId::AtDropdown);
-        assert!(!state.layout.overlay_manager.is_active(OverlayId::AtDropdown));
+        assert!(
+            !state
+                .layout
+                .overlay_manager
+                .is_active(OverlayId::AtDropdown)
+        );
         assert!(!state.composer.at_mention.trigger_active);
     }
 
@@ -299,10 +329,20 @@ mod tests {
         let mut state = make_state();
         assert!(state.execution.approvals.reject_reason_input.is_none());
         open_overlay(&mut state, OverlayId::RejectReason);
-        assert!(state.layout.overlay_manager.is_active(OverlayId::RejectReason));
+        assert!(
+            state
+                .layout
+                .overlay_manager
+                .is_active(OverlayId::RejectReason)
+        );
         assert!(state.execution.approvals.reject_reason_input.is_some());
         close_overlay(&mut state, OverlayId::RejectReason);
-        assert!(!state.layout.overlay_manager.is_active(OverlayId::RejectReason));
+        assert!(
+            !state
+                .layout
+                .overlay_manager
+                .is_active(OverlayId::RejectReason)
+        );
         assert!(state.execution.approvals.reject_reason_input.is_none());
     }
 
@@ -311,10 +351,20 @@ mod tests {
         let mut state = make_state();
         assert!(!state.workspace.review.open);
         open_overlay(&mut state, OverlayId::ReviewPane);
-        assert!(state.layout.overlay_manager.is_active(OverlayId::ReviewPane));
+        assert!(
+            state
+                .layout
+                .overlay_manager
+                .is_active(OverlayId::ReviewPane)
+        );
         assert!(state.workspace.review.open);
         close_overlay(&mut state, OverlayId::ReviewPane);
-        assert!(!state.layout.overlay_manager.is_active(OverlayId::ReviewPane));
+        assert!(
+            !state
+                .layout
+                .overlay_manager
+                .is_active(OverlayId::ReviewPane)
+        );
         assert!(!state.workspace.review.open);
     }
 
@@ -357,7 +407,10 @@ mod tests {
         assert!(m.pop(OverlayId::Shortcuts).is_none());
         // Popping the last one restores the original focus (the one saved
         // on first push).
-        assert_eq!(m.pop(OverlayId::CommandPalette), Some(WorkspaceFocus::Input));
+        assert_eq!(
+            m.pop(OverlayId::CommandPalette),
+            Some(WorkspaceFocus::Input)
+        );
     }
 
     #[test]
@@ -367,10 +420,7 @@ mod tests {
         m.push(OverlayId::Shortcuts, WorkspaceFocus::Input);
         // Third push should be rejected (warning logged).
         m.push(OverlayId::AskUser, WorkspaceFocus::Input);
-        assert_eq!(
-            m.render_order().count(),
-            OverlayManager::MAX_STACK_DEPTH
-        );
+        assert_eq!(m.render_order().count(), OverlayManager::MAX_STACK_DEPTH);
         assert!(!m.is_active(OverlayId::AskUser));
     }
 
@@ -381,8 +431,14 @@ mod tests {
         m.push(OverlayId::TaskTray, WorkspaceFocus::Input);
         m.push(OverlayId::ReviewPane, WorkspaceFocus::Input);
         let order: Vec<_> = m.render_order().collect();
-        let review_idx = order.iter().position(|&x| x == OverlayId::ReviewPane).unwrap();
-        let tray_idx = order.iter().position(|&x| x == OverlayId::TaskTray).unwrap();
+        let review_idx = order
+            .iter()
+            .position(|&x| x == OverlayId::ReviewPane)
+            .unwrap();
+        let tray_idx = order
+            .iter()
+            .position(|&x| x == OverlayId::TaskTray)
+            .unwrap();
         // Per RENDER_ORDER, ReviewPane renders below TaskTray.
         assert!(review_idx < tray_idx);
     }

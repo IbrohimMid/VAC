@@ -49,9 +49,8 @@ impl CronEntry {
     /// Parse + validate the schedule at construction so bad
     /// expressions error eagerly rather than silently never firing.
     pub fn validate_schedule(expr: &str) -> EngineResult<Schedule> {
-        Schedule::from_str(expr).map_err(|e| {
-            EngineError::Other(format!("invalid cron expression '{expr}': {e}"))
-        })
+        Schedule::from_str(expr)
+            .map_err(|e| EngineError::Other(format!("invalid cron expression '{expr}': {e}")))
     }
 
     /// Compute the next fire time (unix seconds) after `from_unix`.

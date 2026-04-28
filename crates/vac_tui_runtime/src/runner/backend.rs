@@ -201,9 +201,15 @@ pub(super) async fn handle_runtime_update(
                 .await;
             let _ = input_tx_inner.send(InputEvent::TaskCancelled).await;
         }
-        RuntimeUpdate::SpeculationReady { predicted_prompt, precomputed_context } => {
+        RuntimeUpdate::SpeculationReady {
+            predicted_prompt,
+            precomputed_context,
+        } => {
             let _ = input_tx_inner
-                .send(InputEvent::SpeculationReady(predicted_prompt, precomputed_context))
+                .send(InputEvent::SpeculationReady(
+                    predicted_prompt,
+                    precomputed_context,
+                ))
                 .await;
         }
     }

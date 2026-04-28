@@ -33,7 +33,10 @@ pub async fn reload_plugins(project_root: PathBuf) -> anyhow::Result<()> {
     println!("── vac reload-plugins ────────────────────────");
     let plugin_dir = project_root.join(".vac").join("plugins");
     if !plugin_dir.exists() {
-        println!("No plugin directory at {} — nothing to reload.", plugin_dir.display());
+        println!(
+            "No plugin directory at {} — nothing to reload.",
+            plugin_dir.display()
+        );
         return Ok(());
     }
     let mut count = 0usize;
@@ -70,9 +73,7 @@ pub async fn teleport(project_root: PathBuf) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn collect_session_summaries(
-    dir: &std::path::Path,
-) -> anyhow::Result<Vec<String>> {
+async fn collect_session_summaries(dir: &std::path::Path) -> anyhow::Result<Vec<String>> {
     let mut files: Vec<(std::time::SystemTime, PathBuf)> = Vec::new();
     let mut rd = tokio::fs::read_dir(dir).await?;
     while let Some(entry) = rd.next_entry().await? {

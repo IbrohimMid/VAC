@@ -17,13 +17,13 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::compact::CompactBoundary;
+use crate::event::SubmitContext;
 use crate::llm::LlmAdapter;
 use crate::slash::SlashProcessor;
 use crate::stream::{SubmitStream, submit_stream};
 use crate::submit::CompactConfig;
 use crate::transcript::{TranscriptEntry, TranscriptKind, TranscriptWriter};
 use crate::usage::UsageTracker;
-use crate::event::SubmitContext;
 
 /// Recognised subagent kinds. `Custom(name)` allows drivers to
 /// register arbitrary identifiers (skills, markdown-defined
@@ -83,11 +83,7 @@ pub struct SubagentSpec {
 }
 
 impl SubagentSpec {
-    pub fn new(
-        kind: SubagentKind,
-        prompt: impl Into<String>,
-        parent_session_id: Uuid,
-    ) -> Self {
+    pub fn new(kind: SubagentKind, prompt: impl Into<String>, parent_session_id: Uuid) -> Self {
         Self {
             kind,
             prompt: prompt.into(),
@@ -179,10 +175,7 @@ impl SubagentRunner {
         let subagent_session = Uuid::new_v4();
 
         // Sidechain breadcrumb on the parent transcript.
-        let parent_handle = ctx
-            .transcript
-            .open(spec.parent_session_id)
-            .await?;
+        let parent_handle = ctx.transcript.open(spec.parent_session_id).await?;
         let row = TranscriptEntry::new(
             spec.parent_session_id,
             TranscriptKind::Sidechain,
@@ -197,11 +190,12 @@ impl SubagentRunner {
 
         // Subagent submit — fresh session, same transcript writer
         // so its jsonl lives alongside the parent's.
-        let child_ctx = SubmitContext::new(subagent_session, spec.prompt.clone())
-            .with_metadata(serde_json::json!({
+        let child_ctx = SubmitContext::new(subagent_session, spec.prompt.clone()).with_metadata(
+            serde_json::json!({
                 "subagent_type": spec.kind.label(),
                 "parent_session": spec.parent_session_id,
-            }));
+            }),
+        );
 
         Ok(submit_stream(
             child_ctx,
@@ -280,9 +274,9 @@ mod tests {
             Arc::new(UsageTracker::new()),
             Arc::new(EchoAdapter),
         );
-        let tracker = Arc::new(
-            vac_core::policy_limits::PolicyTracker::new(Default::default()),
-        );
+        let tracker = Arc::new(vac_core::policy_limits::PolicyTracker::new(
+            Default::default(),
+        ));
         parent.compact_cfg.policy = Some(tracker);
         let child = parent.child_scoped();
         assert!(child.compact_cfg.policy.is_none());

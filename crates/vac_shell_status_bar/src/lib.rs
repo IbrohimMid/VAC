@@ -41,13 +41,19 @@ pub fn render_status_bar(f: &mut Frame, view: &ShellStatusView, area: Rect) {
 
     // cwd
     spans.push(Span::styled("cwd ", Style::default().fg(muted)));
-    spans.push(Span::styled(view.cwd.clone(), Style::default().fg(Color::Gray)));
+    spans.push(Span::styled(
+        view.cwd.clone(),
+        Style::default().fg(Color::Gray),
+    ));
     spans.push(Span::raw("  "));
 
     // git branch (optional)
     if let Some(branch) = &view.git_branch {
         spans.push(Span::styled("git ", Style::default().fg(muted)));
-        spans.push(Span::styled(branch.clone(), Style::default().fg(Color::Magenta)));
+        spans.push(Span::styled(
+            branch.clone(),
+            Style::default().fg(Color::Magenta),
+        ));
         spans.push(Span::raw("  "));
     }
 

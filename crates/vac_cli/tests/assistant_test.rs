@@ -13,17 +13,22 @@ async fn test_assistant_build_failure_suggestion() {
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path().to_path_buf();
     std::fs::create_dir_all(root.join(".vac/signal")).unwrap();
-    
+
     #[cfg(feature = "signal-rewind")]
     {
         let db_path = root.join(".vac/signal/test-session.db");
         let mut store = vac_signal::rewind::RewindStore::open(&db_path).unwrap();
-        store.append(
-            "build:rust",
-            vac_signal::SignalStreamKind::Shell,
-            &vac_signal::SignalLine { seq: 1, text: "error[E0308]: mismatched types".into() },
-            12345,
-        ).unwrap();
+        store
+            .append(
+                "build:rust",
+                vac_signal::SignalStreamKind::Shell,
+                &vac_signal::SignalLine {
+                    seq: 1,
+                    text: "error[E0308]: mismatched types".into(),
+                },
+                12345,
+            )
+            .unwrap();
 
         vac_command(&root, &["assistant", "--session", "test-session"])
             .assert()

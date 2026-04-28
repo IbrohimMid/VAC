@@ -145,7 +145,10 @@ mod tests {
                 .append(
                     "vil_dev",
                     vac_signal::SignalStreamKind::VilDev,
-                    &vac_signal::SignalLine { seq: 0, text: "x".into() },
+                    &vac_signal::SignalLine {
+                        seq: 0,
+                        text: "x".into(),
+                    },
                     0,
                 )
                 .unwrap();

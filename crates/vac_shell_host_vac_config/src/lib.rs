@@ -246,9 +246,7 @@ pub fn sanitize_active_model(
     let provider_has_creds = providers
         .iter()
         .any(|p| p.id == provider && p.credentials_present);
-    let model_exists = models
-        .iter()
-        .any(|m| m.provider == provider && m.id == id);
+    let model_exists = models.iter().any(|m| m.provider == provider && m.id == id);
     if provider_has_creds && model_exists {
         Some((provider, id))
     } else {

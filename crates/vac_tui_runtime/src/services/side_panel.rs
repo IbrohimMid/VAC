@@ -26,19 +26,29 @@ pub fn render_side_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
     };
 
     let context_collapsed = state
-        .layout.side_panel.section_collapsed
+        .layout
+        .side_panel
+        .section_collapsed
         .contains(&SidePanelSection::Context);
     let runtime_collapsed = state
-        .layout.side_panel.section_collapsed
+        .layout
+        .side_panel
+        .section_collapsed
         .contains(&SidePanelSection::Runtime);
     let mcp_collapsed = state
-        .layout.side_panel.section_collapsed
+        .layout
+        .side_panel
+        .section_collapsed
         .contains(&SidePanelSection::Mcp);
     let sessions_collapsed = state
-        .layout.side_panel.section_collapsed
+        .layout
+        .side_panel
+        .section_collapsed
         .contains(&SidePanelSection::Sessions);
     let usage_collapsed = state
-        .layout.side_panel.section_collapsed
+        .layout
+        .side_panel
+        .section_collapsed
         .contains(&SidePanelSection::Usage);
 
     let collapsed_height = 1;
@@ -56,7 +66,9 @@ pub fn render_side_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
         6
     };
     let mcp_lines = state
-        .execution.mcp_maps.server_states
+        .execution
+        .mcp_maps
+        .server_states
         .values()
         .map(|s| {
             if s.state == vac_mcp_core::McpConnectionState::Failed {
@@ -144,7 +156,8 @@ pub fn render_side_panel(f: &mut Frame, state: &mut AppState, area: Rect) {
 fn render_todos_summary(f: &mut Frame, state: &AppState, area: Rect) {
     use vac_changeset::TodoStatus;
     let pending = state
-        .transcript.todos
+        .transcript
+        .todos
         .iter()
         .filter(|t| t.status != TodoStatus::Done)
         .count();
@@ -171,7 +184,11 @@ fn render_usage_section(f: &mut Frame, state: &AppState, area: Rect, collapsed: 
         return;
     }
 
-    let pct = state.operator_config.billing.context_usage_percent.clamp(0.0, 100.0);
+    let pct = state
+        .operator_config
+        .billing
+        .context_usage_percent
+        .clamp(0.0, 100.0);
     let pct_style = if pct >= 80.0 {
         state.core.theme.style(StyleKey::Error)
     } else if pct >= 50.0 {
@@ -185,12 +202,16 @@ fn render_usage_section(f: &mut Frame, state: &AppState, area: Rect, collapsed: 
             Span::styled("    Turn: ", state.core.theme.style(StyleKey::Muted)),
             Span::raw(format!(
                 "{} in / {} out",
-                state.operator_config.billing.current_message.input_tokens, state.operator_config.billing.current_message.output_tokens
+                state.operator_config.billing.current_message.input_tokens,
+                state.operator_config.billing.current_message.output_tokens
             )),
         ]),
         Line::from(vec![
             Span::styled("    Session: ", state.core.theme.style(StyleKey::Muted)),
-            Span::raw(format!("{} tokens", state.operator_config.billing.total_session.total_tokens)),
+            Span::raw(format!(
+                "{} tokens",
+                state.operator_config.billing.total_session.total_tokens
+            )),
         ]),
         Line::from(vec![
             Span::styled("    Context: ", state.core.theme.style(StyleKey::Muted)),
@@ -215,7 +236,9 @@ fn render_context_section(f: &mut Frame, state: &AppState, area: Rect, collapsed
     let mut lines = vec![header];
 
     let model_name = state
-        .operator_config.operator.current_model
+        .operator_config
+        .operator
+        .current_model
         .as_ref()
         .map(|m| m.name.clone())
         .unwrap_or_else(|| "no active model selected".to_string());
@@ -241,12 +264,17 @@ fn render_context_section(f: &mut Frame, state: &AppState, area: Rect, collapsed
         state.core.theme.style(StyleKey::Success)
     };
     lines.push(Line::from(vec![
-        Span::styled("    Auto-Approve: ", state.core.theme.style(StyleKey::Muted)),
+        Span::styled(
+            "    Auto-Approve: ",
+            state.core.theme.style(StyleKey::Muted),
+        ),
         Span::styled(auto, auto_style),
     ]));
 
     if let Some(ident) = state
-        .operator_config.billing.auth_display
+        .operator_config
+        .billing
+        .auth_display
         .0
         .as_ref()
         .or(state.operator_config.billing.auth_display.1.as_ref())
@@ -278,7 +306,8 @@ fn render_context_section(f: &mut Frame, state: &AppState, area: Rect, collapsed
         lines.push(Line::styled(
             "    No pinned context yet. Use /context pin <file> to add one.",
             state
-                .core.theme
+                .core
+                .theme
                 .style(StyleKey::Muted)
                 .add_modifier(Modifier::ITALIC),
         ));
@@ -314,7 +343,8 @@ fn render_sessions_section(f: &mut Frame, state: &mut AppState, area: Rect, coll
         lines.push(Line::styled(
             "    No sessions loaded yet. Run /sessions to open saved sessions.",
             state
-                .core.theme
+                .core
+                .theme
                 .style(StyleKey::Muted)
                 .add_modifier(Modifier::ITALIC),
         ));
@@ -353,7 +383,9 @@ fn render_sessions_section(f: &mut Frame, state: &mut AppState, area: Rect, coll
 fn render_mcp_section(f: &mut Frame, state: &mut AppState, area: Rect, collapsed: bool) {
     let collapse_indicator = if collapsed { "▸" } else { "▾" };
     let connected = state
-        .execution.mcp_maps.server_states
+        .execution
+        .mcp_maps
+        .server_states
         .values()
         .filter(|s| s.state == vac_mcp_core::McpConnectionState::Connected)
         .count();
@@ -377,7 +409,8 @@ fn render_mcp_section(f: &mut Frame, state: &mut AppState, area: Rect, collapsed
         lines.push(Line::styled(
             "    No MCP servers configured.",
             state
-                .core.theme
+                .core
+                .theme
                 .style(StyleKey::Muted)
                 .add_modifier(Modifier::ITALIC),
         ));
@@ -397,11 +430,12 @@ fn render_mcp_section(f: &mut Frame, state: &mut AppState, area: Rect, collapsed
             } else {
                 1
             };
-            let (status, status_key) = if conn_state.state == vac_mcp_core::McpConnectionState::Connected {
-                ("✅", StyleKey::Success)
-            } else {
-                ("❌", StyleKey::Error)
-            };
+            let (status, status_key) =
+                if conn_state.state == vac_mcp_core::McpConnectionState::Connected {
+                    ("✅", StyleKey::Success)
+                } else {
+                    ("❌", StyleKey::Error)
+                };
 
             let mut line_spans = vec![
                 Span::raw("    "),

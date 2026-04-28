@@ -66,7 +66,12 @@ fn handle_char(state: &mut AppState, output_tx: &Sender<OutputEvent>, c: char) {
         },
         WorkbenchTab::Sessions => {
             if c == 'r' {
-                if let Some(sel) = state.session.sessions.get(state.operator_config.operator.sessions_selected_idx).cloned() {
+                if let Some(sel) = state
+                    .session
+                    .sessions
+                    .get(state.operator_config.operator.sessions_selected_idx)
+                    .cloned()
+                {
                     if sel.has_checkpoint {
                         let _ = output_tx.try_send(OutputEvent::ResumeSession(sel.id.clone()));
                         state.push_activity(
@@ -95,12 +100,22 @@ fn handle_char(state: &mut AppState, output_tx: &Sender<OutputEvent>, c: char) {
                 let _ = output_tx.try_send(OutputEvent::LoadRuntimeState);
             }
             'c' => {
-                if let Some(job) = state.execution.runtime.jobs.get(state.execution.runtime.selected_idx) {
+                if let Some(job) = state
+                    .execution
+                    .runtime
+                    .jobs
+                    .get(state.execution.runtime.selected_idx)
+                {
                     let _ = output_tx.try_send(OutputEvent::CancelRuntimeJob(job.id));
                 }
             }
             't' => {
-                if let Some(job) = state.execution.runtime.jobs.get(state.execution.runtime.selected_idx) {
+                if let Some(job) = state
+                    .execution
+                    .runtime
+                    .jobs
+                    .get(state.execution.runtime.selected_idx)
+                {
                     let _ = output_tx.try_send(OutputEvent::RetryRuntimeJob(job.id));
                 }
             }
@@ -115,18 +130,28 @@ fn handle_char(state: &mut AppState, output_tx: &Sender<OutputEvent>, c: char) {
 fn handle_up(state: &mut AppState, output_tx: &Sender<OutputEvent>) {
     match state.layout.workbench_tab {
         WorkbenchTab::Approvals => {
-            state.execution.approvals.approval_selected_idx = state.execution.approvals.approval_selected_idx.saturating_sub(1);
+            state.execution.approvals.approval_selected_idx = state
+                .execution
+                .approvals
+                .approval_selected_idx
+                .saturating_sub(1);
             state.execution.approvals.approval_detail_scroll = 0;
         }
         WorkbenchTab::Sessions => {
-            state.operator_config.operator.sessions_selected_idx = state.operator_config.operator.sessions_selected_idx.saturating_sub(1);
+            state.operator_config.operator.sessions_selected_idx = state
+                .operator_config
+                .operator
+                .sessions_selected_idx
+                .saturating_sub(1);
         }
         WorkbenchTab::Agents => {
-            state.execution.runtime.agent_selected = state.execution.runtime.agent_selected.saturating_sub(1);
+            state.execution.runtime.agent_selected =
+                state.execution.runtime.agent_selected.saturating_sub(1);
             state.execution.runtime.agent_detail_scroll = 0;
         }
         WorkbenchTab::Runtime => {
-            state.execution.runtime.selected_idx = state.execution.runtime.selected_idx.saturating_sub(1);
+            state.execution.runtime.selected_idx =
+                state.execution.runtime.selected_idx.saturating_sub(1);
             state.execution.runtime.detail_scroll = 0;
         }
         WorkbenchTab::Review => {
@@ -149,18 +174,24 @@ fn handle_up(state: &mut AppState, output_tx: &Sender<OutputEvent>) {
 fn handle_down(state: &mut AppState, output_tx: &Sender<OutputEvent>) {
     match state.layout.workbench_tab {
         WorkbenchTab::Approvals => {
-            if state.execution.approvals.approval_selected_idx + 1 < state.execution.approvals.pending_approvals.len() {
+            if state.execution.approvals.approval_selected_idx + 1
+                < state.execution.approvals.pending_approvals.len()
+            {
                 state.execution.approvals.approval_selected_idx += 1;
                 state.execution.approvals.approval_detail_scroll = 0;
             }
         }
         WorkbenchTab::Sessions => {
-            if state.operator_config.operator.sessions_selected_idx + 1 < state.session.sessions.len() {
+            if state.operator_config.operator.sessions_selected_idx + 1
+                < state.session.sessions.len()
+            {
                 state.operator_config.operator.sessions_selected_idx += 1;
             }
         }
         WorkbenchTab::Agents => {
-            if state.execution.runtime.agent_selected + 1 < state.execution.runtime.agent_tasks.len() {
+            if state.execution.runtime.agent_selected + 1
+                < state.execution.runtime.agent_tasks.len()
+            {
                 state.execution.runtime.agent_selected += 1;
                 state.execution.runtime.agent_detail_scroll = 0;
             }
@@ -195,7 +226,12 @@ fn handle_submit(state: &mut AppState, output_tx: &Sender<OutputEvent>) {
             let _ = approval::approve_current(&mut ctx);
         }
         WorkbenchTab::Sessions => {
-            if let Some(sel) = state.session.sessions.get(state.operator_config.operator.sessions_selected_idx).cloned() {
+            if let Some(sel) = state
+                .session
+                .sessions
+                .get(state.operator_config.operator.sessions_selected_idx)
+                .cloned()
+            {
                 let _ = output_tx.try_send(OutputEvent::SwitchToSession(sel.id));
                 state.push_activity(crate::app::ActivityKind::Session, "Switch session");
             }
@@ -213,7 +249,12 @@ fn handle_submit(state: &mut AppState, output_tx: &Sender<OutputEvent>) {
 
 /// Dispatch async session cleanup via OutputEvent (PR-W25-9).
 fn cleanup_session(state: &mut AppState, output_tx: &Sender<OutputEvent>) {
-    if let Some(sel) = state.session.sessions.get(state.operator_config.operator.sessions_selected_idx).cloned() {
+    if let Some(sel) = state
+        .session
+        .sessions
+        .get(state.operator_config.operator.sessions_selected_idx)
+        .cloned()
+    {
         let _ = output_tx.try_send(OutputEvent::CleanupSession(sel.id));
         state.push_activity(crate::app::ActivityKind::Session, "Cleanup session");
     }

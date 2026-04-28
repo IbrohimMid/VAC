@@ -42,10 +42,8 @@ pub trait ConsolidationPolicy: Send + Sync {
 
     /// Produce zero or more proposals from the session input. An empty
     /// vec means "no-op this cycle".
-    async fn propose(
-        &self,
-        input: &ConsolidationInput,
-    ) -> MemoryResult<Vec<ConsolidationProposal>>;
+    async fn propose(&self, input: &ConsolidationInput)
+    -> MemoryResult<Vec<ConsolidationProposal>>;
 }
 
 /// A registry of policies. Consolidator iterates deterministically.
@@ -124,18 +122,10 @@ impl BuiltinPolicy {
 
     fn description(&self) -> &'static str {
         match self {
-            Self::WorkflowLearnings => {
-                "Distills operator-flagged learnings and workflow rules."
-            }
-            Self::RuntimeAnomalies => {
-                "Captures runtime panics, OOM, and reliability anomalies."
-            }
-            Self::VilSemantics => {
-                "Records observed VIL profile/rulebook semantics and drift."
-            }
-            Self::UnresolvedReview => {
-                "Tracks review threads that closed the session unresolved."
-            }
+            Self::WorkflowLearnings => "Distills operator-flagged learnings and workflow rules.",
+            Self::RuntimeAnomalies => "Captures runtime panics, OOM, and reliability anomalies.",
+            Self::VilSemantics => "Records observed VIL profile/rulebook semantics and drift.",
+            Self::UnresolvedReview => "Tracks review threads that closed the session unresolved.",
         }
     }
 
@@ -157,9 +147,7 @@ impl BuiltinPolicy {
                     || l.contains("profile:")
                     || l.contains("semantic")
             }
-            Self::UnresolvedReview => {
-                l.contains("review-thread") || l.contains("unresolved")
-            }
+            Self::UnresolvedReview => l.contains("review-thread") || l.contains("unresolved"),
         }
     }
 
@@ -183,11 +171,7 @@ impl ConsolidationPolicy for BuiltinPolicy {
         &self,
         input: &ConsolidationInput,
     ) -> MemoryResult<Vec<ConsolidationProposal>> {
-        let hits: Vec<&String> = input
-            .raw_lines
-            .iter()
-            .filter(|l| self.matches(l))
-            .collect();
+        let hits: Vec<&String> = input.raw_lines.iter().filter(|l| self.matches(l)).collect();
         if hits.is_empty() {
             return Ok(Vec::new());
         }
@@ -264,10 +248,7 @@ mod tests {
     #[tokio::test]
     async fn empty_input_yields_no_proposals() {
         let p = BuiltinPolicy::WorkflowLearnings;
-        let out = p
-            .propose(&ConsolidationInput::default())
-            .await
-            .unwrap();
+        let out = p.propose(&ConsolidationInput::default()).await.unwrap();
         assert!(out.is_empty());
     }
 

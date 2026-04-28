@@ -17,8 +17,8 @@ use crate::error::{BridgeError, BridgeResult};
 use crate::event::OutboundEvent;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::mpsc;
 use tokio::sync::Mutex;
+use tokio::sync::mpsc;
 
 /// One request to the operator. `summary` is a one-line description
 /// suitable for a modal footer.

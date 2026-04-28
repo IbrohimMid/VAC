@@ -28,7 +28,9 @@ pub struct SignalRegistry<'a> {
 
 impl<'a> SignalRegistry<'a> {
     pub fn new() -> Self {
-        Self { entries: BTreeMap::new() }
+        Self {
+            entries: BTreeMap::new(),
+        }
     }
 
     pub fn register(&mut self, id: impl Into<String>, buf: &'a SignalBuffer) -> &mut Self {

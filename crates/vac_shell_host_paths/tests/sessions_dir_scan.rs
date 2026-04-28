@@ -61,6 +61,12 @@ fn paths_target_dot_vac_not_dot_stakpak() {
     let tmp = tempfile::tempdir().unwrap();
     let paths = VacPathsImpl::new(tmp.path());
     let s = paths.sessions_dir().to_string_lossy().to_string();
-    assert!(s.contains(".vac"), "sessions_dir should sit under .vac, got {s}");
-    assert!(!s.contains(".stakpak"), "donor path leaked into sessions_dir: {s}");
+    assert!(
+        s.contains(".vac"),
+        "sessions_dir should sit under .vac, got {s}"
+    );
+    assert!(
+        !s.contains(".stakpak"),
+        "donor path leaked into sessions_dir: {s}"
+    );
 }

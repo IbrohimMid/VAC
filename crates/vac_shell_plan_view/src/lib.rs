@@ -75,7 +75,9 @@ pub fn render_plan_view(f: &mut Frame, plan: Option<&PlanMetadata>, area: Rect) 
         lines.push(Line::raw(""));
         lines.push(Line::from(Span::styled(
             " steps",
-            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
         )));
         for (i, step) in plan.steps.iter().enumerate() {
             lines.push(Line::from(vec![
@@ -101,8 +103,5 @@ pub fn render_plan_view(f: &mut Frame, plan: Option<&PlanMetadata>, area: Rect) 
         }
     }
 
-    f.render_widget(
-        Paragraph::new(lines).wrap(Wrap { trim: false }),
-        inner,
-    );
+    f.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);
 }

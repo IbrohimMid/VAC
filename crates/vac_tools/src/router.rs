@@ -279,13 +279,15 @@ impl ToolRouter {
                 environment_mode: &context.environment_mode,
                 mcp_trust: None, // ToolRouter doesn't know if this tool is MCP yet
             };
-            
+
             let gate_decision = crate::trust_gate::TrustGate::check_tool(&ctx, &spec);
-            
+
             match (gate_decision, legacy_decision) {
                 (crate::trust_gate::GateDecision::Deny(r), _) => PolicyDecision::Deny(r),
                 (_, PolicyDecision::Deny(r)) => PolicyDecision::Deny(r),
-                (crate::trust_gate::GateDecision::NeedsApproval(r), _) => PolicyDecision::NeedsApproval(r),
+                (crate::trust_gate::GateDecision::NeedsApproval(r), _) => {
+                    PolicyDecision::NeedsApproval(r)
+                }
                 (_, PolicyDecision::NeedsApproval(r)) => PolicyDecision::NeedsApproval(r),
                 _ => PolicyDecision::Allow,
             }
@@ -478,9 +480,9 @@ mod tests {
 
     #[async_trait]
     impl VilTool for PrivacyMockTool {
-    fn spec(&self) -> vac_tool_core::ToolSpec {
-        crate::registry::default_spec(self)
-    }
+        fn spec(&self) -> vac_tool_core::ToolSpec {
+            crate::registry::default_spec(self)
+        }
 
         fn name(&self) -> &str {
             "privacy_mock_tool"
@@ -607,9 +609,9 @@ mod tests {
 
         #[async_trait]
         impl VilTool for RemoteVerifiedTool {
-    fn spec(&self) -> vac_tool_core::ToolSpec {
-        crate::registry::default_spec(self)
-    }
+            fn spec(&self) -> vac_tool_core::ToolSpec {
+                crate::registry::default_spec(self)
+            }
 
             fn name(&self) -> &str {
                 "remote_verified_tool"

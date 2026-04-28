@@ -102,7 +102,9 @@ impl Default for EnterWorktreeTool {
 }
 
 fn sanitize_branch_dir(branch: &str) -> String {
-    branch.replace('/', "-").replace(['\\', ':', '*', '?', '"', '<', '>', '|'], "-")
+    branch
+        .replace('/', "-")
+        .replace(['\\', ':', '*', '?', '"', '<', '>', '|'], "-")
 }
 
 #[async_trait]
@@ -225,10 +227,7 @@ impl VilTool for EnterWorktreeTool {
 
 /// Atomic file write: write to `<path>.tmp` then rename. Prevents
 /// torn/corrupt files if the process dies mid-write.
-pub(crate) async fn atomic_write(
-    path: &std::path::Path,
-    bytes: &[u8],
-) -> Result<(), ToolError> {
+pub(crate) async fn atomic_write(path: &std::path::Path, bytes: &[u8]) -> Result<(), ToolError> {
     let tmp = path.with_extension(
         path.extension()
             .map(|e| format!("{}.tmp", e.to_string_lossy()))
@@ -317,15 +316,12 @@ impl VilTool for ExitWorktreeTool {
                         "no active worktree (missing worktree arg and no lock file)".into(),
                     )
                 })?;
-                let doc: serde_json::Value = serde_json::from_str(&content).map_err(|e| {
-                    ToolError::ExecutionFailed(format!("malformed lock: {e}"))
-                })?;
+                let doc: serde_json::Value = serde_json::from_str(&content)
+                    .map_err(|e| ToolError::ExecutionFailed(format!("malformed lock: {e}")))?;
                 doc["worktree_path"]
                     .as_str()
                     .ok_or_else(|| {
-                        ToolError::ExecutionFailed(
-                            "lock file missing worktree_path".into(),
-                        )
+                        ToolError::ExecutionFailed("lock file missing worktree_path".into())
                     })?
                     .to_string()
             }

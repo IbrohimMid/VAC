@@ -102,10 +102,7 @@ pub(crate) fn truncate_to_cap(s: &str, cap: usize) -> String {
 /// status renderings. Strips ASCII control chars (including `\n`,
 /// `\r`, `\t`) and caps length.
 pub(crate) fn sanitise_ident(s: &str, cap: usize) -> String {
-    let cleaned: String = s
-        .chars()
-        .filter(|c| !c.is_control())
-        .collect();
+    let cleaned: String = s.chars().filter(|c| !c.is_control()).collect();
     truncate_to_cap(&cleaned, cap)
 }
 
@@ -186,11 +183,23 @@ impl AppStateRootHandle {
     /// Snapshot of notifications. Callers use this to render; the
     /// snapshot is owned so the read-guard drops immediately.
     pub async fn notifications(&self) -> Vec<RootNotification> {
-        self.inner.read().await.notifications.iter().cloned().collect()
+        self.inner
+            .read()
+            .await
+            .notifications
+            .iter()
+            .cloned()
+            .collect()
     }
 
     pub async fn breadcrumbs(&self) -> Vec<AgentBreadcrumb> {
-        self.inner.read().await.breadcrumbs.iter().cloned().collect()
+        self.inner
+            .read()
+            .await
+            .breadcrumbs
+            .iter()
+            .cloned()
+            .collect()
     }
 
     pub async fn tool_counter(&self) -> u64 {
@@ -206,7 +215,6 @@ impl AppStateRootHandle {
         let mut guard = self.inner.write().await;
         guard.notifications.drain(..).collect()
     }
-
 }
 
 #[cfg(test)]

@@ -37,20 +37,18 @@ pub fn init(
     // hides it; a file-based sink lets operators `tail -f
     // /tmp/vac.log` in another pane without wrestling with
     // redirects. Default off — only writes when env set.
-    let file_layer = std::env::var("VAC_TUI_LOG")
-        .ok()
-        .and_then(|path| {
-            std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(&path)
-                .ok()
-                .map(|f| {
-                    fmt::layer()
-                        .with_writer(std::sync::Mutex::new(f))
-                        .with_ansi(false)
-                })
-        });
+    let file_layer = std::env::var("VAC_TUI_LOG").ok().and_then(|path| {
+        std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+            .ok()
+            .map(|f| {
+                fmt::layer()
+                    .with_writer(std::sync::Mutex::new(f))
+                    .with_ansi(false)
+            })
+    });
 
     // Choose format
     let registry = tracing_subscriber::registry().with(env_filter);

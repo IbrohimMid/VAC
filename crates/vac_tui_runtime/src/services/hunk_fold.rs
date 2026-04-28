@@ -79,7 +79,9 @@ pub fn fold_context(lines: &[DiffLine], cfg: FoldConfig) -> Vec<FoldedLine> {
                 out.push(FoldedLine::Line(lines[k].clone()));
             }
             let hidden = run_len - cfg.keep_head - cfg.keep_tail;
-            out.push(FoldedLine::Elision { hidden_lines: hidden });
+            out.push(FoldedLine::Elision {
+                hidden_lines: hidden,
+            });
             for k in j - cfg.keep_tail..j {
                 out.push(FoldedLine::Line(lines[k].clone()));
             }

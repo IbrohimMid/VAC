@@ -83,18 +83,14 @@ impl RemoteSessionAdapter {
     /// `stdio://<absolute-or-relative-binary>` optionally followed by
     /// space-separated args. Returns an error for any other scheme.
     pub async fn spawn_stdio(uri: &str) -> EngineResult<Self> {
-        let spec = uri
-            .strip_prefix("stdio://")
-            .ok_or_else(|| {
-                EngineError::Other(format!(
-                    "remote planner: only stdio:// is supported, got {uri:?}"
-                ))
-            })?;
+        let spec = uri.strip_prefix("stdio://").ok_or_else(|| {
+            EngineError::Other(format!(
+                "remote planner: only stdio:// is supported, got {uri:?}"
+            ))
+        })?;
         let mut parts = spec.split_whitespace();
         let program = parts.next().ok_or_else(|| {
-            EngineError::Other(
-                "remote planner: stdio:// must name a binary".into(),
-            )
+            EngineError::Other("remote planner: stdio:// must name a binary".into())
         })?;
         let args: Vec<String> = parts.map(|s| s.to_string()).collect();
         let mut child = Command::new(program)
@@ -105,9 +101,7 @@ impl RemoteSessionAdapter {
             .kill_on_drop(true)
             .spawn()
             .map_err(|e| {
-                EngineError::Other(format!(
-                    "remote planner: failed to spawn {program}: {e}"
-                ))
+                EngineError::Other(format!("remote planner: failed to spawn {program}: {e}"))
             })?;
 
         let stdin = child
@@ -189,9 +183,7 @@ impl LlmAdapter for RemoteSessionAdapter {
         self.inbound_tx
             .send(InboundEvent::Submit { text: body })
             .await
-            .map_err(|e| {
-                EngineError::Other(format!("remote submit channel closed: {e}"))
-            })?;
+            .map_err(|e| EngineError::Other(format!("remote submit channel closed: {e}")))?;
 
         let rx = self.outbound_rx.clone();
         let mut chunks = String::new();
@@ -207,9 +199,7 @@ impl LlmAdapter for RemoteSessionAdapter {
                         )));
                     }
                     Some(OutboundEvent::Error { reason }) => {
-                        return Err(EngineError::Other(format!(
-                            "remote error: {reason}"
-                        )));
+                        return Err(EngineError::Other(format!("remote error: {reason}")));
                     }
                     // Handshake / permission events are irrelevant for
                     // the planner submit; skip and keep reading.
@@ -225,9 +215,7 @@ impl LlmAdapter for RemoteSessionAdapter {
 
         timeout(REMOTE_SUBMIT_TIMEOUT, fut)
             .await
-            .map_err(|_| {
-                EngineError::Other("remote submit timed out".into())
-            })??;
+            .map_err(|_| EngineError::Other("remote submit timed out".into()))??;
 
         Ok(LlmResponse {
             provider: "vac_bridge".into(),
@@ -235,7 +223,7 @@ impl LlmAdapter for RemoteSessionAdapter {
             content: chunks,
             input_tokens: 0,
             output_tokens: 0,
-        tool_calls: Vec::new(),
+            tool_calls: Vec::new(),
         })
     }
 }

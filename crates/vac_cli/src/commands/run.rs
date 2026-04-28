@@ -44,7 +44,7 @@ pub async fn execute(
                 let model_dir = std::env::var_os("VAC_CANDLE_TEST_MODEL")
                     .map(PathBuf::from)
                     .unwrap_or_else(|| PathBuf::from("."));
-                
+
                 candle_backend.load(&model_dir).await?;
                 let request = InferenceRequest::new(&task_description, 10);
                 let out = candle_backend.infer(&request).await?;
@@ -174,7 +174,8 @@ pub async fn execute(
         &task_description,
         update_tx,
         budget_tokens,
-    ).await?;
+    )
+    .await?;
 
     println!("\n{}", "=".repeat(60));
     match &result.status {

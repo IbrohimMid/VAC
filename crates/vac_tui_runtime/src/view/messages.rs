@@ -115,7 +115,10 @@ pub(super) fn render_messages(f: &mut Frame, state: &mut AppState, area: Rect) {
         lines.push(Line::raw(""));
         lines.push(ratatui::text::Line::from(ratatui::text::Span::styled(
             "  ── tool timeline ──",
-            state.core.theme.style(crate::services::theme::StyleKey::Muted),
+            state
+                .core
+                .theme
+                .style(crate::services::theme::StyleKey::Muted),
         )));
         for tc in pending {
             lines.extend(render_tool_call_pending(tc));
@@ -130,15 +133,24 @@ pub(super) fn render_messages(f: &mut Frame, state: &mut AppState, area: Rect) {
                 ratatui::text::Span::raw("  "),
                 ratatui::text::Span::styled(
                     "✦ ",
-                    state.core.theme.style(crate::services::theme::StyleKey::Accent),
+                    state
+                        .core
+                        .theme
+                        .style(crate::services::theme::StyleKey::Accent),
                 ),
                 ratatui::text::Span::styled(
                     label.to_string(),
-                    state.core.theme.style(crate::services::theme::StyleKey::Muted),
+                    state
+                        .core
+                        .theme
+                        .style(crate::services::theme::StyleKey::Muted),
                 ),
                 ratatui::text::Span::styled(
                     " ▊",
-                    state.core.theme.style(crate::services::theme::StyleKey::Accent),
+                    state
+                        .core
+                        .theme
+                        .style(crate::services::theme::StyleKey::Accent),
                 ),
             ]));
         }
@@ -157,25 +169,38 @@ pub(super) fn render_messages(f: &mut Frame, state: &mut AppState, area: Rect) {
             ratatui::text::Span::raw("  "),
             ratatui::text::Span::styled(
                 "context ",
-                state.core.theme.style(crate::services::theme::StyleKey::Muted),
+                state
+                    .core
+                    .theme
+                    .style(crate::services::theme::StyleKey::Muted),
             ),
             ratatui::text::Span::styled(
                 bar,
-                state.core.theme.style(crate::services::theme::StyleKey::Accent),
+                state
+                    .core
+                    .theme
+                    .style(crate::services::theme::StyleKey::Accent),
             ),
             ratatui::text::Span::styled(
                 format!(" {} / 200k", used as u64),
-                state.core.theme.style(crate::services::theme::StyleKey::Muted),
+                state
+                    .core
+                    .theme
+                    .style(crate::services::theme::StyleKey::Muted),
             ),
             ratatui::text::Span::styled(
                 "  · esc to interrupt",
-                state.core.theme.style(crate::services::theme::StyleKey::Muted),
+                state
+                    .core
+                    .theme
+                    .style(crate::services::theme::StyleKey::Muted),
             ),
         ]));
     }
 
     // Cache the lines for text selection
-    state.layout.message_ui.assembled_lines_cache = Some((state.transcript.messages.clone(), width, lines.clone()));
+    state.layout.message_ui.assembled_lines_cache =
+        Some((state.transcript.messages.clone(), width, lines.clone()));
 
     // Apply text selection highlight
     let highlighted_lines = crate::services::text_selection::apply_selection_highlight(
@@ -190,7 +215,10 @@ pub(super) fn render_messages(f: &mut Frame, state: &mut AppState, area: Rect) {
                 .borders(Borders::ALL)
                 .title(ratatui::text::Span::styled(
                     "Conversation",
-                    focus_style(state.layout.focus == WorkspaceFocus::Conversation, &state.core.theme),
+                    focus_style(
+                        state.layout.focus == WorkspaceFocus::Conversation,
+                        &state.core.theme,
+                    ),
                 )),
         )
         .wrap(Wrap { trim: false })

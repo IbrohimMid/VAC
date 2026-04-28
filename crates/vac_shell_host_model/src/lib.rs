@@ -373,9 +373,7 @@ impl ModelSelectionState {
             .filter(|p| p.credentials_present)
             .map(|p| p.id.clone())
             .collect();
-        let resolves = |key: &ModelKey| {
-            known.contains(&(key.provider.clone(), key.id.clone()))
-        };
+        let resolves = |key: &ModelKey| known.contains(&(key.provider.clone(), key.id.clone()));
         // `active` must be both known AND backed by a credentialed
         // provider — `select_model` rejects no-creds selections, so
         // `restore_from` must not silently re-elevate one. Recents
@@ -409,11 +407,19 @@ impl ModelSelectionState {
     }
 
     pub fn active_model(&self) -> Option<(ProviderId, String)> {
-        self.inner.read().expect("model state lock poisoned").active.clone()
+        self.inner
+            .read()
+            .expect("model state lock poisoned")
+            .active
+            .clone()
     }
 
     pub fn recent_snapshot(&self) -> Vec<(ProviderId, String)> {
-        self.inner.read().expect("model state lock poisoned").recent.clone()
+        self.inner
+            .read()
+            .expect("model state lock poisoned")
+            .recent
+            .clone()
     }
 
     /// Apply a selection. Validates provider is known, model is
@@ -424,11 +430,7 @@ impl ModelSelectionState {
     /// any failure as `DispatchError::Host` *after* the in-memory
     /// state has been updated — caller observes the new state and
     /// the persistence error consistently.
-    pub fn select_model(
-        &self,
-        provider: &ProviderId,
-        id: &str,
-    ) -> Result<(), DispatchError> {
+    pub fn select_model(&self, provider: &ProviderId, id: &str) -> Result<(), DispatchError> {
         let persistor: Option<Arc<dyn ModelSelectionPersistor>> = {
             let mut inner = self.inner.write().expect("model state lock poisoned");
 
@@ -479,15 +481,27 @@ impl ModelSelectionState {
 
 impl ModelSource for ModelSelectionState {
     fn providers(&self) -> Vec<ProviderInfo> {
-        self.inner.read().expect("model state lock poisoned").providers.clone()
+        self.inner
+            .read()
+            .expect("model state lock poisoned")
+            .providers
+            .clone()
     }
 
     fn models(&self) -> Vec<HostModel> {
-        self.inner.read().expect("model state lock poisoned").models.clone()
+        self.inner
+            .read()
+            .expect("model state lock poisoned")
+            .models
+            .clone()
     }
 
     fn active_model(&self) -> Option<(ProviderId, String)> {
-        self.inner.read().expect("model state lock poisoned").active.clone()
+        self.inner
+            .read()
+            .expect("model state lock poisoned")
+            .active
+            .clone()
     }
 
     fn recent_models(&self, limit: usize) -> Vec<(ProviderId, String)> {
@@ -502,7 +516,11 @@ impl ModelSource for ModelSelectionState {
     }
 
     fn pinned_provider(&self) -> Option<ProviderId> {
-        self.inner.read().expect("model state lock poisoned").pinned.clone()
+        self.inner
+            .read()
+            .expect("model state lock poisoned")
+            .pinned
+            .clone()
     }
 }
 
@@ -525,11 +543,7 @@ impl ModelSelectionController {
 }
 
 impl ModelController for ModelSelectionController {
-    fn select_model(
-        &self,
-        provider: &ProviderId,
-        id: &str,
-    ) -> Result<(), DispatchError> {
+    fn select_model(&self, provider: &ProviderId, id: &str) -> Result<(), DispatchError> {
         self.state.select_model(provider, id)
     }
 }
@@ -566,7 +580,11 @@ impl InMemoryPersistor {
     }
 
     pub fn save_count(&self) -> usize {
-        self.inner.read().expect("persistor lock poisoned").saves.len()
+        self.inner
+            .read()
+            .expect("persistor lock poisoned")
+            .saves
+            .len()
     }
 
     pub fn last_saved(&self) -> Option<ModelSelectionSnapshot> {
@@ -631,9 +649,8 @@ impl JsonFilePersistor {
 
 impl ModelSelectionPersistor for JsonFilePersistor {
     fn save(&self, snapshot: &ModelSelectionSnapshot) -> Result<(), DispatchError> {
-        let bytes = serde_json::to_vec_pretty(snapshot).map_err(|e| {
-            DispatchError::Host(format!("model snapshot serialise failed: {e}"))
-        })?;
+        let bytes = serde_json::to_vec_pretty(snapshot)
+            .map_err(|e| DispatchError::Host(format!("model snapshot serialise failed: {e}")))?;
         if let Some(parent) = self.path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| {
                 DispatchError::Host(format!(
@@ -715,9 +732,7 @@ pub fn boot_selection_state(
 /// events stay UI-local.
 pub fn switcher_event_to_action(event: SwitcherEvent) -> Option<ShellAction> {
     match event {
-        SwitcherEvent::Selected { provider, id } => {
-            Some(ShellAction::SelectModel { provider, id })
-        }
+        SwitcherEvent::Selected { provider, id } => Some(ShellAction::SelectModel { provider, id }),
         SwitcherEvent::Dismissed | SwitcherEvent::Consumed | SwitcherEvent::Ignored => None,
     }
 }
@@ -797,7 +812,11 @@ mod selection_tests {
             .select_model(&ProviderId("openai".into()), "gpt-4o")
             .unwrap();
         let recent = state.recent_snapshot();
-        assert_eq!(recent.len(), 2, "dedup must keep one entry per (provider, id)");
+        assert_eq!(
+            recent.len(),
+            2,
+            "dedup must keep one entry per (provider, id)"
+        );
         assert_eq!(recent[0], (ProviderId("openai".into()), "gpt-4o".into()));
         assert_eq!(
             recent[1],
@@ -943,8 +962,14 @@ mod selection_tests {
         // actually applied — that must equal RECENTS_CAP after the
         // cap, not the raw input length.
         let providers = vec![
-            ProviderInfo { id: ProviderId("anthropic".into()), credentials_present: true },
-            ProviderInfo { id: ProviderId("openai".into()), credentials_present: true },
+            ProviderInfo {
+                id: ProviderId("anthropic".into()),
+                credentials_present: true,
+            },
+            ProviderInfo {
+                id: ProviderId("openai".into()),
+                credentials_present: true,
+            },
         ];
         // Build many models so the over-cap recents all resolve.
         let mut models: Vec<HostModel> = Vec::new();
@@ -976,10 +1001,16 @@ mod selection_tests {
         // `restore_from` must not silently re-elevate a previously
         // saved active model whose provider lost credentials.
         let providers = vec![
-            ProviderInfo { id: ProviderId("anthropic".into()), credentials_present: true },
+            ProviderInfo {
+                id: ProviderId("anthropic".into()),
+                credentials_present: true,
+            },
             // openai had creds when the snapshot was written, but now
             // no longer has them.
-            ProviderInfo { id: ProviderId("openai".into()), credentials_present: false },
+            ProviderInfo {
+                id: ProviderId("openai".into()),
+                credentials_present: false,
+            },
         ];
         let models = vec![
             HostModel {
@@ -1058,7 +1089,13 @@ mod tests {
                 true,
                 Some("$3 / $15 per M"),
             )
-            .with_model("openai", "gpt-4o", "GPT-4o", false, Some("$2.5 / $10 per M"))
+            .with_model(
+                "openai",
+                "gpt-4o",
+                "GPT-4o",
+                false,
+                Some("$2.5 / $10 per M"),
+            )
             .with_model("kilo", "kilo-auto", "Kilo Auto", false, None)
     }
 

@@ -80,5 +80,8 @@ fn contract_diff_scroll_resets_when_new_file_selected() {
     state.workspace.changeset_ui.selected_path = Some("src/b.rs".to_string());
 
     assert_eq!(state.workspace.changeset_ui.diff_scroll, 0);
-    assert_eq!(state.workspace.changeset_ui.selected_path.as_deref(), Some("src/b.rs"));
+    assert_eq!(
+        state.workspace.changeset_ui.selected_path.as_deref(),
+        Some("src/b.rs")
+    );
 }

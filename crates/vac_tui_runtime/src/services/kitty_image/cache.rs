@@ -83,7 +83,10 @@ mod tests {
         let mut cache = KittyImageCache::new(4);
         let first = cache.get_or_emit(PNG_A, 5, 10).to_vec();
         let second = cache.get_or_emit(PNG_A, 5, 10).to_vec();
-        assert!(!first.is_empty(), "DCS bytes must be non-empty for non-empty PNG");
+        assert!(
+            !first.is_empty(),
+            "DCS bytes must be non-empty for non-empty PNG"
+        );
         assert_eq!(first, second, "repeated call must return identical bytes");
     }
 
@@ -99,8 +102,15 @@ mod tests {
         cache.get_or_emit(PNG_A, 1, 0); // new key (col differs)
         assert_eq!(cache.entries.len(), 2, "cache must not exceed capacity");
         // PNG_A@(0,0) must still be present (recently used).
-        let key_a = CacheKey { png_hash: hash_bytes(PNG_A), col: 0, row: 0 };
-        assert!(cache.entries.contains_key(&key_a), "recently-used entry must survive eviction");
+        let key_a = CacheKey {
+            png_hash: hash_bytes(PNG_A),
+            col: 0,
+            row: 0,
+        };
+        assert!(
+            cache.entries.contains_key(&key_a),
+            "recently-used entry must survive eviction"
+        );
     }
 
     #[test]
@@ -109,7 +119,10 @@ mod tests {
         let bytes_at_00 = cache.get_or_emit(PNG_A, 0, 0).to_vec();
         let bytes_at_10 = cache.get_or_emit(PNG_A, 10, 0).to_vec();
         // The cursor escape differs between positions.
-        assert_ne!(bytes_at_00, bytes_at_10, "different positions must produce different DCS bytes");
+        assert_ne!(
+            bytes_at_00, bytes_at_10,
+            "different positions must produce different DCS bytes"
+        );
         assert_eq!(cache.entries.len(), 2);
     }
 
@@ -118,7 +131,10 @@ mod tests {
         let mut cache = KittyImageCache::new(4);
         let bytes_a = cache.get_or_emit(PNG_A, 0, 0).to_vec();
         let bytes_b = cache.get_or_emit(PNG_B, 0, 0).to_vec();
-        assert_ne!(bytes_a, bytes_b, "different PNG content must produce different DCS bytes");
+        assert_ne!(
+            bytes_a, bytes_b,
+            "different PNG content must produce different DCS bytes"
+        );
         assert_eq!(cache.entries.len(), 2);
     }
 }

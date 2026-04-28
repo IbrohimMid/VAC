@@ -14,10 +14,8 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::subagent::{
-    SubagentDispatchContext, SubagentKind, SubagentRunner, SubagentSpec,
-};
 use crate::error::EngineResult;
+use crate::subagent::{SubagentDispatchContext, SubagentKind, SubagentRunner, SubagentSpec};
 
 /// Input shape the LLM fills when invoking the Agent tool. Kept as
 /// a narrow struct so serde deserialisation from the model's
@@ -214,6 +212,9 @@ mod tests {
         assert!(finished);
 
         let rows = writer.read(parent_id).await.unwrap();
-        assert!(rows.iter().any(|r| matches!(r.kind, TranscriptKind::Sidechain)));
+        assert!(
+            rows.iter()
+                .any(|r| matches!(r.kind, TranscriptKind::Sidechain))
+        );
     }
 }

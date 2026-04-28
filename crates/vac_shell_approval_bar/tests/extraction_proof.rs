@@ -1,7 +1,7 @@
 //! Step 2 slice 4 — approval bar widget extraction proof.
 
-use ratatui::backend::TestBackend;
 use ratatui::Terminal;
+use ratatui::backend::TestBackend;
 use vac_shell_approval_bar::{
     ApprovalActionView, ApprovalBarEvent, ApprovalBarKey, ApprovalBarViewState, ApprovalStatus,
     calculate_height, format_tool_label, on_key, render_approval_bar,
@@ -69,23 +69,38 @@ fn arrow_keys_wrap_selection() {
 #[test]
 fn enter_submits_all() {
     let mut view = fixture();
-    assert_eq!(on_key(&mut view, ApprovalBarKey::Enter), ApprovalBarEvent::SubmitAll);
+    assert_eq!(
+        on_key(&mut view, ApprovalBarKey::Enter),
+        ApprovalBarEvent::SubmitAll
+    );
 }
 
 #[test]
 fn first_escape_primes_second_escape_rejects() {
     let mut view = fixture();
-    assert_eq!(on_key(&mut view, ApprovalBarKey::Escape), ApprovalBarEvent::EscPrimed);
+    assert_eq!(
+        on_key(&mut view, ApprovalBarKey::Escape),
+        ApprovalBarEvent::EscPrimed
+    );
     assert!(view.esc_pending);
-    assert_eq!(on_key(&mut view, ApprovalBarKey::Escape), ApprovalBarEvent::RejectAll);
-    assert!(!view.esc_pending, "esc_pending must clear after second press");
+    assert_eq!(
+        on_key(&mut view, ApprovalBarKey::Escape),
+        ApprovalBarEvent::RejectAll
+    );
+    assert!(
+        !view.esc_pending,
+        "esc_pending must clear after second press"
+    );
 }
 
 #[test]
 fn keys_ignored_when_bar_invisible() {
     let mut view = fixture();
     view.visible = false;
-    assert_eq!(on_key(&mut view, ApprovalBarKey::Enter), ApprovalBarEvent::Ignored);
+    assert_eq!(
+        on_key(&mut view, ApprovalBarKey::Enter),
+        ApprovalBarEvent::Ignored
+    );
 }
 
 #[test]

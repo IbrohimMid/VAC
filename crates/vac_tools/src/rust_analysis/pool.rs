@@ -42,9 +42,7 @@ pub fn server_for_extension(ext: &str) -> Option<String> {
     let ext = ext.to_ascii_lowercase();
     for (e, env, default) in DEFAULT_SERVERS {
         if &ext == e {
-            return Some(
-                std::env::var(env).unwrap_or_else(|_| (*default).to_string()),
-            );
+            return Some(std::env::var(env).unwrap_or_else(|_| (*default).to_string()));
         }
     }
     None
@@ -71,10 +69,7 @@ impl LspServerManager {
     /// binary is missing, spawn returns `BackendUnavailable` and
     /// the pool does not cache the failure so a later install
     /// retroactively works.
-    pub async fn get_or_spawn(
-        &self,
-        file: &Path,
-    ) -> Option<Arc<dyn AnalysisHost>> {
+    pub async fn get_or_spawn(&self, file: &Path) -> Option<Arc<dyn AnalysisHost>> {
         let ext = file.extension().and_then(|e| e.to_str())?;
         let key = ext.to_ascii_lowercase();
         {
@@ -102,8 +97,7 @@ impl LspServerManager {
             .parent()
             .map(Path::to_path_buf)
             .unwrap_or_else(|| std::path::PathBuf::from("."));
-        let host = match StdioLspHost::spawn_with_binary(project_root, binary).await
-        {
+        let host = match StdioLspHost::spawn_with_binary(project_root, binary).await {
             Ok(h) => Arc::new(h) as Arc<dyn AnalysisHost>,
             Err(e) => {
                 tracing::warn!(
@@ -174,10 +168,7 @@ mod tests {
         if std::env::var("VAC_LSP_RUST_SERVER").is_ok() {
             return;
         }
-        assert_eq!(
-            server_for_extension("RS").as_deref(),
-            Some("rust-analyzer"),
-        );
+        assert_eq!(server_for_extension("RS").as_deref(), Some("rust-analyzer"),);
     }
 
     #[tokio::test]
@@ -208,15 +199,10 @@ mod tests {
         let prior = std::env::var_os("VAC_LSP_RUST_SERVER");
         // SAFETY: tests share env; restore before returning.
         unsafe {
-            std::env::set_var(
-                "VAC_LSP_RUST_SERVER",
-                "definitely-not-a-real-binary-xyz",
-            );
+            std::env::set_var("VAC_LSP_RUST_SERVER", "definitely-not-a-real-binary-xyz");
         }
         let pool = LspServerManager::new();
-        let _ = pool
-            .get_or_spawn(std::path::Path::new("lib.rs"))
-            .await;
+        let _ = pool.get_or_spawn(std::path::Path::new("lib.rs")).await;
         // Restore env.
         match prior {
             Some(v) => unsafe { std::env::set_var("VAC_LSP_RUST_SERVER", v) },

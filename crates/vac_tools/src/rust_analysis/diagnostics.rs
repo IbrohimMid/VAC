@@ -89,8 +89,7 @@ impl LspDiagnosticRegistry {
     /// order so errors bubble to the top.
     pub async fn snapshot(&self) -> Vec<Diagnostic> {
         let guard = self.by_file.read().await;
-        let mut all: Vec<Diagnostic> =
-            guard.values().flat_map(|v| v.iter().cloned()).collect();
+        let mut all: Vec<Diagnostic> = guard.values().flat_map(|v| v.iter().cloned()).collect();
         all.sort_by(|a, b| {
             severity_rank(&a.severity)
                 .cmp(&severity_rank(&b.severity))
@@ -187,7 +186,11 @@ mod tests {
     async fn revision_increments_on_publish() {
         let reg = LspDiagnosticRegistry::new();
         let r0 = reg.revision();
-        reg.publish(PathBuf::from("x"), vec![diag("x", 0, DiagnosticSeverity::Hint, "h")]).await;
+        reg.publish(
+            PathBuf::from("x"),
+            vec![diag("x", 0, DiagnosticSeverity::Hint, "h")],
+        )
+        .await;
         assert!(reg.revision() > r0);
         let r1 = reg.revision();
         reg.clear().await;
@@ -202,11 +205,26 @@ mod tests {
 
     #[test]
     fn severity_from_lsp_int_maps_standard_values() {
-        assert_eq!(DiagnosticSeverity::from_lsp_int(1), DiagnosticSeverity::Error);
-        assert_eq!(DiagnosticSeverity::from_lsp_int(2), DiagnosticSeverity::Warning);
-        assert_eq!(DiagnosticSeverity::from_lsp_int(3), DiagnosticSeverity::Information);
-        assert_eq!(DiagnosticSeverity::from_lsp_int(4), DiagnosticSeverity::Hint);
-        assert_eq!(DiagnosticSeverity::from_lsp_int(99), DiagnosticSeverity::Hint);
+        assert_eq!(
+            DiagnosticSeverity::from_lsp_int(1),
+            DiagnosticSeverity::Error
+        );
+        assert_eq!(
+            DiagnosticSeverity::from_lsp_int(2),
+            DiagnosticSeverity::Warning
+        );
+        assert_eq!(
+            DiagnosticSeverity::from_lsp_int(3),
+            DiagnosticSeverity::Information
+        );
+        assert_eq!(
+            DiagnosticSeverity::from_lsp_int(4),
+            DiagnosticSeverity::Hint
+        );
+        assert_eq!(
+            DiagnosticSeverity::from_lsp_int(99),
+            DiagnosticSeverity::Hint
+        );
     }
 
     #[tokio::test]

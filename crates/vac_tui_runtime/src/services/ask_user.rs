@@ -116,7 +116,11 @@ pub fn build_answer(state: &AppState, multi_selected: &HashSet<usize>) -> serde_
             })
         }
         AskUserQuestionKind::SingleSelect => {
-            let sel = state.layout.ask_user.options.get(state.layout.ask_user.selected);
+            let sel = state
+                .layout
+                .ask_user
+                .options
+                .get(state.layout.ask_user.selected);
             serde_json::json!({
                 "kind": "single_select",
                 "selected": sel.map(|o| &o.id),
@@ -139,7 +143,11 @@ pub fn build_answer(state: &AppState, multi_selected: &HashSet<usize>) -> serde_
             })
         }
         AskUserQuestionKind::Mixed => {
-            let sel = state.layout.ask_user.options.get(state.layout.ask_user.selected);
+            let sel = state
+                .layout
+                .ask_user
+                .options
+                .get(state.layout.ask_user.selected);
             serde_json::json!({
                 "kind": "mixed",
                 "selected": sel.map(|o| &o.id),
@@ -196,21 +204,34 @@ pub fn answer_summary(state: &AppState, filtered: &[usize]) -> String {
     match state.layout.ask_user.question_kind {
         AskUserQuestionKind::FreeText => state.layout.ask_user.input.trim().to_string(),
         AskUserQuestionKind::SingleSelect => state
-            .layout.ask_user.options
+            .layout
+            .ask_user
+            .options
             .get(state.layout.ask_user.selected)
             .map(|o| o.label.clone())
             .unwrap_or_default(),
         AskUserQuestionKind::MultiSelect => {
             let mut labels = state
-                .layout.ask_user.multi_selected
+                .layout
+                .ask_user
+                .multi_selected
                 .iter()
-                .filter_map(|&i| state.layout.ask_user.options.get(i).map(|o| o.label.clone()))
+                .filter_map(|&i| {
+                    state
+                        .layout
+                        .ask_user
+                        .options
+                        .get(i)
+                        .map(|o| o.label.clone())
+                })
                 .collect::<Vec<_>>();
             labels.sort();
             if labels.is_empty() {
                 if let Some(&idx) = filtered.first() {
                     return state
-                        .layout.ask_user.options
+                        .layout
+                        .ask_user
+                        .options
                         .get(idx)
                         .map(|o| o.label.clone())
                         .unwrap_or_default();
@@ -224,7 +245,9 @@ pub fn answer_summary(state: &AppState, filtered: &[usize]) -> String {
                 return t.to_string();
             }
             state
-                .layout.ask_user.options
+                .layout
+                .ask_user
+                .options
                 .get(state.layout.ask_user.selected)
                 .map(|o| o.label.clone())
                 .unwrap_or_default()
@@ -261,7 +284,8 @@ pub fn render_ask_user_popup(f: &mut Frame, state: &AppState) {
         .title(Span::styled(
             " Assistant is asking… ",
             state
-                .core.theme
+                .core
+                .theme
                 .style(StyleKey::Warning)
                 .add_modifier(Modifier::BOLD),
         ));
@@ -329,7 +353,8 @@ pub fn render_ask_user_popup(f: &mut Frame, state: &AppState) {
                 Span::styled(
                     &state.layout.ask_user.filter,
                     state
-                        .core.theme
+                        .core
+                        .theme
                         .style(StyleKey::Text)
                         .add_modifier(Modifier::BOLD),
                 ),
@@ -353,7 +378,10 @@ pub fn render_ask_user_popup(f: &mut Frame, state: &AppState) {
     let kind = state.layout.ask_user.question_kind;
     let is_multi = kind == AskUserQuestionKind::MultiSelect;
     let mut opt_lines: Vec<Line> = Vec::new();
-    let filtered = filtered_option_indices(&state.layout.ask_user.filter, &state.layout.ask_user.options);
+    let filtered = filtered_option_indices(
+        &state.layout.ask_user.filter,
+        &state.layout.ask_user.options,
+    );
     if filtered.is_empty() && !state.layout.ask_user.options.is_empty() {
         opt_lines.push(Line::from(Span::styled(
             "  (no options match your filter)",
@@ -402,7 +430,8 @@ pub fn render_ask_user_popup(f: &mut Frame, state: &AppState) {
             let is_checked = state.layout.ask_user.multi_selected.contains(&opt_idx);
             let style = if is_cursor {
                 state
-                    .core.theme
+                    .core
+                    .theme
                     .style(StyleKey::HighlightFg)
                     .patch(state.core.theme.style(StyleKey::HighlightBg))
             } else {

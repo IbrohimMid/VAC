@@ -43,10 +43,11 @@ pub struct RankedPath {
 
 fn tokenize(text: &str) -> Vec<String> {
     static RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
-    let re = RE.get_or_init(|| {
-        Regex::new(r"[A-Za-z][A-Za-z0-9]+").expect("bm25 tokenizer compiles")
-    });
-    re.find_iter(text).map(|m| m.as_str().to_ascii_lowercase()).collect()
+    let re =
+        RE.get_or_init(|| Regex::new(r"[A-Za-z][A-Za-z0-9]+").expect("bm25 tokenizer compiles"));
+    re.find_iter(text)
+        .map(|m| m.as_str().to_ascii_lowercase())
+        .collect()
 }
 
 fn tokenize_path(p: &Path) -> Vec<String> {
@@ -57,7 +58,7 @@ fn tokenize_path(p: &Path) -> Vec<String> {
 /// sorted by descending score. Returns an empty vec if the query
 /// has no alphanumeric tokens or the corpus is empty.
 use std::fs::File;
-use std::io::{Read, Write, BufReader, BufWriter};
+use std::io::{BufReader, BufWriter, Read, Write};
 
 #[derive(Debug, Clone)]
 pub struct Bm25Index {
@@ -86,7 +87,7 @@ impl Bm25Index {
             let p_bytes = p_str.as_bytes();
             w.write_all(&(p_bytes.len() as u16).to_le_bytes())?;
             w.write_all(p_bytes)?;
-            
+
             w.write_all(&(tokens.len() as u16).to_le_bytes())?;
             for t in tokens {
                 let t_bytes = t.as_bytes();
@@ -102,13 +103,16 @@ impl Bm25Index {
         let mut ver = [0u8; 1];
         r.read_exact(&mut ver)?;
         if ver[0] != 1 {
-            return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "unsupported version"));
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "unsupported version",
+            ));
         }
-        
+
         let mut num_buf = [0u8; 4];
         r.read_exact(&mut num_buf)?;
         let num_docs = u32::from_le_bytes(num_buf);
-        
+
         let mut docs = Vec::with_capacity(num_docs as usize);
         for _ in 0..num_docs {
             let mut len_buf = [0u8; 2];
@@ -117,7 +121,7 @@ impl Bm25Index {
             let mut p_bytes = vec![0u8; p_len];
             r.read_exact(&mut p_bytes)?;
             let path = PathBuf::from(String::from_utf8_lossy(&p_bytes).into_owned());
-            
+
             r.read_exact(&mut len_buf)?;
             let num_tokens = u16::from_le_bytes(len_buf) as usize;
             let mut tokens = Vec::with_capacity(num_tokens);
@@ -153,14 +157,14 @@ impl Bm25Index {
         // Document frequencies.
         let mut df: HashMap<&str, usize> = HashMap::new();
         for (_, doc) in &self.docs {
-            let unique: std::collections::HashSet<&str> =
-                doc.iter().map(|s| s.as_str()).collect();
+            let unique: std::collections::HashSet<&str> = doc.iter().map(|s| s.as_str()).collect();
             for t in unique {
                 *df.entry(t).or_insert(0) += 1;
             }
         }
 
-        let mut scored: Vec<RankedPath> = self.docs
+        let mut scored: Vec<RankedPath> = self
+            .docs
             .iter()
             .map(|(p, doc)| {
                 let dl = doc.len() as f32;
@@ -349,10 +353,7 @@ mod tests {
 
     #[test]
     fn repeated_term_in_path_boosts_score() {
-        let corpus = vec![
-            p("auth/auth_helpers/auth.rs"),
-            p("auth/utils.rs"),
-        ];
+        let corpus = vec![p("auth/auth_helpers/auth.rs"), p("auth/utils.rs")];
         let out = rank_paths(&corpus, "auth", 5, Bm25Params::default());
         assert_eq!(out[0].path, p("auth/auth_helpers/auth.rs"));
         assert!(out[0].score > out[1].score);

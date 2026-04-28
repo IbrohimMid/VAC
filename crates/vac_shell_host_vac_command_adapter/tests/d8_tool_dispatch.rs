@@ -1,4 +1,3 @@
-
 mod common;
 
 use std::sync::Arc;
@@ -17,7 +16,6 @@ use vac_tool_core::ToolResultKind;
 use vac_tools::ToolError;
 use vac_tools::ToolRegistry;
 use vac_tools::registry::{ToolContext, VilTool};
-
 
 struct ToolEmittingLlm;
 
@@ -40,7 +38,6 @@ impl LlmAdapter for ToolEmittingLlm {
         })
     }
 }
-
 
 struct OkEcho {
     counter: Arc<AtomicUsize>,
@@ -127,17 +124,17 @@ fn build_dispatcher(
     Arc::new(VacToolDispatcher::new(registry, ctx))
 }
 
-fn mapped_with_tool_emitting_llm(root: std::path::PathBuf) -> vac_shell_host_vac_command_adapter::AdapterConfig {
+fn mapped_with_tool_emitting_llm(
+    root: std::path::PathBuf,
+) -> vac_shell_host_vac_command_adapter::AdapterConfig {
     mapped(root).with_llm(Arc::new(ToolEmittingLlm))
 }
-
 
 #[test]
 fn default_path_still_unsupported_no_real_tool_execution() {
     let tmp = tempfile::tempdir().unwrap();
-    let adapter = VacCommandExecutorAdapter::new(mapped_with_tool_emitting_llm(
-        tmp.path().to_path_buf(),
-    ));
+    let adapter =
+        VacCommandExecutorAdapter::new(mapped_with_tool_emitting_llm(tmp.path().to_path_buf()));
     assert!(!adapter.has_live_tool_dispatcher());
     adapter.execute(&cmd("memorize", "/memorize")).unwrap();
     let path = adapter.last_transcript().unwrap();
@@ -151,7 +148,6 @@ fn default_path_still_unsupported_no_real_tool_execution() {
         "default path must mention no-dispatcher / dispatch-error: {body}"
     );
 }
-
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn with_tool_dispatcher_and_gate_allow_writes_ok_tool_result_row() {
@@ -179,7 +175,6 @@ async fn with_tool_dispatcher_and_gate_allow_writes_ok_tool_result_row() {
     assert_eq!(counter.load(Ordering::SeqCst), 1);
 }
 
-
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn with_tool_dispatcher_without_gate_rejected_preflight() {
     let (registry, _) = make_registry_with_ok_echo().await;
@@ -191,7 +186,6 @@ async fn with_tool_dispatcher_without_gate_rejected_preflight() {
         Err(AdapterConfigError::DispatcherWithoutGate)
     ));
 }
-
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn gate_deny_skips_dispatcher_and_writes_error_row() {
@@ -229,7 +223,6 @@ async fn gate_deny_skips_dispatcher_and_writes_error_row() {
     );
 }
 
-
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn execute_path_with_live_dispatcher_visible_in_transcript() {
     let (registry, counter) = make_registry_with_ok_echo().await;
@@ -253,7 +246,6 @@ async fn execute_path_with_live_dispatcher_visible_in_transcript() {
     assert_eq!(env.kind, ToolResultKind::Ok);
     assert_eq!(counter.load(Ordering::SeqCst), 1);
 }
-
 
 struct GlobEmittingLlm;
 
@@ -333,7 +325,6 @@ async fn dogfood_tool_dispatch_smoke_writes_ok_tool_result_row() {
         "live dispatch must produce Ok envelope: {env:?}"
     );
 }
-
 
 #[test]
 fn replay_tolerates_missing_transcript_file() {

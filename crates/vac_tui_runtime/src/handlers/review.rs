@@ -26,7 +26,8 @@ pub fn close(ctx: &mut HandlerContext) -> HandlerResult {
 pub fn select_next(ctx: &mut HandlerContext) -> HandlerResult {
     let prev = ctx.state.workspace.review.selected_path.clone();
     ctx.state.review_select_by_delta(1);
-    if ctx.state.workspace.review.diff.is_some() && prev != ctx.state.workspace.review.selected_path {
+    if ctx.state.workspace.review.diff.is_some() && prev != ctx.state.workspace.review.selected_path
+    {
         load_diff_for_selected(ctx)?;
     }
     Ok(())
@@ -36,7 +37,8 @@ pub fn select_next(ctx: &mut HandlerContext) -> HandlerResult {
 pub fn select_prev(ctx: &mut HandlerContext) -> HandlerResult {
     let prev = ctx.state.workspace.review.selected_path.clone();
     ctx.state.review_select_by_delta(-1);
-    if ctx.state.workspace.review.diff.is_some() && prev != ctx.state.workspace.review.selected_path {
+    if ctx.state.workspace.review.diff.is_some() && prev != ctx.state.workspace.review.selected_path
+    {
         load_diff_for_selected(ctx)?;
     }
     Ok(())
@@ -56,24 +58,38 @@ pub fn revert_selected(ctx: &mut HandlerContext) -> HandlerResult {
     match vac_tools::journal::restore_snapshot(&ctx.state.core.project_root, session_id, &path) {
         Ok(()) => {
             ctx.state.workspace.changeset_store.revert_success(&path);
-            ctx.state.workspace.modified_files = ctx.state.workspace.changeset_store.modified_files();
-            ctx.state.workspace.review.items.entry(path.clone()).and_modify(|it| {
-                it.status = ReviewItemStatus::Restored;
-                it.last_error = None;
-                it.dirty_generation = it.dirty_generation.saturating_add(1);
-            });
+            ctx.state.workspace.modified_files =
+                ctx.state.workspace.changeset_store.modified_files();
+            ctx.state
+                .workspace
+                .review
+                .items
+                .entry(path.clone())
+                .and_modify(|it| {
+                    it.status = ReviewItemStatus::Restored;
+                    it.last_error = None;
+                    it.dirty_generation = it.dirty_generation.saturating_add(1);
+                });
             ctx.state
                 .add_assistant_message(format!("Reverted file: {}", path));
             ctx.state
                 .push_activity(ActivityKind::Review, format!("Reverted: {path}"));
         }
         Err(e) => {
-            ctx.state.workspace.changeset_store.revert_failed(&path, e.clone());
-            ctx.state.workspace.review.items.entry(path.clone()).and_modify(|it| {
-                it.status = ReviewItemStatus::Failed;
-                it.last_error = Some(e.clone());
-                it.dirty_generation = it.dirty_generation.saturating_add(1);
-            });
+            ctx.state
+                .workspace
+                .changeset_store
+                .revert_failed(&path, e.clone());
+            ctx.state
+                .workspace
+                .review
+                .items
+                .entry(path.clone())
+                .and_modify(|it| {
+                    it.status = ReviewItemStatus::Failed;
+                    it.last_error = Some(e.clone());
+                    it.dirty_generation = it.dirty_generation.saturating_add(1);
+                });
             ctx.state
                 .add_assistant_message(format!("Failed to revert file: {}", path));
             ctx.state
@@ -95,7 +111,8 @@ pub fn revert_filtered(ctx: &mut HandlerContext) -> HandlerResult {
         .into_iter()
         .filter(|p| {
             ctx.state
-                .workspace.changeset_store
+                .workspace
+                .changeset_store
                 .active_entries()
                 .iter()
                 .any(|e| &e.path == p)
@@ -120,19 +137,32 @@ pub fn revert_filtered(ctx: &mut HandlerContext) -> HandlerResult {
             Ok(()) => {
                 success_count += 1;
                 ctx.state.workspace.changeset_store.revert_success(file);
-                ctx.state.workspace.review.items.entry(file.clone()).and_modify(|it| {
-                    it.status = ReviewItemStatus::Restored;
-                    it.last_error = None;
-                    it.dirty_generation = it.dirty_generation.saturating_add(1);
-                });
+                ctx.state
+                    .workspace
+                    .review
+                    .items
+                    .entry(file.clone())
+                    .and_modify(|it| {
+                        it.status = ReviewItemStatus::Restored;
+                        it.last_error = None;
+                        it.dirty_generation = it.dirty_generation.saturating_add(1);
+                    });
             }
             Err(e) => {
-                ctx.state.workspace.changeset_store.revert_failed(file, e.clone());
-                ctx.state.workspace.review.items.entry(file.clone()).and_modify(|it| {
-                    it.status = ReviewItemStatus::Failed;
-                    it.last_error = Some(e);
-                    it.dirty_generation = it.dirty_generation.saturating_add(1);
-                });
+                ctx.state
+                    .workspace
+                    .changeset_store
+                    .revert_failed(file, e.clone());
+                ctx.state
+                    .workspace
+                    .review
+                    .items
+                    .entry(file.clone())
+                    .and_modify(|it| {
+                        it.status = ReviewItemStatus::Failed;
+                        it.last_error = Some(e);
+                        it.dirty_generation = it.dirty_generation.saturating_add(1);
+                    });
             }
         }
     }
@@ -171,19 +201,32 @@ pub fn revert_all(ctx: &mut HandlerContext) -> HandlerResult {
             Ok(()) => {
                 success_count += 1;
                 ctx.state.workspace.changeset_store.revert_success(file);
-                ctx.state.workspace.review.items.entry(file.clone()).and_modify(|it| {
-                    it.status = ReviewItemStatus::Restored;
-                    it.last_error = None;
-                    it.dirty_generation = it.dirty_generation.saturating_add(1);
-                });
+                ctx.state
+                    .workspace
+                    .review
+                    .items
+                    .entry(file.clone())
+                    .and_modify(|it| {
+                        it.status = ReviewItemStatus::Restored;
+                        it.last_error = None;
+                        it.dirty_generation = it.dirty_generation.saturating_add(1);
+                    });
             }
             Err(e) => {
-                ctx.state.workspace.changeset_store.revert_failed(file, e.clone());
-                ctx.state.workspace.review.items.entry(file.clone()).and_modify(|it| {
-                    it.status = ReviewItemStatus::Failed;
-                    it.last_error = Some(e);
-                    it.dirty_generation = it.dirty_generation.saturating_add(1);
-                });
+                ctx.state
+                    .workspace
+                    .changeset_store
+                    .revert_failed(file, e.clone());
+                ctx.state
+                    .workspace
+                    .review
+                    .items
+                    .entry(file.clone())
+                    .and_modify(|it| {
+                        it.status = ReviewItemStatus::Failed;
+                        it.last_error = Some(e);
+                        it.dirty_generation = it.dirty_generation.saturating_add(1);
+                    });
             }
         }
     }
@@ -259,7 +302,15 @@ pub fn toggle_diff(ctx: &mut HandlerContext) -> HandlerResult {
     let Some(path) = ctx.state.workspace.review.selected_path.clone() else {
         return Ok(());
     };
-    if ctx.state.workspace.review.diff.as_ref().map(|d| d.path.as_str()) == Some(path.as_str()) {
+    if ctx
+        .state
+        .workspace
+        .review
+        .diff
+        .as_ref()
+        .map(|d| d.path.as_str())
+        == Some(path.as_str())
+    {
         ctx.state.workspace.review.diff = None;
     } else {
         load_diff_for_selected(ctx)?;

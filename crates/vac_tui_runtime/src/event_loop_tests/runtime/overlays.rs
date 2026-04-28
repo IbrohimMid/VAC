@@ -36,13 +36,16 @@ fn counter_consistency_header_tab_popup() {
     let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
 
     state
-        .workspace.changeset_store
+        .workspace
+        .changeset_store
         .file_modified("x.rs".to_string(), "agent".to_string(), true);
     state
-        .workspace.changeset_store
+        .workspace
+        .changeset_store
         .file_created("y.rs".to_string(), "agent".to_string());
     state
-        .workspace.changeset_store
+        .workspace
+        .changeset_store
         .file_modified("z.rs".to_string(), "agent".to_string(), true);
     state.workspace.changeset_store.revert_success("z.rs"); // reverted: not active
 
@@ -74,7 +77,10 @@ fn task_completed_does_not_dual_write() {
     crate::controller::handle_backend_event(&mut state, &tx, InputEvent::TaskCompleted(result));
 
     // modified_files must equal store's derived view - no independent writes
-    assert_eq!(state.workspace.modified_files, state.workspace.changeset_store.modified_files());
+    assert_eq!(
+        state.workspace.modified_files,
+        state.workspace.changeset_store.modified_files()
+    );
     assert_eq!(state.workspace.changeset_store.active_entries().len(), 2);
 }
 
@@ -86,7 +92,8 @@ fn show_model_switcher_event_routes_via_handler() {
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::ShowModelSwitcher);
     assert!(
         state
-            .layout.overlay_manager
+            .layout
+            .overlay_manager
             .is_active(crate::overlay::OverlayId::ModelSwitcher)
     );
     assert!(state.layout.switchers.model_filter.is_empty());
@@ -100,7 +107,8 @@ fn show_file_search_event_routes_via_handler() {
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::ShowFileSearch);
     assert!(
         state
-            .layout.overlay_manager
+            .layout
+            .overlay_manager
             .is_active(crate::overlay::OverlayId::FileSearch)
     );
     assert!(state.workspace.file_index.search_query.is_empty());
@@ -114,7 +122,8 @@ fn show_changeset_event_routes_via_handler() {
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::ShowChangeset);
     assert!(
         state
-            .layout.overlay_manager
+            .layout
+            .overlay_manager
             .is_active(crate::overlay::OverlayId::Changeset)
     );
 }
@@ -141,7 +150,10 @@ async fn runtime_tab_requests_refresh_on_cycle() {
 
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::WorkbenchNextTab);
 
-    assert_eq!(state.layout.workbench_tab, crate::app::WorkbenchTab::Runtime);
+    assert_eq!(
+        state.layout.workbench_tab,
+        crate::app::WorkbenchTab::Runtime
+    );
     assert!(matches!(
         rx.recv().await.unwrap(),
         OutputEvent::ListRuntimeJobs

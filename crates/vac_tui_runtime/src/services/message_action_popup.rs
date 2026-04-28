@@ -37,7 +37,8 @@ impl MessageAction {
 
 pub fn render_message_action_popup(f: &mut Frame, state: &AppState) {
     if !state
-        .layout.overlay_manager
+        .layout
+        .overlay_manager
         .is_active(crate::overlay::OverlayId::MessageAction)
     {
         return;
@@ -79,7 +80,8 @@ pub fn render_message_action_popup(f: &mut Frame, state: &AppState) {
     let title = Paragraph::new(Line::from(vec![Span::styled(
         " Message Action",
         state
-            .core.theme
+            .core
+            .theme
             .style(StyleKey::Warning)
             .add_modifier(Modifier::BOLD),
     )]));
@@ -118,12 +120,16 @@ pub fn render_message_action_popup(f: &mut Frame, state: &AppState) {
                 Span::styled(
                     highlight_word,
                     state
-                        .core.theme
+                        .core
+                        .theme
                         .style(StyleKey::OverlaySelected)
                         .add_modifier(Modifier::BOLD),
                 ),
                 Span::styled(rest_text, state.core.theme.style(StyleKey::ToastInfo)),
-                Span::styled(" ".repeat(padding), state.core.theme.style(StyleKey::ToastInfo)),
+                Span::styled(
+                    " ".repeat(padding),
+                    state.core.theme.style(StyleKey::ToastInfo),
+                ),
             ])
         } else {
             Line::from(vec![
@@ -142,5 +148,7 @@ pub fn render_message_action_popup(f: &mut Frame, state: &AppState) {
 
 pub fn get_selected_action(state: &AppState) -> Option<MessageAction> {
     let actions = MessageAction::all();
-    actions.get(state.operator_config.operator.message_action_popup_selected).copied()
+    actions
+        .get(state.operator_config.operator.message_action_popup_selected)
+        .copied()
 }

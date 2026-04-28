@@ -102,13 +102,10 @@ impl VilTool for SkillTool {
         args: serde_json::Value,
         context: &ToolContext,
     ) -> Result<serde_json::Value, ToolError> {
-        let invocation: SkillInvocation = serde_json::from_value(args)
-            .map_err(|e| ToolError::InvalidArguments(e.to_string()))?;
-        let ctx = SkillContext::new(
-            invocation.params,
-            context.working_dir.clone(),
-        )
-        .with_session(context.session_id);
+        let invocation: SkillInvocation =
+            serde_json::from_value(args).map_err(|e| ToolError::InvalidArguments(e.to_string()))?;
+        let ctx = SkillContext::new(invocation.params, context.working_dir.clone())
+            .with_session(context.session_id);
         let ctx = match context.submit_id {
             Some(id) => ctx.with_submit(id),
             None => ctx,
@@ -119,9 +116,7 @@ impl VilTool for SkillTool {
             .await
             .map_err(|e| match e {
                 vac_skill::SkillError::NotFound(_) => ToolError::NotFound(e.to_string()),
-                vac_skill::SkillError::InvalidInput(msg) => {
-                    ToolError::InvalidArguments(msg)
-                }
+                vac_skill::SkillError::InvalidInput(msg) => ToolError::InvalidArguments(msg),
                 other => ToolError::ExecutionFailed(other.to_string()),
             })?;
         Ok(serde_json::json!({
@@ -169,10 +164,7 @@ mod tests {
         let tool = SkillTool::new(reg);
         let ctx = ToolContext::new(std::env::temp_dir());
         let err = tool
-            .execute(
-                serde_json::json!({ "skill": "does-not-exist" }),
-                &ctx,
-            )
+            .execute(serde_json::json!({ "skill": "does-not-exist" }), &ctx)
             .await
             .unwrap_err();
         assert!(matches!(err, ToolError::NotFound(_)));

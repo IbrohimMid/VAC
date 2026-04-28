@@ -1,5 +1,5 @@
-use vac_shell_contracts::ShellActivityKind;
 use serde_json;
+use vac_shell_contracts::ShellActivityKind;
 
 #[test]
 fn activity_kind_serializes_diagnostic_and_status() {

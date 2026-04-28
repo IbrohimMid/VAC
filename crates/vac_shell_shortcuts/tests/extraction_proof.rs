@@ -1,7 +1,7 @@
 //! Slice 6 — shortcuts/command-palette popup extraction proof.
 
-use ratatui::backend::TestBackend;
 use ratatui::Terminal;
+use ratatui::backend::TestBackend;
 use vac_shell_contracts::{SessionEntry, ShellCommandKind, ShellCommandSpec};
 use vac_shell_shortcuts::{
     Shortcut, ShortcutsMode, ShortcutsView, build_shortcuts_lines, default_shortcuts,
@@ -31,7 +31,11 @@ fn cmd(slash: &str, palette_visible: bool) -> ShellCommandSpec {
 
 #[test]
 fn empty_search_lists_visible_commands_only() {
-    let cmds = vec![cmd("/model", true), cmd("/runtime", true), cmd("/internal", false)];
+    let cmds = vec![
+        cmd("/model", true),
+        cmd("/runtime", true),
+        cmd("/internal", false),
+    ];
     let listed = filter_commands("", &cmds);
     let slashes: Vec<&str> = listed.iter().map(|s| s.slash.as_str()).collect();
     assert_eq!(slashes, vec!["/model", "/runtime"]);
@@ -51,11 +55,13 @@ fn command_filter_matches_slash_or_description() {
 #[test]
 fn shortcut_filter_matches_key_description_or_category() {
     let all = default_shortcuts();
-    assert!(filter_shortcuts("ctrl", &all)
-        .iter()
-        .all(|s| s.key.to_lowercase().contains("ctrl")
-            || s.description.to_lowercase().contains("ctrl")
-            || s.category.to_lowercase().contains("ctrl")));
+    assert!(
+        filter_shortcuts("ctrl", &all)
+            .iter()
+            .all(|s| s.key.to_lowercase().contains("ctrl")
+                || s.description.to_lowercase().contains("ctrl")
+                || s.category.to_lowercase().contains("ctrl"))
+    );
     let nav = filter_shortcuts("navigation", &all);
     assert!(nav.iter().all(|s| s.category == "Navigation"));
     assert!(filter_shortcuts("nothing-matches-xyz", &all).is_empty());
@@ -67,10 +73,17 @@ fn build_shortcuts_lines_orders_categories_and_renders_headers() {
     let lines = build_shortcuts_lines(60, &shortcuts);
     let plain: String = lines
         .iter()
-        .map(|l| l.spans.iter().map(|s| s.content.as_ref()).collect::<String>())
+        .map(|l| {
+            l.spans
+                .iter()
+                .map(|s| s.content.as_ref())
+                .collect::<String>()
+        })
         .collect::<Vec<_>>()
         .join("\n");
-    let nav_at = plain.find(" Navigation ").expect("Navigation header missing");
+    let nav_at = plain
+        .find(" Navigation ")
+        .expect("Navigation header missing");
     let cmds_at = plain.find(" Commands ").expect("Commands header missing");
     assert!(nav_at < cmds_at, "category order broken");
 }
@@ -109,8 +122,11 @@ fn filter_sessions_matches_id_or_label() {
 fn visible_sessions_mode_renders_entries_or_empty_hint() {
     let backend = TestBackend::new(80, 20);
     let mut terminal = Terminal::new(backend).unwrap();
-    let mut view = ShortcutsView::new(vec![], default_shortcuts())
-        .with_sessions(vec![session("uuid-one", "Refactor swarm", 200)]);
+    let mut view = ShortcutsView::new(vec![], default_shortcuts()).with_sessions(vec![session(
+        "uuid-one",
+        "Refactor swarm",
+        200,
+    )]);
     view.visible = true;
     view.mode = ShortcutsMode::Sessions;
     terminal

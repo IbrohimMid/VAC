@@ -40,7 +40,8 @@ pub fn render_shortcuts_popup(f: &mut Frame, state: &mut crate::app::AppState) {
     // Render title inside the popup
     let title = " Command Palette";
     let title_style = state
-        .core.theme
+        .core
+        .theme
         .style(StyleKey::AppTitle)
         .add_modifier(Modifier::BOLD);
     let title_line = Line::from(Span::styled(title, title_style));
@@ -58,7 +59,8 @@ pub fn render_shortcuts_popup(f: &mut Frame, state: &mut crate::app::AppState) {
         .style(state.core.theme.style(StyleKey::Muted))
         .highlight_style(
             state
-                .core.theme
+                .core
+                .theme
                 .style(StyleKey::Accent)
                 .add_modifier(Modifier::BOLD),
         )

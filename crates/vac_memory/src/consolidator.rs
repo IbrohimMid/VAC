@@ -245,7 +245,10 @@ impl Consolidator {
     #[instrument(target = "vac_memory::consolidator", skip_all, name = "orient")]
     pub async fn orient(&self) -> MemoryResult<OrientedContext> {
         // Read MEMORY.md index or scan active memories
-        let active_memories = self.scanner.scan_kind(crate::memdir::MemoryKind::Active).await?;
+        let active_memories = self
+            .scanner
+            .scan_kind(crate::memdir::MemoryKind::Active)
+            .await?;
         info!(
             target: "vac_memory::consolidator",
             active = active_memories.len(),
@@ -255,7 +258,11 @@ impl Consolidator {
     }
 
     #[instrument(target = "vac_memory::consolidator", skip_all, name = "gather")]
-    pub async fn gather(&self, input: &ConsolidationInput, _oriented: &OrientedContext) -> MemoryResult<GatheredContext> {
+    pub async fn gather(
+        &self,
+        input: &ConsolidationInput,
+        _oriented: &OrientedContext,
+    ) -> MemoryResult<GatheredContext> {
         // Scan recent transcripts. For now, we just pass the input through.
         Ok(GatheredContext {
             input: input.clone(),
@@ -308,7 +315,11 @@ impl Consolidator {
                 });
             }
         }
-        Ok(ConsolidatedContext { written, fired, failed })
+        Ok(ConsolidatedContext {
+            written,
+            fired,
+            failed,
+        })
     }
 
     #[instrument(target = "vac_memory::consolidator", skip_all, name = "prune")]
@@ -472,11 +483,7 @@ mod tests {
             .await
             .unwrap();
         assert!(rep.was_skipped());
-        assert!(
-            rep.skipped_reason
-                .unwrap()
-                .contains("sessions"),
-        );
+        assert!(rep.skipped_reason.unwrap().contains("sessions"),);
     }
 
     #[tokio::test]
@@ -487,7 +494,9 @@ mod tests {
         let c = Consolidator::new(scanner, config());
         // Plant a lockfile with a different-looking pid.
         let fake_pid = std::process::id().wrapping_add(7);
-        tokio::fs::write(c.lock_path(), fake_pid.to_string()).await.unwrap();
+        tokio::fs::write(c.lock_path(), fake_pid.to_string())
+            .await
+            .unwrap();
         let gate = c
             .evaluate_gate(&ConsolidationInput {
                 raw_lines: vec![],
@@ -507,7 +516,9 @@ mod tests {
         cfg.stale_lock_after = Duration::from_millis(1);
         let c = Consolidator::new(scanner, cfg);
         let fake_pid = std::process::id().wrapping_add(11);
-        tokio::fs::write(c.lock_path(), fake_pid.to_string()).await.unwrap();
+        tokio::fs::write(c.lock_path(), fake_pid.to_string())
+            .await
+            .unwrap();
         tokio::time::sleep(Duration::from_millis(50)).await;
         let gate = c
             .evaluate_gate(&ConsolidationInput {
@@ -572,8 +583,12 @@ mod tests {
         struct BoomPolicy;
         #[async_trait]
         impl ConsolidationPolicy for BoomPolicy {
-            fn name(&self) -> &str { "boom" }
-            fn description(&self) -> &str { "always fails" }
+            fn name(&self) -> &str {
+                "boom"
+            }
+            fn description(&self) -> &str {
+                "always fails"
+            }
             async fn propose(
                 &self,
                 _: &ConsolidationInput,

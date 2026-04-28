@@ -25,9 +25,7 @@ pub struct ReviewSnapshot {
 
 impl ReviewSnapshot {
     pub fn is_empty(&self) -> bool {
-        self.reviewers.is_empty()
-            && self.pending_reviews == 0
-            && self.discussion_handles.is_empty()
+        self.reviewers.is_empty() && self.pending_reviews == 0 && self.discussion_handles.is_empty()
     }
 }
 

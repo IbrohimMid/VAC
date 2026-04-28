@@ -464,10 +464,7 @@ mod tests {
         let gate = PlanModeGate::new(flag.clone());
         let mut ctx = ctx();
         ctx.tool_name = "Edit".into();
-        assert!(matches!(
-            gate.check(&ctx).await,
-            GateDecision::Allow { .. }
-        ));
+        assert!(matches!(gate.check(&ctx).await, GateDecision::Allow { .. }));
     }
 
     #[tokio::test]
@@ -483,10 +480,7 @@ mod tests {
             other => panic!("expected Deny, got {other:?}"),
         }
         ctx.tool_name = "Grep".into();
-        assert!(matches!(
-            gate.check(&ctx).await,
-            GateDecision::Allow { .. }
-        ));
+        assert!(matches!(gate.check(&ctx).await, GateDecision::Allow { .. }));
     }
 
     #[tokio::test]

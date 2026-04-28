@@ -82,11 +82,7 @@ pub fn handle_key_event_once(
     if let Some(ev) = maybe_event {
         match ev {
             AppEvent::PaletteSelected(slash) => {
-                route_palette_command(
-                    &mut ctx.app,
-                    ctx.command_executor.as_ref(),
-                    &slash,
-                )?;
+                route_palette_command(&mut ctx.app, ctx.command_executor.as_ref(), &slash)?;
             }
             other => ctx.app.apply_event(other)?,
         }

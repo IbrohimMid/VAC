@@ -98,10 +98,7 @@ impl Default for FakeClock {
 
 impl Clock for FakeClock {
     fn now(&self) -> SystemTime {
-        self.base
-            + Duration::from_secs(
-                self.offset.load(std::sync::atomic::Ordering::SeqCst),
-            )
+        self.base + Duration::from_secs(self.offset.load(std::sync::atomic::Ordering::SeqCst))
     }
 }
 
@@ -149,9 +146,7 @@ impl RateLimitTracker {
     pub async fn observe_request(&self, provider: &str) {
         let now = unix_secs(self.clock.now());
         let mut guard = self.inner.lock().await;
-        let entry = guard
-            .entry(provider.to_string())
-            .or_default();
+        let entry = guard.entry(provider.to_string()).or_default();
         entry.requests.push_back(now);
         prune_window(&mut entry.requests, now);
     }
@@ -161,11 +156,7 @@ impl RateLimitTracker {
     /// Returns the effective backoff (server hint + jitter), with
     /// the **final** sleep clamped to `MAX_BACKOFF` so a hostile
     /// header plus jitter can never drift past the ceiling.
-    pub async fn observe_429(
-        &self,
-        provider: &str,
-        retry_after: Option<Duration>,
-    ) -> Duration {
+    pub async fn observe_429(&self, provider: &str, retry_after: Option<Duration>) -> Duration {
         let base = retry_after.unwrap_or(DEFAULT_BACKOFF);
         let base = base.min(MAX_BACKOFF);
         let jitter = self.jitter_for(base);
@@ -199,9 +190,7 @@ impl RateLimitTracker {
             return Duration::ZERO;
         };
         match entry.cooldown_until {
-            Some(deadline) => deadline
-                .duration_since(now)
-                .unwrap_or(Duration::ZERO),
+            Some(deadline) => deadline.duration_since(now).unwrap_or(Duration::ZERO),
             None => Duration::ZERO,
         }
     }
@@ -260,7 +249,8 @@ impl RateLimitTracker {
     fn jitter_for(&self, base: Duration) -> Duration {
         // Bump + mix — a tiny xorshift keeps consecutive jitters
         // distinct without pulling a rand dep into the crate.
-        let seed = self.jitter_seed
+        let seed = self
+            .jitter_seed
             .fetch_add(0x9E37_79B9_7F4A_7C15, std::sync::atomic::Ordering::SeqCst);
         let mixed = xorshift64(seed.wrapping_add(1));
         let frac = (mixed as f64) / (u64::MAX as f64); // 0..=1
@@ -281,7 +271,9 @@ fn xorshift64(mut x: u64) -> u64 {
 }
 
 fn unix_secs(t: SystemTime) -> u64 {
-    t.duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+    t.duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
 }
 
 fn prune_window(q: &mut VecDeque<u64>, now: u64) {
@@ -329,9 +321,7 @@ mod tests {
     async fn observe_429_sets_cooldown() {
         let clock = Arc::new(FakeClock::new());
         let t = RateLimitTracker::with_clock(clock.clone());
-        let waited = t
-            .observe_429("openai", Some(Duration::from_secs(30)))
-            .await;
+        let waited = t.observe_429("openai", Some(Duration::from_secs(30))).await;
         // 30 s base, up to +10% jitter → 30..=33 s.
         assert!(waited >= Duration::from_secs(30));
         assert!(waited <= Duration::from_millis(33_000));
@@ -344,9 +334,13 @@ mod tests {
         let t = RateLimitTracker::new();
         let waited = t.observe_429("openai", None).await;
         assert!(waited >= DEFAULT_BACKOFF);
-        assert!(waited <= DEFAULT_BACKOFF + Duration::from_millis(
-            ((DEFAULT_BACKOFF.as_millis() as f64) * JITTER_FRACTION) as u64 + 1,
-        ));
+        assert!(
+            waited
+                <= DEFAULT_BACKOFF
+                    + Duration::from_millis(
+                        ((DEFAULT_BACKOFF.as_millis() as f64) * JITTER_FRACTION) as u64 + 1,
+                    )
+        );
     }
 
     #[tokio::test]
@@ -425,8 +419,7 @@ mod tests {
     async fn consecutive_jitters_differ() {
         let t = RateLimitTracker::new();
         let base = Duration::from_secs(30);
-        let mut seen: std::collections::HashSet<u128> =
-            std::collections::HashSet::new();
+        let mut seen: std::collections::HashSet<u128> = std::collections::HashSet::new();
         for _ in 0..20 {
             seen.insert(t.jitter_for(base).as_millis());
         }

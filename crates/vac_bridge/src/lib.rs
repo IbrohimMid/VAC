@@ -31,7 +31,8 @@ pub use capacity_wake::{CapacityError, CapacityWake, DEFAULT_MAX_DEPTH};
 pub use error::{BridgeError, BridgeResult};
 pub use event::{InboundEvent, OutboundEvent};
 pub use permission::{
-    PermissionDecision, PermissionMediator, PermissionRequest, StaticAllowMediator, StdioPermissionMediator,
+    PermissionDecision, PermissionMediator, PermissionRequest, StaticAllowMediator,
+    StdioPermissionMediator,
 };
 pub use remote::{
     DEFAULT_TELEPORT_TTL, RemoteSessionConfig, RemoteTrustClass, TeleportClaims,

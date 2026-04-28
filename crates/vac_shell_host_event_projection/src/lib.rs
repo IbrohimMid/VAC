@@ -210,8 +210,16 @@ pub fn project_runtime_event(event: RuntimeEventView) -> ShellActivityEntry {
             ts_unix,
             kind: ShellActivityKind::ApprovalResolved,
             title: tool,
-            detail: Some(if approved { "approved".into() } else { "rejected".into() }),
-            severity: if approved { Severity::Ok } else { Severity::Warn },
+            detail: Some(if approved {
+                "approved".into()
+            } else {
+                "rejected".into()
+            }),
+            severity: if approved {
+                Severity::Ok
+            } else {
+                Severity::Warn
+            },
         },
         RuntimeEventView::ModelChanged {
             id,
@@ -309,7 +317,9 @@ pub fn spawn_activity_feed_bridge(
                     })
                 }
 
-                SubmitChunk::ToolRequested { id: tool_id, name, .. } => {
+                SubmitChunk::ToolRequested {
+                    id: tool_id, name, ..
+                } => {
                     // D10-HARDENING: arguments are never forwarded to the
                     // activity log — they may contain secrets. The tool name
                     // alone is sufficient for the operator activity stream.
@@ -321,7 +331,11 @@ pub fn spawn_activity_feed_bridge(
                     })
                 }
 
-                SubmitChunk::ToolResult { id: tool_id, name, payload } => {
+                SubmitChunk::ToolResult {
+                    id: tool_id,
+                    name,
+                    payload,
+                } => {
                     // D10.5: delegate to ToolUseUiStatus — single source of truth
                     // for Ok/Warn/Error/Cancelled mapping across D9 + D10.
                     let severity = (match payload.kind {
@@ -345,16 +359,14 @@ pub fn spawn_activity_feed_bridge(
                     })
                 }
 
-                SubmitChunk::Finished { usage } => {
-                    Some(RuntimeEventView::AgentThoughtSummary {
-                        id,
-                        ts_unix: ts,
-                        summary: format!(
-                            "submit finished — {} in / {} out tokens",
-                            usage.input_tokens, usage.output_tokens
-                        ),
-                    })
-                }
+                SubmitChunk::Finished { usage } => Some(RuntimeEventView::AgentThoughtSummary {
+                    id,
+                    ts_unix: ts,
+                    summary: format!(
+                        "submit finished — {} in / {} out tokens",
+                        usage.input_tokens, usage.output_tokens
+                    ),
+                }),
 
                 SubmitChunk::Aborted { reason } => Some(RuntimeEventView::Error {
                     id,

@@ -2,20 +2,21 @@
 //!
 //! Protocol: acp/1.0 (JSONL over stdio).
 
+use async_trait::async_trait;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::Mutex;
-use uuid::Uuid;
-use async_trait::async_trait;
 use tokio::sync::mpsc;
+use uuid::Uuid;
 
 use vac_bridge::{
-    AcpServer, InboundEvent, OutboundEvent, RemoteSession, StdioPermissionMediator, PermissionMediator, PermissionRequest, PermissionDecision,
+    AcpServer, InboundEvent, OutboundEvent, PermissionDecision, PermissionMediator,
+    PermissionRequest, RemoteSession, StdioPermissionMediator,
 };
 use vac_session_engine::{
-    CompactConfig, SlashProcessor, SubmitContext, SubmitEvent, TranscriptWriter,
-    TrivialCompactBoundary, UsageTracker, submit_one, LlmAdapter, LlmRequest, LlmResponse, EngineResult, EngineError,
+    CompactConfig, EngineError, EngineResult, LlmAdapter, LlmRequest, LlmResponse, SlashProcessor,
+    SubmitContext, SubmitEvent, TranscriptWriter, TrivialCompactBoundary, UsageTracker, submit_one,
 };
 
 pub struct AcpEngineAdapter {
@@ -43,11 +44,17 @@ impl LlmAdapter for AcpEngineAdapter {
                     vac_core::engine::RuntimeUpdate::Failed(reason) => {
                         let _ = outbound.send(OutboundEvent::SubmitAborted { reason }).await;
                     }
-                    vac_core::engine::RuntimeUpdate::ApprovalRequired { tool_call_id, tool_name, arguments, explanation } => {
+                    vac_core::engine::RuntimeUpdate::ApprovalRequired {
+                        tool_call_id,
+                        tool_name,
+                        arguments,
+                        explanation,
+                    } => {
                         let req = PermissionRequest {
                             id: Uuid::new_v4(), // We map the request ID
                             tool: tool_name.clone(),
-                            summary: explanation.unwrap_or_else(|| format!("Tool {} requires approval", tool_name)),
+                            summary: explanation
+                                .unwrap_or_else(|| format!("Tool {} requires approval", tool_name)),
                             arguments,
                             deadline_ms: 300000, // 5 minutes
                         };
@@ -55,7 +62,9 @@ impl LlmAdapter for AcpEngineAdapter {
                         if let Ok(PermissionDecision::Allow) = decision {
                             let _ = approvals.approve(tool_call_id).await;
                         } else {
-                            let _ = approvals.reject(tool_call_id, Some("Denied by operator".to_string())).await;
+                            let _ = approvals
+                                .reject(tool_call_id, Some("Denied by operator".to_string()))
+                                .await;
                         }
                     }
                     _ => {}
@@ -83,7 +92,7 @@ impl LlmAdapter for AcpEngineAdapter {
             content: result.summary,
             input_tokens: req.prompt.split_whitespace().count() as u64,
             output_tokens: result.total_tokens_used,
-        tool_calls: Vec::new(),
+            tool_calls: Vec::new(),
         })
     }
 }
@@ -99,8 +108,13 @@ pub async fn execute(project_root: PathBuf, _port: u16) -> anyhow::Result<()> {
     let mut session = RemoteSession::new(100);
     let handle = session.handle();
 
-    let pending_permissions: Arc<Mutex<std::collections::HashMap<Uuid, tokio::sync::oneshot::Sender<PermissionDecision>>>> = Arc::new(Mutex::new(std::collections::HashMap::new()));
-    let mediator = Arc::new(StdioPermissionMediator::new(handle.outbound_tx.clone(), pending_permissions.clone()));
+    let pending_permissions: Arc<
+        Mutex<std::collections::HashMap<Uuid, tokio::sync::oneshot::Sender<PermissionDecision>>>,
+    > = Arc::new(Mutex::new(std::collections::HashMap::new()));
+    let mediator = Arc::new(StdioPermissionMediator::new(
+        handle.outbound_tx.clone(),
+        pending_permissions.clone(),
+    ));
 
     // Spawn stdio reader
     let inbound_tx = handle.inbound_tx.clone();
@@ -113,10 +127,17 @@ pub async fn execute(project_root: PathBuf, _port: u16) -> anyhow::Result<()> {
                 continue;
             }
             if let Ok(event) = serde_json::from_str::<InboundEvent>(&line) {
-                if let InboundEvent::PermissionResponse { request_id, allow, .. } = event {
+                if let InboundEvent::PermissionResponse {
+                    request_id, allow, ..
+                } = event
+                {
                     let mut p = pending_reader.lock().await;
                     if let Some(tx) = p.remove(&request_id) {
-                        let decision = if allow { PermissionDecision::Allow } else { PermissionDecision::Deny };
+                        let decision = if allow {
+                            PermissionDecision::Allow
+                        } else {
+                            PermissionDecision::Deny
+                        };
                         let _ = tx.send(decision);
                     }
                     continue;
@@ -146,12 +167,10 @@ pub async fn execute(project_root: PathBuf, _port: u16) -> anyhow::Result<()> {
     // — an ACP peer that asked the local adapter to run a tool
     // fell back to `UnsupportedDispatcher` silently. Wired via the
     // same builders the TUI uses.
-    let acp_registry: Arc<vac_tools::ToolRegistry> =
-        Arc::new(vac_tools::ToolRegistry::new());
+    let acp_registry: Arc<vac_tools::ToolRegistry> = Arc::new(vac_tools::ToolRegistry::new());
     vac_tools::builtin::register_builtin_tools(&acp_registry).await?;
     let acp_ctx = Arc::new(
-        vac_tools::registry::ToolContext::new(project_root.clone())
-            .with_session_id(session_id),
+        vac_tools::registry::ToolContext::new(project_root.clone()).with_session_id(session_id),
     );
     // Audit P0.2 closure — ACP host also runs the full live gate
     // stack (PolicyGate + HookGate), matching the TUI / `vac run`
@@ -160,9 +179,7 @@ pub async fn execute(project_root: PathBuf, _port: u16) -> anyhow::Result<()> {
     let acp_policy = vac_core::policy_limits::PolicyLimits::load(&project_root)
         .await
         .map_err(|e| anyhow::anyhow!(".vac/policy.toml: {e}"))?;
-    let acp_policy_tracker = Arc::new(
-        vac_core::policy_limits::PolicyTracker::new(acp_policy),
-    );
+    let acp_policy_tracker = Arc::new(vac_core::policy_limits::PolicyTracker::new(acp_policy));
     let acp_gate = vac_tui_runtime::runner::dispatcher::build_live_gate_with(
         &project_root,
         Some(acp_policy_tracker),
@@ -192,7 +209,7 @@ pub async fn execute(project_root: PathBuf, _port: u16) -> anyhow::Result<()> {
                         }
                         InboundEvent::Submit { text } => {
                             let ctx = SubmitContext::new(session_id, text);
-                            
+
                             let adapter = AcpEngineAdapter {
                                 engine: engine.clone(),
                                 outbound_tx: handle.outbound_tx.clone(),

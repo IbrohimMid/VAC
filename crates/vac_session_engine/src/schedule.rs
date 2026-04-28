@@ -24,10 +24,8 @@ use std::time::Duration;
 use uuid::Uuid;
 
 use crate::error::EngineResult;
-use crate::subagent::{
-    SubagentDispatchContext, SubagentKind, SubagentRunner, SubagentSpec,
-};
 use crate::stream::SubmitStream;
+use crate::subagent::{SubagentDispatchContext, SubagentKind, SubagentRunner, SubagentSpec};
 
 /// Minimum delay the scheduler accepts (matches CC's
 /// `ScheduleWakeup` runtime clamp).
@@ -120,12 +118,8 @@ pub fn schedule_wakeup(
         );
         tokio::time::sleep(spec.delay).await;
         let kind = spec.subagent.unwrap_or(SubagentKind::GeneralPurpose);
-        let sa_spec = SubagentSpec::new(
-            kind,
-            spec.prompt,
-            spec.parent_session_id,
-        )
-        .with_description(spec.reason);
+        let sa_spec = SubagentSpec::new(kind, spec.prompt, spec.parent_session_id)
+            .with_description(spec.reason);
         SubagentRunner::run(sa_spec, dispatch).await
     })
 }
@@ -154,7 +148,10 @@ pub fn schedule_interval_loop(
                 reason.clone(),
                 parent_session_id,
             );
-            let kind = spec.subagent.clone().unwrap_or(SubagentKind::GeneralPurpose);
+            let kind = spec
+                .subagent
+                .clone()
+                .unwrap_or(SubagentKind::GeneralPurpose);
             let sa_spec = SubagentSpec::new(kind, spec.prompt, spec.parent_session_id)
                 .with_description(spec.reason);
             match SubagentRunner::run(sa_spec, dispatch.as_ref().clone()).await {
@@ -182,7 +179,10 @@ mod tests {
     fn clamp_delay_enforces_bounds() {
         assert_eq!(clamp_delay(Duration::from_secs(1)), MIN_DELAY);
         assert_eq!(clamp_delay(Duration::from_secs(7200)), MAX_DELAY);
-        assert_eq!(clamp_delay(Duration::from_secs(120)), Duration::from_secs(120));
+        assert_eq!(
+            clamp_delay(Duration::from_secs(120)),
+            Duration::from_secs(120)
+        );
     }
 
     #[test]

@@ -106,10 +106,7 @@ impl SlashProcessor {
     /// is unknown (callers may fall back to treating the input as a
     /// regular message with the `/` preserved). Returns `Ok(Some(r))`
     /// on success.
-    pub async fn dispatch(
-        &self,
-        inv: &SlashInvocation,
-    ) -> EngineResult<Option<SlashResult>> {
+    pub async fn dispatch(&self, inv: &SlashInvocation) -> EngineResult<Option<SlashResult>> {
         match self.commands.get(&inv.command) {
             Some(handler) => Ok(Some(handler.handle(&inv.args).await?)),
             None => Ok(None),
@@ -137,7 +134,9 @@ impl HelpCommand {
             .into_iter()
             .map(|(n, d)| (n.to_string(), d.to_string()))
             .collect();
-        Self { processor_snapshot: snapshot }
+        Self {
+            processor_snapshot: snapshot,
+        }
     }
 }
 
@@ -241,9 +240,6 @@ mod tests {
         let help = HelpCommand::new(&p);
         let out = help.handle("").await.unwrap();
         assert!(out.summary.contains("slash"));
-        assert_eq!(
-            out.payload["commands"].as_array().unwrap().len(),
-            1
-        );
+        assert_eq!(out.payload["commands"].as_array().unwrap().len(), 1);
     }
 }

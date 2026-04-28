@@ -894,10 +894,7 @@ temperature = 0.25
         fn name(&self) -> &str {
             self.name
         }
-        async fn complete(
-            &self,
-            _req: &LlmRequest,
-        ) -> LlmResult<crate::provider::LlmResponse> {
+        async fn complete(&self, _req: &LlmRequest) -> LlmResult<crate::provider::LlmResponse> {
             Err(LlmError::Provider {
                 provider: self.name.to_string(),
                 status: None,
@@ -922,10 +919,7 @@ temperature = 0.25
         fn name(&self) -> &str {
             self.name
         }
-        async fn complete(
-            &self,
-            _req: &LlmRequest,
-        ) -> LlmResult<crate::provider::LlmResponse> {
+        async fn complete(&self, _req: &LlmRequest) -> LlmResult<crate::provider::LlmResponse> {
             Ok(crate::provider::LlmResponse {
                 content: format!("from-{}", self.name),
                 model: self.model.to_string(),
@@ -1012,7 +1006,10 @@ temperature = 0.25
         // `AllProvidersFailed`; either is acceptable as long
         // as it is an error and not silently masked.
         assert!(
-            matches!(err, LlmError::Provider { .. } | LlmError::AllProvidersFailed),
+            matches!(
+                err,
+                LlmError::Provider { .. } | LlmError::AllProvidersFailed
+            ),
             "unexpected error variant: {err:?}"
         );
     }

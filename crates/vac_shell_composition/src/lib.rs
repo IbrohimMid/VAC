@@ -32,8 +32,8 @@ use vac_shell_bridge::{
 use vac_shell_contracts::{ProviderId, ShellCommandSpec, VacPaths};
 use vac_shell_host_approval::{ApprovalQueue, ApprovalQueueController};
 use vac_shell_host_model::{
-    HostModel, ModelSelectionController, ModelSelectionState, ProviderInfo,
-    boot_selection_state, vac_paths_persistor,
+    HostModel, ModelSelectionController, ModelSelectionState, ProviderInfo, boot_selection_state,
+    vac_paths_persistor,
 };
 use vac_shell_host_surface::{Surface, SurfaceState, SurfaceStateController};
 
@@ -108,12 +108,8 @@ impl ShellCompositionBuilder {
             Arc::new(ApprovalQueueController::new(approval_queue.clone()));
 
         let persistor = Arc::new(vac_paths_persistor(self.paths.as_ref()));
-        let model_state = boot_selection_state(
-            self.providers,
-            self.models,
-            self.fallback_active,
-            persistor,
-        )?;
+        let model_state =
+            boot_selection_state(self.providers, self.models, self.fallback_active, persistor)?;
         let model_ctrl: Arc<dyn ModelController> =
             Arc::new(ModelSelectionController::new(model_state.clone()));
 

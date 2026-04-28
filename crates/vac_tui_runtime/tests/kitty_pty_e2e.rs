@@ -9,7 +9,7 @@
 
 use std::io::{Cursor, ErrorKind, Read};
 use std::time::Duration;
-use vac_tui_runtime::services::kitty_image::{probe_with_io, KittyProbe, READY_MARKER};
+use vac_tui_runtime::services::kitty_image::{KittyProbe, READY_MARKER, probe_with_io};
 
 // ── Mock TTY helper ───────────────────────────────────────────────────────
 
@@ -23,7 +23,11 @@ struct MockPtyReader {
 
 impl MockPtyReader {
     fn empty() -> Self {
-        Self { inner: Vec::new(), pos: 0, stall_after: 0 }
+        Self {
+            inner: Vec::new(),
+            pos: 0,
+            stall_after: 0,
+        }
     }
 }
 
@@ -34,7 +38,9 @@ impl Read for MockPtyReader {
             return Err(std::io::Error::new(ErrorKind::WouldBlock, "pty stalled"));
         }
         let take = out.len().min(self.stall_after - self.pos);
-        if take == 0 { return Ok(0); }
+        if take == 0 {
+            return Ok(0);
+        }
         out[..take].copy_from_slice(&self.inner[self.pos..self.pos + take]);
         self.pos += take;
         Ok(take)

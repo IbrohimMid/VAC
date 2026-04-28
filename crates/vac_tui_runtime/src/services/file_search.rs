@@ -88,7 +88,7 @@ pub fn ranked_search_files(
     if q.len() < 3 {
         return fuzzy_search_files(query, files, max_matches);
     }
-    
+
     let bm = if let Some(index) = bm25_index {
         index.rank(q, max_matches, Bm25Params::default())
     } else {

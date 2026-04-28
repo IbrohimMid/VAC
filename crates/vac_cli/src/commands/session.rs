@@ -29,8 +29,8 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use vac_session_engine::{
-    CompactConfig, EchoAdapter, SlashProcessor, SubmitContext, SubmitEvent,
-    TranscriptWriter, TrivialCompactBoundary, UsageTracker, submit_one,
+    CompactConfig, EchoAdapter, SlashProcessor, SubmitContext, SubmitEvent, TranscriptWriter,
+    TrivialCompactBoundary, UsageTracker, submit_one,
 };
 
 /// F8.2 / H3 — formalized submit metadata that session-run records
@@ -70,9 +70,7 @@ impl ProviderKind {
     pub fn parse(raw: &str) -> Result<Self, String> {
         match raw.to_ascii_lowercase().as_str() {
             "mock" | "echo" => Ok(Self::Mock),
-            other => Err(format!(
-                "unknown provider '{other}'; supported: mock"
-            )),
+            other => Err(format!("unknown provider '{other}'; supported: mock")),
         }
     }
 }
@@ -158,11 +156,14 @@ pub async fn execute(project_root: PathBuf, opts: SessionRunOptions) -> anyhow::
     // inline JSON map, so replay harnesses can `from_value::<SubmitMetadata>`
     // and break on schema drift rather than silently mis-parse.
     let metadata = SubmitMetadata {
-        isolation: opts.docker_image.clone().map(|docker| IsolationMeta { docker }),
+        isolation: opts
+            .docker_image
+            .clone()
+            .map(|docker| IsolationMeta { docker }),
         trajectory: opts.trajectory,
     };
-    let metadata_value = serde_json::to_value(&metadata)
-        .map_err(|e| anyhow::anyhow!("metadata serialize: {e}"))?;
+    let metadata_value =
+        serde_json::to_value(&metadata).map_err(|e| anyhow::anyhow!("metadata serialize: {e}"))?;
     let ctx = SubmitContext::new(Uuid::new_v4(), opts.input).with_metadata(metadata_value);
     let sid = ctx.session_id;
 
@@ -189,7 +190,8 @@ pub async fn execute(project_root: PathBuf, opts: SessionRunOptions) -> anyhow::
                     println!("[tool.request] {name}");
                 }
                 SubmitEvent::ToolResult { name, payload, .. } => {
-                    let success = payload.kind == vac_tool_core::ToolResultKind::Ok || payload.kind == vac_tool_core::ToolResultKind::Warning;
+                    let success = payload.kind == vac_tool_core::ToolResultKind::Ok
+                        || payload.kind == vac_tool_core::ToolResultKind::Warning;
                     println!("[tool.result] {name} ok={success}");
                 }
                 SubmitEvent::Finished { usage } => {
@@ -346,7 +348,10 @@ mod tests {
                 found += 1;
             }
         }
-        assert_eq!(found, 1, "trajectory ON must persist exactly one transcript");
+        assert_eq!(
+            found, 1,
+            "trajectory ON must persist exactly one transcript"
+        );
     }
 
     /// H2 — `--no-trajectory` + `--docker` is refused at entry.
@@ -359,7 +364,9 @@ mod tests {
             trajectory: false,
             docker_image: Some("alpine:3.19".into()),
         };
-        let err = execute(project.path().to_path_buf(), opts).await.unwrap_err();
+        let err = execute(project.path().to_path_buf(), opts)
+            .await
+            .unwrap_err();
         assert!(format!("{err}").contains("trajectory"));
     }
 
@@ -374,7 +381,9 @@ mod tests {
             trajectory: true,
             docker_image: Some("   ".into()),
         };
-        let err = execute(project.path().to_path_buf(), opts).await.unwrap_err();
+        let err = execute(project.path().to_path_buf(), opts)
+            .await
+            .unwrap_err();
         assert!(format!("{err}").contains("docker"));
     }
 }

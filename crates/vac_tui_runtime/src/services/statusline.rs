@@ -42,7 +42,9 @@ pub fn render_statusline(f: &mut Frame, state: &AppState, area: Rect) {
     let mut text = vec![
         Span::styled(
             format!(" {} ", mode_str),
-            theme.style(StyleKey::OverlaySelected).add_modifier(Modifier::BOLD),
+            theme
+                .style(StyleKey::OverlaySelected)
+                .add_modifier(Modifier::BOLD),
         ),
         sep(),
         Span::styled("model ", theme.style(StyleKey::Muted)),
@@ -51,7 +53,11 @@ pub fn render_statusline(f: &mut Frame, state: &AppState, area: Rect) {
         Span::styled(format!("{} tok", tokens), theme.style(StyleKey::Success)),
         sep(),
         Span::styled(
-            if state.core.view_flags.auto_approve { "auto" } else { "manual" },
+            if state.core.view_flags.auto_approve {
+                "auto"
+            } else {
+                "manual"
+            },
             if state.core.view_flags.auto_approve {
                 theme.style(StyleKey::Warning)
             } else {

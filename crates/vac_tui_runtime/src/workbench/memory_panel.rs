@@ -38,13 +38,11 @@ impl WorkbenchTabView for MemoryTab {
                 "no consolidator runs cached yet\n\nsource: {}\n\nthe cache is refreshed by the auto-dream idle tick — run `/dream` or wait for the next idle window.",
                 archive.source.display(),
             );
-            let para = Paragraph::new(msg)
-                .wrap(Wrap { trim: false })
-                .block(
-                    Block::default()
-                        .borders(Borders::ALL)
-                        .title("Memory archive"),
-                );
+            let para = Paragraph::new(msg).wrap(Wrap { trim: false }).block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Memory archive"),
+            );
             f.render_widget(para, area);
             return;
         }

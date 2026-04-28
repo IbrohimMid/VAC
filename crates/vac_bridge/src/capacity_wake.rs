@@ -19,7 +19,7 @@
 use std::collections::VecDeque;
 use std::sync::Arc;
 
-use tokio::sync::{oneshot, Mutex};
+use tokio::sync::{Mutex, oneshot};
 
 pub const DEFAULT_MAX_DEPTH: usize = 256;
 

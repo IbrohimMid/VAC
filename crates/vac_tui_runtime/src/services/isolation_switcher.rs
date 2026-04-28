@@ -13,7 +13,9 @@ pub fn render_isolation_switcher(f: &mut Frame, state: &mut AppState) {
     f.render_widget(Clear, area);
 
     let items: Vec<ListItem> = state
-        .layout.switchers.isolation_modes
+        .layout
+        .switchers
+        .isolation_modes
         .iter()
         .enumerate()
         .map(|(i, p)| {

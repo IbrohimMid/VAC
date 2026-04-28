@@ -75,11 +75,15 @@ pub(super) fn render_workbench_panel(f: &mut Frame, state: &mut AppState, area: 
         .select(idx)
         .block(Block::default().borders(Borders::ALL).title(Span::styled(
             "Workbench",
-            focus_style(state.layout.focus == WorkspaceFocus::Workbench, &state.core.theme),
+            focus_style(
+                state.layout.focus == WorkspaceFocus::Workbench,
+                &state.core.theme,
+            ),
         )))
         .highlight_style(
             state
-                .core.theme
+                .core
+                .theme
                 .style(crate::services::theme::StyleKey::ListSelected),
         );
     f.render_widget(tabs, chunks[0]);
@@ -102,7 +106,9 @@ pub(super) fn render_workbench_panel(f: &mut Frame, state: &mut AppState, area: 
             let rect_w = w.min(avail);
             let rect = ratatui::layout::Rect::new(x, inner_y, rect_w, 1);
             state
-                .layout.workbench_chrome.tab_regions
+                .layout
+                .workbench_chrome
+                .tab_regions
                 .push((crate::workbench::tab_from_index(i), rect));
             x = x.saturating_add(w + 3); // " │ " separator between tabs
         }

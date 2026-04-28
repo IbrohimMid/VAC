@@ -5,7 +5,10 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::info;
 
-use vac_memory::{MemoryScanner, memdir::{MemoryKind, MemoryFrontmatter, Memory}};
+use vac_memory::{
+    MemoryScanner,
+    memdir::{Memory, MemoryFrontmatter, MemoryKind},
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MemoryEntry {
@@ -56,7 +59,10 @@ impl MemoryStore {
 
         let working_memory = Arc::new(RwLock::new(WorkingMemory::new(config.working_capacity)));
         let scanner = Arc::new(MemoryScanner::new(config.db_path.clone()));
-        scanner.ensure_layout().await.map_err(|e| crate::error::MemoryError::Storage(e.to_string()))?;
+        scanner
+            .ensure_layout()
+            .await
+            .map_err(|e| crate::error::MemoryError::Storage(e.to_string()))?;
 
         Ok(Self {
             working_memory,
@@ -72,7 +78,11 @@ impl MemoryStore {
                 working.add(entry);
             }
             MemoryType::Episodic | MemoryType::Semantic => {
-                let kind = if entry.memory_type == MemoryType::Episodic { MemoryKind::Active } else { MemoryKind::Team };
+                let kind = if entry.memory_type == MemoryType::Episodic {
+                    MemoryKind::Active
+                } else {
+                    MemoryKind::Team
+                };
                 let mem = Memory {
                     kind,
                     path: PathBuf::new(),
@@ -87,7 +97,10 @@ impl MemoryStore {
                     },
                     body: entry.content,
                 };
-                self.scanner.write(mem).await.map_err(|e| crate::error::MemoryError::Storage(e.to_string()))?;
+                self.scanner
+                    .write(mem)
+                    .await
+                    .map_err(|e| crate::error::MemoryError::Storage(e.to_string()))?;
             }
         }
         Ok(())
@@ -113,14 +126,22 @@ impl MemoryStore {
                 };
                 let mut results = working;
                 results.extend(self.search_vac_memory(query, None).await?);
-                results.sort_by(|a, b| b.importance.partial_cmp(&a.importance).unwrap_or(std::cmp::Ordering::Equal));
+                results.sort_by(|a, b| {
+                    b.importance
+                        .partial_cmp(&a.importance)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                });
                 results.truncate(10);
                 Ok(results)
             }
         }
     }
 
-    async fn search_vac_memory(&self, query: &str, mt: Option<MemoryType>) -> MemoryResult<Vec<MemoryEntry>> {
+    async fn search_vac_memory(
+        &self,
+        query: &str,
+        mt: Option<MemoryType>,
+    ) -> MemoryResult<Vec<MemoryEntry>> {
         let mems = self.scanner.scan_all().await.unwrap_or_default();
         let query_lower = query.to_lowercase();
         let mut results = Vec::new();
@@ -131,19 +152,31 @@ impl MemoryStore {
                 Some(MemoryType::Working) => false,
                 None => true,
             };
-            if !matches_type { continue; }
-            if m.body.to_lowercase().contains(&query_lower) || m.frontmatter.topic.to_lowercase().contains(&query_lower) {
+            if !matches_type {
+                continue;
+            }
+            if m.body.to_lowercase().contains(&query_lower)
+                || m.frontmatter.topic.to_lowercase().contains(&query_lower)
+            {
                 results.push(MemoryEntry {
                     id: m.frontmatter.topic,
                     content: m.body,
-                    memory_type: if m.kind == MemoryKind::Team { MemoryType::Semantic } else { MemoryType::Episodic },
+                    memory_type: if m.kind == MemoryKind::Team {
+                        MemoryType::Semantic
+                    } else {
+                        MemoryType::Episodic
+                    },
                     timestamp: m.frontmatter.created_at,
                     importance: m.frontmatter.importance,
                     access_count: 0,
                 });
             }
         }
-        results.sort_by(|a, b| b.importance.partial_cmp(&a.importance).unwrap_or(std::cmp::Ordering::Equal));
+        results.sort_by(|a, b| {
+            b.importance
+                .partial_cmp(&a.importance)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         results.truncate(10);
         Ok(results)
     }
@@ -163,7 +196,10 @@ impl MemoryStore {
         for mut m in mems {
             if m.frontmatter.topic == id {
                 m.frontmatter.importance = importance;
-                self.scanner.write(m).await.map_err(|e| crate::error::MemoryError::Storage(e.to_string()))?;
+                self.scanner
+                    .write(m)
+                    .await
+                    .map_err(|e| crate::error::MemoryError::Storage(e.to_string()))?;
                 return Ok(());
             }
         }
@@ -188,7 +224,10 @@ impl MemoryStore {
         }
         // vac_memory cannot be cleared this easily safely, but we can delete the directory.
         let _ = tokio::fs::remove_dir_all(&self.config.db_path).await;
-        self.scanner.ensure_layout().await.map_err(|e| crate::error::MemoryError::Storage(e.to_string()))?;
+        self.scanner
+            .ensure_layout()
+            .await
+            .map_err(|e| crate::error::MemoryError::Storage(e.to_string()))?;
         Ok(())
     }
 }
@@ -211,7 +250,7 @@ impl WorkingMemory {
             // Find lowest importance or oldest
             let mut lowest_idx = 0;
             let mut lowest_score = f32::MAX;
-            
+
             for (i, e) in self.entries.iter().enumerate() {
                 let score = e.importance + (e.access_count as f32 * 0.1);
                 if score < lowest_score {

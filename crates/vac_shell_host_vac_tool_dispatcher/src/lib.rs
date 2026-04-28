@@ -126,8 +126,7 @@ impl ToolDispatcher for VacToolDispatcher {
                     }
                     _ => format!("{} failed", call.name),
                 };
-                Ok(ToolResultEnvelope::error(summary, e.to_string())
-                    .with_duration_ms(duration_ms))
+                Ok(ToolResultEnvelope::error(summary, e.to_string()).with_duration_ms(duration_ms))
             }
         }
     }

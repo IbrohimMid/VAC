@@ -25,10 +25,13 @@ pub fn on_set_runtime_state(
                         crate::app::ActivityKind::Approval,
                         format!("Runtime waiting for approval: {}", &tool_call_id[..8]),
                     );
-                    state.layout.toasts.push(crate::services::Toast::info(format!(
-                        "Runtime waiting for approval: {}",
-                        &tool_call_id[..8]
-                    )));
+                    state
+                        .layout
+                        .toasts
+                        .push(crate::services::Toast::info(format!(
+                            "Runtime waiting for approval: {}",
+                            &tool_call_id[..8]
+                        )));
                 }
             }
             vac_runtime::AutopilotState::Backoff { until } => {
@@ -37,10 +40,13 @@ pub fn on_set_runtime_state(
                         crate::app::ActivityKind::Status,
                         format!("Runtime entered backoff until {}", until.format("%H:%M:%S")),
                     );
-                    state.layout.toasts.push(crate::services::Toast::info(format!(
-                        "Runtime backoff until {}",
-                        until.format("%H:%M:%S")
-                    )));
+                    state
+                        .layout
+                        .toasts
+                        .push(crate::services::Toast::info(format!(
+                            "Runtime backoff until {}",
+                            until.format("%H:%M:%S")
+                        )));
                 }
             }
             _ => {}
@@ -60,10 +66,13 @@ pub fn on_set_runtime_state(
                     crate::app::ActivityKind::Status,
                     format!("Execution environment switched to {}", env_name),
                 );
-                state.layout.toasts.push(crate::services::Toast::info(format!(
-                    "Switched to {} environment",
-                    env_name
-                )));
+                state
+                    .layout
+                    .toasts
+                    .push(crate::services::Toast::info(format!(
+                        "Switched to {} environment",
+                        env_name
+                    )));
             }
         }
     }
@@ -212,11 +221,15 @@ pub fn on_task_completed(state: &mut AppState, result: vac_core::task::TaskResul
         total_tokens: turn_tokens,
     };
     state.operator_config.billing.total_session.total_tokens = state
-        .operator_config.billing.total_session
+        .operator_config
+        .billing
+        .total_session
         .total_tokens
         .saturating_add(turn_tokens);
-    state.operator_config.billing.context_usage_percent =
-        estimate_context_percent(state.operator_config.operator.current_model.as_ref(), turn_tokens);
+    state.operator_config.billing.context_usage_percent = estimate_context_percent(
+        state.operator_config.operator.current_model.as_ref(),
+        turn_tokens,
+    );
 
     let mut content = result.summary.clone();
     let mut changeset_updated = false;
@@ -225,7 +238,8 @@ pub fn on_task_completed(state: &mut AppState, result: vac_core::task::TaskResul
         for file in &result.modified_files {
             content.push_str(&format!("- `{}`\n", file));
             state
-                .workspace.changeset_store
+                .workspace
+                .changeset_store
                 .file_modified(file.clone(), "agent".to_string(), true);
             changeset_updated = true;
         }
@@ -235,7 +249,8 @@ pub fn on_task_completed(state: &mut AppState, result: vac_core::task::TaskResul
         for file in &result.created_files {
             content.push_str(&format!("- `{}`\n", file));
             state
-                .workspace.changeset_store
+                .workspace
+                .changeset_store
                 .file_created(file.clone(), "agent".to_string());
             changeset_updated = true;
         }
@@ -263,8 +278,16 @@ pub fn on_task_completed(state: &mut AppState, result: vac_core::task::TaskResul
 /// `InputEvent::ToolResult` — reconcile pending/approved pools, surface error
 /// banners, and route VIL-flavoured tool logs.
 pub fn on_tool_result(state: &mut AppState, result: crate::types::ToolCallResult) {
-    state.execution.approvals.pending_tool_calls.retain(|c| c.id != result.call.id);
-    state.execution.approvals.approved_tools.retain(|c| c.id != result.call.id);
+    state
+        .execution
+        .approvals
+        .pending_tool_calls
+        .retain(|c| c.id != result.call.id);
+    state
+        .execution
+        .approvals
+        .approved_tools
+        .retain(|c| c.id != result.call.id);
     if result.status == crate::types::ToolCallResultStatus::Error {
         if let Some((style, severity)) = classify_critical_banner(&result.result) {
             push_banner_direct(

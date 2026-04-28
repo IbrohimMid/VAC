@@ -1,5 +1,5 @@
-use ratatui::backend::TestBackend;
 use ratatui::Terminal;
+use ratatui::backend::TestBackend;
 use vac_shell_approval_detail::{
     ApprovalDetailViewState, DetailEvent, DetailKey, on_key, render_approval_detail,
 };
@@ -23,11 +23,14 @@ fn fixture() -> ApprovalDetailViewState {
 fn render(view: &ApprovalDetailViewState) -> String {
     let backend = TestBackend::new(80, 16);
     let mut t = Terminal::new(backend).unwrap();
-    t.draw(|f| render_approval_detail(f, view, f.area())).unwrap();
+    t.draw(|f| render_approval_detail(f, view, f.area()))
+        .unwrap();
     let buf = t.backend().buffer();
     let mut s = String::new();
     for y in 0..buf.area.height {
-        for x in 0..buf.area.width { s.push_str(buf[(x, y)].symbol()); }
+        for x in 0..buf.area.width {
+            s.push_str(buf[(x, y)].symbol());
+        }
         s.push('\n');
     }
     s
@@ -66,7 +69,10 @@ fn escape_dismisses() {
 
 #[test]
 fn no_detail_renders_placeholder() {
-    let v = ApprovalDetailViewState { visible: true, detail: None };
+    let v = ApprovalDetailViewState {
+        visible: true,
+        detail: None,
+    };
     let s = render(&v);
     assert!(s.contains("no approval selected"));
 }

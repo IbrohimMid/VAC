@@ -13,7 +13,8 @@ fn slash_dispatch_matches_palette() {
         project_root: std::env::current_dir().unwrap(),
     });
     let builtin_commands: Vec<&str> = state
-        .layout.commands
+        .layout
+        .commands
         .iter()
         .filter(|c| c.source == crate::app::CommandSource::BuiltIn)
         .map(|c| c.command.as_str())

@@ -186,7 +186,7 @@ impl ApprovalController for ApprovalQueueController {
 // D10 — ApprovalDetailProvider + DefaultApprovalDetailProvider
 // =====================================================================
 
-use vac_shell_contracts::{ApprovalDetailView, RiskLevel, RedactionConfig, redacted_json_preview};
+use vac_shell_contracts::{ApprovalDetailView, RedactionConfig, RiskLevel, redacted_json_preview};
 
 /// Trait the app delegates to when opening the detail drawer.
 /// Implementors classify risk, derive a command preview, and fill

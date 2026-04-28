@@ -1,4 +1,3 @@
-
 use vac_shell_contracts::{Severity, ShellActivityKind};
 use vac_shell_host_transcript_projection::{
     ToolUseStatus, project_tool_use_activity, session_tool_use_summary, summarize_tool_use,
@@ -8,7 +7,6 @@ use vac_shell_test_support::{
     tool_result_json_line as tool_result_line, write_finished_row, write_tool_call_result_pair,
     write_transcript_rows,
 };
-
 
 #[test]
 fn ok_envelope_projects_to_ok_status_and_severity_ok() {
@@ -59,7 +57,6 @@ fn cancelled_envelope_projects_to_cancelled_status_with_warn_severity() {
     );
 }
 
-
 #[test]
 fn missing_result_projects_to_pending_status() {
     let tmp = tempfile::tempdir().unwrap();
@@ -74,7 +71,6 @@ fn missing_result_projects_to_pending_status() {
     assert_eq!(proj[0].duration_ms, 0);
     assert_eq!(proj[0].to_activity_entry(0).severity, Severity::Warn);
 }
-
 
 #[test]
 fn projection_redacts_payload_and_arguments() {
@@ -108,7 +104,6 @@ fn projection_redacts_payload_and_arguments() {
     assert!(on_disk.contains(secret_args));
     assert!(on_disk.contains(secret_payload));
 }
-
 
 #[test]
 fn multi_tool_projection_preserves_transcript_order() {
@@ -158,7 +153,6 @@ fn multi_tool_projection_preserves_transcript_order() {
     assert_eq!(proj[2].status, ToolUseStatus::Ok);
 }
 
-
 #[test]
 fn summary_counts_each_status_correctly() {
     let tmp = tempfile::tempdir().unwrap();
@@ -202,7 +196,6 @@ fn summary_counts_each_status_correctly() {
     assert_eq!(session_tool_use_summary(&path).unwrap(), s);
 }
 
-
 #[test]
 fn missing_transcript_returns_empty_projection_and_zeroed_summary() {
     let path = std::env::temp_dir().join("does-not-exist-d9.jsonl");
@@ -212,7 +205,6 @@ fn missing_transcript_returns_empty_projection_and_zeroed_summary() {
     assert_eq!(s.ok_count, 0);
     assert_eq!(s.error_count, 0);
 }
-
 
 #[test]
 fn old_transcript_without_tool_rows_returns_empty_projection() {
@@ -225,7 +217,6 @@ fn old_transcript_without_tool_rows_returns_empty_projection() {
     let s = summarize_tool_use(&path).unwrap();
     assert_eq!(s.total_calls, 0);
 }
-
 
 #[test]
 fn activity_entry_detail_only_shows_summary_duration_and_transcript_path() {
@@ -258,7 +249,6 @@ fn activity_entry_detail_only_shows_summary_duration_and_transcript_path() {
     );
     assert_eq!(entry.title, "alpha ok");
 }
-
 
 #[test]
 fn summary_can_contain_text_but_payload_arguments_still_redacted() {
@@ -304,5 +294,9 @@ fn tool_projection_still_uses_tool_result_kind() {
     let proj = project_tool_use_activity(&path).unwrap();
     assert_eq!(proj.len(), 1);
     let entry = proj[0].to_activity_entry(0);
-    assert_eq!(entry.kind, ShellActivityKind::ToolResult, "true tool-use rows must remain ToolResult");
+    assert_eq!(
+        entry.kind,
+        ShellActivityKind::ToolResult,
+        "true tool-use rows must remain ToolResult"
+    );
 }

@@ -56,7 +56,12 @@ fn tail(db_path: PathBuf, stream: String, n: i64, format: &str) -> anyhow::Resul
             })).collect::<Vec<_>>(),
         }));
     }
-    println!("Tail [{}] from {} ({} lines):", stream, db_path.display(), lines.len());
+    println!(
+        "Tail [{}] from {} ({} lines):",
+        stream,
+        db_path.display(),
+        lines.len()
+    );
     for line in lines {
         println!("  [{:>6}] {}", line.seq, line.text);
     }

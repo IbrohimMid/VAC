@@ -6,9 +6,7 @@
 //! pipeline.
 
 use vac_shell_contracts::{ShellCommandKind, ShellCommandSpec};
-use vac_shell_palette::{
-    PaletteEvent, PaletteKey, PaletteViewState, filter_entries, on_key,
-};
+use vac_shell_palette::{PaletteEvent, PaletteKey, PaletteViewState, filter_entries, on_key};
 
 fn fixture() -> Vec<ShellCommandSpec> {
     vec![
@@ -20,7 +18,7 @@ fn fixture() -> Vec<ShellCommandSpec> {
             kind: ShellCommandKind::OverlayRoute,
             palette_visible: true,
             shortcut: None,
-        ..Default::default()
+            ..Default::default()
         },
         ShellCommandSpec {
             id: "memorize".into(),
@@ -30,7 +28,7 @@ fn fixture() -> Vec<ShellCommandSpec> {
             kind: ShellCommandKind::PromptTemplate,
             palette_visible: true,
             shortcut: None,
-        ..Default::default()
+            ..Default::default()
         },
         ShellCommandSpec {
             id: "runtime".into(),
@@ -40,7 +38,7 @@ fn fixture() -> Vec<ShellCommandSpec> {
             kind: ShellCommandKind::BuiltInAction,
             palette_visible: true,
             shortcut: None,
-        ..Default::default()
+            ..Default::default()
         },
         ShellCommandSpec {
             id: "hidden".into(),
@@ -50,7 +48,7 @@ fn fixture() -> Vec<ShellCommandSpec> {
             kind: ShellCommandKind::BuiltInAction,
             palette_visible: false,
             shortcut: None,
-        ..Default::default()
+            ..Default::default()
         },
     ]
 }
@@ -81,8 +79,14 @@ fn prefix_filter_narrows_to_matching_entries() {
 fn enter_returns_selected_command_slash() {
     let mut view = PaletteViewState::new(fixture());
     view.visible = true;
-    assert_eq!(on_key(&mut view, PaletteKey::Char('/')), PaletteEvent::Consumed);
-    assert_eq!(on_key(&mut view, PaletteKey::Char('m')), PaletteEvent::Consumed);
+    assert_eq!(
+        on_key(&mut view, PaletteKey::Char('/')),
+        PaletteEvent::Consumed
+    );
+    assert_eq!(
+        on_key(&mut view, PaletteKey::Char('m')),
+        PaletteEvent::Consumed
+    );
     // input is now "/m" -> filtered = ["/model", "/memorize"], selected = 0
     assert_eq!(
         on_key(&mut view, PaletteKey::Enter),
@@ -108,7 +112,10 @@ fn escape_dismisses_and_clears_state() {
     view.visible = true;
     on_key(&mut view, PaletteKey::Char('/'));
     on_key(&mut view, PaletteKey::Char('r'));
-    assert_eq!(on_key(&mut view, PaletteKey::Escape), PaletteEvent::Dismissed);
+    assert_eq!(
+        on_key(&mut view, PaletteKey::Escape),
+        PaletteEvent::Dismissed
+    );
     assert!(!view.visible);
     assert!(view.input.is_empty());
     assert_eq!(view.selected, 0);

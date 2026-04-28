@@ -28,9 +28,10 @@ pub fn project_status(comp: &ShellComposition, inputs: &StatusInputs) -> ShellSt
     // decision; rows leave the queue only when `submit_all` drains
     // it. So the pending count == queue length.
     let pending = comp.approval_queue.snapshot().len();
-    let model_label = comp.model_state.active_model().map(|(p, id)| {
-        format!("{} / {}", p.0, id)
-    });
+    let model_label = comp
+        .model_state
+        .active_model()
+        .map(|(p, id)| format!("{} / {}", p.0, id));
     ShellStatusView {
         surface: Some(surface.into()),
         model_label,

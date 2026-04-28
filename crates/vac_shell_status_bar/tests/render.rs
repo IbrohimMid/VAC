@@ -1,5 +1,5 @@
-use ratatui::backend::TestBackend;
 use ratatui::Terminal;
+use ratatui::backend::TestBackend;
 use vac_shell_contracts::ShellStatusView;
 use vac_shell_status_bar::render_status_bar;
 
@@ -9,7 +9,9 @@ fn render(view: &ShellStatusView) -> String {
     t.draw(|f| render_status_bar(f, view, f.area())).unwrap();
     let buf = t.backend().buffer();
     let mut s = String::new();
-    for x in 0..buf.area.width { s.push_str(buf[(x, 0)].symbol()); }
+    for x in 0..buf.area.width {
+        s.push_str(buf[(x, 0)].symbol());
+    }
     s
 }
 

@@ -64,9 +64,7 @@ impl PromptHistory {
             .entries
             .iter()
             .enumerate()
-            .filter(|(_, p)| {
-                needle.is_empty() || p.to_lowercase().starts_with(&needle)
-            })
+            .filter(|(_, p)| needle.is_empty() || p.to_lowercase().starts_with(&needle))
             .map(|(i, p)| {
                 // Lower score wins. Recency weighs more than length.
                 let recency = i as f32; // 0 = newest

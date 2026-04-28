@@ -6,5 +6,5 @@ pub mod parser;
 pub mod validate;
 
 pub use ast::*;
-pub use parser::{parse, ParseError};
-pub use validate::{validate, Severity, SymbolTable, ValidationIssue, ValidationReport};
+pub use parser::{ParseError, parse};
+pub use validate::{Severity, SymbolTable, ValidationIssue, ValidationReport, validate};

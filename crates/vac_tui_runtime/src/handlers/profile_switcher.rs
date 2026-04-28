@@ -49,14 +49,22 @@ pub fn select_next(ctx: &mut HandlerContext) -> HandlerResult {
 
 /// Select previous profile.
 pub fn select_prev(ctx: &mut HandlerContext) -> HandlerResult {
-    ctx.state.layout.switchers.profile_selected = ctx.state.layout.switchers.profile_selected.saturating_sub(1);
+    ctx.state.layout.switchers.profile_selected = ctx
+        .state
+        .layout
+        .switchers
+        .profile_selected
+        .saturating_sub(1);
     Ok(())
 }
 
 /// Submit selected profile.
 pub fn submit_selected(ctx: &mut HandlerContext) -> HandlerResult {
     let filtered = ctx.state.profile_switcher_filtered();
-    if let Some(p) = filtered.get(ctx.state.layout.switchers.profile_selected).cloned() {
+    if let Some(p) = filtered
+        .get(ctx.state.layout.switchers.profile_selected)
+        .cloned()
+    {
         ctx.state.layout.switchers.active_profile = p.clone();
         let _ = ctx
             .output_tx

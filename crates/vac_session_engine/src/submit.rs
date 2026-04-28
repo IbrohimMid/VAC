@@ -198,17 +198,16 @@ async fn submit_after_accepted(
             serde_json::json!({ "kind": "drop_oldest", "n": n }),
         )),
         CompactHint::Summarise { n, summary } => Some((
-            compact_cfg.message_count.saturating_sub(*n).saturating_add(1),
+            compact_cfg
+                .message_count
+                .saturating_sub(*n)
+                .saturating_add(1),
             *n,
             serde_json::json!({ "kind": "summarise", "n": n, "summary": summary }),
         )),
     };
     if let Some((kept, dropped, payload)) = compact_payload {
-        let row = TranscriptEntry::new(
-            submit.session_id,
-            TranscriptKind::CompactBoundary,
-            payload,
-        );
+        let row = TranscriptEntry::new(submit.session_id, TranscriptKind::CompactBoundary, payload);
         transcript.append(handle, &row).await?;
         emit(events, SubmitEvent::Compacted { kept, dropped });
     }
@@ -402,12 +401,9 @@ async fn submit_after_accepted(
             },
         );
         let gate_decision = if let Some(gate) = compact_cfg.gate.as_ref() {
-            let mut ctx = crate::gate::ToolCheckCtx::new(
-                call.name.clone(),
-                submit.session_id,
-            )
-            .with_arguments(call.arguments.clone())
-            .with_estimated_tokens(call.estimated_tokens);
+            let mut ctx = crate::gate::ToolCheckCtx::new(call.name.clone(), submit.session_id)
+                .with_arguments(call.arguments.clone())
+                .with_estimated_tokens(call.estimated_tokens);
             if let Some(reason) = call.reason.as_ref() {
                 ctx = ctx.with_reason(reason.clone());
             }
@@ -503,7 +499,12 @@ pub async fn submit_one(
     );
     let accepted_id = accepted.id;
     transcript.append(&handle, &accepted).await?;
-    emit(&events, SubmitEvent::Accepted { entry_id: accepted_id });
+    emit(
+        &events,
+        SubmitEvent::Accepted {
+            entry_id: accepted_id,
+        },
+    );
 
     // 2. Everything after Accepted must end in Finished or Aborted.
     // Wrap the body so any `?` error path still gets a best-effort

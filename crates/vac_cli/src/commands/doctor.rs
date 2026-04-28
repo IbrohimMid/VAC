@@ -459,26 +459,17 @@ fn check_isolation(root: &Path, _strict: bool, _fix: bool) -> (bool, serde_json:
         //    the daemon is actually reachable, not just that the CLI exists.
         match std::process::Command::new(runtime).arg("info").output() {
             Ok(out) if out.status.success() => {
-                kernel_signals.insert(
-                    format!("{}_info", runtime),
-                    serde_json::Value::Bool(true),
-                );
+                kernel_signals.insert(format!("{}_info", runtime), serde_json::Value::Bool(true));
             }
             Ok(_) => {
                 ok = false;
                 messages.push(format!("{} info failed (daemon unreachable?)", runtime));
-                kernel_signals.insert(
-                    format!("{}_info", runtime),
-                    serde_json::Value::Bool(false),
-                );
+                kernel_signals.insert(format!("{}_info", runtime), serde_json::Value::Bool(false));
             }
             Err(_) => {
                 ok = false;
                 messages.push(format!("{} info command errored", runtime));
-                kernel_signals.insert(
-                    format!("{}_info", runtime),
-                    serde_json::Value::Bool(false),
-                );
+                kernel_signals.insert(format!("{}_info", runtime), serde_json::Value::Bool(false));
             }
         }
 
@@ -509,8 +500,7 @@ fn check_isolation(root: &Path, _strict: bool, _fix: bool) -> (bool, serde_json:
             }
             Some(false) => {
                 ok = false;
-                messages
-                    .push("unprivileged_userns_clone disabled (sysctl=0)".into());
+                messages.push("unprivileged_userns_clone disabled (sysctl=0)".into());
                 kernel_signals.insert("unprivileged_userns".into(), serde_json::Value::Bool(false));
             }
             None => {
@@ -555,7 +545,8 @@ fn detect_cgroup_v2() -> Option<bool> {
         // The unified hierarchy is mounted at /sys/fs/cgroup as `cgroup2`.
         // /proc/mounts exposes every active mount; a single line match is
         // enough to disambiguate v2 from v1 (`cgroup` type).
-        match std::fs::read_to_string("/proc/mounts") { // allow_sync_io: tiny procfs read, not hot-path
+        match std::fs::read_to_string("/proc/mounts") {
+            // allow_sync_io: tiny procfs read, not hot-path
             Ok(mounts) => Some(
                 mounts
                     .lines()
@@ -579,7 +570,8 @@ fn detect_unprivileged_userns() -> Option<bool> {
         // hardened images (CIS, STIG) often flip it to 0. Treat absence of
         // the file as 'unknown' and flag explicit 0 as a hard failure.
         let path = "/proc/sys/kernel/unprivileged_userns_clone";
-        match std::fs::read_to_string(path) { // allow_sync_io: tiny sysctl read, not hot-path
+        match std::fs::read_to_string(path) {
+            // allow_sync_io: tiny sysctl read, not hot-path
             Ok(contents) => Some(contents.trim() == "1"),
             Err(_) => {
                 // Missing on non-Debian kernels; fall back to capability probe.

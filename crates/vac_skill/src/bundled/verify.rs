@@ -26,10 +26,7 @@ pub const MAX_VERIFY_READ_BYTES: u64 = 1_048_576; // 1 MiB
 /// Used to reject path traversal — `../../etc/passwd`, symlinks
 /// pointing outside the project, absolute paths to arbitrary
 /// files — regardless of input shape.
-pub(crate) async fn resolve_within(
-    working_dir: &Path,
-    rel: &Path,
-) -> Result<PathBuf, String> {
+pub(crate) async fn resolve_within(working_dir: &Path, rel: &Path) -> Result<PathBuf, String> {
     let base = tokio::fs::canonicalize(working_dir)
         .await
         .map_err(|e| format!("working_dir unreadable: {e}"))?;
@@ -42,10 +39,7 @@ pub(crate) async fn resolve_within(
         .await
         .map_err(|e| format!("path resolve failed: {e}"))?;
     if !real.starts_with(&base) {
-        return Err(format!(
-            "path escapes working_dir: {}",
-            real.display()
-        ));
+        return Err(format!("path escapes working_dir: {}", real.display()));
     }
     Ok(real)
 }
@@ -215,10 +209,7 @@ mod tests {
     async fn verify_flags_missing_file() {
         let tmp = tempfile::tempdir().unwrap();
         let out = VerifySkill
-            .run(ctx(
-                &tmp,
-                json!({ "changed_paths": ["nope.rs"] }),
-            ))
+            .run(ctx(&tmp, json!({ "changed_paths": ["nope.rs"] })))
             .await
             .unwrap();
         assert_eq!(out.payload["ok"], false);
@@ -292,10 +283,7 @@ mod tests {
         // If the skill honours containment, it will flag it as an
         // issue rather than happily confirming its contents.
         let out = VerifySkill
-            .run(ctx(
-                &tmp,
-                json!({ "changed_paths": ["/etc/hostname"] }),
-            ))
+            .run(ctx(&tmp, json!({ "changed_paths": ["/etc/hostname"] })))
             .await
             .unwrap();
         assert_eq!(out.payload["ok"], false);

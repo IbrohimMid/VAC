@@ -63,20 +63,28 @@ async fn smoke_perf_issue() {
 
 #[tokio::test]
 async fn smoke_github_and_slack_install() {
-    integrations::install_github_app(PathBuf::from(".")).await.unwrap();
-    integrations::install_slack_app(PathBuf::from(".")).await.unwrap();
+    integrations::install_github_app(PathBuf::from("."))
+        .await
+        .unwrap();
+    integrations::install_slack_app(PathBuf::from("."))
+        .await
+        .unwrap();
 }
 
 #[tokio::test]
 async fn smoke_reload_plugins() {
     let t = tmp();
-    integrations::reload_plugins(t.path().to_path_buf()).await.unwrap();
+    integrations::reload_plugins(t.path().to_path_buf())
+        .await
+        .unwrap();
 }
 
 #[tokio::test]
 async fn smoke_teleport() {
     let t = tmp();
-    integrations::teleport(t.path().to_path_buf()).await.unwrap();
+    integrations::teleport(t.path().to_path_buf())
+        .await
+        .unwrap();
 }
 
 // ── Diagnostics ────────────────────────────────────────────────────
@@ -84,7 +92,9 @@ async fn smoke_teleport() {
 #[tokio::test]
 async fn smoke_debug_tool_call() {
     let t = tmp();
-    diagnostics::debug_tool_call(t.path().to_path_buf()).await.unwrap();
+    diagnostics::debug_tool_call(t.path().to_path_buf())
+        .await
+        .unwrap();
 }
 
 #[tokio::test]
@@ -95,7 +105,9 @@ async fn smoke_heapdump() {
 #[tokio::test]
 async fn smoke_statusline() {
     let t = tmp();
-    diagnostics::statusline(t.path().to_path_buf()).await.unwrap();
+    diagnostics::statusline(t.path().to_path_buf())
+        .await
+        .unwrap();
 }
 
 #[tokio::test]
@@ -108,7 +120,9 @@ async fn smoke_good_claude() {
 #[tokio::test]
 async fn smoke_thinkback_empty() {
     let t = tmp();
-    plan_memory::thinkback(t.path().to_path_buf(), 5).await.unwrap();
+    plan_memory::thinkback(t.path().to_path_buf(), 5)
+        .await
+        .unwrap();
 }
 
 #[tokio::test]
@@ -121,11 +135,15 @@ async fn smoke_ultraplan() {
 #[tokio::test]
 async fn smoke_sandbox_toggle() {
     let t = tmp();
-    plan_memory::sandbox_toggle(t.path().to_path_buf()).await.unwrap();
+    plan_memory::sandbox_toggle(t.path().to_path_buf())
+        .await
+        .unwrap();
 }
 
 #[tokio::test]
 async fn smoke_rewind_empty() {
     let t = tmp();
-    plan_memory::rewind(t.path().to_path_buf(), 5).await.unwrap();
+    plan_memory::rewind(t.path().to_path_buf(), 5)
+        .await
+        .unwrap();
 }

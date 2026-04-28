@@ -25,12 +25,18 @@ async fn session_snapshot_bridge_restores_tui_state() {
         cost_class: "premium".to_string(),
     });
     state.layout.switchers.active_profile = "strict-vil".to_string();
-    state.layout.switchers.selected_rulebooks.insert("security".to_string());
+    state
+        .layout
+        .switchers
+        .selected_rulebooks
+        .insert("security".to_string());
     state.layout.focus = crate::app::WorkspaceFocus::Workbench;
     state.layout.workbench_tab = crate::app::WorkbenchTab::Runtime;
     state.operator_config.operator.sessions_selected_idx = 3;
     state
-        .layout.side_panel.section_collapsed
+        .layout
+        .side_panel
+        .section_collapsed
         .insert(crate::app::SidePanelSection::Runtime);
     state.operator_config.billing.total_session.total_tokens = 2048;
     state.workspace.modified_files = vec!["src/main.rs".to_string()];
@@ -47,7 +53,12 @@ async fn session_snapshot_bridge_restores_tui_state() {
     apply_session_snapshot(&mut restored, &loaded);
 
     assert_eq!(
-        restored.operator_config.operator.current_model.as_ref().map(|m| m.name.as_str()),
+        restored
+            .operator_config
+            .operator
+            .current_model
+            .as_ref()
+            .map(|m| m.name.as_str()),
         None
     );
     assert_eq!(
@@ -55,16 +66,30 @@ async fn session_snapshot_bridge_restores_tui_state() {
         Some("claude-sonnet-4")
     );
     assert_eq!(restored.layout.switchers.active_profile, "strict-vil");
-    assert!(restored.layout.switchers.selected_rulebooks.contains("security"));
+    assert!(
+        restored
+            .layout
+            .switchers
+            .selected_rulebooks
+            .contains("security")
+    );
     assert_eq!(restored.layout.focus, crate::app::WorkspaceFocus::Workbench);
-    assert_eq!(restored.layout.workbench_tab, crate::app::WorkbenchTab::Runtime);
+    assert_eq!(
+        restored.layout.workbench_tab,
+        crate::app::WorkbenchTab::Runtime
+    );
     assert_eq!(restored.operator_config.operator.sessions_selected_idx, 3);
     assert!(
         restored
-            .layout.side_panel.section_collapsed
+            .layout
+            .side_panel
+            .section_collapsed
             .contains(&crate::app::SidePanelSection::Runtime)
     );
-    assert_eq!(restored.operator_config.billing.total_session.total_tokens, 0);
+    assert_eq!(
+        restored.operator_config.billing.total_session.total_tokens,
+        0
+    );
     assert_eq!(restored.core.startup.provider_status, "initializing");
     assert_eq!(
         restored.core.startup.active_rulebook.as_deref(),
@@ -115,17 +140,20 @@ async fn session_restore_clears_popup_state() {
     // Verify all popup states cleared
     assert!(
         !state
-            .layout.overlay_manager
+            .layout
+            .overlay_manager
             .is_active(crate::overlay::OverlayId::ModelSwitcher)
     );
     assert!(
         !state
-            .layout.overlay_manager
+            .layout
+            .overlay_manager
             .is_active(crate::overlay::OverlayId::FileSearch)
     );
     assert!(
         !state
-            .layout.overlay_manager
+            .layout
+            .overlay_manager
             .is_active(crate::overlay::OverlayId::Changeset)
     );
     assert!(state.layout.switchers.model_filter.is_empty());
@@ -140,10 +168,12 @@ async fn session_restore_clears_changeset_store() {
 
     // Add changeset entries
     state
-        .workspace.changeset_store
+        .workspace
+        .changeset_store
         .file_created("a.rs".to_string(), "agent".to_string());
     state
-        .workspace.changeset_store
+        .workspace
+        .changeset_store
         .file_modified("b.rs".to_string(), "agent".to_string(), true);
     assert_eq!(state.workspace.changeset_store.entries().len(), 2);
 
@@ -169,24 +199,32 @@ async fn session_restore_clears_approval_state() {
     let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
 
     // Add approval state
-    state.execution.approvals.pending_approvals.push(crate::ToolCall {
-        id: "tc-1".to_string(),
-        r#type: "function".to_string(),
-        function: crate::FunctionCall {
-            name: "test".to_string(),
-            arguments: "{}".to_string(),
-        },
-        metadata: None,
-    });
-    state.execution.approvals.approved_tools.push(crate::ToolCall {
-        id: "tc-2".to_string(),
-        r#type: "function".to_string(),
-        function: crate::FunctionCall {
-            name: "test".to_string(),
-            arguments: "{}".to_string(),
-        },
-        metadata: None,
-    });
+    state
+        .execution
+        .approvals
+        .pending_approvals
+        .push(crate::ToolCall {
+            id: "tc-1".to_string(),
+            r#type: "function".to_string(),
+            function: crate::FunctionCall {
+                name: "test".to_string(),
+                arguments: "{}".to_string(),
+            },
+            metadata: None,
+        });
+    state
+        .execution
+        .approvals
+        .approved_tools
+        .push(crate::ToolCall {
+            id: "tc-2".to_string(),
+            r#type: "function".to_string(),
+            function: crate::FunctionCall {
+                name: "test".to_string(),
+                arguments: "{}".to_string(),
+            },
+            metadata: None,
+        });
 
     // Trigger session restore
     crate::controller::handle_backend_event(
@@ -212,7 +250,8 @@ fn session_restore_clears_store_and_syncs_derived() {
     let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
 
     state
-        .workspace.changeset_store
+        .workspace
+        .changeset_store
         .file_modified("a.rs".to_string(), "agent".to_string(), true);
     state.workspace.modified_files = state.workspace.changeset_store.modified_files();
     assert_eq!(state.workspace.modified_files.len(), 1);
@@ -230,7 +269,10 @@ fn session_restore_clears_store_and_syncs_derived() {
     // Both store and derived view must be empty
     assert_eq!(state.workspace.changeset_store.active_entries().len(), 0);
     assert_eq!(state.workspace.modified_files.len(), 0);
-    assert_eq!(state.workspace.modified_files, state.workspace.changeset_store.modified_files());
+    assert_eq!(
+        state.workspace.modified_files,
+        state.workspace.changeset_store.modified_files()
+    );
 }
 
 #[test]
@@ -468,7 +510,10 @@ fn session_resume_ctrl_r_keyboard_nav() {
     assert_eq!(state.layout.session_resume.selected, 0);
     assert_eq!(state.layout.session_resume.filtered_indices.len(), 1);
     let matched_idx = state.layout.session_resume.filtered_indices[0];
-    assert_eq!(state.layout.session_resume.list[matched_idx].session_id, id_b);
+    assert_eq!(
+        state.layout.session_resume.list[matched_idx].session_id,
+        id_b
+    );
 
     // Backspace clears 'a' — "bet" still matches beta
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::InputBackspace);
@@ -476,7 +521,12 @@ fn session_resume_ctrl_r_keyboard_nav() {
 
     // Esc closes overlay and clears query
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::HandleEsc);
-    assert!(!state.layout.overlay_manager.is_active(OverlayId::SessionResume));
+    assert!(
+        !state
+            .layout
+            .overlay_manager
+            .is_active(OverlayId::SessionResume)
+    );
     assert!(state.layout.session_resume.query.is_empty());
     assert!(state.layout.session_resume.filtered_indices.is_empty());
 }

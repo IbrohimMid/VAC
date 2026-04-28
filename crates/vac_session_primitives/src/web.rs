@@ -86,9 +86,9 @@ pub async fn fetch(
         .clone()
         .unwrap_or_else(|| "GET".into())
         .to_uppercase();
-    let method_parsed: reqwest::Method = method.parse().map_err(|_| {
-        EngineError::Other(format!("invalid http method '{method}'"))
-    })?;
+    let method_parsed: reqwest::Method = method
+        .parse()
+        .map_err(|_| EngineError::Other(format!("invalid http method '{method}'")))?;
 
     let client = reqwest::Client::builder()
         .timeout(DEFAULT_TIMEOUT)
@@ -157,11 +157,7 @@ pub async fn fetch(
             Some(path),
         )
     } else {
-        (
-            String::from_utf8_lossy(&bytes).into_owned(),
-            false,
-            None,
-        )
+        (String::from_utf8_lossy(&bytes).into_owned(), false, None)
     };
 
     Ok(WebFetchResult {
@@ -240,10 +236,7 @@ impl SearchBackend for BraveBackend {
             .get("https://api.search.brave.com/res/v1/web/search")
             .header("X-Subscription-Token", &self.api_key)
             .header("Accept", "application/json")
-            .query(&[
-                ("q", req.query.as_str()),
-                ("count", &req.count.to_string()),
-            ])
+            .query(&[("q", req.query.as_str()), ("count", &req.count.to_string())])
             .send()
             .await
             .map_err(|e| EngineError::Other(format!("brave send: {e}")))?;

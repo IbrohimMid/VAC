@@ -19,8 +19,8 @@ pub use error::LlmError;
 pub use models::{LlmContent, LlmMessage, LlmRole};
 pub use provider::{CacheControlHint, LlmProvider, LlmRequest, LlmResponse, Message, Role};
 pub use rate_limit::{
-    Clock, FakeClock, RateLimitTracker, SystemClock, DEFAULT_BACKOFF,
-    JITTER_FRACTION, MAX_BACKOFF, RPM_WINDOW_SECS,
+    Clock, DEFAULT_BACKOFF, FakeClock, JITTER_FRACTION, MAX_BACKOFF, RPM_WINDOW_SECS,
+    RateLimitTracker, SystemClock,
 };
 pub use router::LlmRouter;
 pub use rulebook_hook::RulebookContext;

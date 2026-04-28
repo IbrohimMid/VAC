@@ -151,7 +151,10 @@ pub fn group_by_category(
     let mut buckets: std::collections::BTreeMap<Option<String>, Vec<ShellCommandSpec>> =
         std::collections::BTreeMap::new();
     for e in entries {
-        buckets.entry(e.category.clone()).or_default().push(e.clone());
+        buckets
+            .entry(e.category.clone())
+            .or_default()
+            .push(e.clone());
     }
     buckets.into_iter().collect()
 }
@@ -160,10 +163,7 @@ pub fn group_by_category(
 /// enabled entries, then disabled entries. Caller-supplied recent
 /// id list pins those entries to the top while preserving their
 /// recency order.
-pub fn rank_entries(
-    entries: &[ShellCommandSpec],
-    recent_ids: &[String],
-) -> Vec<ShellCommandSpec> {
+pub fn rank_entries(entries: &[ShellCommandSpec], recent_ids: &[String]) -> Vec<ShellCommandSpec> {
     let mut recent: Vec<ShellCommandSpec> = Vec::new();
     let mut enabled: Vec<ShellCommandSpec> = Vec::new();
     let mut disabled: Vec<ShellCommandSpec> = Vec::new();
@@ -184,8 +184,7 @@ pub fn rank_entries(
     // a single command into several rows. Disabled recents stay
     // in the recent block (the operator pinned them) and remain
     // visibly disabled via `disabled_reason`.
-    let mut seen: std::collections::HashSet<String> =
-        std::collections::HashSet::new();
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
     for id in recent_ids {
         if !seen.insert(id.clone()) {
             continue;

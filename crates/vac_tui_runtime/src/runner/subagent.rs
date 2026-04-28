@@ -23,9 +23,7 @@ use vac_session_engine::{
     CacheSafeParams, ForkBudget, ForkResult, ForkedAgentRunner, OverlayGuard,
 };
 
-use crate::app::{
-    AgentBreadcrumb, AppStateRootHandle, NotificationLevel, RootNotification,
-};
+use crate::app::{AgentBreadcrumb, AppStateRootHandle, NotificationLevel, RootNotification};
 
 /// Shared helper to produce a timestamp in the same shape as the
 /// root handle expects. Unix seconds; zero on clock failure.
@@ -125,11 +123,7 @@ impl SubagentCoordinator {
 
     /// Record a tool call against this coordinator's agent identity.
     /// Pushes a breadcrumb and bumps the root's tool counter.
-    pub async fn record_tool(
-        &self,
-        tool: impl Into<String>,
-        summary: impl Into<String>,
-    ) {
+    pub async fn record_tool(&self, tool: impl Into<String>, summary: impl Into<String>) {
         self.root
             .push_breadcrumb(AgentBreadcrumb {
                 agent: self.agent.clone(),
@@ -167,11 +161,8 @@ impl SubagentCoordinator {
         {
             Ok(r) => {
                 for path in &r.reads {
-                    self.record_tool(
-                        "read",
-                        format!("fork warmed {}", path.display()),
-                    )
-                    .await;
+                    self.record_tool("read", format!("fork warmed {}", path.display()))
+                        .await;
                 }
                 Ok(r)
             }
@@ -220,7 +211,7 @@ mod tests {
                 content: "ok".into(),
                 input_tokens: 0,
                 output_tokens: 0,
-            tool_calls: Vec::new(),
+                tool_calls: Vec::new(),
             })
         }
     }
@@ -260,12 +251,8 @@ mod tests {
 
         let notifications = parent.root_handle().notifications().await;
         assert_eq!(notifications.len(), 4, "3 info + 1 error");
-        let sources: Vec<&str> =
-            notifications.iter().map(|n| n.source.as_str()).collect();
-        assert_eq!(
-            sources,
-            vec!["parent", "child", "grandchild", "child"],
-        );
+        let sources: Vec<&str> = notifications.iter().map(|n| n.source.as_str()).collect();
+        assert_eq!(sources, vec!["parent", "child", "grandchild", "child"],);
 
         let breadcrumbs = parent.root_handle().breadcrumbs().await;
         assert_eq!(breadcrumbs.len(), 1);

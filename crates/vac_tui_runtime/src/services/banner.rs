@@ -344,7 +344,8 @@ pub fn render_banner(f: &mut Frame, area: Rect, state: &mut AppState) {
     spans.push(Span::styled(
         dismiss_label.to_string(),
         state
-            .core.theme
+            .core
+            .theme
             .style(msg.style.style_key())
             .add_modifier(Modifier::DIM),
     ));

@@ -72,10 +72,8 @@ impl ChannelAcl {
         if !overlay.allow_channels.is_empty() {
             merged.allow_channels = overlay.allow_channels.clone();
         }
-        merged.deny_channels =
-            union_sorted(&merged.deny_channels, &overlay.deny_channels);
-        merged.notify_channels =
-            union_sorted(&merged.notify_channels, &overlay.notify_channels);
+        merged.deny_channels = union_sorted(&merged.deny_channels, &overlay.deny_channels);
+        merged.notify_channels = union_sorted(&merged.notify_channels, &overlay.notify_channels);
         merged
     }
 
@@ -86,23 +84,15 @@ impl ChannelAcl {
     /// internally.
     pub fn check(&self, channel: &str) -> ChannelDecision {
         let needle = channel.to_ascii_lowercase();
-        let any_match = |list: &[String]| {
-            list.iter().any(|c| c.to_ascii_lowercase() == needle)
-        };
+        let any_match = |list: &[String]| list.iter().any(|c| c.to_ascii_lowercase() == needle);
         if any_match(&self.deny_channels) {
-            return ChannelDecision::Deny(format!(
-                "channel {channel} in deny list"
-            ));
+            return ChannelDecision::Deny(format!("channel {channel} in deny list"));
         }
         if !self.allow_channels.is_empty() && !any_match(&self.allow_channels) {
-            return ChannelDecision::Deny(format!(
-                "channel {channel} not in allow list"
-            ));
+            return ChannelDecision::Deny(format!("channel {channel} not in allow list"));
         }
         if any_match(&self.notify_channels) {
-            return ChannelDecision::AllowWithNotify(format!(
-                "channel {channel} on notify list"
-            ));
+            return ChannelDecision::AllowWithNotify(format!("channel {channel} on notify list"));
         }
         ChannelDecision::Allow
     }
@@ -173,8 +163,12 @@ mod tests {
         let m = ChannelAcl::merge(&user, &project);
         // Project's allow list wins wholesale.
         assert_eq!(
-            m.allow_channels.iter().collect::<std::collections::HashSet<_>>(),
-            ["resources".to_string()].iter().collect::<std::collections::HashSet<_>>(),
+            m.allow_channels
+                .iter()
+                .collect::<std::collections::HashSet<_>>(),
+            ["resources".to_string()]
+                .iter()
+                .collect::<std::collections::HashSet<_>>(),
         );
     }
 
@@ -195,7 +189,10 @@ mod tests {
         let b = acl(&[], &["e", "d"], &[]);
         let m1 = ChannelAcl::merge(&a, &b);
         let m2 = ChannelAcl::merge(&a, &b);
-        assert_eq!(serde_json::to_string(&m1).unwrap(), serde_json::to_string(&m2).unwrap());
+        assert_eq!(
+            serde_json::to_string(&m1).unwrap(),
+            serde_json::to_string(&m2).unwrap()
+        );
         // And outputs are sorted.
         assert_eq!(m1.deny_channels, vec!["a", "b", "c", "d", "e"]);
     }

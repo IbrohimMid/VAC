@@ -32,7 +32,10 @@ fn select_by_delta_moves_down_with_j_like_input() {
     let mut state = seeded_state();
     state.review_select_by_delta(1);
     assert_eq!(state.workspace.review.selected_idx, 1);
-    assert_eq!(state.workspace.review.selected_path.as_deref(), Some("src/file_1.rs"));
+    assert_eq!(
+        state.workspace.review.selected_path.as_deref(),
+        Some("src/file_1.rs")
+    );
 }
 
 #[test]
@@ -71,5 +74,8 @@ fn select_by_delta_jumps_five_files_keyboard_only() {
     }
     // Clamps at last (idx 4, 5 items).
     assert_eq!(state.workspace.review.selected_idx, 4);
-    assert_eq!(state.workspace.review.selected_path.as_deref(), Some("src/file_4.rs"));
+    assert_eq!(
+        state.workspace.review.selected_path.as_deref(),
+        Some("src/file_4.rs")
+    );
 }

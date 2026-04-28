@@ -93,7 +93,10 @@ mod tests {
     #[tokio::test]
     async fn trivial_keeps_when_under_threshold() {
         let b = TrivialCompactBoundary::default();
-        assert_eq!(b.decide(&ctx(10, 1000, 8000)).await.unwrap(), CompactHint::Keep);
+        assert_eq!(
+            b.decide(&ctx(10, 1000, 8000)).await.unwrap(),
+            CompactHint::Keep
+        );
     }
 
     #[tokio::test]

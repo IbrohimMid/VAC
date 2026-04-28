@@ -37,13 +37,11 @@ pub mod pool;
 pub mod pty_host;
 pub mod stdio_host;
 
+pub use diagnostics::{Diagnostic, DiagnosticRegistry, DiagnosticSeverity, LspDiagnosticRegistry};
 pub use host::{
-    AnalysisHost, AnalysisRequest, AnalysisResponse, AnalysisError, AnalysisResult,
+    AnalysisError, AnalysisHost, AnalysisRequest, AnalysisResponse, AnalysisResult,
     StubAnalysisHost, Symbol,
 };
-pub use diagnostics::{
-    Diagnostic, DiagnosticRegistry, DiagnosticSeverity, LspDiagnosticRegistry,
-};
-pub use pool::{server_for_extension, LspServerManager};
+pub use pool::{LspServerManager, server_for_extension};
 pub use pty_host::PortablePtyHost;
 pub use stdio_host::StdioLspHost;

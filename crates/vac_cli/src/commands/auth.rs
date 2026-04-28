@@ -60,7 +60,11 @@ async fn status() -> anyhow::Result<()> {
     println!("  storage  : {}", s.config_path.display());
     println!(
         "  env key  : {}",
-        if s.env_present { "✓ present" } else { "✗ missing" }
+        if s.env_present {
+            "✓ present"
+        } else {
+            "✗ missing"
+        }
     );
     println!(
         "  saved key: {}",
@@ -240,8 +244,7 @@ async fn login_oauth(
     let seed: [u8; 32] = rand::random();
     let pkce = PkceChallenge::generate(&seed);
 
-    let listener =
-        TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], 0))).await?;
+    let listener = TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], 0))).await?;
     let port = listener.local_addr()?.port();
     let redirect_uri = format!("http://127.0.0.1:{port}/callback");
 
@@ -344,9 +347,8 @@ async fn wait_for_callback(listener: TcpListener) -> anyhow::Result<String> {
         }
     }
     let raw = String::from_utf8_lossy(&accumulated);
-    let code = parse_code_from_request(&raw).ok_or_else(|| {
-        anyhow::anyhow!("callback request had no ?code= parameter")
-    })?;
+    let code = parse_code_from_request(&raw)
+        .ok_or_else(|| anyhow::anyhow!("callback request had no ?code= parameter"))?;
 
     let body = "You may close this tab and return to the terminal.\n";
     let response = format!(

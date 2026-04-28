@@ -1,4 +1,3 @@
-
 mod common;
 
 use std::sync::Arc;
@@ -7,7 +6,6 @@ use vac_shell_host_commands::{ShellCommandError, ShellCommandExecutor};
 use vac_shell_host_vac_command_adapter::{AdapterConfig, VacCommandExecutorAdapter};
 
 use common::{cmd, mapped};
-
 
 #[test]
 fn adapter_rejects_unmapped_command() {
@@ -22,7 +20,6 @@ fn adapter_rejects_unmapped_command() {
         other => panic!("expected Unsupported, got {other:?}"),
     }
 }
-
 
 #[test]
 fn adapter_executes_mapped_prompt_and_writes_transcript() {
@@ -41,7 +38,6 @@ fn adapter_executes_mapped_prompt_and_writes_transcript() {
             serde_json::from_str(line).expect("each transcript row is valid JSON");
     }
 }
-
 
 #[test]
 fn adapter_records_shell_palette_metadata_on_accepted_row() {
@@ -66,7 +62,6 @@ fn adapter_records_shell_palette_metadata_on_accepted_row() {
     );
 }
 
-
 #[test]
 fn adapter_resolves_by_slash_when_id_mismatches() {
     let tmp = tempfile::tempdir().unwrap();
@@ -76,7 +71,6 @@ fn adapter_resolves_by_slash_when_id_mismatches() {
         .unwrap();
     assert!(adapter.last_transcript().unwrap().exists());
 }
-
 
 #[test]
 fn adapter_failure_surfaces_as_shell_command_error_failed() {
@@ -95,7 +89,6 @@ fn adapter_failure_surfaces_as_shell_command_error_failed() {
     assert!(adapter.last_transcript().is_none());
 }
 
-
 #[test]
 fn dogfood_preset_maps_known_custom_commands() {
     let tmp = tempfile::tempdir().unwrap();
@@ -108,7 +101,6 @@ fn dogfood_preset_maps_known_custom_commands() {
     }
 }
 
-
 #[test]
 fn adapter_is_object_safe_through_executor_trait() {
     let tmp = tempfile::tempdir().unwrap();
@@ -117,7 +109,6 @@ fn adapter_is_object_safe_through_executor_trait() {
     )));
     adapter.execute(&cmd("memorize", "/memorize")).unwrap();
 }
-
 
 #[test]
 fn adapter_works_inside_existing_multi_thread_runtime() {

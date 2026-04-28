@@ -114,8 +114,7 @@ fn run(root: PathBuf) -> Result<(), String> {
             .join(".vac")
             .join("sessions")
             .join(format!("{session_id}.jsonl"));
-        let views =
-            read_tool_use_rows(&transcript).map_err(|e| format!("replay: {e}"))?;
+        let views = read_tool_use_rows(&transcript).map_err(|e| format!("replay: {e}"))?;
         println!("smoke transcript: {}", transcript.display());
         for v in &views {
             let summary = v

@@ -28,7 +28,11 @@ pub fn dispatch_click(
     // inside the popup falls through, so users can still interact with the
     // underlying surface on the next click after reading the detail.
     if state.layout.lsp_ui.active_hover.is_some() {
-        let outside = state.layout.lsp_ui.hover_popup_region.is_none_or(|r| !hit(&r, col, row));
+        let outside = state
+            .layout
+            .lsp_ui
+            .hover_popup_region
+            .is_none_or(|r| !hit(&r, col, row));
         if outside {
             state.layout.lsp_ui.active_hover = None;
             state.layout.lsp_ui.hover_popup_region = None;
@@ -39,7 +43,9 @@ pub fn dispatch_click(
 
     // Workbench tab strip.
     let tab_hit = state
-        .layout.workbench_chrome.tab_regions
+        .layout
+        .workbench_chrome
+        .tab_regions
         .iter()
         .find(|(_, rect)| hit(rect, col, row))
         .map(|(tab, _)| *tab);
@@ -51,11 +57,14 @@ pub fn dispatch_click(
 
     // Task tray overlay rows.
     if state
-        .layout.overlay_manager
+        .layout
+        .overlay_manager
         .is_active(crate::overlay::OverlayId::TaskTray)
     {
         let tray_hit = state
-            .layout.workbench_chrome.task_tray_row_regions
+            .layout
+            .workbench_chrome
+            .task_tray_row_regions
             .iter()
             .position(|rect| hit(rect, col, row));
         if let Some(idx) = tray_hit {
@@ -67,7 +76,9 @@ pub fn dispatch_click(
     // PR-T16 P1 — Review pane file rows. Clicking a row selects that path
     // and focuses the workbench so the diff body becomes visible.
     let review_hit = state
-        .layout.workbench_chrome.review_file_row_regions
+        .layout
+        .workbench_chrome
+        .review_file_row_regions
         .iter()
         .find(|(_, rect)| hit(rect, col, row))
         .map(|(path, _)| path.clone());
@@ -86,7 +97,9 @@ pub fn dispatch_click(
 
     // PR-T16 P1 — Approvals pane rows.
     let approval_hit = state
-        .layout.workbench_chrome.approvals_row_regions
+        .layout
+        .workbench_chrome
+        .approvals_row_regions
         .iter()
         .find(|(_, rect)| hit(rect, col, row))
         .map(|(idx, _)| *idx);
@@ -99,7 +112,9 @@ pub fn dispatch_click(
 
     // PR-T16 P1 — vil_workbench issue rows.
     let vil_hit = state
-        .layout.workbench_chrome.vil_issue_row_regions
+        .layout
+        .workbench_chrome
+        .vil_issue_row_regions
         .iter()
         .find(|(_, rect)| hit(rect, col, row))
         .map(|(idx, _)| *idx);
@@ -142,7 +157,9 @@ pub fn dispatch_click(
     // selected session still lives behind the keyboard shortcut ('r')
     // so a stray click cannot trigger a session switch.
     let sessions_hit = state
-        .layout.workbench_chrome.sessions_row_regions
+        .layout
+        .workbench_chrome
+        .sessions_row_regions
         .iter()
         .find(|(_, rect)| hit(rect, col, row))
         .map(|(idx, _)| *idx);
@@ -158,7 +175,9 @@ pub fn dispatch_click(
     // PR-T16 T5 — Side panel section header areas. Clicking a section
     // header toggles its collapse state, matching keyboard 'c' behaviour.
     let section_hit = state
-        .layout.side_panel.header_areas
+        .layout
+        .side_panel
+        .header_areas
         .iter()
         .find(|(_, rect)| hit(rect, col, row))
         .map(|(section, _)| *section);
@@ -199,7 +218,9 @@ pub fn dispatch_click(
 pub fn dispatch_hover(state: &mut AppState, col: u16, row: u16) -> bool {
     // 1. Over a VIL row?
     let row_idx = state
-        .layout.workbench_chrome.vil_issue_row_regions
+        .layout
+        .workbench_chrome
+        .vil_issue_row_regions
         .iter()
         .find(|(_, rect)| hit(rect, col, row))
         .map(|(idx, _)| *idx);
@@ -259,7 +280,8 @@ pub fn dispatch_hover(state: &mut AppState, col: u16, row: u16) -> bool {
     // `active_hover_row_idx` on every probe, Some or None); otherwise
     // a stale row index could make the short-circuit fire on a
     // genuinely different region's first probe.
-    let had_popup = state.layout.lsp_ui.active_hover.is_some() || state.layout.lsp_ui.hover_popup_region.is_some();
+    let had_popup = state.layout.lsp_ui.active_hover.is_some()
+        || state.layout.lsp_ui.hover_popup_region.is_some();
     let had_sticky_row = state.layout.lsp_ui.active_hover_row_idx.is_some();
     if had_popup || had_sticky_row {
         state.layout.lsp_ui.active_hover = None;

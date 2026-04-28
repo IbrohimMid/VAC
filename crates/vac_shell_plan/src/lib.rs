@@ -90,9 +90,7 @@ pub fn parse_plan_front_matter(source: &str) -> Result<PlanMetadata, PlanParseEr
             "steps" => current_list = Some("steps"),
             "blocked_on" => current_list = Some("blocked_on"),
             other => {
-                return Err(PlanParseError::InvalidYaml(format!(
-                    "unknown key: {other}"
-                )));
+                return Err(PlanParseError::InvalidYaml(format!("unknown key: {other}")));
             }
         }
     }

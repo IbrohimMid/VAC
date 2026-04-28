@@ -61,10 +61,7 @@ pub async fn decisions(
                     }
                     if let Ok(meta) = entry.metadata().await {
                         if let Ok(modified) = meta.modified() {
-                            if newest
-                                .as_ref()
-                                .is_none_or(|(best, _)| modified > *best)
-                            {
+                            if newest.as_ref().is_none_or(|(best, _)| modified > *best) {
                                 newest = Some((modified, p));
                             }
                         }
@@ -102,7 +99,12 @@ pub async fn decisions(
     }
     println!();
     for (idx, r) in records.iter().enumerate() {
-        println!("  [{}] {} -> {}", idx + 1, r.timestamp.to_rfc3339(), r.chosen);
+        println!(
+            "  [{}] {} -> {}",
+            idx + 1,
+            r.timestamp.to_rfc3339(),
+            r.chosen
+        );
         if !r.rejected.is_empty() {
             println!("      rejected: {}", r.rejected.join(", "));
         }
@@ -139,7 +141,10 @@ pub async fn eval(
     let trace_path = resolve_trace_path(&project_root, path).await?;
     let records = load_decisions_from_file(&trace_path).await?;
     let stats = DecisionStats::from_records(&records);
-    let outcome = DecisionOutcome { task_succeeded: succeeded, duration_ms };
+    let outcome = DecisionOutcome {
+        task_succeeded: succeeded,
+        duration_ms,
+    };
     let report = score_decisions(&records, outcome);
 
     // Optional golden-file comparison.
@@ -154,7 +159,9 @@ pub async fn eval(
             let actual = &records[i].chosen;
             let expected = &golden_records[i].chosen;
             let hit = actual == expected;
-            if hit { matches += 1; }
+            if hit {
+                matches += 1;
+            }
             golden_details.push((actual.clone(), expected.clone(), hit));
         }
         let denom = records.len().max(golden_records.len()).max(1);
@@ -185,7 +192,11 @@ pub async fn eval(
     println!("  score:          {}/100", report.score);
     println!("  rationale:      {}", report.rationale);
     if let Some(rate) = golden_match_rate {
-        println!("  golden match:   {:.1}% ({} pairs)", rate, golden_details.len());
+        println!(
+            "  golden match:   {:.1}% ({} pairs)",
+            rate,
+            golden_details.len()
+        );
         for (i, (actual, expected, hit)) in golden_details.iter().enumerate().take(10) {
             let mark = if *hit { "✓" } else { "✗" };
             println!("    [{i:>2}] {mark} actual={actual}  expected={expected}");
@@ -211,10 +222,7 @@ async fn resolve_trace_path(
             }
             if let Ok(meta) = entry.metadata().await {
                 if let Ok(modified) = meta.modified() {
-                    if newest
-                        .as_ref()
-                        .is_none_or(|(best, _)| modified > *best)
-                    {
+                    if newest.as_ref().is_none_or(|(best, _)| modified > *best) {
                         newest = Some((modified, p));
                     }
                 }

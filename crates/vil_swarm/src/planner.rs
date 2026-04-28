@@ -23,9 +23,7 @@ use crate::error::SwarmError;
 pub struct Planner;
 
 impl Planner {
-    pub async fn predict_next_submit(
-        last_submit_summary: &str,
-    ) -> Result<String, SwarmError> {
+    pub async fn predict_next_submit(last_submit_summary: &str) -> Result<String, SwarmError> {
         let trimmed = last_submit_summary.trim();
         let lower = trimmed.to_ascii_lowercase();
 
@@ -52,13 +50,17 @@ mod tests {
 
     #[tokio::test]
     async fn write_rule_predicts_tests() {
-        let out = Planner::predict_next_submit("write auth module").await.unwrap();
+        let out = Planner::predict_next_submit("write auth module")
+            .await
+            .unwrap();
         assert_eq!(out, "run the tests for auth module");
     }
 
     #[tokio::test]
     async fn add_rule_predicts_tests() {
-        let out = Planner::predict_next_submit("add retry logic").await.unwrap();
+        let out = Planner::predict_next_submit("add retry logic")
+            .await
+            .unwrap();
         assert!(out.starts_with("run the tests for"));
     }
 

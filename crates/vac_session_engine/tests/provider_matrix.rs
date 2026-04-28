@@ -19,9 +19,9 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
 use uuid::Uuid;
 use vac_session_engine::{
-    CompactConfig, EngineError, EngineResult, LlmAdapter, LlmRequest, LlmResponse,
-    SlashCommand, SlashProcessor, SubmitContext, SubmitEvent, TranscriptKind,
-    TranscriptWriter, TrivialCompactBoundary, UsageTracker, submit_one,
+    CompactConfig, EngineError, EngineResult, LlmAdapter, LlmRequest, LlmResponse, SlashCommand,
+    SlashProcessor, SubmitContext, SubmitEvent, TranscriptKind, TranscriptWriter,
+    TrivialCompactBoundary, UsageTracker, submit_one,
 };
 
 struct EchoLikeAdapter;
@@ -34,7 +34,7 @@ impl LlmAdapter for EchoLikeAdapter {
             content: format!("ack: {}", req.prompt),
             input_tokens: req.prompt.split_whitespace().count() as u64,
             output_tokens: 3,
-        tool_calls: Vec::new(),
+            tool_calls: Vec::new(),
         })
     }
 }
@@ -59,7 +59,7 @@ impl LlmAdapter for ChunkedAdapter {
             content: format!("chunk-{n} body"),
             input_tokens: 10,
             output_tokens: 10,
-        tool_calls: Vec::new(),
+            tool_calls: Vec::new(),
         })
     }
 }
@@ -74,7 +74,7 @@ impl LlmAdapter for BigUsageAdapter {
             content: "ok".into(),
             input_tokens: 180_000,
             output_tokens: 20_000,
-        tool_calls: Vec::new(),
+            tool_calls: Vec::new(),
         })
     }
 }
@@ -89,7 +89,7 @@ impl LlmAdapter for ZeroUsageAdapter {
             content: "(nothing to say)".into(),
             input_tokens: 0,
             output_tokens: 0,
-        tool_calls: Vec::new(),
+            tool_calls: Vec::new(),
         })
     }
 }
@@ -111,10 +111,7 @@ impl SlashCommand for NoopSlash {
     fn description(&self) -> &str {
         "no-op"
     }
-    async fn handle(
-        &self,
-        _args: &str,
-    ) -> EngineResult<vac_session_engine::slash::SlashResult> {
+    async fn handle(&self, _args: &str) -> EngineResult<vac_session_engine::slash::SlashResult> {
         Ok(vac_session_engine::slash::SlashResult {
             summary: "nothing happened".into(),
             payload: serde_json::json!({ "noop": true }),
@@ -171,8 +168,7 @@ async fn matrix_path_1_echo_happy_path() {
 #[tokio::test]
 async fn matrix_path_2_chunked_adapter_finishes_cleanly() {
     let adapter = ChunkedAdapter::new();
-    let (kinds, _labels, r) =
-        drive(&adapter, &SlashProcessor::new(), "stream me").await;
+    let (kinds, _labels, r) = drive(&adapter, &SlashProcessor::new(), "stream me").await;
     assert!(r.is_ok());
     assert!(kinds.contains(&TranscriptKind::LlmRequest));
     assert!(kinds.contains(&TranscriptKind::LlmResponse));
@@ -181,24 +177,21 @@ async fn matrix_path_2_chunked_adapter_finishes_cleanly() {
 
 #[tokio::test]
 async fn matrix_path_3_big_usage_is_recorded_on_finished() {
-    let (kinds, _labels, r) =
-        drive(&BigUsageAdapter, &SlashProcessor::new(), "expensive").await;
+    let (kinds, _labels, r) = drive(&BigUsageAdapter, &SlashProcessor::new(), "expensive").await;
     assert!(r.is_ok());
     assert_eq!(*kinds.last().unwrap(), TranscriptKind::Finished);
 }
 
 #[tokio::test]
 async fn matrix_path_4_zero_usage_still_completes() {
-    let (kinds, _labels, r) =
-        drive(&ZeroUsageAdapter, &SlashProcessor::new(), "quiet").await;
+    let (kinds, _labels, r) = drive(&ZeroUsageAdapter, &SlashProcessor::new(), "quiet").await;
     assert!(r.is_ok());
     assert_eq!(*kinds.last().unwrap(), TranscriptKind::Finished);
 }
 
 #[tokio::test]
 async fn matrix_path_5_provider_error_lands_aborted() {
-    let (kinds, labels, r) =
-        drive(&BoomAdapter, &SlashProcessor::new(), "will fail").await;
+    let (kinds, labels, r) = drive(&BoomAdapter, &SlashProcessor::new(), "will fail").await;
     assert!(r.is_err());
     assert_eq!(*kinds.last().unwrap(), TranscriptKind::Aborted);
     assert_eq!(labels.last().copied(), Some("aborted"));
@@ -257,12 +250,10 @@ async fn matrix_terminal_row_invariant_holds_across_all_providers() {
 async fn matrix_docker_metadata_routes_into_accepted_row() {
     let tmp = tempfile::tempdir().unwrap();
     let writer = TranscriptWriter::new(tmp.path().to_path_buf());
-    let ctx = SubmitContext::new(Uuid::new_v4(), "do the thing").with_metadata(
-        serde_json::json!({
-            "isolation": { "docker": "alpine:3.19" },
-            "trajectory": true,
-        }),
-    );
+    let ctx = SubmitContext::new(Uuid::new_v4(), "do the thing").with_metadata(serde_json::json!({
+        "isolation": { "docker": "alpine:3.19" },
+        "trajectory": true,
+    }));
     let sid = ctx.session_id;
     submit_one(
         ctx,
@@ -281,7 +272,10 @@ async fn matrix_docker_metadata_routes_into_accepted_row() {
         .iter()
         .find(|r| r.kind == TranscriptKind::Accepted)
         .expect("accepted row");
-    assert_eq!(accepted.content["metadata"]["isolation"]["docker"], "alpine:3.19");
+    assert_eq!(
+        accepted.content["metadata"]["isolation"]["docker"],
+        "alpine:3.19"
+    );
     assert_eq!(accepted.content["metadata"]["trajectory"], true);
 }
 

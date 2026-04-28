@@ -42,8 +42,8 @@ fn cmd(slash: &str) -> ShellCommandSpec {
         kind: ShellCommandKind::BuiltInAction,
         palette_visible: true,
         shortcut: None,
-    ..Default::default()
-        }
+        ..Default::default()
+    }
 }
 
 #[test]
@@ -138,10 +138,7 @@ fn composition_routes_approval_action() {
         .handle(ShellAction::ToggleApproval { id: "a".into() })
         .unwrap();
     let snap = comp.approval_queue.snapshot();
-    assert_eq!(
-        snap[0].status,
-        vac_shell_approval_bar_status_rejected()
-    );
+    assert_eq!(snap[0].status, vac_shell_approval_bar_status_rejected());
 }
 
 // Avoid pulling vac_shell_approval_bar as a dep just for an enum

@@ -189,9 +189,7 @@ impl VilTool for SendMessageTool {
             .await
             .map_err(|e| ToolError::ExecutionFailed(format!("mkdir: {e}")))?;
         let file = match input.channel {
-            MessageChannel::SessionLog => {
-                dir.join(format!("{}.log", context.session_id))
-            }
+            MessageChannel::SessionLog => dir.join(format!("{}.log", context.session_id)),
             MessageChannel::OperatorInbox => dir.join("inbox.log"),
         };
 

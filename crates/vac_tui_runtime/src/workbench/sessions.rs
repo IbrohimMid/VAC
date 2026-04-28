@@ -25,14 +25,16 @@ impl WorkbenchTabView for SessionsTab {
             .split(area);
 
         let items: Vec<ListItem> = state
-            .session.sessions
+            .session
+            .sessions
             .iter()
             .enumerate()
             .map(|(idx, s)| {
                 let sel = idx == state.operator_config.operator.sessions_selected_idx;
                 let style = if sel {
                     state
-                        .core.theme
+                        .core
+                        .theme
                         .style(StyleKey::Warning)
                         .add_modifier(Modifier::BOLD)
                 } else {
@@ -101,7 +103,11 @@ impl WorkbenchTabView for SessionsTab {
         }
 
         let mut lines: Vec<Line> = Vec::new();
-        if let Some(sel) = state.session.sessions.get(state.operator_config.operator.sessions_selected_idx) {
+        if let Some(sel) = state
+            .session
+            .sessions
+            .get(state.operator_config.operator.sessions_selected_idx)
+        {
             lines.push(Line::from(vec![
                 Span::styled("Title: ", Style::default().add_modifier(Modifier::BOLD)),
                 Span::raw(sel.title.clone()),

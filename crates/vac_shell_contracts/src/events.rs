@@ -15,24 +15,68 @@ pub struct VacSubmitRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum VacShellEvent {
-    AssistantChunk { session_id: String, text: String },
-    AssistantDone { session_id: String },
+    AssistantChunk {
+        session_id: String,
+        text: String,
+    },
+    AssistantDone {
+        session_id: String,
+    },
 
-    ApprovalRequested { id: String, tool_name: String, summary: String, risk: String },
-    ApprovalResolved { id: String, approved: bool },
+    ApprovalRequested {
+        id: String,
+        tool_name: String,
+        summary: String,
+        risk: String,
+    },
+    ApprovalResolved {
+        id: String,
+        approved: bool,
+    },
 
-    ToolStarted { id: String, tool_name: String, summary: String },
-    ToolFinished { id: String, ok: bool, summary: String },
+    ToolStarted {
+        id: String,
+        tool_name: String,
+        summary: String,
+    },
+    ToolFinished {
+        id: String,
+        ok: bool,
+        summary: String,
+    },
 
-    TaskStarted { id: String, label: String },
-    TaskFinished { id: String, ok: bool, summary: String },
+    TaskStarted {
+        id: String,
+        label: String,
+    },
+    TaskFinished {
+        id: String,
+        ok: bool,
+        summary: String,
+    },
 
-    ShellOutput { session_id: String, stream: String, chunk: String },
+    ShellOutput {
+        session_id: String,
+        stream: String,
+        chunk: String,
+    },
 
-    RuntimeStatus { label: String, value: String },
+    RuntimeStatus {
+        label: String,
+        value: String,
+    },
 
-    Banner { level: String, text: String },
-    Toast { level: String, text: String },
+    Banner {
+        level: String,
+        text: String,
+    },
+    Toast {
+        level: String,
+        text: String,
+    },
 
-    AskUser { prompt: String, options: Vec<String> },
+    AskUser {
+        prompt: String,
+        options: Vec<String>,
+    },
 }

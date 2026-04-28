@@ -44,8 +44,8 @@ use axum::{
 use futures::StreamExt;
 use vac_bridge::auth::jwt::{JwtKeySet, KeyMaterial};
 use vac_bridge::remote::{
-    DEFAULT_TELEPORT_TTL, OutboundEvent, RemoteSessionConfig, SessionBroadcast,
-    TeleportClaims, issue_teleport_token, validate_teleport_token,
+    DEFAULT_TELEPORT_TTL, OutboundEvent, RemoteSessionConfig, SessionBroadcast, TeleportClaims,
+    issue_teleport_token, validate_teleport_token,
 };
 
 #[derive(Clone)]
@@ -72,8 +72,10 @@ fn validate_bearer(
 async fn sse_handler(
     State(state): State<AppState>,
     headers: HeaderMap,
-) -> Result<Sse<impl futures::Stream<Item = Result<Event, std::convert::Infallible>>>, (StatusCode, String)>
-{
+) -> Result<
+    Sse<impl futures::Stream<Item = Result<Event, std::convert::Infallible>>>,
+    (StatusCode, String),
+> {
     let claims = validate_bearer(&state.keys, &headers)?;
     tracing::info!(
         target: "vac_cli::teleport",
@@ -106,9 +108,7 @@ async fn input_handler(
     Json(payload): Json<serde_json::Value>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
     let _claims = validate_bearer(&state.keys, &headers)?;
-    state
-        .events
-        .publish(OutboundEvent::new("input", payload));
+    state.events.publish(OutboundEvent::new("input", payload));
     Ok(Json(serde_json::json!({ "accepted": true })))
 }
 
@@ -181,14 +181,8 @@ pub async fn teleport_serve(
     label: String,
     insecure: bool,
 ) -> anyhow::Result<()> {
-    teleport_serve_with_broadcast(
-        project_root,
-        bind,
-        label,
-        insecure,
-        SessionBroadcast::new(),
-    )
-    .await
+    teleport_serve_with_broadcast(project_root, bind, label, insecure, SessionBroadcast::new())
+        .await
 }
 
 /// Audit P0.3 — spawn a teleport bridge bound to a caller-supplied
@@ -201,10 +195,8 @@ pub async fn teleport_serve(
 pub async fn start_live_teleport_bridge(
     project_root: &std::path::Path,
 ) -> anyhow::Result<Arc<SessionBroadcast>> {
-    let bind = std::env::var("VAC_TELEPORT_BIND")
-        .unwrap_or_else(|_| "127.0.0.1:9042".into());
-    let label = std::env::var("VAC_TELEPORT_LABEL")
-        .unwrap_or_else(|_| "live".into());
+    let bind = std::env::var("VAC_TELEPORT_BIND").unwrap_or_else(|_| "127.0.0.1:9042".into());
+    let label = std::env::var("VAC_TELEPORT_LABEL").unwrap_or_else(|_| "live".into());
     let insecure = std::env::var("VAC_TELEPORT_INSECURE")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(false);
@@ -252,9 +244,8 @@ pub async fn teleport_serve_with_broadcast(
     }
     let (keys, kid) = load_or_create_keyset(&project_root)?;
     let session_id = uuid::Uuid::new_v4().simple().to_string();
-    let token =
-        issue_teleport_token(&keys, &kid, &session_id, &label, DEFAULT_TELEPORT_TTL)
-            .map_err(|e| anyhow::anyhow!("mint teleport token: {e}"))?;
+    let token = issue_teleport_token(&keys, &kid, &session_id, &label, DEFAULT_TELEPORT_TTL)
+        .map_err(|e| anyhow::anyhow!("mint teleport token: {e}"))?;
 
     let state = AppState {
         keys: Arc::new(keys),
@@ -351,8 +342,8 @@ pub async fn teleport_attach(token: String, url: String) -> anyhow::Result<()> {
             if line.is_empty() {
                 continue;
             }
-            let payload: serde_json::Value = serde_json::from_str(&line)
-                .unwrap_or_else(|_| serde_json::json!({ "text": line }));
+            let payload: serde_json::Value =
+                serde_json::from_str(&line).unwrap_or_else(|_| serde_json::json!({ "text": line }));
             let resp = stdin_client
                 .post(&stdin_url)
                 .bearer_auth(&stdin_token)
@@ -428,14 +419,8 @@ mod tests {
         // Bind an ephemeral loopback port so tests can run in parallel.
         let addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
         let (keys, kid) = load_or_create_keyset(&project).unwrap();
-        let token = issue_teleport_token(
-            &keys,
-            &kid,
-            "session-test",
-            "test",
-            DEFAULT_TELEPORT_TTL,
-        )
-        .unwrap();
+        let token = issue_teleport_token(&keys, &kid, "session-test", "test", DEFAULT_TELEPORT_TTL)
+            .unwrap();
         let bc = SessionBroadcast::new();
         let state = AppState {
             keys: Arc::new(keys),
@@ -479,12 +464,7 @@ mod tests {
         let mut buf = String::new();
         let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
         while tokio::time::Instant::now() < deadline {
-            let chunk = match tokio::time::timeout(
-                Duration::from_secs(1),
-                body.next(),
-            )
-            .await
-            {
+            let chunk = match tokio::time::timeout(Duration::from_secs(1), body.next()).await {
                 Ok(Some(Ok(c))) => c,
                 _ => continue,
             };
@@ -508,14 +488,8 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let project = tmp.path().to_path_buf();
         let (keys, kid) = load_or_create_keyset(&project).unwrap();
-        let token = issue_teleport_token(
-            &keys,
-            &kid,
-            "session-live",
-            "live",
-            DEFAULT_TELEPORT_TTL,
-        )
-        .unwrap();
+        let token = issue_teleport_token(&keys, &kid, "session-live", "live", DEFAULT_TELEPORT_TTL)
+            .unwrap();
         let bc = SessionBroadcast::new();
         let state = AppState {
             keys: Arc::new(keys),
@@ -550,12 +524,7 @@ mod tests {
         let mut buf = String::new();
         let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
         while tokio::time::Instant::now() < deadline {
-            let chunk = match tokio::time::timeout(
-                Duration::from_secs(1),
-                body.next(),
-            )
-            .await
-            {
+            let chunk = match tokio::time::timeout(Duration::from_secs(1), body.next()).await {
                 Ok(Some(Ok(c))) => c,
                 _ => continue,
             };
@@ -628,8 +597,7 @@ mod tests {
         let (k1, kid1) = load_or_create_keyset(&p).unwrap();
         let (k2, kid2) = load_or_create_keyset(&p).unwrap();
         assert_eq!(kid1, kid2);
-        let tok = issue_teleport_token(&k1, &kid1, "s", "l", DEFAULT_TELEPORT_TTL)
-            .unwrap();
+        let tok = issue_teleport_token(&k1, &kid1, "s", "l", DEFAULT_TELEPORT_TTL).unwrap();
         // Second keyset must validate tokens issued by the first —
         // proves the on-disk secret is the source of truth.
         assert!(validate_teleport_token(&k2, &tok).is_ok());

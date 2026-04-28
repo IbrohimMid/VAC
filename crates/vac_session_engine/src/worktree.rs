@@ -59,9 +59,8 @@ pub async fn enter_worktree(
         .args([
             "worktree",
             "add",
-            path.to_str().ok_or_else(|| {
-                EngineError::Other("worktree path not UTF-8".into())
-            })?,
+            path.to_str()
+                .ok_or_else(|| EngineError::Other("worktree path not UTF-8".into()))?,
             req.branch.as_str(),
         ])
         .status()
@@ -90,10 +89,7 @@ pub struct ExitWorktreeRequest {
     pub force: bool,
 }
 
-pub async fn exit_worktree(
-    project_root: &Path,
-    req: &ExitWorktreeRequest,
-) -> EngineResult<()> {
+pub async fn exit_worktree(project_root: &Path, req: &ExitWorktreeRequest) -> EngineResult<()> {
     if !tokio::fs::try_exists(&req.path).await.unwrap_or(false) {
         return Err(EngineError::Other(format!(
             "worktree path {} not found",

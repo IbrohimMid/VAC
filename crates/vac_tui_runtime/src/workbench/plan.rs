@@ -36,7 +36,8 @@ impl WorkbenchTabView for PlanTab {
                 Span::styled(
                     meta.title.clone(),
                     state
-                        .core.theme
+                        .core
+                        .theme
                         .style(StyleKey::Warning)
                         .add_modifier(Modifier::BOLD),
                 ),
@@ -67,7 +68,10 @@ impl WorkbenchTabView for PlanTab {
             state.core.theme.style(StyleKey::Muted),
         )));
 
-        let focus_style = focus_style(state.layout.focus == WorkspaceFocus::Workbench, &state.core.theme);
+        let focus_style = focus_style(
+            state.layout.focus == WorkspaceFocus::Workbench,
+            &state.core.theme,
+        );
 
         let para = Paragraph::new(lines)
             .block(

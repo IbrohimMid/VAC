@@ -108,10 +108,7 @@ impl WorkbenchTabView for SignalTab {
                         .iter()
                         .map(|l| {
                             Line::from(vec![
-                                Span::styled(
-                                    "! ",
-                                    Style::default().add_modifier(Modifier::BOLD),
-                                ),
+                                Span::styled("! ", Style::default().add_modifier(Modifier::BOLD)),
                                 Span::raw(l.clone()),
                             ])
                         })

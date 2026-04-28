@@ -187,9 +187,9 @@ mod tests {
 
     #[tokio::test]
     async fn agent_run_dispatches_when_present() {
-        use std::sync::Arc;
-        use std::pin::Pin;
         use std::future::Future;
+        use std::pin::Pin;
+        use std::sync::Arc;
         use vac_session_primitives::{AgentDispatcher, EngineResult};
         use vac_tool_core::{ToolResultEnvelope, ToolResultKind};
 

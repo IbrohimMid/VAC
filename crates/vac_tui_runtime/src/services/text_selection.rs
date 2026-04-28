@@ -13,7 +13,8 @@ use ratatui::text::{Line, Span};
 /// Handle mouse drag start - begins text selection in message area
 pub fn handle_drag_start(state: &mut AppState, col: u16, row: u16) {
     let message_area_height = state.layout.message_ui.message_area_height as usize;
-    let row_in_message_area = (row as usize).saturating_sub(state.layout.message_ui.message_area_y as usize);
+    let row_in_message_area =
+        (row as usize).saturating_sub(state.layout.message_ui.message_area_y as usize);
 
     if row < state.layout.message_ui.message_area_y || row_in_message_area >= message_area_height {
         state.composer.selection_state = SelectionState::default();
@@ -39,7 +40,8 @@ pub fn handle_drag(state: &mut AppState, col: u16, row: u16) {
     }
 
     let message_area_height = state.layout.message_ui.message_area_height as usize;
-    let row_in_message_area = (row as usize).saturating_sub(state.layout.message_ui.message_area_y as usize);
+    let row_in_message_area =
+        (row as usize).saturating_sub(state.layout.message_ui.message_area_y as usize);
     let clamped_row = row_in_message_area.min(message_area_height.saturating_sub(2)); // -2 for borders
 
     let absolute_line = state.layout.scroll.messages + clamped_row.saturating_sub(1);

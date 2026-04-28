@@ -318,8 +318,7 @@ impl VacConfig {
         if !self.llm.fallback_chain.iter().any(|p| p == "kilo") {
             self.llm.fallback_chain.insert(0, "kilo".to_string());
         }
-        if self.llm.default_provider == "anthropic"
-            && !self.llm.providers.contains_key("anthropic")
+        if self.llm.default_provider == "anthropic" && !self.llm.providers.contains_key("anthropic")
             || self.llm.default_provider == "anthropic"
                 && std::env::var("ANTHROPIC_API_KEY")
                     .map(|v| v.trim().is_empty())

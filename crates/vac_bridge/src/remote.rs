@@ -264,28 +264,15 @@ mod tests {
     fn wrong_secret_fails() {
         let right = keys(b"right");
         let wrong = keys(b"wrong");
-        let token = issue_teleport_token(
-            &right,
-            "kid-1",
-            "s",
-            "l",
-            Duration::from_secs(60),
-        )
-        .unwrap();
+        let token =
+            issue_teleport_token(&right, "kid-1", "s", "l", Duration::from_secs(60)).unwrap();
         assert!(validate_teleport_token(&wrong, &token).is_err());
     }
 
     #[test]
     fn short_ttl_is_rejected() {
         let ks = keys(b"k");
-        let err = issue_teleport_token(
-            &ks,
-            "kid-1",
-            "s",
-            "l",
-            Duration::from_secs(5),
-        )
-        .unwrap_err();
+        let err = issue_teleport_token(&ks, "kid-1", "s", "l", Duration::from_secs(5)).unwrap_err();
         assert!(format!("{err}").contains("below minimum"), "{err}");
     }
 

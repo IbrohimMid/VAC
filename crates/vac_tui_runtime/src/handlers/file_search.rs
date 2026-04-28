@@ -12,19 +12,25 @@ pub fn open(ctx: &mut HandlerContext) -> HandlerResult {
                 let files = build_file_index(&root);
                 let index_path = root.join(".vac").join("bm25.index");
                 let bm25_index = if index_path.exists() {
-                    vac_ingest::Bm25Index::read_from_file(&index_path).ok().map(std::sync::Arc::new)
+                    vac_ingest::Bm25Index::read_from_file(&index_path)
+                        .ok()
+                        .map(std::sync::Arc::new)
                 } else {
                     None
                 };
                 let _ = tx
-                    .send(crate::app::events::InputEvent::FileIndexReady(files, bm25_index))
+                    .send(crate::app::events::InputEvent::FileIndexReady(
+                        files, bm25_index,
+                    ))
                     .await;
             });
             ctx.state
-                .layout.toasts
+                .layout
+                .toasts
                 .push(Toast::info("Indexing files in background...".to_string()));
         } else {
-            ctx.state.workspace.file_index.all_files = build_file_index(&ctx.state.core.project_root);
+            ctx.state.workspace.file_index.all_files =
+                build_file_index(&ctx.state.core.project_root);
         }
     }
     crate::overlay::open_overlay(ctx.state, crate::overlay::OverlayId::FileSearch);
@@ -50,10 +56,10 @@ pub fn update_query(ctx: &mut HandlerContext, query: String) -> HandlerResult {
         ctx.state.workspace.file_index.search_results.clear();
     } else {
         ctx.state.workspace.file_index.search_results = ranked_search_files(
-            &query, 
-            &ctx.state.workspace.file_index.all_files, 
+            &query,
+            &ctx.state.workspace.file_index.all_files,
             50,
-            ctx.state.workspace.file_index.bm25_index.as_deref()
+            ctx.state.workspace.file_index.bm25_index.as_deref(),
         );
     }
     ctx.state.workspace.file_index.search_selected_idx = 0;
@@ -63,15 +69,27 @@ pub fn update_query(ctx: &mut HandlerContext, query: String) -> HandlerResult {
 /// Select next result.
 pub fn select_next(ctx: &mut HandlerContext) -> HandlerResult {
     if !ctx.state.workspace.file_index.search_results.is_empty() {
-        ctx.state.workspace.file_index.search_selected_idx = (ctx.state.workspace.file_index.search_selected_idx + 1)
-            .min(ctx.state.workspace.file_index.search_results.len().saturating_sub(1));
+        ctx.state.workspace.file_index.search_selected_idx =
+            (ctx.state.workspace.file_index.search_selected_idx + 1).min(
+                ctx.state
+                    .workspace
+                    .file_index
+                    .search_results
+                    .len()
+                    .saturating_sub(1),
+            );
     }
     Ok(())
 }
 
 /// Select previous result.
 pub fn select_prev(ctx: &mut HandlerContext) -> HandlerResult {
-    ctx.state.workspace.file_index.search_selected_idx = ctx.state.workspace.file_index.search_selected_idx.saturating_sub(1);
+    ctx.state.workspace.file_index.search_selected_idx = ctx
+        .state
+        .workspace
+        .file_index
+        .search_selected_idx
+        .saturating_sub(1);
     Ok(())
 }
 
@@ -79,14 +97,17 @@ pub fn select_prev(ctx: &mut HandlerContext) -> HandlerResult {
 pub fn insert_selected(ctx: &mut HandlerContext) -> HandlerResult {
     if let Some(path) = ctx
         .state
-        .workspace.file_index.search_results
+        .workspace
+        .file_index
+        .search_results
         .get(ctx.state.workspace.file_index.search_selected_idx)
     {
         let path = path.clone();
         ctx.state.composer.input.insert_str(&path);
         ctx.state.layout.focus = crate::app::WorkspaceFocus::Input;
         ctx.state
-            .layout.toasts
+            .layout
+            .toasts
             .push(Toast::info(format!("Inserted: {}", path)));
         close(ctx)?;
     }
@@ -123,7 +144,8 @@ mod tests {
         assert!(open(&mut ctx).is_ok());
         assert!(
             ctx.state
-                .layout.overlay_manager
+                .layout
+                .overlay_manager
                 .is_active(crate::overlay::OverlayId::FileSearch)
         );
         assert_eq!(ctx.state.workspace.file_index.search_selected_idx, 0);
@@ -140,7 +162,8 @@ mod tests {
         assert!(close(&mut ctx).is_ok());
         assert!(
             !ctx.state
-                .layout.overlay_manager
+                .layout
+                .overlay_manager
                 .is_active(crate::overlay::OverlayId::FileSearch)
         );
         assert!(ctx.state.workspace.file_index.search_query.is_empty());

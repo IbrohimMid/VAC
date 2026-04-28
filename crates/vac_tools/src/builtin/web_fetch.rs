@@ -9,9 +9,7 @@ use serde::Deserialize;
 
 use crate::error::ToolError;
 use crate::registry::{ToolContext, VilTool};
-use vac_session_primitives::web::{
-    DEFAULT_RESPONSE_CAP, WebFetchRequest, fetch,
-};
+use vac_session_primitives::web::{DEFAULT_RESPONSE_CAP, WebFetchRequest, fetch};
 
 #[derive(Debug, Deserialize)]
 struct Input {
@@ -128,7 +126,8 @@ mod tests {
 
     #[test]
     fn input_parses_required_url() {
-        let r: Result<Input, _> = serde_json::from_value(serde_json::json!({"url": "https://example.com"}));
+        let r: Result<Input, _> =
+            serde_json::from_value(serde_json::json!({"url": "https://example.com"}));
         assert!(r.is_ok());
     }
 
@@ -140,21 +139,19 @@ mod tests {
 
     #[test]
     fn input_authorization_opt_in_defaults_false() {
-        let i: Input = serde_json::from_value(
-            serde_json::json!({"url": "https://example.com"}),
-        )
-        .unwrap();
+        let i: Input =
+            serde_json::from_value(serde_json::json!({"url": "https://example.com"})).unwrap();
         assert!(!i.allow_authorization);
     }
 
     #[test]
     fn per_input_destructive_reflects_allow_authorization() {
         let tool = WebFetchTool::new();
+        assert!(!tool.is_input_destructive(&serde_json::json!({"url": "x"})));
         assert!(
-            !tool.is_input_destructive(&serde_json::json!({"url": "x"}))
+            tool.is_input_destructive(
+                &serde_json::json!({"url": "x", "allow_authorization": true})
+            )
         );
-        assert!(tool.is_input_destructive(
-            &serde_json::json!({"url": "x", "allow_authorization": true})
-        ));
     }
 }

@@ -1,6 +1,6 @@
-use std::time::Instant;
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
+use std::time::Instant;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BootPhase {
@@ -29,7 +29,12 @@ impl BootProfile {
         res
     }
 
-    pub async fn record_async<T, F: std::future::Future<Output = T>>(&self, name: &'static str, phase: BootPhase, f: F) -> T {
+    pub async fn record_async<T, F: std::future::Future<Output = T>>(
+        &self,
+        name: &'static str,
+        phase: BootPhase,
+        f: F,
+    ) -> T {
         let start = Instant::now();
         let res = f.await;
         let elapsed = start.elapsed();

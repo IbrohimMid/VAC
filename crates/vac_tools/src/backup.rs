@@ -207,7 +207,9 @@ pub async fn list_backups(project_root: &Path) -> Result<Vec<BackupRecord>, Tool
         {
             continue;
         }
-        let raw = fs::read(&path).await.map_err(|e| ToolError::ExecutionFailed(e.to_string()))?;
+        let raw = fs::read(&path)
+            .await
+            .map_err(|e| ToolError::ExecutionFailed(e.to_string()))?;
         let record: BackupRecord = match serde_json::from_slice(&raw) {
             Ok(r) => r,
             Err(_) => continue, // skip malformed
@@ -219,9 +221,15 @@ pub async fn list_backups(project_root: &Path) -> Result<Vec<BackupRecord>, Tool
 }
 
 /// M2.2 — Return all backups matching the given submit_id
-pub async fn list_for_submit(project_root: &Path, submit_id: uuid::Uuid) -> Result<Vec<BackupRecord>, ToolError> {
+pub async fn list_for_submit(
+    project_root: &Path,
+    submit_id: uuid::Uuid,
+) -> Result<Vec<BackupRecord>, ToolError> {
     let all = list_backups(project_root).await?;
-    let mut out: Vec<_> = all.into_iter().filter(|r| r.submit_id == Some(submit_id)).collect();
+    let mut out: Vec<_> = all
+        .into_iter()
+        .filter(|r| r.submit_id == Some(submit_id))
+        .collect();
     out.sort_by(|a, b| b.taken_at.cmp(&a.taken_at));
     Ok(out)
 }
@@ -230,10 +238,7 @@ pub async fn list_for_submit(project_root: &Path, submit_id: uuid::Uuid) -> Resu
 /// Returns the record that was restored. If the snapshot records an
 /// empty file and the current path exists, the current file is
 /// removed (reversing a create-new).
-pub async fn restore_backup(
-    project_root: &Path,
-    id: &str,
-) -> Result<BackupRecord, ToolError> {
+pub async fn restore_backup(project_root: &Path, id: &str) -> Result<BackupRecord, ToolError> {
     let meta = meta_path(project_root, id);
     let raw = fs::read(&meta)
         .await
@@ -241,7 +246,9 @@ pub async fn restore_backup(
     let record: BackupRecord = serde_json::from_slice(&raw)
         .map_err(|e| ToolError::ExecutionFailed(format!("meta parse: {e}")))?;
     let snap = snap_path(project_root, id);
-    let bytes = fs::read(&snap).await.map_err(|e| ToolError::ExecutionFailed(e.to_string()))?;
+    let bytes = fs::read(&snap)
+        .await
+        .map_err(|e| ToolError::ExecutionFailed(e.to_string()))?;
     if bytes.is_empty() {
         // Empty snapshot = file did not exist when snapshotted;
         // restore means "remove the post-edit file".
@@ -262,7 +269,9 @@ pub async fn restore_backup(
     let tmp = record
         .original_path
         .with_extension(format!("vac-restore.{pid}.{nonce}.tmp"));
-    fs::write(&tmp, &bytes).await.map_err(|e| ToolError::ExecutionFailed(e.to_string()))?;
+    fs::write(&tmp, &bytes)
+        .await
+        .map_err(|e| ToolError::ExecutionFailed(e.to_string()))?;
     fs::rename(&tmp, &record.original_path)
         .await
         .map_err(|e| ToolError::ExecutionFailed(e.to_string()))?;

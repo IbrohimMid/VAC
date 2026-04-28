@@ -43,7 +43,8 @@ pub fn render_commands_section(
             Span::styled(
                 &state.layout.command_palette.input,
                 state
-                    .core.theme
+                    .core
+                    .theme
                     .style(StyleKey::Text)
                     .add_modifier(Modifier::BOLD),
             ),
@@ -89,7 +90,8 @@ pub fn render_commands_section(
             let is_selected = line_index == state.layout.command_palette.selected;
             let bg_color = if is_selected {
                 state
-                    .core.theme
+                    .core
+                    .theme
                     .style(StyleKey::HighlightBg)
                     .fg
                     .unwrap_or(C::Reset)
@@ -98,12 +100,18 @@ pub fn render_commands_section(
             };
             let text_color = if is_selected {
                 state
-                    .core.theme
+                    .core
+                    .theme
                     .style(StyleKey::HighlightFg)
                     .fg
                     .unwrap_or(C::Reset)
             } else {
-                state.core.theme.style(StyleKey::Text).fg.unwrap_or(C::Reset)
+                state
+                    .core
+                    .theme
+                    .style(StyleKey::Text)
+                    .fg
+                    .unwrap_or(C::Reset)
             };
 
             let name_formatted = format!(
@@ -115,12 +123,18 @@ pub fn render_commands_section(
 
             let shortcut_fg = if is_selected {
                 state
-                    .core.theme
+                    .core
+                    .theme
                     .style(StyleKey::HighlightFg)
                     .fg
                     .unwrap_or(C::Reset)
             } else {
-                state.core.theme.style(StyleKey::Muted).fg.unwrap_or(C::Reset)
+                state
+                    .core
+                    .theme
+                    .style(StyleKey::Muted)
+                    .fg
+                    .unwrap_or(C::Reset)
             };
 
             let spans = vec![

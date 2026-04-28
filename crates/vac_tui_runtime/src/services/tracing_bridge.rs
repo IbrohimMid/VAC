@@ -17,10 +17,10 @@
 use std::sync::{Arc, Mutex};
 
 use tracing::{Event, Level, Subscriber};
-use tracing_subscriber::{layer::Context, registry::LookupSpan, Layer};
+use tracing_subscriber::{Layer, layer::Context, registry::LookupSpan};
 
 use crate::app::AppState;
-use crate::services::notify_router::{route, NotifyEvent};
+use crate::services::notify_router::{NotifyEvent, route};
 
 /// Subsystem target → label mapping. Each entry turns a
 /// `tracing::warn!(target = "vac_tools::trust_gate", …)` into a
@@ -114,7 +114,10 @@ where
         let mut visitor = MessageVisitor::default();
         event.record(&mut visitor);
         let summary = visitor.message.unwrap_or_else(|| {
-            visitor.reason.clone().unwrap_or_else(|| meta.name().to_string())
+            visitor
+                .reason
+                .clone()
+                .unwrap_or_else(|| meta.name().to_string())
         });
         let mut state = match self.state.lock() {
             Ok(g) => g,
@@ -165,11 +168,7 @@ impl tracing::field::Visit for MessageVisitor {
         }
     }
 
-    fn record_debug(
-        &mut self,
-        field: &tracing::field::Field,
-        value: &dyn std::fmt::Debug,
-    ) {
+    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
         if field.name() == "message" && self.message.is_none() {
             self.message = Some(format!("{value:?}"));
         }
@@ -187,18 +186,12 @@ mod tests {
 
     #[test]
     fn subsystem_for_target_maps_known_prefixes() {
-        assert_eq!(
-            subsystem_for_target("vac_tools::trust_gate"),
-            Some("trust"),
-        );
+        assert_eq!(subsystem_for_target("vac_tools::trust_gate"), Some("trust"),);
         assert_eq!(
             subsystem_for_target("vac_tools::trust_gate::inner"),
             Some("trust"),
         );
-        assert_eq!(
-            subsystem_for_target("vac_runtime::isolation"),
-            Some("env"),
-        );
+        assert_eq!(subsystem_for_target("vac_runtime::isolation"), Some("env"),);
         assert_eq!(subsystem_for_target("unrelated::module"), None);
     }
 
@@ -231,11 +224,7 @@ mod tests {
         });
         let guard = state.lock().unwrap();
         assert_eq!(guard.execution.activity.len(), 1);
-        assert!(
-            guard.execution.activity[0]
-                .message
-                .starts_with("[trust]")
-        );
+        assert!(guard.execution.activity[0].message.starts_with("[trust]"));
         // Warn-level → toast present, banner absent.
         assert_eq!(guard.layout.toasts.len(), 1);
         assert!(guard.layout.banner.message.is_none());

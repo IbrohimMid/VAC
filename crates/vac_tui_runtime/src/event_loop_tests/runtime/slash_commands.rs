@@ -14,7 +14,8 @@ fn slash_semantics_fix_and_explain_send_prompt_with_args() {
     state.composer.input.set_content("/fix cargo clippy");
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::InputSubmitted);
     let msg = state
-        .transcript.pending_user_messages
+        .transcript
+        .pending_user_messages
         .pop_front()
         .expect("/fix should enqueue a pending message");
     assert!(
@@ -29,11 +30,13 @@ fn slash_semantics_fix_and_explain_send_prompt_with_args() {
     );
 
     state
-        .composer.input
+        .composer
+        .input
         .set_content("/explain crates/vac_cli/src/tui/event_loop.rs");
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::InputSubmitted);
     let msg = state
-        .transcript.pending_user_messages
+        .transcript
+        .pending_user_messages
         .pop_front()
         .expect("/explain should enqueue a pending message");
     assert!(
@@ -56,7 +59,8 @@ fn slash_review_opens_workstation_instead_of_sending_literal() {
     let (tx, _rx) = tokio::sync::mpsc::channel(4);
     let mut state = make_state(dir.path().to_path_buf(), uuid::Uuid::new_v4());
     state
-        .workspace.changeset_store
+        .workspace
+        .changeset_store
         .file_modified("a.txt".to_string(), "agent".to_string(), false);
     state.workspace.modified_files = state.workspace.changeset_store.modified_files();
     state.composer.input.set_content("/review");
@@ -158,7 +162,8 @@ async fn command_palette_dispatch_does_not_send_literal_slash() {
     assert!(state.workspace.review.open);
     assert!(
         !state
-            .layout.overlay_manager
+            .layout
+            .overlay_manager
             .is_active(crate::overlay::OverlayId::CommandPalette)
     );
 
@@ -175,12 +180,14 @@ async fn slash_model_dispatch_opens_model_switcher_via_handler() {
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::InputSubmitted);
     assert!(
         state
-            .layout.overlay_manager
+            .layout
+            .overlay_manager
             .is_active(crate::overlay::OverlayId::ModelSwitcher)
     );
     assert!(
         !state
-            .layout.overlay_manager
+            .layout
+            .overlay_manager
             .is_active(crate::overlay::OverlayId::FileSearch)
     );
 }
@@ -194,12 +201,14 @@ async fn slash_files_dispatch_opens_file_search_via_handler() {
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::InputSubmitted);
     assert!(
         state
-            .layout.overlay_manager
+            .layout
+            .overlay_manager
             .is_active(crate::overlay::OverlayId::FileSearch)
     );
     assert!(
         !state
-            .layout.overlay_manager
+            .layout
+            .overlay_manager
             .is_active(crate::overlay::OverlayId::ModelSwitcher)
     );
 }
@@ -213,7 +222,8 @@ async fn slash_changes_dispatch_opens_changeset_via_handler() {
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::InputSubmitted);
     assert!(
         state
-            .layout.overlay_manager
+            .layout
+            .overlay_manager
             .is_active(crate::overlay::OverlayId::Changeset)
     );
 }

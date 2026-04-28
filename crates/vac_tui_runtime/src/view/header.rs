@@ -27,13 +27,17 @@ pub(super) fn render_header(f: &mut Frame, state: &mut AppState, area: Rect) {
         spans.push(Span::styled(
             "[ISOLATED] ",
             state
-                .core.theme
+                .core
+                .theme
                 .style(StyleKey::Warning)
                 .add_modifier(Modifier::BOLD),
         ));
     }
 
-    spans.push(Span::styled("VAC", state.core.theme.style(StyleKey::AppTitle)));
+    spans.push(Span::styled(
+        "VAC",
+        state.core.theme.style(StyleKey::AppTitle),
+    ));
     spans.push(Span::raw("  "));
     spans.push(Span::styled(
         format!("session {}", &state.session.session_id[..8]),
@@ -57,7 +61,8 @@ pub(super) fn render_header(f: &mut Frame, state: &mut AppState, area: Rect) {
     spans.push(Span::styled(
         format!("prof:{}", state.layout.switchers.active_profile),
         state
-            .core.theme
+            .core
+            .theme
             .style(StyleKey::Warning)
             .add_modifier(Modifier::BOLD),
     ));
@@ -67,7 +72,9 @@ pub(super) fn render_header(f: &mut Frame, state: &mut AppState, area: Rect) {
         format!(
             "model {}",
             state
-                .operator_config.operator.current_model
+                .operator_config
+                .operator
+                .current_model
                 .as_ref()
                 .map(|m| m.name.as_str())
                 .unwrap_or("-")
@@ -83,12 +90,14 @@ pub(super) fn render_header(f: &mut Frame, state: &mut AppState, area: Rect) {
         },
         if state.core.view_flags.auto_approve {
             state
-                .core.theme
+                .core
+                .theme
                 .style(StyleKey::Error)
                 .add_modifier(Modifier::BOLD)
         } else {
             state
-                .core.theme
+                .core
+                .theme
                 .style(StyleKey::Success)
                 .add_modifier(Modifier::BOLD)
         },
@@ -119,12 +128,18 @@ pub(super) fn render_header(f: &mut Frame, state: &mut AppState, area: Rect) {
 
     spans.push(Span::raw("  "));
     spans.push(Span::styled(
-        format!("approvals {}", state.execution.approvals.pending_approvals.len()),
+        format!(
+            "approvals {}",
+            state.execution.approvals.pending_approvals.len()
+        ),
         state.core.theme.style(StyleKey::Warning),
     ));
     spans.push(Span::raw("  "));
     spans.push(Span::styled(
-        format!("review {}", state.workspace.changeset_store.active_entries().len()),
+        format!(
+            "review {}",
+            state.workspace.changeset_store.active_entries().len()
+        ),
         state.core.theme.style(StyleKey::Accent),
     ));
 
@@ -206,10 +221,7 @@ fn render_tab_strip(f: &mut Frame, state: &mut AppState, area: Rect) {
     ];
 
     // Compute widths to lay tabs left, ready right.
-    let left_w: u16 = spans
-        .iter()
-        .map(|s| s.content.chars().count() as u16)
-        .sum();
+    let left_w: u16 = spans.iter().map(|s| s.content.chars().count() as u16).sum();
     let right_w: u16 = right_spans
         .iter()
         .map(|s| s.content.chars().count() as u16)

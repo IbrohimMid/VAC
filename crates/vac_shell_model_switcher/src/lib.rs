@@ -306,7 +306,10 @@ pub fn render_model_switcher(f: &mut Frame, view: &ModelSwitcherView, area: Rect
         SwitcherMode::Reasoning => "reasoning",
     };
     let header = Line::from(vec![
-        Span::styled(" Model Switcher", Style::default().fg(cyan).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            " Model Switcher",
+            Style::default().fg(cyan).add_modifier(Modifier::BOLD),
+        ),
         Span::raw("  "),
         Span::styled(format!("[{}]", mode_label), Style::default().fg(muted)),
         Span::raw("  "),
@@ -314,7 +317,12 @@ pub fn render_model_switcher(f: &mut Frame, view: &ModelSwitcherView, area: Rect
         Span::styled(view.search.clone(), Style::default().fg(text)),
         Span::styled("|", Style::default().fg(cyan)),
     ]);
-    let header_area = Rect { x: inner.x, y: inner.y, width: inner.width, height: 1 };
+    let header_area = Rect {
+        x: inner.x,
+        y: inner.y,
+        width: inner.width,
+        height: 1,
+    };
     f.render_widget(Paragraph::new(header), header_area);
 
     // List body — render the navigation order as plain rows with
@@ -334,10 +342,7 @@ pub fn render_model_switcher(f: &mut Frame, view: &ModelSwitcherView, area: Rect
         let msg = if view.models.is_empty() {
             "  No models available"
         } else if matches!(view.mode, SwitcherMode::Reasoning)
-            && view
-                .models
-                .iter()
-                .all(|m| !m.reasoning)
+            && view.models.iter().all(|m| !m.reasoning)
         {
             "  No reasoning models available"
         } else {
@@ -402,7 +407,11 @@ pub fn render_model_switcher(f: &mut Frame, view: &ModelSwitcherView, area: Rect
 
         let is_selected = row_idx == view.selected;
         let row_fg = if is_selected { highlight_fg } else { text };
-        let row_bg = if is_selected { highlight_bg } else { Color::Reset };
+        let row_bg = if is_selected {
+            highlight_bg
+        } else {
+            Color::Reset
+        };
 
         let mut spans: Vec<Span<'static>> = vec![
             Span::styled("  ", Style::default()),

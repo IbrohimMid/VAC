@@ -37,7 +37,10 @@ fn status_command_spec_is_correct() {
     assert_eq!(spec.category.as_deref(), Some("Diagnostics"));
     assert_eq!(spec.kind, ShellCommandKind::PromptTemplate);
     assert!(spec.palette_visible);
-    assert_eq!(spec.description, "Show cockpit status and readiness summary");
+    assert_eq!(
+        spec.description,
+        "Show cockpit status and readiness summary"
+    );
 }
 
 #[test]
@@ -159,9 +162,19 @@ fn status_report_rows_use_status_kind() {
     let snap = log.snapshot();
 
     for entry in &snap {
-        assert_eq!(entry.kind, ShellActivityKind::Status, "every status row must be Status");
-        assert!(entry.id.starts_with("status-"), "id must start with status-");
-        assert!(entry.title.starts_with("status:"), "title must start with status:");
+        assert_eq!(
+            entry.kind,
+            ShellActivityKind::Status,
+            "every status row must be Status"
+        );
+        assert!(
+            entry.id.starts_with("status-"),
+            "id must start with status-"
+        );
+        assert!(
+            entry.title.starts_with("status:"),
+            "title must start with status:"
+        );
     }
 }
 

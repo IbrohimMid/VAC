@@ -26,12 +26,18 @@ pub(super) fn render_operator_panel(f: &mut Frame, state: &mut AppState, area: R
         lines.push(Line::from(vec![
             Span::styled(
                 spinner,
-                state.core.theme.style(crate::services::theme::StyleKey::Spinner),
+                state
+                    .core
+                    .theme
+                    .style(crate::services::theme::StyleKey::Spinner),
             ),
             Span::raw(" "),
             Span::styled(
                 "restoring session",
-                state.core.theme.style(crate::services::theme::StyleKey::Spinner),
+                state
+                    .core
+                    .theme
+                    .style(crate::services::theme::StyleKey::Spinner),
             ),
         ]));
     } else if state.core.loading {
@@ -44,17 +50,25 @@ pub(super) fn render_operator_panel(f: &mut Frame, state: &mut AppState, area: R
         lines.push(Line::from(vec![
             Span::styled(
                 spinner,
-                state.core.theme.style(crate::services::theme::StyleKey::Spinner),
+                state
+                    .core
+                    .theme
+                    .style(crate::services::theme::StyleKey::Spinner),
             ),
             Span::raw(" "),
             Span::styled(
                 "thinking",
-                state.core.theme.style(crate::services::theme::StyleKey::Spinner),
+                state
+                    .core
+                    .theme
+                    .style(crate::services::theme::StyleKey::Spinner),
             ),
         ]));
     } else if state.transcript.streaming.is_streaming {
         let tok_rate = state
-            .transcript.streaming.start
+            .transcript
+            .streaming
+            .start
             .map(|start| {
                 let elapsed = start.elapsed().as_secs_f32();
                 if elapsed > 0.1 {
@@ -72,7 +86,8 @@ pub(super) fn render_operator_panel(f: &mut Frame, state: &mut AppState, area: R
         lines.push(Line::styled(
             rate_str,
             state
-                .core.theme
+                .core
+                .theme
                 .style(crate::services::theme::StyleKey::Streaming),
         ));
     } else {
@@ -93,7 +108,10 @@ pub(super) fn render_operator_panel(f: &mut Frame, state: &mut AppState, area: R
         };
         lines.push(Line::styled(
             idle_text,
-            state.core.theme.style(crate::services::theme::StyleKey::Muted),
+            state
+                .core
+                .theme
+                .style(crate::services::theme::StyleKey::Muted),
         ));
     }
 
@@ -101,41 +119,68 @@ pub(super) fn render_operator_panel(f: &mut Frame, state: &mut AppState, area: R
         let (exec_label, exec_style) = match snapshot.execution_environment {
             vac_core::ExecutionEnvironment::Host => (
                 "host",
-                state.core.theme.style(crate::services::theme::StyleKey::Warning),
+                state
+                    .core
+                    .theme
+                    .style(crate::services::theme::StyleKey::Warning),
             ),
             vac_core::ExecutionEnvironment::IsolatedBatch => (
                 "isolated-batch",
-                state.core.theme.style(crate::services::theme::StyleKey::Success),
+                state
+                    .core
+                    .theme
+                    .style(crate::services::theme::StyleKey::Success),
             ),
             vac_core::ExecutionEnvironment::IsolatedInteractive => (
                 "isolated-interactive",
-                state.core.theme.style(crate::services::theme::StyleKey::Accent),
+                state
+                    .core
+                    .theme
+                    .style(crate::services::theme::StyleKey::Accent),
             ),
         };
         let env_style = if snapshot.environment_mode.contains("trusted-networked") {
-            state.core.theme.style(crate::services::theme::StyleKey::Error)
+            state
+                .core
+                .theme
+                .style(crate::services::theme::StyleKey::Error)
         } else {
-            state.core.theme.style(crate::services::theme::StyleKey::Success)
+            state
+                .core
+                .theme
+                .style(crate::services::theme::StyleKey::Success)
         };
         lines.push(Line::from(vec![
             Span::styled(
                 "exec ",
-                state.core.theme.style(crate::services::theme::StyleKey::Muted),
+                state
+                    .core
+                    .theme
+                    .style(crate::services::theme::StyleKey::Muted),
             ),
             Span::styled(exec_label, exec_style),
             Span::raw("  "),
             Span::styled(
                 "intent ",
-                state.core.theme.style(crate::services::theme::StyleKey::Muted),
+                state
+                    .core
+                    .theme
+                    .style(crate::services::theme::StyleKey::Muted),
             ),
             Span::styled(
                 snapshot.task_intent_mode.to_string(),
-                state.core.theme.style(crate::services::theme::StyleKey::Accent),
+                state
+                    .core
+                    .theme
+                    .style(crate::services::theme::StyleKey::Accent),
             ),
             Span::raw("  "),
             Span::styled(
                 "env ",
-                state.core.theme.style(crate::services::theme::StyleKey::Muted),
+                state
+                    .core
+                    .theme
+                    .style(crate::services::theme::StyleKey::Muted),
             ),
             Span::styled(snapshot.environment_mode.clone(), env_style),
         ]));
@@ -144,27 +189,45 @@ pub(super) fn render_operator_panel(f: &mut Frame, state: &mut AppState, area: R
     lines.push(Line::from(vec![
         Span::styled(
             "tools ",
-            state.core.theme.style(crate::services::theme::StyleKey::Muted),
+            state
+                .core
+                .theme
+                .style(crate::services::theme::StyleKey::Muted),
         ),
         Span::styled(
             format!("{}", state.execution.approvals.pending_tool_calls.len()),
-            state.core.theme.style(crate::services::theme::StyleKey::Warning),
+            state
+                .core
+                .theme
+                .style(crate::services::theme::StyleKey::Warning),
         ),
         Span::styled(
             "  approvals ",
-            state.core.theme.style(crate::services::theme::StyleKey::Muted),
+            state
+                .core
+                .theme
+                .style(crate::services::theme::StyleKey::Muted),
         ),
         Span::styled(
             format!("{}", state.execution.approvals.pending_approvals.len()),
-            state.core.theme.style(crate::services::theme::StyleKey::Warning),
+            state
+                .core
+                .theme
+                .style(crate::services::theme::StyleKey::Warning),
         ),
         Span::styled(
             "  modified ",
-            state.core.theme.style(crate::services::theme::StyleKey::Muted),
+            state
+                .core
+                .theme
+                .style(crate::services::theme::StyleKey::Muted),
         ),
         Span::styled(
             format!("{}", state.workspace.changeset_store.active_entries().len()),
-            state.core.theme.style(crate::services::theme::StyleKey::Accent),
+            state
+                .core
+                .theme
+                .style(crate::services::theme::StyleKey::Accent),
         ),
     ]));
 
@@ -184,16 +247,25 @@ pub(super) fn render_operator_panel(f: &mut Frame, state: &mut AppState, area: R
             lines.push(Line::from(vec![
                 Span::styled(
                     "shell ",
-                    state.core.theme.style(crate::services::theme::StyleKey::Muted),
+                    state
+                        .core
+                        .theme
+                        .style(crate::services::theme::StyleKey::Muted),
                 ),
                 Span::styled(
                     shell_state,
-                    state.core.theme.style(crate::services::theme::StyleKey::Accent),
+                    state
+                        .core
+                        .theme
+                        .style(crate::services::theme::StyleKey::Accent),
                 ),
                 Span::raw("  "),
                 Span::styled(
                     session.label.clone(),
-                    state.core.theme.style(crate::services::theme::StyleKey::Muted),
+                    state
+                        .core
+                        .theme
+                        .style(crate::services::theme::StyleKey::Muted),
                 ),
             ]));
         }
@@ -214,7 +286,10 @@ pub(super) fn render_operator_panel(f: &mut Frame, state: &mut AppState, area: R
                 lines.push(Line::from(vec![
                     Span::styled(
                         "shell ",
-                        state.core.theme.style(crate::services::theme::StyleKey::Muted),
+                        state
+                            .core
+                            .theme
+                            .style(crate::services::theme::StyleKey::Muted),
                     ),
                     Span::raw(l.to_string()),
                 ]));
@@ -224,20 +299,31 @@ pub(super) fn render_operator_panel(f: &mut Frame, state: &mut AppState, area: R
 
     if !state.execution.mcp_maps.server_states.is_empty() {
         let connected = state
-            .execution.mcp_maps.server_states
+            .execution
+            .mcp_maps
+            .server_states
             .values()
             .filter(|s| s.state == vac_mcp_core::McpConnectionState::Connected)
             .count();
         let total = state.execution.mcp_maps.server_states.len();
         let mcp_style = if connected == total {
-            state.core.theme.style(crate::services::theme::StyleKey::Success)
+            state
+                .core
+                .theme
+                .style(crate::services::theme::StyleKey::Success)
         } else {
-            state.core.theme.style(crate::services::theme::StyleKey::Warning)
+            state
+                .core
+                .theme
+                .style(crate::services::theme::StyleKey::Warning)
         };
         lines.push(Line::from(vec![
             Span::styled(
                 "mcp ",
-                state.core.theme.style(crate::services::theme::StyleKey::Muted),
+                state
+                    .core
+                    .theme
+                    .style(crate::services::theme::StyleKey::Muted),
             ),
             Span::styled(format!("{}/{} connected", connected, total), mcp_style),
         ]));
@@ -248,11 +334,20 @@ pub(super) fn render_operator_panel(f: &mut Frame, state: &mut AppState, area: R
         lines.push(Line::from(vec![
             Span::styled(
                 "render ",
-                state.core.theme.style(crate::services::theme::StyleKey::Muted),
+                state
+                    .core
+                    .theme
+                    .style(crate::services::theme::StyleKey::Muted),
             ),
             Span::styled(
-                format!("{}ms avg ⚠", state.core.render_metrics.ema_render_time_us / 1000),
-                state.core.theme.style(crate::services::theme::StyleKey::Error),
+                format!(
+                    "{}ms avg ⚠",
+                    state.core.render_metrics.ema_render_time_us / 1000
+                ),
+                state
+                    .core
+                    .theme
+                    .style(crate::services::theme::StyleKey::Error),
             ),
         ]));
     }
@@ -269,7 +364,10 @@ pub(super) fn render_operator_panel(f: &mut Frame, state: &mut AppState, area: R
             lines.push(Line::from(""));
             lines.push(Line::styled(
                 "System",
-                state.core.theme.style(crate::services::theme::StyleKey::Accent),
+                state
+                    .core
+                    .theme
+                    .style(crate::services::theme::StyleKey::Accent),
             ));
             for facet in facets {
                 let style_key = match facet.severity {
@@ -292,18 +390,11 @@ pub(super) fn render_operator_panel(f: &mut Frame, state: &mut AppState, area: R
                 // detail_rows already exist on the facet for a
                 // future expanded overlay; here we keep it to a
                 // single line per facet.
-                let summary = facet
-                    .detail_rows
-                    .first()
-                    .cloned()
-                    .unwrap_or_default();
+                let summary = facet.detail_rows.first().cloned().unwrap_or_default();
                 lines.push(Line::from(vec![
                     Span::styled(glyph, state.core.theme.style(style_key)),
                     Span::raw(" "),
-                    Span::styled(
-                        label.to_string(),
-                        state.core.theme.style(style_key),
-                    ),
+                    Span::styled(label.to_string(), state.core.theme.style(style_key)),
                     Span::raw("  "),
                     Span::raw(summary),
                 ]));
@@ -312,10 +403,15 @@ pub(super) fn render_operator_panel(f: &mut Frame, state: &mut AppState, area: R
     }
 
     let widget = Paragraph::new(lines)
-        .block(Block::default().borders(Borders::ALL).title(Span::styled(
-            "Operator",
-            state.core.theme.style(crate::services::theme::StyleKey::Accent),
-        )))
+        .block(
+            Block::default().borders(Borders::ALL).title(Span::styled(
+                "Operator",
+                state
+                    .core
+                    .theme
+                    .style(crate::services::theme::StyleKey::Accent),
+            )),
+        )
         .wrap(Wrap { trim: true });
     f.render_widget(widget, area);
 }
@@ -363,12 +459,18 @@ pub(super) fn render_activity_panel(f: &mut Frame, state: &mut AppState, area: R
         lines.push(Line::from(vec![
             Span::styled(
                 ts,
-                state.core.theme.style(crate::services::theme::StyleKey::Muted),
+                state
+                    .core
+                    .theme
+                    .style(crate::services::theme::StyleKey::Muted),
             ),
             Span::raw(" "),
             Span::styled(
                 activity_icon(item.kind),
-                state.core.theme.style(crate::services::theme::StyleKey::Warning),
+                state
+                    .core
+                    .theme
+                    .style(crate::services::theme::StyleKey::Warning),
             ),
             Span::raw(" "),
             Span::raw(body),
@@ -377,14 +479,20 @@ pub(super) fn render_activity_panel(f: &mut Frame, state: &mut AppState, area: R
     if lines.is_empty() {
         lines.push(Line::styled(
             "No activity yet. Events, approvals, and runtime updates will appear here.",
-            state.core.theme.style(crate::services::theme::StyleKey::Muted),
+            state
+                .core
+                .theme
+                .style(crate::services::theme::StyleKey::Muted),
         ));
     }
 
     let widget = Paragraph::new(lines)
         .block(Block::default().borders(Borders::ALL).title(Span::styled(
             "Activity",
-            focus_style(state.layout.focus == WorkspaceFocus::Activity, &state.core.theme),
+            focus_style(
+                state.layout.focus == WorkspaceFocus::Activity,
+                &state.core.theme,
+            ),
         )))
         .wrap(Wrap { trim: true });
     f.render_widget(widget, area);

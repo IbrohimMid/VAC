@@ -66,7 +66,11 @@ impl ConsolidationReport {
             format!(
                 "{core} ({} policy failure{})",
                 self.policies_failed.len(),
-                if self.policies_failed.len() == 1 { "" } else { "s" },
+                if self.policies_failed.len() == 1 {
+                    ""
+                } else {
+                    "s"
+                },
             )
         }
     }

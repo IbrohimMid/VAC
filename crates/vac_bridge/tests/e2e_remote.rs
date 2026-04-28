@@ -2,14 +2,16 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
+use async_trait::async_trait;
 use vac_bridge::{
-    AcpServer, InboundEvent, OutboundEvent, RemoteSession, StdioPermissionMediator, PermissionMediator, PermissionRequest, PermissionDecision,
+    AcpServer, InboundEvent, OutboundEvent, PermissionDecision, PermissionMediator,
+    PermissionRequest, RemoteSession, StdioPermissionMediator,
 };
 use vac_session_engine::{
-    CompactConfig, SlashProcessor, SubmitContext, TranscriptWriter,
-    TrivialCompactBoundary, UsageTracker, submit_one, LlmAdapter, LlmRequest, LlmResponse, EngineResult, TranscriptKind,
+    CompactConfig, EngineResult, LlmAdapter, LlmRequest, LlmResponse, SlashProcessor,
+    SubmitContext, TranscriptKind, TranscriptWriter, TrivialCompactBoundary, UsageTracker,
+    submit_one,
 };
-use async_trait::async_trait;
 
 struct MockAdapter {
     mediator: Arc<StdioPermissionMediator>,
@@ -26,7 +28,7 @@ impl LlmAdapter for MockAdapter {
             deadline_ms: 1000,
         };
         let decision = self.mediator.request(req).await;
-        
+
         let result_content = match decision {
             Ok(PermissionDecision::Allow) => "allowed",
             _ => "denied",
@@ -38,7 +40,7 @@ impl LlmAdapter for MockAdapter {
             content: result_content.into(),
             input_tokens: 1,
             output_tokens: 1,
-        tool_calls: Vec::new(),
+            tool_calls: Vec::new(),
         })
     }
 }
@@ -47,7 +49,7 @@ impl LlmAdapter for MockAdapter {
 async fn e2e_remote_roundtrip() {
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path().to_path_buf();
-    
+
     let server = AcpServer::new("vac-acp/1.0");
     let mut session = RemoteSession::new(10);
     let handle = session.handle();
@@ -56,17 +58,23 @@ async fn e2e_remote_roundtrip() {
     let inbound_tx = handle.inbound_tx.clone();
     tokio::spawn(async move {
         // 1. Handshake
-        inbound_tx.send(InboundEvent::Hello {
-            client: "test-client".into(),
-            protocol_version: 1,
-        }).await.unwrap();
+        inbound_tx
+            .send(InboundEvent::Hello {
+                client: "test-client".into(),
+                protocol_version: 1,
+            })
+            .await
+            .unwrap();
 
         // 2. Submit
         // We add a tiny delay to ensure the server processes handshake first
         tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-        inbound_tx.send(InboundEvent::Submit {
-            text: "do the thing".into(),
-        }).await.unwrap();
+        inbound_tx
+            .send(InboundEvent::Submit {
+                text: "do the thing".into(),
+            })
+            .await
+            .unwrap();
     });
 
     // Handshake server-side
@@ -76,7 +84,10 @@ async fn e2e_remote_roundtrip() {
     let (mut inbound_rx, mut outbound_rx) = session.split();
 
     let pending_permissions = Arc::new(Mutex::new(std::collections::HashMap::new()));
-    let mediator = Arc::new(StdioPermissionMediator::new(handle.outbound_tx.clone(), pending_permissions.clone()));
+    let mediator = Arc::new(StdioPermissionMediator::new(
+        handle.outbound_tx.clone(),
+        pending_permissions.clone(),
+    ));
 
     let writer = TranscriptWriter::new(root.clone());
 
@@ -87,9 +98,11 @@ async fn e2e_remote_roundtrip() {
             match event {
                 InboundEvent::Submit { text } => {
                     let ctx = SubmitContext::new(session_id, text);
-                    
+
                     let writer = writer.clone();
-                    let adapter = MockAdapter { mediator: mediator.clone() };
+                    let adapter = MockAdapter {
+                        mediator: mediator.clone(),
+                    };
                     let handle_outbound = handle_for_server.outbound_tx.clone();
 
                     tokio::spawn(async move {
@@ -106,15 +119,26 @@ async fn e2e_remote_roundtrip() {
                             &adapter,
                             CompactConfig::default(),
                             None,
-                        ).await.unwrap();
+                        )
+                        .await
+                        .unwrap();
 
-                        handle_outbound.send(OutboundEvent::SubmitFinished).await.unwrap();
+                        handle_outbound
+                            .send(OutboundEvent::SubmitFinished)
+                            .await
+                            .unwrap();
                     });
                 }
-                InboundEvent::PermissionResponse { request_id, allow, .. } => {
+                InboundEvent::PermissionResponse {
+                    request_id, allow, ..
+                } => {
                     let mut p = pending_permissions.lock().await;
                     if let Some(tx) = p.remove(&request_id) {
-                        let decision = if allow { PermissionDecision::Allow } else { PermissionDecision::Deny };
+                        let decision = if allow {
+                            PermissionDecision::Allow
+                        } else {
+                            PermissionDecision::Deny
+                        };
                         let _ = tx.send(decision);
                     }
                 }
@@ -135,11 +159,15 @@ async fn e2e_remote_roundtrip() {
     };
 
     // Client responds
-    handle.inbound_tx.send(InboundEvent::PermissionResponse {
-        request_id: req_id,
-        allow: true,
-        reason: None,
-    }).await.unwrap();
+    handle
+        .inbound_tx
+        .send(InboundEvent::PermissionResponse {
+            request_id: req_id,
+            allow: true,
+            reason: None,
+        })
+        .await
+        .unwrap();
 
     // Wait for SubmitFinished from outbound
     while let Some(event) = outbound_rx.recv().await {
@@ -151,9 +179,12 @@ async fn e2e_remote_roundtrip() {
     // Check transcript
     let writer = TranscriptWriter::new(root.clone());
     let rows = writer.read(session_id).await.unwrap();
-    
+
     // Accepted, LlmRequest, LlmResponse, Finished
     assert!(rows.iter().any(|r| r.kind == TranscriptKind::Accepted));
-    let response_row = rows.iter().find(|r| r.kind == TranscriptKind::LlmResponse).unwrap();
+    let response_row = rows
+        .iter()
+        .find(|r| r.kind == TranscriptKind::LlmResponse)
+        .unwrap();
     assert_eq!(response_row.content["content"], "allowed");
 }

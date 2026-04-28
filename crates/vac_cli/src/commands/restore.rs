@@ -19,7 +19,11 @@ pub async fn execute(
         }
         for b in backups {
             vac_tools::backup::restore_backup(&project_root, &b.id).await?;
-            println!("✓ Restored '{}' from submit {}", b.original_path.display(), submit_id);
+            println!(
+                "✓ Restored '{}' from submit {}",
+                b.original_path.display(),
+                submit_id
+            );
         }
         return Ok(());
     }

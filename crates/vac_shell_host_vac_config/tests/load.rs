@@ -3,9 +3,7 @@ use std::fs;
 use vac_shell_bridge::ProviderId;
 use vac_shell_contracts::VacPaths;
 use vac_shell_host_paths::VacPathsImpl;
-use vac_shell_host_vac_config::{
-    VacModelConfigSnapshot, load_from_file, load_from_paths,
-};
+use vac_shell_host_vac_config::{VacModelConfigSnapshot, load_from_file, load_from_paths};
 
 const SAMPLE: &str = r#"
 {

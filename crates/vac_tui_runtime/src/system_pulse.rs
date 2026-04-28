@@ -199,10 +199,7 @@ impl<'a> SystemPulse<'a> {
         let (severity, token) = if pending == 0 {
             (FacetSeverity::Ok, "approvals✓".into())
         } else if pending >= 3 {
-            (
-                FacetSeverity::Warn,
-                format!("approvals●{pending}").into(),
-            )
+            (FacetSeverity::Warn, format!("approvals●{pending}").into())
         } else {
             (FacetSeverity::Info, format!("approvals:{pending}").into())
         };
@@ -231,8 +228,7 @@ impl<'a> SystemPulse<'a> {
             .filter(|j| {
                 matches!(
                     j.status,
-                    vac_runtime::JobStatus::Running
-                        | vac_runtime::JobStatus::Queued
+                    vac_runtime::JobStatus::Running | vac_runtime::JobStatus::Queued
                 )
             })
             .count();
@@ -242,15 +238,9 @@ impl<'a> SystemPulse<'a> {
             .filter(|j| matches!(j.status, vac_runtime::JobStatus::Failed(_)))
             .count();
         let (severity, token) = if failed > 0 {
-            (
-                FacetSeverity::Critical,
-                format!("runtime✗{failed}").into(),
-            )
+            (FacetSeverity::Critical, format!("runtime✗{failed}").into())
         } else if running > 0 {
-            (
-                FacetSeverity::Info,
-                format!("runtime:{running}").into(),
-            )
+            (FacetSeverity::Info, format!("runtime:{running}").into())
         } else {
             (FacetSeverity::Ok, "runtime✓".into())
         };
@@ -275,22 +265,12 @@ impl<'a> SystemPulse<'a> {
         let connected = m
             .server_states
             .values()
-            .filter(|c| {
-                matches!(
-                    c.state,
-                    vac_mcp_core::state::McpConnectionState::Connected
-                )
-            })
+            .filter(|c| matches!(c.state, vac_mcp_core::state::McpConnectionState::Connected))
             .count();
         let failed = m
             .server_states
             .values()
-            .filter(|c| {
-                matches!(
-                    c.state,
-                    vac_mcp_core::state::McpConnectionState::Failed
-                )
-            })
+            .filter(|c| matches!(c.state, vac_mcp_core::state::McpConnectionState::Failed))
             .count();
         let (severity, token) = if total == 0 {
             (FacetSeverity::Info, "mcp·".into())
@@ -300,10 +280,7 @@ impl<'a> SystemPulse<'a> {
                 format!("mcp✗{failed}/{total}").into(),
             )
         } else if connected == total {
-            (
-                FacetSeverity::Ok,
-                format!("mcp✓{total}").into(),
-            )
+            (FacetSeverity::Ok, format!("mcp✓{total}").into())
         } else {
             (
                 FacetSeverity::Warn,
@@ -349,9 +326,7 @@ impl<'a> SystemPulse<'a> {
                 ),
             ],
             // No dedicated workbench tab; surface via shell popup.
-            nav_target: Some(NavTarget::Overlay(
-                crate::overlay::OverlayId::ShellPopup,
-            )),
+            nav_target: Some(NavTarget::Overlay(crate::overlay::OverlayId::ShellPopup)),
         }
     }
 
@@ -371,7 +346,11 @@ impl<'a> SystemPulse<'a> {
             detail_rows: vec![
                 format!(
                     "predicted: {}",
-                    if c.predicted_submit.is_some() { "yes" } else { "no" }
+                    if c.predicted_submit.is_some() {
+                        "yes"
+                    } else {
+                        "no"
+                    }
                 ),
                 format!("hits:      {}", c.prediction_hits),
                 format!("context:   {} entries", c.precomputed_context.len()),
@@ -388,13 +367,8 @@ impl<'a> SystemPulse<'a> {
         let env = &self.state.core.startup;
         let mode = env.environment.as_str();
         let (severity, token) = match mode {
-            "restricted-offline" => (
-                FacetSeverity::Warn,
-                "env:restricted".into(),
-            ),
-            m if m.starts_with("isolated") => {
-                (FacetSeverity::Info, format!("env:{m}").into())
-            }
+            "restricted-offline" => (FacetSeverity::Warn, "env:restricted".into()),
+            m if m.starts_with("isolated") => (FacetSeverity::Info, format!("env:{m}").into()),
             "" => (FacetSeverity::Info, "env:?".into()),
             m => (FacetSeverity::Ok, format!("env:{m}").into()),
         };
@@ -403,10 +377,7 @@ impl<'a> SystemPulse<'a> {
             severity,
             compact_token: token,
             detail_rows: vec![
-                format!(
-                    "mode: {}",
-                    if mode.is_empty() { "<unknown>" } else { mode }
-                ),
+                format!("mode: {}", if mode.is_empty() { "<unknown>" } else { mode }),
                 format!(
                     "profile: {}",
                     env.active_profile.as_deref().unwrap_or("<none>"),
@@ -551,7 +522,10 @@ impl<'a> SystemPulse<'a> {
                 } else {
                     FacetSeverity::Ok
                 };
-                let compact = match (s.policy.max_submits_per_hour, s.policy.max_tokens_per_session) {
+                let compact = match (
+                    s.policy.max_submits_per_hour,
+                    s.policy.max_tokens_per_session,
+                ) {
                     (Some(cap), _) => {
                         format!("policy:{}/{}", s.submits_last_hour, cap)
                     }
@@ -648,10 +622,7 @@ impl<'a> SystemPulse<'a> {
             .filter(|e| matches!(e.status, TaskStatus::Failed))
             .count();
         let (severity, token) = if failed > 0 {
-            (
-                FacetSeverity::Critical,
-                format!("tasks✗{failed}").into(),
-            )
+            (FacetSeverity::Critical, format!("tasks✗{failed}").into())
         } else if running == 0 {
             (FacetSeverity::Ok, Cow::Borrowed("tasks✓"))
         } else if running >= 4 {
@@ -782,7 +753,11 @@ mod tests {
         // consistent.
         assert_eq!(facets.len(), 13);
         for f in &facets {
-            assert!(!f.compact_token.is_empty(), "facet {:?} has empty token", f.kind);
+            assert!(
+                !f.compact_token.is_empty(),
+                "facet {:?} has empty token",
+                f.kind
+            );
         }
     }
 
@@ -866,9 +841,7 @@ mod tests {
     fn nav_target_apply_switches_workbench_tab() {
         let mut state = AppState::default();
         state.layout.workbench_tab = crate::app::types::WorkbenchTab::Sessions;
-        let tgt = NavTarget::WorkbenchTab(
-            crate::app::types::WorkbenchTab::Approvals,
-        );
+        let tgt = NavTarget::WorkbenchTab(crate::app::types::WorkbenchTab::Approvals);
         let moved = tgt.apply(&mut state);
         assert!(moved);
         assert_eq!(

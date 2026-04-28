@@ -54,28 +54,39 @@ pub(crate) fn build_session_snapshot(
     let mut snapshot =
         vac_session_control::SessionSnapshot::new(session_id, state.core.project_root.clone());
     let todo_pending = state
-        .transcript.todos
+        .transcript
+        .todos
         .iter()
         .filter(|todo| matches!(todo.status, vac_changeset::TodoStatus::Pending))
         .count();
     let todo_in_progress = state
-        .transcript.todos
+        .transcript
+        .todos
         .iter()
         .filter(|todo| matches!(todo.status, vac_changeset::TodoStatus::InProgress))
         .count();
     let todo_done = state
-        .transcript.todos
+        .transcript
+        .todos
         .iter()
         .filter(|todo| matches!(todo.status, vac_changeset::TodoStatus::Done))
         .count();
 
     snapshot.active_model = state
-        .operator_config.operator.current_model
+        .operator_config
+        .operator
+        .current_model
         .as_ref()
         .map(|model| model.name.clone())
         .or_else(|| state.core.startup.active_model.clone());
     snapshot.active_profile = Some(state.layout.switchers.active_profile.clone());
-    let mut selected_rulebooks: Vec<String> = state.layout.switchers.selected_rulebooks.iter().cloned().collect();
+    let mut selected_rulebooks: Vec<String> = state
+        .layout
+        .switchers
+        .selected_rulebooks
+        .iter()
+        .cloned()
+        .collect();
     selected_rulebooks.sort();
     snapshot.active_rulebooks = selected_rulebooks;
     snapshot.task_count = state.transcript.todos.len();
@@ -83,21 +94,26 @@ pub(crate) fn build_session_snapshot(
     snapshot.failed_tasks = 0;
     snapshot.total_tokens = state.operator_config.billing.total_session.total_tokens;
     snapshot.modified_files = state.workspace.modified_files.len();
-    snapshot.tui_state.active_tab_idx =
-        Some(crate::workbench::active_tab_index(&state.layout.workbench_tab));
-    snapshot.tui_state.history_selection = Some(state.operator_config.operator.sessions_selected_idx);
+    snapshot.tui_state.active_tab_idx = Some(crate::workbench::active_tab_index(
+        &state.layout.workbench_tab,
+    ));
+    snapshot.tui_state.history_selection =
+        Some(state.operator_config.operator.sessions_selected_idx);
     snapshot.tui_state.last_focus = Some(focus_to_label(state.layout.focus).to_string());
     snapshot.tui_state.collapsed_sections = state
-        .layout.side_panel.section_collapsed
+        .layout
+        .side_panel
+        .section_collapsed
         .iter()
         .map(|section| side_panel_section_to_label(*section).to_string())
         .collect();
     snapshot
         .metadata
         .insert("focus".into(), focus_to_label(state.layout.focus).into());
-    snapshot
-        .metadata
-        .insert("active_profile".into(), state.layout.switchers.active_profile.clone());
+    snapshot.metadata.insert(
+        "active_profile".into(),
+        state.layout.switchers.active_profile.clone(),
+    );
     snapshot.metadata.insert(
         "active_isolation_mode".into(),
         state.layout.switchers.active_isolation_mode.clone(),
@@ -108,7 +124,12 @@ pub(crate) fn build_session_snapshot(
     );
     snapshot.metadata.insert(
         "pending_approvals".into(),
-        state.execution.approvals.pending_approvals.len().to_string(),
+        state
+            .execution
+            .approvals
+            .pending_approvals
+            .len()
+            .to_string(),
     );
     snapshot.metadata.insert(
         "queue_depth".into(),

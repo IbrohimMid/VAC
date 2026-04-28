@@ -26,8 +26,11 @@ pub fn welcome_messages(version: Option<&str>, state: &crate::app::AppState) -> 
         .or_else(|| s.active_model.clone());
 
     let provider_label = if s.provider_status.starts_with("ready") {
-        s.provider_status.trim_start_matches("ready").trim()
-            .trim_start_matches('(').trim_end_matches(')')
+        s.provider_status
+            .trim_start_matches("ready")
+            .trim()
+            .trim_start_matches('(')
+            .trim_end_matches(')')
             .to_string()
     } else {
         String::new()
@@ -58,10 +61,16 @@ pub fn welcome_messages(version: Option<&str>, state: &crate::app::AppState) -> 
         .filter(|m| Some(m.as_str()) != active_model.as_deref())
         .unwrap_or_else(|| "—".to_string());
 
-    let profile_value = s.active_profile.clone().unwrap_or_else(|| "default".to_string());
+    let profile_value = s
+        .active_profile
+        .clone()
+        .unwrap_or_else(|| "default".to_string());
 
     let (rulebook_value, rulebook_comment) = match &s.active_rulebook {
-        Some(rb) => (rb.clone(), format!("{} constraints active", s.selected_rulebooks.len().max(1))),
+        Some(rb) => (
+            rb.clone(),
+            format!("{} constraints active", s.selected_rulebooks.len().max(1)),
+        ),
         None => ("none".to_string(), "no rulebook overlay".to_string()),
     };
 
@@ -78,24 +87,54 @@ pub fn welcome_messages(version: Option<&str>, state: &crate::app::AppState) -> 
     } else {
         format!("{} servers", s.mcp_server_count)
     };
-    let mcp_comment = if s.mcp_server_count == 0 { "none configured" } else { "registered" };
-
-    let sessions_value = format!("{} saved", s.session_count);
-    let vil_detect_value = if s.has_vil_engine { "rust-workspace" } else { "off" };
-    let vil_detect_comment = {
-        let n = state.workspace.file_index.all_files.len();
-        if n > 0 { format!("{n} files indexed") } else { "no files indexed".to_string() }
+    let mcp_comment = if s.mcp_server_count == 0 {
+        "none configured"
+    } else {
+        "registered"
     };
 
-    let mode_value = if state.core.view_flags.auto_approve { "auto-approve" } else { "manual" };
+    let sessions_value = format!("{} saved", s.session_count);
+    let vil_detect_value = if s.has_vil_engine {
+        "rust-workspace"
+    } else {
+        "off"
+    };
+    let vil_detect_comment = {
+        let n = state.workspace.file_index.all_files.len();
+        if n > 0 {
+            format!("{n} files indexed")
+        } else {
+            "no files indexed".to_string()
+        }
+    };
+
+    let mode_value = if state.core.view_flags.auto_approve {
+        "auto-approve"
+    } else {
+        "manual"
+    };
 
     // Two-column line builder. Left column ~46 cols, right column flows.
-    fn row(left_label: &str, left_dot: &str, left_value: &str, left_cmt: &str,
-           right_label: &str, right_dot: &str, right_value: &str, right_cmt: &str) -> String {
+    fn row(
+        left_label: &str,
+        left_dot: &str,
+        left_value: &str,
+        left_cmt: &str,
+        right_label: &str,
+        right_dot: &str,
+        right_value: &str,
+        right_cmt: &str,
+    ) -> String {
         format!(
             "  {:<10} {} {:<14} · {:<18}    {:<10} {} {:<14} · {}",
-            left_label, left_dot, left_value, left_cmt,
-            right_label, right_dot, right_value, right_cmt,
+            left_label,
+            left_dot,
+            left_value,
+            left_cmt,
+            right_label,
+            right_dot,
+            right_value,
+            right_cmt,
         )
     }
 
@@ -111,18 +150,66 @@ pub fn welcome_messages(version: Option<&str>, state: &crate::app::AppState) -> 
         String::new(),
         "  hydrating startup snapshot".to_string(),
         String::new(),
-        row("version",  "●", version_str,        "running build",
-            "runtime",  "●", &runtime_value,     "network: inherit"),
-        row("provider", "●", &provider_value,    provider_comment,
-            "isolation","●", "off",              "execution_environment = host"),
-        row("model",    "●", &model_value,       model_comment,
-            "autopilot","●", "down",             "vac autopilot up"),
-        row("fallback", "●", &fallback_value,    "configured default",
-            "mcp",      "●", &mcp_value,         mcp_comment),
-        row("profile",  "●", &profile_value,     "active",
-            "sessions", "●", &sessions_value,    "saved transcripts"),
-        row("rulebook", "●", &rulebook_value,    &rulebook_comment,
-            "vil detect","●", vil_detect_value,  &vil_detect_comment),
+        row(
+            "version",
+            "●",
+            version_str,
+            "running build",
+            "runtime",
+            "●",
+            &runtime_value,
+            "network: inherit",
+        ),
+        row(
+            "provider",
+            "●",
+            &provider_value,
+            provider_comment,
+            "isolation",
+            "●",
+            "off",
+            "execution_environment = host",
+        ),
+        row(
+            "model",
+            "●",
+            &model_value,
+            model_comment,
+            "autopilot",
+            "●",
+            "down",
+            "vac autopilot up",
+        ),
+        row(
+            "fallback",
+            "●",
+            &fallback_value,
+            "configured default",
+            "mcp",
+            "●",
+            &mcp_value,
+            mcp_comment,
+        ),
+        row(
+            "profile",
+            "●",
+            &profile_value,
+            "active",
+            "sessions",
+            "●",
+            &sessions_value,
+            "saved transcripts",
+        ),
+        row(
+            "rulebook",
+            "●",
+            &rulebook_value,
+            &rulebook_comment,
+            "vil detect",
+            "●",
+            vil_detect_value,
+            &vil_detect_comment,
+        ),
         String::new(),
         format!("  ready · mode {}", mode_value),
         String::new(),
@@ -700,7 +787,14 @@ mod tests {
     #[test]
     fn arc_feature_entries_are_builtin_with_prompt() {
         let cmds = vac_commands();
-        for alias in ["/hook-create", "/cron-add", "/subagent-run", "/fetch", "/monitor", "/signal"] {
+        for alias in [
+            "/hook-create",
+            "/cron-add",
+            "/subagent-run",
+            "/fetch",
+            "/monitor",
+            "/signal",
+        ] {
             let entry = cmds.iter().find(|c| c.command == alias).unwrap();
             match &entry.source {
                 CommandSource::BuiltInWithPrompt { prompt_content } => {

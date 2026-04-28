@@ -24,10 +24,7 @@ pub fn handle_input_event(
     // Dogfood deepdive — trace every event-route decision so we
     // can see exactly which branch handles a given keystroke. Set
     // `RUST_LOG=vac_tui_runtime::handlers::input_core=info` to see.
-    if matches!(
-        event,
-        InputEvent::InputSubmitted | InputEvent::HandleEsc
-    ) {
+    if matches!(event, InputEvent::InputSubmitted | InputEvent::HandleEsc) {
         let event_name = match &event {
             InputEvent::InputSubmitted => "InputSubmitted",
             InputEvent::HandleEsc => "HandleEsc",
@@ -97,7 +94,9 @@ fn handle_global(
                 // Outside streaming: require two presses within 2 s to quit.
                 let now = std::time::Instant::now();
                 let double = state
-                    .core.quit.first_press
+                    .core
+                    .quit
+                    .first_press
                     .map(|t| now.duration_since(t) < std::time::Duration::from_secs(2))
                     .unwrap_or(false);
                 if double {
@@ -200,7 +199,8 @@ fn handle_global(
         InputEvent::ShowMessageActionPopup => {
             state.operator_config.operator.message_action_popup_selected = 0;
             state.operator_config.operator.message_action_target_id = state
-                .transcript.messages
+                .transcript
+                .messages
                 .iter()
                 .rev()
                 .find(|m| m.role == "user")
@@ -283,7 +283,8 @@ fn handle_esc(state: &mut AppState, output_tx: &Sender<OutputEvent>) {
         }
     } else if state.execution.shell.session_store.popup_visible
         && state
-            .execution.shell
+            .execution
+            .shell
             .session_store
             .active()
             .and_then(|s| s.command.as_ref())
@@ -304,7 +305,8 @@ fn handle_esc(state: &mut AppState, output_tx: &Sender<OutputEvent>) {
 
 fn handle_ctrl_z(state: &mut AppState) {
     if state
-        .execution.shell
+        .execution
+        .shell
         .session_store
         .active()
         .and_then(|s| s.command.as_ref())
@@ -328,7 +330,9 @@ fn handle_mouse_drag_start(
     row: u16,
 ) {
     let banner_active = state
-        .layout.banner.message
+        .layout
+        .banner
+        .message
         .as_ref()
         .is_some_and(|m: &crate::services::banner::BannerMessage| !m.is_expired());
 
@@ -451,20 +455,26 @@ mod tests {
         let (mut state, tx, _rx) = make_state_with_channel();
         state.layout.side_panel.visible = true;
         state
-            .layout.side_panel.header_areas
+            .layout
+            .side_panel
+            .header_areas
             .insert(SidePanelSection::Sessions, Rect::new(1, 5, 20, 1));
 
         handle_input_event(&mut state, &tx, InputEvent::MouseDragStart(2, 5));
         assert!(
             state
-                .layout.side_panel.section_collapsed
+                .layout
+                .side_panel
+                .section_collapsed
                 .contains(&SidePanelSection::Sessions)
         );
 
         handle_input_event(&mut state, &tx, InputEvent::MouseDragStart(2, 5));
         assert!(
             !state
-                .layout.side_panel.section_collapsed
+                .layout
+                .side_panel
+                .section_collapsed
                 .contains(&SidePanelSection::Sessions)
         );
     }
@@ -499,7 +509,10 @@ mod tests {
 
         handle_input_event(&mut state, &tx, InputEvent::MouseDragStart(3, 9));
 
-        assert_eq!(state.workspace.review.selected_path.as_deref(), Some("src/lib.rs"));
+        assert_eq!(
+            state.workspace.review.selected_path.as_deref(),
+            Some("src/lib.rs")
+        );
         assert_eq!(state.layout.workbench_tab, WorkbenchTab::Review);
         assert_eq!(state.layout.focus, WorkspaceFocus::Workbench);
     }

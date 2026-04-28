@@ -79,14 +79,11 @@ fn bench_submit_stream_first_chunk(c: &mut Criterion) {
     c.bench_function("submit_stream first chunk", |b| {
         b.iter(|| {
             rt.block_on(async {
-                let writer =
-                    Arc::new(TranscriptWriter::new(tmp.path().to_path_buf()));
+                let writer = Arc::new(TranscriptWriter::new(tmp.path().to_path_buf()));
                 let slash = Arc::new(SlashProcessor::new());
-                let compact: Arc<dyn CompactBoundary> =
-                    Arc::new(TrivialCompactBoundary::default());
+                let compact: Arc<dyn CompactBoundary> = Arc::new(TrivialCompactBoundary::default());
                 let usage = Arc::new(UsageTracker::new());
-                let llm: Arc<dyn vac_session_engine::LlmAdapter> =
-                    Arc::new(EchoAdapter);
+                let llm: Arc<dyn vac_session_engine::LlmAdapter> = Arc::new(EchoAdapter);
                 let ctx = SubmitContext::new(Uuid::new_v4(), "bench");
                 let mut stream = submit_stream(
                     ctx,
@@ -103,10 +100,7 @@ fn bench_submit_stream_first_chunk(c: &mut Criterion) {
                 // time-to-first-tool-request.
                 let mut saw_non_accepted = false;
                 while let Some(chunk) = stream.next().await {
-                    if !matches!(
-                        chunk,
-                        vac_session_engine::SubmitChunk::Accepted { .. }
-                    ) {
+                    if !matches!(chunk, vac_session_engine::SubmitChunk::Accepted { .. }) {
                         saw_non_accepted = true;
                         break;
                     }
@@ -117,9 +111,5 @@ fn bench_submit_stream_first_chunk(c: &mut Criterion) {
     });
 }
 
-criterion_group!(
-    benches,
-    bench_submit_one,
-    bench_submit_stream_first_chunk,
-);
+criterion_group!(benches, bench_submit_one, bench_submit_stream_first_chunk,);
 criterion_main!(benches);

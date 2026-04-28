@@ -44,11 +44,7 @@ pub fn classify_stream(stream: &str) -> Option<PatternKind> {
 /// signature matches are deliberately narrow (substring) so noisy
 /// logs don't fire the detector; a false-positive would push a
 /// bogus suggestion to the operator.
-pub fn detect_pattern(
-    kind: PatternKind,
-    stream: &str,
-    lines: &[&str],
-) -> Option<String> {
+pub fn detect_pattern(kind: PatternKind, stream: &str, lines: &[&str]) -> Option<String> {
     match kind {
         PatternKind::BuildFailure => {
             // rustc emits `error[E0308]` etc; cargo relays the line.
@@ -75,7 +71,10 @@ pub fn detect_pattern(
 /// up to `max_lines` tail lines. Available without the `signal-rewind`
 /// feature so the primary assistant sweep still works on plain-text
 /// build/test output.
-pub fn scan_log_dir(dir: &std::path::Path, max_lines: usize) -> std::io::Result<Vec<(String, Vec<String>)>> {
+pub fn scan_log_dir(
+    dir: &std::path::Path,
+    max_lines: usize,
+) -> std::io::Result<Vec<(String, Vec<String>)>> {
     let mut out = Vec::new();
     if !dir.is_dir() {
         return Ok(out);
@@ -90,7 +89,12 @@ pub fn scan_log_dir(dir: &std::path::Path, max_lines: usize) -> std::io::Result<
             continue;
         };
         let text = std::fs::read_to_string(&path).unwrap_or_default();
-        let lines: Vec<String> = text.lines().rev().take(max_lines).map(|s| s.to_string()).collect();
+        let lines: Vec<String> = text
+            .lines()
+            .rev()
+            .take(max_lines)
+            .map(|s| s.to_string())
+            .collect();
         out.push((stem.to_string(), lines.into_iter().rev().collect()));
     }
     Ok(out)
@@ -116,8 +120,7 @@ pub async fn execute(project_root: PathBuf, session_id: Option<String>) -> anyho
             let store = vac_signal::rewind::RewindStore::open(&db_path)?;
             for stream in store.list_streams()? {
                 let lines_owned = store.recent(&stream, 100)?;
-                let lines: Vec<String> =
-                    lines_owned.into_iter().map(|l| l.text).collect();
+                let lines: Vec<String> = lines_owned.into_iter().map(|l| l.text).collect();
                 sources.push((stream, lines));
             }
         }
@@ -180,8 +183,7 @@ mod tests {
     #[test]
     fn build_failure_fires_on_error_ecode() {
         let lines = vec!["Compiling vac_cli v0.1.0", "error[E0308]: mismatched types"];
-        let out =
-            detect_pattern(PatternKind::BuildFailure, "build:vac_cli", &lines).unwrap();
+        let out = detect_pattern(PatternKind::BuildFailure, "build:vac_cli", &lines).unwrap();
         assert!(out.contains("build:vac_cli"));
     }
 
@@ -198,8 +200,7 @@ mod tests {
             "test parse ... ok",
             "test submit ... FAILED",
         ];
-        let out =
-            detect_pattern(PatternKind::TestRegression, "test:vac_cli", &lines).unwrap();
+        let out = detect_pattern(PatternKind::TestRegression, "test:vac_cli", &lines).unwrap();
         assert!(out.contains("test:vac_cli"));
     }
 
@@ -237,7 +238,10 @@ mod tests {
         let queue_path = tmp.path().join(".vac/queue.json");
         assert!(queue_path.exists(), "queue.json should be written");
         let raw = std::fs::read_to_string(&queue_path).unwrap();
-        assert!(raw.contains("build-cargo"), "queue should reference stream: {raw}");
+        assert!(
+            raw.contains("build-cargo"),
+            "queue should reference stream: {raw}"
+        );
     }
 
     #[test]

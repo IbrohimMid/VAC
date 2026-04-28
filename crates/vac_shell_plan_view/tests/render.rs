@@ -1,12 +1,14 @@
-use ratatui::backend::TestBackend;
 use ratatui::Terminal;
+use ratatui::backend::TestBackend;
 use vac_shell_contracts::{PlanMetadata, PlanStatus};
 use vac_shell_plan_view::render_plan_view;
 
 fn render(plan: Option<&PlanMetadata>) -> String {
     let backend = TestBackend::new(80, 12);
     let mut terminal = Terminal::new(backend).unwrap();
-    terminal.draw(|f| render_plan_view(f, plan, f.area())).unwrap();
+    terminal
+        .draw(|f| render_plan_view(f, plan, f.area()))
+        .unwrap();
     let buf = terminal.backend().buffer();
     let mut all = String::new();
     for y in 0..buf.area.height {

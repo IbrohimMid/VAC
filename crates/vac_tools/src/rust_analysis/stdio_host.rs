@@ -72,18 +72,14 @@ impl StdioLspHost {
     /// should use [`spawn_with_binary`] instead — passing a binary
     /// explicitly avoids racing on a process-wide env var.
     pub async fn spawn(project_root: PathBuf) -> AnalysisResult<Self> {
-        let command =
-            std::env::var("VAC_LSP_SERVER").unwrap_or_else(|_| "rust-analyzer".into());
+        let command = std::env::var("VAC_LSP_SERVER").unwrap_or_else(|_| "rust-analyzer".into());
         Self::spawn_with_binary(project_root, command).await
     }
 
     /// Spawn a specific server binary. Used by
     /// [`crate::rust_analysis::LspServerManager`] to route each file
     /// extension to the right server without mutating process env.
-    pub async fn spawn_with_binary(
-        project_root: PathBuf,
-        command: String,
-    ) -> AnalysisResult<Self> {
+    pub async fn spawn_with_binary(project_root: PathBuf, command: String) -> AnalysisResult<Self> {
         if !Self::is_available(&command) {
             return Err(AnalysisError::BackendUnavailable);
         }
@@ -214,9 +210,7 @@ impl StdioLspHost {
     }
 }
 
-async fn read_lsp_headers<R: AsyncBufReadExt + Unpin>(
-    reader: &mut R,
-) -> std::io::Result<usize> {
+async fn read_lsp_headers<R: AsyncBufReadExt + Unpin>(reader: &mut R) -> std::io::Result<usize> {
     let mut content_length = 0usize;
     loop {
         let mut line = String::new();
@@ -260,7 +254,13 @@ fn parse_symbols_from_workspace(res: &Value) -> Vec<Symbol> {
             let uri = loc.get("uri").and_then(|u| u.as_str()).unwrap_or("");
             let file = PathBuf::from(uri.strip_prefix("file://").unwrap_or(uri));
             let (line, column) = start_pos(loc.get("range")?);
-            Some(Symbol { name, kind, file, line, column })
+            Some(Symbol {
+                name,
+                kind,
+                file,
+                line,
+                column,
+            })
         })
         .collect()
 }
@@ -294,7 +294,9 @@ impl AnalysisHost for StdioLspHost {
                     "params": { "query": name }
                 });
                 let res = self.call(req).await?;
-                Ok(AnalysisResponse::ResolveSymbol(parse_symbols_from_workspace(&res)))
+                Ok(AnalysisResponse::ResolveSymbol(
+                    parse_symbols_from_workspace(&res),
+                ))
             }
             AnalysisRequest::FileSymbols { path } => {
                 let req = json!({
@@ -317,12 +319,11 @@ impl AnalysisHost for StdioLspHost {
                             .and_then(|k| k.as_u64())
                             .unwrap_or(0)
                             .to_string();
-                        let (line, column) = match sym.get("range").or_else(|| {
-                            sym.get("selectionRange")
-                        }) {
-                            Some(r) => start_pos(r),
-                            None => (0, 0),
-                        };
+                        let (line, column) =
+                            match sym.get("range").or_else(|| sym.get("selectionRange")) {
+                                Some(r) => start_pos(r),
+                                None => (0, 0),
+                            };
                         symbols.push(Symbol {
                             name: name.to_string(),
                             kind,
@@ -410,7 +411,9 @@ mod tests {
 
     #[test]
     fn is_available_false_for_bogus_binary() {
-        assert!(!StdioLspHost::is_available("definitely-not-a-real-binary-xyz"));
+        assert!(!StdioLspHost::is_available(
+            "definitely-not-a-real-binary-xyz"
+        ));
     }
 
     #[test]

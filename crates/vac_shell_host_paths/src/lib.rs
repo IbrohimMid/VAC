@@ -85,7 +85,10 @@ impl VacPaths for VacPathsImpl {
     }
 
     fn plan_file(&self) -> PathBuf {
-        self.project_root.join(".vac").join("session").join("plan.md")
+        self.project_root
+            .join(".vac")
+            .join("session")
+            .join("plan.md")
     }
 
     fn commands_dir(&self) -> PathBuf {

@@ -111,8 +111,16 @@ impl ActivityLog {
             ts_unix,
             kind: ShellActivityKind::ApprovalResolved,
             title: tool.into(),
-            detail: Some(if approved { "approved".into() } else { "rejected".into() }),
-            severity: if approved { Severity::Ok } else { Severity::Warn },
+            detail: Some(if approved {
+                "approved".into()
+            } else {
+                "rejected".into()
+            }),
+            severity: if approved {
+                Severity::Ok
+            } else {
+                Severity::Warn
+            },
         });
     }
 

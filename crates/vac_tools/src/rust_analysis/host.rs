@@ -24,9 +24,17 @@ pub enum AnalysisRequest {
     /// Fetch workspace diagnostics.
     WorkspaceDiagnostics,
     /// Hover over a symbol.
-    Hover { file: PathBuf, line: u32, column: u32 },
+    Hover {
+        file: PathBuf,
+        line: u32,
+        column: u32,
+    },
     /// Go to definition.
-    GotoDefinition { file: PathBuf, line: u32, column: u32 },
+    GotoDefinition {
+        file: PathBuf,
+        line: u32,
+        column: u32,
+    },
 }
 
 /// A single analysis response. Variants parallel [`AnalysisRequest`].

@@ -248,7 +248,10 @@ fn recorder_writes_schema_header_on_open() {
 
     // The first line on disk must be a parseable RecorderHeader.
     let content = std::fs::read_to_string(&path).unwrap();
-    let first = content.lines().next().expect("recording has at least one line");
+    let first = content
+        .lines()
+        .next()
+        .expect("recording has at least one line");
     let header: RecorderHeader =
         serde_json::from_str(first).expect("first line parses as RecorderHeader");
     assert_eq!(header.schema, RECORDER_SCHEMA);
@@ -271,7 +274,10 @@ fn replay_surfaces_recorded_header_and_skips_it() {
     drop(rec);
 
     let replay = Replay::open(&path).unwrap();
-    let header = replay.header().expect("header present for new recordings").clone();
+    let header = replay
+        .header()
+        .expect("header present for new recordings")
+        .clone();
     assert_eq!(header, RecorderHeader::current());
     // Replay iterator must not yield the header as a data line.
     let replayed: Vec<RecordedLine> = replay.collect();

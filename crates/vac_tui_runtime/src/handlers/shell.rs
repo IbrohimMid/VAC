@@ -19,7 +19,8 @@ pub fn handle_shell_key(
     }
 
     let has_active_command = state
-        .execution.shell
+        .execution
+        .shell
         .session_store
         .active()
         .and_then(|session| session.command.as_ref())
@@ -85,7 +86,8 @@ pub fn handle_shell_key(
                     session.history_idx = Some(next_idx);
                     if let Some(cmd) = session.history.get(next_idx) {
                         state.composer.input.set_content(cmd);
-                        state.layout.scroll.cursor_position = state.composer.input.get_content().len();
+                        state.layout.scroll.cursor_position =
+                            state.composer.input.get_content().len();
                     }
                 }
                 return true;
@@ -122,7 +124,8 @@ pub fn foreground(state: &mut AppState) {
 /// Kill the active shell.
 pub fn kill(state: &mut AppState) {
     if let Some(shell) = state
-        .execution.shell
+        .execution
+        .shell
         .session_store
         .active()
         .and_then(|session| -> Option<vac_shell::ShellCommand> { session.command.clone() })
@@ -178,15 +181,24 @@ mod tests {
     #[test]
     fn active_session_switch_isolates_output() {
         let mut state = make_state();
-        let first = state.execution.shell.session_store.push_new("shell-1".to_string());
+        let first = state
+            .execution
+            .shell
+            .session_store
+            .push_new("shell-1".to_string());
         state.execution.shell.session_store.sessions[first].output = "first".to_string();
-        let second = state.execution.shell.session_store.push_new("shell-2".to_string());
+        let second = state
+            .execution
+            .shell
+            .session_store
+            .push_new("shell-2".to_string());
         state.execution.shell.session_store.sessions[second].output = "second".to_string();
 
         state.execution.shell.session_store.switch_to(first);
         assert_eq!(
             state
-                .execution.shell
+                .execution
+                .shell
                 .session_store
                 .active()
                 .map(|session| session.output.as_str()),
@@ -196,7 +208,8 @@ mod tests {
         state.execution.shell.session_store.switch_to(second);
         assert_eq!(
             state
-                .execution.shell
+                .execution
+                .shell
                 .session_store
                 .active()
                 .map(|session| session.output.as_str()),
@@ -207,15 +220,25 @@ mod tests {
     #[test]
     fn history_isolated_per_session() {
         let mut state = make_state();
-        let first = state.execution.shell.session_store.push_new("shell-1".to_string());
-        state.execution.shell.session_store.sessions[first].history = vec!["cargo check".to_string()];
-        let second = state.execution.shell.session_store.push_new("shell-2".to_string());
+        let first = state
+            .execution
+            .shell
+            .session_store
+            .push_new("shell-1".to_string());
+        state.execution.shell.session_store.sessions[first].history =
+            vec!["cargo check".to_string()];
+        let second = state
+            .execution
+            .shell
+            .session_store
+            .push_new("shell-2".to_string());
         state.execution.shell.session_store.sessions[second].history = vec!["npm test".to_string()];
 
         state.execution.shell.session_store.switch_to(first);
         assert_eq!(
             state
-                .execution.shell
+                .execution
+                .shell
                 .session_store
                 .active()
                 .map(|session| session.history.clone()),
@@ -225,7 +248,8 @@ mod tests {
         state.execution.shell.session_store.switch_to(second);
         assert_eq!(
             state
-                .execution.shell
+                .execution
+                .shell
                 .session_store
                 .active()
                 .map(|session| session.history.clone()),
@@ -236,7 +260,11 @@ mod tests {
     #[test]
     fn background_foreground_lifecycle() {
         let mut state = make_state();
-        let idx = state.execution.shell.session_store.push_new("shell-1".to_string());
+        let idx = state
+            .execution
+            .shell
+            .session_store
+            .push_new("shell-1".to_string());
         state.execution.shell.session_store.sessions[idx].command = Some(dummy_command("shell-1"));
         state.execution.shell.session_store.popup_visible = true;
 
@@ -252,31 +280,53 @@ mod tests {
     #[test]
     fn reset_session_does_not_affect_other_sessions() {
         let mut state = make_state();
-        let first = state.execution.shell.session_store.push_new("shell-1".to_string());
+        let first = state
+            .execution
+            .shell
+            .session_store
+            .push_new("shell-1".to_string());
         state.execution.shell.session_store.sessions[first].output = "keep me".to_string();
-        state.execution.shell.session_store.sessions[first].history = vec!["cargo test".to_string()];
+        state.execution.shell.session_store.sessions[first].history =
+            vec!["cargo test".to_string()];
 
-        let second = state.execution.shell.session_store.push_new("shell-2".to_string());
-        state.execution.shell.session_store.sessions[second].command = Some(dummy_command("shell-2"));
+        let second = state
+            .execution
+            .shell
+            .session_store
+            .push_new("shell-2".to_string());
+        state.execution.shell.session_store.sessions[second].command =
+            Some(dummy_command("shell-2"));
         state.execution.shell.session_store.sessions[second].output = "clear me".to_string();
-        state.execution.shell.session_store.sessions[second].history = vec!["npm run dev".to_string()];
+        state.execution.shell.session_store.sessions[second].history =
+            vec!["npm run dev".to_string()];
         state.execution.shell.session_store.switch_to(second);
         state.execution.shell.session_store.popup_visible = true;
 
         reset(&mut state);
 
-        assert_eq!(state.execution.shell.session_store.sessions[first].output, "keep me");
+        assert_eq!(
+            state.execution.shell.session_store.sessions[first].output,
+            "keep me"
+        );
         assert_eq!(
             state.execution.shell.session_store.sessions[first].history,
             vec!["cargo test".to_string()]
         );
-        assert!(state.execution.shell.session_store.sessions[second].output.is_empty());
+        assert!(
+            state.execution.shell.session_store.sessions[second]
+                .output
+                .is_empty()
+        );
         assert!(
             state.execution.shell.session_store.sessions[second]
                 .history
                 .is_empty()
         );
-        assert!(state.execution.shell.session_store.sessions[second].command.is_none());
+        assert!(
+            state.execution.shell.session_store.sessions[second]
+                .command
+                .is_none()
+        );
         assert!(!state.execution.shell.session_store.popup_visible);
     }
 }

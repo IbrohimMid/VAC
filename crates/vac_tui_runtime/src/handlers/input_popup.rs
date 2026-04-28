@@ -136,11 +136,7 @@ fn handle_elicitation(state: &mut AppState, event: InputEvent) {
     use crate::services::elicitation;
     match event {
         InputEvent::InputSubmitted => {
-            let url = state
-                .layout
-                .elicitation
-                .as_ref()
-                .map(|p| p.url.clone());
+            let url = state.layout.elicitation.as_ref().map(|p| p.url.clone());
             if let Some(url) = url {
                 if let Err(e) = elicitation::launch_url(&url) {
                     tracing::warn!(
@@ -169,7 +165,10 @@ fn handle_reject_reason(state: &mut AppState, output_tx: &Sender<OutputEvent>, e
         }
         InputEvent::HandleEsc => {
             ctx.state.execution.approvals.reject_reason_input = None;
-            ctx.state.layout.overlay_manager.pop(OverlayId::RejectReason);
+            ctx.state
+                .layout
+                .overlay_manager
+                .pop(OverlayId::RejectReason);
             let _ = approval::reject_current(&mut ctx);
         }
         InputEvent::InputChanged(c) => {

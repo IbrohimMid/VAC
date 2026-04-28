@@ -6,7 +6,7 @@ pub mod types;
 
 pub use events::{InputEvent, OutputEvent};
 pub use root_handle::{
-    AgentBreadcrumb, AppStateRootHandle, NotificationLevel, RootNotification,
-    RootObservables, BREADCRUMB_RING_CAP, NOTIFICATION_RING_CAP,
+    AgentBreadcrumb, AppStateRootHandle, BREADCRUMB_RING_CAP, NOTIFICATION_RING_CAP,
+    NotificationLevel, RootNotification, RootObservables,
 };
 pub use types::*;

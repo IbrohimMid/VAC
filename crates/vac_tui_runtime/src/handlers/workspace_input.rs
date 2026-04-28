@@ -21,7 +21,8 @@ pub fn handle(state: &mut AppState, output_tx: &Sender<OutputEvent>, event: Inpu
             if state.layout.focus == WorkspaceFocus::Input {
                 state.composer.input.delete();
                 if state
-                    .layout.overlay_manager
+                    .layout
+                    .overlay_manager
                     .is_active(crate::overlay::OverlayId::HelperDropdown)
                 {
                     crate::services::helper_dropdown::filter_helpers_sync(state);
@@ -70,14 +71,18 @@ pub fn handle(state: &mut AppState, output_tx: &Sender<OutputEvent>, event: Inpu
         InputEvent::Up => handle_up(state, output_tx),
         InputEvent::Down => handle_down(state, output_tx),
         InputEvent::ScrollUp => match state.layout.focus {
-            WorkspaceFocus::Conversation => state.layout.scroll.messages = state.layout.scroll.messages.saturating_sub(1),
+            WorkspaceFocus::Conversation => {
+                state.layout.scroll.messages = state.layout.scroll.messages.saturating_sub(1)
+            }
             WorkspaceFocus::Activity => {
                 state.layout.scroll.activity = state.layout.scroll.activity.saturating_add(1)
             }
             _ => {}
         },
         InputEvent::ScrollDown => match state.layout.focus {
-            WorkspaceFocus::Conversation => state.layout.scroll.messages = state.layout.scroll.messages.saturating_add(1),
+            WorkspaceFocus::Conversation => {
+                state.layout.scroll.messages = state.layout.scroll.messages.saturating_add(1)
+            }
             WorkspaceFocus::Activity => {
                 state.layout.scroll.activity = state.layout.scroll.activity.saturating_sub(1)
             }
@@ -114,7 +119,8 @@ fn handle_char(state: &mut AppState, output_tx: &Sender<OutputEvent>, c: char) {
         state.layout.command_palette.helper_selected = 0;
         state.layout.command_palette.helper_scroll = 0;
     } else if state
-        .layout.overlay_manager
+        .layout
+        .overlay_manager
         .is_active(crate::overlay::OverlayId::HelperDropdown)
     {
         state.composer.input.input(c);
@@ -128,13 +134,17 @@ fn handle_char(state: &mut AppState, output_tx: &Sender<OutputEvent>, c: char) {
         if state.workspace.file_index.all_files.is_empty() {
             // Wait for file index background load
         }
-        state.composer.at_mention.results = crate::services::fuzzy_search_files("", &state.workspace.file_index.all_files, 8);
+        state.composer.at_mention.results =
+            crate::services::fuzzy_search_files("", &state.workspace.file_index.all_files, 8);
         state.composer.input.input(c);
     } else if state.composer.at_mention.trigger_active {
         state.composer.at_mention.query.push(c);
         state.composer.at_mention.selected_idx = 0;
-        state.composer.at_mention.results =
-            crate::services::fuzzy_search_files(&state.composer.at_mention.query, &state.workspace.file_index.all_files, 8);
+        state.composer.at_mention.results = crate::services::fuzzy_search_files(
+            &state.composer.at_mention.query,
+            &state.workspace.file_index.all_files,
+            8,
+        );
         state.composer.input.input(c);
     } else {
         state.composer.input.input(c);
@@ -149,7 +159,8 @@ fn handle_backspace(state: &mut AppState) {
         return;
     }
     if state
-        .layout.overlay_manager
+        .layout
+        .overlay_manager
         .is_active(crate::overlay::OverlayId::HelperDropdown)
     {
         state.composer.input.backspace();
@@ -164,8 +175,11 @@ fn handle_backspace(state: &mut AppState) {
         } else {
             state.composer.at_mention.query.pop();
             state.composer.at_mention.selected_idx = 0;
-            state.composer.at_mention.results =
-                crate::services::fuzzy_search_files(&state.composer.at_mention.query, &state.workspace.file_index.all_files, 8);
+            state.composer.at_mention.results = crate::services::fuzzy_search_files(
+                &state.composer.at_mention.query,
+                &state.workspace.file_index.all_files,
+                8,
+            );
         }
         state.composer.input.backspace();
     } else {
@@ -178,7 +192,8 @@ fn handle_submit(state: &mut AppState, output_tx: &Sender<OutputEvent>) {
     if state.layout.focus == WorkspaceFocus::Input
         && state.execution.shell.session_store.popup_visible
         && state
-            .execution.shell
+            .execution
+            .shell
             .session_store
             .active()
             .and_then(|s| s.command.as_ref())
@@ -213,7 +228,11 @@ fn handle_submit(state: &mut AppState, output_tx: &Sender<OutputEvent>) {
     };
 
     if msg.starts_with('/') {
-        state.layout.command_palette.recent_commands.add_command(msg.clone());
+        state
+            .layout
+            .command_palette
+            .recent_commands
+            .add_command(msg.clone());
         let trimmed = msg.trim();
         let mut parts = trimmed.splitn(2, char::is_whitespace);
         let cmd_word = parts.next().unwrap_or(trimmed);
@@ -223,7 +242,8 @@ fn handle_submit(state: &mut AppState, output_tx: &Sender<OutputEvent>) {
             let expanded = format!("{chip_prefix}{}", state.expand_pending_pastes(&msg));
             let image_parts = std::mem::take(&mut state.composer.pending_image_parts);
             state
-                .transcript.pending_user_messages
+                .transcript
+                .pending_user_messages
                 .push_back(crate::app::PendingUserMessage::new(
                     expanded.clone(),
                     None,
@@ -235,7 +255,8 @@ fn handle_submit(state: &mut AppState, output_tx: &Sender<OutputEvent>) {
         let expanded = format!("{chip_prefix}{}", state.expand_pending_pastes(&msg));
         let image_parts = std::mem::take(&mut state.composer.pending_image_parts);
         state
-            .transcript.pending_user_messages
+            .transcript
+            .pending_user_messages
             .push_back(crate::app::PendingUserMessage::new(
                 expanded.clone(),
                 None,
@@ -254,8 +275,12 @@ fn handle_up(state: &mut AppState, output_tx: &Sender<OutputEvent>) {
                 state.composer.input.move_cursor_up();
             }
         }
-        WorkspaceFocus::Conversation => state.layout.scroll.messages = state.layout.scroll.messages.saturating_sub(1),
-        WorkspaceFocus::Activity => state.layout.scroll.activity = state.layout.scroll.activity.saturating_add(1),
+        WorkspaceFocus::Conversation => {
+            state.layout.scroll.messages = state.layout.scroll.messages.saturating_sub(1)
+        }
+        WorkspaceFocus::Activity => {
+            state.layout.scroll.activity = state.layout.scroll.activity.saturating_add(1)
+        }
         WorkspaceFocus::Workbench => {} // handled by workbench_input
     }
 }
@@ -269,8 +294,12 @@ fn handle_down(state: &mut AppState, output_tx: &Sender<OutputEvent>) {
                 state.composer.input.move_cursor_down();
             }
         }
-        WorkspaceFocus::Conversation => state.layout.scroll.messages = state.layout.scroll.messages.saturating_add(1),
-        WorkspaceFocus::Activity => state.layout.scroll.activity = state.layout.scroll.activity.saturating_sub(1),
+        WorkspaceFocus::Conversation => {
+            state.layout.scroll.messages = state.layout.scroll.messages.saturating_add(1)
+        }
+        WorkspaceFocus::Activity => {
+            state.layout.scroll.activity = state.layout.scroll.activity.saturating_sub(1)
+        }
         WorkspaceFocus::Workbench => {} // handled by workbench_input
     }
 }
@@ -319,7 +348,8 @@ fn handle_paste(state: &mut AppState, text: String) {
 fn notify_vil_expr_lint(state: &mut AppState) {
     let text = state.composer.input.lines.join("\n");
     state
-        .composer.vil_expr_lint
+        .composer
+        .vil_expr_lint
         .on_input_changed(&text, std::time::Instant::now());
 }
 
@@ -392,7 +422,8 @@ mod tests {
         // Before debounce expires → tick should not fire.
         assert!(
             !state
-                .composer.vil_expr_lint
+                .composer
+                .vil_expr_lint
                 .tick(&symbols, now + Duration::from_millis(100)),
             "tick should NOT fire before debounce window"
         );
@@ -404,7 +435,8 @@ mod tests {
         // After debounce expires → tick should fire and return true (= redraw needed).
         assert!(
             state
-                .composer.vil_expr_lint
+                .composer
+                .vil_expr_lint
                 .tick(&symbols, now + Duration::from_millis(300)),
             "tick should fire after debounce window — return true signals redraw"
         );
@@ -430,11 +462,17 @@ mod tests {
         // Should have a toast with the stub message.
         assert!(
             state
-                .layout.toasts
+                .layout
+                .toasts
                 .iter()
                 .any(|t| t.message.contains("type inference coming soon")),
             "Alt+H with active payload should show stub type-info toast, got: {:?}",
-            state.layout.toasts.iter().map(|t| &t.message).collect::<Vec<_>>()
+            state
+                .layout
+                .toasts
+                .iter()
+                .map(|t| &t.message)
+                .collect::<Vec<_>>()
         );
     }
 }
@@ -453,7 +491,10 @@ fn handle_image_paste(state: &mut AppState) {
                             bytes.len(),
                             MAX_IMAGE_BYTES
                         );
-                        state.composer.input.insert_str("[image too large, max 10MB] ");
+                        state
+                            .composer
+                            .input
+                            .insert_str("[image too large, max 10MB] ");
                     } else {
                         use crate::services::clipboard_paste::{
                             PastedItem, PastedKind, image_placeholder, make_paste_id,

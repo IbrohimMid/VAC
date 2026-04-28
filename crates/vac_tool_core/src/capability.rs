@@ -44,11 +44,21 @@ impl Default for ToolCapability {
 impl ToolCapability {
     /// Builder style: start from default and flip bits.
     pub fn destructive() -> Self {
-        Self { read_only: false, destructive: true, concurrency_safe: false, ..Self::default() }
+        Self {
+            read_only: false,
+            destructive: true,
+            concurrency_safe: false,
+            ..Self::default()
+        }
     }
 
     /// Write but reversible (file edit with backup).
     pub fn mutating() -> Self {
-        Self { read_only: false, destructive: false, concurrency_safe: false, ..Self::default() }
+        Self {
+            read_only: false,
+            destructive: false,
+            concurrency_safe: false,
+            ..Self::default()
+        }
     }
 }

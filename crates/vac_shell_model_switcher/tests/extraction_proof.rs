@@ -1,7 +1,7 @@
 //! Slice 8 — model switcher extraction proof.
 
-use ratatui::backend::TestBackend;
 use ratatui::Terminal;
+use ratatui::backend::TestBackend;
 use vac_shell_contracts::{ProviderId, VacModelView};
 use vac_shell_model_switcher::{
     ModelSwitcherView, SwitcherEvent, SwitcherKey, SwitcherMode, clamp_selection, filter_models,
@@ -164,7 +164,10 @@ fn escape_dismisses_and_clears_state() {
 fn keys_ignored_when_switcher_closed() {
     let mut view = fixture();
     assert!(!view.visible);
-    assert_eq!(on_key(&mut view, SwitcherKey::Enter), SwitcherEvent::Ignored);
+    assert_eq!(
+        on_key(&mut view, SwitcherKey::Enter),
+        SwitcherEvent::Ignored
+    );
 }
 
 #[test]
@@ -236,7 +239,10 @@ fn recent_indices_drops_stale_entries_not_present_in_models() {
     ]);
     let filtered = filter_models(&view);
     let recents = recent_indices(&view, &filtered);
-    let labels: Vec<&str> = recents.iter().map(|i| view.models[*i].label.as_str()).collect();
+    let labels: Vec<&str> = recents
+        .iter()
+        .map(|i| view.models[*i].label.as_str())
+        .collect();
     assert_eq!(labels, vec!["GPT-4o"], "stale recent must be dropped");
 }
 
@@ -314,7 +320,10 @@ fn empty_models_render_empty_state() {
         }
         all.push('\n');
     }
-    assert!(all.contains("No models available"), "empty-state missing\n{all}");
+    assert!(
+        all.contains("No models available"),
+        "empty-state missing\n{all}"
+    );
 }
 
 #[test]
@@ -335,7 +344,10 @@ fn search_miss_renders_empty_state() {
         }
         all.push('\n');
     }
-    assert!(all.contains("No models match your search"), "empty-state missing\n{all}");
+    assert!(
+        all.contains("No models match your search"),
+        "empty-state missing\n{all}"
+    );
 }
 
 #[test]
@@ -359,7 +371,10 @@ fn reasoning_mode_with_no_reasoning_models_renders_empty_state() {
         }
         all.push('\n');
     }
-    assert!(all.contains("No reasoning models available"), "empty-state missing\n{all}");
+    assert!(
+        all.contains("No reasoning models available"),
+        "empty-state missing\n{all}"
+    );
 }
 
 #[test]
@@ -372,7 +387,12 @@ fn clamp_selection_pulls_selected_back_into_range_after_filter_shrinks_order() {
     clamp_selection(&mut view);
     let len = navigation_order(&view).len();
     assert!(len > 0);
-    assert!(view.selected < len, "selected {} must be < {}", view.selected, len);
+    assert!(
+        view.selected < len,
+        "selected {} must be < {}",
+        view.selected,
+        len
+    );
 }
 
 #[test]

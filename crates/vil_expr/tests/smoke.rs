@@ -1,7 +1,7 @@
 //! F0.2 — Public API smoke test. Establishes discoverability for the
 //! otherwise test-less `vil_expr` crate.
 
-use vil_expr::{parse, validate, SymbolTable};
+use vil_expr::{SymbolTable, parse, validate};
 
 #[test]
 fn parse_and_validate_expose_public_api() {

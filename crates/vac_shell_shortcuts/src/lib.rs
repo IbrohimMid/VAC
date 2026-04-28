@@ -184,7 +184,9 @@ pub fn filter_commands<'a>(needle: &str, all: &'a [ShellCommandSpec]) -> Vec<&'a
         return visible.collect();
     }
     visible
-        .filter(|s| s.slash.to_lowercase().contains(&n) || s.description.to_lowercase().contains(&n))
+        .filter(|s| {
+            s.slash.to_lowercase().contains(&n) || s.description.to_lowercase().contains(&n)
+        })
         .collect()
 }
 
@@ -264,7 +266,9 @@ pub fn render_shortcuts_popup(f: &mut Frame, view: &ShortcutsView, area: Rect) {
 
     let title = Line::from(Span::styled(
         " Command Palette",
-        Style::default().fg(title_color).add_modifier(Modifier::BOLD),
+        Style::default()
+            .fg(title_color)
+            .add_modifier(Modifier::BOLD),
     ));
     let title_widget = Paragraph::new(title);
 
@@ -374,15 +378,16 @@ fn render_sessions_section(
             let idx = scroll + i;
             if idx < total {
                 let s = filtered[idx];
-                let label = if s.label.is_empty() { s.id.as_str() } else { s.label.as_str() };
+                let label = if s.label.is_empty() {
+                    s.id.as_str()
+                } else {
+                    s.label.as_str()
+                };
                 lines.push(Line::from(vec![
                     Span::styled("  ", Style::default()),
                     Span::styled(label.to_string(), Style::default().fg(text)),
                     Span::styled("   ", Style::default()),
-                    Span::styled(
-                        format!("[{}]", s.id),
-                        Style::default().fg(muted),
-                    ),
+                    Span::styled(format!("[{}]", s.id), Style::default().fg(muted)),
                 ]));
             } else {
                 lines.push(Line::from(""));
@@ -484,7 +489,11 @@ fn render_commands_section(
             let cmd = filtered[idx];
             let avail = (area.width as usize).saturating_sub(2);
             let is_selected = idx == view.command_selected;
-            let bg = if is_selected { highlight_bg } else { Color::Reset };
+            let bg = if is_selected {
+                highlight_bg
+            } else {
+                Color::Reset
+            };
             let fg = if is_selected { highlight_fg } else { text };
             let shortcut_str = cmd.shortcut.clone().unwrap_or_default();
             let name_w = avail.saturating_sub(shortcut_str.len() + 2);

@@ -40,9 +40,7 @@ pub enum ElicitationRequest {
         default: Option<String>,
     },
     /// Ask for yes/no confirmation.
-    Confirm {
-        prompt: String,
-    },
+    Confirm { prompt: String },
 }
 
 /// Result the client ships back.
@@ -86,10 +84,7 @@ impl ElicitationResult {
 /// default for every connection is [`UnsupportedElicitationHandler`].
 #[async_trait]
 pub trait ElicitationHandler: Send + Sync + std::fmt::Debug {
-    async fn handle(
-        &self,
-        request: ElicitationRequest,
-    ) -> McpCoreResult<ElicitationResult>;
+    async fn handle(&self, request: ElicitationRequest) -> McpCoreResult<ElicitationResult>;
 }
 
 /// Safe default. Replies `Cancelled` so a server that issues an
@@ -100,10 +95,7 @@ pub struct UnsupportedElicitationHandler;
 
 #[async_trait]
 impl ElicitationHandler for UnsupportedElicitationHandler {
-    async fn handle(
-        &self,
-        _request: ElicitationRequest,
-    ) -> McpCoreResult<ElicitationResult> {
+    async fn handle(&self, _request: ElicitationRequest) -> McpCoreResult<ElicitationResult> {
         Ok(ElicitationResult::Cancelled)
     }
 }
@@ -115,10 +107,7 @@ pub struct FailingElicitationHandler;
 
 #[async_trait]
 impl ElicitationHandler for FailingElicitationHandler {
-    async fn handle(
-        &self,
-        _request: ElicitationRequest,
-    ) -> McpCoreResult<ElicitationResult> {
+    async fn handle(&self, _request: ElicitationRequest) -> McpCoreResult<ElicitationResult> {
         Err(McpCoreError::Protocol(
             "elicitation handler deliberately failing (test fixture)".into(),
         ))
@@ -155,10 +144,7 @@ impl McpElicitationRegistry {
     /// Attach a handler. Replaces any previously-attached handler
     /// for this registry (caller's responsibility — a live session
     /// should never swap handlers mid-flight).
-    pub fn attach_elicitation_handler(
-        &mut self,
-        handler: std::sync::Arc<dyn ElicitationHandler>,
-    ) {
+    pub fn attach_elicitation_handler(&mut self, handler: std::sync::Arc<dyn ElicitationHandler>) {
         self.handler = Some(handler);
     }
 
@@ -169,10 +155,7 @@ impl McpElicitationRegistry {
     /// Dispatch a single `elicitation/request`. Falls back to
     /// [`UnsupportedElicitationHandler`] when nothing is attached
     /// so the server always sees a well-formed response.
-    pub async fn dispatch(
-        &self,
-        request: ElicitationRequest,
-    ) -> McpCoreResult<ElicitationResult> {
+    pub async fn dispatch(&self, request: ElicitationRequest) -> McpCoreResult<ElicitationResult> {
         match &self.handler {
             Some(h) => h.handle(request).await,
             None => UnsupportedElicitationHandler.handle(request).await,

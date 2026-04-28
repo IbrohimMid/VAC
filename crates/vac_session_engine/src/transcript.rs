@@ -72,11 +72,7 @@ pub struct TranscriptEntry {
 }
 
 impl TranscriptEntry {
-    pub fn new(
-        session_id: Uuid,
-        kind: TranscriptKind,
-        content: serde_json::Value,
-    ) -> Self {
+    pub fn new(session_id: Uuid, kind: TranscriptKind, content: serde_json::Value) -> Self {
         Self {
             id: Uuid::new_v4(),
             session_id,
@@ -196,9 +192,8 @@ impl TranscriptWriter {
                 idx += 1;
                 continue;
             }
-            let entry: TranscriptEntry = serde_json::from_str(line).map_err(|e| {
-                EngineError::Transcript(format!("line {idx}: {e}"))
-            })?;
+            let entry: TranscriptEntry = serde_json::from_str(line)
+                .map_err(|e| EngineError::Transcript(format!("line {idx}: {e}")))?;
             entries.push(entry);
             idx += 1;
         }
@@ -211,10 +206,7 @@ impl TranscriptWriter {
     ///
     /// Streams the file line-by-line rather than slurping into memory,
     /// so cost is O(lines) rather than O(filesize) in RSS.
-    pub async fn last_pending_submit(
-        &self,
-        session_id: Uuid,
-    ) -> EngineResult<Option<Uuid>> {
+    pub async fn last_pending_submit(&self, session_id: Uuid) -> EngineResult<Option<Uuid>> {
         let path = self.sessions_dir().join(format!("{session_id}.jsonl"));
         let file = match tokio::fs::File::open(&path).await {
             Ok(f) => f,
@@ -244,9 +236,7 @@ impl TranscriptWriter {
             };
             match entry.kind {
                 TranscriptKind::Accepted => last_accepted = Some(entry.id),
-                TranscriptKind::Finished | TranscriptKind::Aborted => {
-                    last_accepted = None
-                }
+                TranscriptKind::Finished | TranscriptKind::Aborted => last_accepted = None,
                 _ => {}
             }
         }

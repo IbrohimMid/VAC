@@ -120,7 +120,10 @@ mod tests {
         // Critical: pending_approvals UNCHANGED — driver's single-call
         // pipeline is the only place that removes.
         assert_eq!(
-            s.pending_approvals.iter().map(|t| t.id.as_str()).collect::<Vec<_>>(),
+            s.pending_approvals
+                .iter()
+                .map(|t| t.id.as_str())
+                .collect::<Vec<_>>(),
             ["a", "b", "c", "d"],
         );
         assert!(s.bulk_selected.is_empty());

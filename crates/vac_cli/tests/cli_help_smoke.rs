@@ -26,15 +26,10 @@ const EXPECTED_GROUPS: &[(&str, &[&str])] = &[
     ),
     (
         "Trace & Export:",
-        &[
-            "export", "import", "observe", "explain", "why", "status",
-        ],
+        &["export", "import", "observe", "explain", "why", "status"],
     ),
     ("Interop:", &["acp", "mcp"]),
-    (
-        "VIL Tooling:",
-        &["init", "vil", "runtime", "restore"],
-    ),
+    ("VIL Tooling:", &["init", "vil", "runtime", "restore"]),
 ];
 
 fn run_help() -> String {

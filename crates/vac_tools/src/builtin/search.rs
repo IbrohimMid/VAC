@@ -339,7 +339,10 @@ impl VilTool for SearchTool {
         crate::registry::default_spec(self)
     }
 
-    fn search_read_classification(&self, _args: &serde_json::Value) -> crate::registry::SearchReadKind {
+    fn search_read_classification(
+        &self,
+        _args: &serde_json::Value,
+    ) -> crate::registry::SearchReadKind {
         crate::registry::SearchReadKind::Search
     }
 

@@ -12,8 +12,7 @@ use vac_shell_bridge::{
 };
 use vac_shell_contracts::VacPaths;
 use vac_shell_host_model::{
-    HostModel, ModelSelectionController, ProviderInfo, boot_selection_state,
-    vac_paths_persistor,
+    HostModel, ModelSelectionController, ProviderInfo, boot_selection_state, vac_paths_persistor,
 };
 use vac_shell_host_paths::VacPathsImpl;
 
@@ -73,24 +72,17 @@ fn boot_selection_state_restores_existing_selection() {
     seed_persistor
         .save(&ModelSelectionSnapshot {
             active: Some(ModelKey::new(ProviderId("openai".into()), "gpt-4o")),
-            recent: vec![ModelKey::new(
-                ProviderId("openai".into()),
-                "gpt-4o",
-            )],
+            recent: vec![ModelKey::new(ProviderId("openai".into()), "gpt-4o")],
         })
         .unwrap();
 
     // Boot a fresh state. Fallback active is anthropic, but the
     // restored snapshot wins.
-    let persistor: Arc<dyn ModelSelectionPersistor> =
-        Arc::new(vac_paths_persistor(&paths));
+    let persistor: Arc<dyn ModelSelectionPersistor> = Arc::new(vac_paths_persistor(&paths));
     let state = boot_selection_state(
         providers(),
         models(),
-        Some((
-            ProviderId("anthropic".into()),
-            "claude-sonnet-4.5".into(),
-        )),
+        Some((ProviderId("anthropic".into()), "claude-sonnet-4.5".into())),
         persistor,
     )
     .unwrap();
@@ -110,15 +102,11 @@ fn boot_selection_state_then_select_persists_for_next_boot() {
     let paths = VacPathsImpl::new(tmp.path());
 
     // Process A: empty boot (no snapshot file yet).
-    let persistor_a: Arc<dyn ModelSelectionPersistor> =
-        Arc::new(vac_paths_persistor(&paths));
+    let persistor_a: Arc<dyn ModelSelectionPersistor> = Arc::new(vac_paths_persistor(&paths));
     let state_a = boot_selection_state(
         providers(),
         models(),
-        Some((
-            ProviderId("anthropic".into()),
-            "claude-sonnet-4.5".into(),
-        )),
+        Some((ProviderId("anthropic".into()), "claude-sonnet-4.5".into())),
         persistor_a,
     )
     .unwrap();
@@ -134,15 +122,11 @@ fn boot_selection_state_then_select_persists_for_next_boot() {
     // Process B: brand-new state booted through the same VacPaths.
     // The snapshot left on disk by process A wins over the
     // fallback active.
-    let persistor_b: Arc<dyn ModelSelectionPersistor> =
-        Arc::new(vac_paths_persistor(&paths));
+    let persistor_b: Arc<dyn ModelSelectionPersistor> = Arc::new(vac_paths_persistor(&paths));
     let state_b = boot_selection_state(
         providers(),
         models(),
-        Some((
-            ProviderId("anthropic".into()),
-            "claude-sonnet-4.5".into(),
-        )),
+        Some((ProviderId("anthropic".into()), "claude-sonnet-4.5".into())),
         persistor_b,
     )
     .unwrap();

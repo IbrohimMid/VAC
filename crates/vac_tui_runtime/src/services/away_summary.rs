@@ -65,10 +65,7 @@ impl Default for FakeClock {
 }
 impl Clock for FakeClock {
     fn now(&self) -> SystemTime {
-        self.base
-            + Duration::from_secs(
-                self.offset.load(std::sync::atomic::Ordering::SeqCst),
-            )
+        self.base + Duration::from_secs(self.offset.load(std::sync::atomic::Ordering::SeqCst))
     }
 }
 
@@ -181,9 +178,8 @@ impl AwaySummaryService {
             .unwrap_or((0, String::new()));
         let gap_h = gap.as_secs() / 3600;
         let gap_m = (gap.as_secs() % 3600) / 60;
-        let one_liner = format!(
-            "away {gap_h}h{gap_m:02}m • {commits} commit(s) • {lines} transcript line(s)"
-        );
+        let one_liner =
+            format!("away {gap_h}h{gap_m:02}m • {commits} commit(s) • {lines} transcript line(s)");
         Ok(ResumeOutcome::Summary(AwayReport {
             gap,
             commits_since: commits,
@@ -194,20 +190,13 @@ impl AwaySummaryService {
     }
 }
 
-async fn count_commits_since(
-    project_root: &Path,
-    since_unix: i64,
-) -> anyhow::Result<u32> {
+async fn count_commits_since(project_root: &Path, since_unix: i64) -> anyhow::Result<u32> {
     // Wrap in a timeout: a large + flaky repo could otherwise block
     // the resume path for seconds / minutes. On timeout we return
     // 0 commits rather than failing the whole summary — better to
     // omit one number than to block the user.
     let fut = Command::new("git")
-        .args([
-            "log",
-            &format!("--since={since_unix}"),
-            "--pretty=oneline",
-        ])
+        .args(["log", &format!("--since={since_unix}"), "--pretty=oneline"])
         .current_dir(project_root)
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -231,9 +220,7 @@ async fn count_commits_since(
     Ok(text.lines().filter(|l| !l.is_empty()).count() as u32)
 }
 
-async fn transcript_tail_summary(
-    project_root: &Path,
-) -> anyhow::Result<(u32, String)> {
+async fn transcript_tail_summary(project_root: &Path) -> anyhow::Result<(u32, String)> {
     let dir = project_root.join(".vac").join("sessions");
     if !dir.is_dir() {
         return Ok((0, String::new()));
@@ -359,7 +346,9 @@ mod tests {
         let s = svc(&tmp, clock.clone()).await;
         // Hand-crafted invalid JSON.
         let path = tmp.path().join(".vac/last-seen.json");
-        tokio::fs::create_dir_all(path.parent().unwrap()).await.unwrap();
+        tokio::fs::create_dir_all(path.parent().unwrap())
+            .await
+            .unwrap();
         tokio::fs::write(&path, b"not json").await.unwrap();
         let out = s.on_resume().await.unwrap();
         // Corrupt file parses to None → NoSummary + baseline rewrite.

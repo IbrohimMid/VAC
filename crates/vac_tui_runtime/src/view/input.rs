@@ -47,7 +47,10 @@ pub(super) fn render_input(f: &mut Frame, state: &mut AppState, area: Rect) {
         // affordance-hinting footer pattern.
         lines.push(Line::from(Span::styled(
             "Type your message or / for commands (Alt+Enter for newline, Ctrl+V to paste)",
-            state.core.theme.style(crate::services::theme::StyleKey::Muted),
+            state
+                .core
+                .theme
+                .style(crate::services::theme::StyleKey::Muted),
         )));
     } else {
         for line in &state.composer.input.lines {
@@ -71,7 +74,10 @@ pub(super) fn render_input(f: &mut Frame, state: &mut AppState, area: Rect) {
     let widget = Paragraph::new(lines)
         .block(Block::default().borders(Borders::ALL).title(Span::styled(
             "Input",
-            focus_style(state.layout.focus == WorkspaceFocus::Input, &state.core.theme),
+            focus_style(
+                state.layout.focus == WorkspaceFocus::Input,
+                &state.core.theme,
+            ),
         )))
         .wrap(Wrap { trim: false });
     f.render_widget(widget, actual_input_area);
@@ -84,7 +90,9 @@ pub(super) fn render_input(f: &mut Frame, state: &mut AppState, area: Rect) {
             .map(|issue| {
                 let style = match &issue.severity {
                     vil_expr::Severity::Error => state.core.theme.style(StyleKey::ValidationError),
-                    vil_expr::Severity::Warning => state.core.theme.style(StyleKey::ValidationWarning),
+                    vil_expr::Severity::Warning => {
+                        state.core.theme.style(StyleKey::ValidationWarning)
+                    }
                 };
                 Line::from(Span::styled(
                     format!(
@@ -103,10 +111,12 @@ pub(super) fn render_input(f: &mut Frame, state: &mut AppState, area: Rect) {
 
     if state.layout.focus == WorkspaceFocus::Input
         && !state
-            .layout.overlay_manager
+            .layout
+            .overlay_manager
             .is_active(crate::overlay::OverlayId::CommandPalette)
         && !state
-            .layout.overlay_manager
+            .layout
+            .overlay_manager
             .is_active(crate::overlay::OverlayId::Shortcuts)
     {
         let (row, col) = state.composer.input.cursor;
@@ -139,7 +149,8 @@ pub(super) fn render_paste_tray(f: &mut Frame, state: &AppState, area: Rect) {
         Span::styled(
             " [REORDER — J/K swap, r exit]",
             state
-                .core.theme
+                .core
+                .theme
                 .style(crate::services::theme::StyleKey::Warning)
                 .add_modifier(Modifier::BOLD),
         )
@@ -147,7 +158,8 @@ pub(super) fn render_paste_tray(f: &mut Frame, state: &AppState, area: Rect) {
         Span::styled(
             " j/k select, d remove, r reorder, Enter preview",
             state
-                .core.theme
+                .core
+                .theme
                 .style(crate::services::theme::StyleKey::Muted)
                 .add_modifier(Modifier::DIM),
         )
@@ -155,24 +167,33 @@ pub(super) fn render_paste_tray(f: &mut Frame, state: &AppState, area: Rect) {
     let header = Line::from(vec![
         Span::styled(
             "📎 ",
-            state.core.theme.style(crate::services::theme::StyleKey::Muted),
+            state
+                .core
+                .theme
+                .style(crate::services::theme::StyleKey::Muted),
         ),
         Span::styled(
             format!("{} attachment(s)", state.layout.paste.pending_pastes.len()),
-            state.core.theme.style(crate::services::theme::StyleKey::Muted),
+            state
+                .core
+                .theme
+                .style(crate::services::theme::StyleKey::Muted),
         ),
         mode_hint,
         Span::styled(
             "  (Ctrl+U clear)",
             state
-                .core.theme
+                .core
+                .theme
                 .style(crate::services::theme::StyleKey::Muted)
                 .add_modifier(Modifier::DIM),
         ),
     ]);
 
     let selected = state
-        .layout.paste.pending_paste_selected
+        .layout
+        .paste
+        .pending_paste_selected
         .min(state.layout.paste.pending_pastes.len().saturating_sub(1));
 
     // Show a sliding window of cards so the selected index is always visible.
@@ -187,7 +208,10 @@ pub(super) fn render_paste_tray(f: &mut Frame, state: &AppState, area: Rect) {
 
     let mut lines: Vec<Line<'static>> = Vec::with_capacity(end - start + 1);
     lines.push(header);
-    for (i, item) in state.layout.paste.pending_pastes[start..end].iter().enumerate() {
+    for (i, item) in state.layout.paste.pending_pastes[start..end]
+        .iter()
+        .enumerate()
+    {
         let abs = start + i;
         let is_selected = abs == selected;
         let cursor = if is_selected {
@@ -200,24 +224,33 @@ pub(super) fn render_paste_tray(f: &mut Frame, state: &AppState, area: Rect) {
             " "
         };
         let badge_style = match &item.kind {
-            PastedKind::Text { .. } => state.core.theme.style(crate::services::theme::StyleKey::Accent),
+            PastedKind::Text { .. } => state
+                .core
+                .theme
+                .style(crate::services::theme::StyleKey::Accent),
             PastedKind::Image { .. } => state
-                .core.theme
+                .core
+                .theme
                 .style(crate::services::theme::StyleKey::Streaming),
         };
         let row_style = if is_selected {
             state
-                .core.theme
+                .core
+                .theme
                 .style(crate::services::theme::StyleKey::Normal)
                 .add_modifier(Modifier::BOLD)
         } else {
-            state.core.theme.style(crate::services::theme::StyleKey::Muted)
+            state
+                .core
+                .theme
+                .style(crate::services::theme::StyleKey::Muted)
         };
         let spans = vec![
             Span::styled(
                 format!("{} ", cursor),
                 state
-                    .core.theme
+                    .core
+                    .theme
                     .style(crate::services::theme::StyleKey::Warning)
                     .add_modifier(Modifier::BOLD),
             ),
@@ -230,12 +263,18 @@ pub(super) fn render_paste_tray(f: &mut Frame, state: &AppState, area: Rect) {
             Span::raw(" "),
             Span::styled(
                 size_label(&item.kind),
-                state.core.theme.style(crate::services::theme::StyleKey::Muted),
+                state
+                    .core
+                    .theme
+                    .style(crate::services::theme::StyleKey::Muted),
             ),
             Span::raw(" "),
             Span::styled(
                 format!("~{}tok", token_estimate(&item.kind)),
-                state.core.theme.style(crate::services::theme::StyleKey::Success),
+                state
+                    .core
+                    .theme
+                    .style(crate::services::theme::StyleKey::Success),
             ),
             Span::raw("  "),
             Span::styled(preview_text(&item.kind), row_style),

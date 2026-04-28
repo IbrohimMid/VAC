@@ -17,20 +17,25 @@ pub fn filter_helpers_sync(state: &mut AppState) {
     if query.is_empty() {
         // Sort by recency/frequency when query is empty
         let mut cmds: Vec<_> = state
-            .layout.commands
+            .layout
+            .commands
             .iter()
             .filter(|c| c.surface != crate::services::commands::CommandSurface::Hidden)
             .cloned()
             .collect();
         cmds.sort_by_key(|c| {
             let freq = state
-                .layout.command_palette.recent_commands
+                .layout
+                .command_palette
+                .recent_commands
                 .frequencies
                 .get(&c.command)
                 .copied()
                 .unwrap_or(0);
             let recent_idx = state
-                .layout.command_palette.recent_commands
+                .layout
+                .command_palette
+                .recent_commands
                 .history
                 .iter()
                 .position(|h| h == &c.command)
@@ -59,7 +64,9 @@ pub fn filter_helpers_sync(state: &mut AppState) {
 
     matches.sort_by_key(|(score, cmd)| {
         let freq = state
-            .layout.command_palette.recent_commands
+            .layout
+            .command_palette
+            .recent_commands
             .frequencies
             .get(&cmd.command)
             .copied()
@@ -67,7 +74,8 @@ pub fn filter_helpers_sync(state: &mut AppState) {
         (Reverse(*score), Reverse(freq))
     });
 
-    state.layout.command_palette.filtered_helpers = matches.into_iter().map(|(_, cmd)| cmd).collect();
+    state.layout.command_palette.filtered_helpers =
+        matches.into_iter().map(|(_, cmd)| cmd).collect();
 }
 use crate::services::theme::StyleKey;
 use ratatui::{
@@ -83,7 +91,8 @@ pub fn render_helper_dropdown(f: &mut Frame, state: &AppState, dropdown_area: Re
     let input = input.trim();
     let show = input.starts_with('/') && !state.layout.command_palette.filtered_helpers.is_empty();
     if state
-        .layout.overlay_manager
+        .layout
+        .overlay_manager
         .is_active(crate::overlay::OverlayId::HelperDropdown)
         && show
     {
@@ -102,7 +111,8 @@ pub fn render_helper_dropdown(f: &mut Frame, state: &AppState, dropdown_area: Re
 
         // Create a compact area for the dropdown (matching view.rs calculation)
         let has_content_above = state.layout.command_palette.helper_scroll > 0;
-        let has_content_below = state.layout.command_palette.helper_scroll < total_commands.saturating_sub(visible_height);
+        let has_content_below = state.layout.command_palette.helper_scroll
+            < total_commands.saturating_sub(visible_height);
         let arrow_lines =
             if has_content_above { 1 } else { 0 } + if has_content_below { 1 } else { 0 };
         let counter_line = if has_content_above || has_content_below {
@@ -136,8 +146,16 @@ pub fn render_helper_dropdown(f: &mut Frame, state: &AppState, dropdown_area: Re
 
         // Dropdown styles sourced from the active theme.
         let dropdown_bg_style = state.core.theme.style(StyleKey::OverlayBg);
-        let dropdown_text_style = state.core.theme.style(StyleKey::Normal).patch(dropdown_bg_style);
-        let dropdown_muted_style = state.core.theme.style(StyleKey::Muted).patch(dropdown_bg_style);
+        let dropdown_text_style = state
+            .core
+            .theme
+            .style(StyleKey::Normal)
+            .patch(dropdown_bg_style);
+        let dropdown_muted_style = state
+            .core
+            .theme
+            .style(StyleKey::Muted)
+            .patch(dropdown_bg_style);
         let highlight_style = state.core.theme.style(StyleKey::OverlaySelected);
 
         // Create visible lines with scroll indicators
@@ -161,7 +179,11 @@ pub fn render_helper_dropdown(f: &mut Frame, state: &AppState, dropdown_area: Re
                 let command_style = if is_selected {
                     highlight_style
                 } else {
-                    state.core.theme.style(StyleKey::Accent).patch(dropdown_bg_style)
+                    state
+                        .core
+                        .theme
+                        .style(StyleKey::Accent)
+                        .patch(dropdown_bg_style)
                 };
 
                 let description_style = if is_selected {
@@ -231,22 +253,26 @@ pub fn render_helper_dropdown(f: &mut Frame, state: &AppState, dropdown_area: Re
 
 pub fn render_file_search_dropdown(f: &mut Frame, state: &AppState, area: Rect) {
     if !state
-        .layout.overlay_manager
+        .layout
+        .overlay_manager
         .is_active(crate::overlay::OverlayId::HelperDropdown)
         && !state
-            .layout.overlay_manager
+            .layout
+            .overlay_manager
             .is_active(crate::overlay::OverlayId::FileSearch)
     {
         return;
     }
     if state
-        .layout.overlay_manager
+        .layout
+        .overlay_manager
         .is_active(crate::overlay::OverlayId::FileSearch)
         && !state.workspace.file_index.search_results.is_empty()
     {
         render_file_dropdown(f, state, area);
     } else if state
-        .layout.overlay_manager
+        .layout
+        .overlay_manager
         .is_active(crate::overlay::OverlayId::HelperDropdown)
         && !state.layout.command_palette.filtered_helpers.is_empty()
     {
@@ -269,7 +295,8 @@ fn render_file_dropdown(f: &mut Frame, state: &AppState, area: Rect) {
         .map(|(i, item)| {
             let style = if i == state.workspace.file_index.search_selected_idx {
                 state
-                    .core.theme
+                    .core
+                    .theme
                     .style(StyleKey::OverlaySelected)
                     .add_modifier(Modifier::BOLD)
             } else {

@@ -31,8 +31,7 @@ const DEFAULT_TAIL: usize = 20;
 pub fn start<F, Fut, O>(supplier: F, observe: O) -> IdleTickHandle
 where
     F: Fn() -> Fut + Send + 'static,
-    Fut:
-        std::future::Future<Output = Vec<(String, Arc<SignalBuffer>)>> + Send,
+    Fut: std::future::Future<Output = Vec<(String, Arc<SignalBuffer>)>> + Send,
     O: FnMut(Vec<TickSample>) + Send + 'static,
 {
     let secs = std::env::var("VAC_SIGNAL_TICK_SECS")
@@ -58,8 +57,7 @@ mod tests {
         buf.push_line("hello");
         buf.push_line("ERROR boom");
         let buf = Arc::new(buf);
-        let samples: Arc<Mutex<Vec<TickSample>>> =
-            Arc::new(Mutex::new(Vec::new()));
+        let samples: Arc<Mutex<Vec<TickSample>>> = Arc::new(Mutex::new(Vec::new()));
         let samples_c = samples.clone();
         let buf_c = buf.clone();
         let handle = start(

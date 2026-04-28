@@ -97,11 +97,7 @@ mod tests {
 
     #[test]
     fn spec_serde_roundtrip() {
-        let spec = ToolSpec::read_only(
-            "x",
-            "y",
-            serde_json::json!({"type": "object"}),
-        );
+        let spec = ToolSpec::read_only("x", "y", serde_json::json!({"type": "object"}));
         let json = serde_json::to_string(&spec).unwrap();
         let back: ToolSpec = serde_json::from_str(&json).unwrap();
         assert_eq!(back.name, "x");

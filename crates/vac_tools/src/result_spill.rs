@@ -121,10 +121,7 @@ pub async fn maybe_spill_result(
 /// that doesn't deserialize as `PreviewStub` content) are skipped
 /// defensively — the pruner is conservative so a misrouted file in
 /// the directory survives a sweep.
-pub async fn prune_spill_dir(
-    spill_root: &Path,
-    older_than: Duration,
-) -> std::io::Result<usize> {
+pub async fn prune_spill_dir(spill_root: &Path, older_than: Duration) -> std::io::Result<usize> {
     if !spill_root.is_dir() {
         return Ok(0);
     }
@@ -165,7 +162,9 @@ mod tests {
     async fn small_payload_passes_through_unchanged() {
         let tmp = tempfile::tempdir().unwrap();
         let v = serde_json::json!({"x": 1});
-        let out = maybe_spill_result(v.clone(), 1024, tmp.path()).await.unwrap();
+        let out = maybe_spill_result(v.clone(), 1024, tmp.path())
+            .await
+            .unwrap();
         assert_eq!(out, v);
         // No file should have been written.
         let mut rd = tokio::fs::read_dir(tmp.path()).await.unwrap();
@@ -177,7 +176,9 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let big = "x".repeat(5_000);
         let v = serde_json::json!({"data": big});
-        let out = maybe_spill_result(v.clone(), 1_000, tmp.path()).await.unwrap();
+        let out = maybe_spill_result(v.clone(), 1_000, tmp.path())
+            .await
+            .unwrap();
         assert!(PreviewStub::is_stub(&out), "response must be a stub");
         let path = out.get("path").and_then(|p| p.as_str()).unwrap();
         assert!(std::path::Path::new(path).exists(), "spill file must exist");
@@ -194,7 +195,9 @@ mod tests {
     async fn spill_file_round_trips_to_original_payload() {
         let tmp = tempfile::tempdir().unwrap();
         let v = serde_json::json!({"records": vec!["a"; 1_000]});
-        let out = maybe_spill_result(v.clone(), 1_000, tmp.path()).await.unwrap();
+        let out = maybe_spill_result(v.clone(), 1_000, tmp.path())
+            .await
+            .unwrap();
         let path = out.get("path").and_then(|p| p.as_str()).unwrap();
         let raw = tokio::fs::read_to_string(path).await.unwrap();
         let back: serde_json::Value = serde_json::from_str(&raw).unwrap();
@@ -217,8 +220,13 @@ mod tests {
     async fn is_stub_matches_only_sentinel_kind() {
         let tmp = tempfile::tempdir().unwrap();
         let v = serde_json::json!({"kind": "something-else", "x": 1});
-        let out = maybe_spill_result(v.clone(), 1024, tmp.path()).await.unwrap();
-        assert!(!PreviewStub::is_stub(&out), "non-spill payload is not a stub");
+        let out = maybe_spill_result(v.clone(), 1024, tmp.path())
+            .await
+            .unwrap();
+        assert!(
+            !PreviewStub::is_stub(&out),
+            "non-spill payload is not a stub"
+        );
     }
 
     #[tokio::test]

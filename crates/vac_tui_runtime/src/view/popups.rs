@@ -91,13 +91,17 @@ pub(super) fn render_at_dropdown(f: &mut Frame, state: &mut AppState) {
     f.render_widget(Clear, rect);
 
     let items: Vec<ListItem> = state
-        .composer.at_mention.results
+        .composer
+        .at_mention
+        .results
         .iter()
         .enumerate()
         .map(|(i, path)| {
             let selected = i
                 == state
-                    .composer.at_mention.selected_idx
+                    .composer
+                    .at_mention
+                    .selected_idx
                     .min(state.composer.at_mention.results.len().saturating_sub(1));
             let style = if selected {
                 state.core.theme.style(StyleKey::ListSelected)
@@ -128,7 +132,8 @@ pub(super) fn render_footer(f: &mut Frame, state: &mut AppState, area: Rect) {
             Span::styled(
                 "REJECT REASON ",
                 state
-                    .core.theme
+                    .core
+                    .theme
                     .style(StyleKey::Error)
                     .add_modifier(ratatui::style::Modifier::BOLD),
             ),
@@ -149,11 +154,15 @@ pub(super) fn render_footer(f: &mut Frame, state: &mut AppState, area: Rect) {
             Span::styled(
                 "@ FILE ",
                 state
-                    .core.theme
+                    .core
+                    .theme
                     .style(StyleKey::Accent)
                     .add_modifier(ratatui::style::Modifier::BOLD),
             ),
-            Span::styled(&state.composer.at_mention.query, state.core.theme.style(StyleKey::Normal)),
+            Span::styled(
+                &state.composer.at_mention.query,
+                state.core.theme.style(StyleKey::Normal),
+            ),
             Span::styled(
                 "  ↑↓: select  Enter: insert  Esc: cancel",
                 state.core.theme.style(StyleKey::Muted),
@@ -166,7 +175,8 @@ pub(super) fn render_footer(f: &mut Frame, state: &mut AppState, area: Rect) {
 
     if state.execution.shell.session_store.popup_visible
         && state
-            .execution.shell
+            .execution
+            .shell
             .session_store
             .active()
             .and_then(|session| session.command.as_ref())
@@ -176,7 +186,8 @@ pub(super) fn render_footer(f: &mut Frame, state: &mut AppState, area: Rect) {
             Span::styled(
                 "SHELL ",
                 state
-                    .core.theme
+                    .core
+                    .theme
                     .style(StyleKey::Accent)
                     .add_modifier(ratatui::style::Modifier::BOLD),
             ),
@@ -200,7 +211,10 @@ pub(super) fn render_footer(f: &mut Frame, state: &mut AppState, area: Rect) {
             hints.push(Span::raw("  "));
         }
         let key_str = spec.keybindings.join("/");
-        hints.push(Span::styled(key_str, state.core.theme.style(StyleKey::Accent)));
+        hints.push(Span::styled(
+            key_str,
+            state.core.theme.style(StyleKey::Accent),
+        ));
         hints.push(Span::styled(
             format!(": {}  ", spec.title.to_lowercase()),
             state.core.theme.style(StyleKey::Muted),
@@ -229,7 +243,8 @@ pub(crate) fn render_boot_skeleton(f: &mut Frame, state: &AppState) {
     let version = &state.core.startup.version;
     let header = Paragraph::new(format!(" VAC v{version} — Starting…")).style(
         state
-            .core.theme
+            .core
+            .theme
             .style(StyleKey::Accent)
             .add_modifier(ratatui::style::Modifier::BOLD),
     );
@@ -251,7 +266,10 @@ pub(crate) fn render_boot_skeleton(f: &mut Frame, state: &AppState) {
             None => "[ loading… ]".to_string(),
         }
     );
-    let session_line = format!("  Sessions    [ {} loaded ]", state.core.startup.session_count);
+    let session_line = format!(
+        "  Sessions    [ {} loaded ]",
+        state.core.startup.session_count
+    );
     let vil_line = format!(
         "  VIL engine  {}",
         if state.core.startup.has_vil_engine {

@@ -20,8 +20,8 @@ use async_trait::async_trait;
 use uuid::Uuid;
 use vac_session_engine::{
     CompactConfig, EngineResult, LlmAdapter, LlmRequest, LlmResponse, SlashProcessor,
-    SubmitContext, TranscriptEntry, TranscriptKind, TranscriptWriter,
-    TrivialCompactBoundary, UsageTracker, submit_one,
+    SubmitContext, TranscriptEntry, TranscriptKind, TranscriptWriter, TrivialCompactBoundary,
+    UsageTracker, submit_one,
 };
 
 /// Zero-latency adapter so the measured cost is engine + transcript
@@ -37,7 +37,7 @@ impl LlmAdapter for InstantAdapter {
             content: req.prompt,
             input_tokens: 1,
             output_tokens: 1,
-        tool_calls: Vec::new(),
+            tool_calls: Vec::new(),
         })
     }
 }
@@ -238,16 +238,14 @@ async fn submit_stream_first_chunk_under_250ms() {
     use std::sync::Arc;
     use std::time::Instant;
     use vac_session_engine::{
-        CompactBoundary, CompactConfig, EchoAdapter, LlmAdapter,
-        SlashProcessor, SubmitChunk, SubmitContext, TranscriptWriter,
-        TrivialCompactBoundary, UsageTracker, submit_stream,
+        CompactBoundary, CompactConfig, EchoAdapter, LlmAdapter, SlashProcessor, SubmitChunk,
+        SubmitContext, TranscriptWriter, TrivialCompactBoundary, UsageTracker, submit_stream,
     };
 
     let tmp = tempfile::tempdir().unwrap();
     let writer = Arc::new(TranscriptWriter::new(tmp.path().to_path_buf()));
     let slash = Arc::new(SlashProcessor::new());
-    let compact: Arc<dyn CompactBoundary> =
-        Arc::new(TrivialCompactBoundary::default());
+    let compact: Arc<dyn CompactBoundary> = Arc::new(TrivialCompactBoundary::default());
     let usage = Arc::new(UsageTracker::new());
     let llm: Arc<dyn LlmAdapter> = Arc::new(EchoAdapter);
 

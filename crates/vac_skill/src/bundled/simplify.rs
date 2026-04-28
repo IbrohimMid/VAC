@@ -123,7 +123,12 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(out.payload["truncated"], true);
-        assert!(out.payload["collapsed"].as_str().unwrap().contains("elided"));
+        assert!(
+            out.payload["collapsed"]
+                .as_str()
+                .unwrap()
+                .contains("elided")
+        );
     }
 
     #[tokio::test]

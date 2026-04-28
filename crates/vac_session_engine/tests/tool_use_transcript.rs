@@ -1,4 +1,3 @@
-
 mod common;
 
 use async_trait::async_trait;
@@ -12,7 +11,6 @@ use vac_session_engine::{
     TrivialCompactBoundary, UsageTracker, submit_one,
 };
 use vac_shell_test_support::read_jsonl_rows;
-
 
 async fn drive_with(
     project_root: &std::path::Path,
@@ -40,7 +38,6 @@ fn kinds_in_order(rows: &[serde_json::Value]) -> Vec<String> {
         .map(|r| r["kind"].as_str().unwrap_or("").to_string())
         .collect()
 }
-
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn unsupported_dispatcher_writes_tool_call_and_tool_result_rows() {
@@ -94,7 +91,6 @@ async fn unsupported_dispatcher_writes_tool_call_and_tool_result_rows() {
     );
 }
 
-
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn multiple_tool_calls_preserve_transcript_order() {
     let tmp = tempfile::tempdir().unwrap();
@@ -123,7 +119,6 @@ async fn multiple_tool_calls_preserve_transcript_order() {
     assert_eq!(tool_call_ids, vec!["a", "b", "c"]);
     assert_eq!(tool_result_ids, vec!["a", "b", "c"]);
 }
-
 
 #[derive(Debug)]
 struct AlwaysDenyGate;
@@ -199,7 +194,6 @@ async fn gate_deny_writes_error_tool_result_and_skips_dispatcher() {
     );
 }
 
-
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn dispatcher_ok_writes_ok_tool_result_row() {
     let tmp = tempfile::tempdir().unwrap();
@@ -228,7 +222,6 @@ async fn dispatcher_ok_writes_ok_tool_result_row() {
     assert_eq!(envelope["kind"], "ok");
     assert_eq!(envelope["payload"], serde_json::json!({"hit": true}));
 }
-
 
 #[derive(Debug)]
 struct AlwaysErrDispatcher;

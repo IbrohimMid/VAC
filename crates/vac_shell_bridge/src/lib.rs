@@ -75,7 +75,8 @@ impl VacCommandRegistry for InMemoryCommandRegistry {
 /// `Arc<dyn Fn>` keeps the bridge `Send + Sync` so it can be cloned
 /// across the TUI event loop and async tasks once a real VAC engine
 /// host wires in.
-pub type DispatchHandler = Arc<dyn Fn(&ShellCommandSpec) -> Result<(), DispatchError> + Send + Sync>;
+pub type DispatchHandler =
+    Arc<dyn Fn(&ShellCommandSpec) -> Result<(), DispatchError> + Send + Sync>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DispatchError {
@@ -149,12 +150,17 @@ impl CommandDispatcher {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ShellAction {
     EnterSurface(SurfaceTarget),
-    ToggleApproval { id: String },
+    ToggleApproval {
+        id: String,
+    },
     RejectAllApprovals,
     SubmitApprovals,
     /// Set the active VAC model. Slice 9 seam — the host applies
     /// the actual config mutation; the bridge only routes.
-    SelectModel { provider: ProviderId, id: String },
+    SelectModel {
+        provider: ProviderId,
+        id: String,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -256,14 +262,16 @@ impl ShellHost for CompositeShellHost {
 /// via the unified host. Other slashes return
 /// `DispatchError::UnknownSlash` so further handlers can compose.
 pub fn host_dispatcher(host: Arc<dyn ShellHost>) -> DispatchHandler {
-    Arc::new(move |spec: &ShellCommandSpec| -> Result<(), DispatchError> {
-        let action = match spec.slash.as_str() {
-            "/chat" => ShellAction::EnterSurface(SurfaceTarget::Chat),
-            "/runtime" => ShellAction::EnterSurface(SurfaceTarget::Runtime),
-            other => return Err(DispatchError::UnknownSlash(other.to_string())),
-        };
-        host.handle(action)
-    })
+    Arc::new(
+        move |spec: &ShellCommandSpec| -> Result<(), DispatchError> {
+            let action = match spec.slash.as_str() {
+                "/chat" => ShellAction::EnterSurface(SurfaceTarget::Chat),
+                "/runtime" => ShellAction::EnterSurface(SurfaceTarget::Runtime),
+                other => return Err(DispatchError::UnknownSlash(other.to_string())),
+            };
+            host.handle(action)
+        },
+    )
 }
 
 // =====================================================================
@@ -372,13 +380,15 @@ pub trait ApprovalController: Send + Sync {
 /// further handlers later. Composition strategy is deferred — for
 /// this slice there is one effect.
 pub fn surface_dispatcher(controller: Arc<dyn SurfaceController>) -> DispatchHandler {
-    Arc::new(move |spec: &ShellCommandSpec| -> Result<(), DispatchError> {
-        match spec.slash.as_str() {
-            "/runtime" => controller.enter_runtime(),
-            "/chat" => controller.enter_chat(),
-            other => Err(DispatchError::UnknownSlash(other.to_string())),
-        }
-    })
+    Arc::new(
+        move |spec: &ShellCommandSpec| -> Result<(), DispatchError> {
+            match spec.slash.as_str() {
+                "/runtime" => controller.enter_runtime(),
+                "/chat" => controller.enter_chat(),
+                other => Err(DispatchError::UnknownSlash(other.to_string())),
+            }
+        },
+    )
 }
 
 #[cfg(test)]
@@ -394,7 +404,7 @@ mod tests {
             kind: ShellCommandKind::BuiltInAction,
             palette_visible: true,
             shortcut: None,
-        ..Default::default()
+            ..Default::default()
         }
     }
 

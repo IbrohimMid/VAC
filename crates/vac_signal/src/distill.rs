@@ -43,7 +43,11 @@ impl<'a> Distiller for TailDistiller<'a> {
                 ScoreClass::Low => {}
             }
         }
-        let tail = buf.tail(self.tail_size).into_iter().map(String::from).collect();
+        let tail = buf
+            .tail(self.tail_size)
+            .into_iter()
+            .map(String::from)
+            .collect();
         DistilledView {
             key_lines,
             tail,
@@ -72,7 +76,10 @@ mod tests {
         let d = TailDistiller::new(&scorer, 2);
         let view = d.distill(&buf);
 
-        assert_eq!(view.key_lines, vec!["WARN: deprecated API", "Error: link failed"]);
+        assert_eq!(
+            view.key_lines,
+            vec!["WARN: deprecated API", "Error: link failed"]
+        );
         assert_eq!(view.tail, vec!["built ok", "Error: link failed"]);
         assert_eq!(view.dropped_noise, 1);
     }

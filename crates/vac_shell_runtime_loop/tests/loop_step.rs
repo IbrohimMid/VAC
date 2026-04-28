@@ -133,24 +133,23 @@ fn handle_error_goes_to_activity_log() {
     ctx.app.activity_log = Some(log.clone());
     // Open detail with no approval row → Approve emits an
     // ApprovalDecision against an unknown id → recorded as error.
-    ctx.app.handle_global_key(vac_shell_app::GlobalKey::OpenApprovalDetail);
-    ctx.app.approval_detail.detail = Some(
-        vac_shell_contracts::ApprovalDetailView {
-            id: "ghost".into(),
-            tool_name: "shell".into(),
-            risk_level: vac_shell_contracts::RiskLevel::Medium,
-            reason: String::new(),
-            command_preview: None,
-            file_preview: None,
-            policy_source: None,
-        },
-    );
+    ctx.app
+        .handle_global_key(vac_shell_app::GlobalKey::OpenApprovalDetail);
+    ctx.app.approval_detail.detail = Some(vac_shell_contracts::ApprovalDetailView {
+        id: "ghost".into(),
+        tool_name: "shell".into(),
+        risk_level: vac_shell_contracts::RiskLevel::Medium,
+        reason: String::new(),
+        command_preview: None,
+        file_preview: None,
+        policy_source: None,
+    });
     let _ = handle_key_event_once(&mut ctx, plain(KeyCode::Char('y')));
     let snap = log.snapshot();
-    assert!(snap.iter().any(|e| matches!(
-        e.kind,
-        vac_shell_contracts::ShellActivityKind::Error
-    )));
+    assert!(
+        snap.iter()
+            .any(|e| matches!(e.kind, vac_shell_contracts::ShellActivityKind::Error))
+    );
 }
 
 #[test]
@@ -187,11 +186,8 @@ fn runtime_loop_routes_custom_palette_slash_to_executor() {
     // Add a non-built-in slash to the registry.
     let comp = app.composition().unwrap().clone();
     use vac_shell_bridge::InMemoryCommandRegistry;
-    let registry = InMemoryCommandRegistry::new(vec![
-        cmd("/runtime"),
-        cmd("/chat"),
-        cmd("/memorize"),
-    ]);
+    let registry =
+        InMemoryCommandRegistry::new(vec![cmd("/runtime"), cmd("/chat"), cmd("/memorize")]);
     let registry: std::sync::Arc<dyn vac_shell_contracts::VacCommandRegistry> =
         std::sync::Arc::new(registry);
     let _ = comp; // keep alive
@@ -340,8 +336,7 @@ fn dogfood_context_uses_vac_command_executor_adapter_stub() {
     let mut app = ShellApp::new(std::sync::Arc::new(comp));
     let log = Arc::new(ActivityLog::default());
     app.activity_log = Some(log.clone());
-    let adapter: Arc<dyn ShellCommandExecutor> =
-        Arc::new(VacCommandExecutorAdapter::new());
+    let adapter: Arc<dyn ShellCommandExecutor> = Arc::new(VacCommandExecutorAdapter::new());
     let mut ctx = ShellRuntimeContext::new(app).with_executor(adapter);
 
     handle_key_event_once(&mut ctx, ctrl('p')).unwrap();
@@ -353,7 +348,8 @@ fn dogfood_context_uses_vac_command_executor_adapter_stub() {
     assert!(result.is_err());
     let snap = log.snapshot();
     assert!(
-        snap.iter().any(|e| e.detail.as_deref().unwrap_or("").contains("D5.1 stub")),
+        snap.iter()
+            .any(|e| e.detail.as_deref().unwrap_or("").contains("D5.1 stub")),
         "operator must see the D5.1-stub message via activity log"
     );
 }

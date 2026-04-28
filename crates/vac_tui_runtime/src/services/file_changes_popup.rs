@@ -17,7 +17,8 @@ use vac_changeset::FileState;
 pub fn filtered_paths(state: &AppState) -> Vec<String> {
     let query = state.workspace.file_index.changes_search.to_lowercase();
     state
-        .workspace.changeset_store
+        .workspace
+        .changeset_store
         .entries()
         .iter()
         .filter(|e| query.is_empty() || e.path.to_lowercase().contains(&query))
@@ -80,7 +81,8 @@ pub fn render_file_changes_popup(f: &mut Frame, state: &AppState) {
         Span::styled(
             left,
             state
-                .core.theme
+                .core
+                .theme
                 .style(StyleKey::Warning)
                 .add_modifier(Modifier::BOLD),
         ),
@@ -107,7 +109,8 @@ pub fn render_file_changes_popup(f: &mut Frame, state: &AppState) {
             Span::styled(
                 state.workspace.file_index.changes_search.clone(),
                 state
-                    .core.theme
+                    .core
+                    .theme
                     .style(StyleKey::Text)
                     .add_modifier(Modifier::BOLD),
             ),
@@ -138,7 +141,8 @@ pub fn render_file_changes_popup(f: &mut Frame, state: &AppState) {
         let is_selected = idx == state.workspace.file_index.changes_selected;
         let bg_color = if is_selected {
             state
-                .core.theme
+                .core
+                .theme
                 .style(StyleKey::HighlightBg)
                 .bg
                 .unwrap_or(C::Reset)
@@ -156,7 +160,8 @@ pub fn render_file_changes_popup(f: &mut Frame, state: &AppState) {
 
         let name_style = match entry.state {
             FileState::Reverted | FileState::Removed | FileState::FailedRestore => state
-                .core.theme
+                .core
+                .theme
                 .style(StyleKey::Muted)
                 .add_modifier(Modifier::CROSSED_OUT)
                 .bg(bg_color),

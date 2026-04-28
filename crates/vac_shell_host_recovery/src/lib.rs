@@ -190,7 +190,11 @@ mod tests {
         };
         let sessions_dir = paths.sessions_dir();
         fs::create_dir_all(&sessions_dir).unwrap();
-        fs::write(sessions_dir.join("sess-side.checkpoint.json"), r#"{"state":1}"#).unwrap();
+        fs::write(
+            sessions_dir.join("sess-side.checkpoint.json"),
+            r#"{"state":1}"#,
+        )
+        .unwrap();
 
         let summary = project_recovery_for_session(&paths, "sess-side");
         assert_eq!(summary.status, SessionRecoveryStatus::Ready);
@@ -211,6 +215,9 @@ mod tests {
         // It's valid JSON but not a real checkpoint - status becomes Ready
         // The important thing is no raw secrets in the output
         let msg = summary.message.unwrap();
-        assert!(!msg.contains("secret"), "message should not have secret: {msg}");
+        assert!(
+            !msg.contains("secret"),
+            "message should not have secret: {msg}"
+        );
     }
 }

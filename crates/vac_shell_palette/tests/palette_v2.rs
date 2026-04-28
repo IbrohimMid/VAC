@@ -49,7 +49,10 @@ fn disabled_command_still_lists_with_reason() {
     a.disabled_reason = Some("network unreachable".into());
     let listed = fuzzy_filter("offline", &[a.clone()]);
     assert_eq!(listed.len(), 1);
-    assert_eq!(listed[0].disabled_reason.as_deref(), Some("network unreachable"));
+    assert_eq!(
+        listed[0].disabled_reason.as_deref(),
+        Some("network unreachable")
+    );
 }
 
 #[test]
@@ -62,10 +65,7 @@ fn rank_entries_recents_first_then_enabled_then_disabled() {
     a.aliases = vec![];
     b.aliases = vec![];
     c.aliases = vec![];
-    let ranked = rank_entries(
-        &[a, b, c, d],
-        &["beta".into(), "gamma".into()],
-    );
+    let ranked = rank_entries(&[a, b, c, d], &["beta".into(), "gamma".into()]);
     let ids: Vec<&str> = ranked.iter().map(|s| s.id.as_str()).collect();
     assert_eq!(ids, vec!["beta", "gamma", "alpha", "delta"]);
 }

@@ -77,9 +77,9 @@ impl HookGate {
 
     pub fn with_sandbox(store: HookStore, sandbox: HookSandbox) -> Self {
         Self {
-            store: std::sync::Arc::new(tokio::sync::RwLock::new(
-                HookStoreCompiled::from_store(store),
-            )),
+            store: std::sync::Arc::new(tokio::sync::RwLock::new(HookStoreCompiled::from_store(
+                store,
+            ))),
             sandbox: std::sync::Arc::new(sandbox),
         }
     }

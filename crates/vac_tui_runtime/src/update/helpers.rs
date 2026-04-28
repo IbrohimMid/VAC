@@ -201,8 +201,11 @@ pub(crate) fn policy_gate_allows_shell_command(state: &mut AppState, cmd: &str) 
     let Some(action) = vac_core::policy_gate::classify_shell_command(cmd) else {
         return true;
     };
-    let decision =
-        vac_core::policy_gate::evaluate(&config.policy_gate, action, state.vil_domain.vil.last_score);
+    let decision = vac_core::policy_gate::evaluate(
+        &config.policy_gate,
+        action,
+        state.vil_domain.vil.last_score,
+    );
     match decision {
         vac_core::policy_gate::PolicyGateDecision::Allow => true,
         vac_core::policy_gate::PolicyGateDecision::Warn(msg) => {

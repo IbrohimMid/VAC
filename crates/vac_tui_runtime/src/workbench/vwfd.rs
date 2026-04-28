@@ -20,6 +20,11 @@ impl WorkbenchTabView for VwfdTab {
     }
 
     fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
-        crate::services::vwfd_inspector::render(f, &state.vil_domain.vwfd_inspector, &state.core.theme, area);
+        crate::services::vwfd_inspector::render(
+            f,
+            &state.vil_domain.vwfd_inspector,
+            &state.core.theme,
+            area,
+        );
     }
 }

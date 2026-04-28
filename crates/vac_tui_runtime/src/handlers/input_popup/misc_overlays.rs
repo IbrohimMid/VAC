@@ -19,9 +19,16 @@ pub fn handle_file_changes(
             crate::overlay::close_overlay(state, OverlayId::FileChanges);
         }
         InputEvent::Up | InputEvent::ScrollUp => {
-            state.workspace.file_index.changes_selected = state.workspace.file_index.changes_selected.saturating_sub(1);
-            if state.workspace.file_index.changes_selected < state.workspace.file_index.changes_scroll {
-                state.workspace.file_index.changes_scroll = state.workspace.file_index.changes_selected;
+            state.workspace.file_index.changes_selected = state
+                .workspace
+                .file_index
+                .changes_selected
+                .saturating_sub(1);
+            if state.workspace.file_index.changes_selected
+                < state.workspace.file_index.changes_scroll
+            {
+                state.workspace.file_index.changes_scroll =
+                    state.workspace.file_index.changes_selected;
             }
         }
         InputEvent::Down | InputEvent::ScrollDown => {
@@ -43,7 +50,10 @@ pub fn handle_file_changes(
             state.workspace.file_index.changes_scroll = 0;
         }
         InputEvent::ReviewRevertSelected => {
-            if let Some(path) = filtered.get(state.workspace.file_index.changes_selected).cloned() {
+            if let Some(path) = filtered
+                .get(state.workspace.file_index.changes_selected)
+                .cloned()
+            {
                 let prior = state.workspace.review.selected_path.clone();
                 state.workspace.review.selected_path = Some(path);
                 let mut ctx = HandlerContext::new(state, output_tx);
@@ -52,7 +62,10 @@ pub fn handle_file_changes(
             }
         }
         InputEvent::InputSubmitted => {
-            if let Some(path) = filtered.get(state.workspace.file_index.changes_selected).cloned() {
+            if let Some(path) = filtered
+                .get(state.workspace.file_index.changes_selected)
+                .cloned()
+            {
                 state.workspace.review.selected_path = Some(path);
                 state.layout.workbench_tab = crate::app::WorkbenchTab::Review;
                 state.layout.focus = crate::app::WorkspaceFocus::Workbench;
@@ -107,18 +120,32 @@ pub fn handle_helper_dropdown(
         InputEvent::Up => {
             if state.layout.command_palette.helper_selected > 0 {
                 state.layout.command_palette.helper_selected -= 1;
-                if state.layout.command_palette.helper_selected < state.layout.command_palette.helper_scroll {
-                    state.layout.command_palette.helper_scroll = state.layout.command_palette.helper_selected;
+                if state.layout.command_palette.helper_selected
+                    < state.layout.command_palette.helper_scroll
+                {
+                    state.layout.command_palette.helper_scroll =
+                        state.layout.command_palette.helper_selected;
                 }
             }
         }
         InputEvent::Down => {
             if !state.layout.command_palette.filtered_helpers.is_empty() {
-                let max_idx = state.layout.command_palette.filtered_helpers.len().saturating_sub(1);
+                let max_idx = state
+                    .layout
+                    .command_palette
+                    .filtered_helpers
+                    .len()
+                    .saturating_sub(1);
                 if state.layout.command_palette.helper_selected < max_idx {
                     state.layout.command_palette.helper_selected += 1;
-                    if state.layout.command_palette.helper_selected >= state.layout.command_palette.helper_scroll + 5 {
-                        state.layout.command_palette.helper_scroll = state.layout.command_palette.helper_selected.saturating_sub(4);
+                    if state.layout.command_palette.helper_selected
+                        >= state.layout.command_palette.helper_scroll + 5
+                    {
+                        state.layout.command_palette.helper_scroll = state
+                            .layout
+                            .command_palette
+                            .helper_selected
+                            .saturating_sub(4);
                     }
                 }
             }
@@ -146,12 +173,7 @@ pub fn handle_helper_dropdown(
                     command = %cmd.command,
                     "dispatching selected helper command",
                 );
-                let handled = dispatch_builtin_command(
-                    state,
-                    output_tx,
-                    &cmd.command,
-                    None,
-                );
+                let handled = dispatch_builtin_command(state, output_tx, &cmd.command, None);
                 if !handled {
                     tracing::warn!(
                         target: "vac_tui_runtime::helper_dropdown",
@@ -254,21 +276,26 @@ pub fn handle_shortcuts(state: &mut AppState, output_tx: &Sender<OutputEvent>, e
             crate::overlay::close_overlay(state, OverlayId::Shortcuts);
         }
         InputEvent::Tab => {
-            state.layout.command_palette.shortcuts_mode = match state.layout.command_palette.shortcuts_mode {
-                crate::app::ShortcutsPopupMode::Commands => {
-                    crate::app::ShortcutsPopupMode::Shortcuts
-                }
-                crate::app::ShortcutsPopupMode::Shortcuts => {
-                    crate::app::ShortcutsPopupMode::Sessions
-                }
-                crate::app::ShortcutsPopupMode::Sessions => {
-                    crate::app::ShortcutsPopupMode::Commands
-                }
-            };
+            state.layout.command_palette.shortcuts_mode =
+                match state.layout.command_palette.shortcuts_mode {
+                    crate::app::ShortcutsPopupMode::Commands => {
+                        crate::app::ShortcutsPopupMode::Shortcuts
+                    }
+                    crate::app::ShortcutsPopupMode::Shortcuts => {
+                        crate::app::ShortcutsPopupMode::Sessions
+                    }
+                    crate::app::ShortcutsPopupMode::Sessions => {
+                        crate::app::ShortcutsPopupMode::Commands
+                    }
+                };
             state.layout.command_palette.shortcuts_scroll = 0;
         }
         InputEvent::Up => {
-            state.layout.command_palette.shortcuts_scroll = state.layout.command_palette.shortcuts_scroll.saturating_sub(1);
+            state.layout.command_palette.shortcuts_scroll = state
+                .layout
+                .command_palette
+                .shortcuts_scroll
+                .saturating_sub(1);
         }
         InputEvent::Down => {
             let max = match state.layout.command_palette.shortcuts_mode {
@@ -286,13 +313,22 @@ pub fn handle_shortcuts(state: &mut AppState, output_tx: &Sender<OutputEvent>, e
             }
         }
         InputEvent::InputSubmitted => {
-            if state.layout.command_palette.shortcuts_mode == crate::app::ShortcutsPopupMode::Sessions {
-                if let Some(sel) = state.session.sessions.get(state.layout.command_palette.shortcuts_scroll).cloned() {
+            if state.layout.command_palette.shortcuts_mode
+                == crate::app::ShortcutsPopupMode::Sessions
+            {
+                if let Some(sel) = state
+                    .session
+                    .sessions
+                    .get(state.layout.command_palette.shortcuts_scroll)
+                    .cloned()
+                {
                     let _ = output_tx.try_send(OutputEvent::SwitchToSession(sel.id));
                     state.push_activity(crate::app::ActivityKind::Session, "Switch session");
                     crate::overlay::close_overlay(state, OverlayId::Shortcuts);
                 }
-            } else if state.layout.command_palette.shortcuts_mode == crate::app::ShortcutsPopupMode::Commands {
+            } else if state.layout.command_palette.shortcuts_mode
+                == crate::app::ShortcutsPopupMode::Commands
+            {
                 let cmds = crate::services::shortcuts_popup::filter_commands("", state);
                 if let Some(cmd) = cmds.get(state.layout.command_palette.shortcuts_scroll) {
                     let keep_open = matches!(
@@ -319,7 +355,8 @@ pub fn handle_task_tray(state: &mut AppState, _output_tx: &Sender<OutputEvent>, 
             crate::overlay::close_overlay(state, OverlayId::TaskTray);
         }
         InputEvent::Up | InputEvent::ScrollUp => {
-            state.execution.task_tray.selected = state.execution.task_tray.selected.saturating_sub(1);
+            state.execution.task_tray.selected =
+                state.execution.task_tray.selected.saturating_sub(1);
         }
         InputEvent::Down | InputEvent::ScrollDown => {
             if job_count > 0 {
@@ -328,11 +365,17 @@ pub fn handle_task_tray(state: &mut AppState, _output_tx: &Sender<OutputEvent>, 
             }
         }
         InputEvent::InputChanged('f') | InputEvent::InputChanged('F') => {
-            state.execution.task_tray.filter_active_only = !state.execution.task_tray.filter_active_only;
+            state.execution.task_tray.filter_active_only =
+                !state.execution.task_tray.filter_active_only;
             state.execution.task_tray.selected = 0;
         }
         InputEvent::InputChanged('x') | InputEvent::InputChanged('X') => {
-            if let Some(job) = state.execution.runtime.jobs.get(state.execution.task_tray.selected) {
+            if let Some(job) = state
+                .execution
+                .runtime
+                .jobs
+                .get(state.execution.task_tray.selected)
+            {
                 let id = job.id;
                 let _ = _output_tx.try_send(OutputEvent::CancelRuntimeJob(id));
             }
@@ -350,14 +393,21 @@ pub fn handle_theme_picker(state: &mut AppState, event: InputEvent) {
             crate::overlay::close_overlay(state, OverlayId::ThemePicker);
         }
         InputEvent::Up | InputEvent::ScrollUp => {
-            state.operator_config.operator.theme_picker_selected = state.operator_config.operator.theme_picker_selected.saturating_sub(1);
+            state.operator_config.operator.theme_picker_selected = state
+                .operator_config
+                .operator
+                .theme_picker_selected
+                .saturating_sub(1);
         }
         InputEvent::Down | InputEvent::ScrollDown => {
             state.operator_config.operator.theme_picker_selected =
-                (state.operator_config.operator.theme_picker_selected + 1).min(count.saturating_sub(1));
+                (state.operator_config.operator.theme_picker_selected + 1)
+                    .min(count.saturating_sub(1));
         }
         InputEvent::InputSubmitted => {
-            if let Some(&preset) = ThemePreset::ALL.get(state.operator_config.operator.theme_picker_selected) {
+            if let Some(&preset) =
+                ThemePreset::ALL.get(state.operator_config.operator.theme_picker_selected)
+            {
                 state.core.theme = crate::services::theme::Theme::new(preset);
             }
             crate::overlay::close_overlay(state, OverlayId::ThemePicker);

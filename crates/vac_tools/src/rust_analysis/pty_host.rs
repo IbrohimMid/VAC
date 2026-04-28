@@ -1,11 +1,16 @@
-use crate::rust_analysis::host::{AnalysisError, AnalysisHost, AnalysisRequest, AnalysisResponse, AnalysisResult, Symbol};
+use crate::rust_analysis::host::{
+    AnalysisError, AnalysisHost, AnalysisRequest, AnalysisResponse, AnalysisResult, Symbol,
+};
 use async_trait::async_trait;
 use portable_pty::{CommandBuilder, NativePtySystem, PtySize, PtySystem};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::PathBuf;
-use std::sync::{Arc, atomic::{AtomicU64, Ordering}};
+use std::sync::{
+    Arc,
+    atomic::{AtomicU64, Ordering},
+};
 use tokio::sync::{mpsc, oneshot};
 
 #[derive(Clone)]
@@ -26,7 +31,7 @@ impl PortablePtyHost {
 
         let mut cmd = CommandBuilder::new("rust-analyzer");
         // Don't set envs that break LSP in PTY if possible
-        
+
         let mut child = pair.slave.spawn_command(cmd)?;
         drop(pair.slave);
 
@@ -34,7 +39,8 @@ impl PortablePtyHost {
         let mut writer = pair.master.take_writer()?;
 
         let (req_tx, mut req_rx) = mpsc::channel::<(Value, oneshot::Sender<Value>)>(32);
-        let pending: Arc<tokio::sync::Mutex<HashMap<u64, oneshot::Sender<Value>>>> = Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+        let pending: Arc<tokio::sync::Mutex<HashMap<u64, oneshot::Sender<Value>>>> =
+            Arc::new(tokio::sync::Mutex::new(HashMap::new()));
         let pending_read = pending.clone();
 
         // Write task
@@ -150,19 +156,32 @@ impl AnalysisHost for PortablePtyHost {
                         "query": name
                     }
                 });
-                let res = self.call(req).await.map_err(|e| AnalysisError::Failed(e.to_string()))?;
+                let res = self
+                    .call(req)
+                    .await
+                    .map_err(|e| AnalysisError::Failed(e.to_string()))?;
                 let mut symbols = Vec::new();
                 if let Some(arr) = res.get("result").and_then(|r| r.as_array()) {
                     for sym in arr {
                         if let (Some(n), Some(kind), Some(loc)) = (
                             sym.get("name").and_then(|n| n.as_str()),
                             sym.get("kind").and_then(|k| k.as_u64()),
-                            sym.get("location")
+                            sym.get("location"),
                         ) {
                             let uri = loc.get("uri").and_then(|u| u.as_str()).unwrap_or("");
                             let path = uri.strip_prefix("file://").unwrap_or(uri);
-                            let line = loc.get("range").and_then(|r| r.get("start")).and_then(|s| s.get("line")).and_then(|l| l.as_u64()).unwrap_or(0);
-                            let col = loc.get("range").and_then(|r| r.get("start")).and_then(|s| s.get("character")).and_then(|c| c.as_u64()).unwrap_or(0);
+                            let line = loc
+                                .get("range")
+                                .and_then(|r| r.get("start"))
+                                .and_then(|s| s.get("line"))
+                                .and_then(|l| l.as_u64())
+                                .unwrap_or(0);
+                            let col = loc
+                                .get("range")
+                                .and_then(|r| r.get("start"))
+                                .and_then(|s| s.get("character"))
+                                .and_then(|c| c.as_u64())
+                                .unwrap_or(0);
                             symbols.push(Symbol {
                                 name: n.to_string(),
                                 kind: kind.to_string(),
@@ -185,17 +204,28 @@ impl AnalysisHost for PortablePtyHost {
                         }
                     }
                 });
-                let res = self.call(req).await.map_err(|e| AnalysisError::Failed(e.to_string()))?;
+                let res = self
+                    .call(req)
+                    .await
+                    .map_err(|e| AnalysisError::Failed(e.to_string()))?;
                 let mut symbols = Vec::new();
                 if let Some(arr) = res.get("result").and_then(|r| r.as_array()) {
                     for sym in arr {
                         if let (Some(n), Some(kind), Some(range)) = (
                             sym.get("name").and_then(|n| n.as_str()),
                             sym.get("kind").and_then(|k| k.as_u64()),
-                            sym.get("range")
+                            sym.get("range"),
                         ) {
-                            let line = range.get("start").and_then(|s| s.get("line")).and_then(|l| l.as_u64()).unwrap_or(0);
-                            let col = range.get("start").and_then(|s| s.get("character")).and_then(|c| c.as_u64()).unwrap_or(0);
+                            let line = range
+                                .get("start")
+                                .and_then(|s| s.get("line"))
+                                .and_then(|l| l.as_u64())
+                                .unwrap_or(0);
+                            let col = range
+                                .get("start")
+                                .and_then(|s| s.get("character"))
+                                .and_then(|c| c.as_u64())
+                                .unwrap_or(0);
                             symbols.push(Symbol {
                                 name: n.to_string(),
                                 kind: kind.to_string(),
@@ -226,8 +256,12 @@ impl AnalysisHost for PortablePtyHost {
                         }
                     }
                 });
-                let res = self.call(req).await.map_err(|e| AnalysisError::Failed(e.to_string()))?;
-                let content = res.get("result")
+                let res = self
+                    .call(req)
+                    .await
+                    .map_err(|e| AnalysisError::Failed(e.to_string()))?;
+                let content = res
+                    .get("result")
                     .and_then(|r| r.get("contents"))
                     .and_then(|c| c.get("value"))
                     .and_then(|v| v.as_str())
@@ -249,14 +283,27 @@ impl AnalysisHost for PortablePtyHost {
                         }
                     }
                 });
-                let res = self.call(req).await.map_err(|e| AnalysisError::Failed(e.to_string()))?;
+                let res = self
+                    .call(req)
+                    .await
+                    .map_err(|e| AnalysisError::Failed(e.to_string()))?;
                 let mut symbols = Vec::new();
                 if let Some(arr) = res.get("result").and_then(|r| r.as_array()) {
                     for loc in arr {
                         let uri = loc.get("uri").and_then(|u| u.as_str()).unwrap_or("");
                         let path = uri.strip_prefix("file://").unwrap_or(uri);
-                        let def_line = loc.get("range").and_then(|r| r.get("start")).and_then(|s| s.get("line")).and_then(|l| l.as_u64()).unwrap_or(0);
-                        let def_col = loc.get("range").and_then(|r| r.get("start")).and_then(|s| s.get("character")).and_then(|c| c.as_u64()).unwrap_or(0);
+                        let def_line = loc
+                            .get("range")
+                            .and_then(|r| r.get("start"))
+                            .and_then(|s| s.get("line"))
+                            .and_then(|l| l.as_u64())
+                            .unwrap_or(0);
+                        let def_col = loc
+                            .get("range")
+                            .and_then(|r| r.get("start"))
+                            .and_then(|s| s.get("character"))
+                            .and_then(|c| c.as_u64())
+                            .unwrap_or(0);
                         symbols.push(Symbol {
                             name: "".to_string(),
                             kind: "".to_string(),
@@ -268,9 +315,9 @@ impl AnalysisHost for PortablePtyHost {
                 }
                 Ok(AnalysisResponse::GotoDefinition(symbols))
             }
-            AnalysisRequest::ExplainLifetime { .. } => {
-                Err(AnalysisError::Unsupported("ExplainLifetime not supported via LSP".into()))
-            }
+            AnalysisRequest::ExplainLifetime { .. } => Err(AnalysisError::Unsupported(
+                "ExplainLifetime not supported via LSP".into(),
+            )),
         }
     }
 

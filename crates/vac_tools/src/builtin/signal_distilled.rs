@@ -107,10 +107,8 @@ impl VilTool for SignalDistilledTool {
             .recent(&input.stream_id, n)
             .map_err(|e| ToolError::ExecutionFailed(format!("query: {e}")))?;
         let total = lines.len();
-        let mut buf = vac_signal::SignalBuffer::new(
-            vac_signal::SignalStreamKind::Other,
-            (n as usize).max(1),
-        );
+        let mut buf =
+            vac_signal::SignalBuffer::new(vac_signal::SignalStreamKind::Other, (n as usize).max(1));
         // NB: seq numbers on the transient buffer are fresh 0..N
         // (assigned by `push_line`). The original per-session seqs
         // from the rewind DB are discarded here. Current
@@ -160,7 +158,10 @@ mod tests {
         let mut store = vac_signal::rewind::RewindStore::open(&db_path).unwrap();
         let kind = vac_signal::SignalStreamKind::Shell;
         for (seq, text) in [(1u64, "hello"), (2, "ERROR boom"), (3, "tail line")] {
-            let line = vac_signal::SignalLine { seq, text: text.into() };
+            let line = vac_signal::SignalLine {
+                seq,
+                text: text.into(),
+            };
             store.append("shell", kind, &line, 0).unwrap();
         }
 

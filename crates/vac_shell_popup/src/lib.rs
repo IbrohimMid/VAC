@@ -96,7 +96,11 @@ pub fn calculate_popup_height(view: &ShellPopupViewState, terminal_height: u16) 
     }
     let content_lines = view.content_rows;
     if !view.expanded {
-        return if content_lines > 2 { 5 } else { SHELL_POPUP_MIN_HEIGHT };
+        return if content_lines > 2 {
+            5
+        } else {
+            SHELL_POPUP_MIN_HEIGHT
+        };
     }
     let content_lines = content_lines.max(2);
     let desired = content_lines.saturating_add(2);
@@ -151,7 +155,9 @@ pub fn render_shell_popup(f: &mut Frame, view: &ShellPopupViewState, area: Rect)
         .border_style(Style::default().fg(border_color))
         .title(Span::styled(
             title,
-            Style::default().fg(border_color).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(border_color)
+                .add_modifier(Modifier::BOLD),
         ));
 
     let inner_area = block.inner(area);
@@ -272,11 +278,7 @@ pub fn search_lines(lines: &[String], needle: &str) -> Vec<usize> {
 /// Single-line preview rendering for the collapsed popup overflow:
 /// the latest non-empty line, trimmed.
 pub fn collapsed_preview_line(lines: &[String]) -> Option<String> {
-    lines
-        .iter()
-        .rev()
-        .find(|l| !l.trim().is_empty())
-        .cloned()
+    lines.iter().rev().find(|l| !l.trim().is_empty()).cloned()
 }
 
 #[cfg(test)]
@@ -306,8 +308,12 @@ mod v2_tests {
 
     #[test]
     fn search_lines_case_insensitive() {
-        let lines: Vec<String> =
-            vec!["hello".into(), "World".into(), "WORLD again".into(), "foo".into()];
+        let lines: Vec<String> = vec![
+            "hello".into(),
+            "World".into(),
+            "WORLD again".into(),
+            "foo".into(),
+        ];
         let hits = search_lines(&lines, "world");
         assert_eq!(hits, vec![1, 2]);
     }
@@ -321,12 +327,7 @@ mod v2_tests {
 
     #[test]
     fn collapsed_preview_picks_latest_non_empty() {
-        let lines: Vec<String> = vec![
-            "  ".into(),
-            "build ok".into(),
-            "".into(),
-            "   ".into(),
-        ];
+        let lines: Vec<String> = vec!["  ".into(), "build ok".into(), "".into(), "   ".into()];
         assert_eq!(collapsed_preview_line(&lines).as_deref(), Some("build ok"));
     }
 }

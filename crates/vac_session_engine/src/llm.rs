@@ -154,9 +154,8 @@ impl CassetteAdapter {
 
     /// Parse a cassette from an in-memory string.
     pub fn from_str(raw: &str) -> EngineResult<Self> {
-        let file: CassetteFile = serde_json::from_str(raw).map_err(|e| {
-            crate::error::EngineError::Other(format!("cassette parse: {e}"))
-        })?;
+        let file: CassetteFile = serde_json::from_str(raw)
+            .map_err(|e| crate::error::EngineError::Other(format!("cassette parse: {e}")))?;
         let entries = file
             .entries
             .into_iter()

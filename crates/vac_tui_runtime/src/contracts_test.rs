@@ -76,13 +76,15 @@ mod tests {
         let mut state = crate::app::AppState::default();
         assert!(
             !state
-                .layout.overlay_manager
+                .layout
+                .overlay_manager
                 .is_active(crate::overlay::OverlayId::CommandPalette)
         );
         crate::overlay::open_overlay(&mut state, crate::overlay::OverlayId::CommandPalette);
         assert!(
             state
-                .layout.overlay_manager
+                .layout
+                .overlay_manager
                 .is_active(crate::overlay::OverlayId::CommandPalette)
         );
     }
@@ -94,7 +96,8 @@ mod tests {
         crate::overlay::close_overlay(&mut state, crate::overlay::OverlayId::ModelSwitcher);
         assert!(
             !state
-                .layout.overlay_manager
+                .layout
+                .overlay_manager
                 .is_active(crate::overlay::OverlayId::ModelSwitcher)
         );
     }
@@ -232,7 +235,7 @@ mod tests {
     #[test]
     fn notify_router_severity_lane_matrix_is_stable() {
         use crate::app::AppState;
-        use crate::services::notify_router::{route, NotifyEvent};
+        use crate::services::notify_router::{NotifyEvent, route};
 
         let mut state = AppState::default();
         route(&mut state, NotifyEvent::info("a", "i"));
@@ -325,13 +328,11 @@ mod tests {
     #[test]
     fn action_specs_and_helper_block_overlap_is_consistent() {
         use crate::action_registry::{ACTION_SPECS, spec_by_slash_alias};
-        let helper_commands =
-            crate::services::helper_block::vac_commands();
-        let spec_alias_to_id: std::collections::HashMap<&'static str, u32> =
-            ACTION_SPECS
-                .iter()
-                .flat_map(|s| s.slash_aliases.iter().map(move |a| (*a, s.id as u32)))
-                .collect();
+        let helper_commands = crate::services::helper_block::vac_commands();
+        let spec_alias_to_id: std::collections::HashMap<&'static str, u32> = ACTION_SPECS
+            .iter()
+            .flat_map(|s| s.slash_aliases.iter().map(move |a| (*a, s.id as u32)))
+            .collect();
         for cmd in &helper_commands {
             let alias = cmd.command.as_str();
             // If ACTION_SPECS claims this alias AND `spec_by_slash_alias`
@@ -508,8 +509,17 @@ mod tests {
         assert!(state.operator_config.operator.current_model.is_none());
         assert_eq!(state.operator_config.operator.sessions_selected_idx, 0);
         assert_eq!(state.operator_config.operator.theme_picker_selected, 0);
-        assert_eq!(state.operator_config.operator.message_action_popup_selected, 0);
-        assert!(state.operator_config.operator.message_action_target_id.is_none());
+        assert_eq!(
+            state.operator_config.operator.message_action_popup_selected,
+            0
+        );
+        assert!(
+            state
+                .operator_config
+                .operator
+                .message_action_target_id
+                .is_none()
+        );
 
         // F3.3 — SessionMetaState grouping.
         let _: &crate::app::types::SessionMetaState = &state.session.session_meta;
@@ -557,7 +567,12 @@ mod tests {
 
         assert_eq!(state.session.session_id, "test-session");
         assert_eq!(
-            state.operator_config.operator.current_model.as_ref().map(|m| m.name.as_str()),
+            state
+                .operator_config
+                .operator
+                .current_model
+                .as_ref()
+                .map(|m| m.name.as_str()),
             Some(model.name.as_str()),
             "options.model must route into operator.current_model",
         );
@@ -583,7 +598,10 @@ mod tests {
             checkpoint_path: Some(path.clone()),
             project_root: std::env::temp_dir(),
         });
-        assert_eq!(state.session.session_meta.checkpoint_path.as_ref(), Some(&path));
+        assert_eq!(
+            state.session.session_meta.checkpoint_path.as_ref(),
+            Some(&path)
+        );
     }
 
     /// F6.5 — absent checkpoint path renders as `None` on boot and
@@ -592,8 +610,7 @@ mod tests {
     fn checkpoint_path_absent_by_default_and_clearable() {
         let mut state = crate::app::AppState::default();
         assert!(state.session.session_meta.checkpoint_path.is_none());
-        state.session.session_meta.checkpoint_path =
-            Some(std::path::PathBuf::from("/tmp/ck"));
+        state.session.session_meta.checkpoint_path = Some(std::path::PathBuf::from("/tmp/ck"));
         state.session.session_meta.checkpoint_path = None;
         assert!(state.session.session_meta.checkpoint_path.is_none());
     }

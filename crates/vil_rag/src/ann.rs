@@ -96,11 +96,7 @@ impl HnswBuilder {
     }
 
     #[cfg(feature = "hnsw")]
-    pub fn build(
-        self,
-        ids: Vec<String>,
-        embeddings: Vec<Embedding>,
-    ) -> RagResult<HnswIndex> {
+    pub fn build(self, ids: Vec<String>, embeddings: Vec<Embedding>) -> RagResult<HnswIndex> {
         if ids.len() != embeddings.len() {
             return Err(RagError::Indexing(format!(
                 "ann: ids ({}) and embeddings ({}) length mismatch",
@@ -116,11 +112,7 @@ impl HnswBuilder {
     }
 
     #[cfg(not(feature = "hnsw"))]
-    pub fn build(
-        self,
-        _ids: Vec<String>,
-        _embeddings: Vec<Embedding>,
-    ) -> RagResult<HnswIndex> {
+    pub fn build(self, _ids: Vec<String>, _embeddings: Vec<Embedding>) -> RagResult<HnswIndex> {
         Err(RagError::Indexing(
             "ann: `hnsw` feature disabled; rebuild with --features hnsw".to_string(),
         ))
@@ -189,7 +181,9 @@ mod tests {
     fn build_and_search_smoke() {
         let ids: Vec<String> = (0..20).map(|i| format!("d{i}")).collect();
         let embs: Vec<Embedding> = (0..20).map(synth).collect();
-        let index = HnswBuilder::new().build(ids.clone(), embs.clone()).expect("build");
+        let index = HnswBuilder::new()
+            .build(ids.clone(), embs.clone())
+            .expect("build");
         let hits = index.search(&embs[0], 3).expect("search");
         assert!(!hits.is_empty());
         // The nearest neighbour of a point against itself must be itself.

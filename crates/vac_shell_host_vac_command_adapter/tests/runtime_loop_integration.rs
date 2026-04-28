@@ -92,13 +92,11 @@ fn build_runtime_context(
 fn runtime_loop_custom_command_reaches_real_adapter() {
     let tmp = tempfile::tempdir().unwrap();
     let adapter = Arc::new(VacCommandExecutorAdapter::new(
-        AdapterConfig::new(tmp.path().to_path_buf()).with_command(
-            AdapterCommandSpec::new(
-                "memorize",
-                "/memorize",
-                "Memorize the current operator context.",
-            ),
-        ),
+        AdapterConfig::new(tmp.path().to_path_buf()).with_command(AdapterCommandSpec::new(
+            "memorize",
+            "/memorize",
+            "Memorize the current operator context.",
+        )),
     ));
     let exec_handle = adapter.clone();
     let mut ctx = build_runtime_context(tmp.path().to_path_buf(), adapter);
@@ -151,9 +149,9 @@ fn dogfood_entrypoint_registry_and_adapter_are_synchronized() {
     // and the adapter preset.
     let tmp = tempfile::tempdir().unwrap();
     let app = vac_shell_entrypoint::build_shell_app(tmp.path());
-    let adapter = Arc::new(VacCommandExecutorAdapter::new(
-        AdapterConfig::dogfood(tmp.path().to_path_buf()),
-    ));
+    let adapter = Arc::new(VacCommandExecutorAdapter::new(AdapterConfig::dogfood(
+        tmp.path().to_path_buf(),
+    )));
     let exec_handle = adapter.clone();
     let mut ctx = ShellRuntimeContext::new(app).with_executor(adapter);
 
@@ -174,9 +172,9 @@ fn dogfood_entrypoint_registry_and_adapter_are_synchronized() {
 #[test]
 fn runtime_loop_built_in_runtime_does_not_invoke_real_adapter() {
     let tmp = tempfile::tempdir().unwrap();
-    let adapter = Arc::new(VacCommandExecutorAdapter::new(
-        AdapterConfig::dogfood(tmp.path().to_path_buf()),
-    ));
+    let adapter = Arc::new(VacCommandExecutorAdapter::new(AdapterConfig::dogfood(
+        tmp.path().to_path_buf(),
+    )));
     let exec_handle = adapter.clone();
     let mut ctx = build_runtime_context(tmp.path().to_path_buf(), adapter);
 

@@ -74,7 +74,9 @@ pub(super) fn render_file_search(f: &mut Frame, state: &mut AppState) {
     f.render_widget(input, chunks[0]);
 
     let items: Vec<ListItem> = state
-        .workspace.file_index.search_results
+        .workspace
+        .file_index
+        .search_results
         .iter()
         .enumerate()
         .map(|(i, path)| {
@@ -146,7 +148,8 @@ pub(super) fn render_changeset(f: &mut Frame, state: &mut AppState) {
             lines.push(Line::styled(
                 err.clone(),
                 state
-                    .core.theme
+                    .core
+                    .theme
                     .style(StyleKey::Error)
                     .add_modifier(ratatui::style::Modifier::BOLD),
             ));
@@ -287,10 +290,10 @@ pub(super) fn render_shortcuts(f: &mut Frame, state: &mut AppState) {
             crate::action_ids::ActionContext::OverlayActive => "Overlay",
         };
         let chords = spec.keybindings.join(" / ");
-        grouped
-            .entry(scope_label)
-            .or_default()
-            .push(format!("  {chords:<18}  {} — {}", spec.title, spec.description));
+        grouped.entry(scope_label).or_default().push(format!(
+            "  {chords:<18}  {} — {}",
+            spec.title, spec.description
+        ));
     }
 
     let mut rows: Vec<String> = Vec::new();
@@ -380,13 +383,11 @@ pub(super) fn render_context_inspector(f: &mut Frame, state: &mut AppState) {
     lines.push(Line::raw(""));
     lines.push(Line::raw("[Esc] close"));
 
-    let para = Paragraph::new(lines)
-        .wrap(Wrap { trim: false })
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title("Context inspector (/context)"),
-        );
+    let para = Paragraph::new(lines).wrap(Wrap { trim: false }).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title("Context inspector (/context)"),
+    );
     f.render_widget(para, area);
 }
 
@@ -404,21 +405,16 @@ pub(super) fn render_elicitation(f: &mut Frame, state: &mut AppState) {
     }
     lines.push(Line::from(vec![
         Span::raw("URL: "),
-        Span::styled(
-            prompt.url.clone(),
-            Style::default(),
-        ),
+        Span::styled(prompt.url.clone(), Style::default()),
     ]));
     lines.push(Line::raw(""));
     lines.push(Line::raw("[Enter] open in browser   [Esc] cancel"));
 
-    let para = Paragraph::new(lines)
-        .wrap(Wrap { trim: false })
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title("MCP elicitation"),
-        );
+    let para = Paragraph::new(lines).wrap(Wrap { trim: false }).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title("MCP elicitation"),
+    );
     f.render_widget(para, area);
 }
 

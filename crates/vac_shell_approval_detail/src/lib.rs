@@ -69,11 +69,7 @@ pub fn on_key(state: &mut ApprovalDetailViewState, key: DetailKey) -> DetailEven
     }
 }
 
-pub fn render_approval_detail(
-    f: &mut Frame,
-    state: &ApprovalDetailViewState,
-    area: Rect,
-) {
+pub fn render_approval_detail(f: &mut Frame, state: &ApprovalDetailViewState, area: Rect) {
     if !state.visible {
         return;
     }
@@ -103,7 +99,9 @@ pub fn render_approval_detail(
         Span::raw(" tool "),
         Span::styled(
             detail.tool_name.clone(),
-            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
         ),
         Span::raw("    "),
         Span::raw("risk "),
@@ -123,7 +121,9 @@ pub fn render_approval_detail(
         lines.push(Line::raw(""));
         lines.push(Line::from(Span::styled(
             " command",
-            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
         )));
         lines.push(Line::from(Span::styled(
             format!("  $ {cmd}"),
@@ -134,7 +134,9 @@ pub fn render_approval_detail(
         lines.push(Line::raw(""));
         lines.push(Line::from(Span::styled(
             " file",
-            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
         )));
         for line in file.lines() {
             lines.push(Line::from(Span::styled(
@@ -154,7 +156,9 @@ pub fn render_approval_detail(
     lines.push(Line::from(vec![
         Span::styled(
             "  [y]",
-            Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(Color::Green)
+                .add_modifier(Modifier::BOLD),
         ),
         Span::styled(" approve   ", Style::default().fg(Color::Gray)),
         Span::styled(
@@ -164,13 +168,12 @@ pub fn render_approval_detail(
         Span::styled(" reject   ", Style::default().fg(Color::Gray)),
         Span::styled(
             "[esc]",
-            Style::default().fg(Color::DarkGray).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(Color::DarkGray)
+                .add_modifier(Modifier::BOLD),
         ),
         Span::styled(" defer", Style::default().fg(Color::Gray)),
     ]));
 
-    f.render_widget(
-        Paragraph::new(lines).wrap(Wrap { trim: false }),
-        inner,
-    );
+    f.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);
 }

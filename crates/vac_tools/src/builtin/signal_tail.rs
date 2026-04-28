@@ -133,7 +133,10 @@ impl VilTool for SignalTailTool {
             db_path: db_path.to_string_lossy().to_string(),
             lines: lines
                 .into_iter()
-                .map(|l| LineOut { seq: l.seq, text: l.text })
+                .map(|l| LineOut {
+                    seq: l.seq,
+                    text: l.text,
+                })
                 .collect(),
             empty_reason: None,
         };
@@ -172,7 +175,10 @@ mod tests {
                 .append(
                     "vil_dev",
                     vac_signal::SignalStreamKind::VilDev,
-                    &vac_signal::SignalLine { seq: i, text: format!("line-{i}") },
+                    &vac_signal::SignalLine {
+                        seq: i,
+                        text: format!("line-{i}"),
+                    },
                     1_700_000_000,
                 )
                 .unwrap();

@@ -35,8 +35,7 @@ pub struct DecisionStats {
 
 impl DecisionStats {
     pub fn from_records(records: &[DecisionRecord]) -> Self {
-        let mut unique_chosen: Vec<String> =
-            records.iter().map(|r| r.chosen.clone()).collect();
+        let mut unique_chosen: Vec<String> = records.iter().map(|r| r.chosen.clone()).collect();
         unique_chosen.sort();
         unique_chosen.dedup();
 
@@ -255,11 +254,17 @@ mod tests {
         }];
         let ok = score_decisions(
             &records,
-            DecisionOutcome { task_succeeded: true, duration_ms: 30_000 },
+            DecisionOutcome {
+                task_succeeded: true,
+                duration_ms: 30_000,
+            },
         );
         let fail = score_decisions(
             &records,
-            DecisionOutcome { task_succeeded: false, duration_ms: 30_000 },
+            DecisionOutcome {
+                task_succeeded: false,
+                duration_ms: 30_000,
+            },
         );
         assert!(ok.score <= 100);
         assert!(fail.score < ok.score);
@@ -268,10 +273,7 @@ mod tests {
 
     #[test]
     fn malformed_decision_record_is_skipped_not_panicked() {
-        let records = vec![mk(
-            RecordType::AgentDecision,
-            json!({"wrong_field": "x"}),
-        )];
+        let records = vec![mk(RecordType::AgentDecision, json!({"wrong_field": "x"}))];
         assert!(extract_decisions(&records).is_empty());
     }
 }

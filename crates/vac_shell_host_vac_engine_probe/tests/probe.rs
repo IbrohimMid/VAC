@@ -119,18 +119,10 @@ fn credentials_present_true_when_api_key_env_is_none_local_provider() {
     // server) would always appear unauthenticated and
     // `sanitize_active_model` would drop them at boot.
     let mut cfg = synthetic_config();
-    cfg.llm
-        .providers
-        .get_mut("anthropic")
-        .unwrap()
-        .api_key_env = None;
+    cfg.llm.providers.get_mut("anthropic").unwrap().api_key_env = None;
     let env = FakeEnv::default();
     let snap = build_snapshot_with_env(&cfg, &env);
-    let anth = snap
-        .providers
-        .iter()
-        .find(|p| p.id == "anthropic")
-        .unwrap();
+    let anth = snap.providers.iter().find(|p| p.id == "anthropic").unwrap();
     assert!(
         anth.credentials_present,
         "api_key_env=None must mean ready (canonical LlmConfig::provider_ready parity)",
@@ -143,18 +135,10 @@ fn credentials_present_false_when_api_key_env_is_empty_string() {
     // missing key rather than "no key needed", because the
     // operator clearly *intended* to name an env var.
     let mut cfg = synthetic_config();
-    cfg.llm
-        .providers
-        .get_mut("anthropic")
-        .unwrap()
-        .api_key_env = Some("   ".to_string());
+    cfg.llm.providers.get_mut("anthropic").unwrap().api_key_env = Some("   ".to_string());
     let env = FakeEnv::default();
     let snap = build_snapshot_with_env(&cfg, &env);
-    let anth = snap
-        .providers
-        .iter()
-        .find(|p| p.id == "anthropic")
-        .unwrap();
+    let anth = snap.providers.iter().find(|p| p.id == "anthropic").unwrap();
     assert!(!anth.credentials_present);
 }
 
@@ -198,9 +182,7 @@ fn local_no_key_provider_active_survives_sanitize_active_model() {
             cost_label: m.cost_label.clone(),
         })
         .collect();
-    let active = snap
-        .active
-        .map(|a| (ProviderId(a.provider), a.id));
+    let active = snap.active.map(|a| (ProviderId(a.provider), a.id));
 
     let sanitized = sanitize_active_model(&providers, &models, active);
     let (pid, mid) = sanitized.expect("local-key-less active must survive sanitize");
@@ -375,24 +357,28 @@ fn overwrite_existing_file_yields_valid_final_json() {
     let first = write_snapshot_with_env(&cfg_first, &paths, &env_present).unwrap();
     let bytes_first = std::fs::read(&first).unwrap();
     let parsed_first: SnapshotDoc = serde_json::from_slice(&bytes_first).unwrap();
-    assert!(parsed_first
-        .providers
-        .iter()
-        .find(|p| p.id == "anthropic")
-        .map(|p| p.credentials_present)
-        .unwrap_or(false));
+    assert!(
+        parsed_first
+            .providers
+            .iter()
+            .find(|p| p.id == "anthropic")
+            .map(|p| p.credentials_present)
+            .unwrap_or(false)
+    );
 
     // Second write — different env strategy, same destination.
     let second = write_snapshot_with_env(&cfg_first, &paths, &env_absent).unwrap();
     assert_eq!(first, second);
     let bytes_second = std::fs::read(&second).unwrap();
     let parsed_second: SnapshotDoc = serde_json::from_slice(&bytes_second).unwrap();
-    assert!(parsed_second
-        .providers
-        .iter()
-        .find(|p| p.id == "anthropic")
-        .map(|p| !p.credentials_present)
-        .unwrap_or(false));
+    assert!(
+        parsed_second
+            .providers
+            .iter()
+            .find(|p| p.id == "anthropic")
+            .map(|p| !p.credentials_present)
+            .unwrap_or(false)
+    );
 
     // No tmp residue left in the parent dir.
     let parent = first.parent().unwrap();
@@ -442,9 +428,7 @@ fn sanitize_active_model_drops_when_creds_missing_in_snapshot() {
             cost_label: m.cost_label.clone(),
         })
         .collect();
-    let active = snap
-        .active
-        .map(|a| (ProviderId(a.provider), a.id));
+    let active = snap.active.map(|a| (ProviderId(a.provider), a.id));
 
     let sanitized = sanitize_active_model(&providers, &models, active);
     assert!(
@@ -477,9 +461,7 @@ fn write_snapshot_doc_creates_missing_parent_dirs() {
     let snap = SnapshotDoc::default();
     let dest = write_snapshot_doc(&snap, &paths).unwrap();
     assert!(dest.exists());
-    assert!(dest
-        .to_string_lossy()
-        .ends_with("/.vac/model_config.json"));
+    assert!(dest.to_string_lossy().ends_with("/.vac/model_config.json"));
 }
 
 // ---------------------------------------------------------------------

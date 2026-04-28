@@ -107,9 +107,9 @@ impl Memory {
 /// markdown horizontal rule inside `body` from being mis-parsed as
 /// the frontmatter terminator.
 pub fn parse(content: &str) -> MemoryResult<(MemoryFrontmatter, String)> {
-    let s = content.strip_prefix("---\n").ok_or_else(|| {
-        MemoryError::Frontmatter("missing opening '---' delimiter".into())
-    })?;
+    let s = content
+        .strip_prefix("---\n")
+        .ok_or_else(|| MemoryError::Frontmatter("missing opening '---' delimiter".into()))?;
     // Scan for a line that is exactly "---" (no leading/trailing space).
     let mut offset = 0usize;
     let mut closing_line_start: Option<usize> = None;
@@ -130,9 +130,8 @@ pub fn parse(content: &str) -> MemoryResult<(MemoryFrontmatter, String)> {
         closing_line_start = Some(start);
         closing_line_end = Some(s.len());
     }
-    let close_start = closing_line_start.ok_or_else(|| {
-        MemoryError::Frontmatter("missing closing '---' delimiter".into())
-    })?;
+    let close_start = closing_line_start
+        .ok_or_else(|| MemoryError::Frontmatter("missing closing '---' delimiter".into()))?;
     let close_end = closing_line_end.unwrap_or(s.len());
     // YAML is everything up to (but not including) the closing line.
     // Strip the trailing `\n` that belongs to the line before `---`.

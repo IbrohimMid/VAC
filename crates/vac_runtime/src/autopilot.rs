@@ -37,7 +37,7 @@ impl AutopilotController {
         let queue = Arc::new(TaskQueue::with_storage(
             project_root.join(".vac/queue.json"),
         ));
-        
+
         let entries = entries_from_autopilot(&project_root, &config);
         let cron_scheduler = if !entries.is_empty() {
             Some(CronScheduler::new(entries, queue.clone()))

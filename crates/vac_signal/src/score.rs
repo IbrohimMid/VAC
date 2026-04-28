@@ -32,16 +32,27 @@ pub struct RegexScorer {
 impl RegexScorer {
     pub fn new(high: &[&str], medium: &[&str], noise: &[&str]) -> Result<Self, regex::Error> {
         let build = |p: &[&str]| -> Result<Option<RegexSet>, regex::Error> {
-            if p.is_empty() { Ok(None) } else { Ok(Some(RegexSet::new(p)?)) }
+            if p.is_empty() {
+                Ok(None)
+            } else {
+                Ok(Some(RegexSet::new(p)?))
+            }
         };
-        Ok(Self { high: build(high)?, medium: build(medium)?, noise: build(noise)? })
+        Ok(Self {
+            high: build(high)?,
+            medium: build(medium)?,
+            noise: build(noise)?,
+        })
     }
 
     /// Default heuristics: error/panic/fatal → high; warn/deprecated → medium;
     /// progress bars and escape-heavy redraws → noise.
     pub fn default_heuristics() -> Self {
         Self::new(
-            &[r"(?i)\b(error|panic(ked)?|fatal|fail(ed|ure)?)\b", r"(?i)\b(traceback|segfault)\b"],
+            &[
+                r"(?i)\b(error|panic(ked)?|fatal|fail(ed|ure)?)\b",
+                r"(?i)\b(traceback|segfault)\b",
+            ],
             &[r"(?i)\b(warn(ing)?|deprecated|retry|timeout)\b"],
             &[r"^\s*$", r"\x1b\[\d*[A-Za-z]", r"^\[#+\s*\]"],
         )
@@ -79,9 +90,7 @@ impl ChainedScorer {
     /// Build a `ChainedScorer` from default heuristics followed by custom
     /// rules loaded from `SignalConfig`. Returns `None` if all supplied
     /// patterns fail to compile.
-    pub fn from_config(
-        cfg: &crate::config::SignalConfig,
-    ) -> Result<Self, regex::Error> {
+    pub fn from_config(cfg: &crate::config::SignalConfig) -> Result<Self, regex::Error> {
         let default = Box::new(RegexScorer::default_heuristics());
         let mut scorers: Vec<Box<dyn Scorer>> = vec![default];
         if !cfg.custom_filters.is_empty() {
@@ -114,9 +123,7 @@ pub struct CustomRulesScorer {
 }
 
 impl CustomRulesScorer {
-    pub fn from_rules(
-        rules: &[crate::config::FilterRule],
-    ) -> Result<Self, regex::Error> {
+    pub fn from_rules(rules: &[crate::config::FilterRule]) -> Result<Self, regex::Error> {
         let mut compiled = Vec::with_capacity(rules.len());
         for r in rules {
             compiled.push((regex::Regex::new(&r.pattern)?, r.class));
@@ -177,7 +184,10 @@ mod tests {
         });
         let chained = ChainedScorer::from_config(&cfg).unwrap();
         // Default heuristics would score this Low; custom rule makes it High.
-        assert_eq!(chained.score("call to DEPRECATED_API_XYZ()"), ScoreClass::High);
+        assert_eq!(
+            chained.score("call to DEPRECATED_API_XYZ()"),
+            ScoreClass::High
+        );
     }
 
     #[test]

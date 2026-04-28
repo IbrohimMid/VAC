@@ -113,8 +113,7 @@ pub fn spawn_passive_feedback_loop(
             {
                 let mut guard = state.lock().await;
                 guard.execution.lsp.last_tick_unix = now;
-                guard.execution.lsp.total_ticks =
-                    guard.execution.lsp.total_ticks.saturating_add(1);
+                guard.execution.lsp.total_ticks = guard.execution.lsp.total_ticks.saturating_add(1);
                 guard.execution.lsp.recent_toasts = toasts.len();
             }
             if !toasts.is_empty() {
@@ -159,11 +158,7 @@ pub fn spawn_cron_loop(
                     let due = store.due(now);
                     let registered = store.entries.len();
                     let due_count = due.len();
-                    let fired_total = store
-                        .entries
-                        .iter()
-                        .map(|e| e.fire_count)
-                        .sum::<u64>();
+                    let fired_total = store.entries.iter().map(|e| e.fire_count).sum::<u64>();
                     {
                         let mut guard = state.lock().await;
                         guard.execution.cron.registered = registered;
@@ -231,7 +226,7 @@ pub fn spawn_policy_snapshot_loop(
 /// via the activity panel — no banner, no modal.
 pub async fn away_summary_probe(state: Arc<Mutex<AppState>>, project_root: PathBuf) {
     use crate::services::away_summary::{AwaySummaryService, ResumeOutcome};
-    use crate::services::notify_router::{route, NotifyEvent};
+    use crate::services::notify_router::{NotifyEvent, route};
     let svc = AwaySummaryService::new(project_root);
     match svc.on_resume().await {
         Ok(ResumeOutcome::Summary(report)) => {
@@ -272,9 +267,9 @@ mod tests {
         use vac_tools::rust_analysis::LspDiagnosticRegistry;
 
         let state = Arc::new(Mutex::new(AppState::default()));
-        let driver = Arc::new(PassiveFeedbackDriver::new(
-            Arc::new(LspDiagnosticRegistry::new()),
-        ));
+        let driver = Arc::new(PassiveFeedbackDriver::new(Arc::new(
+            LspDiagnosticRegistry::new(),
+        )));
         let handle = spawn_passive_feedback_loop(state.clone(), driver);
         // Give the loop one tick to run; the poll period is 2s,
         // but the first body runs before the first sleep.
@@ -348,8 +343,6 @@ mod tests {
         away_summary_probe(state.clone(), tmp.path().to_path_buf()).await;
         let guard = state.lock().await;
         assert_eq!(guard.execution.activity.len(), 1);
-        assert!(
-            guard.execution.activity[0].message.starts_with("[resume]")
-        );
+        assert!(guard.execution.activity[0].message.starts_with("[resume]"));
     }
 }

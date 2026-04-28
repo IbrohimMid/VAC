@@ -14,9 +14,7 @@
 use std::sync::Arc;
 use std::time::Instant;
 
-use vac_tools::rust_analysis::{
-    Diagnostic, DiagnosticRegistry, DiagnosticSeverity,
-};
+use vac_tools::rust_analysis::{Diagnostic, DiagnosticRegistry, DiagnosticSeverity};
 
 /// One toast candidate produced by the feedback service. Kept small +
 /// UI-agnostic so the TUI's `Toast` type can convert without a crate
@@ -114,7 +112,7 @@ pub async fn measure_tick_latency(
 mod tests {
     use std::path::PathBuf;
     use std::time::Duration;
-    use vac_tools::rust_analysis::{LspDiagnosticRegistry, Diagnostic};
+    use vac_tools::rust_analysis::{Diagnostic, LspDiagnosticRegistry};
 
     use super::*;
 
@@ -177,12 +175,7 @@ mod tests {
             registry
                 .publish(
                     PathBuf::from(format!("f{i}.rs")),
-                    vec![diag(
-                        &format!("f{i}.rs"),
-                        i,
-                        DiagnosticSeverity::Error,
-                        "e",
-                    )],
+                    vec![diag(&format!("f{i}.rs"), i, DiagnosticSeverity::Error, "e")],
                 )
                 .await;
         }

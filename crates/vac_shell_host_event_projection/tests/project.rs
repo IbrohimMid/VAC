@@ -138,5 +138,9 @@ fn event_projection_tool_finished_still_uses_tool_result_kind() {
         severity: Severity::Ok,
         summary: Some("found 5 files".into()),
     });
-    assert_eq!(entry.kind, ShellActivityKind::ToolResult, "true tool execution must stay ToolResult");
+    assert_eq!(
+        entry.kind,
+        ShellActivityKind::ToolResult,
+        "true tool execution must stay ToolResult"
+    );
 }

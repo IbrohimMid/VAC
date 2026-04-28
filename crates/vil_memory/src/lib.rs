@@ -14,4 +14,4 @@ pub mod store;
 
 pub use adapter::VacMemoryBridge;
 pub use error::MemoryError;
-pub use store::{MemoryConfig, MemoryStore, MemoryEntry, MemoryType};
+pub use store::{MemoryConfig, MemoryEntry, MemoryStore, MemoryType};

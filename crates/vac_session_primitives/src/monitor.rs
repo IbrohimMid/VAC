@@ -69,14 +69,9 @@ pub async fn spawn_monitor(spec: MonitorSpec) -> EngineResult<MonitorHandle> {
         return Err(EngineError::Other("monitor argv is empty".into()));
     }
     let regex = Regex::new(&spec.match_regex).map_err(|e| {
-        EngineError::Other(format!(
-            "invalid monitor regex '{}': {e}",
-            spec.match_regex,
-        ))
+        EngineError::Other(format!("invalid monitor regex '{}': {e}", spec.match_regex,))
     })?;
-    let severity_group_idx = regex
-        .capture_names()
-        .position(|n| n == Some("severity"));
+    let severity_group_idx = regex.capture_names().position(|n| n == Some("severity"));
 
     let mut cmd = Command::new(&spec.argv[0]);
     cmd.args(&spec.argv[1..])

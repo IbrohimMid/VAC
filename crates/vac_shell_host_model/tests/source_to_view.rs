@@ -6,8 +6,8 @@
 //! matches the host's source. The widget never mutates the source —
 //! the host applies the model switch in slice 9 (not here).
 
-use ratatui::backend::TestBackend;
 use ratatui::Terminal;
+use ratatui::backend::TestBackend;
 use vac_shell_contracts::ProviderId;
 use vac_shell_host_model::{InMemoryModelSource, build_switcher_view, project_models};
 use vac_shell_model_switcher::{
@@ -51,17 +51,15 @@ fn navigation_order_starts_with_recent_then_groups() {
     let src = source();
     let view = build_switcher_view(&src, 5);
     let order = navigation_order(&view);
-    let labels: Vec<&str> = order.iter().map(|i| view.models[*i].label.as_str()).collect();
+    let labels: Vec<&str> = order
+        .iter()
+        .map(|i| view.models[*i].label.as_str())
+        .collect();
     // openai/gpt-4o is the only recent entry. After it, providers
     // sort alphabetically (no pinned set on this source).
     assert_eq!(
         labels,
-        vec![
-            "GPT-4o",
-            "Claude Sonnet 4.5",
-            "Claude Haiku 4",
-            "Kilo Auto",
-        ]
+        vec!["GPT-4o", "Claude Sonnet 4.5", "Claude Haiku 4", "Kilo Auto",]
     );
 }
 
@@ -92,15 +90,13 @@ fn pinned_provider_overrides_alphabetical_after_recents() {
     let src = source().with_pinned("kilo");
     let view = build_switcher_view(&src, 5);
     let order = navigation_order(&view);
-    let labels: Vec<&str> = order.iter().map(|i| view.models[*i].label.as_str()).collect();
+    let labels: Vec<&str> = order
+        .iter()
+        .map(|i| view.models[*i].label.as_str())
+        .collect();
     assert_eq!(
         labels,
-        vec![
-            "GPT-4o",
-            "Kilo Auto",
-            "Claude Sonnet 4.5",
-            "Claude Haiku 4",
-        ]
+        vec!["GPT-4o", "Kilo Auto", "Claude Sonnet 4.5", "Claude Haiku 4",]
     );
 }
 
@@ -134,11 +130,20 @@ fn source_projection_renders_model_switcher_widget() {
 
     assert!(all.contains("Model Switcher"), "title missing\n{all}");
     assert!(all.contains("GPT-4o"), "recent label missing\n{all}");
-    assert!(all.contains("Claude Sonnet 4.5"), "active model label missing\n{all}");
+    assert!(
+        all.contains("Claude Sonnet 4.5"),
+        "active model label missing\n{all}"
+    );
     assert!(all.contains("active"), "active tag missing\n{all}");
-    assert!(all.contains("(no creds)"), "no-creds tag missing for kilo\n{all}");
+    assert!(
+        all.contains("(no creds)"),
+        "no-creds tag missing for kilo\n{all}"
+    );
     assert!(all.contains("$3 / $15 per M"), "cost_label missing\n{all}");
-    assert!(all.contains("anthropic"), "anthropic provider header missing\n{all}");
+    assert!(
+        all.contains("anthropic"),
+        "anthropic provider header missing\n{all}"
+    );
 }
 
 #[test]

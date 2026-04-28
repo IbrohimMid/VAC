@@ -69,16 +69,24 @@ fn render_title(f: &mut Frame, state: &AppState, area: Rect) {
         Span::styled(
             title,
             state
-                .core.theme
+                .core
+                .theme
                 .style(StyleKey::Warning)
                 .add_modifier(Modifier::BOLD),
         ),
         Span::raw("  "),
-        Span::styled(format!("v{}", version), state.core.theme.style(StyleKey::Muted)),
+        Span::styled(
+            format!("v{}", version),
+            state.core.theme.style(StyleKey::Muted),
+        ),
         Span::raw("  "),
         Span::styled(
             status_label,
-            state.core.theme.style(status_key).add_modifier(Modifier::BOLD),
+            state
+                .core
+                .theme
+                .style(status_key)
+                .add_modifier(Modifier::BOLD),
         ),
     ]);
 
@@ -104,7 +112,8 @@ fn render_body(f: &mut Frame, state: &AppState, area: Rect) {
         let is_selected = i == state.workspace.plan.review_selected;
         let num_style = if is_selected {
             state
-                .core.theme
+                .core
+                .theme
                 .style(StyleKey::Warning)
                 .add_modifier(Modifier::BOLD)
         } else {
@@ -112,7 +121,8 @@ fn render_body(f: &mut Frame, state: &AppState, area: Rect) {
         };
         let body_style = if is_selected {
             state
-                .core.theme
+                .core
+                .theme
                 .style(StyleKey::HighlightBg)
                 .patch(state.core.theme.style(StyleKey::HighlightFg))
         } else {

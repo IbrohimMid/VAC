@@ -9,11 +9,11 @@
 //! missing or slow to start — unrelated to W2 scope.
 
 use std::sync::Arc;
+use vac_tools::ToolRegistry;
 use vac_tools::builtin::{
     bash::BashTool, file_read::FileReadTool, file_write::FileWriteTool, glob::GlobTool,
     grep::GrepTool, tool_search::ToolSearchTool,
 };
-use vac_tools::ToolRegistry;
 
 async fn mk_registry() -> Arc<ToolRegistry> {
     let reg = Arc::new(ToolRegistry::new());
@@ -22,7 +22,9 @@ async fn mk_registry() -> Arc<ToolRegistry> {
     reg.register(BashTool::new()).await.unwrap();
     reg.register(GrepTool).await.unwrap();
     reg.register(GlobTool).await.unwrap();
-    reg.register(ToolSearchTool::new(reg.clone())).await.unwrap();
+    reg.register(ToolSearchTool::new(reg.clone()))
+        .await
+        .unwrap();
     reg
 }
 
@@ -165,7 +167,16 @@ async fn w2_4_file_write_destructive_depends_on_existence() {
         "content": "hi",
     });
 
-    assert!(fw.is_input_destructive(&overwrite), "overwrite is destructive");
-    assert!(!fw.is_input_destructive(&append), "append preserves prior content");
-    assert!(!fw.is_input_destructive(&fresh), "new path is not destructive");
+    assert!(
+        fw.is_input_destructive(&overwrite),
+        "overwrite is destructive"
+    );
+    assert!(
+        !fw.is_input_destructive(&append),
+        "append preserves prior content"
+    );
+    assert!(
+        !fw.is_input_destructive(&fresh),
+        "new path is not destructive"
+    );
 }

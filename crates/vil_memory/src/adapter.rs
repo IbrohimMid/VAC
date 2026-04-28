@@ -56,14 +56,9 @@ impl VacMemoryBridge {
     /// mapped onto `vil_memory::MemoryEntry` so the caller's type
     /// signature is unchanged. `MemoryType` is classified by shelf:
     /// `active` → Working, `archived` → Episodic, `team` → Semantic.
-    pub async fn recall(
-        &self,
-        query: &str,
-        k: usize,
-    ) -> MemoryResult<Vec<MemoryEntry>> {
+    pub async fn recall(&self, query: &str, k: usize) -> MemoryResult<Vec<MemoryEntry>> {
         let memories = self.scanner.scan_all().await.map_err(to_vil)?;
-        let hits =
-            vac_memory::find_relevant(&memories, query, k, /* include_archived */ true);
+        let hits = vac_memory::find_relevant(&memories, query, k, /* include_archived */ true);
         Ok(hits
             .into_iter()
             .map(|(m, score)| MemoryEntry {
@@ -82,11 +77,7 @@ impl VacMemoryBridge {
     /// slug is `working-<yyyymmdd>`, `episodic-<yyyymmdd>`, or
     /// `semantic-<yyyymmdd>` so repeat calls on the same day merge
     /// into one file (scanner's `write` overwrites same-topic).
-    pub async fn append(
-        &self,
-        content: &str,
-        kind: MemoryType,
-    ) -> MemoryResult<MemoryEntry> {
+    pub async fn append(&self, content: &str, kind: MemoryType) -> MemoryResult<MemoryEntry> {
         let today = chrono::Utc::now().format("%Y%m%d").to_string();
         let (shelf, prefix) = match kind {
             MemoryType::Working => (vac_memory::MemoryKind::Active, "working"),
@@ -170,7 +161,10 @@ mod tests {
             .await
             .unwrap();
         bridge
-            .append("review threads auto-reap after 30 days", MemoryType::Episodic)
+            .append(
+                "review threads auto-reap after 30 days",
+                MemoryType::Episodic,
+            )
             .await
             .unwrap();
 
@@ -184,10 +178,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let bridge = VacMemoryBridge::new(tmp.path().to_path_buf());
         assert_eq!(bridge.working_count().await.unwrap(), 0);
-        bridge
-            .append("entry", MemoryType::Working)
-            .await
-            .unwrap();
+        bridge.append("entry", MemoryType::Working).await.unwrap();
         assert_eq!(bridge.working_count().await.unwrap(), 1);
     }
 

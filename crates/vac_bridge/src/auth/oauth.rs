@@ -21,8 +21,8 @@
 
 use std::path::{Path, PathBuf};
 
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -43,9 +43,7 @@ impl PkceChallenge {
     /// callers that already own their RNG.
     pub fn from_verifier(verifier: impl Into<String>) -> Result<Self, OauthError> {
         let verifier: String = verifier.into();
-        if verifier.len() < PKCE_VERIFIER_MIN_LEN
-            || verifier.len() > PKCE_VERIFIER_MAX_LEN
-        {
+        if verifier.len() < PKCE_VERIFIER_MIN_LEN || verifier.len() > PKCE_VERIFIER_MAX_LEN {
             return Err(OauthError::InvalidVerifier(format!(
                 "verifier len {} out of bounds ({}..={})",
                 verifier.len(),
@@ -65,7 +63,10 @@ impl PkceChallenge {
         }
         let digest = Sha256::digest(verifier.as_bytes());
         let challenge = URL_SAFE_NO_PAD.encode(digest);
-        Ok(Self { verifier, challenge })
+        Ok(Self {
+            verifier,
+            challenge,
+        })
     }
 
     /// Generate a fresh verifier from 32 raw entropy bytes (the
@@ -91,10 +92,7 @@ impl PkceChallenge {
         let Ok(rebuilt) = Self::from_verifier(candidate.to_string()) else {
             return false;
         };
-        crate::auth::jwt::constant_time_eq(
-            rebuilt.challenge.as_bytes(),
-            self.challenge.as_bytes(),
-        )
+        crate::auth::jwt::constant_time_eq(rebuilt.challenge.as_bytes(), self.challenge.as_bytes())
     }
 }
 
@@ -212,8 +210,8 @@ mod tests {
     use super::*;
 
     const FIXED_SEED: [u8; 32] = [
-        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
-        21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32,
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
+        26, 27, 28, 29, 30, 31, 32,
     ];
 
     #[test]
@@ -327,10 +325,7 @@ mod tests {
         cache.save(&t).await.unwrap();
         let meta = tokio::fs::metadata(cache.path_for("github")).await.unwrap();
         let mode = meta.permissions().mode() & 0o777;
-        assert_eq!(
-            mode, 0o600,
-            "token cache file must be 0600, got {mode:o}",
-        );
+        assert_eq!(mode, 0o600, "token cache file must be 0600, got {mode:o}",);
     }
 
     #[tokio::test]
@@ -362,10 +357,7 @@ mod tests {
         while let Some(entry) = rd.next_entry().await.unwrap() {
             let name = entry.file_name();
             let s = name.to_string_lossy();
-            assert!(
-                !s.ends_with(".tmp"),
-                "leftover temp file: {s}",
-            );
+            assert!(!s.ends_with(".tmp"), "leftover temp file: {s}",);
         }
     }
 

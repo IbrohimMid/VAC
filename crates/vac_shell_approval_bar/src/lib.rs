@@ -284,11 +284,19 @@ pub fn render_approval_bar(f: &mut Frame, view: &ApprovalBarViewState, area: Rec
     let top = Line::from(vec![
         Span::styled("┌", Style::default().fg(border_color)),
         Span::styled("─", Style::default().fg(border_color)),
-        Span::styled(title, Style::default().fg(title_color).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            title,
+            Style::default()
+                .fg(title_color)
+                .add_modifier(Modifier::BOLD),
+        ),
         Span::styled("─".repeat(dashes_after), Style::default().fg(border_color)),
         Span::styled("┐", Style::default().fg(border_color)),
     ]);
-    f.render_widget(Paragraph::new(top), Rect::new(area.x, area.y, area.width, 1));
+    f.render_widget(
+        Paragraph::new(top),
+        Rect::new(area.x, area.y, area.width, 1),
+    );
 
     // Content rows.
     let mut current_y = area.y + 1;

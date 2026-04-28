@@ -186,10 +186,7 @@ impl Default for FakeClock {
 
 impl Clock for FakeClock {
     fn now(&self) -> SystemTime {
-        self.base
-            + Duration::from_secs(
-                self.offset.load(std::sync::atomic::Ordering::SeqCst),
-            )
+        self.base + Duration::from_secs(self.offset.load(std::sync::atomic::Ordering::SeqCst))
     }
 }
 
@@ -230,9 +227,7 @@ impl PolicyTracker {
                 .iter()
                 .any(|t| t.to_ascii_lowercase() == needle)
             {
-                let decision = PolicyDecision::Deny(format!(
-                    "tool {tool} is denied by policy"
-                ));
+                let decision = PolicyDecision::Deny(format!("tool {tool} is denied by policy"));
                 trace_deny(&decision, "denied_tools");
                 return decision;
             }
@@ -248,9 +243,8 @@ impl PolicyTracker {
                 .take_while(|t| now.saturating_sub(**t) < POLICY_WINDOW_SECS)
                 .count();
             if visible as u32 >= max {
-                let decision = PolicyDecision::Deny(format!(
-                    "max_submits_per_hour ({max}) exceeded"
-                ));
+                let decision =
+                    PolicyDecision::Deny(format!("max_submits_per_hour ({max}) exceeded"));
                 trace_deny(&decision, "max_submits_per_hour");
                 return decision;
             }
@@ -325,7 +319,9 @@ fn trace_deny(decision: &PolicyDecision, rule: &'static str) {
 }
 
 fn unix_secs(t: SystemTime) -> u64 {
-    t.duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+    t.duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
 }
 
 fn prune_window(q: &mut VecDeque<u64>, now: u64) {
@@ -521,8 +517,12 @@ mod tests {
     async fn parse_error_surfaces_not_swallowed() {
         let tmp = tempfile::tempdir().unwrap();
         let path = tmp.path().join(".vac").join(DEFAULT_POLICY_FILENAME);
-        tokio::fs::create_dir_all(path.parent().unwrap()).await.unwrap();
-        tokio::fs::write(&path, "max_submits_per_hour = \"nope\"").await.unwrap();
+        tokio::fs::create_dir_all(path.parent().unwrap())
+            .await
+            .unwrap();
+        tokio::fs::write(&path, "max_submits_per_hour = \"nope\"")
+            .await
+            .unwrap();
         let err = PolicyLimits::load(tmp.path()).await.unwrap_err();
         matches!(err, PolicyError::Parse(_));
     }

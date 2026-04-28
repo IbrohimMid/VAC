@@ -40,7 +40,10 @@ impl VilTool for FileWriteTool {
         &self,
         args: &serde_json::Value,
     ) -> Box<dyn Fn(&str) -> bool + Send + Sync> {
-        let path = args.get("path").and_then(|v| v.as_str()).map(|s| s.to_string());
+        let path = args
+            .get("path")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
         Box::new(move |target| {
             if let Some(p) = &path {
                 target.contains(p)
@@ -171,7 +174,9 @@ impl VilTool for FileWriteTool {
             // R2.a — content-addressable backup for `vac restore`.
             // Best-effort: on failure we log + continue so the tool
             // call isn't blocked by a snapshot problem.
-            if let Err(e) = crate::backup::snapshot_file(&context.working_dir, &path, context.submit_id).await {
+            if let Err(e) =
+                crate::backup::snapshot_file(&context.working_dir, &path, context.submit_id).await
+            {
                 tracing::warn!(
                     target: "vac_tools::backup",
                     path = %path.display(),

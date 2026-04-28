@@ -205,7 +205,9 @@ fn build_command(input: &CreateInput) -> Result<HookCommand, ToolError> {
                     "kind=command requires non-empty argv".into(),
                 ));
             }
-            Ok(HookCommand::Command { argv: input.argv.clone() })
+            Ok(HookCommand::Command {
+                argv: input.argv.clone(),
+            })
         }
         // Audit P0.1 — honest surface: `prompt`, `agent`, `http`
         // are reserved schema kinds but runtime dispatch is
@@ -337,7 +339,9 @@ mod tests {
             id: id.into(),
             event: HookEvent::PreToolUse,
             matcher: "Edit".into(),
-            command: HookCommand::Command { argv: vec!["true".into()] },
+            command: HookCommand::Command {
+                argv: vec!["true".into()],
+            },
             description: String::new(),
         }
     }

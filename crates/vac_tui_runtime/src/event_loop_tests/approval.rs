@@ -34,14 +34,18 @@ async fn ask_user_filter_and_shortcuts_update_state_and_send_structured_result()
     open_ask_user_popup(&mut state, &tc);
     assert!(
         state
-            .layout.overlay_manager
+            .layout
+            .overlay_manager
             .is_active(crate::overlay::OverlayId::AskUser)
     );
     assert_eq!(
         state.layout.ask_user.question_kind,
         crate::services::ask_user::AskUserQuestionKind::MultiSelect
     );
-    assert_eq!(state.layout.ask_user.metadata.get("source").unwrap(), "test");
+    assert_eq!(
+        state.layout.ask_user.metadata.get("source").unwrap(),
+        "test"
+    );
 
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::Tab);
     assert!(state.layout.ask_user.search_active);
@@ -110,7 +114,10 @@ async fn approval_queue_accepts_selected_and_emits_output_event() {
     assert_eq!(state.execution.approvals.pending_approvals.len(), 2);
     assert_eq!(state.execution.approvals.approval_selected_idx, 1);
     assert_eq!(state.layout.focus, crate::app::WorkspaceFocus::Workbench);
-    assert_eq!(state.layout.workbench_tab, crate::app::WorkbenchTab::Approvals);
+    assert_eq!(
+        state.layout.workbench_tab,
+        crate::app::WorkbenchTab::Approvals
+    );
 
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::InputChanged('a'));
     let ev = rx.recv().await.unwrap();
@@ -121,7 +128,14 @@ async fn approval_queue_accepts_selected_and_emits_output_event() {
 
     assert_eq!(state.execution.approvals.pending_approvals.len(), 1);
     assert_eq!(state.execution.approvals.pending_approvals[0].id, "tc-1");
-    assert!(state.execution.approvals.approved_tools.iter().any(|t| t.id == "tc-2"));
+    assert!(
+        state
+            .execution
+            .approvals
+            .approved_tools
+            .iter()
+            .any(|t| t.id == "tc-2")
+    );
 }
 
 #[tokio::test]
@@ -156,7 +170,14 @@ async fn approval_queue_rejects_selected_and_emits_output_event() {
     }
 
     assert!(state.execution.approvals.pending_approvals.is_empty());
-    assert!(state.execution.approvals.rejected_tools.iter().any(|t| t.id == "tc-1"));
+    assert!(
+        state
+            .execution
+            .approvals
+            .rejected_tools
+            .iter()
+            .any(|t| t.id == "tc-1")
+    );
 }
 
 #[tokio::test]
@@ -424,7 +445,10 @@ async fn reject_current_shows_reason_prompt_then_confirms() {
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::InputChanged('t'));
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::InputChanged('o'));
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::InputChanged('o'));
-    assert_eq!(state.execution.approvals.reject_reason_input.as_deref(), Some("too"));
+    assert_eq!(
+        state.execution.approvals.reject_reason_input.as_deref(),
+        Some("too")
+    );
 
     // Confirm
     crate::controller::handle_input_event(&mut state, &tx, InputEvent::InputSubmitted);

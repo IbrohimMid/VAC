@@ -15,8 +15,7 @@ use std::sync::Arc;
 use tokio::sync::{Mutex, oneshot};
 use uuid::Uuid;
 use vac_bridge::{
-    AcpServer, InboundEvent, OutboundEvent, PermissionDecision,
-    RemoteSession, SessionAttachState,
+    AcpServer, InboundEvent, OutboundEvent, PermissionDecision, RemoteSession, SessionAttachState,
     permission::await_decision,
 };
 

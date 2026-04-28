@@ -58,14 +58,16 @@ pub fn render(f: &mut Frame, state: &mut AppState, area: Rect) {
             Block::default().borders(Borders::ALL).title(Span::styled(
                 "Issue Groups",
                 state
-                    .core.theme
+                    .core
+                    .theme
                     .style(StyleKey::Warning)
                     .add_modifier(Modifier::BOLD),
             )),
         )
         .highlight_style(
             state
-                .core.theme
+                .core
+                .theme
                 .style(StyleKey::Warning)
                 .add_modifier(Modifier::BOLD),
         );
@@ -124,7 +126,8 @@ fn render_status_panel(f: &mut Frame, state: &AppState, area: Rect) {
     };
 
     let active_rulebook = state
-        .vil_domain.vil
+        .vil_domain
+        .vil
         .status
         .active_rulebook
         .clone()
@@ -132,7 +135,13 @@ fn render_status_panel(f: &mut Frame, state: &AppState, area: Rect) {
             if state.layout.switchers.selected_rulebooks.is_empty() {
                 None
             } else {
-                let mut v = state.layout.switchers.selected_rulebooks.iter().cloned().collect::<Vec<_>>();
+                let mut v = state
+                    .layout
+                    .switchers
+                    .selected_rulebooks
+                    .iter()
+                    .cloned()
+                    .collect::<Vec<_>>();
                 v.sort();
                 Some(v.join(", "))
             }
@@ -171,7 +180,15 @@ fn render_status_panel(f: &mut Frame, state: &AppState, area: Rect) {
         Span::styled(trend, state.core.theme.style(StyleKey::Accent)),
         Span::raw(" │ "),
         Span::styled("Issues: ", Style::default().add_modifier(Modifier::BOLD)),
-        Span::raw(state.vil_domain.vil.status.validation_issues.len().to_string()),
+        Span::raw(
+            state
+                .vil_domain
+                .vil
+                .status
+                .validation_issues
+                .len()
+                .to_string(),
+        ),
     ];
 
     header.push(Span::raw(" │ "));
@@ -194,7 +211,8 @@ fn render_status_panel(f: &mut Frame, state: &AppState, area: Rect) {
             rulebook_display,
             if has_conflict {
                 state
-                    .core.theme
+                    .core
+                    .theme
                     .style(StyleKey::Error)
                     .add_modifier(Modifier::BOLD)
             } else {
@@ -207,11 +225,17 @@ fn render_status_panel(f: &mut Frame, state: &AppState, area: Rect) {
 
     if state.vil_domain.vil.status.ir_generation_active {
         meta.push(Span::styled(
-            format!("Active ({})", state.vil_domain.vil.status.ir_metadata_files.len()),
+            format!(
+                "Active ({})",
+                state.vil_domain.vil.status.ir_metadata_files.len()
+            ),
             state.core.theme.style(StyleKey::Success),
         ));
     } else {
-        meta.push(Span::styled("Inactive", state.core.theme.style(StyleKey::Muted)));
+        meta.push(Span::styled(
+            "Inactive",
+            state.core.theme.style(StyleKey::Muted),
+        ));
     }
 
     if let Some(profile) = &state.vil_domain.vil.status.profile {
@@ -249,7 +273,8 @@ fn render_status_panel(f: &mut Frame, state: &AppState, area: Rect) {
         Line::styled(
             "Scanning profile...",
             state
-                .core.theme
+                .core
+                .theme
                 .style(StyleKey::Muted)
                 .add_modifier(Modifier::ITALIC),
         )
@@ -271,7 +296,8 @@ fn render_status_panel(f: &mut Frame, state: &AppState, area: Rect) {
         lines_to_render.push(Line::styled(
             recommendations.join(" | "),
             state
-                .core.theme
+                .core
+                .theme
                 .style(StyleKey::Warning)
                 .add_modifier(Modifier::ITALIC),
         ));
@@ -281,7 +307,8 @@ fn render_status_panel(f: &mut Frame, state: &AppState, area: Rect) {
         Block::default().borders(Borders::ALL).title(Span::styled(
             "VIL Workstation - Rulebook Cockpit & Validation Heatmap",
             state
-                .core.theme
+                .core
+                .theme
                 .style(StyleKey::Warning)
                 .add_modifier(Modifier::BOLD),
         )),
@@ -293,7 +320,14 @@ fn render_status_panel(f: &mut Frame, state: &AppState, area: Rect) {
 fn render_vil_log_panel(f: &mut Frame, state: &AppState, area: Rect) {
     let max = area.height.saturating_sub(2) as usize;
     let mut lines: Vec<Line> = Vec::new();
-    let entries: Vec<_> = state.vil_domain.vil.event_log.iter().rev().take(max.max(1)).collect();
+    let entries: Vec<_> = state
+        .vil_domain
+        .vil
+        .event_log
+        .iter()
+        .rev()
+        .take(max.max(1))
+        .collect();
     for entry in entries.into_iter().rev() {
         let ts = entry.at.format("%H:%M:%S").to_string();
         lines.push(Line::from(vec![
@@ -363,9 +397,12 @@ fn render_issue_list(f: &mut Frame, state: &mut AppState, area: Rect, view: &[&V
     };
 
     if view.is_empty() {
-        let widget = Paragraph::new(Line::styled(empty_msg, state.core.theme.style(StyleKey::Muted)))
-            .block(Block::default().borders(Borders::ALL).title("Issues"))
-            .wrap(Wrap { trim: true });
+        let widget = Paragraph::new(Line::styled(
+            empty_msg,
+            state.core.theme.style(StyleKey::Muted),
+        ))
+        .block(Block::default().borders(Borders::ALL).title("Issues"))
+        .wrap(Wrap { trim: true });
         f.render_widget(widget, area);
         return;
     }
@@ -382,13 +419,16 @@ fn render_issue_list(f: &mut Frame, state: &mut AppState, area: Rect, view: &[&V
                 break;
             }
             state
-                .layout.workbench_chrome.vil_issue_row_regions
+                .layout
+                .workbench_chrome
+                .vil_issue_row_regions
                 .push((idx, Rect::new(inner_x, inner_y + idx as u16, inner_w, 1)));
         }
     }
 
     let sel = state
-        .vil_domain.vil
+        .vil_domain
+        .vil
         .workbench_selected
         .min(view.len().saturating_sub(1));
     let items: Vec<ListItem> = view
@@ -398,7 +438,8 @@ fn render_issue_list(f: &mut Frame, state: &mut AppState, area: Rect, view: &[&V
             let selected = idx == sel;
             let style = if selected {
                 state
-                    .core.theme
+                    .core
+                    .theme
                     .style(StyleKey::Warning)
                     .add_modifier(Modifier::BOLD)
             } else {
@@ -420,7 +461,11 @@ fn render_issue_list(f: &mut Frame, state: &mut AppState, area: Rect, view: &[&V
             let (overlay_spans, gutter_mark): (
                 Vec<crate::services::diagnostics_overlay::DiagnosticSpan>,
                 Option<crate::services::diagnostics_overlay::GutterMark>,
-            ) = match (&issue.file, issue.line, state.layout.lsp_ui.lsp_diagnostics.as_ref()) {
+            ) = match (
+                &issue.file,
+                issue.line,
+                state.layout.lsp_ui.lsp_diagnostics.as_ref(),
+            ) {
                 (Some(file), Some(line_1based), Some(snap)) => {
                     let line0 = (line_1based.saturating_sub(1)) as u32;
                     let width = message.chars().count() as u32;
@@ -444,8 +489,12 @@ fn render_issue_list(f: &mut Frame, state: &mut AppState, area: Rect, view: &[&V
             } else {
                 // Promote the whole message to an overlayed Line, then flatten
                 // its spans into this row so the ListItem remains a single Line.
-                let overlayed =
-                    render_line_with_diagnostics(&message, &overlay_spans, style, &state.core.theme);
+                let overlayed = render_line_with_diagnostics(
+                    &message,
+                    &overlay_spans,
+                    style,
+                    &state.core.theme,
+                );
                 for s in overlayed.spans.into_iter() {
                     spans.push(Span::styled(s.content.into_owned(), s.style));
                 }
