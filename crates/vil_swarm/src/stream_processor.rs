@@ -18,6 +18,7 @@ pub struct StreamResult {
 pub async fn process_stream(
     mut rx: mpsc::Receiver<StreamChunk>,
     updates: &Option<mpsc::UnboundedSender<AgentLoopEvent>>,
+    model_hint: Option<String>,
 ) -> SwarmResult<StreamResult> {
     let mut full_content = String::new();
     let mut tool_args_buf: std::collections::HashMap<String, (String, String)> =
@@ -86,7 +87,7 @@ pub async fn process_stream(
 
     let response = LlmResponse {
         content: full_content,
-        model: std::env::var("KILO_MODEL").unwrap_or_else(|_| "kilo-auto/free".to_string()),
+        model: model_hint.unwrap_or_else(|| "unknown".to_string()),
         finish_reason: stream_finish,
         usage: stream_usage,
         tool_calls: stream_tool_calls,
@@ -133,10 +134,29 @@ mod tests {
         .unwrap();
         drop(tx);
 
-        let result = process_stream(rx, &None).await.unwrap();
+        let result = process_stream(rx, &None, Some("test-model".to_string()))
+            .await
+            .unwrap();
         assert_eq!(result.response.content, "Hello world");
         assert_eq!(result.response.finish_reason, FinishReason::Stop);
     }
+
+    #[tokio::test]
+    async fn stream_processor_defaults_model_when_missing() {
+        let (tx, rx) = mpsc::channel(4);
+        tx.send(StreamChunk::Text("x".to_string())).await.unwrap();
+        tx.send(StreamChunk::Done {
+            usage: TokenUsage::default(),
+            finish_reason: FinishReason::Stop,
+        })
+        .await
+        .unwrap();
+        drop(tx);
+
+        let out = process_stream(rx, &None, None).await.unwrap();
+        assert_eq!(out.response.model, "unknown");
+    }
+
 
     #[tokio::test]
     async fn stream_processor_assembles_tool_calls() {
@@ -168,7 +188,9 @@ mod tests {
         .unwrap();
         drop(tx);
 
-        let result = process_stream(rx, &None).await.unwrap();
+        let result = process_stream(rx, &None, Some("test-model".to_string()))
+            .await
+            .unwrap();
         assert_eq!(result.response.tool_calls.len(), 1);
         assert_eq!(result.response.tool_calls[0].name, "test");
     }

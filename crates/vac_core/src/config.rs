@@ -285,6 +285,7 @@ impl VacConfig {
             c
         };
         config.apply_kilo_auth_if_present();
+        config.apply_llm_env_overrides();
         Ok(config.resolve_relative_paths(project_root))
     }
 
@@ -336,6 +337,26 @@ impl VacConfig {
                     .unwrap_or(true)
         {
             self.llm.default_provider = "kilo".to_string();
+        }
+    }
+
+    fn apply_llm_env_overrides(&mut self) {
+        if let Ok(provider) = std::env::var(vil_llm::config::ENV_DEFAULT_PROVIDER) {
+            let provider = provider.trim().to_string();
+            if !provider.is_empty() {
+                self.llm.default_provider = provider.clone();
+                if !self.llm.fallback_chain.iter().any(|p| p == &provider) {
+                    self.llm.fallback_chain.insert(0, provider);
+                }
+            }
+        }
+        if let Ok(raw) = std::env::var(vil_llm::config::ENV_BUDGET_TOKENS) {
+            let raw = raw.trim();
+            if !raw.is_empty() {
+                if let Ok(v) = raw.parse::<u64>() {
+                    self.llm.budget_tokens = v;
+                }
+            }
         }
     }
 

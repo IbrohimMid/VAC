@@ -858,7 +858,7 @@ Rules:
             if let Some(tx) = &updates {
                 let _ = tx.send(AgentLoopEvent::Status("Thinking".to_string()));
                 let _ = tx.send(AgentLoopEvent::LlmRequest {
-                    provider: "kilo".to_string(),
+                    provider: llm_router.default_provider().to_string(),
                     model: request
                         .model
                         .clone()
@@ -873,13 +873,18 @@ Rules:
                 .await
                 .map_err(|e| SwarmError::Orchestration(format!("LLM error: {}", e)))?;
 
-            let stream_result = crate::stream_processor::process_stream(rx, &updates).await?;
+            let stream_result = crate::stream_processor::process_stream(
+                rx,
+                &updates,
+                request.model.clone(),
+            )
+            .await?;
             let response = stream_result.response;
             state.total_tokens += response.usage.total_tokens;
 
             if let Some(tx) = &updates {
                 let _ = tx.send(AgentLoopEvent::ModelResponse {
-                    provider: "kilo".to_string(),
+                    provider: llm_router.default_provider().to_string(),
                     model: response.model.clone(),
                 });
                 let _ = tx.send(AgentLoopEvent::AssistantMessage {

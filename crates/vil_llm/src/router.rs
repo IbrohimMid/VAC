@@ -96,10 +96,11 @@ pub struct LlmRouter {
     rate_limiter: Arc<tokio::sync::Mutex<SimpleRateLimiter>>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct ProviderDefaults {
     max_tokens: u32,
     temperature: f32,
+    model: Option<String>,
 }
 
 impl LlmRouter {
@@ -291,6 +292,7 @@ impl LlmRouter {
                     ProviderDefaults {
                         max_tokens: provider_cfg.max_tokens,
                         temperature: provider_cfg.temperature,
+                        model: provider_cfg.model.clone().filter(|m| !m.trim().is_empty()),
                     },
                 );
                 router.add_provider_named(name.clone(), provider);
@@ -317,6 +319,9 @@ impl LlmRouter {
     fn apply_provider_defaults(&self, provider_name: &str, request: &LlmRequest) -> LlmRequest {
         let mut merged = request.clone();
         if let Some(defaults) = self.provider_defaults.get(provider_name) {
+            if merged.model.is_none() {
+                merged.model = defaults.model.clone();
+            }
             if merged.max_tokens.is_none() {
                 merged.max_tokens = Some(defaults.max_tokens);
             }

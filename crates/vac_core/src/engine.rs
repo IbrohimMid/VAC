@@ -445,6 +445,11 @@ impl VacEngine {
         // an AgentDecision trace record so the selection appears in
         // `vac decisions` / `vac eval` alongside runtime choices.
         swarm.set_strategy_by_name(&self.config.swarm.strategy);
+        if let Some(cfg) = self.config.llm.providers.get(&self.config.llm.default_provider) {
+            if let Some(model) = cfg.model.as_ref().map(|m| m.trim()).filter(|m| !m.is_empty()) {
+                swarm.set_model_override(Some(model.to_string()));
+            }
+        }
         if let Some(ref recorder) = self.trace_recorder {
             if let Ok(mut rec) = recorder.lock() {
                 rec.record_agent_decision(
