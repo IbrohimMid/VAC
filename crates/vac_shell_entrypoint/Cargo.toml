@@ -16,6 +16,8 @@ vac_shell_host_sessions = { path = "../vac_shell_host_sessions" }
 vac_shell_bridge = { path = "../vac_shell_bridge" }
 vac_shell_host_vac_config = { path = "../vac_shell_host_vac_config" }
 vac_shell_host_status_command = { path = "../vac_shell_host_status_command" }
+vac_shell_host_recovery = { path = "../vac_shell_host_recovery" }
+vac_shell_keymap = { path = "../vac_shell_keymap" }
 
 [dev-dependencies]
 tempfile = "3"

@@ -42,6 +42,7 @@ fn render_shows_badge_for_tile_with_summary() {
                 ..Default::default()
             }),
             tool_details: vec![],
+            recovery: None,
         }],
         ..Default::default()
     };
@@ -72,6 +73,7 @@ fn render_shows_no_tools_when_zero_calls() {
             entry: make_entry("sess-b"),
             tool_summary: Some(SessionToolSummary::default()),
             tool_details: vec![],
+            recovery: None,
         }],
         ..Default::default()
     };
@@ -100,6 +102,7 @@ fn render_skips_badge_when_tool_summary_none() {
             entry: make_entry("sess-c"),
             tool_summary: None,
             tool_details: vec![],
+            recovery: None,
         }],
         ..Default::default()
     };

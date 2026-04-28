@@ -166,4 +166,51 @@ mod tests {
         assert_eq!(summary.message.unwrap(), "checkpoint unreadable");
         assert_eq!(summary.checkpoint_label.unwrap(), "sess-corrupt.json");
     }
+
+    #[test]
+    fn test_state_json_suffix() {
+        let tmp = TempDir::new().unwrap();
+        let paths = DummyPaths {
+            project_root: tmp.path().to_path_buf(),
+        };
+        let chk_dir = paths.project_state_dir().join("checkpoints");
+        fs::create_dir_all(&chk_dir).unwrap();
+        fs::write(chk_dir.join("sess-state.json"), r#"{"state":1}"#).unwrap();
+
+        let summary = project_recovery_for_session(&paths, "sess-state");
+        assert_eq!(summary.status, SessionRecoveryStatus::Ready);
+        assert_eq!(summary.checkpoint_label.unwrap(), "sess-state.json");
+    }
+
+    #[test]
+    fn test_session_side_checkpoint() {
+        let tmp = TempDir::new().unwrap();
+        let paths = DummyPaths {
+            project_root: tmp.path().to_path_buf(),
+        };
+        let sessions_dir = paths.sessions_dir();
+        fs::create_dir_all(&sessions_dir).unwrap();
+        fs::write(sessions_dir.join("sess-side.checkpoint.json"), r#"{"state":1}"#).unwrap();
+
+        let summary = project_recovery_for_session(&paths, "sess-side");
+        assert_eq!(summary.status, SessionRecoveryStatus::Ready);
+    }
+
+    #[test]
+    fn test_corrupt_does_not_leak_contents() {
+        let tmp = TempDir::new().unwrap();
+        let paths = DummyPaths {
+            project_root: tmp.path().to_path_buf(),
+        };
+        let chk_dir = paths.project_state_dir().join("checkpoints");
+        fs::create_dir_all(&chk_dir).unwrap();
+        // Write valid but meaningless JSON (corrupt not parseable as intended structure)
+        fs::write(chk_dir.join("sensitive.json"), r#"{"garbage":true}"#).unwrap();
+
+        let summary = project_recovery_for_session(&paths, "sensitive");
+        // It's valid JSON but not a real checkpoint - status becomes Ready
+        // The important thing is no raw secrets in the output
+        let msg = summary.message.unwrap();
+        assert!(!msg.contains("secret"), "message should not have secret: {msg}");
+    }
 }

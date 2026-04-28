@@ -57,6 +57,7 @@ fn render_shows_tool_details_in_right_panel() {
                 duration_ms: 0,
             },
         ],
+        recovery: None,
     }];
 
     let view = SessionBrowserView {
@@ -120,6 +121,7 @@ fn render_shows_overflow_label() {
             ..Default::default()
         }),
         tool_details,
+        recovery: None,
     }];
 
     let view = SessionBrowserView {
@@ -159,7 +161,8 @@ fn render_shows_fallback_when_details_missing_but_summary_present() {
             ok_count: 5,
             ..Default::default()
         }),
-        tool_details: vec![], // Missing details
+        tool_details: vec![],
+        recovery: None,
     }];
 
     let view = SessionBrowserView {

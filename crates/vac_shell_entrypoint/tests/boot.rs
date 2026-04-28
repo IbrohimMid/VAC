@@ -3,7 +3,7 @@
 use std::process::ExitCode;
 
 use vac_shell_bridge::ProviderId;
-use vac_shell_contracts::VacPaths;
+use vac_shell_contracts::{SessionRecoveryStatus, SessionRecoverySummary, VacPaths};
 use vac_shell_entrypoint::{build_shell_app, run_shell_app};
 use vac_shell_host_paths::VacPathsImpl;
 
@@ -57,7 +57,7 @@ fn build_shell_app_registers_doctor_command_and_matches_spec() {
     use vac_shell_host_doctor_command::doctor_command_spec;
 
     let tmp = tempfile::tempdir().unwrap();
-    let app = build_shell_app(tmp.path());
+    let mut app = build_shell_app(tmp.path());
     let comp = app.composition().expect("composition attached");
 
     let registered = comp
@@ -81,7 +81,7 @@ fn build_shell_app_registers_status_command_and_matches_spec() {
     use vac_shell_host_status_command::status_command_spec;
 
     let tmp = tempfile::tempdir().unwrap();
-    let app = build_shell_app(tmp.path());
+    let mut app = build_shell_app(tmp.path());
     let comp = app.composition().expect("composition attached");
 
     let registered = comp
@@ -103,7 +103,7 @@ fn build_shell_app_registers_status_command_and_matches_spec() {
 #[test]
 fn entrypoint_attaches_activity_log() {
     let tmp = tempfile::tempdir().unwrap();
-    let app = build_shell_app(tmp.path());
+    let mut app = build_shell_app(tmp.path());
     assert!(app.activity_log.is_some(), "activity log must be attached");
     // The freshly-built log starts empty; future error paths land
     // here once D2+ wires real key handling.
@@ -113,7 +113,7 @@ fn entrypoint_attaches_activity_log() {
 #[test]
 fn entrypoint_attaches_sessions_state() {
     let tmp = tempfile::tempdir().unwrap();
-    let app = build_shell_app(tmp.path());
+    let mut app = build_shell_app(tmp.path());
     assert!(app.sessions.is_some(), "sessions state must be attached");
     let comp = app.composition().unwrap();
     // No transcripts on disk yet → empty list.
@@ -129,7 +129,7 @@ fn entrypoint_attaches_sessions_state() {
 #[test]
 fn entrypoint_uses_vac_paths_not_stakpak() {
     let tmp = tempfile::tempdir().unwrap();
-    let app = build_shell_app(tmp.path());
+    let mut app = build_shell_app(tmp.path());
     let comp = app.composition().unwrap();
     // Probe every `VacPaths` getter; none may compose `.stakpak`.
     let paths = &comp.paths;
@@ -200,7 +200,7 @@ fn entrypoint_uses_config_model_source_when_available_with_credentialed_active()
     }
     "#;
     std::fs::write(&path, snapshot).unwrap();
-    let app = build_shell_app(tmp.path());
+    let mut app = build_shell_app(tmp.path());
     let comp = app.composition().unwrap();
     assert_eq!(
         comp.model_state.active_model(),
@@ -233,7 +233,7 @@ fn entrypoint_drops_config_active_when_provider_has_no_credentials() {
     }
     "#;
     std::fs::write(&path, snapshot).unwrap();
-    let app = build_shell_app(tmp.path());
+    let mut app = build_shell_app(tmp.path());
     let comp = app.composition().unwrap();
     assert!(
         comp.model_state.active_model().is_none(),
@@ -266,7 +266,7 @@ fn entrypoint_drops_config_active_when_model_missing() {
     }
     "#;
     std::fs::write(&path, snapshot).unwrap();
-    let app = build_shell_app(tmp.path());
+    let mut app = build_shell_app(tmp.path());
     let comp = app.composition().unwrap();
     assert!(
         comp.model_state.active_model().is_none(),
@@ -320,7 +320,7 @@ fn entrypoint_model_switcher_contains_snapshot_model_not_fixture() {
 #[test]
 fn entrypoint_falls_back_to_fixture_when_config_missing() {
     let tmp = tempfile::tempdir().unwrap();
-    let app = build_shell_app(tmp.path());
+    let mut app = build_shell_app(tmp.path());
     let comp = app.composition().unwrap();
     assert_eq!(
         comp.model_state.active_model(),
@@ -337,7 +337,7 @@ fn fallback_records_activity_warning_on_corrupt_snapshot() {
     let path = paths.model_config_file();
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     std::fs::write(&path, b"{ this is not json").unwrap();
-    let app = build_shell_app(tmp.path());
+    let mut app = build_shell_app(tmp.path());
     let log = app.activity_log.as_ref().unwrap();
     let snap = log.snapshot();
     assert_eq!(snap.len(), 1);
@@ -354,7 +354,7 @@ fn no_secret_material_in_activity_log() {
     let path = paths.model_config_file();
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     std::fs::write(&path, b"corrupt").unwrap();
-    let app = build_shell_app(tmp.path());
+    let mut app = build_shell_app(tmp.path());
     let snap = app.activity_log.as_ref().unwrap().snapshot();
     let dump = format!("{:?}", snap);
     let lower = dump.to_lowercase();
@@ -362,6 +362,76 @@ fn no_secret_material_in_activity_log() {
         assert!(
             !lower.contains(forbidden),
             "forbidden token `{forbidden}` in activity log dump: {dump}",
+        );
+    }
+}
+
+// D16 — entrypoint wires recovery provider
+#[test]
+fn entrypoint_wires_recovery_provider() {
+    let tmp = tempfile::tempdir().unwrap();
+    let paths = VacPathsImpl::new(tmp.path());
+    // Create sessions dir
+    let sessions_dir = paths.sessions_dir();
+    std::fs::create_dir_all(&sessions_dir).unwrap();
+    // Create a session transcript
+    std::fs::write(sessions_dir.join("test-session.jsonl"), "operator: test").unwrap();
+    // Create a checkpoint
+    let checkpoints_dir = paths.project_state_dir().join("checkpoints");
+    std::fs::create_dir_all(&checkpoints_dir).unwrap();
+    std::fs::write(checkpoints_dir.join("test-session.json"), r#"{"state":1}"#).unwrap();
+
+    let app = build_shell_app(tmp.path());
+
+    // Verify the provider is attached
+    assert!(
+        app.providers.session_recovery_provider.is_some(),
+        "recovery provider must be attached"
+    );
+
+    // Manually trigger session list with recovery
+    if let Some(sessions) = &app.sessions {
+        let tiles = sessions.list_with_tool_use_and_recovery(
+            &paths,
+            |_| None,
+            |sid| app.providers.session_recovery_provider.as_ref().and_then(|f| f(sid)),
+        );
+        assert!(!tiles.is_empty(), "at least one session tile should exist");
+        let first = &tiles[0];
+        assert!(
+            first.recovery.is_some(),
+            "session tile should have recovery data"
+        );
+        assert_eq!(
+            first.recovery.as_ref().unwrap().status,
+            SessionRecoveryStatus::Ready,
+            "checkpoint should be Ready"
+        );
+    }
+}
+
+#[test]
+fn entrypoint_recovery_missing_when_no_checkpoint() {
+    let tmp = tempfile::tempdir().unwrap();
+    let paths = VacPathsImpl::new(tmp.path());
+    let sessions_dir = paths.sessions_dir();
+    std::fs::create_dir_all(&sessions_dir).unwrap();
+    std::fs::write(sessions_dir.join("orphan.jsonl"), "operator: test").unwrap();
+
+    let app = build_shell_app(tmp.path());
+
+    if let Some(sessions) = &app.sessions {
+        let tiles = sessions.list_with_tool_use_and_recovery(
+            &paths,
+            |_| None,
+            |sid| app.providers.session_recovery_provider.as_ref().and_then(|f| f(sid)),
+        );
+        assert!(!tiles.is_empty());
+        let first = &tiles[0];
+        assert!(first.recovery.is_some());
+        assert_eq!(
+            first.recovery.as_ref().unwrap().status,
+            SessionRecoveryStatus::Missing,
         );
     }
 }

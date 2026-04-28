@@ -15,6 +15,7 @@ fn tiles() -> Vec<SessionTileView> {
             },
             tool_summary: None,
             tool_details: vec![],
+            recovery: None,
         },
         SessionTileView {
             entry: SessionEntry {
@@ -24,6 +25,7 @@ fn tiles() -> Vec<SessionTileView> {
             },
             tool_summary: None,
             tool_details: vec![],
+            recovery: None,
         },
     ]
 }

@@ -20,6 +20,7 @@
 //! * `vac_shell_bridge`        — `ProviderId`
 //! * `vac_shell_contracts`     — `VacPaths`
 //! * `vac_shell_host_status_command` — `/status` command metadata only; provider-driven executor is wired by host/example.
+//! * `vac_shell_host_recovery` — checkpoint recovery projector (D16).
 //!
 //! Forbidden: `vac_core`, `vac_session_engine`, `vac_tui_runtime`,
 //! `stakai`, donor crates, `.stakpak` path composition, secret
@@ -36,6 +37,7 @@ use vac_shell_contracts::VacPaths;
 use vac_shell_host_activity::ActivityLog;
 use vac_shell_host_model::{HostModel, ProviderInfo};
 use vac_shell_host_paths::VacPathsImpl;
+use vac_shell_host_recovery::project_recovery_for_session;
 use vac_shell_host_sessions::SessionsState;
 
 /// Build a `ShellApp` from a project root with safe fixture
@@ -116,9 +118,14 @@ pub fn build_shell_app(project_root: impl AsRef<Path>) -> ShellApp {
             .expect("ShellCompositionBuilder::boot must succeed"),
     );
 
-    let mut app = ShellApp::new(composition);
+    let mut app = ShellApp::new(composition.clone());
     app.activity_log = Some(activity_log);
     app.sessions = Some(Arc::new(SessionsState::new()));
+    // D16 — attach checkpoint recovery provider
+    let paths_for_recovery = composition.paths.clone();
+    app = app.with_session_recovery_provider(Arc::new(move |session_id| {
+        Some(project_recovery_for_session(paths_for_recovery.as_ref(), session_id))
+    }));
     app.prepare_frame();
     app
 }
