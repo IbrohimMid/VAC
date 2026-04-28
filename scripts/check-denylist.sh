@@ -38,6 +38,12 @@ for term in "${TERMS[@]}"; do
            crates/vac_shell_host_vac_command_adapter \
            crates/vac_shell_host_vac_tool_dispatcher \
            crates/vac_shell_host_vac_engine_probe \
+           crates/vac_shell_init_checklist \
+           crates/vac_shell_host_init \
+           crates/vac_shell_host_doctor \
+           crates/vac_shell_host_doctor_command \
+           crates/vac_shell_host_status_command \
+           crates/vac_shell_host_recovery \
            2>/dev/null \
            | grep -v "/tests/" \
            | grep -v "//.*$term" \

@@ -1,15 +1,17 @@
 # Consolidation Backlog
 
 > Ranked by urgency. Updated after each D-slice batch.
-> Last updated: D10.5 (base SHA 3ca3bb57)
+> Last updated: D18 (base SHA TODO)
 
 ## HIGH
 
 - [x] Boundary automation scripts (`scripts/check-dtrack-gates.sh`)
 - [x] LOC audit report (`docs/runtime-integration/LOC_AUDIT.md`)
-- [ ] Recursive redaction helper (nested objects) — D11 candidate
-- [ ] Test-support crate (`vac_shell_test_support`) — reduce FakePaths duplication
-- [ ] Docs split: active blueprint vs historical ledger
+- [x] Recursive redaction helper (nested objects) — D15
+- [x] Test-support crate (`vac_shell_test_support`) — D10.5
+- [x] Docs split: active blueprint vs historical ledger
+- [x] Init checklist surface (D18)
+- [ ] Shared readiness provider for /status and /init — avoid duplication
 
 ## MEDIUM
 

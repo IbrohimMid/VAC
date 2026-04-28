@@ -108,6 +108,15 @@ pub fn project_init_checklist(inputs: InitChecklistInputs) -> InitChecklistViewM
         action: doctor_action,
     });
 
+    rows.push(vac_shell_contracts::InitChecklistRow {
+        id: "status".to_string(),
+        label: "Status".to_string(),
+        status: InitChecklistStatus::Ready,
+        summary: "status rows available".to_string(),
+        detail: Some("Use /status for full readiness summary".to_string()),
+        action: InitChecklistAction::OpenStatus,
+    });
+
     let next_action = if inputs.active_model_label.is_none() {
         "select a model with /model".to_string()
     } else if inputs.approvals_count > 0 {
@@ -122,5 +131,157 @@ pub fn project_init_checklist(inputs: InitChecklistInputs) -> InitChecklistViewM
         title: "Init Checklist".to_string(),
         rows,
         next_action: Some(next_action),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use vac_shell_contracts::InitChecklistAction;
+
+    fn all_ready_inputs() -> InitChecklistInputs {
+        InitChecklistInputs {
+            active_model_label: Some("claude-sonnet-4.5".to_string()),
+            sessions_count: 3,
+            approvals_count: 0,
+            doctor_status: DoctorCheckStatus::Ok,
+        }
+    }
+
+    #[test]
+    fn no_active_model_yields_warning_and_open_model_action() {
+        let inputs = InitChecklistInputs {
+            active_model_label: None,
+            ..all_ready_inputs()
+        };
+        let vm = project_init_checklist(inputs);
+        let model_row = vm.rows.iter().find(|r| r.id == "model").unwrap();
+        assert_eq!(model_row.status, InitChecklistStatus::Warning);
+        assert_eq!(model_row.action, InitChecklistAction::OpenModelSwitcher);
+    }
+
+    #[test]
+    fn active_model_present_yields_ready() {
+        let vm = project_init_checklist(all_ready_inputs());
+        let model_row = vm.rows.iter().find(|r| r.id == "model").unwrap();
+        assert_eq!(model_row.status, InitChecklistStatus::Ready);
+    }
+
+    #[test]
+    fn zero_sessions_yields_unknown() {
+        let inputs = InitChecklistInputs {
+            sessions_count: 0,
+            ..all_ready_inputs()
+        };
+        let vm = project_init_checklist(inputs);
+        let sessions_row = vm.rows.iter().find(|r| r.id == "sessions").unwrap();
+        assert_eq!(sessions_row.status, InitChecklistStatus::Unknown);
+    }
+
+    #[test]
+    fn sessions_present_yields_ready() {
+        let vm = project_init_checklist(all_ready_inputs());
+        let sessions_row = vm.rows.iter().find(|r| r.id == "sessions").unwrap();
+        assert_eq!(sessions_row.status, InitChecklistStatus::Ready);
+    }
+
+    #[test]
+    fn pending_approvals_yields_warning() {
+        let inputs = InitChecklistInputs {
+            approvals_count: 2,
+            ..all_ready_inputs()
+        };
+        let vm = project_init_checklist(inputs);
+        let approvals_row = vm.rows.iter().find(|r| r.id == "approvals").unwrap();
+        assert_eq!(approvals_row.status, InitChecklistStatus::Warning);
+    }
+
+    #[test]
+    fn no_approvals_yields_ready() {
+        let vm = project_init_checklist(all_ready_inputs());
+        let approvals_row = vm.rows.iter().find(|r| r.id == "approvals").unwrap();
+        assert_eq!(approvals_row.status, InitChecklistStatus::Ready);
+    }
+
+    #[test]
+    fn doctor_error_yields_blocked() {
+        let inputs = InitChecklistInputs {
+            doctor_status: DoctorCheckStatus::Error,
+            ..all_ready_inputs()
+        };
+        let vm = project_init_checklist(inputs);
+        let doctor_row = vm.rows.iter().find(|r| r.id == "doctor").unwrap();
+        assert_eq!(doctor_row.status, InitChecklistStatus::Blocked);
+        assert_eq!(doctor_row.action, InitChecklistAction::OpenDoctor);
+    }
+
+    #[test]
+    fn doctor_warning_yields_warning() {
+        let inputs = InitChecklistInputs {
+            doctor_status: DoctorCheckStatus::Warning,
+            ..all_ready_inputs()
+        };
+        let vm = project_init_checklist(inputs);
+        let doctor_row = vm.rows.iter().find(|r| r.id == "doctor").unwrap();
+        assert_eq!(doctor_row.status, InitChecklistStatus::Warning);
+        assert_eq!(doctor_row.action, InitChecklistAction::OpenDoctor);
+    }
+
+    #[test]
+    fn doctor_ok_yields_ready_no_action() {
+        let vm = project_init_checklist(all_ready_inputs());
+        let doctor_row = vm.rows.iter().find(|r| r.id == "doctor").unwrap();
+        assert_eq!(doctor_row.status, InitChecklistStatus::Ready);
+        assert_eq!(doctor_row.action, InitChecklistAction::None);
+    }
+
+    #[test]
+    fn next_action_missing_model_first() {
+        let inputs = InitChecklistInputs {
+            active_model_label: None,
+            approvals_count: 5,
+            doctor_status: DoctorCheckStatus::Error,
+            ..all_ready_inputs()
+        };
+        let vm = project_init_checklist(inputs);
+        assert_eq!(
+            vm.next_action.as_deref(),
+            Some("select a model with /model")
+        );
+    }
+
+    #[test]
+    fn next_action_pending_approvals_second() {
+        let inputs = InitChecklistInputs {
+            approvals_count: 3,
+            ..all_ready_inputs()
+        };
+        let vm = project_init_checklist(inputs);
+        assert_eq!(vm.next_action.as_deref(), Some("review pending approvals"));
+    }
+
+    #[test]
+    fn next_action_doctor_error_third() {
+        let inputs = InitChecklistInputs {
+            doctor_status: DoctorCheckStatus::Error,
+            ..all_ready_inputs()
+        };
+        let vm = project_init_checklist(inputs);
+        assert_eq!(
+            vm.next_action.as_deref(),
+            Some("run /doctor to fix critical issues")
+        );
+    }
+
+    #[test]
+    fn next_action_ready_when_all_clear() {
+        let vm = project_init_checklist(all_ready_inputs());
+        assert_eq!(vm.next_action.as_deref(), Some("ready to start"));
+    }
+
+    #[test]
+    fn produces_five_rows() {
+        let vm = project_init_checklist(all_ready_inputs());
+        assert_eq!(vm.rows.len(), 5);
     }
 }

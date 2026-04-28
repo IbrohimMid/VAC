@@ -53,6 +53,12 @@ entrypoint falls back to the fixture model
 | 24 | In /logs overlay, type `/` then search text | Search filters by title, detail, kind label (diag, status, error), and severity (info, ok, warn, error). |
 | 25 | In /logs overlay, use Up/Down arrows | Scroll through filtered entries. |
 | 26 | In /logs overlay, press `Esc` | Logs overlay closes. |
+| 27 | Type `/init` `Enter` | Init Checklist overlay opens with rows: Model (Ready/Warning), Sessions, Approvals, Doctor, Status. Next action shows in right panel. |
+| 28 | In /init overlay, press Up/Down | Selection moves; right panel updates with row details. |
+| 29 | In /init overlay, select Model row and press Enter | ModelSwitcher overlay opens. |
+| 30 | Press Esc to close ModelSwitcher, then select Doctor row and press Enter | /doctor runs; overlay closes. |
+| 31 | Reopen /init, select Status row and press Enter | /status runs. |
+| 32 | In /init overlay, press Esc | Overlay closes. |
 
 ## Reporting issues
 
@@ -69,6 +75,7 @@ Tag the report by slice:
 * `D15` — approval detail recursive redaction hardening.
 * `D16` — checkpoint-aware session recovery surface.
 * `D17` — unified logs browser surface.
+* `D18` — init checklist surface.
 
 ## Known limitations (April 2026)
 

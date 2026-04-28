@@ -14,6 +14,7 @@ D1–D17 are sealed.
 
 | Last sealed SHA | Description |
 |---|---|
+| `TODO` | D18 PASS after hardening (Init Checklist Surface) |
 | `3b3b8bd7` | D17 PASS after clean hardening (Unified Logs Browser Surface) |
 | `c46e4cff` | D16 PASS after final seal nits (checkpoint-aware session recovery surface) |
 | `60cc7859` | D15 PASS after review (approval detail recursive redaction hardening) |
@@ -28,7 +29,7 @@ D1–D17 are sealed.
 
 ## Current Backlog / Next Steps
 
-- **Unified init/status UX polish**: likely `/init` first-run checklist or `/status` panel maturity.
+- **Unified init/status UX polish**: D18 completed; shared readiness provider for `/status` and `/init` is a candidate for follow-up.
 
 ## Implementation In Progress
 

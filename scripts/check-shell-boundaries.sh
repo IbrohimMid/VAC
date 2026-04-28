@@ -21,6 +21,9 @@ check() {
 check vac_shell_app             4
 check vac_shell_session_browser 3
 check vac_shell_runtime_loop    4
+check vac_shell_init_checklist  3
+check vac_shell_keymap          4
+check vac_shell_activity       4
 
 if [[ $FAIL -ne 0 ]]; then
     echo ""

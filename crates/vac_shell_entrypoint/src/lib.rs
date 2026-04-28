@@ -21,6 +21,8 @@
 //! * `vac_shell_contracts`     — `VacPaths`
 //! * `vac_shell_host_status_command` — `/status` command metadata only; provider-driven executor is wired by host/example.
 //! * `vac_shell_host_recovery` — checkpoint recovery projector (D16).
+//! * `vac_shell_host_init` — init checklist projection (D18).
+//! * `vac_shell_host_doctor` — DoctorCheckStatus enum for init readiness (D18).
 //!
 //! Forbidden: `vac_core`, `vac_session_engine`, `vac_tui_runtime`,
 //! `stakai`, donor crates, `.stakpak` path composition, secret
@@ -35,6 +37,7 @@ use vac_shell_bridge::ProviderId;
 use vac_shell_composition::{ShellComposition, ShellCompositionBuilder};
 use vac_shell_contracts::VacPaths;
 use vac_shell_host_activity::ActivityLog;
+use vac_shell_host_init::{InitChecklistInputs, project_init_checklist};
 use vac_shell_host_model::{HostModel, ProviderInfo};
 use vac_shell_host_paths::VacPathsImpl;
 use vac_shell_host_recovery::project_recovery_for_session;
@@ -128,6 +131,31 @@ pub fn build_shell_app(project_root: impl AsRef<Path>) -> ShellApp {
             paths_for_recovery.as_ref(),
             session_id,
         ))
+    }));
+    let init_composition = composition.clone();
+    let init_sessions = app.sessions.clone();
+    let init_paths = composition.paths.clone();
+    app = app.with_init_checklist_provider(Arc::new(move || {
+        let sessions_count = init_sessions
+            .as_ref()
+            .map(|s| s.list(init_paths.as_ref()).len())
+            .unwrap_or(0);
+        let approvals_count = init_composition.approval_queue.snapshot().len();
+        let active_model_label = init_composition
+            .model_state
+            .active_model()
+            .map(|(_p, id)| id);
+        let doctor_status = if init_paths.project_state_dir().exists() {
+            vac_shell_host_doctor::DoctorCheckStatus::Ok
+        } else {
+            vac_shell_host_doctor::DoctorCheckStatus::Warning
+        };
+        project_init_checklist(InitChecklistInputs {
+            active_model_label,
+            sessions_count,
+            approvals_count,
+            doctor_status,
+        })
     }));
     app.prepare_frame();
     app

@@ -61,6 +61,7 @@ check_widget vac_shell_session_browser
 check_widget vac_shell_diff_view
 check_widget vac_shell_activity
 check_widget vac_shell_status_bar
+check_widget vac_shell_init_checklist
 
 # vac_shell_overlay: pure overlay stack (no ratatui render, contracts only)
 check_widget vac_shell_overlay

@@ -34,6 +34,7 @@
 | `vac_shell_plan_view` | `shell_widget` | ratatui, vac_shell_contracts | engine, tools | No |
 | `vac_shell_activity` | `shell_widget` | ratatui, vac_shell_contracts | engine, tools | No |
 | `vac_shell_status_bar` | `shell_widget` | ratatui, vac_shell_contracts | engine, tools | No |
+| `vac_shell_init_checklist` | `shell_widget` | ratatui, vac_shell_contracts | engine, tools | No |
 | `vac_shell_overlay` | `shell_widget` | vac_shell_contracts | engine, tools | No |
 | `vac_shell_bridge` | `shell_widget` | vac_shell_contracts | engine, tools | No |
 | `vac_shell_composition` | `shell_app` | vac_shell_contracts, host_state crates | engine directly | No |

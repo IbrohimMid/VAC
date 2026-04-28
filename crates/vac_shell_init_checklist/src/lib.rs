@@ -82,10 +82,17 @@ pub fn render_init_checklist(f: &mut Frame, view: &InitChecklistView, area: Rect
     let inner = block.inner(area);
     f.render_widget(block, area);
 
+    let vertical = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(1), Constraint::Length(1)])
+        .split(inner);
+    let body = vertical[0];
+    let footer_area = vertical[1];
+
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(45), Constraint::Percentage(55)])
-        .split(inner);
+        .split(body);
 
     if view.model.rows.is_empty() {
         f.render_widget(
@@ -135,10 +142,10 @@ pub fn render_init_checklist(f: &mut Frame, view: &InitChecklistView, area: Rect
     let paragraph = Paragraph::new(left).wrap(Wrap { trim: false });
     f.render_widget(paragraph, chunks[0]);
 
-    let right_label = if let Some(row) = view.model.rows.get(view.selected) {
+    let mut right_lines = if let Some(row) = view.model.rows.get(view.selected) {
         let status = status_label(row.status);
         let status_color = status_color(row.status);
-        vec![
+        let mut lines = vec![
             Line::from(Span::styled(
                 row.label.clone(),
                 Style::default()
@@ -153,7 +160,14 @@ pub fn render_init_checklist(f: &mut Frame, view: &InitChecklistView, area: Rect
                 row.summary.clone(),
                 Style::default().fg(Color::Gray),
             )),
-        ]
+        ];
+        if let Some(detail) = row.detail.as_ref() {
+            lines.push(Line::from(Span::styled(
+                detail.clone(),
+                Style::default().fg(Color::DarkGray),
+            )));
+        }
+        lines
     } else {
         vec![Line::from(Span::styled(
             " no selection",
@@ -161,43 +175,190 @@ pub fn render_init_checklist(f: &mut Frame, view: &InitChecklistView, area: Rect
         ))]
     };
 
-    if let Some(detail) = view
-        .model
-        .rows
-        .get(view.selected)
-        .and_then(|r| r.detail.as_ref())
-    {
-        let mut lines = right_label;
-        lines.push(Line::from(Span::styled(
-            detail.clone(),
-            Style::default().fg(Color::DarkGray),
+    if let Some(next) = &view.model.next_action {
+        right_lines.push(Line::from(Span::styled(
+            format!(" next: {next}"),
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
         )));
-        f.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), chunks[1]);
-    } else {
-        f.render_widget(
-            Paragraph::new(right_label).wrap(Wrap { trim: false }),
-            chunks[1],
-        );
     }
 
-    let footer = if let Some(action) = view.model.rows.get(view.selected).map(|r| r.action) {
-        let action_str = match action {
+    f.render_widget(
+        Paragraph::new(right_lines).wrap(Wrap { trim: false }),
+        chunks[1],
+    );
+
+    let action_hint = if let Some(action) = view.model.rows.get(view.selected).map(|r| r.action) {
+        match action {
             InitChecklistAction::None => "",
-            InitChecklistAction::OpenDoctor => "Enter: run /doctor",
-            InitChecklistAction::OpenStatus => "Enter: run /status",
-            InitChecklistAction::OpenLogs => "Enter: run /logs",
-            InitChecklistAction::OpenSessions => "Enter: run /sessions",
-            InitChecklistAction::OpenModelSwitcher => "Enter: run /model",
-        };
-        format!("  ↑↓ select | {action_str} | Esc close")
+            InitChecklistAction::OpenDoctor => "Enter: /doctor",
+            InitChecklistAction::OpenStatus => "Enter: /status",
+            InitChecklistAction::OpenLogs => "Enter: /logs",
+            InitChecklistAction::OpenSessions => "Enter: /sessions",
+            InitChecklistAction::OpenModelSwitcher => "Enter: /model",
+        }
     } else {
-        "  ↑↓ select | Esc close".to_string()
+        ""
+    };
+    let footer_text = if action_hint.is_empty() {
+        " ↑↓ navigate | Esc close".to_string()
+    } else {
+        format!(" ↑↓ navigate | {action_hint} | Esc close")
     };
     f.render_widget(
         Paragraph::new(Line::from(Span::styled(
-            footer,
+            footer_text,
             Style::default().fg(Color::DarkGray),
         ))),
-        inner,
+        footer_area,
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+
+    fn sample_rows() -> Vec<vac_shell_contracts::InitChecklistRow> {
+        vec![
+            vac_shell_contracts::InitChecklistRow {
+                id: "model".into(),
+                label: "Model".into(),
+                status: InitChecklistStatus::Ready,
+                summary: "model: claude-sonnet-4.5".into(),
+                detail: Some("Use /model to switch".into()),
+                action: InitChecklistAction::OpenModelSwitcher,
+            },
+            vac_shell_contracts::InitChecklistRow {
+                id: "sessions".into(),
+                label: "Sessions".into(),
+                status: InitChecklistStatus::Unknown,
+                summary: "sessions: 0 total".into(),
+                detail: Some("Use /sessions to browse".into()),
+                action: InitChecklistAction::OpenSessions,
+            },
+            vac_shell_contracts::InitChecklistRow {
+                id: "doctor".into(),
+                label: "Doctor".into(),
+                status: InitChecklistStatus::Warning,
+                summary: "doctor: Warning".into(),
+                detail: Some("Some checks have warnings".into()),
+                action: InitChecklistAction::OpenDoctor,
+            },
+        ]
+    }
+
+    fn view_with_rows(rows: Vec<vac_shell_contracts::InitChecklistRow>) -> InitChecklistView {
+        InitChecklistView {
+            visible: true,
+            model: InitChecklistViewModel {
+                title: "Init Checklist".into(),
+                rows,
+                next_action: Some("ready to start".into()),
+            },
+            selected: 0,
+            scroll: 0,
+        }
+    }
+
+    #[test]
+    fn down_moves_selection() {
+        let mut view = view_with_rows(sample_rows());
+        on_init_key(&mut view, InitChecklistKey::Down);
+        assert_eq!(view.selected, 1);
+    }
+
+    #[test]
+    fn down_stops_at_last_row() {
+        let mut view = view_with_rows(sample_rows());
+        view.selected = 2;
+        on_init_key(&mut view, InitChecklistKey::Down);
+        assert_eq!(view.selected, 2);
+    }
+
+    #[test]
+    fn up_stops_at_zero() {
+        let mut view = view_with_rows(sample_rows());
+        on_init_key(&mut view, InitChecklistKey::Up);
+        assert_eq!(view.selected, 0);
+    }
+
+    #[test]
+    fn enter_returns_selected_row_action() {
+        let mut view = view_with_rows(sample_rows());
+        view.selected = 0;
+        let event = on_init_key(&mut view, InitChecklistKey::Enter);
+        assert_eq!(
+            event,
+            InitChecklistEvent::Action(InitChecklistAction::OpenModelSwitcher)
+        );
+    }
+
+    #[test]
+    fn enter_on_doctor_row_returns_open_doctor() {
+        let mut view = view_with_rows(sample_rows());
+        view.selected = 2;
+        let event = on_init_key(&mut view, InitChecklistKey::Enter);
+        assert_eq!(
+            event,
+            InitChecklistEvent::Action(InitChecklistAction::OpenDoctor)
+        );
+    }
+
+    #[test]
+    fn enter_on_empty_rows_consumed() {
+        let mut view = InitChecklistView::default();
+        let event = on_init_key(&mut view, InitChecklistKey::Enter);
+        assert_eq!(event, InitChecklistEvent::Consumed);
+    }
+
+    #[test]
+    fn escape_is_consumed() {
+        let mut view = view_with_rows(sample_rows());
+        let event = on_init_key(&mut view, InitChecklistKey::Escape);
+        assert_eq!(event, InitChecklistEvent::Consumed);
+    }
+
+    #[test]
+    fn render_does_not_panic_with_rows() {
+        let view = view_with_rows(sample_rows());
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| render_init_checklist(f, &view, f.area()))
+            .unwrap();
+    }
+
+    #[test]
+    fn render_does_not_panic_with_empty_rows() {
+        let view = InitChecklistView::default();
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| render_init_checklist(f, &view, f.area()))
+            .unwrap();
+    }
+
+    #[test]
+    fn footer_does_not_overwrite_body() {
+        let view = view_with_rows(sample_rows());
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| render_init_checklist(f, &view, f.area()))
+            .unwrap();
+        let buf = terminal.backend().buffer().clone();
+        let footer_y = (24 - 2) as usize;
+        let footer_start = (footer_y * 80) as usize;
+        let footer_content: String = buf.content[footer_start..footer_start + 80]
+            .iter()
+            .map(|c| c.symbol())
+            .collect::<String>();
+        assert!(
+            footer_content.contains("Esc close"),
+            "footer should contain 'Esc close', got: {footer_content:?}"
+        );
+    }
 }

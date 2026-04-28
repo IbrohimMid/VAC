@@ -33,7 +33,7 @@ Pure data types visible to all shell layers. No logic, no engine dep.
 `vac_shell_model_switcher`, `vac_shell_session_browser`,
 `vac_shell_diff_view`, `vac_shell_plan_view`, `vac_shell_activity`,
 `vac_shell_status_bar`, `vac_shell_overlay`, `vac_shell_bridge`,
-`vac_shell_plan`
+`vac_shell_plan`, `vac_shell_init_checklist`
 
 Ratatui render + on_key only. Dep: `ratatui` + `vac_shell_contracts`.
 
@@ -43,7 +43,8 @@ Ratatui render + on_key only. Dep: `ratatui` + `vac_shell_contracts`.
 `vac_shell_host_status`, `vac_shell_host_paths`,
 `vac_shell_host_surface`, `vac_shell_host_diff`,
 `vac_shell_host_plan`, `vac_shell_host_commands`,
-`vac_shell_host_vac_config`, `vac_shell_composition`
+`vac_shell_host_vac_config`, `vac_shell_composition`,
+`vac_shell_host_init`
 
 Mutable state controllers. Dep: contracts + std. No engine dep.
 

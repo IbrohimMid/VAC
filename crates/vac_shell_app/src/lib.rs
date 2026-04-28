@@ -169,6 +169,14 @@ impl ShellApp {
         self
     }
 
+    pub fn with_init_checklist_provider(
+        mut self,
+        f: Arc<dyn Fn() -> vac_shell_contracts::InitChecklistViewModel + Send + Sync>,
+    ) -> Self {
+        self.providers.init_checklist_provider = Some(f);
+        self
+    }
+
     pub fn composition(&self) -> Option<&ShellComposition> {
         self.composition.as_deref()
     }
