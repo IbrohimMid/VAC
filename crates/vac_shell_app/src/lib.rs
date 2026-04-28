@@ -484,7 +484,15 @@ impl ShellApp {
                     Some(AppEvent::PaletteSelected("/sessions".to_string()))
                 }
                 InitChecklistAction::OpenModelSwitcher => {
-                    self.toggle_overlay(ShellOverlay::ModelSwitcher);
+                    if let Some(comp) = &self.composition {
+                        self.model_switcher = vac_shell_host_model::build_switcher_view(
+                            &comp.model_state,
+                            RECENTS_LIMIT,
+                        );
+                    }
+                    self.overlays
+                        .apply_intent(OverlayIntent::Open(ShellOverlay::ModelSwitcher));
+                    self.sync_visibility();
                     None
                 }
                 InitChecklistAction::None => None,
