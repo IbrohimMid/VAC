@@ -10,10 +10,11 @@ ShellApp dogfood cockpit integration — consolidation.
 
 ## Completed baseline
 
-D1–D15 are sealed.
+D1–D16 are sealed.
 
 | Last sealed SHA | Description |
 |---|---|
+| `c46e4cff` | D16 PASS after final seal nits (checkpoint-aware session recovery surface) |
 | `60cc7859` | D15 PASS after review (approval detail recursive redaction hardening) |
 | `4e1b0103` | D14 PASS after review (Dedicated Diagnostic/Status activity kinds) |
 | `022bcde0` | D13 PASS after final seal nits (unified /status command) |
@@ -23,10 +24,6 @@ D1–D15 are sealed.
 | `5765416d` | D10.5 final consolidation accepted (net -414 LOC) |
 | `b6e3b572` | D10 PASS after hardening (boundary leak, arg redaction, severity, approval preview) |
 | `3ca3bb57` | Docs update: D10 ADR fifth exception + boundary tripwires |
-
-## Implementation In Progress
-
-- **D16 — Checkpoint-Aware Session Recovery Surface**: Session browser displays checkpoint readiness badges and details; resume outcomes logged to ActivityLog. No engine execution.
 
 ## Current Backlog / Next Steps
 

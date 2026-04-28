@@ -28,7 +28,7 @@
 | **D13** | Unified Status & Readiness Command. A cockpit-visible `/status` command that aggregates model, session, and approval state with doctor readiness summaries via a host-injected provider. | PASS after final seal nits (SHA `022bcde02dfe07d9a4893e6510f2260336527f5c`) |
 | **D14** | Dedicated Diagnostic/Status Activity Kinds. Replaces temporary ToolResult reuse for /doctor and /status rows with `ShellActivityKind::Diagnostic` and `ShellActivityKind::Status`; true tool-use rows remain `ToolResult`. | PASS after review (SHA `4e1b01030c9c10fbd1eb392a4d16a0c1e29df3e2`) |
 | **D15** | Approval Detail Recursive Redaction Hardening. Provider-level approval detail tests now pin recursive redaction for nested objects, arrays, mixed safe/secret fields, and case-insensitive nested keys. | PASS after review (SHA `60cc7859d4c07a1d308858793bd99500995de5cb`) |
-| **D16** | Checkpoint-Aware Session Recovery Surface. Session browser now displays recovery badges (Ready/Missing/Corrupt/Unknown) per tile, shows checkpoint details in right panel, and logs resume outcomes to ActivityLog. No engine resume execution — surface only. | IMPLEMENTED — pending review |
+| **D16** | Checkpoint-Aware Session Recovery Surface. Session browser now displays recovery badges (Ready/Missing/Corrupt/Unknown) per tile, shows checkpoint details in right panel, and logs resume outcomes to ActivityLog. Recovery provider wired in build_shell_app(). No engine resume execution — surface only. | PASS after final seal nits (SHA `c46e4cffa8032cb31e93895ea3e88e0a7fd0a264`) |
 | **RC gate** | This doc + `DOGFOOD_CHECKLIST.md` + map update | PASS (post-hardening) |
 
 ## Crate inventory after the batch
