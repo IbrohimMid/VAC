@@ -23,7 +23,6 @@ pub enum LogsBrowserKey {
     Search,
     Char(char),
     Backspace,
-    CtrlU,
     Escape,
 }
 
@@ -74,11 +73,6 @@ pub fn on_logs_browser_key(view: &mut ActivityLogBrowserView, key: LogsBrowserKe
         LogsBrowserKey::Backspace => {
             if view.search_mode {
                 view.search_query.pop();
-            }
-        }
-        LogsBrowserKey::CtrlU => {
-            if view.search_mode {
-                view.search_query.clear();
             }
         }
         LogsBrowserKey::Escape => {

@@ -10,10 +10,11 @@ ShellApp dogfood cockpit integration — consolidation.
 
 ## Completed baseline
 
-D1–D16 are sealed. D17 in progress.
+D1–D17 are sealed.
 
 | Last sealed SHA | Description |
 |---|---|
+| `3b3b8bd7` | D17 PASS after clean hardening (Unified Logs Browser Surface) |
 | `c46e4cff` | D16 PASS after final seal nits (checkpoint-aware session recovery surface) |
 | `60cc7859` | D15 PASS after review (approval detail recursive redaction hardening) |
 | `4e1b0103` | D14 PASS after review (Dedicated Diagnostic/Status activity kinds) |
@@ -27,11 +28,9 @@ D1–D16 are sealed. D17 in progress.
 
 ## Current Backlog / Next Steps
 
-- **Unified init/status/logs UX**: in progress (D17 — /logs browser surface)
+- **Unified init/status UX polish**: likely `/init` first-run checklist or `/status` panel maturity.
 
 ## Implementation In Progress
-
-- D17 — Unified Logs Browser Surface: `/logs` overlay backed by `ActivityLog::snapshot()`, filter/search/scroll. No persistent backend.
 
 ## What is NOT allowed (explicit freeze)
 
