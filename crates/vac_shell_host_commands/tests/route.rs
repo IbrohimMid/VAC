@@ -5,8 +5,8 @@ use vac_shell_bridge::ProviderId;
 use vac_shell_contracts::{ShellCommandKind, ShellCommandSpec, VacPaths};
 use vac_shell_host_activity::ActivityLog;
 use vac_shell_host_commands::{
-    RecordingExecutor, ShellCommandError, ShellCommandExecutor,
-    VacCommandExecutorAdapter, route_palette_command,
+    RecordingExecutor, ShellCommandError, ShellCommandExecutor, VacCommandExecutorAdapter,
+    route_palette_command,
 };
 
 fn cmd(slash: &str) -> ShellCommandSpec {
@@ -142,15 +142,33 @@ fn adapter_maps_known_command_id_to_handler() {
 fn adapter_error_is_operator_visible_through_route() {
     let (_t, mut app) = boot_app(vec![cmd("/never-supported")]);
     let exec: Arc<dyn ShellCommandExecutor> = Arc::new(VacCommandExecutorAdapter::new());
-    let err =
-        route_palette_command(&mut app, Some(&exec), "/never-supported").unwrap_err();
+    let err = route_palette_command(&mut app, Some(&exec), "/never-supported").unwrap_err();
     assert!(err.title.contains("palette command failed"));
     assert!(
-        err.detail
-            .unwrap_or_default()
-            .contains("D5.1 stub"),
+        err.detail.unwrap_or_default().contains("D5.1 stub"),
         "operator must see the stub message"
     );
     let snap = app.activity_log.as_ref().unwrap().snapshot();
     assert_eq!(snap.len(), 1);
+}
+
+// =====================================================================
+// D17 — /logs route through host commands
+// =====================================================================
+
+#[test]
+fn route_palette_command_builtin_logs_routes_to_shellapp() {
+    let (_t, mut app) = boot_app(vec![cmd("/logs")]);
+    let recorder = Arc::new(RecordingExecutor::new());
+    let exec: Arc<dyn ShellCommandExecutor> = recorder.clone();
+    route_palette_command(&mut app, Some(&exec), "/logs").unwrap();
+    // /logs is a built-in, should NOT call executor
+    assert!(
+        recorder.seen().is_empty(),
+        "built-in /logs must not reach the executor"
+    );
+    // Overlay should be open
+    assert_eq!(app.overlays.top(), vac_shell_contracts::ShellOverlay::Logs);
+    // Logs browser should have refreshed from activity log
+    assert!(app.logs_browser.visible);
 }

@@ -10,7 +10,7 @@ ShellApp dogfood cockpit integration — consolidation.
 
 ## Completed baseline
 
-D1–D16 are sealed.
+D1–D16 are sealed. D17 in progress.
 
 | Last sealed SHA | Description |
 |---|---|
@@ -27,7 +27,11 @@ D1–D16 are sealed.
 
 ## Current Backlog / Next Steps
 
-- **Unified init/status/logs UX**: product maturity alignment.
+- **Unified init/status/logs UX**: in progress (D17 — /logs browser surface)
+
+## Implementation In Progress
+
+- D17 — Unified Logs Browser Surface: `/logs` overlay backed by `ActivityLog::snapshot()`, filter/search/scroll. No persistent backend.
 
 ## What is NOT allowed (explicit freeze)
 

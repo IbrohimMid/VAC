@@ -48,6 +48,11 @@ entrypoint falls back to the fixture model
 | 19 | Type `/status` `Enter` | ActivityLog displays six rows with "status" label: cockpit, model, sessions, approvals, doctor, next-action. No secrets exposed. |
 | 20 | Run tool smoke (e.g. `glob *` via `/memorize` if dispatcher attached) | ActivityLog displays tool result rows with "tool·ok" label. Confirms true tool execution rows remain `ToolResult`. |
 | 21 | Create `.vac/sessions/test.jsonl` and `.vac/checkpoints/test.json`, then open Session browser with `Ctrl+S` or `/sessions` | Each session tile shows `resume: ready` badge; selected tile shows Recovery panel with status, label, path; pressing R logs ActivityLog entry with checkpoint state. |
+| 22 | Type `/logs` `Enter` | Logs Browser overlay opens showing ActivityLog entries with kind labels (diag, status, tool·ok, error). |
+| 23 | In /logs overlay, type `1` to `7` | Filter changes: 1=All, 2=Errors, 3=Warnings, 4=Status, 5=Diag, 6=Tools, 7=Approvals. |
+| 24 | In /logs overlay, type `/` then search text | Search filters by title, detail, kind label (diag, status, error), and severity (info, ok, warn, error). |
+| 25 | In /logs overlay, use Up/Down arrows | Scroll through filtered entries. |
+| 26 | In /logs overlay, press `Esc` | Logs overlay closes. |
 
 ## Reporting issues
 
@@ -63,6 +68,7 @@ Tag the report by slice:
 * `D14` — dedicated Diagnostic/Status activity kinds.
 * `D15` — approval detail recursive redaction hardening.
 * `D16` — checkpoint-aware session recovery surface.
+* `D17` — unified logs browser surface.
 
 ## Known limitations (April 2026)
 

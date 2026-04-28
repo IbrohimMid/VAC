@@ -22,10 +22,10 @@
 //! APIs, secret managers.
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use vac_shell_activity::LogsBrowserKey;
 use vac_shell_app::{AppError, AppEvent, GlobalKey, ShellApp};
 use vac_shell_approval_bar::ApprovalBarKey;
 use vac_shell_approval_detail::DetailKey;
-use vac_shell_activity::LogsBrowserKey;
 use vac_shell_contracts::ShellOverlay;
 use vac_shell_diff_view::DiffReviewKey;
 use vac_shell_model_switcher::SwitcherKey;
@@ -95,21 +95,15 @@ pub fn route_key(event: KeyEvent, active_overlay: ShellOverlay) -> RoutedKey {
 fn match_global(ev: KeyEvent) -> Option<GlobalKey> {
     let ctrl = ev.modifiers.contains(KeyModifiers::CONTROL);
     match (ev.code, ctrl) {
-        (KeyCode::Char('p'), true) | (KeyCode::Char('P'), true) => {
-            Some(GlobalKey::OpenPalette)
-        }
-        (KeyCode::Char('k'), true) | (KeyCode::Char('K'), true) => {
-            Some(GlobalKey::OpenShortcuts)
-        }
+        (KeyCode::Char('p'), true) | (KeyCode::Char('P'), true) => Some(GlobalKey::OpenPalette),
+        (KeyCode::Char('k'), true) | (KeyCode::Char('K'), true) => Some(GlobalKey::OpenShortcuts),
         (KeyCode::Char('m'), true) | (KeyCode::Char('M'), true) => {
             Some(GlobalKey::OpenModelSwitcher)
         }
         (KeyCode::Char('s'), true) | (KeyCode::Char('S'), true) => {
             Some(GlobalKey::OpenSessionBrowser)
         }
-        (KeyCode::Char('d'), true) | (KeyCode::Char('D'), true) => {
-            Some(GlobalKey::OpenDiffReview)
-        }
+        (KeyCode::Char('d'), true) | (KeyCode::Char('D'), true) => Some(GlobalKey::OpenDiffReview),
         (KeyCode::Char('y'), true) | (KeyCode::Char('Y'), true) => {
             Some(GlobalKey::OpenApprovalDetail)
         }
@@ -117,9 +111,7 @@ fn match_global(ev: KeyEvent) -> Option<GlobalKey> {
         // terminals deliver this as a literal `\``; accept both.
         (KeyCode::Char('`'), true) => Some(GlobalKey::OpenShellPopup),
         // Plan view toggle — `Ctrl+L` ("plan").
-        (KeyCode::Char('l'), true) | (KeyCode::Char('L'), true) => {
-            Some(GlobalKey::OpenPlan)
-        }
+        (KeyCode::Char('l'), true) | (KeyCode::Char('L'), true) => Some(GlobalKey::OpenPlan),
         (KeyCode::Esc, _) => Some(GlobalKey::Escape),
         _ => None,
     }

@@ -124,7 +124,10 @@ pub fn build_shell_app(project_root: impl AsRef<Path>) -> ShellApp {
     // D16 — attach checkpoint recovery provider
     let paths_for_recovery = composition.paths.clone();
     app = app.with_session_recovery_provider(Arc::new(move |session_id| {
-        Some(project_recovery_for_session(paths_for_recovery.as_ref(), session_id))
+        Some(project_recovery_for_session(
+            paths_for_recovery.as_ref(),
+            session_id,
+        ))
     }));
     app.prepare_frame();
     app

@@ -26,7 +26,9 @@ use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
 };
-use vac_shell_activity::{ActivityLogBrowserView, ActivityView, LogsBrowserKey, on_logs_browser_key};
+use vac_shell_activity::{
+    ActivityLogBrowserView, ActivityView, LogsBrowserKey, on_logs_browser_key,
+};
 use vac_shell_approval_bar::{
     ApprovalActionView, ApprovalBarEvent, ApprovalBarKey, ApprovalBarViewState, ApprovalStatus,
 };
@@ -191,7 +193,17 @@ impl ShellApp {
     pub fn refresh_logs_browser(&mut self) {
         if let Some(ref log) = self.activity_log {
             self.logs_browser.entries = log.snapshot();
+        } else {
+            self.logs_browser.entries.clear();
         }
+    }
+
+    /// D17 — open logs browser with fresh snapshot.
+    fn open_logs_browser(&mut self) {
+        self.refresh_logs_browser();
+        self.overlays
+            .apply_intent(OverlayIntent::Open(ShellOverlay::Logs));
+        self.sync_visibility();
     }
 
     /// Logical key the host derives from crossterm or another
@@ -613,8 +625,7 @@ impl ShellApp {
                         self.sync_visibility();
                     }
                     "/logs" => {
-                        self.overlays.apply_intent(OverlayIntent::Open(ShellOverlay::Logs));
-                        self.sync_visibility();
+                        self.open_logs_browser();
                     }
                     _ => {
                         // Unknown / non-built-in slash — observed

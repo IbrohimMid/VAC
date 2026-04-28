@@ -23,6 +23,7 @@ pub enum LogsBrowserKey {
     Search,
     Char(char),
     Backspace,
+    CtrlU,
     Escape,
 }
 
@@ -75,6 +76,11 @@ pub fn on_logs_browser_key(view: &mut ActivityLogBrowserView, key: LogsBrowserKe
                 view.search_query.pop();
             }
         }
+        LogsBrowserKey::CtrlU => {
+            if view.search_mode {
+                view.search_query.clear();
+            }
+        }
         LogsBrowserKey::Escape => {
             if view.search_mode {
                 view.search_mode = false;
@@ -105,6 +111,36 @@ fn kind_label(k: ShellActivityKind) -> &'static str {
         ShellActivityKind::ModelChanged => "model",
         ShellActivityKind::Error => "error",
     }
+}
+
+fn severity_label(s: Severity) -> &'static str {
+    match s {
+        Severity::Info => "info",
+        Severity::Ok => "ok",
+        Severity::Warn => "warn",
+        Severity::Error => "error",
+    }
+}
+
+fn entry_matches_search(entry: &ShellActivityEntry, query: &str) -> bool {
+    let q = query.to_lowercase();
+    if entry.title.to_lowercase().contains(&q) {
+        return true;
+    }
+    if entry
+        .detail
+        .as_ref()
+        .is_some_and(|d| d.to_lowercase().contains(&q))
+    {
+        return true;
+    }
+    if kind_label(entry.kind).contains(&q) {
+        return true;
+    }
+    if severity_label(entry.severity).contains(&q) {
+        return true;
+    }
+    false
 }
 
 fn severity_color(s: Severity) -> Color {
@@ -159,10 +195,7 @@ pub fn render_activity(f: &mut Frame, view: &ActivityView, area: Rect) {
         }
         lines.push(Line::from(spans));
     }
-    f.render_widget(
-        Paragraph::new(lines).wrap(Wrap { trim: false }),
-        inner,
-    );
+    f.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);
 }
 
 #[derive(Debug, Clone, Default)]
@@ -216,11 +249,16 @@ pub fn render_logs_browser(f: &mut Frame, view: &ActivityLogBrowserView, area: R
             ShellActivityFilter::All => true,
             ShellActivityFilter::Errors => e.severity == Severity::Error,
             ShellActivityFilter::Warnings => e.severity == Severity::Warn,
-            ShellActivityFilter::Status => matches!(e.kind, ShellActivityKind::Status | ShellActivityKind::ModelChanged),
+            ShellActivityFilter::Status => matches!(
+                e.kind,
+                ShellActivityKind::Status | ShellActivityKind::ModelChanged
+            ),
             ShellActivityFilter::Diagnostics => matches!(e.kind, ShellActivityKind::Diagnostic),
             ShellActivityFilter::Tools => matches!(
                 e.kind,
-                ShellActivityKind::ToolCall | ShellActivityKind::ToolResult | ShellActivityKind::ShellCommand
+                ShellActivityKind::ToolCall
+                    | ShellActivityKind::ToolResult
+                    | ShellActivityKind::ShellCommand
             ),
             ShellActivityFilter::Approvals => matches!(
                 e.kind,
@@ -231,64 +269,66 @@ pub fn render_logs_browser(f: &mut Frame, view: &ActivityLogBrowserView, area: R
             if view.search_query.is_empty() {
                 true
             } else {
-                let q = view.search_query.to_lowercase();
-                e.title.to_lowercase().contains(&q)
-                    || e.detail.as_ref().map_or(false, |d| d.to_lowercase().contains(&q))
+                entry_matches_search(e, &view.search_query)
             }
         })
         .collect();
 
     if filtered.is_empty() {
+        let empty_message = if view.entries.is_empty() {
+            "  no log entries"
+        } else {
+            "  no matching logs"
+        };
         f.render_widget(
             Paragraph::new(Line::from(Span::styled(
-                "  no matching logs",
+                empty_message,
                 Style::default().fg(Color::DarkGray),
             ))),
             chunks[1],
         );
-        return;
-    }
+    } else {
+        let height = chunks[1].height as usize;
+        let total = filtered.len();
+        let max_scroll = total.saturating_sub(height);
+        let scroll = view.scroll.min(max_scroll);
 
-    let height = chunks[1].height as usize;
-    let total = filtered.len();
-    let max_scroll = total.saturating_sub(height);
-    let scroll = view.scroll.min(max_scroll);
-
-    let mut lines: Vec<Line<'static>> = Vec::new();
-    for entry in filtered.iter().skip(scroll).take(height) {
-        let severity = severity_color(entry.severity);
-        let kind = kind_label(entry.kind);
-        let mut spans = vec![
-            Span::styled(
-                format!(" {:<8}", kind),
-                Style::default().fg(severity).add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(entry.title.clone(), Style::default().fg(Color::Gray)),
-        ];
-        if let Some(d) = &entry.detail {
-            spans.push(Span::styled(
-                format!("   {d}"),
-                Style::default().fg(Color::DarkGray),
-            ));
+        let mut lines: Vec<Line<'static>> = Vec::new();
+        for entry in filtered.iter().skip(scroll).take(height) {
+            let severity = severity_color(entry.severity);
+            let kind = kind_label(entry.kind);
+            let mut spans = vec![
+                Span::styled(
+                    format!(" {:<8}", kind),
+                    Style::default().fg(severity).add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(entry.title.clone(), Style::default().fg(Color::Gray)),
+            ];
+            if let Some(d) = &entry.detail {
+                spans.push(Span::styled(
+                    format!("   {d}"),
+                    Style::default().fg(Color::DarkGray),
+                ));
+            }
+            lines.push(Line::from(spans));
         }
-        lines.push(Line::from(spans));
+
+        let paragraph = Paragraph::new(lines).wrap(Wrap { trim: false });
+        f.render_widget(paragraph, chunks[1]);
     }
 
-    let paragraph = Paragraph::new(lines).wrap(Wrap { trim: false });
-    f.render_widget(paragraph, chunks[1]);
+    let total = filtered.len();
+    let entries_total = view.entries.len();
 
     let status_text = if view.search_mode {
         format!(
-            "  {}/{} entries | search: {} | Esc exit search",
-            total,
-            view.entries.len(),
+            "  search: {} | Backspace edit | Esc close",
             view.search_query
         )
     } else {
         format!(
             "  {}/{} entries | ↑↓ scroll | 1-7 filter | / search | Esc close",
-            total,
-            view.entries.len()
+            total, entries_total
         )
     };
     f.render_widget(

@@ -1,6 +1,7 @@
 //! D2 — `route_key` proofs.
 
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+use vac_shell_activity::LogsBrowserKey;
 use vac_shell_app::GlobalKey;
 use vac_shell_approval_bar::ApprovalBarKey;
 use vac_shell_approval_detail::DetailKey;
@@ -321,8 +322,8 @@ mod dispatch {
     #[test]
     fn dispatch_palette_enter_returns_palette_selected() {
         let (_t, mut app) = boot_app();
-        app.palette = vac_shell_palette::PaletteViewState::new(vec![
-            vac_shell_contracts::ShellCommandSpec {
+        app.palette =
+            vac_shell_palette::PaletteViewState::new(vec![vac_shell_contracts::ShellCommandSpec {
                 id: "runtime".into(),
                 slash: "/runtime".into(),
                 title: "Runtime".into(),
@@ -330,8 +331,7 @@ mod dispatch {
                 kind: vac_shell_contracts::ShellCommandKind::BuiltInAction,
                 palette_visible: true,
                 ..Default::default()
-            },
-        ]);
+            }]);
         app.palette.visible = true;
         let _ = dispatch_routed_key(
             &mut app,
@@ -380,10 +380,7 @@ mod dispatch {
         )
         .unwrap()
         .unwrap();
-        assert_eq!(
-            event,
-            AppEvent::ShellAction(ShellAction::SubmitApprovals)
-        );
+        assert_eq!(event, AppEvent::ShellAction(ShellAction::SubmitApprovals));
     }
 
     #[test]
@@ -416,4 +413,89 @@ mod dispatch {
         let out = dispatch_routed_key(&mut app, RoutedKey::Ignored).unwrap();
         assert!(out.is_none());
     }
+}
+
+// =====================================================================
+// D17 — Logs Browser Keymap Tests
+// =====================================================================
+
+#[test]
+fn logs_overlay_up_routes_to_scroll_up() {
+    use vac_shell_activity::LogsBrowserKey;
+    assert_eq!(
+        route_key(plain(KeyCode::Up), ShellOverlay::Logs),
+        RoutedKey::Logs(LogsBrowserKey::ScrollUp)
+    );
+}
+
+#[test]
+fn logs_overlay_down_routes_to_scroll_down() {
+    use vac_shell_activity::LogsBrowserKey;
+    assert_eq!(
+        route_key(plain(KeyCode::Down), ShellOverlay::Logs),
+        RoutedKey::Logs(LogsBrowserKey::ScrollDown)
+    );
+}
+
+#[test]
+fn logs_overlay_char_1_routes_to_filter_all() {
+    use vac_shell_activity::LogsBrowserKey;
+    assert_eq!(
+        route_key(plain(KeyCode::Char('1')), ShellOverlay::Logs),
+        RoutedKey::Logs(LogsBrowserKey::FilterAll)
+    );
+}
+
+#[test]
+fn logs_overlay_char_7_routes_to_filter_approvals() {
+    use vac_shell_activity::LogsBrowserKey;
+    assert_eq!(
+        route_key(plain(KeyCode::Char('7')), ShellOverlay::Logs),
+        RoutedKey::Logs(LogsBrowserKey::FilterApprovals)
+    );
+}
+
+#[test]
+fn logs_overlay_char_slash_routes_to_search() {
+    use vac_shell_activity::LogsBrowserKey;
+    assert_eq!(
+        route_key(plain(KeyCode::Char('/')), ShellOverlay::Logs),
+        RoutedKey::Logs(LogsBrowserKey::Search)
+    );
+}
+
+#[test]
+fn logs_overlay_char_x_routes_to_char_x() {
+    use vac_shell_activity::LogsBrowserKey;
+    assert_eq!(
+        route_key(plain(KeyCode::Char('x')), ShellOverlay::Logs),
+        RoutedKey::Logs(LogsBrowserKey::Char('x'))
+    );
+}
+
+#[test]
+fn logs_overlay_backspace_routes_to_backspace() {
+    use vac_shell_activity::LogsBrowserKey;
+    assert_eq!(
+        route_key(plain(KeyCode::Backspace), ShellOverlay::Logs),
+        RoutedKey::Logs(LogsBrowserKey::Backspace)
+    );
+}
+
+#[test]
+fn logs_overlay_esc_routes_to_global_escape() {
+    // Esc is always global, not overlay-specific
+    assert_eq!(
+        route_key(plain(KeyCode::Esc), ShellOverlay::Logs),
+        RoutedKey::Global(GlobalKey::Escape)
+    );
+}
+
+#[test]
+fn ctrl_l_remains_global_open_plan() {
+    // Ctrl+L should still open Plan, not be captured by Logs
+    assert_eq!(
+        route_key(ctrl('l'), ShellOverlay::Logs),
+        RoutedKey::Global(GlobalKey::OpenPlan)
+    );
 }
