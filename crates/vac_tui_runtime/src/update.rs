@@ -518,7 +518,9 @@ pub fn handle_backend_event(
             state.layout.switchers.active_isolation_mode = match snapshot.sandbox_mode {
                 vac_core::config::UserSandboxMode::ReadOnly => "read-only".to_string(),
                 vac_core::config::UserSandboxMode::WorkspaceWrite => "workspace-write".to_string(),
-                vac_core::config::UserSandboxMode::DangerFullAccess => "danger-full-access".to_string(),
+                vac_core::config::UserSandboxMode::DangerFullAccess => {
+                    "danger-full-access".to_string()
+                }
             };
             state.core.startup = snapshot;
             state.core.hydrated = true;
@@ -605,6 +607,12 @@ pub fn handle_backend_event(
             }
         }
         InputEvent::RunToolCall(tc) => {
+            state.transcript.messages.push(crate::app::Message {
+                id: uuid::Uuid::new_v4(),
+                role: "assistant".to_string(),
+                content: String::new(),
+                tool_calls: Some(vec![tc.clone()]),
+            });
             state
                 .execution
                 .approvals
@@ -714,5 +722,36 @@ pub fn handle_backend_event(
             }
         }
         _ => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::{FunctionCall, ToolCall};
+
+    #[test]
+    fn run_tool_call_inserts_tool_card_message() {
+        let mut state = AppState::default();
+        let (tx, _rx) = tokio::sync::mpsc::channel(8);
+        assert!(state.transcript.messages.is_empty());
+
+        let tc = ToolCall {
+            id: "tool-1".to_string(),
+            r#type: "function".to_string(),
+            function: FunctionCall {
+                name: "shell".to_string(),
+                arguments: "{}".to_string(),
+            },
+            metadata: None,
+        };
+
+        handle_backend_event(&mut state, &tx, InputEvent::RunToolCall(tc.clone()));
+        assert_eq!(state.transcript.messages.len(), 1);
+        let msg = &state.transcript.messages[0];
+        assert_eq!(msg.role, "assistant");
+        assert!(msg.content.is_empty());
+        assert_eq!(msg.tool_calls.as_ref().unwrap().len(), 1);
+        assert_eq!(msg.tool_calls.as_ref().unwrap()[0].id, tc.id);
     }
 }

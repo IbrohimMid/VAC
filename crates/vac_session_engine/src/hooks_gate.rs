@@ -93,7 +93,7 @@ impl HookGate {
     pub fn fire_notification(&self, event: HookEvent, payload: Option<String>) {
         let store = self.store.clone();
         let mut sandbox = (*self.sandbox).clone();
-        
+
         // Ensure env variables are allowed for this execution
         if let Some(ref mut allowlist) = sandbox.env_allowlist {
             allowlist.push("VAC_HOOK_EVENT".to_string());
@@ -104,14 +104,21 @@ impl HookGate {
             let store_guard = store.read().await;
             // Notification hooks usually have empty matchers, but we pass an empty string
             // so `matches` filters by event type.
-            let entries: Vec<HookEntry> = store_guard.matches(event, "").into_iter().cloned().collect();
+            let entries: Vec<HookEntry> = store_guard
+                .matches(event, "")
+                .into_iter()
+                .cloned()
+                .collect();
             drop(store_guard);
 
             for entry in entries {
                 let mut extra_env = std::collections::HashMap::new();
                 extra_env.insert("VAC_HOOK_EVENT".to_string(), format!("{:?}", event));
                 if let Some(ref p) = payload {
-                    extra_env.insert("VAC_HOOK_PAYLOAD".to_string(), p.clone());
+                    extra_env.insert(
+                        "VAC_HOOK_PAYLOAD".to_string(),
+                        crate::notify_hooks::redact_notification_payload(p),
+                    );
                 }
 
                 // Fire and forget; timeout is handled by the sandbox.

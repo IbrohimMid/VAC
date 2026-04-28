@@ -521,7 +521,7 @@ pub async fn exec_hook_sandboxed(
             for pre-NS.4 compat."
 )]
 pub async fn exec_hook(entry: &HookEntry) -> EngineResult<HookDecision> {
-    exec_hook_sandboxed(entry, &HookSandbox::permissive()).await
+    exec_hook_sandboxed(entry, &HookSandbox::permissive(), None).await
 }
 
 /// Apply a soft+hard rlimit. Returns io::Error on setrlimit

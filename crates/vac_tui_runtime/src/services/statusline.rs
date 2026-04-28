@@ -87,7 +87,7 @@ pub fn render_statusline(f: &mut Frame, state: &AppState, area: Rect) {
                 vac_core::config::UserSandboxMode::ReadOnly => theme.style(StyleKey::Success),
                 vac_core::config::UserSandboxMode::WorkspaceWrite => theme.style(StyleKey::Warning),
                 vac_core::config::UserSandboxMode::DangerFullAccess => theme.style(StyleKey::Error),
-            }
+            },
         ),
     ];
 

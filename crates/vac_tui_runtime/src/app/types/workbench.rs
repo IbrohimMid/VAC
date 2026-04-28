@@ -118,8 +118,8 @@ pub struct ReviewDiffState {
     pub last_error: Option<String>,
 }
 
-use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 
 /// Plan-mode domain state. Accessed via `app_state.workspace.plan`.
 #[derive(Debug, Clone)]

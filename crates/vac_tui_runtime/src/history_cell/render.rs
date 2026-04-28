@@ -1,8 +1,8 @@
 use crate::history_cell::VacHistoryCell;
+use crate::services::message::{render_assistant_message_with_width, render_user_message};
 use crate::services::theme::{StyleKey, Theme};
 use ratatui::style::Modifier;
 use ratatui::text::{Line, Span};
-use crate::services::message::{render_user_message, render_assistant_message_with_width};
 
 pub fn render_history_cell(cell: &VacHistoryCell, width: usize) -> Vec<Line<'static>> {
     let theme = Theme::default();
@@ -13,11 +13,16 @@ pub fn render_history_cell(cell: &VacHistoryCell, width: usize) -> Vec<Line<'sta
         }
         VacHistoryCell::AssistantStream { chunk } => {
             vec![Line::from(vec![
-                Span::styled("VAC streaming: ", theme.style(StyleKey::Success).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    "VAC streaming: ",
+                    theme.style(StyleKey::Success).add_modifier(Modifier::BOLD),
+                ),
                 Span::raw(chunk.clone()),
             ])]
         }
-        VacHistoryCell::ToolCall { name, arguments, .. } => {
+        VacHistoryCell::ToolCall {
+            name, arguments, ..
+        } => {
             let arg_str = match arguments {
                 serde_json::Value::Object(obj) => {
                     if obj.is_empty() {
@@ -33,11 +38,17 @@ pub fn render_history_cell(cell: &VacHistoryCell, width: usize) -> Vec<Line<'sta
                 }
                 _ => arguments.to_string(),
             };
-            
+
             // Truncate arg_str to fit width, rough estimation
             let max_arg_len = width.saturating_sub(name.len() + 15);
             let trunc_args = if arg_str.chars().count() > max_arg_len {
-                format!("{}…", arg_str.chars().take(max_arg_len.saturating_sub(1)).collect::<String>())
+                format!(
+                    "{}…",
+                    arg_str
+                        .chars()
+                        .take(max_arg_len.saturating_sub(1))
+                        .collect::<String>()
+                )
             } else {
                 arg_str
             };
@@ -50,16 +61,21 @@ pub fn render_history_cell(cell: &VacHistoryCell, width: usize) -> Vec<Line<'sta
                 Span::styled(trunc_args, theme.style(StyleKey::Muted)),
             ])]
         }
-        VacHistoryCell::ToolResult { name, success, content, .. } => {
+        VacHistoryCell::ToolResult {
+            name,
+            success,
+            content,
+            ..
+        } => {
             let (dot, dot_key) = if *success {
                 ("●", StyleKey::Success)
             } else {
                 ("●", StyleKey::Error)
             };
-            
+
             let n_lines = content.lines().count();
             let summary = format!("{} line{}", n_lines, if n_lines == 1 { "" } else { "s" });
-            
+
             let mut lines = vec![Line::from(vec![
                 Span::raw("  "),
                 Span::styled(format!("{} ", dot), theme.style(dot_key)),
@@ -86,11 +102,18 @@ pub fn render_history_cell(cell: &VacHistoryCell, width: usize) -> Vec<Line<'sta
             }
             lines
         }
-        VacHistoryCell::ApprovalPrompt { tool_name, explanation, .. } => {
+        VacHistoryCell::ApprovalPrompt {
+            tool_name,
+            explanation,
+            ..
+        } => {
             let expl = explanation.as_deref().unwrap_or("requires approval");
             vec![Line::from(vec![
                 Span::styled("⚠️ ", theme.style(StyleKey::Warning)),
-                Span::styled(format!("Approval needed for {}: {}", tool_name, expl), theme.style(StyleKey::Warning)),
+                Span::styled(
+                    format!("Approval needed for {}: {}", tool_name, expl),
+                    theme.style(StyleKey::Warning),
+                ),
             ])]
         }
         VacHistoryCell::ProposedPlan { plan } => {
@@ -100,7 +123,10 @@ pub fn render_history_cell(cell: &VacHistoryCell, width: usize) -> Vec<Line<'sta
             ])]
         }
         VacHistoryCell::TodoList { items } => {
-            let mut lines = vec![Line::from(Span::styled("☑ Tasks:", theme.style(StyleKey::Accent)))];
+            let mut lines = vec![Line::from(Span::styled(
+                "☑ Tasks:",
+                theme.style(StyleKey::Accent),
+            ))];
             for item in items {
                 lines.push(Line::from(format!("  - {}", item)));
             }

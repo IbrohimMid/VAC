@@ -370,7 +370,13 @@ fn handle_mouse_drag_start(
             state.layout.banner.message = None;
             state.layout.banner.click_regions.clear();
             state.layout.banner.dismiss_region = None;
-            let _ = output_tx.try_send(OutputEvent::UserMessage(action, None, Vec::new(), None));
+            let _ = output_tx.try_send(OutputEvent::UserMessage(
+                action,
+                None,
+                Vec::new(),
+                None,
+                state.workspace.plan.mode_active.clone(),
+            ));
             return;
         }
     } else if state.layout.banner.message.is_some() {

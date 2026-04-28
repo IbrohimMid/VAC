@@ -87,7 +87,7 @@ enum Commands {
     Interactive {
         #[arg(long)]
         resume: bool,
-        /// Explicitly set the user sandbox mode: read_only, workspace_write, or danger_full_access.
+        /// Explicitly set the user sandbox mode: read-only, workspace-write, or danger-full-access.
         #[arg(long)]
         sandbox_mode: Option<String>,
         /// Record all user input to a JSONL file under <dir> for later replay (PR-T18).

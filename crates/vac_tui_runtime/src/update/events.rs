@@ -339,7 +339,13 @@ mod tests {
     #[test]
     fn test_on_tool_result_updates_plan_mode() {
         let mut state = AppState::default();
-        assert!(!state.workspace.plan.mode_active.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(
+            !state
+                .workspace
+                .plan
+                .mode_active
+                .load(std::sync::atomic::Ordering::SeqCst)
+        );
 
         let mut result = ToolCallResult {
             call: ToolCall {
@@ -357,10 +363,22 @@ mod tests {
         };
 
         on_tool_result(&mut state, result.clone());
-        assert!(state.workspace.plan.mode_active.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(
+            state
+                .workspace
+                .plan
+                .mode_active
+                .load(std::sync::atomic::Ordering::SeqCst)
+        );
 
         result.call.function.name = "exit_plan_mode".into();
         on_tool_result(&mut state, result);
-        assert!(!state.workspace.plan.mode_active.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(
+            !state
+                .workspace
+                .plan
+                .mode_active
+                .load(std::sync::atomic::Ordering::SeqCst)
+        );
     }
 }

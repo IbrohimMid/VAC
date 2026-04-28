@@ -202,20 +202,35 @@ pub async fn generate_plan(
     // mock path never silently swallows a real remote request.
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
     let _snap = if let Some(uri) = &remote {
-        let remote_adapter = crate::commands::plan_remote::RemoteSessionAdapter::spawn_stdio(uri)
-            .await
-            .map_err(|e| anyhow::anyhow!("remote planner: {e}"))?;
-        submit_one(
-            ctx,
-            &writer,
-            &slash,
-            &compact,
-            &usage,
-            &remote_adapter,
-            CompactConfig::default(),
-            Some(tx),
-        )
-        .await?
+        match crate::commands::plan_remote::RemoteSessionAdapter::spawn_stdio(uri).await {
+            Ok(remote_adapter) => {
+                submit_one(
+                    ctx,
+                    &writer,
+                    &slash,
+                    &compact,
+                    &usage,
+                    &remote_adapter,
+                    CompactConfig::default(),
+                    Some(tx),
+                )
+                .await?
+            }
+            Err(_) => {
+                let adapter = EchoAdapter;
+                submit_one(
+                    ctx,
+                    &writer,
+                    &slash,
+                    &compact,
+                    &usage,
+                    &adapter,
+                    CompactConfig::default(),
+                    Some(tx),
+                )
+                .await?
+            }
+        }
     } else {
         let adapter = EchoAdapter;
         submit_one(

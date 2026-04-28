@@ -52,7 +52,7 @@ pub fn welcome_messages(version: Option<&str>, state: &crate::app::AppState) -> 
     let model_comment = if active_model.is_some() {
         "active override"
     } else {
-        "use /model to select"
+        "No active model configured"
     };
 
     let fallback_value = s
@@ -310,7 +310,7 @@ pub fn vac_commands() -> Vec<HelperCommand> {
             source: CommandSource::BuiltIn,
             shortcut: Some("Ctrl+R".to_string()),
             wired: true,
-            surface: CommandSurface::OperatorAction,
+            surface: CommandSurface::Hidden,
         },
         HelperCommand {
             command: "/sessions".to_string(),

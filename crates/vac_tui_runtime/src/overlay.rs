@@ -223,6 +223,7 @@ fn sync_domain_state(state: &mut AppState, id: OverlayId, value: bool) {
         }
         // These overlays carry no additional domain state beyond the stack itself.
         OverlayId::CommandPalette
+        | OverlayId::InitChecklist
         | OverlayId::Shortcuts
         | OverlayId::IsolationSwitcher
         | OverlayId::ProfileSwitcher

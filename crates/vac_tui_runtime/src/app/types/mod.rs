@@ -213,6 +213,8 @@ impl Default for LayoutState {
             ask_user: AskUserState::default(),
             elicitation: None,
             input_area: None,
+            init_checklist_selected: 0,
+            init_checklist_scroll: 0,
         }
     }
 }

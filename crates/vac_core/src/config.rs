@@ -293,7 +293,8 @@ impl VacConfig {
         if let Some(parent) = project_config.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        let content = toml::to_string_pretty(config).map_err(|e| crate::error::VacError::Config(e.to_string()))?;
+        let content = toml::to_string_pretty(config)
+            .map_err(|e| crate::error::VacError::Config(e.to_string()))?;
         std::fs::write(&project_config, content)?;
         Ok(())
     }
@@ -601,6 +602,26 @@ pub enum UserSandboxMode {
 }
 
 impl UserSandboxMode {
+    pub fn parse_user(raw: &str) -> Result<Self, String> {
+        let s = raw.trim().to_ascii_lowercase();
+        match s.as_str() {
+            "read-only" | "read_only" | "readonly" => Ok(Self::ReadOnly),
+            "workspace-write" | "workspace_write" | "write" => Ok(Self::WorkspaceWrite),
+            "danger-full-access" | "danger_full_access" | "danger" | "host" => {
+                Ok(Self::DangerFullAccess)
+            }
+            _ => Err("expected one of: read-only, workspace-write, danger-full-access".to_string()),
+        }
+    }
+
+    pub fn as_cli_str(&self) -> &'static str {
+        match self {
+            Self::ReadOnly => "read-only",
+            Self::WorkspaceWrite => "workspace-write",
+            Self::DangerFullAccess => "danger-full-access",
+        }
+    }
+
     pub fn apply_to_runtime(&self, runtime: &mut RuntimeConfig) {
         match self {
             Self::ReadOnly => {
@@ -653,7 +674,7 @@ impl Default for RuntimeConfig {
     fn default() -> Self {
         Self {
             enable: false,
-            sandbox_mode: UserSandboxMode::ReadOnly,
+            sandbox_mode: UserSandboxMode::DangerFullAccess,
             task_intent_mode: default_task_intent_mode(),
             environment_mode: default_environment_mode(),
             execution_environment: ExecutionEnvironment::Host,

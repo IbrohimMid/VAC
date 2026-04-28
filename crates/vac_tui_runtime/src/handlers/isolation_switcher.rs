@@ -33,28 +33,63 @@ pub fn handle_event(ctx: &mut HandlerContext, event: InputEvent) -> HandlerResul
                 .isolation_modes
                 .get(ctx.state.layout.switchers.isolation_selected)
             {
-                let mode = match p.as_str() {
-                    "read-only" => vac_core::config::UserSandboxMode::ReadOnly,
-                    "workspace-write" => vac_core::config::UserSandboxMode::WorkspaceWrite,
-                    "danger-full-access" => vac_core::config::UserSandboxMode::DangerFullAccess,
-                    _ => vac_core::config::UserSandboxMode::ReadOnly,
+                let mode = match vac_core::config::UserSandboxMode::parse_user(p) {
+                    Ok(m) => m,
+                    Err(e) => {
+                        ctx.state
+                            .layout
+                            .toasts
+                            .push(crate::services::Toast::error(e));
+                        return Ok(());
+                    }
                 };
-                
+
                 if mode == vac_core::config::UserSandboxMode::DangerFullAccess {
                     // Open confirmation overlay instead of applying immediately
-                    crate::overlay::open_overlay(ctx.state, crate::overlay::OverlayId::ConfirmDangerMode);
+                    crate::overlay::open_overlay(
+                        ctx.state,
+                        crate::overlay::OverlayId::ConfirmDangerMode,
+                    );
                     return Ok(());
                 }
 
-                ctx.state.layout.switchers.active_isolation_mode = p.clone();
-                ctx.state.core.startup.sandbox_mode = mode;
-                
-                // Also update and save VacConfig
-                if let Ok(mut config) = vac_core::VacConfig::load_with_fallback(&ctx.state.core.project_root) {
+                if let Ok(mut config) =
+                    vac_core::VacConfig::load_with_fallback(&ctx.state.core.project_root)
+                {
                     config.runtime.sandbox_mode = mode;
                     mode.apply_to_runtime(&mut config.runtime);
-                    let _ = vac_core::VacConfig::save(&ctx.state.core.project_root, &config);
+                    if config
+                        .runtime
+                        .container_image
+                        .as_deref()
+                        .unwrap_or_default()
+                        .trim()
+                        .is_empty()
+                    {
+                        ctx.state.layout.toasts.push(crate::services::Toast::error(
+                            "sandbox mode requires runtime.container_image to be set".to_string(),
+                        ));
+                        return Ok(());
+                    }
+                    if let Err(e) = config.validate() {
+                        ctx.state
+                            .layout
+                            .toasts
+                            .push(crate::services::Toast::error(e.to_string()));
+                        return Ok(());
+                    }
+                    if let Err(e) = vac_core::VacConfig::save(&ctx.state.core.project_root, &config)
+                    {
+                        ctx.state
+                            .layout
+                            .toasts
+                            .push(crate::services::Toast::error(e.to_string()));
+                        return Ok(());
+                    }
                 }
+
+                ctx.state.layout.switchers.active_isolation_mode = mode.as_cli_str().to_string();
+                ctx.state.core.startup.sandbox_mode = mode;
             }
             crate::overlay::close_overlay(ctx.state, crate::overlay::OverlayId::IsolationSwitcher);
         }

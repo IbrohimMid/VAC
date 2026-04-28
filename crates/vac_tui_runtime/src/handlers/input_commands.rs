@@ -165,8 +165,13 @@ pub fn dispatch_builtin_command(
                     let expanded = state.expand_pending_pastes(&trimmed);
                     state.add_user_message(expanded.clone());
                     let parts = std::mem::take(&mut state.composer.pending_image_parts);
-                    let _ =
-                        output_tx.try_send(OutputEvent::UserMessage(expanded, None, parts, None));
+                    let _ = output_tx.try_send(OutputEvent::UserMessage(
+                        expanded,
+                        None,
+                        parts,
+                        None,
+                        state.workspace.plan.mode_active.clone(),
+                    ));
                 }
             }
             crate::app::CommandSource::BuiltInWithPrompt { prompt_content }
@@ -420,7 +425,11 @@ fn dispatch_action(
                     state.workspace.plan.draft = tmpl;
                 }
             }
-            state.workspace.plan.mode_active = true;
+            state
+                .workspace
+                .plan
+                .mode_active
+                .store(true, std::sync::atomic::Ordering::SeqCst);
             state.layout.workbench_tab = crate::app::WorkbenchTab::Plan;
             state.layout.focus = crate::app::WorkspaceFocus::Workbench;
         }

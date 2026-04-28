@@ -300,7 +300,11 @@ pub static ACTION_SPECS: &[ActionSpec] = &[
         slash_aliases: &[],
         palette_visible: false,
         footer_visible: true,
-        availability: |s| s.workspace.plan.mode_active,
+        availability: |s| s
+            .workspace
+            .plan
+            .mode_active
+            .load(std::sync::atomic::Ordering::SeqCst),
         activity_message: None,
     },
     ActionSpec {

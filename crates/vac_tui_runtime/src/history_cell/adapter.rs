@@ -1,8 +1,8 @@
 use super::VacHistoryCell;
 use crate::app::Message;
-use vac_core::engine::RuntimeUpdate;
 use serde_json::Value;
 use std::str::FromStr;
+use vac_core::engine::RuntimeUpdate;
 
 pub fn from_message(msg: &Message) -> Vec<VacHistoryCell> {
     let mut cells = Vec::new();
@@ -25,7 +25,7 @@ pub fn from_message(msg: &Message) -> Vec<VacHistoryCell> {
             });
         }
     }
-    
+
     if let Some(tool_calls) = &msg.tool_calls {
         for tc in tool_calls {
             let args = Value::from_str(&tc.function.arguments).unwrap_or(Value::Null);
@@ -47,12 +47,22 @@ pub fn from_runtime_update(update: &RuntimeUpdate) -> Option<VacHistoryCell> {
         RuntimeUpdate::AssistantChunk(chunk) => Some(VacHistoryCell::AssistantStream {
             chunk: chunk.clone(),
         }),
-        RuntimeUpdate::ToolCall { id, name, arguments } => Some(VacHistoryCell::ToolCall {
+        RuntimeUpdate::ToolCall {
+            id,
+            name,
+            arguments,
+        } => Some(VacHistoryCell::ToolCall {
             id: id.clone(),
             name: name.clone(),
             arguments: arguments.clone(),
         }),
-        RuntimeUpdate::ToolResult { id, name, success, content, .. } => Some(VacHistoryCell::ToolResult {
+        RuntimeUpdate::ToolResult {
+            id,
+            name,
+            success,
+            content,
+            ..
+        } => Some(VacHistoryCell::ToolResult {
             id: id.clone(),
             name: name.clone(),
             success: *success,
@@ -61,14 +71,17 @@ pub fn from_runtime_update(update: &RuntimeUpdate) -> Option<VacHistoryCell> {
         RuntimeUpdate::Failed(err) => Some(VacHistoryCell::Error {
             message: err.clone(),
         }),
-        RuntimeUpdate::ApprovalRequired { tool_call_id, tool_name, arguments, explanation } => {
-            Some(VacHistoryCell::ApprovalPrompt {
-                tool_call_id: tool_call_id.clone(),
-                tool_name: tool_name.clone(),
-                arguments: arguments.clone(),
-                explanation: explanation.clone(),
-            })
-        }
+        RuntimeUpdate::ApprovalRequired {
+            tool_call_id,
+            tool_name,
+            arguments,
+            explanation,
+        } => Some(VacHistoryCell::ApprovalPrompt {
+            tool_call_id: tool_call_id.clone(),
+            tool_name: tool_name.clone(),
+            arguments: arguments.clone(),
+            explanation: explanation.clone(),
+        }),
         RuntimeUpdate::LspDiagnostics(diag) => Some(VacHistoryCell::VilDiagnostic {
             diagnostic: format!("{:?}", diag),
         }),

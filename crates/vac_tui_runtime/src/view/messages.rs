@@ -63,10 +63,12 @@ pub(super) fn render_messages(f: &mut Frame, state: &mut AppState, area: Rect) {
 
         misses += 1;
         let mut msg_lines = Vec::new();
-        
+
         let cells = crate::history_cell::adapter::from_message(msg);
         for cell in cells {
-            msg_lines.extend(crate::history_cell::render::render_history_cell(&cell, width));
+            msg_lines.extend(crate::history_cell::render::render_history_cell(
+                &cell, width,
+            ));
         }
 
         let n = msg_lines.len();
@@ -213,10 +215,14 @@ pub(super) fn render_messages(f: &mut Frame, state: &mut AppState, area: Rect) {
         for todo in &state.transcript.todos {
             let (icon, style_key) = match todo.status {
                 vac_changeset::TodoStatus::Done => ("✓", crate::services::theme::StyleKey::Success),
-                vac_changeset::TodoStatus::InProgress => ("◐", crate::services::theme::StyleKey::Warning),
-                vac_changeset::TodoStatus::Pending => ("○", crate::services::theme::StyleKey::Muted),
+                vac_changeset::TodoStatus::InProgress => {
+                    ("◐", crate::services::theme::StyleKey::Warning)
+                }
+                vac_changeset::TodoStatus::Pending => {
+                    ("○", crate::services::theme::StyleKey::Muted)
+                }
             };
-            
+
             lines.push(ratatui::text::Line::from(vec![
                 ratatui::text::Span::raw("  "),
                 ratatui::text::Span::styled(
@@ -224,9 +230,12 @@ pub(super) fn render_messages(f: &mut Frame, state: &mut AppState, area: Rect) {
                     state.core.theme.style(style_key),
                 ),
                 ratatui::text::Span::styled(
-                    &todo.text,
+                    todo.text.clone(),
                     if todo.status == vac_changeset::TodoStatus::Done {
-                        state.core.theme.style(crate::services::theme::StyleKey::Muted)
+                        state
+                            .core
+                            .theme
+                            .style(crate::services::theme::StyleKey::Muted)
                     } else {
                         ratatui::style::Style::default()
                     },

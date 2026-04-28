@@ -61,7 +61,6 @@ async fn shared_registry() -> anyhow::Result<Arc<vac_tools::ToolRegistry>> {
 pub async fn run_via_session_engine(
     project_root: std::path::PathBuf,
     engine: Arc<Mutex<VacEngine>>,
-    project_root: std::path::PathBuf,
     task_description: &str,
     update_tx: tokio::sync::mpsc::UnboundedSender<vac_core::engine::RuntimeUpdate>,
 ) -> anyhow::Result<vac_core::TaskResult> {
@@ -87,7 +86,6 @@ pub async fn run_via_session_engine(
 pub async fn run_via_session_engine_with_broadcast(
     project_root: std::path::PathBuf,
     engine: Arc<Mutex<VacEngine>>,
-    project_root: std::path::PathBuf,
     task_description: &str,
     update_tx: tokio::sync::mpsc::UnboundedSender<vac_core::engine::RuntimeUpdate>,
     broadcast: Option<Arc<vac_bridge::remote::SessionBroadcast>>,
@@ -144,7 +142,8 @@ pub async fn run_via_session_engine_with_broadcast(
     let policy_tracker =
         std::sync::Arc::new(vac_core::policy_limits::PolicyTracker::new(policy_limits));
     let gate =
-        super::dispatcher::build_live_gate_with(&project_root, Some(policy_tracker), plan_active).await?;
+        super::dispatcher::build_live_gate_with(&project_root, Some(policy_tracker), plan_active)
+            .await?;
 
     // B4 + H1 audit fix: build the agent dispatcher with a
     // `compact_cfg` that carries the parent's dispatcher + gate so
@@ -154,7 +153,7 @@ pub async fn run_via_session_engine_with_broadcast(
     // LLM could spawn a subagent but the subagent itself had no
     // dispatcher — tool-use silently fell back to UnsupportedDispatcher.
     let subagent_llm: Arc<dyn vac_session_engine::LlmAdapter> =
-        Arc::new(VacEngineAdapter::new(engine.clone()));
+        Arc::new(VacEngineAdapter::new(engine.clone(), project_root.clone()));
 
     // ToolContext constructed *before* the dispatcher so we can
     // clone it into both: the dispatcher (for its own tool routing)
@@ -206,6 +205,7 @@ pub async fn run_via_session_engine_with_broadcast(
     let (result_tx, result_rx) = oneshot::channel::<TaskResult>();
     let adapter = Arc::new(VacEngineAdapter::with_forward_and_result_tx(
         engine.clone(),
+        project_root.clone(),
         adapter_tx,
         result_tx,
     ));
@@ -393,7 +393,6 @@ fn chunk_to_outbound(chunk: &SubmitChunk) -> Option<vac_bridge::remote::Outbound
             serde_json::json!({ "total_tokens": usage.total_tokens() }),
         ),
         SubmitChunk::Aborted { reason } => {
-                                vac_session_engine::notify_hooks::fire_notification_hook(project_root.clone(), vac_session_engine::HookEvent::TaskFailed, Some(reason.clone()));
             OutboundEvent::new("aborted", serde_json::json!({ "reason": reason }))
         }
         _ => return None,
@@ -473,7 +472,7 @@ impl VacEngineAdapter {
     #[must_use]
     pub fn with_event_forward(
         engine: Arc<Mutex<VacEngine>>,
-    project_root: std::path::PathBuf,
+        project_root: std::path::PathBuf,
         tx: mpsc::UnboundedSender<SubmitEvent>,
     ) -> Self {
         Self {
@@ -487,7 +486,7 @@ impl VacEngineAdapter {
     #[must_use]
     pub fn with_forward_and_result_tx(
         engine: Arc<Mutex<VacEngine>>,
-    project_root: std::path::PathBuf,
+        project_root: std::path::PathBuf,
         tx: mpsc::UnboundedSender<SubmitEvent>,
         result_tx: oneshot::Sender<TaskResult>,
     ) -> Self {
@@ -506,7 +505,7 @@ impl VacEngineAdapter {
     #[must_use]
     pub fn with_result_tx(
         engine: Arc<Mutex<VacEngine>>,
-    project_root: std::path::PathBuf,
+        project_root: std::path::PathBuf,
         result_tx: oneshot::Sender<TaskResult>,
     ) -> Self {
         Self {

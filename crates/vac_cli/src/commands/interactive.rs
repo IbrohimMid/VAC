@@ -11,29 +11,40 @@ pub async fn execute(
 ) -> anyhow::Result<()> {
     // Check and confirm sandbox_mode if provided
     if let Some(mode_str) = sandbox_mode {
-        let mode = match mode_str.to_lowercase().as_str() {
-            "read_only" => vac_core::config::UserSandboxMode::ReadOnly,
-            "workspace_write" => vac_core::config::UserSandboxMode::WorkspaceWrite,
-            "danger_full_access" => {
-                println!("⚠️ WARNING: You are requesting DangerFullAccess sandbox mode.");
-                println!("This mode disables execution isolation and allows full shell access.");
-                println!("Are you sure you want to proceed? [y/N]");
-                let mut buf = String::new();
-                let _ = std::io::stdin().read_line(&mut buf);
-                if !buf.trim().eq_ignore_ascii_case("y") {
-                    anyhow::bail!("Aborted by user.");
-                }
-                vac_core::config::UserSandboxMode::DangerFullAccess
+        let mode = vac_core::config::UserSandboxMode::parse_user(&mode_str)
+            .map_err(|e| anyhow::anyhow!("Invalid sandbox_mode: {e}"))?;
+        if mode == vac_core::config::UserSandboxMode::DangerFullAccess {
+            println!("⚠️ WARNING: You are requesting DangerFullAccess sandbox mode.");
+            println!("This mode disables execution isolation and allows full shell access.");
+            println!("Are you sure you want to proceed? [y/N]");
+            let mut buf = String::new();
+            let _ = std::io::stdin().read_line(&mut buf);
+            if !buf.trim().eq_ignore_ascii_case("y") {
+                anyhow::bail!("Aborted by user.");
             }
-            _ => anyhow::bail!("Invalid sandbox_mode. Use read_only, workspace_write, or danger_full_access."),
-        };
+        }
 
         // Update the project's config with the new mode
         let mut config = vac_core::VacConfig::load_with_fallback(&project_root)?;
         config.runtime.sandbox_mode = mode;
         mode.apply_to_runtime(&mut config.runtime);
+        if mode != vac_core::config::UserSandboxMode::DangerFullAccess
+            && config
+                .runtime
+                .container_image
+                .as_deref()
+                .unwrap_or_default()
+                .trim()
+                .is_empty()
+        {
+            anyhow::bail!(
+                "sandbox '{}' requires runtime.container_image to be set before saving .vac/config.toml",
+                mode.as_cli_str()
+            );
+        }
+        config.validate()?;
         vac_core::VacConfig::save(&project_root, &config)?;
-        println!("Sandbox mode set to {:?}", mode);
+        println!("Sandbox mode set to {}", mode.as_cli_str());
     }
     // M9: Detect pending submit and prompt before starting TUI
     if let Ok(Some(session)) = vac_core::session::Session::load_latest(&project_root) {

@@ -17,7 +17,11 @@ pub enum VacAppEvent {
     ShowInitChecklist,
 }
 
-pub fn dispatch_app_event(state: &mut AppState, _output_tx: &Sender<OutputEvent>, event: VacAppEvent) {
+pub fn dispatch_app_event(
+    state: &mut AppState,
+    _output_tx: &Sender<OutputEvent>,
+    event: VacAppEvent,
+) {
     match event {
         VacAppEvent::ShowInitChecklist => {
             crate::overlay::open_overlay(state, crate::overlay::OverlayId::InitChecklist);
@@ -37,4 +41,3 @@ pub fn dispatch_app_event(state: &mut AppState, _output_tx: &Sender<OutputEvent>
         }
     }
 }
-

@@ -222,24 +222,47 @@ pub(super) fn render_confirm_danger_mode(f: &mut Frame, state: &mut AppState) {
     let lines = vec![
         Line::from(Span::styled(
             "⚠️ WARNING: You are requesting DangerFullAccess mode.",
-            state.core.theme.style(StyleKey::Error).add_modifier(ratatui::style::Modifier::BOLD),
+            state
+                .core
+                .theme
+                .style(StyleKey::Error)
+                .add_modifier(ratatui::style::Modifier::BOLD),
         )),
         Line::from(""),
         Line::from("This mode disables execution isolation and allows full shell access."),
         Line::from("Are you sure you want to proceed?"),
         Line::from(""),
         Line::from(vec![
-            Span::styled("[y]", state.core.theme.style(StyleKey::Success).add_modifier(ratatui::style::Modifier::BOLD)),
+            Span::styled(
+                "[y]",
+                state
+                    .core
+                    .theme
+                    .style(StyleKey::Success)
+                    .add_modifier(ratatui::style::Modifier::BOLD),
+            ),
             Span::raw(" Yes, enable danger mode"),
         ]),
         Line::from(vec![
-            Span::styled("[n/Esc]", state.core.theme.style(StyleKey::Muted).add_modifier(ratatui::style::Modifier::BOLD)),
+            Span::styled(
+                "[n/Esc]",
+                state
+                    .core
+                    .theme
+                    .style(StyleKey::Muted)
+                    .add_modifier(ratatui::style::Modifier::BOLD),
+            ),
             Span::raw(" Cancel"),
         ]),
     ];
 
     let p = Paragraph::new(lines)
-        .block(Block::default().borders(Borders::ALL).title("Confirm Danger Mode").border_style(state.core.theme.style(StyleKey::Error)))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Confirm Danger Mode")
+                .border_style(state.core.theme.style(StyleKey::Error)),
+        )
         .wrap(Wrap { trim: true });
 
     f.render_widget(p, area);
@@ -266,20 +289,39 @@ pub(super) fn render_command_palette(f: &mut Frame, state: &mut AppState) {
     );
     f.render_widget(input, chunks[0]);
 
-    let items: Vec<ListItem> = state
-        .command_palette_filtered()
+    let query = state.layout.command_palette.input.trim().to_ascii_lowercase();
+    let filtered: Vec<&crate::app::HelperCommand> = if query.is_empty() {
+        state.layout.commands.iter().collect()
+    } else {
+        state
+            .layout
+            .commands
+            .iter()
+            .filter(|cmd| {
+                cmd.command.to_ascii_lowercase().contains(&query)
+                    || cmd.description.to_ascii_lowercase().contains(&query)
+            })
+            .collect()
+    };
+    state.layout.command_palette.selected = state
+        .layout
+        .command_palette
+        .selected
+        .min(filtered.len().saturating_sub(1));
+
+    let items: Vec<ListItem> = filtered
         .iter()
         .enumerate()
         .map(|(i, cmd)| {
-            let style = if i == state.layout.command_palette.selected_idx {
+            let style = if i == state.layout.command_palette.selected {
                 state.core.theme.style(StyleKey::ListSelected)
             } else {
                 Style::default()
             };
             ListItem::new(Line::from(vec![
-                Span::styled(cmd.command.clone(), style),
+                Span::styled((*cmd).command.clone(), style),
                 Span::styled(
-                    format!("  {}", cmd.description),
+                    format!("  {}", (*cmd).description),
                     state.core.theme.style(StyleKey::Muted),
                 ),
             ]))
@@ -320,30 +362,60 @@ pub(super) fn render_init_checklist(f: &mut Frame, state: &mut AppState) {
     let mut rows = Vec::new();
 
     // 1. Model
-    let model_name = state.operator_config.operator.current_model.as_ref().map(|m| m.name.clone());
+    let model_name = state
+        .operator_config
+        .operator
+        .current_model
+        .as_ref()
+        .map(|m| m.name.clone());
     rows.push(ChecklistRow {
         label: "Model",
         status: if model_name.is_some() { "ok" } else { "!" },
-        status_key: if model_name.is_some() { StyleKey::Success } else { StyleKey::Warning },
-        summary: if let Some(m) = &model_name { format!("model: {}", m) } else { "model not selected".to_string() },
-        detail: if model_name.is_some() { "Use /model to select a provider and model".to_string() } else { "No active model configured. Run /model to select one.".to_string() },
+        status_key: if model_name.is_some() {
+            StyleKey::Success
+        } else {
+            StyleKey::Warning
+        },
+        summary: if let Some(m) = &model_name {
+            format!("model: {}", m)
+        } else {
+            "model not selected".to_string()
+        },
+        detail: if model_name.is_some() {
+            "Use /model to select a provider and model".to_string()
+        } else {
+            "No active model configured. Run /model to select one.".to_string()
+        },
     });
 
     // 2. Sandbox
+    let sandbox_mode = state.core.startup.sandbox_mode;
     rows.push(ChecklistRow {
         label: "Sandbox",
-        status: "ok",
-        status_key: StyleKey::Success,
-        summary: format!("env: {}", state.layout.switchers.active_isolation_mode),
+        status: match sandbox_mode {
+            vac_core::config::UserSandboxMode::ReadOnly => "ok",
+            vac_core::config::UserSandboxMode::WorkspaceWrite => "ok",
+            vac_core::config::UserSandboxMode::DangerFullAccess => "!",
+        },
+        status_key: match sandbox_mode {
+            vac_core::config::UserSandboxMode::ReadOnly => StyleKey::Success,
+            vac_core::config::UserSandboxMode::WorkspaceWrite => StyleKey::Warning,
+            vac_core::config::UserSandboxMode::DangerFullAccess => StyleKey::Error,
+        },
+        summary: format!("sandbox: {}", sandbox_mode.as_cli_str()),
         detail: "Use /sandbox to change isolation mode".to_string(),
     });
 
     // 3. Sessions
-    let sessions_count = state.workspace.sessions.len();
+    let sessions_count = state.session.sessions.len();
     rows.push(ChecklistRow {
         label: "Sessions",
         status: if sessions_count > 0 { "ok" } else { "?" },
-        status_key: if sessions_count > 0 { StyleKey::Success } else { StyleKey::Muted },
+        status_key: if sessions_count > 0 {
+            StyleKey::Success
+        } else {
+            StyleKey::Muted
+        },
         summary: format!("sessions: {} total", sessions_count),
         detail: "Use /sessions to browse past sessions".to_string(),
     });
@@ -351,10 +423,11 @@ pub(super) fn render_init_checklist(f: &mut Frame, state: &mut AppState) {
     // 4. Doctor
     rows.push(ChecklistRow {
         label: "Doctor",
-        status: "ok",
-        status_key: StyleKey::Success,
-        summary: "doctor: Ok".to_string(),
-        detail: "All checks passed".to_string(),
+        status: "?",
+        status_key: StyleKey::Muted,
+        summary: "doctor: not run".to_string(),
+        detail: "Run `vac doctor` in your terminal (or via /shell) to validate the environment"
+            .to_string(),
     });
 
     // 5. MCP
@@ -362,7 +435,11 @@ pub(super) fn render_init_checklist(f: &mut Frame, state: &mut AppState) {
     rows.push(ChecklistRow {
         label: "MCP",
         status: if mcp_count > 0 { "ok" } else { "?" },
-        status_key: if mcp_count > 0 { StyleKey::Success } else { StyleKey::Muted },
+        status_key: if mcp_count > 0 {
+            StyleKey::Success
+        } else {
+            StyleKey::Muted
+        },
         summary: format!("servers: {} connected", mcp_count),
         detail: "Use /mcp to manage context providers".to_string(),
     });
@@ -370,41 +447,56 @@ pub(super) fn render_init_checklist(f: &mut Frame, state: &mut AppState) {
     // 6. Status
     rows.push(ChecklistRow {
         label: "Status",
-        status: "ok",
-        status_key: StyleKey::Success,
-        summary: "System status is nominal".to_string(),
+        status: "?",
+        status_key: StyleKey::Muted,
+        summary: "system status: unknown".to_string(),
         detail: "Use /status for full readiness summary".to_string(),
     });
 
     // 7. Logs
     rows.push(ChecklistRow {
         label: "Logs",
-        status: "ok",
-        status_key: StyleKey::Success,
-        summary: "Activity logs available".to_string(),
-        detail: "Use /logs to view detailed activity".to_string(),
+        status: "?",
+        status_key: StyleKey::Muted,
+        summary: "activity: open workbench".to_string(),
+        detail: "Open the Workbench and use the Activity panel".to_string(),
     });
 
     let height = body_chunks[0].height as usize;
     let total = rows.len();
     let max_scroll = total.saturating_sub(height);
     let scroll = state.layout.init_checklist_scroll.min(max_scroll);
-    state.layout.init_checklist_selected = state.layout.init_checklist_selected.min(total.saturating_sub(1));
+    state.layout.init_checklist_selected = state
+        .layout
+        .init_checklist_selected
+        .min(total.saturating_sub(1));
 
     let mut left: Vec<Line<'static>> = Vec::new();
     for (i, row) in rows.iter().enumerate().skip(scroll).take(height) {
         let is_sel = i == state.layout.init_checklist_selected;
-        
+
         let label_style = if is_sel {
-            state.core.theme.style(StyleKey::OverlaySelected).add_modifier(ratatui::style::Modifier::BOLD)
+            state
+                .core
+                .theme
+                .style(StyleKey::OverlaySelected)
+                .add_modifier(ratatui::style::Modifier::BOLD)
         } else {
             state.core.theme.style(StyleKey::Normal)
         };
-        
+
         let status_style = if is_sel {
-            state.core.theme.style(StyleKey::OverlaySelected).add_modifier(ratatui::style::Modifier::BOLD)
+            state
+                .core
+                .theme
+                .style(StyleKey::OverlaySelected)
+                .add_modifier(ratatui::style::Modifier::BOLD)
         } else {
-            state.core.theme.style(row.status_key).add_modifier(ratatui::style::Modifier::BOLD)
+            state
+                .core
+                .theme
+                .style(row.status_key)
+                .add_modifier(ratatui::style::Modifier::BOLD)
         };
 
         left.push(Line::from(vec![
@@ -420,7 +512,11 @@ pub(super) fn render_init_checklist(f: &mut Frame, state: &mut AppState) {
         let mut lines = vec![
             Line::from(Span::styled(
                 row.label,
-                state.core.theme.style(StyleKey::Normal).add_modifier(ratatui::style::Modifier::BOLD),
+                state
+                    .core
+                    .theme
+                    .style(StyleKey::Normal)
+                    .add_modifier(ratatui::style::Modifier::BOLD),
             )),
             Line::from(Span::styled(
                 format!(" status: {}", row.status),

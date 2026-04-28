@@ -195,6 +195,21 @@ pub(crate) fn push_banner_direct(
 }
 
 pub(crate) fn policy_gate_allows_shell_command(state: &mut AppState, cmd: &str) -> bool {
+    if state
+        .workspace
+        .plan
+        .mode_active
+        .load(std::sync::atomic::Ordering::SeqCst)
+    {
+        push_banner_direct(
+            state,
+            "Plan mode blocks shell execution until plan approved".to_string(),
+            crate::services::banner::BannerStyle::Error,
+            crate::services::banner::BannerSeverity::Blocking,
+        );
+        return false;
+    }
+
     let Ok(config) = vac_core::VacConfig::load_with_fallback(&state.core.project_root) else {
         return true;
     };

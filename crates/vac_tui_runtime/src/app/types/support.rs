@@ -94,7 +94,7 @@ impl Default for StartupSnapshot {
             pending_approvals_count: 0,
             provider_status: "initializing".to_string(),
             queue_depth: 0,
-            sandbox_mode: vac_core::config::UserSandboxMode::ReadOnly,
+            sandbox_mode: vac_core::config::UserSandboxMode::DangerFullAccess,
             kitty_graphics: false,
         }
     }
