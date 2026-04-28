@@ -729,6 +729,7 @@ pub fn handle_backend_event(
 mod tests {
     use super::*;
     use crate::types::{FunctionCall, ToolCall};
+    use uuid::Uuid;
 
     #[test]
     fn run_tool_call_inserts_tool_card_message() {
@@ -753,5 +754,29 @@ mod tests {
         assert!(msg.content.is_empty());
         assert_eq!(msg.tool_calls.as_ref().unwrap().len(), 1);
         assert_eq!(msg.tool_calls.as_ref().unwrap()[0].id, tc.id);
+    }
+
+    #[test]
+    fn stream_assistant_message_appends_chunks() {
+        let mut state = AppState::default();
+        let (tx, _rx) = tokio::sync::mpsc::channel(8);
+        let id = Uuid::new_v4();
+
+        handle_backend_event(
+            &mut state,
+            &tx,
+            InputEvent::StreamAssistantMessage(id, "Hello".to_string()),
+        );
+        handle_backend_event(
+            &mut state,
+            &tx,
+            InputEvent::StreamAssistantMessage(id, " world".to_string()),
+        );
+
+        assert!(state.transcript.streaming.is_streaming);
+        assert_eq!(state.transcript.streaming.message_id, Some(id));
+        assert_eq!(state.transcript.messages.len(), 1);
+        assert_eq!(state.transcript.messages[0].role, "assistant");
+        assert_eq!(state.transcript.messages[0].content, "Hello world");
     }
 }
