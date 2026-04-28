@@ -21,6 +21,7 @@ pub(super) async fn handle_user_message(
     active_update_tx: ActiveUpdateTx,
     msg: String,
     parts: Vec<ContentPart>,
+    plan_active: Arc<std::sync::atomic::AtomicBool>,
 ) {
     let _ = input_tx
         .send(InputEvent::StartLoadingOperation(
@@ -63,11 +64,14 @@ pub(super) async fn handle_user_message(
             .collect();
 
         if image_parts.is_empty() {
-            let _ = super::engine_adapter::run_via_session_engine(
+            let _ = super::engine_adapter::run_via_session_engine_with_broadcast(
                 project_root,
                 engine.clone(),
                 &msg,
                 update_tx,
+                None,
+                None,
+                Some(plan_active.clone()),
             )
             .await;
         } else {

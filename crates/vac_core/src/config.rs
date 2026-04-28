@@ -288,6 +288,16 @@ impl VacConfig {
         Ok(config.resolve_relative_paths(project_root))
     }
 
+    pub fn save(project_root: &Path, config: &Self) -> crate::error::VacResult<()> {
+        let project_config = project_root.join(".vac/config.toml");
+        if let Some(parent) = project_config.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let content = toml::to_string_pretty(config).map_err(|e| crate::error::VacError::Config(e.to_string()))?;
+        std::fs::write(&project_config, content)?;
+        Ok(())
+    }
+
     /// If `vac auth login` saved a Kilo API key (or `KILO_API_KEY` env is set),
     /// auto-register the kilo provider so the Model Switcher exposes it and
     /// the LLM router can resolve credentials without a hand-edited
@@ -555,6 +565,8 @@ pub struct RuntimeConfig {
     /// Enable background task runtime
     #[serde(default)]
     pub enable: bool,
+    #[serde(default)]
+    pub sandbox_mode: UserSandboxMode,
     /// "monitor-only" | "suggest-only" | "patch-proposal" | "auto-fix-low-risk"
     #[serde(default = "default_task_intent_mode", alias = "operating_mode")]
     pub task_intent_mode: String,
@@ -577,6 +589,34 @@ pub struct RuntimeConfig {
     pub network_policy: NetworkPolicy,
     #[serde(default = "default_max_concurrent_jobs")]
     pub max_concurrent_jobs: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum UserSandboxMode {
+    #[default]
+    ReadOnly,
+    WorkspaceWrite,
+    DangerFullAccess,
+}
+
+impl UserSandboxMode {
+    pub fn apply_to_runtime(&self, runtime: &mut RuntimeConfig) {
+        match self {
+            Self::ReadOnly => {
+                runtime.environment_mode = "restricted-offline".to_string();
+                runtime.execution_environment = ExecutionEnvironment::IsolatedBatch;
+            }
+            Self::WorkspaceWrite => {
+                runtime.environment_mode = "isolated".to_string();
+                runtime.execution_environment = ExecutionEnvironment::IsolatedInteractive;
+            }
+            Self::DangerFullAccess => {
+                runtime.environment_mode = "host".to_string();
+                runtime.execution_environment = ExecutionEnvironment::Host;
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -613,6 +653,7 @@ impl Default for RuntimeConfig {
     fn default() -> Self {
         Self {
             enable: false,
+            sandbox_mode: UserSandboxMode::ReadOnly,
             task_intent_mode: default_task_intent_mode(),
             environment_mode: default_environment_mode(),
             execution_environment: ExecutionEnvironment::Host,

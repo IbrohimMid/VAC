@@ -35,13 +35,11 @@ impl Default for SwitchersState {
         Self {
             isolation_selected: 0,
             isolation_modes: vec![
-                "host".to_string(),
-                "isolated".to_string(),
-                "isolated (Rust)".to_string(),
-                "isolated (Node)".to_string(),
-                "isolated (Python)".to_string(),
+                "read-only".to_string(),
+                "workspace-write".to_string(),
+                "danger-full-access".to_string(),
             ],
-            active_isolation_mode: "host".to_string(),
+            active_isolation_mode: "read-only".to_string(),
             profile_selected: 0,
             profile_search: String::new(),
             available_profiles: Vec::new(),

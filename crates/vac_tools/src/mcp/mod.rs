@@ -119,6 +119,12 @@ pub async fn probe_mcp_server(config: &McpServerConfig) -> McpConnectionState {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct McpToolConfig {
+    #[serde(default)]
+    pub approval_mode: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct McpServerConfig {
     pub name: String,
     pub transport: McpTransport,
@@ -132,6 +138,12 @@ pub struct McpServerConfig {
     pub approval_policy: Option<String>,
     #[serde(default)]
     pub allowed_in_modes: Vec<String>,
+    #[serde(default)]
+    pub supports_parallel_tool_calls: Option<bool>,
+    #[serde(default)]
+    pub default_tools_approval_mode: Option<String>,
+    #[serde(default)]
+    pub tools: HashMap<String, McpToolConfig>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -273,6 +285,9 @@ mod tests {
             tls: None,
             approval_policy: None,
             allowed_in_modes: vec![],
+            supports_parallel_tool_calls: None,
+            default_tools_approval_mode: None,
+            tools: HashMap::new(),
         };
         assert_eq!(config.effective_trust_class(), McpTrustClass::LocalTrusted);
     }
@@ -289,6 +304,9 @@ mod tests {
             tls: None,
             approval_policy: None,
             allowed_in_modes: vec![],
+            supports_parallel_tool_calls: None,
+            default_tools_approval_mode: None,
+            tools: HashMap::new(),
         };
         assert_eq!(
             config.effective_trust_class(),

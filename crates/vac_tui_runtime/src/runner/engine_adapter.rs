@@ -61,6 +61,7 @@ async fn shared_registry() -> anyhow::Result<Arc<vac_tools::ToolRegistry>> {
 pub async fn run_via_session_engine(
     project_root: std::path::PathBuf,
     engine: Arc<Mutex<VacEngine>>,
+    project_root: std::path::PathBuf,
     task_description: &str,
     update_tx: tokio::sync::mpsc::UnboundedSender<vac_core::engine::RuntimeUpdate>,
 ) -> anyhow::Result<vac_core::TaskResult> {
@@ -69,6 +70,7 @@ pub async fn run_via_session_engine(
         engine,
         task_description,
         update_tx,
+        None,
         None,
         None,
     )
@@ -85,10 +87,12 @@ pub async fn run_via_session_engine(
 pub async fn run_via_session_engine_with_broadcast(
     project_root: std::path::PathBuf,
     engine: Arc<Mutex<VacEngine>>,
+    project_root: std::path::PathBuf,
     task_description: &str,
     update_tx: tokio::sync::mpsc::UnboundedSender<vac_core::engine::RuntimeUpdate>,
     broadcast: Option<Arc<vac_bridge::remote::SessionBroadcast>>,
     max_budget_tokens: Option<u64>,
+    plan_active: Option<Arc<std::sync::atomic::AtomicBool>>,
 ) -> anyhow::Result<vac_core::TaskResult> {
     use futures::StreamExt;
     use vac_session_engine::{
@@ -140,7 +144,7 @@ pub async fn run_via_session_engine_with_broadcast(
     let policy_tracker =
         std::sync::Arc::new(vac_core::policy_limits::PolicyTracker::new(policy_limits));
     let gate =
-        super::dispatcher::build_live_gate_with(&project_root, Some(policy_tracker), None).await?;
+        super::dispatcher::build_live_gate_with(&project_root, Some(policy_tracker), plan_active).await?;
 
     // B4 + H1 audit fix: build the agent dispatcher with a
     // `compact_cfg` that carries the parent's dispatcher + gate so
@@ -198,8 +202,13 @@ pub async fn run_via_session_engine_with_broadcast(
     // created_files / elapsed_ms) back to this function. Without
     // this the post-NS.2 path synthesized an empty TaskResult and
     // the TUI's changeset / review pane was silently blank.
+    let (adapter_tx, mut adapter_rx) = mpsc::unbounded_channel::<SubmitEvent>();
     let (result_tx, result_rx) = oneshot::channel::<TaskResult>();
-    let adapter = Arc::new(VacEngineAdapter::with_result_tx(engine.clone(), result_tx));
+    let adapter = Arc::new(VacEngineAdapter::with_forward_and_result_tx(
+        engine.clone(),
+        adapter_tx,
+        result_tx,
+    ));
     let submit_ctx = SubmitContext::new(session_id, task_description.to_string());
 
     let mut stream = submit_stream(
@@ -223,29 +232,69 @@ pub async fn run_via_session_engine_with_broadcast(
     // of truth. Double-signalling (Failed event + Err result) made
     // the TUI render the abort twice.
     let mut aborted: Option<String> = None;
-    while let Some(chunk) = stream.next().await {
-        // B5: fan the raw chunk out to any teleport attach clients
-        // before translation. Remote attachees see the session as
-        // it streams, independent of the TUI's consumption.
+    loop {
+        tokio::select! {
+            Some(ev) = adapter_rx.recv() => {
+                let chunk = SubmitChunk::from(ev);
+                if let Some(bc) = &broadcast {
+                    if let Some(ev) = chunk_to_outbound(&chunk) {
+                        bc.publish(ev);
+                    }
+                }
+                if let Some(rt) = chunk_to_runtime_update(chunk) {
+                    let _ = update_tx.send(rt);
+                }
+            }
+            chunk_opt = stream.next() => {
+                match chunk_opt {
+                    Some(chunk) => {
+                        match &chunk {
+                            SubmitChunk::Finished { usage: snap } => {
+                                vac_session_engine::notify_hooks::fire_notification_hook(project_root.clone(), vac_session_engine::HookEvent::TurnFinished, None);
+                                total_tokens = snap.total_tokens() as u64;
+                            }
+                            SubmitChunk::Aborted { reason } => {
+                                vac_session_engine::notify_hooks::fire_notification_hook(project_root.clone(), vac_session_engine::HookEvent::TaskFailed, Some(reason.clone()));
+                                aborted = Some(reason.clone());
+                                continue; // skip forwarding — Err below carries it
+                            }
+                            SubmitChunk::LlmRequested { .. }
+                            | SubmitChunk::TextDelta { .. }
+                            | SubmitChunk::ToolRequested { .. }
+                            | SubmitChunk::ToolResult { .. } => {
+                                // Skip redundant chunks the adapter already streamed in real-time
+                                continue;
+                            }
+                            _ => {}
+                        }
+                        if let Some(bc) = &broadcast {
+                            if let Some(ev) = chunk_to_outbound(&chunk) {
+                                bc.publish(ev);
+                            }
+                        }
+                        if let Some(rt) = chunk_to_runtime_update(chunk) {
+                            let _ = update_tx.send(rt);
+                        }
+                    }
+                    None => break,
+                }
+            }
+        }
+    }
+
+    // Drain any remaining adapter events
+    while let Ok(ev) = adapter_rx.try_recv() {
+        let chunk = SubmitChunk::from(ev);
         if let Some(bc) = &broadcast {
             if let Some(ev) = chunk_to_outbound(&chunk) {
                 bc.publish(ev);
             }
         }
-        match &chunk {
-            SubmitChunk::Finished { usage: snap } => {
-                total_tokens = snap.total_tokens() as u64;
-            }
-            SubmitChunk::Aborted { reason } => {
-                aborted = Some(reason.clone());
-                continue; // skip forwarding — Err below carries it
-            }
-            _ => {}
-        }
         if let Some(rt) = chunk_to_runtime_update(chunk) {
             let _ = update_tx.send(rt);
         }
     }
+
     if let Some(reason) = aborted {
         return Err(anyhow::anyhow!("submit aborted: {reason}"));
     }
@@ -344,6 +393,7 @@ fn chunk_to_outbound(chunk: &SubmitChunk) -> Option<vac_bridge::remote::Outbound
             serde_json::json!({ "total_tokens": usage.total_tokens() }),
         ),
         SubmitChunk::Aborted { reason } => {
+                                vac_session_engine::notify_hooks::fire_notification_hook(project_root.clone(), vac_session_engine::HookEvent::TaskFailed, Some(reason.clone()));
             OutboundEvent::new("aborted", serde_json::json!({ "reason": reason }))
         }
         _ => return None,
@@ -400,6 +450,7 @@ fn chunk_to_runtime_update(chunk: SubmitChunk) -> Option<RuntimeUpdate> {
 /// channel — pass a clone of the same sender `submit_one` receives.
 pub struct VacEngineAdapter {
     engine: Arc<Mutex<VacEngine>>,
+    project_root: std::path::PathBuf,
     event_forward: Option<mpsc::UnboundedSender<SubmitEvent>>,
     // B1 audit fix: oneshot for handing the real TaskResult back
     // to the caller of `run_via_session_engine`. Wrapped in
@@ -410,9 +461,10 @@ pub struct VacEngineAdapter {
 
 impl VacEngineAdapter {
     #[must_use]
-    pub fn new(engine: Arc<Mutex<VacEngine>>) -> Self {
+    pub fn new(engine: Arc<Mutex<VacEngine>>, project_root: std::path::PathBuf) -> Self {
         Self {
             engine,
+            project_root,
             event_forward: None,
             result_tx: Arc::new(Mutex::new(None)),
         }
@@ -421,12 +473,29 @@ impl VacEngineAdapter {
     #[must_use]
     pub fn with_event_forward(
         engine: Arc<Mutex<VacEngine>>,
+    project_root: std::path::PathBuf,
         tx: mpsc::UnboundedSender<SubmitEvent>,
     ) -> Self {
         Self {
             engine,
+            project_root,
             event_forward: Some(tx),
             result_tx: Arc::new(Mutex::new(None)),
+        }
+    }
+
+    #[must_use]
+    pub fn with_forward_and_result_tx(
+        engine: Arc<Mutex<VacEngine>>,
+    project_root: std::path::PathBuf,
+        tx: mpsc::UnboundedSender<SubmitEvent>,
+        result_tx: oneshot::Sender<TaskResult>,
+    ) -> Self {
+        Self {
+            engine,
+            project_root,
+            event_forward: Some(tx),
+            result_tx: Arc::new(Mutex::new(Some(result_tx))),
         }
     }
 
@@ -437,10 +506,12 @@ impl VacEngineAdapter {
     #[must_use]
     pub fn with_result_tx(
         engine: Arc<Mutex<VacEngine>>,
+    project_root: std::path::PathBuf,
         result_tx: oneshot::Sender<TaskResult>,
     ) -> Self {
         Self {
             engine,
+            project_root,
             event_forward: None,
             result_tx: Arc::new(Mutex::new(Some(result_tx))),
         }

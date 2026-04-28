@@ -1,0 +1,13 @@
+- [x] Dokumentasi competitive blueprint dan status tracking (`CODEX_TUI_DONOR_MAP.md`, `CODEX_PARITY_BLUEPRINT.md`, `C_TRACK_STATUS.md`) telah dibuat.
+- [x] CLI `vac chat`, `vac exec`, dan `vac sandbox` berjalan dan memiliki fungsi alias yang benar.
+- [x] TUI `/init` menampilkan readiness checklist (Model, Sandbox, Sessions, dll).
+- [x] Sandbox UX normalization (ReadOnly, WorkspaceWrite, DangerFullAccess) tersedia di CLI dan TUI.
+- [x] Layer `VacAppEvent` disisipkan di TUI runtime tanpa merusak handler utama.
+- [x] Minimal layer `VacHistoryCell` diimplementasikan dan merender tool call / error.
+- [x] Assistant text stream dan tool call render secara inkremental tanpa menunggu completion.
+- [x] Plan Mode memblokir akses ke write/shell tool jika aktif.
+- [x] Todo checklist tampil langsung di conversation lane.
+- [x] Command `/resume`, `/fork`, `/sessions` merespons dengan benar.
+- [x] Command `/review` atau `/diff` menampilkan overlay file diff yang dimodifikasi.
+- [x] Konfigurasi MCP inventory approval mode dapat dibaca dan dimunculkan informasinya.
+- [x] Hook notifikasi (turn_finished, dsb) didokumentasikan dan berjalan secara async tanpa memblokir TUI.

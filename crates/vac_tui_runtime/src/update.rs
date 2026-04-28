@@ -60,6 +60,7 @@ pub fn flush_pending_user_messages_if_idle(
         merged.shell_tool_calls.clone(),
         merged.image_parts.clone(),
         revert_index,
+        state.workspace.plan.mode_active.clone(),
     )) {
         Ok(()) => {
             // Reset flush retries on success
@@ -514,6 +515,11 @@ pub fn handle_backend_event(
             state.core.theme = theme;
         }
         InputEvent::StartupHydrated(snapshot) => {
+            state.layout.switchers.active_isolation_mode = match snapshot.sandbox_mode {
+                vac_core::config::UserSandboxMode::ReadOnly => "read-only".to_string(),
+                vac_core::config::UserSandboxMode::WorkspaceWrite => "workspace-write".to_string(),
+                vac_core::config::UserSandboxMode::DangerFullAccess => "danger-full-access".to_string(),
+            };
             state.core.startup = snapshot;
             state.core.hydrated = true;
         }

@@ -69,6 +69,7 @@ pub struct StartupSnapshot {
     pub pending_approvals_count: usize,
     pub provider_status: String,
     pub queue_depth: usize,
+    pub sandbox_mode: vac_core::config::UserSandboxMode,
     /// Whether the terminal answered the Kitty graphics capability probe
     /// positively. Populated at startup by `event_loop::run_tui` before
     /// the first render. False when the terminal is not a TTY, when the
@@ -93,6 +94,7 @@ impl Default for StartupSnapshot {
             pending_approvals_count: 0,
             provider_status: "initializing".to_string(),
             queue_depth: 0,
+            sandbox_mode: vac_core::config::UserSandboxMode::ReadOnly,
             kitty_graphics: false,
         }
     }

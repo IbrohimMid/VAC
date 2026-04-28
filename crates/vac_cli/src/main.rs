@@ -11,8 +11,8 @@ use std::path::PathBuf;
 
 const VAC_AFTER_HELP: &str = "\
 Command groups:
-  Run:             run, interactive, autopilot, resume
-  Config:          config, auth, rulebook, isolation, migrate, doctor
+  Run:             run, exec, interactive, autopilot, resume
+  Config:          config, auth, rulebook, isolation, sandbox, migrate, doctor
   Trace & Export:  export, import, observe, explain, why, status
   Interop:         acp, mcp
   VIL Tooling:     init, vil, runtime, restore
@@ -67,11 +67,26 @@ enum Commands {
         #[arg(long)]
         backend: Option<String>,
     },
-    /// Interactive REPL mode
+    /// Execute a command (Codex-grade CLI grammar)
     #[command(next_help_heading = "Run")]
+    Exec {
+        /// The prompt to execute
+        prompt: String,
+        /// Ephemeral run (disables trajectory)
+        #[arg(long)]
+        ephemeral: bool,
+        /// Run in a sandbox
+        #[arg(long)]
+        sandbox: bool,
+    },
+    /// Interactive REPL mode
+    #[command(next_help_heading = "Run", visible_alias = "chat")]
     Interactive {
         #[arg(long)]
         resume: bool,
+        /// Explicitly set the user sandbox mode: read_only, workspace_write, or danger_full_access.
+        #[arg(long)]
+        sandbox_mode: Option<String>,
         /// Record all user input to a JSONL file under <dir> for later replay (PR-T18).
         #[arg(long, value_name = "DIR")]
         record: Option<PathBuf>,
@@ -161,6 +176,12 @@ enum Commands {
     /// Migrate .vac/ schema to the latest version
     #[command(next_help_heading = "Config")]
     Migrate,
+    /// Sandbox management (Codex-grade CLI grammar)
+    #[command(next_help_heading = "Config")]
+    Sandbox {
+        #[command(subcommand)]
+        action: SandboxAction,
+    },
     /// Check VAC subsystem readiness
     #[command(next_help_heading = "Config")]
     Doctor {
@@ -529,6 +550,14 @@ enum RuntimeAction {
 }
 
 #[derive(Subcommand)]
+enum SandboxAction {
+    /// Show sandbox status
+    Status,
+    /// Run diagnostics for the sandbox environment
+    Doctor,
+}
+
+#[derive(Subcommand)]
 enum IsolationAction {
     /// Show effective isolation configuration
     Status,
@@ -686,12 +715,40 @@ async fn main() -> anyhow::Result<()> {
                         )
                         .await?;
                     }
+                    Commands::Exec {
+                        prompt,
+                        ephemeral,
+                        sandbox,
+                    } => {
+                        // C-TRACK Blueprint: Use existing run/session-run path
+                        // Map `exec` to `session-run` internally.
+                        let docker_image = if sandbox {
+                            Some("default".to_string())
+                        } else {
+                            None
+                        };
+                        let opts = commands::session::SessionRunOptions {
+                            input: prompt,
+                            provider: commands::session::ProviderKind::Mock,
+                            trajectory: !ephemeral,
+                            docker_image,
+                        };
+                        commands::session::execute(project_root, opts).await?
+                    }
                     Commands::Interactive {
                         resume,
+                        sandbox_mode,
                         record,
                         replay,
                     } => {
-                        commands::interactive::execute(project_root, resume, record, replay).await?
+                        commands::interactive::execute(
+                            project_root,
+                            resume,
+                            sandbox_mode,
+                            record,
+                            replay,
+                        )
+                        .await?
                     }
                     Commands::Assistant { session } => {
                         commands::assistant::execute(project_root, session).await?
@@ -935,6 +992,14 @@ async fn main() -> anyhow::Result<()> {
                             commands::isolation::execute_clear_logs(project_root).await?
                         }
                         IsolationAction::Doctor => {
+                            commands::isolation::execute_doctor(project_root, &cli.format).await?
+                        }
+                    },
+                    Commands::Sandbox { action } => match action {
+                        SandboxAction::Status => {
+                            commands::isolation::execute_status(project_root, &cli.format).await?
+                        }
+                        SandboxAction::Doctor => {
                             commands::isolation::execute_doctor(project_root, &cli.format).await?
                         }
                     },

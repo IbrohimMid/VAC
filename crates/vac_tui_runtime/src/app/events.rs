@@ -176,6 +176,9 @@ pub enum InputEvent {
     /// T14: vil dev runner events routed from the background spawn bridge.
     VilDevEvent(crate::services::vil_dev_runner::RunnerEvent),
 
+    // C4 AppEvent-style dispatcher scaffold
+    AppEvent(crate::app_event::VacAppEvent),
+
     // Raw Crossterm event mapped dynamically
     CrosstermEvent(crossterm::event::Event),
 }
@@ -226,6 +229,7 @@ pub enum OutputEvent {
         Option<Vec<ToolCallResult>>,
         Vec<ContentPart>,
         Option<usize>,
+        std::sync::Arc<std::sync::atomic::AtomicBool>,
     ),
     AcceptTool(ToolCall),
     RejectTool(ToolCall, bool, Option<String>),

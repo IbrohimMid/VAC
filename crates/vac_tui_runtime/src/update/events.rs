@@ -298,6 +298,23 @@ pub fn on_tool_result(state: &mut AppState, result: crate::types::ToolCallResult
             );
         }
     }
+    if result.status == crate::types::ToolCallResultStatus::Success {
+        let name = result.call.function.name.as_str();
+        if name == "enter_plan_mode" {
+            state
+                .workspace
+                .plan
+                .mode_active
+                .store(true, std::sync::atomic::Ordering::SeqCst);
+        } else if name == "exit_plan_mode" {
+            state
+                .workspace
+                .plan
+                .mode_active
+                .store(false, std::sync::atomic::Ordering::SeqCst);
+        }
+    }
+
     state.add_assistant_message(result.result);
     state.push_activity(
         crate::app::ActivityKind::Tool,
@@ -310,5 +327,40 @@ pub fn on_tool_result(state: &mut AppState, result: crate::types::ToolCallResult
             crate::types::ToolCallResultStatus::Pending => "pending",
         };
         state.push_vil_log(format!("tool {status} {}", result.call.function.name));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::AppState;
+    use crate::types::{FunctionCall, ToolCall, ToolCallResult, ToolCallResultStatus};
+
+    #[test]
+    fn test_on_tool_result_updates_plan_mode() {
+        let mut state = AppState::default();
+        assert!(!state.workspace.plan.mode_active.load(std::sync::atomic::Ordering::SeqCst));
+
+        let mut result = ToolCallResult {
+            call: ToolCall {
+                id: "1".into(),
+                r#type: "function".into(),
+                function: FunctionCall {
+                    name: "enter_plan_mode".into(),
+                    arguments: "{}".into(),
+                },
+                metadata: None,
+            },
+            result: "entered".into(),
+            status: ToolCallResultStatus::Success,
+            envelope: None,
+        };
+
+        on_tool_result(&mut state, result.clone());
+        assert!(state.workspace.plan.mode_active.load(std::sync::atomic::Ordering::SeqCst));
+
+        result.call.function.name = "exit_plan_mode".into();
+        on_tool_result(&mut state, result);
+        assert!(!state.workspace.plan.mode_active.load(std::sync::atomic::Ordering::SeqCst));
     }
 }

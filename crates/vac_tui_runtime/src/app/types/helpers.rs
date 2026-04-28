@@ -76,6 +76,8 @@ impl AppState {
                 ask_user: AskUserState::default(),
                 elicitation: None,
                 input_area: None,
+                init_checklist_selected: 0,
+                init_checklist_scroll: 0,
             },
             composer: super::ComposerState {
                 input: TextArea::new(),
@@ -324,7 +326,7 @@ impl AppState {
     pub fn review_sync_items(&mut self) {
         let session_id = uuid::Uuid::parse_str(&self.session.session_id).ok();
         // Use changeset_store as primary source - active entries only
-        let active_paths: std::collections::HashSet<String> = self
+        let mut active_paths: std::collections::HashSet<String> = self
             .workspace
             .changeset_store
             .active_entries()
@@ -332,16 +334,33 @@ impl AppState {
             .map(|e| e.path.clone())
             .collect();
 
+        // Also discover modified files from git
+        if let Ok(output) = std::process::Command::new("git")
+            .current_dir(&self.core.project_root)
+            .arg("status")
+            .arg("--porcelain")
+            .output()
+        {
+            if output.status.success() {
+                let paths = String::from_utf8_lossy(&output.stdout);
+                for line in paths.lines() {
+                    if line.len() > 3 {
+                        let path = line[3..].trim().to_string();
+                        active_paths.insert(path);
+                    }
+                }
+            }
+        }
+
         self.workspace
             .review
             .items
             .retain(|k, v| active_paths.contains(k) || v.status != ReviewItemStatus::Pending);
 
-        for entry in self.workspace.changeset_store.active_entries() {
-            let path = &entry.path;
+        for path in active_paths {
             let has_snapshot = session_id
                 .map(|sid| {
-                    crate::services::review::snapshot_path(&self.core.project_root, sid, path)
+                    crate::services::review::snapshot_path(&self.core.project_root, sid, &path)
                         .exists()
                 })
                 .unwrap_or(false);

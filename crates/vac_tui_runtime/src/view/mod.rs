@@ -144,6 +144,14 @@ pub fn view(f: &mut Frame, state: &mut AppState) {
     if state
         .layout
         .overlay_manager
+        .is_active(crate::overlay::OverlayId::InitChecklist)
+    {
+        overlays::render_init_checklist(f, state);
+    }
+
+    if state
+        .layout
+        .overlay_manager
         .is_active(crate::overlay::OverlayId::Shortcuts)
     {
         overlays::render_shortcuts(f, state);
@@ -179,6 +187,14 @@ pub fn view(f: &mut Frame, state: &mut AppState) {
         .is_active(crate::overlay::OverlayId::MessageAction)
     {
         crate::services::message_action_popup::render_message_action_popup(f, state);
+    }
+
+    if state
+        .layout
+        .overlay_manager
+        .is_active(crate::overlay::OverlayId::ConfirmDangerMode)
+    {
+        overlays::render_confirm_danger_mode(f, state);
     }
 
     if state

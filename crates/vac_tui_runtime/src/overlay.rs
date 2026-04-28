@@ -10,6 +10,7 @@ use crate::app::{AppState, WorkspaceFocus};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum OverlayId {
     CommandPalette,
+    InitChecklist,
     Shortcuts,
     IsolationSwitcher,
     ProfileSwitcher,
@@ -45,6 +46,7 @@ pub enum OverlayId {
     /// The prompt + oneshot sender live on
     /// `AppState.layout.elicitation`.
     Elicitation,
+    ConfirmDangerMode,
 }
 
 /// Render order (lower index = rendered first = underneath).
@@ -58,11 +60,13 @@ const RENDER_ORDER: &[OverlayId] = &[
     OverlayId::ModelSwitcher,
     OverlayId::MessageAction,
     OverlayId::IsolationSwitcher,
+    OverlayId::ConfirmDangerMode,
     OverlayId::ProfileSwitcher,
     OverlayId::RulebookSwitcher,
     OverlayId::AskUser,
     OverlayId::Elicitation,
     OverlayId::ContextInspector,
+    OverlayId::InitChecklist,
     OverlayId::Shortcuts,
     OverlayId::CommandPalette,
     OverlayId::HelperDropdown,
@@ -234,7 +238,8 @@ fn sync_domain_state(state: &mut AppState, id: OverlayId, value: bool) {
         | OverlayId::ThemePicker
         | OverlayId::SessionResume
         | OverlayId::FilePicker
-        | OverlayId::ContextInspector => {}
+        | OverlayId::ContextInspector
+        | OverlayId::ConfirmDangerMode => {}
     }
 }
 

@@ -72,6 +72,32 @@ vac autopilot down
 Jika `runtime.execution_environment` diset ke mode isolated, `vac runtime start` dan `vac autopilot up` akan membungkus eksekusi melalui container runtime yang dikonfigurasi.
 Jika `execution_environment = "isolated_interactive"`, `/shell` di TUI juga akan dijalankan melalui container runtime yang sama. `isolated_batch` menolak shell operator interaktif.
 
+## MCP Tool Approval & Parallelism
+
+`[[mcp_servers]]` mendukung konfigurasi tool approval dan paralelisme. Anda dapat mengatur persetujuan secara global per-server atau secara spesifik per-tool.
+
+Contoh konfigurasi:
+
+```toml
+[[mcp_servers]]
+name = "my-tools"
+transport.type = "stdio"
+transport.command = "my-tool-server"
+
+# Izinkan / larang paralel tool calls untuk server ini
+supports_parallel_tool_calls = false
+
+# Mode approval default untuk semua tool di server ini ("prompt", "approve", "deny")
+default_tools_approval_mode = "prompt"
+
+# Override spesifik per-tool
+[mcp_servers.tools.sensitive_tool]
+approval_mode = "prompt"
+
+[mcp_servers.tools.safe_tool]
+approval_mode = "approve"
+```
+
 ## MCP Trust Classes
 
 `[[mcp_servers]]` sekarang mendukung:

@@ -66,6 +66,18 @@ pub fn list(project_root: &Path) -> Result<()> {
             println!("    Approval policy: {}", policy);
         }
 
+        if let Some(parallel) = server.supports_parallel_tool_calls {
+            println!("    Supports parallel tools: {}", parallel);
+        }
+
+        if let Some(default_mode) = &server.default_tools_approval_mode {
+            println!("    Default tools approval mode: {}", default_mode);
+        }
+
+        if !server.tools.is_empty() {
+            println!("    Tool overrides: {} configured", server.tools.len());
+        }
+
         if !server.allowed_in_modes.is_empty() {
             println!(
                 "    Allowed in modes: {}",
@@ -162,6 +174,16 @@ pub async fn status(project_root: &Path) -> Result<()> {
         println!("    {} [{}]", server.name, status_badge);
         if let vac_tools::mcp::McpConnectionStatus::Unreachable(reason) = state.status {
             println!("      Reason: {}", reason);
+        }
+
+        if let Some(parallel) = server.supports_parallel_tool_calls {
+            println!("      Parallel tool calls: {}", parallel);
+        }
+        if let Some(mode) = &server.default_tools_approval_mode {
+            println!("      Default tool approval mode: {}", mode);
+        }
+        if !server.tools.is_empty() {
+            println!("      Tools overridden: {}", server.tools.len());
         }
     }
 

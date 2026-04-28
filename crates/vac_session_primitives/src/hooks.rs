@@ -1,7 +1,7 @@
 //! C.5 — hook registry storage (9 events × 4 command types).
 //!
 //! Operator-configured hooks under `<project_root>/.vac/hooks.json`.
-//! Each hook declares an `event` (PreToolUse, PostToolUse, etc.),
+//! Each hook declares an `event` (PreToolUse, PostToolUse, TurnFinished, ApprovalRequired, TaskFailed, etc.),
 //! a `matcher` (tool-name regex), and a `command` kind (shell /
 //! prompt / agent / http). Event names match CC's `HOOK_EVENTS`
 //! enum so operators can port hook configs between ecosystems.
@@ -39,6 +39,12 @@ pub enum HookEvent {
     SessionStart,
     SessionEnd,
     PreCompact,
+    /// C12: Emitted when an agent turn finishes.
+    TurnFinished,
+    /// C12: Emitted when a tool requires human approval (payload redacted to tool name).
+    ApprovalRequired,
+    /// C12: Emitted when the overall task fails (payload carries safe reason).
+    TaskFailed,
 }
 
 /// Four hook command kinds.
@@ -198,6 +204,8 @@ impl Default for HookSandbox {
                 "USER".into(),
                 "LOGNAME".into(),
                 "TZ".into(),
+                "VAC_HOOK_EVENT".into(),
+                "VAC_HOOK_PAYLOAD".into(),
             ]),
             mem_bytes: 512 * 1024 * 1024,
             cpu_secs: 10,
@@ -370,6 +378,7 @@ pub fn validate_hook_store(store: &HookStore) -> EngineResult<()> {
 pub async fn exec_hook_sandboxed(
     entry: &HookEntry,
     sandbox: &HookSandbox,
+    extra_env: Option<std::collections::HashMap<String, String>>,
 ) -> EngineResult<HookDecision> {
     match &entry.command {
         HookCommand::Command { argv } => {
@@ -390,6 +399,17 @@ pub async fn exec_hook_sandboxed(
                     if let Ok(val) = std::env::var(key) {
                         cmd.env(key, val);
                     }
+                }
+                if let Some(ref extra) = extra_env {
+                    for (k, v) in extra {
+                        if allow.contains(k) {
+                            cmd.env(k, v);
+                        }
+                    }
+                }
+            } else if let Some(ref extra) = extra_env {
+                for (k, v) in extra {
+                    cmd.env(k, v);
                 }
             }
 
@@ -626,7 +646,7 @@ mod tests {
             wall_clock: std::time::Duration::from_millis(300),
             ..HookSandbox::permissive()
         };
-        let decision = exec_hook_sandboxed(&e, &sandbox).await.unwrap();
+        let decision = exec_hook_sandboxed(&e, &sandbox, None).await.unwrap();
         match decision {
             HookDecision::Deny { reason } => {
                 assert!(reason.contains("wall-clock"), "{reason}");
@@ -663,7 +683,7 @@ mod tests {
             cpu_secs: 0,
             nofile: 0,
         };
-        let decision = exec_hook_sandboxed(&e, &sandbox).await.unwrap();
+        let decision = exec_hook_sandboxed(&e, &sandbox, None).await.unwrap();
         assert!(matches!(decision, HookDecision::Allow), "{decision:?}");
     }
 
@@ -709,7 +729,7 @@ mod tests {
             },
             description: String::new(),
         };
-        let d = exec_hook_sandboxed(&e, &HookSandbox::permissive())
+        let d = exec_hook_sandboxed(&e, &HookSandbox::permissive(), None)
             .await
             .unwrap();
         match d {
@@ -733,7 +753,7 @@ mod tests {
             },
             description: String::new(),
         };
-        let d = exec_hook_sandboxed(&e, &HookSandbox::permissive())
+        let d = exec_hook_sandboxed(&e, &HookSandbox::permissive(), None)
             .await
             .unwrap();
         match d {
@@ -755,7 +775,7 @@ mod tests {
             },
             description: String::new(),
         };
-        let d = exec_hook_sandboxed(&e, &HookSandbox::permissive())
+        let d = exec_hook_sandboxed(&e, &HookSandbox::permissive(), None)
             .await
             .unwrap();
         match d {

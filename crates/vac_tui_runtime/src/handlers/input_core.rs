@@ -45,6 +45,12 @@ pub fn handle_input_event(
         return;
     }
 
+    // Stage 1.5: AppEvent dispatcher (C4 scaffold)
+    if let InputEvent::AppEvent(ev) = event {
+        crate::app_event::dispatch_app_event(state, output_tx, ev);
+        return;
+    }
+
     // Stage 2: Global events (not focus-dependent).
     if handle_global(state, output_tx, &event) {
         return;

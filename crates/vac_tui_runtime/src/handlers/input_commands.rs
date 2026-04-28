@@ -205,12 +205,19 @@ fn dispatch_action(
 ) {
     use crate::action_registry::ActionId;
     match id {
+        ActionId::Init => {
+            crate::app_event::dispatch_app_event(
+                state,
+                output_tx,
+                crate::app_event::VacAppEvent::ShowInitChecklist,
+            );
+        }
         ActionId::Clear => {
-            state.transcript.messages.clear();
-            state
-                .transcript
-                .messages
-                .extend(crate::services::helper_block::welcome_messages(None, state));
+            crate::app_event::dispatch_app_event(
+                state,
+                output_tx,
+                crate::app_event::VacAppEvent::ClearUi,
+            );
         }
         ActionId::Sessions => {
             state.layout.workbench_tab = crate::app::WorkbenchTab::Sessions;
@@ -464,6 +471,19 @@ fn dispatch_action(
             state.execution.task_tray.scroll = 0;
             let _ = output_tx.try_send(crate::app::OutputEvent::ListRuntimeJobs);
             crate::overlay::open_overlay(state, crate::overlay::OverlayId::TaskTray);
+        }
+        ActionId::OpenSessionResume => {
+            state.layout.session_resume.query.clear();
+            state.layout.session_resume.selected = 0;
+            state.layout.session_resume.filtered_indices.clear();
+            state.layout.session_resume.date_filter_days = Some(7);
+            let _ = output_tx.try_send(crate::app::OutputEvent::LoadSessionResumeList);
+            crate::overlay::open_overlay(state, crate::overlay::OverlayId::SessionResume);
+        }
+        ActionId::ForkSession => {
+            // Not yet supported scaffold
+            state.add_user_message(trimmed.to_string());
+            state.add_assistant_message("Fork is not yet supported. A full fork duplicates current session metadata/transcript reference enough to continue safely. For now, this is just a scaffold.".to_string());
         }
         ActionId::OpenThemePicker => {
             state.operator_config.operator.theme_picker_selected = 0;

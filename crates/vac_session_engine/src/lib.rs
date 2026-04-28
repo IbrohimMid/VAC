@@ -37,6 +37,7 @@ pub mod fork;
 pub mod gate;
 pub mod hooks_gate;
 pub mod llm;
+pub mod notify_hooks;
 pub mod schedule;
 pub mod slash;
 pub mod stream;

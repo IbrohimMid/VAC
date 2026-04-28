@@ -185,6 +185,8 @@ pub struct LayoutState {
     /// `view::workbench::render_workspace`; `None` until first
     /// frame lands.
     pub input_area: Option<ratatui::layout::Rect>,
+    pub init_checklist_selected: usize,
+    pub init_checklist_scroll: usize,
 }
 
 impl Default for LayoutState {

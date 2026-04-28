@@ -67,6 +67,10 @@ pub fn dispatch_popup_event(
             let _ = isolation_switcher::handle_event(&mut ctx, event);
             true
         }
+        Some(OverlayId::ConfirmDangerMode) => {
+            misc_overlays::handle_confirm_danger_mode(state, output_tx, event);
+            true
+        }
         Some(OverlayId::ProfileSwitcher) => {
             handle_profile_switcher(state, output_tx, event);
             true
@@ -94,6 +98,10 @@ pub fn dispatch_popup_event(
         }
         Some(OverlayId::ReviewPane) => {
             handle_review_pane(state, output_tx, event);
+            true
+        }
+        Some(OverlayId::InitChecklist) => {
+            misc_overlays::handle_init_checklist(state, output_tx, event);
             true
         }
         Some(OverlayId::ShellPopup) => {

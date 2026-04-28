@@ -206,6 +206,7 @@ pub fn action_id_from_name(name: &str) -> Option<ActionId> {
         "OpenTaskTray" => ActionId::OpenTaskTray,
         "OpenThemePicker" => ActionId::OpenThemePicker,
         "OpenSessionResume" => ActionId::OpenSessionResume,
+        "ForkSession" => ActionId::ForkSession,
         "OpenFilePicker" => ActionId::OpenFilePicker,
         _ => return None,
     })

@@ -77,6 +77,47 @@ pub fn handle_file_changes(
 }
 
 /// Handle helper dropdown (inline helper command suggestions).
+/// Handle Init Checklist overlay interactions.
+pub fn handle_init_checklist(
+    state: &mut AppState,
+    output_tx: &Sender<OutputEvent>,
+    event: InputEvent,
+) {
+    let total_rows = 7; // Hardcoded length for now based on render rows
+    match event {
+        InputEvent::HandleEsc => {
+            crate::overlay::close_overlay(state, OverlayId::InitChecklist);
+        }
+        InputEvent::Up | InputEvent::ScrollUp => {
+            state.layout.init_checklist_selected = state.layout.init_checklist_selected.saturating_sub(1);
+            if state.layout.init_checklist_selected < state.layout.init_checklist_scroll {
+                state.layout.init_checklist_scroll = state.layout.init_checklist_selected;
+            }
+        }
+        InputEvent::Down | InputEvent::ScrollDown => {
+            state.layout.init_checklist_selected = (state.layout.init_checklist_selected + 1).min(total_rows.saturating_sub(1));
+        }
+        InputEvent::InputSubmitted => {
+            // Depending on the selected row, dispatch commands
+            let cmd = match state.layout.init_checklist_selected {
+                0 => Some("/model"),
+                1 => Some("/sandbox"),
+                2 => Some("/sessions"),
+                3 => Some("/doctor"),
+                4 => Some("/mcp"),
+                5 => Some("/status"),
+                6 => Some("/logs"),
+                _ => None,
+            };
+            if let Some(c) = cmd {
+                crate::handlers::input_commands::dispatch_builtin_command(state, output_tx, c, None);
+            }
+            crate::overlay::close_overlay(state, OverlayId::InitChecklist);
+        }
+        _ => {}
+    }
+}
+
 pub fn handle_helper_dropdown(
     state: &mut AppState,
     output_tx: &Sender<OutputEvent>,
@@ -411,6 +452,27 @@ pub fn handle_theme_picker(state: &mut AppState, event: InputEvent) {
                 state.core.theme = crate::services::theme::Theme::new(preset);
             }
             crate::overlay::close_overlay(state, OverlayId::ThemePicker);
+        }
+        _ => {}
+    }
+}
+
+pub fn handle_confirm_danger_mode(state: &mut AppState, _output_tx: &Sender<OutputEvent>, event: InputEvent) {
+    match event {
+        InputEvent::HandleEsc | InputEvent::InputChanged('n') | InputEvent::InputChanged('N') => {
+            crate::overlay::close_overlay(state, OverlayId::ConfirmDangerMode);
+        }
+        InputEvent::InputChanged('y') | InputEvent::InputChanged('Y') => {
+            let mode = vac_core::config::UserSandboxMode::DangerFullAccess;
+            state.layout.switchers.active_isolation_mode = "danger-full-access".to_string();
+            state.core.startup.sandbox_mode = mode;
+            if let Ok(mut config) = vac_core::VacConfig::load_with_fallback(&state.core.project_root) {
+                config.runtime.sandbox_mode = mode;
+                mode.apply_to_runtime(&mut config.runtime);
+                let _ = vac_core::VacConfig::save(&state.core.project_root, &config);
+            }
+            crate::overlay::close_overlay(state, OverlayId::ConfirmDangerMode);
+            crate::overlay::close_overlay(state, OverlayId::IsolationSwitcher);
         }
         _ => {}
     }

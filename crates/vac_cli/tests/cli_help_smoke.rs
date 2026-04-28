@@ -12,7 +12,7 @@
 use assert_cmd::Command;
 
 const EXPECTED_GROUPS: &[(&str, &[&str])] = &[
-    ("Run:", &["run", "interactive", "autopilot", "resume"]),
+    ("Run:", &["run", "exec", "interactive", "autopilot", "resume"]),
     (
         "Config:",
         &[
@@ -20,6 +20,7 @@ const EXPECTED_GROUPS: &[(&str, &[&str])] = &[
             "auth",
             "rulebook",
             "isolation",
+            "sandbox",
             "migrate",
             "doctor",
         ],

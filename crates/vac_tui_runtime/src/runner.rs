@@ -140,7 +140,7 @@ pub async fn run_vac_tui_with_io(
     tokio::spawn(async move {
         while let Some(event) = output_rx.recv().await {
             match event {
-                OutputEvent::UserMessage(msg, _tools, parts, _usize) => {
+                OutputEvent::UserMessage(msg, _tools, parts, _usize, plan_active) => {
                     message_tasks::handle_user_message(
                         runtime_project_root.clone(),
                         engine_clone.clone(),
@@ -148,6 +148,7 @@ pub async fn run_vac_tui_with_io(
                         active_update_tx_clone.clone(),
                         msg,
                         parts,
+                        plan_active,
                     )
                     .await;
                 }
@@ -317,6 +318,7 @@ pub async fn run_vac_tui_with_io(
                                 active_update_tx_clone.clone(),
                                 task_prompt,
                                 vec![],
+                                std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
                             )
                             .await;
                         } else {
@@ -423,7 +425,7 @@ pub async fn run_vac_tui_with_io(
         };
 
         let project_root_clone = project_root.clone();
-        let (config, selected_rulebooks) = tokio::task::spawn_blocking(move || {
+        let (config, selected_rulebooks, sandbox_mode) = tokio::task::spawn_blocking(move || {
             let config =
                 vac_core::VacConfig::load_with_fallback(&project_root_clone).unwrap_or_default();
             let books = vac_core::rulebook::RulebookLoader::load_all(
@@ -431,7 +433,8 @@ pub async fn run_vac_tui_with_io(
                 &config.rulebook.paths,
             );
             let selected_rulebooks: Vec<String> = books.iter().map(|b| b.id.clone()).collect();
-            (config, selected_rulebooks)
+            let sandbox_mode = config.runtime.sandbox_mode;
+            (config, selected_rulebooks, sandbox_mode)
         })
         .await
         .unwrap_or_default();
@@ -462,6 +465,7 @@ pub async fn run_vac_tui_with_io(
             pending_approvals_count: 0,
             provider_status,
             queue_depth: 0,
+            sandbox_mode,
             // PR-T17: this snapshot is built before `run_tui` runs the
             // Kitty probe, so leave the flag default; `event_loop::run_tui`
             // overwrites it from its own probe result.

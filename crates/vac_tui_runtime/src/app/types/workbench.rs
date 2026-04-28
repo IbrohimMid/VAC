@@ -118,10 +118,13 @@ pub struct ReviewDiffState {
     pub last_error: Option<String>,
 }
 
+use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
+
 /// Plan-mode domain state. Accessed via `app_state.workspace.plan`.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct PlanState {
-    pub mode_active: bool,
+    pub mode_active: Arc<AtomicBool>,
     pub metadata: Option<crate::services::plan::PlanMetadata>,
     pub draft: String,
     pub review_open: bool,
@@ -129,4 +132,19 @@ pub struct PlanState {
     pub review_scroll: usize,
     pub comments: Vec<PlanComment>,
     pub existing_prompt: Option<ExistingPlanPrompt>,
+}
+
+impl Default for PlanState {
+    fn default() -> Self {
+        Self {
+            mode_active: Arc::new(AtomicBool::new(false)),
+            metadata: None,
+            draft: String::new(),
+            review_open: false,
+            review_selected: 0,
+            review_scroll: 0,
+            comments: Vec::new(),
+            existing_prompt: None,
+        }
+    }
 }

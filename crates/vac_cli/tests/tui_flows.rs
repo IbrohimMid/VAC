@@ -237,7 +237,7 @@ async fn buffered_messages_flush_as_a_single_user_message() {
         .await
         .expect("output event should be emitted")
     {
-        OutputEvent::UserMessage(final_input, shell_calls, image_parts, revert_idx) => {
+        OutputEvent::UserMessage(final_input, shell_calls, image_parts, revert_idx, plan_active) => {
             assert_eq!(final_input, "first\n\nsecond");
             assert!(shell_calls.is_none());
             assert!(image_parts.is_empty());

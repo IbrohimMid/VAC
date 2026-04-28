@@ -64,6 +64,7 @@ pub enum ActionId {
     ReviewOpen,
     // Slash-command actions (BuiltIn handlers)
     Clear,
+    Init,
     Sessions,
     Runtime,
     Agents,
@@ -83,6 +84,7 @@ pub enum ActionId {
     OpenTaskTray,
     OpenThemePicker,
     OpenSessionResume,
+    ForkSession,
     OpenFilePicker,
     // Phase B1 — bundled skills exposed as palette entries so the
     // operator discovers them via `Ctrl+P` instead of reading

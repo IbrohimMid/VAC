@@ -189,9 +189,12 @@ fn parse_event(s: &str) -> Result<HookEvent, ToolError> {
         "SessionStart" => HookEvent::SessionStart,
         "SessionEnd" => HookEvent::SessionEnd,
         "PreCompact" => HookEvent::PreCompact,
+        "TurnFinished" => HookEvent::TurnFinished,
+        "ApprovalRequired" => HookEvent::ApprovalRequired,
+        "TaskFailed" => HookEvent::TaskFailed,
         other => {
             return Err(ToolError::ExecutionFailed(format!(
-                "unknown hook event '{other}'; expected one of PreToolUse/PostToolUse/UserPromptSubmit/Stop/SubagentStop/Notification/SessionStart/SessionEnd/PreCompact"
+                "unknown hook event '{other}'; expected one of PreToolUse/PostToolUse/UserPromptSubmit/Stop/SubagentStop/Notification/SessionStart/SessionEnd/PreCompact/TurnFinished/ApprovalRequired/TaskFailed"
             )));
         }
     })
@@ -261,7 +264,7 @@ impl VilTool for HookCreateTool {
                 "id": { "type": "string" },
                 "event": {
                     "type": "string",
-                    "enum": ["PreToolUse", "PostToolUse", "UserPromptSubmit", "Stop", "SubagentStop", "Notification", "SessionStart", "SessionEnd", "PreCompact"]
+                    "enum": ["PreToolUse", "PostToolUse", "UserPromptSubmit", "Stop", "SubagentStop", "Notification", "SessionStart", "SessionEnd", "PreCompact", "TurnFinished", "ApprovalRequired", "TaskFailed"]
                 },
                 "matcher": { "type": "string", "description": "Regex against tool name (empty = match all)." },
                 "kind": { "type": "string", "enum": ["command"], "description": "Only 'command' is implemented today." },

@@ -12,6 +12,9 @@ pub fn open(ctx: &mut HandlerContext) -> HandlerResult {
     ctx.state.workspace.review.generation = ctx.state.workspace.review.generation.saturating_add(1);
     ctx.state.review_sync_items();
     ctx.state.review_normalize_selection();
+    if ctx.state.workspace.review.selected_path.is_some() {
+        let _ = load_diff_for_selected(ctx);
+    }
     Ok(())
 }
 

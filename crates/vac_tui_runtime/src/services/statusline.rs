@@ -19,11 +19,22 @@ pub(crate) fn model_label(state: &AppState) -> String {
 }
 
 pub fn render_statusline(f: &mut Frame, state: &AppState, area: Rect) {
-    let mode_str = match state.layout.focus {
+    let base_mode = match state.layout.focus {
         crate::app::WorkspaceFocus::Input => "INPUT",
         crate::app::WorkspaceFocus::Conversation => "CONVERSATION",
         crate::app::WorkspaceFocus::Activity => "ACTIVITY",
         crate::app::WorkspaceFocus::Workbench => "WORKBENCH",
+    };
+
+    let mode_str = if state
+        .workspace
+        .plan
+        .mode_active
+        .load(std::sync::atomic::Ordering::Relaxed)
+    {
+        format!("{} [PLAN]", base_mode)
+    } else {
+        base_mode.to_string()
     };
 
     let model_str = model_label(state);
@@ -31,7 +42,7 @@ pub fn render_statusline(f: &mut Frame, state: &AppState, area: Rect) {
     let tokens = state.operator_config.billing.total_session.total_tokens;
 
     // Tightened chip set per Wave 3 design:
-    //   INPUT | model {name} | {tokens} tok | manual/auto | valid {%}
+    //   INPUT | model {name} | {tokens} tok | manual/auto | valid {%} | sandbox {mode}
     //         | lsp E{n} W{n} | profile {name} | rulebook {name}
     // Provider/MCP/SystemPulse facets moved off the statusline — they
     // belong on the operator pane and hydration snapshot, not on the
@@ -63,6 +74,20 @@ pub fn render_statusline(f: &mut Frame, state: &AppState, area: Rect) {
             } else {
                 theme.style(StyleKey::Success)
             },
+        ),
+        sep(),
+        Span::styled("sandbox ", theme.style(StyleKey::Muted)),
+        Span::styled(
+            match state.core.startup.sandbox_mode {
+                vac_core::config::UserSandboxMode::ReadOnly => "read-only",
+                vac_core::config::UserSandboxMode::WorkspaceWrite => "write",
+                vac_core::config::UserSandboxMode::DangerFullAccess => "DANGER",
+            },
+            match state.core.startup.sandbox_mode {
+                vac_core::config::UserSandboxMode::ReadOnly => theme.style(StyleKey::Success),
+                vac_core::config::UserSandboxMode::WorkspaceWrite => theme.style(StyleKey::Warning),
+                vac_core::config::UserSandboxMode::DangerFullAccess => theme.style(StyleKey::Error),
+            }
         ),
     ];
 

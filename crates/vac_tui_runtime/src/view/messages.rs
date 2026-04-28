@@ -39,6 +39,13 @@ pub(super) fn render_messages(f: &mut Frame, state: &mut AppState, area: Rect) {
         let mut hasher = DefaultHasher::new();
         msg.content.hash(&mut hasher);
         msg.role.hash(&mut hasher);
+        if let Some(tool_calls) = &msg.tool_calls {
+            for tc in tool_calls {
+                tc.id.hash(&mut hasher);
+                tc.function.name.hash(&mut hasher);
+                tc.function.arguments.hash(&mut hasher);
+            }
+        }
         let content_hash = hasher.finish();
 
         if let Some(cached) = state.layout.message_ui.per_message_cache.get(&msg.id) {
@@ -56,16 +63,10 @@ pub(super) fn render_messages(f: &mut Frame, state: &mut AppState, area: Rect) {
 
         misses += 1;
         let mut msg_lines = Vec::new();
-        match msg.role.as_str() {
-            "user" => {
-                msg_lines.extend(render_user_message(&msg.content, width));
-            }
-            "assistant" => {
-                msg_lines.extend(render_assistant_message_with_width(&msg.content, width));
-            }
-            _ => {
-                msg_lines.extend(msg.content.lines().map(|l| Line::raw(l.to_string())));
-            }
+        
+        let cells = crate::history_cell::adapter::from_message(msg);
+        for cell in cells {
+            msg_lines.extend(crate::history_cell::render::render_history_cell(&cell, width));
         }
 
         let n = msg_lines.len();
@@ -196,6 +197,42 @@ pub(super) fn render_messages(f: &mut Frame, state: &mut AppState, area: Rect) {
                     .style(crate::services::theme::StyleKey::Muted),
             ),
         ]));
+    }
+
+    // --- C8 Todo conversation lane ---
+    // Render compact todo checklist directly in the conversation lane.
+    if !state.transcript.todos.is_empty() {
+        lines.push(Line::raw(""));
+        lines.push(ratatui::text::Line::from(ratatui::text::Span::styled(
+            "  ── todo checklist ──",
+            state
+                .core
+                .theme
+                .style(crate::services::theme::StyleKey::Muted),
+        )));
+        for todo in &state.transcript.todos {
+            let (icon, style_key) = match todo.status {
+                vac_changeset::TodoStatus::Done => ("✓", crate::services::theme::StyleKey::Success),
+                vac_changeset::TodoStatus::InProgress => ("◐", crate::services::theme::StyleKey::Warning),
+                vac_changeset::TodoStatus::Pending => ("○", crate::services::theme::StyleKey::Muted),
+            };
+            
+            lines.push(ratatui::text::Line::from(vec![
+                ratatui::text::Span::raw("  "),
+                ratatui::text::Span::styled(
+                    format!("{} ", icon),
+                    state.core.theme.style(style_key),
+                ),
+                ratatui::text::Span::styled(
+                    &todo.text,
+                    if todo.status == vac_changeset::TodoStatus::Done {
+                        state.core.theme.style(crate::services::theme::StyleKey::Muted)
+                    } else {
+                        ratatui::style::Style::default()
+                    },
+                ),
+            ]));
+        }
     }
 
     // Cache the lines for text selection

@@ -125,6 +125,9 @@ pub fn resolve_mcp_presets(
             tls: instance.tls.clone(),
             approval_policy: instance.approval_policy.clone(),
             allowed_in_modes: instance.allowed_in_modes.clone(),
+            supports_parallel_tool_calls: None,
+            default_tools_approval_mode: None,
+            tools: HashMap::new(),
         });
     }
 

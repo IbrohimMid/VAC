@@ -5,9 +5,36 @@ use std::path::PathBuf;
 pub async fn execute(
     project_root: PathBuf,
     resume: bool,
+    sandbox_mode: Option<String>,
     record: Option<PathBuf>,
     replay: Option<PathBuf>,
 ) -> anyhow::Result<()> {
+    // Check and confirm sandbox_mode if provided
+    if let Some(mode_str) = sandbox_mode {
+        let mode = match mode_str.to_lowercase().as_str() {
+            "read_only" => vac_core::config::UserSandboxMode::ReadOnly,
+            "workspace_write" => vac_core::config::UserSandboxMode::WorkspaceWrite,
+            "danger_full_access" => {
+                println!("⚠️ WARNING: You are requesting DangerFullAccess sandbox mode.");
+                println!("This mode disables execution isolation and allows full shell access.");
+                println!("Are you sure you want to proceed? [y/N]");
+                let mut buf = String::new();
+                let _ = std::io::stdin().read_line(&mut buf);
+                if !buf.trim().eq_ignore_ascii_case("y") {
+                    anyhow::bail!("Aborted by user.");
+                }
+                vac_core::config::UserSandboxMode::DangerFullAccess
+            }
+            _ => anyhow::bail!("Invalid sandbox_mode. Use read_only, workspace_write, or danger_full_access."),
+        };
+
+        // Update the project's config with the new mode
+        let mut config = vac_core::VacConfig::load_with_fallback(&project_root)?;
+        config.runtime.sandbox_mode = mode;
+        mode.apply_to_runtime(&mut config.runtime);
+        vac_core::VacConfig::save(&project_root, &config)?;
+        println!("Sandbox mode set to {:?}", mode);
+    }
     // M9: Detect pending submit and prompt before starting TUI
     if let Ok(Some(session)) = vac_core::session::Session::load_latest(&project_root) {
         let writer = vac_session_engine::TranscriptWriter::new(project_root.clone());

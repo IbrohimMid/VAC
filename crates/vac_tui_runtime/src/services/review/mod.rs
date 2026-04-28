@@ -130,7 +130,21 @@ pub fn load_diff(
         std::fs::read_to_string(&snap_path)
             .map_err(|e| format!("Failed to read snapshot {}: {e}", snap_path.display()))?
     } else {
-        String::new()
+        // Fallback to git show HEAD:<file_path> if there's no snapshot
+        if let Ok(output) = std::process::Command::new("git")
+            .current_dir(project_root)
+            .arg("show")
+            .arg(format!("HEAD:{}", file_path))
+            .output()
+        {
+            if output.status.success() {
+                String::from_utf8_lossy(&output.stdout).to_string()
+            } else {
+                String::new()
+            }
+        } else {
+            String::new()
+        }
     };
 
     let new_content = if abs_path.exists() {

@@ -87,6 +87,38 @@ impl HookGate {
     pub async fn replace_store(&self, new: HookStore) {
         *self.store.write().await = HookStoreCompiled::from_store(new);
     }
+
+    /// C12: Async, timeout-bounded, and redacted execution for notification hooks.
+    /// Fires `event` matching hooks (with empty tool_name match) in the background.
+    pub fn fire_notification(&self, event: HookEvent, payload: Option<String>) {
+        let store = self.store.clone();
+        let mut sandbox = (*self.sandbox).clone();
+        
+        // Ensure env variables are allowed for this execution
+        if let Some(ref mut allowlist) = sandbox.env_allowlist {
+            allowlist.push("VAC_HOOK_EVENT".to_string());
+            allowlist.push("VAC_HOOK_PAYLOAD".to_string());
+        }
+
+        tokio::spawn(async move {
+            let store_guard = store.read().await;
+            // Notification hooks usually have empty matchers, but we pass an empty string
+            // so `matches` filters by event type.
+            let entries: Vec<HookEntry> = store_guard.matches(event, "").into_iter().cloned().collect();
+            drop(store_guard);
+
+            for entry in entries {
+                let mut extra_env = std::collections::HashMap::new();
+                extra_env.insert("VAC_HOOK_EVENT".to_string(), format!("{:?}", event));
+                if let Some(ref p) = payload {
+                    extra_env.insert("VAC_HOOK_PAYLOAD".to_string(), p.clone());
+                }
+
+                // Fire and forget; timeout is handled by the sandbox.
+                let _ = exec_hook_sandboxed(&entry, &sandbox, Some(extra_env)).await;
+            }
+        });
+    }
 }
 
 #[async_trait]
@@ -101,7 +133,7 @@ impl ToolGate for HookGate {
         let matches: Vec<HookEntry> = matches.iter().copied().cloned().collect();
         drop(store);
         for entry in &matches {
-            match exec_hook_sandboxed(entry, &self.sandbox).await {
+            match exec_hook_sandboxed(entry, &self.sandbox, None).await {
                 Ok(HookDecision::Allow) => continue,
                 Ok(HookDecision::Deny { reason }) => {
                     return GateDecision::Deny { reason };

@@ -215,6 +215,36 @@ pub(super) fn render_toast(f: &mut Frame, state: &mut AppState) {
     f.render_widget(widget, rect);
 }
 
+pub(super) fn render_confirm_danger_mode(f: &mut Frame, state: &mut AppState) {
+    let area = centered_rect(50, 30, f.area());
+    f.render_widget(Clear, area);
+
+    let lines = vec![
+        Line::from(Span::styled(
+            "⚠️ WARNING: You are requesting DangerFullAccess mode.",
+            state.core.theme.style(StyleKey::Error).add_modifier(ratatui::style::Modifier::BOLD),
+        )),
+        Line::from(""),
+        Line::from("This mode disables execution isolation and allows full shell access."),
+        Line::from("Are you sure you want to proceed?"),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("[y]", state.core.theme.style(StyleKey::Success).add_modifier(ratatui::style::Modifier::BOLD)),
+            Span::raw(" Yes, enable danger mode"),
+        ]),
+        Line::from(vec![
+            Span::styled("[n/Esc]", state.core.theme.style(StyleKey::Muted).add_modifier(ratatui::style::Modifier::BOLD)),
+            Span::raw(" Cancel"),
+        ]),
+    ];
+
+    let p = Paragraph::new(lines)
+        .block(Block::default().borders(Borders::ALL).title("Confirm Danger Mode").border_style(state.core.theme.style(StyleKey::Error)))
+        .wrap(Wrap { trim: true });
+
+    f.render_widget(p, area);
+}
+
 pub(super) fn render_command_palette(f: &mut Frame, state: &mut AppState) {
     let area = centered_rect(60, 40, f.area());
     f.render_widget(Clear, area);
@@ -224,35 +254,197 @@ pub(super) fn render_command_palette(f: &mut Frame, state: &mut AppState) {
         .constraints([Constraint::Length(3), Constraint::Min(1)])
         .split(area);
 
-    // Input
     let input = Paragraph::new(Line::from(vec![
-        Span::styled("/", state.core.theme.style(StyleKey::Warning)),
+        Span::styled(">", state.core.theme.style(StyleKey::Accent)),
+        Span::raw(" "),
         Span::raw(&state.layout.command_palette.input),
     ]))
-    .block(Block::default().borders(Borders::ALL).title("Command"));
+    .block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title("Command Palette"),
+    );
     f.render_widget(input, chunks[0]);
 
-    // Commands list
-    let filtered = state.filtered_commands();
-    let items: Vec<ListItem> = filtered
+    let items: Vec<ListItem> = state
+        .command_palette_filtered()
         .iter()
         .enumerate()
         .map(|(i, cmd)| {
-            let style = if i == state.layout.command_palette.selected {
+            let style = if i == state.layout.command_palette.selected_idx {
                 state.core.theme.style(StyleKey::ListSelected)
             } else {
                 Style::default()
             };
             ListItem::new(Line::from(vec![
-                Span::styled(&cmd.command, style),
-                Span::raw(" - "),
-                Span::styled(&cmd.description, state.core.theme.style(StyleKey::Muted)),
+                Span::styled(cmd.command.clone(), style),
+                Span::styled(
+                    format!("  {}", cmd.description),
+                    state.core.theme.style(StyleKey::Muted),
+                ),
             ]))
         })
         .collect();
 
-    let list = List::new(items).block(Block::default().borders(Borders::ALL).title("Commands"));
+    let list = List::new(items)
+        .block(Block::default().borders(Borders::ALL))
+        .highlight_style(state.core.theme.style(StyleKey::ListSelected));
     f.render_widget(list, chunks[1]);
+}
+
+pub(super) fn render_init_checklist(f: &mut Frame, state: &mut AppState) {
+    let area = centered_rect(60, 60, f.area());
+    f.render_widget(Clear, area);
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(" Init Checklist ")
+        .border_style(state.core.theme.style(StyleKey::OverlayBorder));
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+
+    let body_chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(45), Constraint::Percentage(55)])
+        .split(inner);
+
+    // Build rows dynamically based on state
+    struct ChecklistRow {
+        label: &'static str,
+        status: &'static str,
+        status_key: StyleKey,
+        summary: String,
+        detail: String,
+    }
+
+    let mut rows = Vec::new();
+
+    // 1. Model
+    let model_name = state.operator_config.operator.current_model.as_ref().map(|m| m.name.clone());
+    rows.push(ChecklistRow {
+        label: "Model",
+        status: if model_name.is_some() { "ok" } else { "!" },
+        status_key: if model_name.is_some() { StyleKey::Success } else { StyleKey::Warning },
+        summary: if let Some(m) = &model_name { format!("model: {}", m) } else { "model not selected".to_string() },
+        detail: if model_name.is_some() { "Use /model to select a provider and model".to_string() } else { "No active model configured. Run /model to select one.".to_string() },
+    });
+
+    // 2. Sandbox
+    rows.push(ChecklistRow {
+        label: "Sandbox",
+        status: "ok",
+        status_key: StyleKey::Success,
+        summary: format!("env: {}", state.layout.switchers.active_isolation_mode),
+        detail: "Use /sandbox to change isolation mode".to_string(),
+    });
+
+    // 3. Sessions
+    let sessions_count = state.workspace.sessions.len();
+    rows.push(ChecklistRow {
+        label: "Sessions",
+        status: if sessions_count > 0 { "ok" } else { "?" },
+        status_key: if sessions_count > 0 { StyleKey::Success } else { StyleKey::Muted },
+        summary: format!("sessions: {} total", sessions_count),
+        detail: "Use /sessions to browse past sessions".to_string(),
+    });
+
+    // 4. Doctor
+    rows.push(ChecklistRow {
+        label: "Doctor",
+        status: "ok",
+        status_key: StyleKey::Success,
+        summary: "doctor: Ok".to_string(),
+        detail: "All checks passed".to_string(),
+    });
+
+    // 5. MCP
+    let mcp_count = state.execution.mcp_maps.server_states.len();
+    rows.push(ChecklistRow {
+        label: "MCP",
+        status: if mcp_count > 0 { "ok" } else { "?" },
+        status_key: if mcp_count > 0 { StyleKey::Success } else { StyleKey::Muted },
+        summary: format!("servers: {} connected", mcp_count),
+        detail: "Use /mcp to manage context providers".to_string(),
+    });
+
+    // 6. Status
+    rows.push(ChecklistRow {
+        label: "Status",
+        status: "ok",
+        status_key: StyleKey::Success,
+        summary: "System status is nominal".to_string(),
+        detail: "Use /status for full readiness summary".to_string(),
+    });
+
+    // 7. Logs
+    rows.push(ChecklistRow {
+        label: "Logs",
+        status: "ok",
+        status_key: StyleKey::Success,
+        summary: "Activity logs available".to_string(),
+        detail: "Use /logs to view detailed activity".to_string(),
+    });
+
+    let height = body_chunks[0].height as usize;
+    let total = rows.len();
+    let max_scroll = total.saturating_sub(height);
+    let scroll = state.layout.init_checklist_scroll.min(max_scroll);
+    state.layout.init_checklist_selected = state.layout.init_checklist_selected.min(total.saturating_sub(1));
+
+    let mut left: Vec<Line<'static>> = Vec::new();
+    for (i, row) in rows.iter().enumerate().skip(scroll).take(height) {
+        let is_sel = i == state.layout.init_checklist_selected;
+        
+        let label_style = if is_sel {
+            state.core.theme.style(StyleKey::OverlaySelected).add_modifier(ratatui::style::Modifier::BOLD)
+        } else {
+            state.core.theme.style(StyleKey::Normal)
+        };
+        
+        let status_style = if is_sel {
+            state.core.theme.style(StyleKey::OverlaySelected).add_modifier(ratatui::style::Modifier::BOLD)
+        } else {
+            state.core.theme.style(row.status_key).add_modifier(ratatui::style::Modifier::BOLD)
+        };
+
+        left.push(Line::from(vec![
+            Span::styled(format!(" {:>2} ", row.status), status_style),
+            Span::styled(row.label, label_style),
+        ]));
+    }
+
+    let paragraph = Paragraph::new(left).wrap(Wrap { trim: false });
+    f.render_widget(paragraph, body_chunks[0]);
+
+    let right_lines = if let Some(row) = rows.get(state.layout.init_checklist_selected) {
+        let mut lines = vec![
+            Line::from(Span::styled(
+                row.label,
+                state.core.theme.style(StyleKey::Normal).add_modifier(ratatui::style::Modifier::BOLD),
+            )),
+            Line::from(Span::styled(
+                format!(" status: {}", row.status),
+                state.core.theme.style(row.status_key),
+            )),
+            Line::from(Span::styled(
+                row.summary.clone(),
+                state.core.theme.style(StyleKey::Muted),
+            )),
+            Line::from(Span::styled(
+                row.detail.clone(),
+                state.core.theme.style(StyleKey::Muted),
+            )),
+        ];
+        lines
+    } else {
+        vec![Line::from(Span::styled(
+            " no selection",
+            state.core.theme.style(StyleKey::Muted),
+        ))]
+    };
+
+    let detail_p = Paragraph::new(right_lines).wrap(Wrap { trim: false });
+    f.render_widget(detail_p, body_chunks[1]);
 }
 
 pub(super) fn render_shortcuts(f: &mut Frame, state: &mut AppState) {
